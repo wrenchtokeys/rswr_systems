@@ -308,18 +308,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # =========================================
 
 # Development: Email backend (prints to console for testing)
-# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Console backend (for development without SES)
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # Console backend (for development)
 
-# AWS SES SMTP Backend (enabled for notification system)
+# SendGrid SMTP Backend (enabled for notification system)
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('AWS_SES_HOST', 'email-smtp.us-east-1.amazonaws.com')
-EMAIL_PORT = int(os.environ.get('AWS_SES_PORT', 587))
+EMAIL_HOST = 'smtp.sendgrid.net'
+EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.environ.get('AWS_SES_SMTP_USER')
-EMAIL_HOST_PASSWORD = os.environ.get('AWS_SES_SMTP_PASSWORD')
+EMAIL_HOST_USER = 'apikey'
+EMAIL_HOST_PASSWORD = os.environ.get('SENDGRID_API_KEY')
 
 # Email sender information
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@rssystems.com')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rockstarwindshield.repair')
 DEFAULT_FROM_NAME = os.environ.get('DEFAULT_FROM_NAME', 'RS Systems')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL  # For error emails
 

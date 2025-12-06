@@ -242,33 +242,29 @@ else:
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # =========================================
-# EMAIL CONFIGURATION (AWS SES)
+# EMAIL CONFIGURATION (SendGrid)
 # =========================================
 
-# Production: AWS SES SMTP Backend
+# Production: SendGrid SMTP Backend
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
-# SES SMTP Settings
-EMAIL_HOST = os.environ.get('AWS_SES_HOST', 'email-smtp.us-east-1.amazonaws.com')
-EMAIL_PORT = int(os.environ.get('AWS_SES_PORT', 587))
+# SendGrid SMTP Settings
+EMAIL_HOST = 'smtp.sendgrid.net'
+EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False  # Use TLS on port 587, not SSL
 
-# SES Credentials (from IAM user with SES permissions)
-EMAIL_HOST_USER = os.environ.get('AWS_SES_SMTP_USER')
-EMAIL_HOST_PASSWORD = os.environ.get('AWS_SES_SMTP_PASSWORD')
+# SendGrid Credentials (API key as password, 'apikey' as username)
+EMAIL_HOST_USER = 'apikey'
+EMAIL_HOST_PASSWORD = os.environ.get('SENDGRID_API_KEY')
 
 # Sender information
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rockstarwindshield.repair')
 DEFAULT_FROM_NAME = os.environ.get('DEFAULT_FROM_NAME', 'RS Systems')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL  # For error emails
 
-# SES Configuration
-AWS_SES_REGION_NAME = os.environ.get('AWS_SES_REGION', 'us-east-1')
-AWS_SES_CONFIGURATION_SET = os.environ.get('AWS_SES_CONFIGURATION_SET', '')  # Optional: for tracking
-
-# Email rate limiting (to avoid SES limits)
-EMAIL_RATE_LIMIT = int(os.environ.get('EMAIL_RATE_LIMIT', 14))  # Emails per second (stay under SES limit)
+# Email rate limiting (SendGrid allows higher rates than SES)
+EMAIL_RATE_LIMIT = int(os.environ.get('EMAIL_RATE_LIMIT', 100))  # Emails per second
 
 # =========================================
 # SMS CONFIGURATION (AWS SNS)
