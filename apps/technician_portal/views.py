@@ -2688,9 +2688,13 @@ def verify_phone(request):
     return redirect('notification_preferences')
 
 
-@login_required
 def confirm_email_verification(request, uidb64, token):
-    """Process email verification token"""
+    """
+    Process email verification token.
+
+    Note: No @login_required - verification links should work even if user is logged out.
+    The token itself authenticates the request.
+    """
     from django.contrib.auth.tokens import default_token_generator
     from django.utils.http import urlsafe_base64_decode
     from django.contrib.auth.models import User
@@ -2707,13 +2711,17 @@ def confirm_email_verification(request, uidb64, token):
             technician.email_verified = True
             technician.email_verified_at = timezone.now()
             technician.save()
-            messages.success(request, "Email verified successfully!")
+            messages.success(request, "Email verified successfully! You can now receive email notifications.")
         except Technician.DoesNotExist:
             messages.error(request, "Technician profile not found.")
     else:
-        messages.error(request, "Invalid or expired verification link.")
+        messages.error(request, "Invalid or expired verification link. Please request a new verification email.")
 
-    return redirect('notification_preferences')
+    # Redirect based on authentication status
+    if request.user.is_authenticated:
+        return redirect('notification_preferences')
+    else:
+        return redirect('technician_login')
 
 
 @login_required
