@@ -169,7 +169,19 @@
                     'Content-Type': 'application/json'
                 }
             })
-            .then(response => response.json())
+            .then(response => {
+                // Check for HTTP errors before parsing JSON
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        throw new Error('Permission denied. Please refresh the page and try again.');
+                    } else if (response.status === 401) {
+                        throw new Error('You have been logged out. Please log in again.');
+                    } else {
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     updateUnreadCount(-data.count);
@@ -179,9 +191,14 @@
                         const badge = item.querySelector('.bg-blue-600');
                         if (badge) badge.remove();
                     });
+                } else {
+                    alert(`Failed: ${data.error || 'Unknown error'}`);
                 }
             })
-            .catch(error => console.error('Error:', error));
+            .catch(error => {
+                console.error('Error:', error);
+                alert(`Error marking notifications as read: ${error.message}`);
+            });
         });
     }
 
