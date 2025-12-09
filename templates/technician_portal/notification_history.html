@@ -271,6 +271,10 @@ if (markAllBtn) {
     markAllBtn.addEventListener('click', function() {
         if (!confirm('Mark all notifications as read?')) return;
 
+        // Disable button during request
+        markAllBtn.disabled = true;
+        markAllBtn.textContent = 'Marking...';
+
         fetch('/tech/notifications/mark-all-read/', {
             method: 'POST',
             headers: {
@@ -278,14 +282,31 @@ if (markAllBtn) {
                 'Content-Type': 'application/json'
             }
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
                 // Reload page to show updated list
                 window.location.reload();
+            } else {
+                // Show error message
+                alert(`Failed to mark notifications as read: ${data.error || 'Unknown error'}`);
+                // Re-enable button
+                markAllBtn.disabled = false;
+                markAllBtn.textContent = 'Mark All Read';
             }
         })
-        .catch(error => console.error('Error:', error));
+        .catch(error => {
+            console.error('Error:', error);
+            alert(`Error marking notifications as read: ${error.message}`);
+            // Re-enable button
+            markAllBtn.disabled = false;
+            markAllBtn.textContent = 'Mark All Read';
+        });
     });
 }
 </script>
