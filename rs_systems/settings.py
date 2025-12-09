@@ -351,11 +351,11 @@ CELERY_ENABLE_UTC = True
 
 # Task routing (send notification tasks to specific queue)
 CELERY_TASK_ROUTES = {
-    'apps.core.tasks.send_notification_email': {'queue': 'notifications'},
-    'apps.core.tasks.send_notification_sms': {'queue': 'notifications'},
-    'apps.core.tasks.retry_failed_notifications': {'queue': 'notifications'},
-    'apps.core.tasks.send_daily_digests': {'queue': 'notifications'},
-    'apps.core.tasks.cleanup_old_delivery_logs': {'queue': 'maintenance'},
+    'core.tasks.send_notification_email': {'queue': 'notifications'},
+    'core.tasks.send_notification_sms': {'queue': 'notifications'},
+    'core.tasks.retry_failed_notifications': {'queue': 'notifications'},
+    'core.tasks.send_daily_digests': {'queue': 'notifications'},
+    'core.tasks.cleanup_old_delivery_logs': {'queue': 'maintenance'},
 }
 
 # Task time limits (prevent hanging tasks)

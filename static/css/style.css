@@ -59,8 +59,9 @@ header {
   gap: 0.5rem;
 }
 
-.logo img {
-  height: 32px;
+.logo-image {
+  height: 125px;
+  width: auto;
 }
 
 nav ul {

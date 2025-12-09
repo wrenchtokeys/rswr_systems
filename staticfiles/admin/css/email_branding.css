@@ -1,0 +1,319 @@
+/**
+ * Custom CSS for Email Branding Configuration Admin Interface
+ *
+ * Provides enhanced styling for the branding configuration page
+ * including better color picker integration and logo preview.
+ */
+
+/* =================================================================
+   FIELDSET STYLING
+   ================================================================= */
+
+.emailbrandingconfig_form fieldset.module {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.emailbrandingconfig_form fieldset h2 {
+    background: linear-gradient(135deg, #2C5282 0%, #4299E1 100%);
+    color: white;
+    padding: 12px 20px;
+    margin: -20px -20px 20px -20px;
+    border-radius: 6px 6px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.emailbrandingconfig_form fieldset .description {
+    background: #f8f9fa;
+    border-left: 3px solid #4299E1;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    font-size: 13px;
+    color: #555;
+    border-radius: 0 4px 4px 0;
+}
+
+/* =================================================================
+   COLOR FIELD ENHANCEMENTS
+   ================================================================= */
+
+.color-field-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 5px 0;
+}
+
+.color-picker-widget {
+    width: 50px;
+    height: 40px;
+    border: 2px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 2px;
+}
+
+.color-picker-widget:hover {
+    border-color: #4299E1;
+}
+
+.color-preview-swatch {
+    width: 40px;
+    height: 40px;
+    border: 2px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.color-preview-swatch:hover {
+    border-color: #999;
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.color-helper-text {
+    font-size: 11px;
+    color: #666;
+    font-style: italic;
+}
+
+/* Color input validation feedback */
+input[id*="color"].invalid {
+    border-color: #e53e3e !important;
+    background-color: #fff5f5 !important;
+}
+
+input[id*="color"].valid {
+    border-color: #38a169 !important;
+}
+
+/* =================================================================
+   LOGO PREVIEW STYLING
+   ================================================================= */
+
+.logo-preview-container {
+    background: #f8f9fa;
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    margin: 10px 0;
+}
+
+.logo-preview-container img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: white;
+    padding: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.logo-preview-container p {
+    margin-top: 10px;
+    color: #666;
+    font-size: 12px;
+}
+
+/* Logo upload field styling */
+#id_logo {
+    display: block;
+    margin: 10px 0;
+    padding: 10px;
+    border: 2px dashed #ccc;
+    border-radius: 4px;
+    background: #fafafa;
+}
+
+#id_logo:hover {
+    border-color: #4299E1;
+    background: #f0f8ff;
+}
+
+/* =================================================================
+   FORM ROW IMPROVEMENTS
+   ================================================================= */
+
+.form-row {
+    padding: 15px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.form-row:last-child {
+    border-bottom: none;
+}
+
+.form-row label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.form-row .help {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+    display: block;
+}
+
+/* Two-column layout for paired fields */
+.form-row.field-primary_color,
+.form-row.field-secondary_color,
+.form-row.field-success_color,
+.form-row.field-danger_color,
+.form-row.field-text_color,
+.form-row.field-background_color {
+    width: 48%;
+    display: inline-block;
+    vertical-align: top;
+}
+
+.form-row.field-secondary_color,
+.form-row.field-danger_color,
+.form-row.field-background_color {
+    margin-left: 4%;
+}
+
+/* =================================================================
+   BUTTON STYLING
+   ================================================================= */
+
+.submit-row input[type="submit"] {
+    background: linear-gradient(135deg, #2C5282 0%, #4299E1 100%);
+    border: none;
+    padding: 12px 30px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.submit-row input[type="submit"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.submit-row input[type="submit"]:active {
+    transform: translateY(0);
+}
+
+/* =================================================================
+   CHANGELIST STYLING
+   ================================================================= */
+
+.emailbrandingconfig-changelist .results {
+    overflow-x: auto;
+}
+
+.emailbrandingconfig-changelist th,
+.emailbrandingconfig-changelist td {
+    padding: 12px;
+}
+
+/* Color preview in list view */
+.emailbrandingconfig-changelist .color-preview {
+    display: flex;
+    gap: 3px;
+}
+
+.emailbrandingconfig-changelist .color-preview div {
+    width: 20px;
+    height: 20px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+/* =================================================================
+   RESPONSIVE ADJUSTMENTS
+   ================================================================= */
+
+@media (max-width: 768px) {
+    .form-row.field-primary_color,
+    .form-row.field-secondary_color,
+    .form-row.field-success_color,
+    .form-row.field-danger_color,
+    .form-row.field-text_color,
+    .form-row.field-background_color {
+        width: 100%;
+        display: block;
+        margin-left: 0;
+    }
+
+    .color-field-wrapper {
+        flex-wrap: wrap;
+    }
+}
+
+/* =================================================================
+   HELPFUL NOTICES
+   ================================================================= */
+
+.branding-notice {
+    background: #e6f7ff;
+    border-left: 4px solid #4299E1;
+    padding: 15px;
+    margin: 20px 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.branding-notice h3 {
+    margin: 0 0 10px 0;
+    color: #2C5282;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.branding-notice p {
+    margin: 5px 0;
+    color: #555;
+    font-size: 13px;
+}
+
+.branding-notice ul {
+    margin: 10px 0 0 20px;
+    color: #555;
+}
+
+.branding-notice li {
+    margin: 5px 0;
+    font-size: 13px;
+}
+
+/* =================================================================
+   ACCESSIBILITY
+   ================================================================= */
+
+.color-picker-widget:focus,
+.color-preview-swatch:focus {
+    outline: 2px solid #4299E1;
+    outline-offset: 2px;
+}
+
+input[id*="color"]:focus {
+    border-color: #4299E1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+}
+
+/* Screen reader only helper text */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}

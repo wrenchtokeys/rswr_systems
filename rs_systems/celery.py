@@ -56,21 +56,21 @@ app.conf.beat_schedule = {
     # Retry failed notification deliveries every 5 minutes
     # Uses exponential backoff logic from NotificationDeliveryLog
     'retry-failed-notifications': {
-        'task': 'apps.core.tasks.retry_failed_notifications',
+        'task': 'core.tasks.retry_failed_notifications',
         'schedule': crontab(minute='*/5'),  # Every 5 minutes
     },
 
     # Send daily digest emails at 9 AM local time
     # For users who prefer batched notifications
     'send-daily-digests': {
-        'task': 'apps.core.tasks.send_daily_digests',
+        'task': 'core.tasks.send_daily_digests',
         'schedule': crontab(hour=9, minute=0),  # 9:00 AM daily
     },
 
     # Cleanup old notification delivery logs weekly
     # Keeps database size manageable
     'cleanup-old-logs': {
-        'task': 'apps.core.tasks.cleanup_old_delivery_logs',
+        'task': 'core.tasks.cleanup_old_delivery_logs',
         'schedule': crontab(hour=2, minute=0, day_of_week=0),  # 2 AM Sunday
     },
 }

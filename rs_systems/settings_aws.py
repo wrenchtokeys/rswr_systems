@@ -308,11 +308,11 @@ CELERY_ENABLE_UTC = True
 
 # Task routing (send notification tasks to specific queue)
 CELERY_TASK_ROUTES = {
-    'apps.core.tasks.send_notification_email': {'queue': 'notifications'},
-    'apps.core.tasks.send_notification_sms': {'queue': 'notifications'},
-    'apps.core.tasks.retry_failed_notifications': {'queue': 'notifications'},
-    'apps.core.tasks.send_daily_digests': {'queue': 'notifications'},
-    'apps.core.tasks.cleanup_old_delivery_logs': {'queue': 'maintenance'},
+    'core.tasks.send_notification_email': {'queue': 'notifications'},
+    'core.tasks.send_notification_sms': {'queue': 'notifications'},
+    'core.tasks.retry_failed_notifications': {'queue': 'notifications'},
+    'core.tasks.send_daily_digests': {'queue': 'notifications'},
+    'core.tasks.cleanup_old_delivery_logs': {'queue': 'maintenance'},
 }
 
 # Task time limits (prevent hanging tasks)
@@ -332,10 +332,10 @@ CELERY_TASK_ALWAYS_EAGER = False
 
 # Rate limiting for external APIs (SES/SNS)
 CELERY_ANNOTATIONS = {
-    'apps.core.tasks.send_notification_email': {
+    'core.tasks.send_notification_email': {
         'rate_limit': '14/s',  # Match SES limit (14 emails/second)
     },
-    'apps.core.tasks.send_notification_sms': {
+    'core.tasks.send_notification_sms': {
         'rate_limit': '10/s',  # Conservative SMS rate limit
     },
 }
@@ -396,7 +396,7 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
-        'apps.core.tasks': {
+        'core.tasks': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,

@@ -31,6 +31,16 @@ class Technician(models.Model):
         default=False,
         help_text="Whether phone number has been verified"
     )
+    email_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When email address was verified"
+    )
+    phone_verified_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When phone number was verified"
+    )
 
     # Dual Role Support
     is_manager = models.BooleanField(
