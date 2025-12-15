@@ -1,0 +1,150 @@
+{% extends 'base.html' %}
+
+{% block title %}Notification History - Customer Portal{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="mb-4">Notification History</h2>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label for="show_read" class="form-label">Status</label>
+                    <select name="show_read" id="show_read" class="form-select">
+                        <option value="false" {% if not show_read %}selected{% endif %}>Unread Only</option>
+                        <option value="true" {% if show_read %}selected{% endif %}>All Notifications</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="category" class="form-label">Category</label>
+                    <select name="category" id="category" class="form-select">
+                        <option value="">All Categories</option>
+                        {% for cat_val, cat_label in categories %}
+                        <option value="{{ cat_val }}" {% if category == cat_val %}selected{% endif %}>{{ cat_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary">Filter</button>
+                    <a href="{% url 'customer_notification_history' %}" class="btn btn-secondary">Clear</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if notifications %}
+        <div class="mb-3">
+            <button id="mark-all-read-btn" class="btn btn-sm btn-outline-primary">Mark All as Read</button>
+        </div>
+
+        <div class="list-group mb-4">
+            {% for notification in notifications %}
+            <div class="list-group-item {% if not notification.read %}bg-light{% endif %}">
+                <div class="d-flex w-100 justify-content-between">
+                    <h5 class="mb-1">{{ notification.title }}</h5>
+                    <small>{{ notification.created_at|timesince }} ago</small>
+                </div>
+                <p class="mb-1">{{ notification.message }}</p>
+                <small class="text-muted">Category: {{ notification.get_category_display }}</small>
+                {% if notification.action_url %}
+                <div class="mt-2">
+                    <a href="{{ notification.action_url }}" class="btn btn-sm btn-primary">View Details</a>
+                </div>
+                {% endif %}
+                {% if not notification.read %}
+                <span class="badge bg-primary">Unread</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if notifications.has_other_pages %}
+        <nav aria-label="Notification pagination">
+            <ul class="pagination justify-content-center">
+                {% if notifications.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% if category %}&category={{ category }}{% endif %}{% if show_read %}&show_read=true{% endif %}">First</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ notifications.previous_page_number }}{% if category %}&category={{ category }}{% endif %}{% if show_read %}&show_read=true{% endif %}">Previous</a>
+                </li>
+                {% endif %}
+
+                <li class="page-item active">
+                    <span class="page-link">
+                        Page {{ notifications.number }} of {{ notifications.paginator.num_pages }}
+                    </span>
+                </li>
+
+                {% if notifications.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ notifications.next_page_number }}{% if category %}&category={{ category }}{% endif %}{% if show_read %}&show_read=true{% endif %}">Next</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ notifications.paginator.num_pages }}{% if category %}&category={{ category }}{% endif %}{% if show_read %}&show_read=true{% endif %}">Last</a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    {% else %}
+        <div class="alert alert-info">
+            <p class="mb-0">No notifications found.</p>
+        </div>
+    {% endif %}
+
+    <div class="mt-4">
+        <a href="{% url 'customer_notification_preferences' %}" class="btn btn-outline-primary">
+            Notification Settings
+        </a>
+        <a href="{% url 'customer_dashboard' %}" class="btn btn-outline-secondary">
+            Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<script>
+// Get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Mark all as read
+document.getElementById('mark-all-read-btn')?.addEventListener('click', function() {
+    if (confirm('Mark all notifications as read?')) {
+        fetch('/app/notifications/mark-all-read/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to mark notifications as read');
+        });
+    }
+});
+</script>
+{% endblock %}

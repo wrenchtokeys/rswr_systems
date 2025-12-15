@@ -7,6 +7,7 @@ and handle validation. This is one of Django's most powerful features!
 
 from django import forms
 from .models import CustomerRepairPreference
+from core.models.notification_preferences import CustomerNotificationPreference
 
 
 class RepairPreferenceForm(forms.ModelForm):
@@ -95,3 +96,70 @@ class RepairPreferenceForm(forms.ModelForm):
             instance.save()
 
         return instance
+
+
+class CustomerNotificationPreferenceForm(forms.ModelForm):
+    """
+    Form for customer notification preferences.
+
+    Allows customers to control:
+    - Notification delivery channels (email, SMS, in-app)
+    - Notification categories (approvals, completions, etc.)
+    - Batch mode for pending approvals
+    - Quiet hours settings
+    """
+
+    class Meta:
+        model = CustomerNotificationPreference
+        fields = [
+            # Global preferences
+            'receive_email_notifications',
+            'receive_sms_notifications',
+            'receive_in_app_notifications',
+
+            # Customer-specific categories
+            'notify_new_requests',
+            'notify_pending_approvals',
+            'notify_completions',
+            'notify_in_progress',
+            'notify_repair_status',
+            'notify_rewards',
+            'notify_system',
+
+            # Batch notifications
+            'batch_pending_approvals',
+
+            # Quiet hours
+            'quiet_hours_enabled',
+            'quiet_hours_start',
+            'quiet_hours_end',
+        ]
+
+        widgets = {
+            'quiet_hours_start': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
+            'quiet_hours_end': forms.TimeInput(attrs={'type': 'time', 'class': 'form-control'}),
+        }
+
+        help_texts = {
+            'receive_sms_notifications': 'Receive urgent notifications via text message (standard SMS rates may apply)',
+            'quiet_hours_enabled': 'Pause non-urgent notifications during specified hours',
+            'batch_pending_approvals': 'Receive one daily summary of pending approvals instead of individual notifications',
+            'notify_pending_approvals': 'Get notified when repairs require your approval',
+            'notify_completions': 'Get notified when repairs are completed',
+            'notify_new_requests': 'Get notified when new repair requests are created',
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        # Validate quiet hours
+        quiet_enabled = cleaned_data.get('quiet_hours_enabled')
+        quiet_start = cleaned_data.get('quiet_hours_start')
+        quiet_end = cleaned_data.get('quiet_hours_end')
+
+        if quiet_enabled and (not quiet_start or not quiet_end):
+            raise forms.ValidationError(
+                "Quiet hours start and end times are required when quiet hours are enabled."
+            )
+
+        return cleaned_data

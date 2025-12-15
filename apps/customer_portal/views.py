@@ -2,13 +2,17 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.conf import settings
+from django.core.cache import cache
+from django.contrib.contenttypes.models import ContentType
 from core.models import Customer
 from apps.technician_portal.models import Repair, UnitRepairCount, TechnicianNotification, Technician
 from apps.rewards_referrals.models import ReferralCode, RewardOption, RewardRedemption, Referral
 from apps.rewards_referrals.services import ReferralService, RewardService
-from .forms import RepairPreferenceForm
+from .forms import RepairPreferenceForm, CustomerNotificationPreferenceForm
 from .models import CustomerRepairPreference
 from .models import CustomerUser, RepairApproval
+from core.models.notification import Notification
+from core.models.notification_preferences import CustomerNotificationPreference
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate
@@ -24,7 +28,15 @@ from django.urls import reverse
 from django_ratelimit.decorators import ratelimit
 import logging
 import re
+import random
 from common.utils import convert_heic_to_jpeg
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes
+from django.core.mail import send_mail
+from core.services.sms_service import SMSService
+
+logger = logging.getLogger(__name__)
 
 # Custom decorator to ensure only customers can access views
 def customer_required(view_func):
@@ -149,7 +161,7 @@ def customer_dashboard(request):
         # Get reward points balance
         reward_points = RewardService.get_reward_balance(customer_user)
         
-        return render(request, 'customer_portal/dashboard.html', {
+        context = {
             'customer': customer,
             'stats': stats,
             'active_repairs_count': active_repairs,
@@ -166,7 +178,12 @@ def customer_dashboard(request):
             'referral_code': referral_code_value,
             'referral_count': referral_count,
             'reward_points': reward_points,
-        })
+        }
+
+        # Add notification context
+        context.update(get_notification_context(customer))
+
+        return render(request, 'customer_portal/dashboard.html', context)
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
@@ -1309,6 +1326,7 @@ def account_settings(request):
             first_name = request.POST.get('first_name', '')
             last_name = request.POST.get('last_name', '')
             email = request.POST.get('email', '')
+            phone = request.POST.get('phone', '')
             is_primary_contact = request.POST.get('is_primary_contact') == 'on'
 
             # Update password if provided
@@ -1326,10 +1344,33 @@ def account_settings(request):
                         'repair_form': repair_form,
                     })
                 user.email = email
+                # Reset email verification when email changes
+                if customer.email_verified:
+                    messages.info(request, "Email address changed. Please verify your new email address.")
+                customer.email_verified = False
+                customer.email_verified_at = None
+                # Also update notification preferences
+                prefs, created = CustomerNotificationPreference.objects.get_or_create(customer=customer)
+                prefs.email_verified = False
+                prefs.email_verified_at = None
+                prefs.save()
             
             user.first_name = first_name
             user.last_name = last_name
-            
+
+            # Handle phone number update
+            if phone != customer.phone:
+                if customer.phone_verified:
+                    messages.info(request, "Phone number changed. Please verify your new phone number.")
+                customer.phone = phone
+                customer.phone_verified = False
+                customer.phone_verified_at = None
+                # Also update notification preferences
+                prefs, created = CustomerNotificationPreference.objects.get_or_create(customer=customer)
+                prefs.phone_verified = False
+                prefs.phone_verified_at = None
+                prefs.save()
+
             # Handle password change if provided
             if current_password and new_password and confirm_password:
                 if not user.check_password(current_password):
@@ -1365,6 +1406,7 @@ def account_settings(request):
             try:
                 user.save()
                 customer_user.save()
+                customer.save()  # Save phone changes and verification status
                 messages.success(request, "Account settings updated successfully!")
                 return redirect('customer_dashboard')
             except Exception as e:
@@ -1658,3 +1700,466 @@ def customer_bulk_action(request):
     except Exception as e:
         messages.error(request, f"An error occurred: {str(e)}")
         return redirect('customer_repairs')
+
+
+# ============================================================================
+# NOTIFICATION HELPER FUNCTION
+# ============================================================================
+
+def get_notification_context(customer):
+    """
+    Helper to get notification context for customer portal views.
+
+    Args:
+        customer: Customer object
+
+    Returns:
+        Dictionary with unread_count and recent_notifications
+    """
+    customer_ct = ContentType.objects.get_for_model(Customer)
+
+    unread_count = Notification.objects.filter(
+        recipient_type=customer_ct,
+        recipient_id=customer.id,
+        read=False
+    ).count()
+
+    recent_notifications = Notification.objects.filter(
+        recipient_type=customer_ct,
+        recipient_id=customer.id
+    ).select_related('template').order_by('-created_at')[:5]
+
+    return {
+        'unread_count': unread_count,
+        'recent_notifications': list(recent_notifications)
+    }
+
+
+# ============================================================================
+# NOTIFICATION MANAGEMENT (Customer Portal)
+# ============================================================================
+
+@login_required
+@customer_required
+def customer_notification_preferences(request):
+    """
+    Customer notification preferences management page.
+
+    Allows customers to:
+    - Enable/disable notification channels (email, SMS, in-app)
+    - Configure quiet hours
+    - Set category preferences
+    - Enable batch mode for pending approvals
+    """
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+    except CustomerUser.DoesNotExist:
+        messages.error(request, "Customer profile not found.")
+        return redirect('customer_dashboard')
+
+    # Get or create preferences for the customer (company-level)
+    preferences, created = CustomerNotificationPreference.objects.get_or_create(
+        customer=customer
+    )
+
+    if request.method == 'POST':
+        form = CustomerNotificationPreferenceForm(request.POST, instance=preferences)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Notification preferences updated successfully!")
+            return redirect('customer_notification_preferences')
+    else:
+        form = CustomerNotificationPreferenceForm(instance=preferences)
+
+    # Get notification statistics
+    customer_ct = ContentType.objects.get_for_model(Customer)
+    unread_count = Notification.objects.filter(
+        recipient_type=customer_ct,
+        recipient_id=customer.id,
+        read=False
+    ).count()
+
+    total_notifications = Notification.objects.filter(
+        recipient_type=customer_ct,
+        recipient_id=customer.id
+    ).count()
+
+    context = {
+        'form': form,
+        'preferences': preferences,
+        'customer': customer,
+        'customer_user': customer_user,
+        'unread_count': unread_count,
+        'total_notifications': total_notifications,
+    }
+
+    return render(request, 'customer_portal/notification_preferences.html', context)
+
+
+# ============================================================================
+# CONTACT VERIFICATION VIEWS
+# ============================================================================
+
+@login_required
+@customer_required
+def customer_verify_email(request):
+    """
+    Send email verification link to customer.
+    Adapted from technician portal verify_email view.
+    """
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+    except CustomerUser.DoesNotExist:
+        messages.error(request, "Unable to verify email.")
+        return redirect('customer_notification_preferences')
+
+    # Generate verification token (Django's default_token_generator)
+    token = default_token_generator.make_token(request.user)
+    uid = urlsafe_base64_encode(force_bytes(request.user.pk))
+
+    # Build verification URL
+    verification_url = request.build_absolute_uri(
+        reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
+    )
+
+    # Send verification email
+    try:
+        send_mail(
+            subject='Verify your email address - RS Systems',
+            message=f'Click this link to verify your email address: {verification_url}',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[request.user.email],
+            fail_silently=False,
+        )
+        messages.success(request, f"Verification email sent to {request.user.email}")
+    except Exception as e:
+        logger.error(f"Failed to send verification email: {str(e)}")
+        messages.error(request, "Failed to send verification email. Please try again later.")
+
+    return redirect('customer_notification_preferences')
+
+
+@login_required
+@customer_required
+def customer_verify_phone(request):
+    """
+    Send SMS verification code to customer.
+    Adapted from technician portal verify_phone view.
+    """
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+    except CustomerUser.DoesNotExist:
+        messages.error(request, "Unable to verify phone.")
+        return redirect('customer_notification_preferences')
+
+    # Note: Customer model uses 'phone' field, not 'phone_number'
+    if not customer.phone:
+        messages.error(request, "Please add a phone number first.")
+        return redirect('customer_account_settings')  # redirect to account settings
+
+    # Generate 6-digit code
+    code = f"{random.randint(100000, 999999)}"
+
+    # Store code in session with customer_ prefix to avoid collision
+    request.session['customer_phone_verification_code'] = code
+    request.session['customer_phone_verification_number'] = customer.phone
+    request.session['customer_phone_verification_expires'] = (timezone.now() + timedelta(minutes=10)).isoformat()
+
+    # Send verification SMS
+    message = f"Your RS Systems verification code is: {code}. This code expires in 10 minutes."
+
+    try:
+        if hasattr(settings, 'SMS_ENABLED') and settings.SMS_ENABLED:
+            SMSService.send_sms(
+                phone_number=customer.phone,
+                message=message
+            )
+            messages.success(request, f"Verification code sent to {customer.phone}")
+        else:
+            # Development mode - show code in message
+            messages.info(request, f"Development mode: Your verification code is {code}")
+    except Exception as e:
+        logger.error(f"Failed to send SMS verification: {str(e)}")
+        messages.error(request, "Failed to send verification code. Please try again later.")
+
+    # Redirect to notification preferences which will show verification modal
+    return redirect('customer_notification_preferences')
+
+
+def customer_confirm_email_verification(request, uidb64, token):
+    """
+    Process email verification token for customer.
+
+    Note: No @login_required - verification links should work even if user is logged out.
+    The token itself authenticates the request.
+    """
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        try:
+            customer_user = CustomerUser.objects.get(user=user)
+            customer = customer_user.customer
+
+            # Update both Customer and CustomerNotificationPreference
+            customer.email_verified = True
+            customer.email_verified_at = timezone.now()
+            customer.save()
+
+            # Also update notification preferences if they exist
+            prefs, created = CustomerNotificationPreference.objects.get_or_create(
+                customer=customer
+            )
+            prefs.email_verified = True
+            prefs.email_verified_at = timezone.now()
+            prefs.save()
+
+            messages.success(request, "Email verified successfully! You can now receive email notifications.")
+        except CustomerUser.DoesNotExist:
+            messages.error(request, "Customer profile not found.")
+    else:
+        messages.error(request, "Invalid or expired verification link. Please request a new verification email.")
+
+    # Redirect based on authentication status
+    if request.user.is_authenticated:
+        return redirect('customer_notification_preferences')
+    else:
+        return redirect('customer_login')
+
+
+@login_required
+@customer_required
+def customer_confirm_phone_verification(request):
+    """Process phone verification code for customer"""
+    if request.method == 'POST':
+        code = request.POST.get('code', '').strip()
+        stored_code = request.session.get('customer_phone_verification_code')
+        stored_number = request.session.get('customer_phone_verification_number')
+        expires_str = request.session.get('customer_phone_verification_expires')
+
+        if not all([stored_code, stored_number, expires_str]):
+            messages.error(request, "No verification code found. Please request a new code.")
+            return redirect('customer_notification_preferences')
+
+        # Check expiration
+        from dateutil import parser
+        expires = parser.isoparse(expires_str)
+        if timezone.now() > expires:
+            messages.error(request, "Verification code has expired. Please request a new code.")
+            # Clean up session
+            request.session.pop('customer_phone_verification_code', None)
+            request.session.pop('customer_phone_verification_number', None)
+            request.session.pop('customer_phone_verification_expires', None)
+            return redirect('customer_notification_preferences')
+
+        # Verify code
+        if code == stored_code:
+            try:
+                customer_user = CustomerUser.objects.get(user=request.user)
+                customer = customer_user.customer
+
+                if customer.phone == stored_number:
+                    # Update both Customer and CustomerNotificationPreference
+                    customer.phone_verified = True
+                    customer.phone_verified_at = timezone.now()
+                    customer.save()
+
+                    # Also update notification preferences
+                    prefs, created = CustomerNotificationPreference.objects.get_or_create(
+                        customer=customer
+                    )
+                    prefs.phone_verified = True
+                    prefs.phone_verified_at = timezone.now()
+                    prefs.save()
+
+                    messages.success(request, "Phone number verified successfully!")
+
+                    # Clean up session
+                    request.session.pop('customer_phone_verification_code', None)
+                    request.session.pop('customer_phone_verification_number', None)
+                    request.session.pop('customer_phone_verification_expires', None)
+                else:
+                    messages.error(request, "Phone number has changed. Please request a new verification code.")
+            except CustomerUser.DoesNotExist:
+                messages.error(request, "Customer profile not found.")
+        else:
+            messages.error(request, "Invalid verification code. Please try again.")
+
+    return redirect('customer_notification_preferences')
+
+
+@login_required
+@customer_required
+def customer_notification_history(request):
+    """
+    View all notifications for customer.
+
+    Paginated list with filters (read/unread, category).
+    """
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+    except CustomerUser.DoesNotExist:
+        messages.error(request, "Customer profile not found.")
+        return redirect('customer_dashboard')
+
+    customer_ct = ContentType.objects.get_for_model(Customer)
+
+    # Get notifications with optimized query
+    notifications = Notification.objects.filter(
+        recipient_type=customer_ct,
+        recipient_id=customer.id
+    ).select_related(
+        'repair',
+        'customer',
+        'template'
+    ).order_by('-created_at')
+
+    # Filters
+    show_read = request.GET.get('show_read', 'false') == 'true'
+    category = request.GET.get('category', '')
+
+    if not show_read:
+        notifications = notifications.filter(read=False)
+
+    if category:
+        notifications = notifications.filter(category=category)
+
+    # Pagination
+    paginator = Paginator(notifications, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'notifications': page_obj,
+        'show_read': show_read,
+        'category': category,
+        'categories': Notification.CATEGORY_CHOICES,
+        'customer': customer,
+        'customer_user': customer_user,
+    }
+
+    return render(request, 'customer_portal/notification_history.html', context)
+
+
+@login_required
+@customer_required
+def customer_mark_notification_read(request, notification_id):
+    """Mark single notification as read (customer portal)"""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        customer_ct = ContentType.objects.get_for_model(Customer)
+
+        notification = Notification.objects.get(
+            id=notification_id,
+            recipient_type=customer_ct,
+            recipient_id=customer.id
+        )
+
+        notification.mark_as_read()
+
+        # Clear cache
+        cache_key = f'notif_unread_count:customer:{customer.id}'
+        cache.delete(cache_key)
+
+        return JsonResponse({'success': True})
+
+    except Notification.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Notification not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error marking notification as read: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@customer_required
+def customer_mark_all_read(request):
+    """Mark all notifications as read for customer"""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        customer_ct = ContentType.objects.get_for_model(Customer)
+
+        updated = Notification.objects.filter(
+            recipient_type=customer_ct,
+            recipient_id=customer.id,
+            read=False
+        ).update(read=True, read_at=timezone.now())
+
+        # Clear cache
+        cache_key = f'notif_unread_count:customer:{customer.id}'
+        cache.delete(cache_key)
+
+        return JsonResponse({'success': True, 'count': updated})
+
+    except Exception as e:
+        logger.error(f"Error marking all notifications as read: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@login_required
+@customer_required
+def customer_get_unread_count(request):
+    """
+    AJAX endpoint for notification bell polling (customer portal).
+
+    Implements caching to reduce database queries.
+    Cache TTL: 2 minutes (same as technician portal).
+    """
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        customer_ct = ContentType.objects.get_for_model(Customer)
+
+        # Cache key for unread count
+        cache_key = f'notif_unread_count:customer:{customer.id}'
+
+        # Try to get from cache first
+        cached_data = cache.get(cache_key)
+
+        if cached_data is not None:
+            return JsonResponse(cached_data)
+
+        # Cache miss - query database
+        count = Notification.objects.filter(
+            recipient_type=customer_ct,
+            recipient_id=customer.id,
+            read=False
+        ).count()
+
+        # Get recent notifications for dropdown
+        recent_notifications = Notification.objects.filter(
+            recipient_type=customer_ct,
+            recipient_id=customer.id
+        ).select_related('template').order_by('-created_at')[:5]
+
+        notifications_data = [{
+            'id': n.id,
+            'title': n.title,
+            'message': n.message,
+            'created_at': n.created_at.isoformat(),
+            'read': n.read,
+            'action_url': n.action_url or '#',
+        } for n in recent_notifications]
+
+        response_data = {
+            'success': True,
+            'count': count,
+            'notifications': notifications_data
+        }
+
+        # Cache for 2 minutes
+        cache.set(cache_key, response_data, 120)
+
+        return JsonResponse(response_data)
+
+    except Exception as e:
+        logger.error(f"Error getting unread count: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

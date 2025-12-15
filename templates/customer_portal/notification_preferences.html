@@ -1,0 +1,300 @@
+{% extends 'base.html' %}
+
+{% block title %}Notification Preferences - Customer Portal{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <h2 class="mb-4">Notification Preferences</h2>
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">Statistics</h5>
+                    <p class="mb-1"><strong>Unread Notifications:</strong> {{ unread_count }}</p>
+                    <p class="mb-0"><strong>Total Notifications:</strong> {{ total_notifications }}</p>
+                </div>
+            </div>
+
+            <!-- Contact Verification Status -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <h5 class="font-semibold text-blue-900 mb-3 flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    Contact Verification
+                </h5>
+                <p class="text-sm text-blue-700 mb-4">Verify your contact information to receive notifications</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Email Verification -->
+                    <div class="bg-white rounded p-3 border border-blue-200">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <strong class="text-gray-700 text-sm">Email:</strong>
+                                <div class="text-gray-600 text-sm">{{ user.email }}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mt-2">
+                            {% if customer.email_verified %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    Verified
+                                </span>
+                            {% else %}
+                                <div class="flex items-center space-x-2">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        Not Verified
+                                    </span>
+                                    <a href="{% url 'customer_verify_email' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                        Verify Email
+                                    </a>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Phone Verification -->
+                    <div class="bg-white rounded p-3 border border-blue-200">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <strong class="text-gray-700 text-sm">Phone:</strong>
+                                <div class="text-gray-600 text-sm">{{ customer.phone|default:"Not provided" }}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mt-2">
+                            {% if customer.phone_verified %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    Verified
+                                </span>
+                            {% elif customer.phone %}
+                                <div class="flex items-center space-x-2">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                        Not Verified
+                                    </span>
+                                    <a href="{% url 'customer_verify_phone' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                        Verify Phone
+                                    </a>
+                                </div>
+                            {% else %}
+                                <a href="{% url 'customer_account_settings' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700">
+                                    Add Phone Number
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <form method="post" class="card">
+                {% csrf_token %}
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Notification Channels</h5>
+
+                    <div class="form-group mb-3">
+                        {{ form.receive_email_notifications }}
+                        <label for="id_receive_email_notifications">{{ form.receive_email_notifications.label }}</label>
+                        {% if form.receive_email_notifications.help_text %}
+                        <small class="form-text text-muted">{{ form.receive_email_notifications.help_text }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group mb-3">
+                        {{ form.receive_sms_notifications }}
+                        <label for="id_receive_sms_notifications">{{ form.receive_sms_notifications.label }}</label>
+                        {% if form.receive_sms_notifications.help_text %}
+                        <small class="form-text text-muted">{{ form.receive_sms_notifications.help_text }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group mb-4">
+                        {{ form.receive_in_app_notifications }}
+                        <label for="id_receive_in_app_notifications">{{ form.receive_in_app_notifications.label }}</label>
+                    </div>
+
+                    <hr>
+                    <h5 class="card-title mb-3">Notification Categories</h5>
+
+                    <div class="form-group mb-2">
+                        {{ form.notify_pending_approvals }}
+                        <label for="id_notify_pending_approvals">{{ form.notify_pending_approvals.label }}</label>
+                        {% if form.notify_pending_approvals.help_text %}
+                        <small class="form-text text-muted">{{ form.notify_pending_approvals.help_text }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group mb-2">
+                        {{ form.notify_completions }}
+                        <label for="id_notify_completions">{{ form.notify_completions.label }}</label>
+                        {% if form.notify_completions.help_text %}
+                        <small class="form-text text-muted">{{ form.notify_completions.help_text }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group mb-2">
+                        {{ form.notify_new_requests }}
+                        <label for="id_notify_new_requests">{{ form.notify_new_requests.label }}</label>
+                        {% if form.notify_new_requests.help_text %}
+                        <small class="form-text text-muted">{{ form.notify_new_requests.help_text }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="form-group mb-2">
+                        {{ form.notify_in_progress }}
+                        <label for="id_notify_in_progress">{{ form.notify_in_progress.label }}</label>
+                    </div>
+
+                    <div class="form-group mb-2">
+                        {{ form.notify_repair_status }}
+                        <label for="id_notify_repair_status">{{ form.notify_repair_status.label }}</label>
+                    </div>
+
+                    <div class="form-group mb-2">
+                        {{ form.notify_rewards }}
+                        <label for="id_notify_rewards">{{ form.notify_rewards.label }}</label>
+                    </div>
+
+                    <div class="form-group mb-4">
+                        {{ form.notify_system }}
+                        <label for="id_notify_system">{{ form.notify_system.label }}</label>
+                    </div>
+
+                    <hr>
+                    <h5 class="card-title mb-3">Batch Notifications</h5>
+
+                    <div class="form-group mb-4">
+                        {{ form.batch_pending_approvals }}
+                        <label for="id_batch_pending_approvals">{{ form.batch_pending_approvals.label }}</label>
+                        {% if form.batch_pending_approvals.help_text %}
+                        <small class="form-text text-muted">{{ form.batch_pending_approvals.help_text }}</small>
+                        {% endif %}
+                    </div>
+
+                    <hr>
+                    <h5 class="card-title mb-3">Quiet Hours</h5>
+
+                    <div class="form-group mb-3">
+                        {{ form.quiet_hours_enabled }}
+                        <label for="id_quiet_hours_enabled">{{ form.quiet_hours_enabled.label }}</label>
+                        {% if form.quiet_hours_enabled.help_text %}
+                        <small class="form-text text-muted">{{ form.quiet_hours_enabled.help_text }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="id_quiet_hours_start">Start Time</label>
+                                {{ form.quiet_hours_start }}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group mb-3">
+                                <label for="id_quiet_hours_end">End Time</label>
+                                {{ form.quiet_hours_end }}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">
+                        {{ form.non_field_errors }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="card-footer">
+                    <button type="submit" class="btn btn-primary">Save Preferences</button>
+                    <a href="{% url 'customer_dashboard' %}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+
+            <div class="mt-3">
+                <a href="{% url 'customer_notification_history' %}" class="btn btn-outline-primary">
+                    View Notification History
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Phone Verification Modal -->
+<div id="phoneVerificationModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full" style="display: none; z-index: 1000;">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Verify Phone Number</h3>
+                <button type="button" onclick="closePhoneVerificationModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="mb-4">
+                <p class="text-sm text-gray-600 mb-2">We sent a 6-digit verification code to:</p>
+                <p class="text-sm font-medium text-gray-900">{{ customer.phone }}</p>
+            </div>
+
+            <form method="post" action="{% url 'customer_confirm_phone_verification' %}">
+                {% csrf_token %}
+                <div class="mb-4">
+                    <label for="verification_code" class="block text-sm font-medium text-gray-700 mb-2">
+                        Enter Verification Code
+                    </label>
+                    <input
+                        type="text"
+                        id="verification_code"
+                        name="code"
+                        maxlength="6"
+                        pattern="\d{6}"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md text-center text-2xl tracking-widest"
+                        placeholder="000000"
+                        required
+                        autofocus
+                    >
+                    <p class="text-xs text-gray-500 mt-1">Code expires in 10 minutes</p>
+                </div>
+
+                <div class="flex justify-between items-center">
+                    <a href="{% url 'customer_verify_phone' %}" class="text-sm text-blue-600 hover:text-blue-800">
+                        Resend Code
+                    </a>
+                    <div class="space-x-2">
+                        <button
+                            type="button"
+                            onclick="closePhoneVerificationModal()"
+                            class="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-md hover:bg-gray-300">
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                            Verify
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function closePhoneVerificationModal() {
+    document.getElementById('phoneVerificationModal').style.display = 'none';
+}
+
+// Show modal if session has verification code (after redirect from verify_phone)
+{% if request.session.customer_phone_verification_code %}
+window.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('phoneVerificationModal').style.display = 'block';
+});
+{% endif %}
+</script>
+
+{% endblock %}

@@ -34,4 +34,17 @@ urlpatterns = [
     path('api/unit-repair-data/', views.unit_repair_data_api, name='unit_repair_data_api'),
     path('api/repair-cost-data/', views.repair_cost_data_api, name='repair_cost_data_api'),
     path('api/repair-pricing/', views.repair_pricing_api, name='repair_pricing_api'),
+
+    # Notification Management
+    path('notifications/preferences/', views.customer_notification_preferences, name='customer_notification_preferences'),
+    path('notifications/history/', views.customer_notification_history, name='customer_notification_history'),
+    path('notifications/<int:notification_id>/mark-read/', views.customer_mark_notification_read, name='customer_mark_notification_read'),
+    path('notifications/mark-all-read/', views.customer_mark_all_read, name='customer_mark_all_read'),
+    path('notifications/unread-count/', views.customer_get_unread_count, name='customer_get_unread_count'),
+
+    # Contact Verification
+    path('verify-email/', views.customer_verify_email, name='customer_verify_email'),
+    path('verify-phone/', views.customer_verify_phone, name='customer_verify_phone'),
+    path('verify-email/<str:uidb64>/<str:token>/', views.customer_confirm_email_verification, name='customer_confirm_email_verification'),
+    path('verify-phone/confirm/', views.customer_confirm_phone_verification, name='customer_confirm_phone_verification'),
 ]

@@ -84,7 +84,21 @@
                         {% endblock %}
                     </ul>
                 </nav>
-                
+
+                <!-- Notification Bell (Customer Portal) -->
+                {% if request.user.is_authenticated and not request.user.is_superuser %}
+                    {% if 'Technicians' not in request.user.groups.all|stringformat:'s' %}
+                        {% include 'customer_portal/includes/notification_bell.html' %}
+                    {% endif %}
+                {% endif %}
+
+                <!-- Notification Bell (Technician Portal) -->
+                {% if request.user.is_authenticated %}
+                    {% if request.user.is_superuser or 'Technicians' in request.user.groups.all|stringformat:'s' %}
+                        {% include 'technician_portal/includes/notification_bell.html' %}
+                    {% endif %}
+                {% endif %}
+
                 <div class="user-menu">
                     <div class="dropdown">
                         <button class="dropdown-toggle">
