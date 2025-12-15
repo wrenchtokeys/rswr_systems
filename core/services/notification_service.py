@@ -171,7 +171,7 @@ class NotificationService:
             CELERY_AVAILABLE = False
 
         # Queue email if channel enabled
-        if 'email' in channels and preferences.receive_email_notifications:
+        if 'email' in channels and preferences.can_send_email():
             email = NotificationService._get_recipient_email(recipient)
             if email:
                 if CELERY_AVAILABLE:
