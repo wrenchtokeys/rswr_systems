@@ -835,6 +835,9 @@ async function confirmAndSubmit() {
         });
 
         if (response.ok) {
+            // Parse JSON response
+            const data = await response.json();
+
             // Clear localStorage on success
             localStorage.removeItem('customerRepairRequest');
             clearInterval(autosaveInterval);
@@ -842,11 +845,21 @@ async function confirmAndSubmit() {
             // Show success modal
             showSuccessModal();
         } else {
-            throw new Error('Submission failed');
+            // Try to parse error response
+            let errorMessage = 'There was an error submitting your request. Please try again.';
+            try {
+                const errorData = await response.json();
+                if (errorData.error) {
+                    errorMessage = errorData.error;
+                }
+            } catch (e) {
+                // If JSON parsing fails, use default error message
+            }
+            throw new Error(errorMessage);
         }
     } catch (error) {
         console.error('Error submitting batch:', error);
-        alert('There was an error submitting your request. Please try again.');
+        alert(error.message || 'There was an error submitting your request. Please try again.');
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
     }

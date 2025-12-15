@@ -1108,14 +1108,36 @@ def handle_batch_repair_request(request, customer):
             request,
             f"Successfully submitted {count} repair request{'s' if count != 1 else ''}! A technician will review your requests."
         )
+
+        # Return JSON for AJAX requests (check if multipart form data from fetch)
+        if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({
+                'success': True,
+                'message': f"Successfully submitted {count} repair request{'s' if count != 1 else ''}!",
+                'repair_count': count,
+                'redirect_url': '/app/'
+            })
+
         return redirect('customer_dashboard')
 
     except json.JSONDecodeError:
         messages.error(request, "Invalid request data format.")
+        # Return JSON error for AJAX requests
+        if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid request data format.'
+            }, status=400)
         return render(request, 'customer_portal/request_repair.html')
     except Exception as e:
         logging.error(f"Error creating batch repair request: {str(e)}")
         messages.error(request, f"Error creating repair requests: {str(e)}")
+        # Return JSON error for AJAX requests
+        if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({
+                'success': False,
+                'error': f"Error creating repair requests: {str(e)}"
+            }, status=500)
         return render(request, 'customer_portal/request_repair.html')
 
 
