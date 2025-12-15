@@ -957,6 +957,21 @@ function restoreFromLocalStorage(force = false) {
 // ======================
 
 function getCookie(name) {
+    // For CSRF token, try to get from DOM first (works with CSRF_COOKIE_HTTPONLY = True)
+    if (name === 'csrftoken') {
+        // Try to get from hidden input in form
+        const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (csrfInput) {
+            return csrfInput.value;
+        }
+        // Try to get from meta tag
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        if (csrfMeta) {
+            return csrfMeta.content;
+        }
+    }
+
+    // Fallback to cookie reading (for non-httponly cookies)
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
         const cookies = document.cookie.split(';');
