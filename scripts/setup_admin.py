@@ -21,9 +21,9 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 # Admin credentials
-ADMIN_USERNAME = 'admin'
-ADMIN_EMAIL = 'admin@rssystems.com'
-ADMIN_PASSWORD = 'RSsystems2025!'  # Change this immediately after first login!
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME')
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')  # Change this immediately after first login!
 
 def setup_admin():
     """Create or update admin superuser account."""

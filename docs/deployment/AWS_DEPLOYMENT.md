@@ -72,11 +72,11 @@ eb create rs-systems-prod \
 
 ### RDS PostgreSQL Setup
 
-**Current Production Database:**
-- **Endpoint**: `rswr-db-1.c49gy002i2n5.us-east-1.rds.amazonaws.com`
+**Production Database Configuration:**
+- **Endpoint**: `your-database-instance.region.rds.amazonaws.com` (set via environment variable)
 - **Port**: `5432`
-- **Username**: `rswradmin`
-- **Database Name**: `rswr_db`
+- **Username**: `your_db_username` (set via environment variable)
+- **Database Name**: `your_db_name`
 - **Encryption**: Enabled (AWS KMS)
 - **Backups**: 30-day automated retention (RDS)
 
@@ -86,9 +86,9 @@ Set in `.ebextensions/04_env_vars.config`:
 ```yaml
 option_settings:
   aws:elasticbeanstalk:application:environment:
-    DB_NAME: rswr_db
-    DB_USER: rswradmin
-    DB_HOST: rswr-db-1.c49gy002i2n5.us-east-1.rds.amazonaws.com
+    DB_NAME: your_db_name
+    DB_USER: your_db_username
+    DB_HOST: your-database-instance.region.rds.amazonaws.com
     DB_PORT: 5432
     USE_HTTPS: true
     ENVIRONMENT: production
@@ -109,50 +109,54 @@ Ensure RDS security group allows:
 ```bash
 # Certificate for multiple domains
 aws acm request-certificate \
-  --domain-name rockstarwindshield.repair \
-  --subject-alternative-names www.rockstarwindshield.repair app.rockstarwindshield.repair \
+  --domain-name yourdomain.com \
+  --subject-alternative-names www.yourdomain.com app.yourdomain.com \
   --validation-method DNS \
   --region us-east-1
 ```
 
-**Current Certificate ARN:**
+**Certificate ARN Format:**
 ```
-arn:aws:acm:us-east-1:973196283632:certificate/b4b2be04-0d3d-4b5e-80cb-d6a98922b0d9
+arn:aws:acm:REGION:YOUR_AWS_ACCOUNT_ID:certificate/YOUR_CERTIFICATE_ID
 ```
+Note: Store your actual certificate ARN in environment variables.
 
 ### 2. DNS Validation Records
 
-Add to your DNS provider (e.g., Squarespace):
+Add to your DNS provider (provided by AWS after certificate request):
 
 **Main domain validation:**
-- **Name**: `_3a0a85810caea3024fc7dfc6887d89c9.rockstarwindshield.repair.`
+- **Name**: `_VALIDATION_STRING.yourdomain.com.`
 - **Type**: CNAME
-- **Value**: `_25d39035b5faed6186e94e8f8cb6a6cc.xlfgrmvvlj.acm-validations.aws.`
+- **Value**: `_VALIDATION_TARGET.acm-validations.aws.`
 
 **www subdomain validation:**
-- **Name**: `_3a0a85810caea3024fc7dfc6887d89c9.www.rockstarwindshield.repair.`
+- **Name**: `_VALIDATION_STRING.www.yourdomain.com.`
 - **Type**: CNAME
-- **Value**: `_25d39035b5faed6186e94e8f8cb6a6cc.xlfgrmvvlj.acm-validations.aws.`
+- **Value**: `_VALIDATION_TARGET.acm-validations.aws.`
 
 **app subdomain validation:**
-- **Name**: `_b0495e93dffe214ed843a2df8ef023a0.app.rockstarwindshield.repair.`
+- **Name**: `_VALIDATION_STRING.app.yourdomain.com.`
 - **Type**: CNAME
-- **Value**: `_1ef51ba7314f4da7314c2cbabec63b1f.xlfgrmvvlj.acm-validations.aws.`
+- **Value**: `_VALIDATION_TARGET.acm-validations.aws.`
+
+Note: AWS provides these values after you request the certificate. Check ACM console for exact values.
 
 ### 3. Point Domain to Application
 
 **Elastic Beanstalk CNAME:**
 ```
-rs-systems-prod.eba-jtjhm8nz.us-east-1.elasticbeanstalk.com
+your-app-name.region.elasticbeanstalk.com
 ```
+(Found in EB console or via `eb status`)
 
 **DNS Records to Add:**
 
 | Name | Type | Value |
 |------|------|-------|
-| `@` (root) | CNAME | `rs-systems-prod.eba-jtjhm8nz.us-east-1.elasticbeanstalk.com` |
-| `www` | CNAME | `rs-systems-prod.eba-jtjhm8nz.us-east-1.elasticbeanstalk.com` |
-| `app` | CNAME | `rs-systems-prod.eba-jtjhm8nz.us-east-1.elasticbeanstalk.com` |
+| `@` (root) | CNAME | `your-app-name.region.elasticbeanstalk.com` |
+| `www` | CNAME | `your-app-name.region.elasticbeanstalk.com` |
+| `app` | CNAME | `your-app-name.region.elasticbeanstalk.com` |
 
 ### 4. Enable HTTPS Configuration
 
@@ -172,13 +176,13 @@ Once certificate status is "ISSUED":
 ```bash
 # Check certificate status
 aws acm describe-certificate \
-  --certificate-arn arn:aws:acm:us-east-1:973196283632:certificate/b4b2be04-0d3d-4b5e-80cb-d6a98922b0d9 \
+  --certificate-arn arn:aws:acm:REGION:YOUR_AWS_ACCOUNT_ID:certificate/YOUR_CERTIFICATE_ID \
   --region us-east-1
 
 # Test HTTPS endpoints
-curl -I https://rockstarwindshield.repair
-curl -I https://www.rockstarwindshield.repair
-curl -I https://app.rockstarwindshield.repair
+curl -I https://yourdomain.com
+curl -I https://www.yourdomain.com
+curl -I https://app.yourdomain.com
 ```
 
 ---
@@ -597,7 +601,7 @@ eb logs
 # 3. Health check endpoint failing
 
 # Fix: Check /health endpoint
-curl http://rs-systems-prod.elasticbeanstalk.com/health
+curl http://your-app-name.elasticbeanstalk.com/health
 ```
 
 **Database Connection Errors:**
@@ -630,7 +634,7 @@ python manage.py collectstatic --noinput
 aws acm describe-certificate --certificate-arn ARN
 
 # Verify DNS records are correct
-nslookup _validation.rockstarwindshield.repair
+nslookup _validation.yourdomain.com
 
 # Wait up to 30 minutes for validation
 ```
@@ -746,10 +750,10 @@ eb terminate ENVIRONMENT_NAME
 
 ### Important URLs
 
-- **Production App**: https://rockstarwindshield.repair
-- **Admin Interface**: https://rockstarwindshield.repair/admin/
-- **API Docs**: https://rockstarwindshield.repair/api/schema/swagger-ui/
-- **Health Check**: https://rockstarwindshield.repair/health
+- **Production App**: https://yourdomain.com
+- **Admin Interface**: https://yourdomain.com/admin/
+- **API Docs**: https://yourdomain.com/api/schema/swagger-ui/
+- **Health Check**: https://yourdomain.com/health
 
 ### Support Resources
 

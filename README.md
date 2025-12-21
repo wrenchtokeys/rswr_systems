@@ -14,6 +14,17 @@ RS Systems is a full-stack web application designed to modernize windshield repa
 - **Cost Efficiency**: Automated pricing based on repair frequency with built-in discount application
 - **Data Insights**: Comprehensive analytics and visualizations for business intelligence
 
+## 🔐 Security Notice
+
+**This is production-ready code with sanitized credentials.** All sensitive information (AWS account IDs, database endpoints, API keys, passwords) has been removed or replaced with placeholders for public distribution.
+
+- ✅ **Safe to use**: All application code, architecture, and logic are production-ready
+- ✅ **Credentials removed**: No real passwords, API keys, or infrastructure details exposed
+- ⚠️ **Configure first**: Copy `.env.example` to `.env` and add your own credentials before deploying
+- 📖 **Read SECURITY.md**: See [SECURITY.md](SECURITY.md) for complete security documentation
+
+**Never commit `.env` files or real credentials to version control.**
+
 ## 🏗️ System Architecture
 
 ### Core Applications
@@ -445,6 +456,8 @@ Professional documentation organized by role and purpose in the [`/docs`](docs/)
 
 ## 🔒 Security
 
+This project implements enterprise-grade security practices. **See [SECURITY.md](SECURITY.md) for complete security documentation.**
+
 ### Authentication & Authorization
 - Django's built-in authentication system
 - Token-based API authentication
@@ -452,10 +465,14 @@ Professional documentation organized by role and purpose in the [`/docs`](docs/)
 - Session security with CSRF protection
 
 ### Data Protection
-- Secure password handling
+- Secure password handling with PBKDF2 hashing
 - HTTPS enforcement in production
-- Environment variable configuration
+- Environment variable configuration (never hardcoded secrets)
 - SQL injection prevention through ORM
+- All sensitive data sanitized from public repository
+
+### Reporting Security Issues
+Please report security vulnerabilities responsibly. See [SECURITY.md](SECURITY.md) for details on our security policy and how to report issues.
 
 ## 📈 Analytics & Reporting
 
