@@ -125,7 +125,10 @@ class NotificationService:
 
         except Exception as e:
             logger.exception(f"Error creating notification: {e}")
-            return None
+            # Re-raise in production for debugging (we'll catch in view)
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            raise  # Re-raise so we can see the actual error
 
     @staticmethod
     def _queue_delivery(
