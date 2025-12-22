@@ -173,27 +173,27 @@ class NotificationService:
             logger.error("Cannot import Celery - notifications will not be queued")
             CELERY_AVAILABLE = False
 
-        # Queue email if channel enabled
+        # Send email if channel enabled
         if 'email' in channels and preferences.can_send_email():
             email = NotificationService._get_recipient_email(recipient)
             if email:
-                if CELERY_AVAILABLE:
-                    # Import here to avoid circular dependency
-                    from core.tasks import send_notification_email
+                # Send email directly (synchronous) - no Celery dependency
+                from core.services.email_service import EmailService
 
-                    send_notification_email.delay(
+                try:
+                    success, delivery_log = EmailService.send_notification_email(
                         notification_id=notification.id,
                         recipient_email=email,
                         subject=rendered.get('email_subject', notification.title),
                         html_content=rendered.get('email_html', ''),
                         text_content=rendered.get('email_text', notification.message)
                     )
-                    logger.info(f"Queued email for notification {notification.id}")
-                else:
-                    logger.warning(
-                        f"Celery unavailable - email for notification {notification.id} "
-                        "not queued (can be delivered manually via admin)"
-                    )
+                    if success:
+                        logger.info(f"Email sent for notification {notification.id}")
+                    else:
+                        logger.warning(f"Email failed for notification {notification.id}")
+                except Exception as e:
+                    logger.error(f"Email error for notification {notification.id}: {e}")
 
         # Queue SMS if channel enabled
         if 'sms' in channels and preferences.receive_sms_notifications:
