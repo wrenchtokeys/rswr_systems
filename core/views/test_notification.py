@@ -37,17 +37,32 @@ def test_notification(request):
             'error': f'Could not get notification preferences: {str(e)}'
         })
 
-    # Create test notification
+    # Create test notification using a real template
+    # We'll use the repair_completed template with dummy data
     try:
+        from apps.technician_portal.models import Repair
+        # Get any repair to use as test data, or create minimal context
+        repair = Repair.objects.first()
+
+        if repair:
+            context = {
+                'repair': repair,
+                'unit_number': repair.unit_number,
+                'customer_name': repair.customer.name if repair.customer else 'Test Customer',
+            }
+        else:
+            # Fallback context if no repairs exist
+            context = {
+                'unit_number': 'TEST',
+                'customer_name': 'Test Customer',
+                'repair_date': timezone.now(),
+            }
+
         notification = NotificationService.create_notification(
             recipient=recipient,
-            template_name='system_announcement',
-            context={
-                'message': 'This is a test notification sent at ' + str(timezone.now()),
-                'subject': 'Test Notification',
-            },
-            priority=Notification.PRIORITY_MEDIUM,
-            category=Notification.CATEGORY_SYSTEM
+            template_name='repair_completed',
+            context=context,
+            priority=Notification.PRIORITY_MEDIUM
         )
 
         return JsonResponse({
