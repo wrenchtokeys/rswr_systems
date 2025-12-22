@@ -2711,6 +2711,17 @@ def confirm_email_verification(request, uidb64, token):
             technician.email_verified = True
             technician.email_verified_at = timezone.now()
             technician.save()
+
+            # IMPORTANT: Also update notification preferences
+            # (Required for can_send_email() check to pass)
+            from core.models import TechnicianNotificationPreference
+            prefs, created = TechnicianNotificationPreference.objects.get_or_create(
+                technician=technician
+            )
+            prefs.email_verified = True
+            prefs.email_verified_at = timezone.now()
+            prefs.save()
+
             messages.success(request, "Email verified successfully! You can now receive email notifications.")
         except Technician.DoesNotExist:
             messages.error(request, "Technician profile not found.")
