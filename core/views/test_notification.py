@@ -41,12 +41,13 @@ def test_notification(request):
     try:
         notification = NotificationService.create_notification(
             recipient=recipient,
-            category=Notification.CATEGORY_SYSTEM,
-            title='Test Notification',
-            message='This is a test notification to verify the notification system is working.',
-            priority=Notification.PRIORITY_MEDIUM,
             template_name='system_announcement',
-            context={'message': 'Test notification sent at ' + str(timezone.now())}
+            context={
+                'message': 'This is a test notification sent at ' + str(timezone.now()),
+                'subject': 'Test Notification',
+            },
+            priority=Notification.PRIORITY_MEDIUM,
+            category=Notification.CATEGORY_SYSTEM
         )
 
         return JsonResponse({
