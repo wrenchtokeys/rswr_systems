@@ -233,6 +233,54 @@ class Command(BaseCommand):
                     'customer_name'
                 ],
             },
+
+            # 9. REPAIR REQUEST RECEIVED (Customer - from customer portal)
+            {
+                'name': 'repair_request_received',
+                'description': 'Customer confirmation when they submit a repair request',
+                'category': Notification.CATEGORY_REPAIR_STATUS,
+                'default_priority': Notification.PRIORITY_MEDIUM,
+                'title_template': 'Repair Request Received - Unit {{ unit_number }}',
+                'message_template': (
+                    'Your repair request for unit {{ unit_number }} has been received. '
+                    'We will review it and get back to you shortly.'
+                ),
+                'email_subject_template': 'Repair Request Received - Unit {{ unit_number }}',
+                'email_html_template': 'emails/notifications/repair_request_received.html',
+                'email_text_template': 'emails/notifications/repair_request_received.txt',
+                'sms_template': (
+                    'Your repair request for unit {{ unit_number }} has been received.'
+                ),
+                'action_url_template': '/app/repairs/{{ repair_id }}/',
+                'required_context': [
+                    'unit_number', 'repair_id', 'customer_name',
+                    'damage_type'
+                ],
+            },
+
+            # 10. REPAIR REQUEST SUBMITTED (Technician/Manager - from customer portal)
+            {
+                'name': 'repair_request_submitted',
+                'description': 'Technician/Manager notification when customer submits repair request',
+                'category': Notification.CATEGORY_ASSIGNMENT,
+                'default_priority': Notification.PRIORITY_HIGH,
+                'title_template': 'New Repair Request - Unit {{ unit_number }}',
+                'message_template': (
+                    '{{ customer_name }} has submitted a repair request for unit '
+                    '{{ unit_number }}. Damage type: {{ damage_type }}.'
+                ),
+                'email_subject_template': 'New Repair Request from {{ customer_name }}',
+                'email_html_template': 'emails/notifications/repair_request_submitted.html',
+                'email_text_template': 'emails/notifications/repair_request_submitted.txt',
+                'sms_template': (
+                    'New repair request from {{ customer_name }} for unit {{ unit_number }}.'
+                ),
+                'action_url_template': '/tech/repairs/{{ repair_id }}/',
+                'required_context': [
+                    'unit_number', 'repair_id', 'customer_name',
+                    'damage_type', 'technician_name'
+                ],
+            },
         ]
 
         created_count = 0

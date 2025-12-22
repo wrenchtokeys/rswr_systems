@@ -71,7 +71,12 @@ def handle_repair_status_change(sender, instance, created, **kwargs):
     # Handle new repair creation
     if created:
         if instance.queue_status == 'PENDING':
+            # Technician-created repair needing customer approval
             _notify_customer_approval_needed(instance)
+        elif instance.queue_status == 'REQUESTED':
+            # Customer-initiated repair request
+            _notify_customer_request_received(instance)
+            _notify_technician_new_request(instance)
         return
 
     # Get previous status
@@ -332,6 +337,63 @@ def _notify_technician_reassigned(repair, old_technician):
     NotificationService.create_notification(
         recipient=old_technician,
         template_name='repair_reassigned_away',
+        context=context,
+        repair=repair,
+        customer=repair.customer
+    )
+
+
+def _notify_customer_request_received(repair):
+    """
+    Notify customer that their repair request has been received.
+
+    Priority: MEDIUM (Email + in-app)
+    Triggered when: Customer submits repair via customer portal (REQUESTED status)
+    """
+    if not repair.customer:
+        logger.warning(f"Repair {repair.pk} has no customer linked")
+        return
+
+    context = {
+        'repair_id': repair.pk,
+        'unit_number': repair.unit_number,
+        'customer_name': repair.customer.name,
+        'damage_type': repair.get_damage_type_display() or 'Unknown',
+        'action_url': f'/app/repairs/{repair.pk}/',
+    }
+
+    NotificationService.create_notification(
+        recipient=repair.customer,
+        template_name='repair_request_received',
+        context=context,
+        repair=repair,
+        customer=repair.customer
+    )
+
+
+def _notify_technician_new_request(repair):
+    """
+    Notify technician/manager that a new repair request was submitted.
+
+    Priority: HIGH (Email + SMS + in-app)
+    Triggered when: Customer submits repair via customer portal (REQUESTED status)
+    """
+    if not repair.technician:
+        logger.warning(f"Repair {repair.pk} has no technician assigned")
+        return
+
+    context = {
+        'repair_id': repair.pk,
+        'unit_number': repair.unit_number,
+        'customer_name': repair.customer.name if repair.customer else 'Unknown',
+        'damage_type': repair.get_damage_type_display() or 'Unknown',
+        'technician_name': repair.technician.user.get_full_name() or repair.technician.user.username,
+        'action_url': f'/tech/repairs/{repair.pk}/',
+    }
+
+    NotificationService.create_notification(
+        recipient=repair.technician,
+        template_name='repair_request_submitted',
         context=context,
         repair=repair,
         customer=repair.customer

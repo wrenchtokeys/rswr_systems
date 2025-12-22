@@ -122,14 +122,29 @@ class NotificationTemplate(models.Model):
         Returns:
             dict: Rendered content for all channels
         """
+        from django.template.loader import render_to_string
+
         context = Context(context_dict)
+
+        def render_template_field(content):
+            """Render template content, loading from file if it's a path."""
+            if not content:
+                return ''
+            # Check if content is a template path (ends with .html or .txt)
+            content_stripped = content.strip()
+            if content_stripped.endswith(('.html', '.txt')):
+                # Load and render template file
+                return render_to_string(content_stripped, context_dict)
+            else:
+                # Render as inline template syntax
+                return Template(content).render(context)
 
         return {
             'title': Template(self.title_template).render(context),
             'message': Template(self.message_template).render(context),
             'email_subject': Template(self.email_subject_template).render(context) if self.email_subject_template else '',
-            'email_html': Template(self.email_html_template).render(context) if self.email_html_template else '',
-            'email_text': Template(self.email_text_template).render(context) if self.email_text_template else '',
+            'email_html': render_template_field(self.email_html_template),
+            'email_text': render_template_field(self.email_text_template),
             'sms': Template(self.sms_template).render(context) if self.sms_template else '',
             'action_url': Template(self.action_url_template).render(context) if self.action_url_template else '',
         }

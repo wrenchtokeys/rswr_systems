@@ -1,0 +1,28 @@
+NEW REPAIR REQUEST - Unit {{ unit_number }}
+
+Hello,
+
+{{ customer_name }} has submitted a new windshield repair request that needs to be reviewed and assigned.
+
+REQUEST DETAILS
+===============
+Request ID: #{{ repair_id }}
+Customer: {{ customer_name }}
+Unit Number: {{ unit_number }}
+Damage Type: {{ damage_type }}
+Status: Awaiting Assignment
+
+ACTION REQUIRED
+===============
+Please review this repair request and assign a technician to handle it. The customer will be notified of any updates.
+
+Review and assign the request here:
+{{ action_url }}
+
+Need more info? Click the link above to view full request details including any photos or notes submitted by the customer.
+
+---
+{{ branding.company_name }}
+{{ branding.company_address }}
+
+To manage your notification preferences, visit your account settings.
