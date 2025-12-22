@@ -44,6 +44,8 @@ class Command(BaseCommand):
         try:
             # Create HTML email
             subject = 'Test Email from RS Systems (Direct Send)'
+            from django.utils import timezone
+
             text_content = '''
 This is a test email sent directly via SendGrid (bypassing Celery).
 
@@ -52,7 +54,7 @@ If emails still don't work, the issue is likely with Celery workers.
 
 Timestamp: {timestamp}
 Environment: Production
-            '''.format(timestamp=str(__import__('django.utils.timezone', fromlist=['timezone']).timezone.now()))
+            '''.format(timestamp=str(timezone.now()))
 
             html_content = '''
 <html>
