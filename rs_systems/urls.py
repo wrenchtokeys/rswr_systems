@@ -20,15 +20,16 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from . import views
-from core.views import preview_email_template, test_notification
+from core.views import preview_email_template, test_notification, check_notification_prefs
 
 urlpatterns = [
     path('', views.home, name='home'),
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
     path('setup-database/', views.setup_database, name='setup_database'),
 
-    # Test notification endpoint (for debugging)
+    # Test/diagnostic endpoints (for debugging)
     path('test-notification/', test_notification, name='test_notification'),
+    path('check-notification-prefs/', check_notification_prefs, name='check_notification_prefs'),
 
     # API endpoints
     path('api/', include('apps.technician_portal.api.urls')),
