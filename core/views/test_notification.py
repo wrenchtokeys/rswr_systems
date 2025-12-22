@@ -39,8 +39,27 @@ def test_notification(request):
 
     # Create test notification using a real template
     # We'll use the repair_completed template with dummy data
+    import logging
+    import traceback
+    logger = logging.getLogger(__name__)
+
     try:
         from apps.technician_portal.models import Repair
+        from core.models import NotificationTemplate
+
+        # Check if template exists
+        template = NotificationTemplate.objects.filter(
+            name='repair_completed',
+            active=True
+        ).first()
+
+        if not template:
+            return JsonResponse({
+                'success': False,
+                'error': 'Template repair_completed not found or inactive',
+                'available_templates': list(NotificationTemplate.objects.filter(active=True).values_list('name', flat=True))
+            })
+
         # Get any repair to use as test data, or create minimal context
         repair = Repair.objects.first()
 
@@ -58,6 +77,9 @@ def test_notification(request):
                 'repair_date': timezone.now(),
             }
 
+        logger.info(f"Attempting to create notification for {recipient_type} with template repair_completed")
+        logger.info(f"Context: {context}")
+
         notification = NotificationService.create_notification(
             recipient=recipient,
             template_name='repair_completed',
@@ -65,18 +87,25 @@ def test_notification(request):
             priority=Notification.PRIORITY_MEDIUM
         )
 
+        logger.info(f"Notification creation result: {notification}")
+
         return JsonResponse({
             'success': True,
             'notification_id': notification.id if notification else None,
+            'notification_created': notification is not None,
             'recipient_type': recipient_type,
             'recipient_email': user.email,
             'email_verified': prefs.email_verified,
             'can_send_email': prefs.can_send_email(),
             'receive_email_notifications': prefs.receive_email_notifications,
-            'message': 'Test notification created. Check your email and the notification diagnostic for delivery status.'
+            'template_found': True,
+            'message': 'Test notification created. Check your email and the notification diagnostic for delivery status.' if notification else 'Notification was not created - check logs for details.'
         })
     except Exception as e:
+        logger.error(f"Failed to create test notification: {str(e)}")
+        logger.error(traceback.format_exc())
         return JsonResponse({
             'success': False,
-            'error': f'Failed to create notification: {str(e)}'
+            'error': f'Failed to create notification: {str(e)}',
+            'traceback': traceback.format_exc()
         })
