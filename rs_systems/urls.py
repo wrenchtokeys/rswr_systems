@@ -20,7 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from . import views
-from core.views import preview_email_template, test_notification, check_notification_prefs
+from core.views import preview_email_template, test_notification, check_notification_prefs, celery_status
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -28,6 +28,7 @@ urlpatterns = [
     path('setup-database/', views.setup_database, name='setup_database'),
 
     # Test/diagnostic endpoints (for debugging)
+    path('celery-status/', celery_status, name='celery_status'),
     path('test-notification/', test_notification, name='test_notification'),
     path('check-notification-prefs/', check_notification_prefs, name='check_notification_prefs'),
 
