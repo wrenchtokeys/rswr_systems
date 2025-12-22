@@ -64,17 +64,26 @@ def test_notification(request):
         repair = Repair.objects.first()
 
         if repair:
+            # IMPORTANT: Only pass JSON-serializable values (strings, numbers, booleans)
+            # DO NOT pass Django model objects - they cannot be stored in JSONField
             context = {
-                'repair': repair,
+                'repair_id': repair.pk,
                 'unit_number': repair.unit_number,
                 'customer_name': repair.customer.name if repair.customer else 'Test Customer',
+                'technician_name': repair.technician.user.get_full_name() if repair.technician else 'Test Technician',
+                'estimated_cost': float(repair.cost) if repair.cost else 0.0,
+                'damage_type': repair.get_damage_type_display() or 'Unknown',
+                'action_url': f'/app/repairs/{repair.pk}/',
             }
         else:
             # Fallback context if no repairs exist
             context = {
                 'unit_number': 'TEST',
                 'customer_name': 'Test Customer',
-                'repair_date': timezone.now(),
+                'technician_name': 'Test Technician',
+                'estimated_cost': 0.0,
+                'damage_type': 'Unknown',
+                'action_url': '/app/repairs/',
             }
 
         logger.info(f"Attempting to create notification for {recipient_type} with template repair_completed")
