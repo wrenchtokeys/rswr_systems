@@ -20,39 +20,42 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from . import views
-from core.views import preview_email_template
+from core.views import preview_email_template, test_notification
 
 urlpatterns = [
-    path('', views.home, name='home'),  
+    path('', views.home, name='home'),
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
     path('setup-database/', views.setup_database, name='setup_database'),
-    
+
+    # Test notification endpoint (for debugging)
+    path('test-notification/', test_notification, name='test_notification'),
+
     # API endpoints
     path('api/', include('apps.technician_portal.api.urls')),
-    
+
     # API documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-    
+
     # Admin and authentication
     path('admin/register-technician/', views.register_technician, name='register_technician'),
     path('admin/email-preview/<str:template_name>/', preview_email_template, name='email_preview'),
     path('admin/', admin.site.urls),
-    
+
     # Customer portal (primary users)
     path('app/', include('apps.customer_portal.urls')),
     path('app/login/', views.customer_login_view, name='customer_login'),
     path('app/logout/', views.logout_view, name='customer_logout'),
-    
+
     # Technician portal
     path('tech/', include('apps.technician_portal.urls')),
     path('tech/login/', views.technician_login_view, name='technician_login'),
     path('tech/logout/', views.logout_view, name='technician_logout'),
-    
+
     # Rewards/referrals (accessible from both portals)
     path('referrals/', include('apps.rewards_referrals.urls')),
-    
+
     # Legacy authentication URLs (redirect to appropriate portal)
     path('accounts/login/', views.login_router, name='login'),
     path('login/', views.login_router, name='login_legacy'),
