@@ -4,7 +4,8 @@ from core.models import (
     TechnicianNotificationPreference,
     Customer,
     CustomerNotificationPreference,
-    Notification
+    Notification,
+    NotificationDeliveryLog
 )
 from django.contrib.contenttypes.models import ContentType
 
@@ -59,11 +60,11 @@ class Command(BaseCommand):
 
         # 4. Check Recent Repairs
         self.stdout.write(self.style.WARNING('\n4. RECENT REPAIRS (Last 5):'))
-        repairs = Repair.objects.all().order_by('-created_at')[:5]
+        repairs = Repair.objects.all().order_by('-repair_date')[:5]
         for repair in repairs:
             self.stdout.write(
-                f'  Repair #{repair.id}: {repair.status} '
-                f'(created: {repair.created_at}, customer: {repair.customer.name})'
+                f'  Repair #{repair.id}: {repair.queue_status} '
+                f'(date: {repair.repair_date}, customer: {repair.customer.name})'
             )
 
         # 5. Check Celery Availability
@@ -91,6 +92,18 @@ class Command(BaseCommand):
         self.stdout.write(f'  EMAIL_BACKEND: {settings.EMAIL_BACKEND}')
         self.stdout.write(f'  EMAIL_HOST: {settings.EMAIL_HOST}')
         self.stdout.write(f'  DEFAULT_FROM_EMAIL: {settings.DEFAULT_FROM_EMAIL}')
+
+        # 8. Check Recent Delivery Logs
+        self.stdout.write(self.style.WARNING('\n8. RECENT DELIVERY LOGS (Last 10):'))
+        delivery_logs = NotificationDeliveryLog.objects.all().order_by('-created_at')[:10]
+        if delivery_logs:
+            for log in delivery_logs:
+                self.stdout.write(
+                    f'  [{log.created_at}] {log.channel} to {log.recipient_email or log.recipient_phone}: '
+                    f'status={log.status}, attempts={log.attempt_number}'
+                )
+        else:
+            self.stdout.write('  No delivery logs found - emails may not be queued!')
 
         # Summary
         verified_techs = TechnicianNotificationPreference.objects.filter(email_verified=True).count()
