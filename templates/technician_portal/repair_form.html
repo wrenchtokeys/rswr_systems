@@ -344,6 +344,19 @@
                                 Damage Photo (Before Repair)
                                 <span class="field-badge field-badge-recommended">Recommended</span>
                             </label>
+                            {% if form.instance.damage_photo_before %}
+                            <div class="existing-photo-container mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <p class="text-sm text-gray-600 mb-2 font-medium">
+                                    <i class="fas fa-check-circle text-green-500 mr-1"></i>
+                                    Current photo on file:
+                                </p>
+                                <img src="{{ form.instance.damage_photo_before.url }}"
+                                     alt="Current before photo"
+                                     class="max-h-40 rounded-lg shadow-sm cursor-pointer"
+                                     onclick="openImageModal('{{ form.instance.damage_photo_before.url }}', 'Before Photo')">
+                                <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
+                            </div>
+                            {% endif %}
                             <div id="beforePhotoPreview"></div>
                             <div class="photo-upload-area" id="beforeUploadArea">
                                 <i class="fas fa-camera photo-upload-icon"></i>
@@ -374,6 +387,19 @@
                                 Damage Photo (After Repair)
                                 <span class="field-badge field-badge-required">Required for Completion</span>
                             </label>
+                            {% if form.instance.damage_photo_after %}
+                            <div class="existing-photo-container mb-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                                <p class="text-sm text-gray-600 mb-2 font-medium">
+                                    <i class="fas fa-check-circle text-green-500 mr-1"></i>
+                                    Current photo on file:
+                                </p>
+                                <img src="{{ form.instance.damage_photo_after.url }}"
+                                     alt="Current after photo"
+                                     class="max-h-40 rounded-lg shadow-sm cursor-pointer"
+                                     onclick="openImageModal('{{ form.instance.damage_photo_after.url }}', 'After Photo')">
+                                <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
+                            </div>
+                            {% endif %}
                             <div id="afterPhotoPreview"></div>
                             <div class="photo-upload-area" id="afterUploadArea">
                                 <i class="fas fa-camera-retro photo-upload-icon"></i>
