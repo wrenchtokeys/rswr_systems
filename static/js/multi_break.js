@@ -3,6 +3,77 @@
  * Handles state management, modal interactions, pricing preview, and form submission
  */
 
+// ================ IMAGE COMPRESSION UTILITY ================
+// Compresses images before upload to improve mobile performance
+// Settings optimized for AI training: 2048px max, 85% quality
+const ImageCompressor = {
+    MAX_DIMENSION: 2048,
+    QUALITY: 0.85,
+
+    compress: function(file) {
+        return new Promise((resolve, reject) => {
+            if (file.size < 500 * 1024) {
+                resolve(file);
+                return;
+            }
+            if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+                resolve(file);
+                return;
+            }
+
+            const img = new Image();
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            img.onload = () => {
+                let { width, height } = img;
+                const maxDim = ImageCompressor.MAX_DIMENSION;
+
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (!blob) {
+                            resolve(file);
+                            return;
+                        }
+                        const compressedFile = new File(
+                            [blob],
+                            file.name.replace(/\.[^.]+$/, '.jpg'),
+                            { type: 'image/jpeg' }
+                        );
+                        console.log(`Compressed: ${(file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
+                        resolve(compressedFile);
+                    },
+                    'image/jpeg',
+                    ImageCompressor.QUALITY
+                );
+            };
+
+            img.onerror = () => resolve(file);
+            img.src = URL.createObjectURL(file);
+        });
+    },
+
+    replaceInputFile: function(input, compressedFile) {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(compressedFile);
+        input.files = dataTransfer.files;
+    }
+};
+
 // State management
 let breaks = [];
 let editingIndex = null;
@@ -275,83 +346,76 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
     updatePricingPreview();
 });
 
-// Photo Preview Handlers
-document.getElementById('modal_photo_before').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    const preview = document.getElementById('preview_before');
+// Photo Preview Handlers with Compression
+async function handlePhotoSelect(inputElement, previewElement) {
+    const file = inputElement.files[0];
 
-    if (file) {
-        // Validate file type
-        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-        if (!validTypes.includes(file.type.toLowerCase())) {
-            preview.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                <i class="fas fa-exclamation-triangle mr-1"></i> Invalid file type. Please upload JPG, PNG, WebP, or HEIC images.
-            </div>`;
-            e.target.value = ''; // Clear the input
-            return;
-        }
+    if (!file) {
+        previewElement.innerHTML = '';
+        return;
+    }
 
-        // Validate file size (5MB max)
-        if (file.size > 5 * 1024 * 1024) {
-            preview.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                <i class="fas fa-exclamation-triangle mr-1"></i> File too large. Maximum size is 5MB.
-            </div>`;
-            e.target.value = ''; // Clear the input
-            return;
-        }
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
+    if (!validTypes.includes(file.type.toLowerCase()) && !isHeic) {
+        previewElement.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+            <i class="fas fa-exclamation-triangle mr-1"></i> Invalid file type. Please upload JPG, PNG, WebP, or HEIC images.
+        </div>`;
+        inputElement.value = '';
+        return;
+    }
 
+    // Validate file size (5MB max before compression)
+    if (file.size > 5 * 1024 * 1024) {
+        previewElement.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+            <i class="fas fa-exclamation-triangle mr-1"></i> File too large. Maximum size is 5MB.
+        </div>`;
+        inputElement.value = '';
+        return;
+    }
+
+    // Show compression indicator
+    previewElement.innerHTML = `<div class="mt-2 p-2 text-center">
+        <i class="fas fa-spinner fa-spin text-blue-500"></i>
+        <span class="text-sm text-gray-500 ml-2">Optimizing image...</span>
+    </div>`;
+
+    try {
+        // Compress the image
+        const compressedFile = await ImageCompressor.compress(file);
+
+        // Replace the input file with compressed version
+        ImageCompressor.replaceInputFile(inputElement, compressedFile);
+
+        // Show preview
         const reader = new FileReader();
         reader.onload = (event) => {
-            preview.innerHTML = `<img src="${event.target.result}" alt="Preview" class="mt-2 max-w-full h-32 rounded border border-gray-300">`;
+            previewElement.innerHTML = `<img src="${event.target.result}" alt="Preview" class="mt-2 max-w-full h-32 rounded border border-gray-300">`;
         };
         reader.onerror = () => {
-            preview.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+            previewElement.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
                 <i class="fas fa-exclamation-triangle mr-1"></i> Error loading photo preview.
             </div>`;
         };
+        reader.readAsDataURL(compressedFile);
+    } catch (error) {
+        console.error('Compression error:', error);
+        // Fall back to original file preview
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            previewElement.innerHTML = `<img src="${event.target.result}" alt="Preview" class="mt-2 max-w-full h-32 rounded border border-gray-300">`;
+        };
         reader.readAsDataURL(file);
-    } else {
-        preview.innerHTML = '';
     }
+}
+
+document.getElementById('modal_photo_before').addEventListener('change', (e) => {
+    handlePhotoSelect(e.target, document.getElementById('preview_before'));
 });
 
 document.getElementById('modal_photo_after').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    const preview = document.getElementById('preview_after');
-
-    if (file) {
-        // Validate file type
-        const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
-        if (!validTypes.includes(file.type.toLowerCase())) {
-            preview.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                <i class="fas fa-exclamation-triangle mr-1"></i> Invalid file type. Please upload JPG, PNG, WebP, or HEIC images.
-            </div>`;
-            e.target.value = ''; // Clear the input
-            return;
-        }
-
-        // Validate file size (5MB max)
-        if (file.size > 5 * 1024 * 1024) {
-            preview.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                <i class="fas fa-exclamation-triangle mr-1"></i> File too large. Maximum size is 5MB.
-            </div>`;
-            e.target.value = ''; // Clear the input
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            preview.innerHTML = `<img src="${event.target.result}" alt="Preview" class="mt-2 max-w-full h-32 rounded border border-gray-300">`;
-        };
-        reader.onerror = () => {
-            preview.innerHTML = `<div class="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-                <i class="fas fa-exclamation-triangle mr-1"></i> Error loading photo preview.
-            </div>`;
-        };
-        reader.readAsDataURL(file);
-    } else {
-        preview.innerHTML = '';
-    }
+    handlePhotoSelect(e.target, document.getElementById('preview_after'));
 });
 
 // Edit Break Function

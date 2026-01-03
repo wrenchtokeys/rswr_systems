@@ -3,6 +3,104 @@
  * Professional SaaS-grade form interactions with photo previews and autosave
  */
 
+// ================ IMAGE COMPRESSION UTILITY ================
+// Compresses images before upload to improve mobile performance
+// Settings optimized for AI training: 2048px max, 85% quality
+const ImageCompressor = {
+    MAX_DIMENSION: 2048,  // Max width or height in pixels
+    QUALITY: 0.85,        // JPEG quality (0-1)
+
+    /**
+     * Compress an image file
+     * @param {File} file - The original image file
+     * @returns {Promise<File>} - Compressed image file
+     */
+    compress: function(file) {
+        return new Promise((resolve, reject) => {
+            // Skip compression for small files (< 500KB)
+            if (file.size < 500 * 1024) {
+                console.log('Image already small, skipping compression:', file.size);
+                resolve(file);
+                return;
+            }
+
+            // Skip HEIC files - let server handle conversion
+            if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+                console.log('HEIC file detected, server will handle conversion');
+                resolve(file);
+                return;
+            }
+
+            const img = new Image();
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            img.onload = () => {
+                // Calculate new dimensions
+                let { width, height } = img;
+                const maxDim = ImageCompressor.MAX_DIMENSION;
+
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+
+                // Draw and compress
+                ctx.drawImage(img, 0, 0, width, height);
+
+                canvas.toBlob(
+                    (blob) => {
+                        if (!blob) {
+                            console.error('Compression failed, using original');
+                            resolve(file);
+                            return;
+                        }
+
+                        // Create new File object with same name
+                        const compressedFile = new File(
+                            [blob],
+                            file.name.replace(/\.[^.]+$/, '.jpg'),
+                            { type: 'image/jpeg' }
+                        );
+
+                        console.log(`Compressed: ${(file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
+                        resolve(compressedFile);
+                    },
+                    'image/jpeg',
+                    ImageCompressor.QUALITY
+                );
+            };
+
+            img.onerror = () => {
+                console.error('Failed to load image for compression');
+                resolve(file);  // Fall back to original
+            };
+
+            // Load the image
+            img.src = URL.createObjectURL(file);
+        });
+    },
+
+    /**
+     * Replace input file with compressed version
+     * @param {HTMLInputElement} input - The file input element
+     * @param {File} compressedFile - The compressed file
+     */
+    replaceInputFile: function(input, compressedFile) {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(compressedFile);
+        input.files = dataTransfer.files;
+    }
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('repairForm');
     if (!form) return;
@@ -206,19 +304,36 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /**
-     * Handle photo input change
+     * Handle photo input change with compression
      */
     function handlePhotoChange(inputElement, previewContainer) {
-        return function(e) {
+        return async function(e) {
             const files = e.target.files;
             if (files.length === 0) return;
 
             const file = files[0];
 
-            if (validatePhotoFile(file)) {
-                createPhotoPreview(file, previewContainer, inputElement);
-            } else {
+            if (!validatePhotoFile(file)) {
                 inputElement.value = '';
+                return;
+            }
+
+            // Show compression indicator
+            previewContainer.innerHTML = '<div class="text-center p-4"><i class="fas fa-spinner fa-spin text-blue-500 text-2xl"></i><p class="text-sm text-gray-500 mt-2">Optimizing image...</p></div>';
+
+            try {
+                // Compress the image
+                const compressedFile = await ImageCompressor.compress(file);
+
+                // Replace the input file with compressed version
+                ImageCompressor.replaceInputFile(inputElement, compressedFile);
+
+                // Show preview of compressed image
+                createPhotoPreview(compressedFile, previewContainer, inputElement);
+            } catch (error) {
+                console.error('Compression error:', error);
+                // Fall back to original file
+                createPhotoPreview(file, previewContainer, inputElement);
             }
         };
     }
@@ -270,8 +385,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-        // Handle drop
-        uploadArea.addEventListener('drop', function(e) {
+        // Handle drop with compression
+        uploadArea.addEventListener('drop', async function(e) {
             const dt = e.dataTransfer;
             const files = dt.files;
 
@@ -280,13 +395,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.heic')) {
                     if (validatePhotoFile(file)) {
-                        // Create a new FileList
-                        const dataTransfer = new DataTransfer();
-                        dataTransfer.items.add(file);
-                        inputElement.files = dataTransfer.files;
+                        // Show compression indicator
+                        previewContainer.innerHTML = '<div class="text-center p-4"><i class="fas fa-spinner fa-spin text-blue-500 text-2xl"></i><p class="text-sm text-gray-500 mt-2">Optimizing image...</p></div>';
 
-                        // Create preview
-                        createPhotoPreview(file, previewContainer, inputElement);
+                        try {
+                            // Compress the image
+                            const compressedFile = await ImageCompressor.compress(file);
+
+                            // Replace the input file with compressed version
+                            ImageCompressor.replaceInputFile(inputElement, compressedFile);
+
+                            // Create preview
+                            createPhotoPreview(compressedFile, previewContainer, inputElement);
+                        } catch (error) {
+                            console.error('Compression error:', error);
+                            // Fall back to original
+                            const dataTransfer = new DataTransfer();
+                            dataTransfer.items.add(file);
+                            inputElement.files = dataTransfer.files;
+                            createPhotoPreview(file, previewContainer, inputElement);
+                        }
                     }
                 } else {
                     alert('Please drop an image file (PNG, JPG, WebP, or HEIC)');
