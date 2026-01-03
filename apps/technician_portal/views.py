@@ -5,6 +5,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from .models import Technician, Repair, UnitRepairCount, TechnicianNotification
 from core.models import Customer, Notification, TechnicianNotificationPreference
 from .forms import TechnicianForm, RepairForm, CustomerForm, TechnicianRegistrationForm, TechnicianNotificationPreferenceForm
+from .decorators import technician_required, admin_required
 from django.db.models import Count, F, Q
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
@@ -29,74 +30,6 @@ from .services.batch_pricing_service import calculate_batch_pricing, get_batch_p
 # Initialize logger for this module
 logger = logging.getLogger(__name__)
 
-# Add a helper function to safely check if a user has technician access
-def has_technician_access(user):
-    """Helper function to check if a user has technician access through profile or admin privileges"""
-    # Admin users always have access
-    if user.is_staff:
-        return True
-
-    # Check if user is in the Technicians group
-    if user.groups.filter(name='Technicians').exists():
-        return True
-
-    # Non-admin users need a technician profile
-    try:
-        return hasattr(user, 'technician') and user.technician is not None
-    except:
-        return False
-
-def is_working_manager(user):
-    """
-    Helper function to check if a user is a working manager.
-    A working manager is someone who:
-    1. Has a technician profile AND
-    2. Has is_manager=True flag
-
-    This allows them to both assign work AND complete repairs themselves.
-    """
-    if not hasattr(user, 'technician'):
-        return False
-    try:
-        technician = user.technician
-        return technician is not None and technician.is_manager
-    except:
-        return False
-
-# Custom decorator to ensure only technicians can access views
-def technician_required(view_func):
-    @wraps(view_func)
-    def _wrapped_view(request, *args, **kwargs):
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            messages.info(request, "Please log in to access the technician portal.")
-            return redirect('login')
-        
-        # Check if user has technician access
-        if has_technician_access(request.user):
-            return view_func(request, *args, **kwargs)
-            
-        # User doesn't have access
-        messages.warning(request, "Your account does not have technician access. Please contact an administrator if you believe this is an error.")
-        return redirect('home')
-    return _wrapped_view
-
-# Admin required decorator
-def admin_required(view_func):
-    @wraps(view_func)
-    def _wrapped_view(request, *args, **kwargs):
-        # Check if user is authenticated
-        if not request.user.is_authenticated:
-            messages.info(request, "Please log in to access this feature.")
-            return redirect('login')
-        
-        # Check if user is admin
-        if not request.user.is_staff:
-            messages.warning(request, "This action requires administrator privileges.")
-            return redirect('technician_dashboard')
-            
-        return view_func(request, *args, **kwargs)
-    return _wrapped_view
 
 def register_technician(request):
     if request.method == 'POST':
@@ -1161,7 +1094,7 @@ def convert_to_batch(request, repair_id):
                     windshield_temperature=request.POST.get(f'windshield_temperature_{i}') or None,
                     resin_viscosity=request.POST.get(f'resin_viscosity_{i}') or None,
                     drilled_before_repair=request.POST.get(f'drilled_before_repair_{i}') == 'on',
-                    override_reason=override_reason if override_cost else None,
+                    override_reason=override_reason if override_cost else '',
                 )
 
                 # Handle photo uploads
@@ -1793,24 +1726,6 @@ def reward_fulfillment_detail(request, redemption_id):
         'is_admin': is_admin,
     })
 
-@technician_required
-def mark_notification_read(request, notification_id):
-    """Mark a notification as read"""
-    notification = get_object_or_404(TechnicianNotification, id=notification_id)
-    
-    # Ensure the notification belongs to this technician
-    if notification.technician.user != request.user and not request.user.is_staff:
-        messages.error(request, "You don't have permission to access this notification.")
-        return redirect('technician_dashboard')
-    
-    notification.read = True
-    notification.save()
-    
-    # If notification is for a redemption, redirect to the redemption
-    if notification.redemption:
-        return redirect('reward_fulfillment_detail', redemption_id=notification.redemption.id)
-    
-    return redirect('technician_dashboard')
 
 @technician_required
 def assign_repair(request, repair_id):
@@ -2487,7 +2402,7 @@ def notification_history(request):
     return render(request, 'technician_portal/notification_history.html', context)
 
 
-@login_required
+@technician_required
 def mark_notification_read(request, notification_id):
     """Mark single notification as read"""
     try:
@@ -2510,7 +2425,7 @@ def mark_notification_read(request, notification_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@login_required
+@technician_required
 def mark_all_read(request):
     """Mark all notifications as read for technician"""
     try:
@@ -2530,7 +2445,7 @@ def mark_all_read(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@login_required
+@technician_required
 def get_unread_count(request):
     """
     AJAX endpoint for notification bell polling.

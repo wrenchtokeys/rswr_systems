@@ -222,7 +222,7 @@ class Repair(models.Model):
     damage_type = models.CharField(max_length=100, choices=DAMAGE_TYPE_CHOICES, default='')
     drilled_before_repair = models.BooleanField(default=False)
     windshield_temperature = models.FloatField(null=True, blank=True)
-    resin_viscosity = models.CharField(max_length=50, blank=True)
+    resin_viscosity = models.CharField(max_length=20, blank=True)
     
     # Photo documentation fields
     # Customer-submitted photo (when customer requests repair through portal)
