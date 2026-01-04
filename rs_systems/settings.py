@@ -199,9 +199,6 @@ INSTALLED_APPS = [
     'apps.technician_portal',
     'apps.customer_portal',
     'apps.rewards_referrals',
-    'apps.photo_storage',
-    'apps.queue_management',
-    'apps.scheduling',
     'apps.security',
     'core',  # Core app (includes Customer model and notification system)
     'drf_spectacular',

@@ -56,7 +56,7 @@ Welcome to the comprehensive documentation for the RS Systems windshield repair 
 - Development environment setup
 - Production deployment problems
 
-#### 📋 [Changelog](CHANGELOG.md)
+#### 📋 [Changelog](development/CHANGELOG.md)
 **Version history and recent improvements**
 - Recent critical fixes (v1.2.0)
 - Repair visibility and assignment improvements
@@ -134,7 +134,7 @@ Keep your populated deployment guides in a secure location outside of this repos
 
 #### **Project Managers**
 - **Feature Overview**: Main README.md
-- **Recent Changes**: [Changelog](CHANGELOG.md)
+- **Recent Changes**: [Changelog](development/CHANGELOG.md)
 - **Testing Status**: [Testing Guide](TESTING.md)
 - **Known Issues**: [Troubleshooting Guide](TROUBLESHOOTING.md)
 
