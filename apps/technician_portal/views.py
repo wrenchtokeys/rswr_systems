@@ -1092,7 +1092,7 @@ def convert_to_batch(request, repair_id):
                     total_breaks_in_batch=total_breaks_in_batch,
                     technician_notes=request.POST.get(f'notes_{i}', ''),
                     windshield_temperature=request.POST.get(f'windshield_temperature_{i}') or None,
-                    resin_viscosity=request.POST.get(f'resin_viscosity_{i}') or None,
+                    resin_viscosity=request.POST.get(f'resin_viscosity_{i}') or '',
                     drilled_before_repair=request.POST.get(f'drilled_before_repair_{i}') == 'on',
                     override_reason=override_reason if override_cost else '',
                 )
