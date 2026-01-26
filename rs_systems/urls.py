@@ -58,6 +58,9 @@ urlpatterns = [
     # Rewards/referrals (accessible from both portals)
     path('referrals/', include('apps.rewards_referrals.urls')),
 
+    # Clawdbot endpoint
+    path('clawdbot/', include('apps.clawdbot.urls')),
+
     # Legacy authentication URLs (redirect to appropriate portal)
     path('accounts/login/', views.login_router, name='login'),
     path('login/', views.login_router, name='login_legacy'),

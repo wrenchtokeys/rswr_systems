@@ -87,9 +87,9 @@ docs/deployment/NOTIFICATION_NEXT_STEPS.md
 
 # Misc.
 CLAUDE.md
-next_steps.md
-notes.txt
 __pycache__/
+study_plan_revised.md
+study_plan.md
 
 # Test scripts with hardcoded credentials (SECURITY: DO NOT COMMIT)
 /scripts/test_database_persistence.py
