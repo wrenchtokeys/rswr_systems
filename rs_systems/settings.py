@@ -201,6 +201,7 @@ INSTALLED_APPS = [
     'apps.rewards_referrals',
     'apps.security',
     'apps.clawdbot',
+    'apps.billing',
     'core',  # Core app (includes Customer model and notification system)
     'drf_spectacular',
     'django_cleanup.apps.CleanupConfig',  # Must be last - automatically deletes files when models are deleted

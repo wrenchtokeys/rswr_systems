@@ -191,7 +191,7 @@ def invoice_preview(request, customer_id):
         - repair_ids: Comma-separated repair IDs (optional)
         - days: Number of days to look back (default: 30)
     """
-    from apps.clawdbot.services.invoice_service import InvoiceService
+    from apps.billing.services.invoice_service import InvoiceService
     
     try:
         customer = Customer.objects.get(id=customer_id)
@@ -271,7 +271,7 @@ def generate_invoice(request, customer_id):
         - days: Number of days to look back (default: 30)
         - save: If 'true', also save to disk (default: false)
     """
-    from apps.clawdbot.services.invoice_service import InvoiceService
+    from apps.billing.services.invoice_service import InvoiceService
     
     try:
         customer = Customer.objects.get(id=customer_id)
@@ -359,7 +359,7 @@ def send_invoice_email(request, customer_id):
         - photos: Include photos (default: true)
         - repair_ids: Comma-separated repair IDs (optional)
     """
-    from apps.clawdbot.services.invoice_email_service import InvoiceEmailService
+    from apps.billing.services.invoice_email_service import InvoiceEmailService
     
     recipient_email = request.GET.get('email')
     if not recipient_email:
