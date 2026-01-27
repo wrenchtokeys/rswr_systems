@@ -263,6 +263,19 @@ class InvoiceEmailService:
             # Send
             result = email.send()
             
+            # Save invoice locally for record keeping
+            # (S3 saving requires write permissions - not available yet)
+            try:
+                import os
+                invoice_dir = f"/home/ubuntu/invoices/{customer_id}"
+                os.makedirs(invoice_dir, exist_ok=True)
+                local_path = f"{invoice_dir}/{invoice_data.invoice_number}.pdf"
+                with open(local_path, 'wb') as f:
+                    f.write(pdf_bytes)
+                print(f"Invoice saved locally: {local_path}")
+            except Exception as e:
+                print(f"Warning: Could not save invoice locally: {e}")
+            
             photo_count = len(photos)
             return True, f"Email sent successfully with invoice + {photo_count} photos"
             
