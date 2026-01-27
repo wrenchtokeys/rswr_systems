@@ -9,8 +9,9 @@ This app provides:
 Author: Amelia (Clawdbot AI)
 """
 
+import os
 from datetime import datetime, timedelta
-from django.http import JsonResponse, HttpResponse, Http404
+from django.http import JsonResponse, HttpResponse, Http404, FileResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
@@ -18,6 +19,10 @@ import json
 
 from core.models import Customer
 from apps.technician_portal.models import Repair
+
+
+# Directory for saved invoices
+INVOICE_DIR = "/home/ubuntu/invoices"
 
 
 @require_GET
@@ -29,7 +34,7 @@ def status(request):
     return JsonResponse({
         'status': 'online',
         'name': 'Amelia',
-        'version': '0.2.0',
+        'version': '0.3.0',
         'capabilities': [
             'invoice_generation',
             'repair_queries',
@@ -38,13 +43,14 @@ def status(request):
         'endpoints': {
             'status': '/clawdbot/',
             'health': '/clawdbot/health/',
+            'customers': '/clawdbot/customers/',
+            'repairs': '/clawdbot/repairs/<customer_id>/',
             'invoices': {
                 'preview': '/clawdbot/invoices/preview/<customer_id>/',
                 'generate': '/clawdbot/invoices/generate/<customer_id>/',
+                'saved': '/clawdbot/invoices/saved/',
+                'download': '/clawdbot/invoices/download/<filename>/',
             },
-            'repairs': {
-                'list': '/clawdbot/repairs/<customer_id>/',
-            }
         }
     })
 
@@ -219,6 +225,12 @@ def invoice_preview(request, customer_id):
             'email': invoice_data.customer_email,
             'address': invoice_data.customer_address,
         },
+        'company': {
+            'name': service.COMPANY_NAME,
+            'phone': service.COMPANY_PHONE,
+            'email': service.COMPANY_EMAIL,
+            'address': service.COMPANY_ADDRESS,
+        },
         'line_items': [
             {
                 'repair_id': item.repair_id,
@@ -249,6 +261,7 @@ def generate_invoice(request, customer_id):
     Query params:
         - repair_ids: Comma-separated repair IDs (optional)
         - days: Number of days to look back (default: 30)
+        - save: If 'true', also save to disk (default: false)
     """
     from apps.clawdbot.services.invoice_service import InvoiceService
     
@@ -264,6 +277,7 @@ def generate_invoice(request, customer_id):
     
     days = int(request.GET.get('days', 30))
     start_date = timezone.now() - timedelta(days=days)
+    save_to_disk = request.GET.get('save', 'false').lower() == 'true'
     
     # Generate invoice
     service = InvoiceService()
@@ -282,9 +296,67 @@ def generate_invoice(request, customer_id):
             'customer': customer.name,
         }, status=404)
     
+    # Optionally save to disk
+    if save_to_disk:
+        os.makedirs(INVOICE_DIR, exist_ok=True)
+        filename = f"{customer.name.replace(' ', '_')}_{invoice_data.invoice_number}.pdf"
+        filepath = os.path.join(INVOICE_DIR, filename)
+        with open(filepath, 'wb') as f:
+            f.write(pdf_bytes)
+    
     # Return PDF
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     filename = f"invoice_{customer.name.replace(' ', '_')}_{invoice_data.invoice_number}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     
     return response
+
+
+@require_GET
+def list_saved_invoices(request):
+    """
+    List all saved invoices on disk.
+    """
+    if not os.path.exists(INVOICE_DIR):
+        return JsonResponse({'invoices': [], 'count': 0})
+    
+    invoices = []
+    for filename in os.listdir(INVOICE_DIR):
+        if filename.endswith('.pdf'):
+            filepath = os.path.join(INVOICE_DIR, filename)
+            stat = os.stat(filepath)
+            invoices.append({
+                'filename': filename,
+                'size_bytes': stat.st_size,
+                'created': datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                'download_url': f'/clawdbot/invoices/download/{filename}/',
+            })
+    
+    invoices.sort(key=lambda x: x['created'], reverse=True)
+    
+    return JsonResponse({
+        'invoices': invoices,
+        'count': len(invoices),
+    })
+
+
+@require_GET
+def download_saved_invoice(request, filename):
+    """
+    Download a previously saved invoice.
+    """
+    # Security: prevent directory traversal
+    if '..' in filename or '/' in filename:
+        return JsonResponse({'error': 'Invalid filename'}, status=400)
+    
+    filepath = os.path.join(INVOICE_DIR, filename)
+    
+    if not os.path.exists(filepath):
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+    
+    return FileResponse(
+        open(filepath, 'rb'),
+        content_type='application/pdf',
+        as_attachment=True,
+        filename=filename
+    )

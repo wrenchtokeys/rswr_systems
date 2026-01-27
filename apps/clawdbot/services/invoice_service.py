@@ -90,15 +90,34 @@ class InvoiceService:
         )
     """
     
-    # Company info (could be moved to settings or DB config)
-    COMPANY_NAME = "Rockstar Windshield Repair"
-    COMPANY_ADDRESS = ""  # Will be configured
-    COMPANY_PHONE = ""
-    COMPANY_EMAIL = ""
-    
     def __init__(self):
+        # Load company info from EmailBrandingConfig
+        self._load_branding_config()
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
+    
+    def _load_branding_config(self):
+        """Load company info from EmailBrandingConfig or use defaults"""
+        try:
+            from core.models.email_branding import EmailBrandingConfig
+            config = EmailBrandingConfig.get_instance()
+            self.COMPANY_NAME = config.company_name or "Rockstar Windshield Repair"
+            self.COMPANY_ADDRESS = config.company_address or ""
+            self.COMPANY_PHONE = config.support_phone or ""
+            self.COMPANY_EMAIL = config.support_email or ""
+            self.COMPANY_WEBSITE = config.website_url or ""
+            # Colors for styling
+            self.PRIMARY_COLOR = config.primary_color or "#1a1a2e"
+            self.SECONDARY_COLOR = config.secondary_color or "#16213e"
+        except Exception as e:
+            # Fallback to defaults if config not available
+            self.COMPANY_NAME = "Rockstar Windshield Repair"
+            self.COMPANY_ADDRESS = ""
+            self.COMPANY_PHONE = ""
+            self.COMPANY_EMAIL = ""
+            self.COMPANY_WEBSITE = ""
+            self.PRIMARY_COLOR = "#1a1a2e"
+            self.SECONDARY_COLOR = "#16213e"
     
     def _setup_custom_styles(self):
         """Set up custom paragraph styles for the invoice"""
