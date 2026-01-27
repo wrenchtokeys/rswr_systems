@@ -3,16 +3,18 @@ Invoice Generation Service for RS Systems
 
 Generates PDF invoices from repair data, including:
 - Customer and repair details
-- Before/after photos (resized, not cropped)
+- Company logo from EmailBrandingConfig
 - Pricing with discounts applied
 - Batch and single-repair invoice support
 
 Author: Amelia (Clawdbot AI)
 Created: 2026-01-27
+Updated: 2026-01-27 - Royal blue styling, logo support
 """
 
 import io
 import os
+import urllib.request
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional, Dict, Any, Tuple
@@ -36,6 +38,11 @@ from PIL import Image
 
 from core.models import Customer
 from apps.technician_portal.models import Repair
+
+
+# Royal Blue color for better readability
+ROYAL_BLUE = "#4169E1"
+LIGHT_BLUE = "#E8F0FE"
 
 
 @dataclass
@@ -97,7 +104,9 @@ class InvoiceService:
         self._setup_custom_styles()
     
     def _load_branding_config(self):
-        """Load company info from EmailBrandingConfig or use defaults"""
+        """Load company info and logo from EmailBrandingConfig or use defaults"""
+        self.logo_path = None
+        
         try:
             from core.models.email_branding import EmailBrandingConfig
             config = EmailBrandingConfig.get_instance()
@@ -106,18 +115,83 @@ class InvoiceService:
             self.COMPANY_PHONE = config.support_phone or ""
             self.COMPANY_EMAIL = config.support_email or ""
             self.COMPANY_WEBSITE = config.website_url or ""
-            # Colors for styling
-            self.PRIMARY_COLOR = config.primary_color or "#1a1a2e"
-            self.SECONDARY_COLOR = config.secondary_color or "#16213e"
+            
+            # Colors - use secondary color for headers (more readable)
+            self.HEADER_COLOR = config.secondary_color or ROYAL_BLUE
+            self.PRIMARY_COLOR = config.primary_color or "#2C5282"
+            
+            # Logo - try to get the file path or URL
+            if config.logo:
+                try:
+                    # Try local file path first
+                    if hasattr(config.logo, 'path') and os.path.exists(config.logo.path):
+                        self.logo_path = config.logo.path
+                    else:
+                        # Get URL for S3/remote storage
+                        self.logo_url = config.logo.url
+                except Exception as e:
+                    print(f"Could not load logo path: {e}")
+                    
         except Exception as e:
             # Fallback to defaults if config not available
+            print(f"Could not load branding config: {e}")
             self.COMPANY_NAME = "Rockstar Windshield Repair"
             self.COMPANY_ADDRESS = ""
             self.COMPANY_PHONE = ""
             self.COMPANY_EMAIL = ""
             self.COMPANY_WEBSITE = ""
-            self.PRIMARY_COLOR = "#1a1a2e"
-            self.SECONDARY_COLOR = "#16213e"
+            self.HEADER_COLOR = ROYAL_BLUE
+            self.PRIMARY_COLOR = "#2C5282"
+    
+    def _get_logo_for_pdf(self, max_width=2*inch, max_height=0.75*inch):
+        """
+        Get logo as a ReportLab Image object, properly sized.
+        
+        Returns:
+            RLImage or None if no logo available
+        """
+        if not hasattr(self, 'logo_path') and not hasattr(self, 'logo_url'):
+            return None
+            
+        try:
+            # Try local path first
+            if hasattr(self, 'logo_path') and self.logo_path and os.path.exists(self.logo_path):
+                img = RLImage(self.logo_path)
+            elif hasattr(self, 'logo_url') and self.logo_url:
+                # Download from URL to temp file
+                if self.logo_url.startswith('http'):
+                    # Remote URL
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                        urllib.request.urlretrieve(self.logo_url, tmp.name)
+                        img = RLImage(tmp.name)
+                else:
+                    # Local media URL - construct full path
+                    media_root = getattr(settings, 'MEDIA_ROOT', '')
+                    full_path = os.path.join(media_root, self.logo_url.lstrip('/media/'))
+                    if os.path.exists(full_path):
+                        img = RLImage(full_path)
+                    else:
+                        return None
+            else:
+                return None
+            
+            # Calculate aspect ratio and size
+            aspect = img.imageWidth / img.imageHeight
+            if aspect > (max_width / max_height):
+                # Width-constrained
+                img.drawWidth = max_width
+                img.drawHeight = max_width / aspect
+            else:
+                # Height-constrained
+                img.drawHeight = max_height
+                img.drawWidth = max_height * aspect
+                
+            return img
+            
+        except Exception as e:
+            print(f"Error loading logo for PDF: {e}")
+            return None
     
     def _setup_custom_styles(self):
         """Set up custom paragraph styles for the invoice"""
@@ -125,9 +199,9 @@ class InvoiceService:
             name='InvoiceTitle',
             parent=self.styles['Heading1'],
             fontSize=24,
-            spaceAfter=30,
+            spaceAfter=10,
             alignment=TA_CENTER,
-            textColor=colors.HexColor('#1a1a2e')
+            textColor=colors.HexColor(self.PRIMARY_COLOR)
         ))
         
         self.styles.add(ParagraphStyle(
@@ -136,7 +210,7 @@ class InvoiceService:
             fontSize=14,
             spaceBefore=20,
             spaceAfter=10,
-            textColor=colors.HexColor('#16213e')
+            textColor=colors.HexColor(self.PRIMARY_COLOR)
         ))
         
         self.styles.add(ParagraphStyle(
@@ -161,7 +235,16 @@ class InvoiceService:
             fontSize=16,
             fontName='Helvetica-Bold',
             alignment=TA_RIGHT,
-            textColor=colors.HexColor('#1a1a2e')
+            textColor=colors.HexColor(self.PRIMARY_COLOR)
+        ))
+        
+        # White text style for table headers
+        self.styles.add(ParagraphStyle(
+            name='TableHeader',
+            parent=self.styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            textColor=colors.white
         ))
     
     def get_completed_repairs(
@@ -284,36 +367,6 @@ class InvoiceService:
             total=total
         )
     
-    def _resize_image_for_invoice(self, image_path: str, max_width: int = 150, max_height: int = 150) -> Optional[io.BytesIO]:
-        """
-        Resize an image for invoice embedding (maintains aspect ratio).
-        
-        Args:
-            image_path: Path to the image file
-            max_width: Maximum width in pixels
-            max_height: Maximum height in pixels
-            
-        Returns:
-            BytesIO buffer with resized image, or None if failed
-        """
-        try:
-            with Image.open(image_path) as img:
-                # Convert to RGB if necessary (handles RGBA, etc.)
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    img = img.convert('RGB')
-                
-                # Calculate new size maintaining aspect ratio
-                img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
-                
-                # Save to buffer
-                buffer = io.BytesIO()
-                img.save(buffer, format='JPEG', quality=85)
-                buffer.seek(0)
-                return buffer
-        except Exception as e:
-            print(f"Error resizing image {image_path}: {e}")
-            return None
-    
     def generate_pdf(self, invoice_data: InvoiceData, include_photos: bool = True) -> bytes:
         """
         Generate PDF invoice from InvoiceData.
@@ -337,26 +390,51 @@ class InvoiceService:
         
         story = []
         
-        # Header / Company Info
-        story.append(Paragraph(
-            f"<b>{self.COMPANY_NAME}</b>",
-            self.styles['InvoiceTitle']
-        ))
+        # Logo (if available)
+        logo = self._get_logo_for_pdf()
+        if logo:
+            story.append(logo)
+            story.append(Spacer(1, 10))
         
-        if self.COMPANY_ADDRESS or self.COMPANY_PHONE or self.COMPANY_EMAIL:
-            company_info = []
-            if self.COMPANY_ADDRESS:
-                company_info.append(self.COMPANY_ADDRESS)
-            if self.COMPANY_PHONE:
-                company_info.append(self.COMPANY_PHONE)
-            if self.COMPANY_EMAIL:
-                company_info.append(self.COMPANY_EMAIL)
+        # Header / Company Name (only if no logo, or as subtitle)
+        if not logo:
             story.append(Paragraph(
-                ' | '.join(company_info),
+                f"<b>{self.COMPANY_NAME}</b>",
+                self.styles['InvoiceTitle']
+            ))
+        
+        # Company contact info
+        contact_parts = []
+        if self.COMPANY_PHONE:
+            contact_parts.append(self.COMPANY_PHONE)
+        if self.COMPANY_EMAIL:
+            contact_parts.append(self.COMPANY_EMAIL)
+        if self.COMPANY_WEBSITE:
+            contact_parts.append(self.COMPANY_WEBSITE)
+        if self.COMPANY_ADDRESS:
+            contact_parts.append(self.COMPANY_ADDRESS)
+            
+        if contact_parts:
+            story.append(Paragraph(
+                ' | '.join(contact_parts),
                 self.styles['CompanyInfo']
             ))
         
         story.append(Spacer(1, 20))
+        
+        # INVOICE header
+        story.append(Paragraph(
+            "<b>INVOICE</b>",
+            ParagraphStyle(
+                name='InvoiceHeader',
+                parent=self.styles['Heading1'],
+                fontSize=18,
+                alignment=TA_CENTER,
+                textColor=colors.HexColor(self.HEADER_COLOR)
+            )
+        ))
+        
+        story.append(Spacer(1, 15))
         
         # Invoice Info and Customer Info side by side
         invoice_info = [
@@ -368,11 +446,13 @@ class InvoiceService:
                 Paragraph(f"<b>Date:</b> {invoice_data.invoice_date.strftime('%B %d, %Y')}", self.styles['Normal']),
                 Paragraph(f"{invoice_data.customer_name}", self.styles['CustomerInfo'])
             ],
-            [
-                Paragraph("", self.styles['Normal']),
-                Paragraph(f"{invoice_data.customer_email or ''}", self.styles['CustomerInfo'])
-            ]
         ]
+        
+        if invoice_data.customer_email:
+            invoice_info.append([
+                Paragraph("", self.styles['Normal']),
+                Paragraph(f"{invoice_data.customer_email}", self.styles['CustomerInfo'])
+            ])
         
         if invoice_data.customer_address:
             invoice_info.append([
@@ -387,25 +467,26 @@ class InvoiceService:
             ('ALIGN', (1, 0), (1, -1), 'LEFT'),
         ]))
         story.append(info_table)
-        story.append(Spacer(1, 30))
+        story.append(Spacer(1, 25))
         
         # Line Items Table
         story.append(Paragraph("Repair Details", self.styles['SectionHeader']))
         
-        # Table header
+        # Table header - using royal blue background with white text
+        header_style = self.styles['TableHeader']
         table_data = [[
-            Paragraph("<b>Unit #</b>", self.styles['Normal']),
-            Paragraph("<b>Date</b>", self.styles['Normal']),
-            Paragraph("<b>Type</b>", self.styles['Normal']),
-            Paragraph("<b>Description</b>", self.styles['Normal']),
-            Paragraph("<b>Amount</b>", self.styles['Normal'])
+            Paragraph("<b>Unit #</b>", header_style),
+            Paragraph("<b>Date</b>", header_style),
+            Paragraph("<b>Type</b>", header_style),
+            Paragraph("<b>Description</b>", header_style),
+            Paragraph("<b>Amount</b>", header_style)
         ]]
         
         # Table rows
         for item in invoice_data.line_items:
             amount_text = f"${item.final_cost:.2f}"
             if item.discount_description:
-                amount_text = f"<strike>${item.original_cost:.2f}</strike><br/>${item.final_cost:.2f}<br/><i>({item.discount_description})</i>"
+                amount_text = f"<strike>${item.original_cost:.2f}</strike><br/>${item.final_cost:.2f}<br/><font size='8'><i>({item.discount_description})</i></font>"
             
             table_data.append([
                 Paragraph(item.unit_number, self.styles['Normal']),
@@ -415,26 +496,28 @@ class InvoiceService:
                 Paragraph(amount_text, self.styles['Normal'])
             ])
         
-        # Create and style the table
+        # Create and style the table with ROYAL BLUE header
         line_items_table = Table(
             table_data,
-            colWidths=[1*inch, 0.9*inch, 1*inch, 2.6*inch, 1*inch]
+            colWidths=[1*inch, 0.9*inch, 1.1*inch, 2.5*inch, 1*inch]
         )
+        
         line_items_table.setStyle(TableStyle([
-            # Header styling
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
+            # Header styling - ROYAL BLUE background with white text
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(self.HEADER_COLOR)),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
             
-            # Alternating row colors
-            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            # Alternating row colors - light blue / white
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor(LIGHT_BLUE)]),
             
-            # Grid
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            # Grid - light gray lines
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cccccc')),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor(self.HEADER_COLOR)),
             
             # Alignment
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('ALIGN', (-1, 0), (-1, -1), 'RIGHT'),  # Amount column right-aligned
             
             # Padding
@@ -472,7 +555,7 @@ class InvoiceService:
         totals_table.setStyle(TableStyle([
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-            ('LINEABOVE', (1, -1), (-1, -1), 1, colors.HexColor('#1a1a2e')),
+            ('LINEABOVE', (1, -1), (-1, -1), 2, colors.HexColor(self.HEADER_COLOR)),
             ('TOPPADDING', (0, 0), (-1, -1), 5),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
         ]))
