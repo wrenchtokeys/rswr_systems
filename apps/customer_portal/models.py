@@ -27,7 +27,7 @@ class CustomerPreference(models.Model):
         return f"Preferences for {self.customer.name}"
 
 class CustomerRepairPreference(models.Model):
-    """Stores customer preferences for field repair approval workflow"""
+    """Stores customer preferences for field repair approval workflow and invoicing"""
 
     APPROVAL_MODE_CHOICES = [
         ('AUTO_APPROVE', 'Auto-approve all field repairs'),
@@ -40,6 +40,13 @@ class CustomerRepairPreference(models.Model):
         ('BIWEEKLY', 'Bi-weekly (Every 2 weeks)'),
         ('MONTHLY', 'Monthly'),
         ('QUARTERLY', 'Quarterly (Every 3 months)'),
+    ]
+
+    # Invoice preference choices
+    INVOICE_PREFERENCE_CHOICES = [
+        ('per_ticket', 'Invoice per repair (auto-generate when completed)'),
+        ('batch', 'Batch invoicing (group repairs together)'),
+        ('manual', 'Manual only (never auto-generate)'),
     ]
 
     customer = models.OneToOneField(Customer, on_delete=models.CASCADE, related_name='repair_preferences')
@@ -85,6 +92,27 @@ class CustomerRepairPreference(models.Model):
         default=list,
         blank=True,
         help_text="Preferred days of week for lot walking (stored as list)"
+    )
+
+    # Invoice preferences
+    invoice_preference = models.CharField(
+        max_length=20,
+        choices=INVOICE_PREFERENCE_CHOICES,
+        default='batch',
+        help_text="How should invoices be generated for this customer?"
+    )
+    billing_email = models.EmailField(
+        null=True,
+        blank=True,
+        help_text="Email for invoices (uses customer email if blank)"
+    )
+    auto_email_invoices = models.BooleanField(
+        default=False,
+        help_text="Automatically email invoices when generated?"
+    )
+    include_photos_in_invoice = models.BooleanField(
+        default=True,
+        help_text="Include repair photos in invoice emails?"
     )
 
     # Tracking

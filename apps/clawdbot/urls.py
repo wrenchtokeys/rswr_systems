@@ -24,4 +24,8 @@ urlpatterns = [
     path('invoices/email/<int:customer_id>/', views.send_invoice_email, name='invoice_email'),
     path('invoices/saved/', views.list_saved_invoices, name='invoices_saved'),
     path('invoices/download/<str:filename>/', views.download_saved_invoice, name='invoice_download'),
+    
+    # Customer invoice preferences (GET to read, POST to update)
+    path('preferences/<int:customer_id>/', views.get_invoice_preferences, name='preferences_get'),
+    path('preferences/<int:customer_id>/update/', views.update_invoice_preferences, name='preferences_update'),
 ]

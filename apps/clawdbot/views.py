@@ -34,11 +34,14 @@ def status(request):
     return JsonResponse({
         'status': 'online',
         'name': 'Amelia',
-        'version': '0.3.0',
+        'version': '0.4.0',
         'capabilities': [
             'invoice_generation',
+            'auto_invoice_on_completion',
+            'customer_invoice_preferences',
             'repair_queries',
             'health_checks',
+            's3_invoice_storage',
         ],
         'endpoints': {
             'status': '/clawdbot/',
@@ -48,8 +51,13 @@ def status(request):
             'invoices': {
                 'preview': '/clawdbot/invoices/preview/<customer_id>/',
                 'generate': '/clawdbot/invoices/generate/<customer_id>/',
+                'email': '/clawdbot/invoices/email/<customer_id>/',
                 'saved': '/clawdbot/invoices/saved/',
                 'download': '/clawdbot/invoices/download/<filename>/',
+            },
+            'preferences': {
+                'get': '/clawdbot/preferences/<customer_id>/',
+                'update': '/clawdbot/preferences/<customer_id>/update/',
             },
         }
     })
@@ -399,3 +407,112 @@ def download_saved_invoice(request, filename):
         as_attachment=True,
         filename=filename
     )
+
+
+@require_GET
+def get_invoice_preferences(request, customer_id):
+    """
+    Get invoice preferences for a customer.
+    
+    Returns current invoice settings including:
+    - invoice_preference (per_ticket, batch, manual)
+    - billing_email
+    - auto_email_invoices
+    - include_photos_in_invoice
+    """
+    try:
+        customer = Customer.objects.get(id=customer_id)
+    except Customer.DoesNotExist:
+        return JsonResponse({'error': 'Customer not found'}, status=404)
+    
+    # Get or create preferences
+    from apps.customer_portal.models import CustomerRepairPreference
+    prefs, created = CustomerRepairPreference.objects.get_or_create(
+        customer=customer,
+        defaults={'invoice_preference': 'batch'}
+    )
+    
+    return JsonResponse({
+        'customer': {
+            'id': customer.id,
+            'name': customer.name,
+            'email': customer.email,
+        },
+        'invoice_settings': {
+            'invoice_preference': prefs.invoice_preference,
+            'invoice_preference_display': prefs.get_invoice_preference_display(),
+            'billing_email': prefs.billing_email,
+            'auto_email_invoices': prefs.auto_email_invoices,
+            'include_photos_in_invoice': prefs.include_photos_in_invoice,
+        },
+        'created': created,
+    })
+
+
+@csrf_exempt
+@require_POST
+def update_invoice_preferences(request, customer_id):
+    """
+    Update invoice preferences for a customer.
+    
+    POST body (JSON):
+    {
+        "invoice_preference": "per_ticket" | "batch" | "manual",
+        "billing_email": "billing@example.com" (optional),
+        "auto_email_invoices": true | false,
+        "include_photos_in_invoice": true | false
+    }
+    """
+    try:
+        customer = Customer.objects.get(id=customer_id)
+    except Customer.DoesNotExist:
+        return JsonResponse({'error': 'Customer not found'}, status=404)
+    
+    # Parse JSON body
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON body'}, status=400)
+    
+    # Get or create preferences
+    from apps.customer_portal.models import CustomerRepairPreference
+    prefs, created = CustomerRepairPreference.objects.get_or_create(
+        customer=customer,
+        defaults={'invoice_preference': 'batch'}
+    )
+    
+    # Update fields if provided
+    valid_preferences = ['per_ticket', 'batch', 'manual']
+    
+    if 'invoice_preference' in data:
+        if data['invoice_preference'] not in valid_preferences:
+            return JsonResponse({
+                'error': f"Invalid invoice_preference. Must be one of: {valid_preferences}"
+            }, status=400)
+        prefs.invoice_preference = data['invoice_preference']
+    
+    if 'billing_email' in data:
+        prefs.billing_email = data['billing_email'] or None
+    
+    if 'auto_email_invoices' in data:
+        prefs.auto_email_invoices = bool(data['auto_email_invoices'])
+    
+    if 'include_photos_in_invoice' in data:
+        prefs.include_photos_in_invoice = bool(data['include_photos_in_invoice'])
+    
+    prefs.save()
+    
+    return JsonResponse({
+        'success': True,
+        'customer': {
+            'id': customer.id,
+            'name': customer.name,
+        },
+        'invoice_settings': {
+            'invoice_preference': prefs.invoice_preference,
+            'invoice_preference_display': prefs.get_invoice_preference_display(),
+            'billing_email': prefs.billing_email,
+            'auto_email_invoices': prefs.auto_email_invoices,
+            'include_photos_in_invoice': prefs.include_photos_in_invoice,
+        },
+    })
