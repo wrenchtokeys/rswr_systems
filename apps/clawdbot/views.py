@@ -1,4 +1,3 @@
-import os
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 
@@ -12,7 +11,6 @@ def status(request):
     return JsonResponse({
         'status': 'online',
         'name': 'Clawdbot',
-        'email': os.environ.get('CLAWDBOT_EMAIL', ''),
         'capabilities': [
             'web_browsing',
             'email',
@@ -31,9 +29,20 @@ def status(request):
 def health(request):
     """
     Clawdbot health check endpoint.
-    Returns a simple health status for monitoring.
+    Returns actual health status by checking database connectivity.
     """
-    return JsonResponse({
-        'healthy': True,
-        'service': 'clawdbot',
-    })
+    from django.db import connection
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        return JsonResponse({
+            'healthy': True,
+            'service': 'clawdbot',
+            'database': 'connected',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'healthy': False,
+            'service': 'clawdbot',
+            'database': 'error',
+        }, status=503)
