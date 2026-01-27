@@ -143,7 +143,7 @@ class InvoiceService:
             self.HEADER_COLOR = ROYAL_BLUE
             self.PRIMARY_COLOR = "#2C5282"
     
-    def _get_logo_for_pdf(self, max_width=2*inch, max_height=0.75*inch):
+    def _get_logo_for_pdf(self, max_width=3*inch, max_height=1.2*inch):
         """
         Get logo as a ReportLab Image object, properly sized.
         
@@ -286,12 +286,23 @@ class InvoiceService:
         """Convert a Repair object to an InvoiceLineItem"""
         discounted = repair.get_discounted_cost()
         
+        # Combine all notes into description
+        description_parts = []
+        if repair.description:
+            description_parts.append(repair.description)
+        if repair.technician_notes:
+            description_parts.append(repair.technician_notes)
+        if repair.customer_notes:
+            description_parts.append(f"Customer: {repair.customer_notes}")
+        
+        full_description = ' | '.join(description_parts) if description_parts else ''
+        
         return InvoiceLineItem(
             repair_id=repair.id,
             unit_number=repair.unit_number,
             damage_type=repair.get_damage_type_display() or 'Repair',
             repair_date=repair.repair_date,
-            description=repair.description or '',
+            description=full_description,
             original_cost=discounted['original_cost'],
             final_cost=discounted['final_cost'],
             discount_description=discounted['discount_description'] if discounted['discount_applied'] else '',
@@ -488,11 +499,14 @@ class InvoiceService:
             if item.discount_description:
                 amount_text = f"<strike>${item.original_cost:.2f}</strike><br/>${item.final_cost:.2f}<br/><font size='8'><i>({item.discount_description})</i></font>"
             
+            # Show full description (notes included)
+            desc_text = item.description if item.description else ''
+            
             table_data.append([
                 Paragraph(item.unit_number, self.styles['Normal']),
                 Paragraph(item.repair_date.strftime('%m/%d/%y'), self.styles['Normal']),
                 Paragraph(item.damage_type, self.styles['Normal']),
-                Paragraph(item.description[:50] + '...' if len(item.description) > 50 else item.description, self.styles['Normal']),
+                Paragraph(desc_text, self.styles['Normal']),
                 Paragraph(amount_text, self.styles['Normal'])
             ])
         
