@@ -341,6 +341,45 @@ def list_saved_invoices(request):
 
 
 @require_GET
+def send_invoice_email(request, customer_id):
+    """
+    Send invoice email with PDF and photo attachments.
+    
+    Query params:
+        - email: Recipient email (required)
+        - days: Number of days to look back (default: 30)
+        - photos: Include photos (default: true)
+        - repair_ids: Comma-separated repair IDs (optional)
+    """
+    from apps.clawdbot.services.invoice_email_service import InvoiceEmailService
+    
+    recipient_email = request.GET.get('email')
+    if not recipient_email:
+        return JsonResponse({'error': 'email parameter required'}, status=400)
+    
+    days = int(request.GET.get('days', 30))
+    include_photos = request.GET.get('photos', 'true').lower() == 'true'
+    
+    repair_ids = request.GET.get('repair_ids')
+    if repair_ids:
+        repair_ids = [int(x.strip()) for x in repair_ids.split(',')]
+    
+    service = InvoiceEmailService()
+    success, message = service.send_invoice_email(
+        customer_id=customer_id,
+        recipient_email=recipient_email,
+        repair_ids=repair_ids,
+        days=days,
+        include_photos=include_photos
+    )
+    
+    if success:
+        return JsonResponse({'success': True, 'message': message})
+    else:
+        return JsonResponse({'success': False, 'error': message}, status=400)
+
+
+@require_GET
 def download_saved_invoice(request, filename):
     """
     Download a previously saved invoice.
