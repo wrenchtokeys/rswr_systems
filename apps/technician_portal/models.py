@@ -177,9 +177,28 @@ class UnitRepairCount(models.Model):
         return f"{self.customer.name} - Unit #{self.unit_number} - Repairs: {self.repair_count}"
 
 class Repair(models.Model):
+    """
+    A glass service job — either a repair or replacement.
+    
+    This model handles BOTH service types:
+    - REPAIR: Chip/crack fix (existing behavior, progressive pricing)
+    - REPLACEMENT: Full glass swap (flat rate + parts, insurance fields)
+    
+    Works with ALL customer types:
+    - Fleet: identified by unit_number
+    - Retail: identified by vehicle (year/make/model)
+    - Walk-in: minimal info
+    """
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.original_status = self.queue_status
+    
+    # Service type (repair vs replacement)
+    SERVICE_TYPE_CHOICES = [
+        ('REPAIR', 'Windshield Repair'),
+        ('REPLACEMENT', 'Glass Replacement'),
+    ]
         
     QUEUE_CHOICES = [
         ('REQUESTED', 'Customer Requested'),
@@ -200,10 +219,38 @@ class Repair(models.Model):
         ('Half-Moon', 'Half-Moon'),
         ('Other', 'Other'),
     ]
+    
+    # Glass position choices (for replacements)
+    GLASS_POSITION_CHOICES = [
+        ('WINDSHIELD', 'Windshield'),
+        ('FRONT_LEFT', 'Front Left Window'),
+        ('FRONT_RIGHT', 'Front Right Window'),
+        ('REAR_LEFT', 'Rear Left Window'),
+        ('REAR_RIGHT', 'Rear Right Window'),
+        ('REAR', 'Rear Window'),
+        ('QUARTER_LEFT', 'Left Quarter Glass'),
+        ('QUARTER_RIGHT', 'Right Quarter Glass'),
+        ('SUNROOF', 'Sunroof / Moonroof'),
+        ('OTHER', 'Other'),
+    ]
 
+    # --- Core fields ---
+    service_type = models.CharField(
+        max_length=15,
+        choices=SERVICE_TYPE_CHOICES,
+        default='REPAIR',
+        db_index=True,
+        help_text="Repair = chip/crack fix. Replacement = full glass swap."
+    )
     technician = models.ForeignKey(Technician, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True)
-    unit_number = models.CharField(max_length=50)
+    vehicle = models.ForeignKey(
+        'core.Vehicle', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='repairs',
+        help_text="Link to vehicle record (optional — unit_number still works for fleets)"
+    )
+    unit_number = models.CharField(max_length=50)  # Kept for backward compat + fleet use
     repair_date = models.DateTimeField(default=timezone.now)
     description = models.TextField(blank=True, null=True)
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -288,6 +335,70 @@ class Repair(models.Model):
         help_text="True if customer indicated multiple breaks exist but didn't specify exact count"
     )
 
+    # =========================================================================
+    # REPLACEMENT-SPECIFIC FIELDS (only used when service_type = REPLACEMENT)
+    # =========================================================================
+    
+    glass_position = models.CharField(
+        max_length=20,
+        choices=GLASS_POSITION_CHOICES,
+        blank=True,
+        help_text="Which glass is being replaced (windshield, side, rear, etc.)"
+    )
+    glass_type = models.CharField(
+        max_length=15,
+        choices=[('OEM', 'OEM'), ('AFTERMARKET', 'Aftermarket'), ('', 'Not specified')],
+        blank=True,
+        help_text="OEM = original manufacturer glass. Aftermarket = third-party."
+    )
+    nags_number = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="NAGS part number for the glass (industry standard identifier)"
+    )
+    parts_cost = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Cost of replacement glass and materials"
+    )
+    labor_cost = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Labor cost for replacement"
+    )
+    requires_adas_calibration = models.BooleanField(
+        default=False,
+        help_text="Does this replacement require ADAS sensor recalibration?"
+    )
+    adas_calibration_cost = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Cost for ADAS recalibration if required"
+    )
+    
+    # Insurance fields (used for both repair and replacement)
+    insurance_claim = models.BooleanField(
+        default=False,
+        help_text="Is this an insurance claim?"
+    )
+    insurance_company = models.CharField(
+        max_length=100, blank=True,
+        help_text="Insurance company name"
+    )
+    claim_number = models.CharField(
+        max_length=50, blank=True,
+        help_text="Insurance claim number"
+    )
+    deductible = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Customer's deductible amount"
+    )
+    authorization_number = models.CharField(
+        max_length=50, blank=True,
+        help_text="Insurance authorization/approval number"
+    )
+
     def save(self, *args, **kwargs):
         # BATCH INTEGRITY VALIDATION: Ensure batch data is consistent
         if self.repair_batch_id:
@@ -329,8 +440,26 @@ class Repair(models.Model):
                 defaults={'repair_count': 0}
             )
 
-            # Handle completed repairs
-            if self.queue_status == 'COMPLETED':
+            # --- REPLACEMENT PRICING ---
+            # Replacements use parts + labor + ADAS, not progressive repair pricing
+            if self.service_type == 'REPLACEMENT':
+                if self.cost_override is not None:
+                    self.cost = self.cost_override
+                else:
+                    from decimal import Decimal
+                    total = Decimal('0.00')
+                    if self.parts_cost:
+                        total += self.parts_cost
+                    if self.labor_cost:
+                        total += self.labor_cost
+                    if self.requires_adas_calibration and self.adas_calibration_cost:
+                        total += self.adas_calibration_cost
+                    if total > 0:
+                        self.cost = total
+                    # else: keep existing cost (may have been set manually)
+            
+            # --- REPAIR PRICING (existing progressive logic) ---
+            elif self.queue_status == 'COMPLETED':
                 if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
                     unit_repair_count.repair_count += 1
                     unit_repair_count.save()
@@ -347,15 +476,9 @@ class Repair(models.Model):
                 if self.cost_override is not None:
                     self.cost = self.cost_override
                 # BATCH REPAIR FIX: Preserve pre-calculated batch pricing
-                # If this repair is part of a batch (has repair_batch_id), the cost
-                # has already been calculated with progressive pricing in the batch
-                # creation view. Don't recalculate or it will overwrite correct pricing.
                 elif self.repair_batch_id is not None:
-                    # Keep the pre-calculated batch price - don't recalculate
                     pass
                 else:
-                    # Calculate expected cost for next repair (current count + 1)
-                    # Only for individual repairs (not part of a batch)
                     from .services.pricing_service import calculate_repair_cost
                     next_repair_count = unit_repair_count.repair_count + 1
                     self.cost = calculate_repair_cost(self.customer, next_repair_count)

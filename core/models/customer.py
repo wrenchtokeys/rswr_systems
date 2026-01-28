@@ -3,6 +3,35 @@ from django.core.validators import RegexValidator
 
 
 class Customer(models.Model):
+    """
+    A customer account. Supports three types:
+    
+    FLEET:    Business with multiple vehicles (EOS Trucking, Penske)
+              Identified by business name. Has unit numbers for vehicles.
+              Billed on account. Existing behavior.
+              
+    RETAIL:   Individual person with their own vehicle (John's F-150)
+              Identified by person name. Has vehicle details.
+              Usually one-time or occasional service.
+              
+    WALK_IN:  One-time customer with minimal info.
+              Quick service, minimal data capture needed.
+    """
+    
+    CUSTOMER_TYPE_CHOICES = [
+        ('FLEET', 'Fleet Account'),
+        ('RETAIL', 'Individual / Retail'),
+        ('WALK_IN', 'Walk-In'),
+    ]
+    
+    customer_type = models.CharField(
+        max_length=10,
+        choices=CUSTOMER_TYPE_CHOICES,
+        default='FLEET',
+        db_index=True,
+        help_text="Fleet = business account. Retail = individual person. Walk-in = one-time."
+    )
+    
     name = models.CharField(max_length=100, unique=True)
     email = models.EmailField(unique=True, null=True, blank=True)
     phone = models.CharField(

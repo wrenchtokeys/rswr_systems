@@ -4,8 +4,9 @@ Core models for the RS Systems.
 This module exports all core models for easy import.
 """
 
-# Import Customer model
+# Import Customer and Vehicle models
 from .customer import Customer
+from .vehicle import Vehicle
 
 # Import notification models
 from .notification import Notification
@@ -20,6 +21,7 @@ from .email_branding import EmailBrandingConfig
 
 __all__ = [
     'Customer',
+    'Vehicle',
     'Notification',
     'BaseNotificationPreference',
     'TechnicianNotificationPreference',
