@@ -21,7 +21,7 @@ from django.utils import timezone
 import json
 
 from core.models import Customer
-from apps.technician_portal.models import Repair
+from apps.technician_portal.models import Repair, Replacement
 
 
 # =============================================================================

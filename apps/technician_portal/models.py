@@ -176,31 +176,20 @@ class UnitRepairCount(models.Model):
     def __str__(self):
         return f"{self.customer.name} - Unit #{self.unit_number} - Repairs: {self.repair_count}"
 
-class Repair(models.Model):
+
+# =============================================================================
+# ABSTRACT BASE CLASS: GlassService
+# =============================================================================
+
+class GlassService(models.Model):
     """
-    A glass service job — either a repair or replacement.
+    Abstract base class for all glass service types (repairs and replacements).
     
-    This model handles BOTH service types:
-    - REPAIR: Chip/crack fix (existing behavior, progressive pricing)
-    - REPLACEMENT: Full glass swap (flat rate + parts, insurance fields)
-    
-    Works with ALL customer types:
-    - Fleet: identified by unit_number
-    - Retail: identified by vehicle (year/make/model)
-    - Walk-in: minimal info
+    Contains shared fields: customer, technician, vehicle, dates, pricing,
+    photos, notes, insurance, and status tracking.
     """
     
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.original_status = self.queue_status
-    
-    # Service type (repair vs replacement)
-    SERVICE_TYPE_CHOICES = [
-        ('REPAIR', 'Windshield Repair'),
-        ('REPLACEMENT', 'Glass Replacement'),
-    ]
-        
-    QUEUE_CHOICES = [
+    STATUS_CHOICES = [
         ('REQUESTED', 'Customer Requested'),
         ('PENDING', 'Approval Pending'),
         ('APPROVED', 'Approved'),
@@ -209,49 +198,17 @@ class Repair(models.Model):
         ('DENIED', 'Denied by Customer'),
     ]
     
-    DAMAGE_TYPE_CHOICES = [
-        ('', 'Unknown / Not Sure'),
-        ('Chip', 'Chip'),
-        ('Crack', 'Crack'),
-        ('Star Break', 'Star Break'),
-        ('Bull\'s Eye', 'Bull\'s Eye'),
-        ('Combination Break', 'Combination Break'),
-        ('Half-Moon', 'Half-Moon'),
-        ('Other', 'Other'),
-    ]
-    
-    # Glass position choices (for replacements)
-    GLASS_POSITION_CHOICES = [
-        ('WINDSHIELD', 'Windshield'),
-        ('FRONT_LEFT', 'Front Left Window'),
-        ('FRONT_RIGHT', 'Front Right Window'),
-        ('REAR_LEFT', 'Rear Left Window'),
-        ('REAR_RIGHT', 'Rear Right Window'),
-        ('REAR', 'Rear Window'),
-        ('QUARTER_LEFT', 'Left Quarter Glass'),
-        ('QUARTER_RIGHT', 'Right Quarter Glass'),
-        ('SUNROOF', 'Sunroof / Moonroof'),
-        ('OTHER', 'Other'),
-    ]
-
     # --- Core fields ---
-    service_type = models.CharField(
-        max_length=15,
-        choices=SERVICE_TYPE_CHOICES,
-        default='REPAIR',
-        db_index=True,
-        help_text="Repair = chip/crack fix. Replacement = full glass swap."
-    )
     technician = models.ForeignKey(Technician, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True)
     vehicle = models.ForeignKey(
         'core.Vehicle', on_delete=models.SET_NULL,
         null=True, blank=True,
-        related_name='repairs',
+        related_name='%(class)ss',  # 'repairs' for Repair, 'replacements' for Replacement
         help_text="Link to vehicle record (optional — unit_number still works for fleets)"
     )
     unit_number = models.CharField(max_length=50)  # Kept for backward compat + fleet use
-    repair_date = models.DateTimeField(default=timezone.now)
+    service_date = models.DateTimeField(default=timezone.now)
     description = models.TextField(blank=True, null=True)
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     cost_override = models.DecimalField(
@@ -265,14 +222,9 @@ class Repair(models.Model):
         blank=True,
         help_text="Reason for price override (required when using custom price)"
     )
-    queue_status = models.CharField(max_length=20, choices=QUEUE_CHOICES, default='PENDING')
-    damage_type = models.CharField(max_length=100, choices=DAMAGE_TYPE_CHOICES, default='')
-    drilled_before_repair = models.BooleanField(default=False)
-    windshield_temperature = models.FloatField(null=True, blank=True)
-    resin_viscosity = models.CharField(max_length=20, blank=True)
+    queue_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
     
     # Photo documentation fields
-    # Customer-submitted photo (when customer requests repair through portal)
     customer_submitted_photo = models.ImageField(
         upload_to='repair_photos/customer_submitted/',
         null=True,
@@ -280,7 +232,6 @@ class Repair(models.Model):
         validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'])],
         help_text="Photo uploaded by customer when submitting repair request (supports JPEG, PNG, WebP, HEIC)"
     )
-    # Technician-documented photos
     damage_photo_before = models.ImageField(
         upload_to='repair_photos/before/',
         null=True,
@@ -301,7 +252,7 @@ class Repair(models.Model):
         help_text="Additional photos related to the repair (stored as list of URLs)"
     )
     
-    # Separate notes fields for better organization
+    # Notes
     customer_notes = models.TextField(
         blank=True,
         help_text="Notes provided by the customer during repair request or approval process"
@@ -310,6 +261,91 @@ class Repair(models.Model):
         blank=True,
         help_text="Internal notes added by technicians during repair process"
     )
+    
+    # Insurance fields
+    insurance_claim = models.BooleanField(
+        default=False,
+        help_text="Is this an insurance claim?"
+    )
+    insurance_company = models.CharField(
+        max_length=100, blank=True,
+        help_text="Insurance company name"
+    )
+    claim_number = models.CharField(
+        max_length=50, blank=True,
+        help_text="Insurance claim number"
+    )
+    deductible = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Customer's deductible amount"
+    )
+    authorization_number = models.CharField(
+        max_length=50, blank=True,
+        help_text="Insurance authorization/approval number"
+    )
+    
+    class Meta:
+        abstract = True
+    
+    def has_photos(self):
+        """Check if this service has any associated photos."""
+        return bool(self.damage_photo_before or self.damage_photo_after)
+    
+    def get_photo_count(self):
+        """Get the total number of photos associated with this service."""
+        count = 0
+        if self.customer_submitted_photo:
+            count += 1
+        if self.damage_photo_before:
+            count += 1
+        if self.damage_photo_after:
+            count += 1
+        if self.additional_photos:
+            count += len(self.additional_photos)
+        return count
+
+
+# =============================================================================
+# REPAIR MODEL
+# =============================================================================
+
+class Repair(GlassService):
+    """
+    A windshield chip/crack repair job.
+    
+    Uses progressive pricing based on repair count per unit.
+    Supports batch repairs (multiple breaks on same windshield).
+    
+    Works with ALL customer types:
+    - Fleet: identified by unit_number
+    - Retail: identified by vehicle (year/make/model)
+    - Walk-in: minimal info
+    """
+    
+    # Keep QUEUE_CHOICES as alias for backward compatibility
+    QUEUE_CHOICES = GlassService.STATUS_CHOICES
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.original_status = self.queue_status
+    
+    DAMAGE_TYPE_CHOICES = [
+        ('', 'Unknown / Not Sure'),
+        ('Chip', 'Chip'),
+        ('Crack', 'Crack'),
+        ('Star Break', 'Star Break'),
+        ('Bull\'s Eye', 'Bull\'s Eye'),
+        ('Combination Break', 'Combination Break'),
+        ('Half-Moon', 'Half-Moon'),
+        ('Other', 'Other'),
+    ]
+    
+    # Repair-specific fields
+    damage_type = models.CharField(max_length=100, choices=DAMAGE_TYPE_CHOICES, default='')
+    drilled_before_repair = models.BooleanField(default=False)
+    windshield_temperature = models.FloatField(null=True, blank=True)
+    resin_viscosity = models.CharField(max_length=20, blank=True)
 
     # Batch repair tracking fields
     repair_batch_id = models.UUIDField(
@@ -336,68 +372,20 @@ class Repair(models.Model):
     )
 
     # =========================================================================
-    # REPLACEMENT-SPECIFIC FIELDS (only used when service_type = REPLACEMENT)
+    # BACKWARD COMPATIBILITY: repair_date property
+    # The field was renamed to service_date in the abstract base class.
+    # This property ensures all existing code referencing repair_date still works.
     # =========================================================================
     
-    glass_position = models.CharField(
-        max_length=20,
-        choices=GLASS_POSITION_CHOICES,
-        blank=True,
-        help_text="Which glass is being replaced (windshield, side, rear, etc.)"
-    )
-    glass_type = models.CharField(
-        max_length=15,
-        choices=[('OEM', 'OEM'), ('AFTERMARKET', 'Aftermarket'), ('', 'Not specified')],
-        blank=True,
-        help_text="OEM = original manufacturer glass. Aftermarket = third-party."
-    )
-    nags_number = models.CharField(
-        max_length=20,
-        blank=True,
-        help_text="NAGS part number for the glass (industry standard identifier)"
-    )
-    parts_cost = models.DecimalField(
-        max_digits=10, decimal_places=2,
-        null=True, blank=True,
-        help_text="Cost of replacement glass and materials"
-    )
-    labor_cost = models.DecimalField(
-        max_digits=10, decimal_places=2,
-        null=True, blank=True,
-        help_text="Labor cost for replacement"
-    )
-    requires_adas_calibration = models.BooleanField(
-        default=False,
-        help_text="Does this replacement require ADAS sensor recalibration?"
-    )
-    adas_calibration_cost = models.DecimalField(
-        max_digits=10, decimal_places=2,
-        null=True, blank=True,
-        help_text="Cost for ADAS recalibration if required"
-    )
+    @property
+    def repair_date(self):
+        """Backward-compatible alias for service_date."""
+        return self.service_date
     
-    # Insurance fields (used for both repair and replacement)
-    insurance_claim = models.BooleanField(
-        default=False,
-        help_text="Is this an insurance claim?"
-    )
-    insurance_company = models.CharField(
-        max_length=100, blank=True,
-        help_text="Insurance company name"
-    )
-    claim_number = models.CharField(
-        max_length=50, blank=True,
-        help_text="Insurance claim number"
-    )
-    deductible = models.DecimalField(
-        max_digits=10, decimal_places=2,
-        null=True, blank=True,
-        help_text="Customer's deductible amount"
-    )
-    authorization_number = models.CharField(
-        max_length=50, blank=True,
-        help_text="Insurance authorization/approval number"
-    )
+    @repair_date.setter
+    def repair_date(self, value):
+        """Backward-compatible alias for service_date."""
+        self.service_date = value
 
     def save(self, *args, **kwargs):
         # BATCH INTEGRITY VALIDATION: Ensure batch data is consistent
@@ -427,7 +415,7 @@ class Repair(models.Model):
                 from apps.customer_portal.models import CustomerRepairPreference
                 try:
                     preferences = self.customer.repair_preferences
-                    if preferences.should_auto_approve(self.technician, self.repair_date.date() if self.repair_date else None):
+                    if preferences.should_auto_approve(self.technician, self.service_date.date() if self.service_date else None):
                         self.queue_status = 'APPROVED'
                 except CustomerRepairPreference.DoesNotExist:
                     # No preferences set - default to requiring approval
@@ -440,26 +428,8 @@ class Repair(models.Model):
                 defaults={'repair_count': 0}
             )
 
-            # --- REPLACEMENT PRICING ---
-            # Replacements use parts + labor + ADAS, not progressive repair pricing
-            if self.service_type == 'REPLACEMENT':
-                if self.cost_override is not None:
-                    self.cost = self.cost_override
-                else:
-                    from decimal import Decimal
-                    total = Decimal('0.00')
-                    if self.parts_cost:
-                        total += self.parts_cost
-                    if self.labor_cost:
-                        total += self.labor_cost
-                    if self.requires_adas_calibration and self.adas_calibration_cost:
-                        total += self.adas_calibration_cost
-                    if total > 0:
-                        self.cost = total
-                    # else: keep existing cost (may have been set manually)
-            
-            # --- REPAIR PRICING (existing progressive logic) ---
-            elif self.queue_status == 'COMPLETED':
+            # --- REPAIR PRICING (progressive logic) ---
+            if self.queue_status == 'COMPLETED':
                 if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
                     unit_repair_count.repair_count += 1
                     unit_repair_count.save()
@@ -691,7 +661,7 @@ class Repair(models.Model):
             'batch_id': batch_id,
             'customer': first_repair.customer,
             'unit_number': first_repair.unit_number,
-            'repair_date': first_repair.repair_date,
+            'repair_date': first_repair.service_date,
             'break_count': break_count,
             'total_cost': total_cost,
             'statuses': statuses,
@@ -777,16 +747,16 @@ class Repair(models.Model):
         return self.cost_override is not None
 
     class Meta:
-        ordering = ['-repair_date']
+        ordering = ['-service_date']
         indexes = [
             models.Index(fields=['queue_status']),
             models.Index(fields=['customer', 'unit_number']),
             models.Index(fields=['technician']),
-            models.Index(fields=['repair_date']),
+            models.Index(fields=['service_date']),
         ]
 
     def __str__(self):
-        return f"Repair {self.id} - {self.customer.name} - Unit #{self.unit_number} - {self.repair_date.strftime('%Y-%m-%d')} - {self.queue_status}"
+        return f"Repair {self.id} - {self.customer.name} - Unit #{self.unit_number} - {self.service_date.strftime('%Y-%m-%d')} - {self.queue_status}"
 
     def apply_reward(self, redemption, technician=None, auto_fulfill=False):
         """Manually apply a reward to this repair"""
@@ -817,33 +787,169 @@ class Repair(models.Model):
             )
             
         return True, "Reward successfully applied to repair"
-    
-    def has_photos(self):
-        """
-        Check if this repair has any associated photos.
-        
-        Returns:
-            bool: True if repair has before or after photos, False otherwise
-        """
-        return bool(self.damage_photo_before or self.damage_photo_after)
-    
-    def get_photo_count(self):
-        """
-        Get the total number of photos associated with this repair.
 
-        Returns:
-            int: Number of photos (customer_submitted + before + after + additional)
-        """
-        count = 0
-        if self.customer_submitted_photo:
-            count += 1
-        if self.damage_photo_before:
-            count += 1
-        if self.damage_photo_after:
-            count += 1
-        if self.additional_photos:
-            count += len(self.additional_photos)
-        return count
+
+# =============================================================================
+# REPLACEMENT MODEL
+# =============================================================================
+
+class Replacement(GlassService):
+    """
+    A glass replacement job — full glass swap.
+    
+    Pricing is based on parts + labor + optional ADAS calibration.
+    Insurance fields from GlassService are commonly used here.
+    
+    Works with ALL customer types:
+    - Fleet: identified by unit_number
+    - Retail: identified by vehicle (year/make/model)
+    - Walk-in: minimal info
+    """
+    
+    # Keep QUEUE_CHOICES as alias for consistency with Repair
+    QUEUE_CHOICES = GlassService.STATUS_CHOICES
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.original_status = self.queue_status
+    
+    # Glass position choices
+    GLASS_POSITION_CHOICES = [
+        ('WINDSHIELD', 'Windshield'),
+        ('FRONT_LEFT', 'Front Left Window'),
+        ('FRONT_RIGHT', 'Front Right Window'),
+        ('REAR_LEFT', 'Rear Left Window'),
+        ('REAR_RIGHT', 'Rear Right Window'),
+        ('REAR', 'Rear Window'),
+        ('QUARTER_LEFT', 'Left Quarter Glass'),
+        ('QUARTER_RIGHT', 'Right Quarter Glass'),
+        ('SUNROOF', 'Sunroof / Moonroof'),
+        ('OTHER', 'Other'),
+    ]
+    
+    GLASS_TYPE_CHOICES = [
+        ('OEM', 'OEM'),
+        ('AFTERMARKET', 'Aftermarket'),
+        ('', 'Not specified'),
+    ]
+    
+    # Replacement-specific fields
+    glass_position = models.CharField(
+        max_length=20,
+        choices=GLASS_POSITION_CHOICES,
+        blank=True,
+        help_text="Which glass is being replaced (windshield, side, rear, etc.)"
+    )
+    glass_type = models.CharField(
+        max_length=15,
+        choices=GLASS_TYPE_CHOICES,
+        blank=True,
+        help_text="OEM = original manufacturer glass. Aftermarket = third-party."
+    )
+    nags_number = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="NAGS part number for the glass (industry standard identifier)"
+    )
+    parts_cost = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Cost of replacement glass and materials"
+    )
+    labor_cost = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Labor cost for replacement"
+    )
+    requires_adas_calibration = models.BooleanField(
+        default=False,
+        help_text="Does this replacement require ADAS sensor recalibration?"
+    )
+    adas_calibration_cost = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text="Cost for ADAS recalibration if required"
+    )
+    
+    # =========================================================================
+    # BACKWARD COMPATIBILITY: repair_date property
+    # =========================================================================
+    
+    @property
+    def repair_date(self):
+        """Backward-compatible alias for service_date."""
+        return self.service_date
+    
+    @repair_date.setter
+    def repair_date(self, value):
+        """Backward-compatible alias for service_date."""
+        self.service_date = value
+
+    def save(self, *args, **kwargs):
+        # Ensure we have a customer
+        if self.customer:
+            is_new = self.pk is None
+            
+            # Auto-approval logic
+            if is_new and self.queue_status == 'PENDING':
+                from apps.customer_portal.models import CustomerRepairPreference
+                try:
+                    preferences = self.customer.repair_preferences
+                    if preferences.should_auto_approve(self.technician, self.service_date.date() if self.service_date else None):
+                        self.queue_status = 'APPROVED'
+                except CustomerRepairPreference.DoesNotExist:
+                    pass
+            
+            # --- REPLACEMENT PRICING ---
+            # Replacements use parts + labor + ADAS, not progressive repair pricing
+            if self.cost_override is not None:
+                self.cost = self.cost_override
+            else:
+                total = Decimal('0.00')
+                if self.parts_cost:
+                    total += self.parts_cost
+                if self.labor_cost:
+                    total += self.labor_cost
+                if self.requires_adas_calibration and self.adas_calibration_cost:
+                    total += self.adas_calibration_cost
+                if total > 0:
+                    self.cost = total
+                # else: keep existing cost (may have been set manually)
+        
+        super().save(*args, **kwargs)
+        self.original_status = self.queue_status
+
+    def has_price_override(self):
+        """Check if this replacement has a manual price override"""
+        return self.cost_override is not None
+    
+    def get_discounted_cost(self):
+        """Calculate the final cost (no reward discounts for replacements yet)."""
+        return {
+            'original_cost': self.cost,
+            'final_cost': self.cost,
+            'discount_applied': False,
+            'discount_description': '',
+            'savings': Decimal('0.00'),
+        }
+
+    class Meta:
+        ordering = ['-service_date']
+        indexes = [
+            models.Index(fields=['queue_status']),
+            models.Index(fields=['customer', 'unit_number']),
+            models.Index(fields=['technician']),
+            models.Index(fields=['service_date']),
+        ]
+
+    def __str__(self):
+        pos = self.get_glass_position_display() if self.glass_position else 'Glass'
+        return f"Replacement {self.id} - {self.customer.name} - {pos} - {self.service_date.strftime('%Y-%m-%d')} - {self.queue_status}"
+
+
+# =============================================================================
+# SUPPORTING MODELS
+# =============================================================================
 
 class TechnicianNotification(models.Model):
     technician = models.ForeignKey(Technician, on_delete=models.CASCADE, related_name='notifications')
@@ -1003,4 +1109,3 @@ class ViscosityRecommendation(models.Model):
                 }
 
         return None
-

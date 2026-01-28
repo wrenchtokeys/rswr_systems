@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from core.models import Customer
-from apps.technician_portal.models import Repair
+from apps.technician_portal.models import Repair, Replacement
 
 class CustomerUser(models.Model):
     """Links Django User to a Customer account"""

@@ -1,9 +1,9 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from apps.technician_portal.models import Technician, Repair
+from apps.technician_portal.models import Technician, Repair, Replacement
 from core.models import Customer
-from .serializers import TechnicianSerializer, RepairSerializer, CustomerSerializer
+from .serializers import TechnicianSerializer, RepairSerializer, ReplacementSerializer, CustomerSerializer
 
 
 @extend_schema_view(
@@ -124,5 +124,49 @@ class RepairViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         """Associate the repair with the logged-in technician"""
+        serializer.save(technician=self.request.user.technician)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="List all replacements",
+        description="Retrieve a list of all glass replacements in the system. Requires admin access."
+    ),
+    create=extend_schema(
+        summary="Create a new replacement",
+        description="Create a new glass replacement record. Requires admin access."
+    ),
+    retrieve=extend_schema(
+        summary="Get replacement details",
+        description="Retrieve detailed information about a specific replacement."
+    ),
+    update=extend_schema(
+        summary="Update replacement",
+        description="Update all fields of a replacement record."
+    ),
+    partial_update=extend_schema(
+        summary="Partially update replacement",
+        description="Update specific fields of a replacement record."
+    ),
+    destroy=extend_schema(
+        summary="Delete replacement",
+        description="Remove a replacement record from the system."
+    ),
+)
+class ReplacementViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing glass replacement records.
+    
+    Provides CRUD operations for replacement management.
+    Only authenticated admin users can access these endpoints.
+    """
+    queryset = Replacement.objects.select_related(
+        'technician__user', 'customer'
+    ).all()
+    serializer_class = ReplacementSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def perform_create(self, serializer):
+        """Associate the replacement with the logged-in technician"""
         serializer.save(technician=self.request.user.technician)
 

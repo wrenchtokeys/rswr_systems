@@ -37,7 +37,7 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from PIL import Image
 
 from core.models import Customer
-from apps.technician_portal.models import Repair
+from apps.technician_portal.models import Repair, Replacement
 
 
 # Royal Blue color for better readability

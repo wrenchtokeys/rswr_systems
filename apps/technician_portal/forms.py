@@ -1,5 +1,5 @@
 from django import forms
-from .models import Technician, Repair, Customer, UnitRepairCount
+from .models import Technician, Repair, Replacement, Customer, UnitRepairCount
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.forms.widgets import DateTimeInput
@@ -7,7 +7,7 @@ import logging
 
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
-from .models import Technician, Repair, Customer, UnitRepairCount
+from .models import Technician, Repair, Replacement, Customer, UnitRepairCount
 from core.models import TechnicianNotificationPreference
 from django.utils import timezone
 from django.forms.widgets import DateTimeInput
@@ -149,6 +149,7 @@ class RepairForm(forms.ModelForm):
         required=False,  # Not required because it might be set automatically for non-admin users
         help_text="Only required for admin users. Regular technicians will be automatically assigned."
     )
+    # Expose service_date as repair_date for backward compatibility in templates/views
     repair_date = forms.DateTimeField(
         widget=CustomDateTimeInput()
     )
@@ -165,7 +166,7 @@ class RepairForm(forms.ModelForm):
 
     class Meta:
         model = Repair
-        fields = ['technician', 'customer', 'unit_number', 'repair_date', 'queue_status', 'damage_type',
+        fields = ['technician', 'customer', 'unit_number', 'service_date', 'queue_status', 'damage_type',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
                   'cost_override', 'override_reason', 'repair_batch_id', 'break_number', 'total_breaks_in_batch']
@@ -192,14 +193,14 @@ class RepairForm(forms.ModelForm):
             self.fields['cost_override'].widget = forms.HiddenInput()
             self.fields['override_reason'].widget = forms.HiddenInput()
         
-        # Auto-populate repair_date for existing repairs
+        # Auto-populate repair_date from service_date for existing repairs
         if self.instance and self.instance.pk:
             # This is an existing repair being edited - keep existing date
             # But ensure widget has proper format
-            if self.instance.repair_date:
-                self.fields['repair_date'].initial = self.instance.repair_date
+            if self.instance.service_date:
+                self.fields['repair_date'].initial = self.instance.service_date
                 # Convert to local timezone for datetime-local input
-                local_time = timezone.localtime(self.instance.repair_date)
+                local_time = timezone.localtime(self.instance.service_date)
                 self.fields['repair_date'].widget.attrs['value'] = local_time.strftime('%Y-%m-%dT%H:%M')
         # For new repairs, JavaScript will set the current time in the user's browser timezone
         # See static/js/repair_form.js lines 40-54 for client-side initialization
@@ -246,6 +247,12 @@ class RepairForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        
+        # Map repair_date field to service_date on the model
+        repair_date_value = cleaned_data.get('repair_date')
+        if repair_date_value:
+            cleaned_data['service_date'] = repair_date_value
+        
         customer = cleaned_data.get('customer')
         unit_number = cleaned_data.get('unit_number')
         queue_status = cleaned_data.get('queue_status')
@@ -340,6 +347,17 @@ class RepairForm(forms.ModelForm):
                     )
 
         return cleaned_data
+
+    def save(self, commit=True):
+        """Override save to map repair_date → service_date on the model instance."""
+        instance = super().save(commit=False)
+        repair_date_value = self.cleaned_data.get('repair_date')
+        if repair_date_value:
+            instance.service_date = repair_date_value
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
 class TechnicianNotificationPreferenceForm(forms.ModelForm):

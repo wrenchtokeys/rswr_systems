@@ -13,7 +13,7 @@ then queue email/SMS delivery tasks via Celery.
 import logging
 from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
-from apps.technician_portal.models import Repair
+from apps.technician_portal.models import Repair, Replacement
 from core.services.notification_service import NotificationService
 from core.models.notification import Notification
 

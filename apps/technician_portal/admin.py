@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django import forms
-from .models import Technician, Repair, UnitRepairCount, Customer, ViscosityRecommendation
+from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation
 
 class TechnicianAdmin(admin.ModelAdmin):
     list_display = ['user', 'get_email', 'get_full_name', 'phone_number', 'expertise', 'is_manager', 'is_active', 'repairs_completed']
@@ -86,11 +86,11 @@ class TechnicianAdmin(admin.ModelAdmin):
         return render(request, 'admin/register_technician.html', {})
 
 class RepairAdmin(admin.ModelAdmin):
-    list_display = ['id', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'repair_date']
-    list_filter = ['queue_status', 'repair_date', 'technician']
+    list_display = ['id', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
+    list_filter = ['queue_status', 'service_date', 'technician']
     search_fields = ['customer__name', 'unit_number', 'damage_type', 'technician__user__username']
-    readonly_fields = ['repair_date']
-    date_hierarchy = 'repair_date'
+    readonly_fields = ['service_date']
+    date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user']
     
     def get_status_badge(self, obj):
@@ -120,7 +120,7 @@ class RepairAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Basic Information', {
-            'fields': ('technician', 'customer', 'unit_number', 'repair_date')
+            'fields': ('technician', 'customer', 'unit_number', 'service_date')
         }),
         ('Repair Details', {
             'fields': ('damage_type', 'description', 'queue_status')
@@ -134,6 +134,58 @@ class RepairAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
+
+
+class ReplacementAdmin(admin.ModelAdmin):
+    list_display = ['id', 'customer', 'unit_number', 'glass_position', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
+    list_filter = ['queue_status', 'service_date', 'technician', 'glass_position', 'requires_adas_calibration']
+    search_fields = ['customer__name', 'unit_number', 'nags_number', 'technician__user__username']
+    readonly_fields = ['service_date']
+    date_hierarchy = 'service_date'
+    list_select_related = ['customer', 'technician', 'technician__user']
+    
+    def get_status_badge(self, obj):
+        status_colors = {
+            'REQUESTED': 'bg-secondary',
+            'PENDING': 'bg-warning',
+            'APPROVED': 'bg-info',
+            'IN_PROGRESS': 'bg-primary',
+            'COMPLETED': 'bg-success',
+            'DENIED': 'bg-danger'
+        }
+        color = status_colors.get(obj.queue_status, 'bg-secondary')
+        return format_html('<span class="badge {}">{}</span>', color, obj.get_queue_status_display())
+    get_status_badge.short_description = 'Status'
+    get_status_badge.admin_order_field = 'queue_status'
+
+    def get_price_display(self, obj):
+        if obj.has_price_override():
+            return format_html(
+                '<span style="color: #ff6b6b;" title="Manual override: {}">${} ⚠️</span>',
+                obj.override_reason or "No reason provided",
+                f"{obj.cost:.2f}"
+            )
+        return f"${obj.cost:.2f}"
+    get_price_display.short_description = 'Price'
+    get_price_display.admin_order_field = 'cost'
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('technician', 'customer', 'unit_number', 'service_date')
+        }),
+        ('Replacement Details', {
+            'fields': ('glass_position', 'glass_type', 'nags_number', 'description', 'queue_status')
+        }),
+        ('Pricing', {
+            'fields': ('parts_cost', 'labor_cost', 'requires_adas_calibration', 'adas_calibration_cost', 'cost', 'cost_override', 'override_reason'),
+            'description': 'Cost is calculated from parts + labor + ADAS. Admins can manually override.'
+        }),
+        ('Insurance', {
+            'fields': ('insurance_claim', 'insurance_company', 'claim_number', 'deductible', 'authorization_number'),
+            'classes': ('collapse',),
+        }),
+    )
+
 
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ['name', 'email', 'phone', 'address', 'get_primary_contact']
@@ -218,6 +270,7 @@ class ViscosityRecommendationAdmin(admin.ModelAdmin):
 # Register the models
 admin.site.register(Technician, TechnicianAdmin)
 admin.site.register(Repair, RepairAdmin)
+admin.site.register(Replacement, ReplacementAdmin)
 admin.site.register(UnitRepairCount, UnitRepairCountAdmin)
 admin.site.register(Customer, CustomerAdmin)
 admin.site.register(ViscosityRecommendation, ViscosityRecommendationAdmin)

@@ -30,6 +30,9 @@ class Vehicle(models.Model):
         related_name='vehicles',
     )
     
+    # Note: Repairs link here via related_name='repairs' (ForeignKey on Repair model)
+    # Replacements link here via related_name='replacements' (ForeignKey on Replacement model)
+    
     # Fleet identifier (primary for fleet customers)
     unit_number = models.CharField(
         max_length=50,
