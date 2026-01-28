@@ -61,6 +61,9 @@ urlpatterns = [
     # Billing API (canonical home for billing endpoints)
     path('api/billing/', include('apps.billing.urls')),
 
+    # Tenant subscription & billing API
+    path('api/tenants/', include('apps.tenants.urls')),
+
     # Clawdbot endpoint (Amelia's experimental namespace)
     path('clawdbot/', include('apps.clawdbot.urls')),
 
