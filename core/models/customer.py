@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.validators import RegexValidator
+from apps.tenants.managers import TenantManager
 
 
 class Customer(models.Model):
@@ -17,6 +18,15 @@ class Customer(models.Model):
     WALK_IN:  One-time customer with minimal info.
               Quick service, minimal data capture needed.
     """
+    
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='customers',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
     
     CUSTOMER_TYPE_CHOICES = [
         ('FLEET', 'Fleet Account'),
@@ -78,6 +88,9 @@ class Customer(models.Model):
         db_index=True,
         help_text="Stripe Customer ID for billing integration"
     )
+
+    # Default manager + tenant-aware manager
+    objects = TenantManager()
 
     class Meta:
         ordering = ['name']

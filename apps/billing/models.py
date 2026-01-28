@@ -14,6 +14,7 @@ from django.db import models
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 from decimal import Decimal
+from apps.tenants.managers import TenantManager
 
 
 class Invoice(models.Model):
@@ -37,6 +38,15 @@ class Invoice(models.Model):
         ('OVERDUE', 'Overdue'),
         ('CANCELLED', 'Cancelled'),
     ]
+    
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='invoices',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
     
     # Core fields
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
@@ -101,6 +111,9 @@ class Invoice(models.Model):
         blank=True,
         help_text="Internal notes (not shown to customer)"
     )
+    
+    # Tenant-aware manager
+    objects = TenantManager()
     
     class Meta:
         ordering = ['-invoice_date', '-created_at']

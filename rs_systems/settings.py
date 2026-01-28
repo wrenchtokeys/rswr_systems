@@ -202,6 +202,7 @@ INSTALLED_APPS = [
     'apps.security',
     'apps.clawdbot',
     'apps.billing',
+    'apps.tenants',
     'core',  # Core app (includes Customer model and notification system)
     'drf_spectacular',
     'django_cleanup.apps.CleanupConfig',  # Must be last - automatically deletes files when models are deleted
@@ -214,6 +215,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.tenants.middleware.TenantMiddleware',  # Multi-tenant resolution
     'common.portal_middleware.PortalAccessMiddleware',  # Portal access control
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

@@ -6,11 +6,21 @@ from django.utils import timezone
 from django.core.validators import FileExtensionValidator, RegexValidator
 from decimal import Decimal
 from core.models import Customer
+from apps.tenants.managers import TenantManager
 import logging
 
 logger = logging.getLogger(__name__)
 
 class Technician(models.Model):
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='technicians',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
+    
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     phone_number = models.CharField(
         max_length=20,
@@ -102,6 +112,9 @@ class Technician(models.Model):
         help_text="Working hours schedule (JSON format)"
     )
 
+    # Tenant-aware manager
+    objects = TenantManager()
+
     class Meta:
         ordering = ['user__first_name', 'user__last_name']
         verbose_name = 'Technician'
@@ -166,9 +179,21 @@ class Technician(models.Model):
 
 class UnitRepairCount(models.Model):
     """Tracks the number of repairs per unit per customer for progressive pricing."""
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='unit_repair_counts',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
+    
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     unit_number = models.CharField(max_length=50)
     repair_count = models.IntegerField(default=0)
+
+    # Tenant-aware manager
+    objects = TenantManager()
 
     class Meta:
         unique_together = ['customer', 'unit_number']
@@ -203,6 +228,15 @@ class GlassService(models.Model):
         ('COMPLETED', 'Completed'),
         ('DENIED', 'Denied by Customer'),
     ]
+    
+    # --- Multi-tenant support ---
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='%(class)ss',  # 'repairs' for Repair, 'replacements' for Replacement
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
     
     # --- Core fields ---
     technician = models.ForeignKey(Technician, on_delete=models.CASCADE)
@@ -328,6 +362,9 @@ class Repair(GlassService):
     - Retail: identified by vehicle (year/make/model)
     - Walk-in: minimal info
     """
+    
+    # Tenant-aware manager
+    objects = TenantManager()
     
     # Keep QUEUE_CHOICES as alias for backward compatibility
     QUEUE_CHOICES = GlassService.STATUS_CHOICES
@@ -798,6 +835,9 @@ class Replacement(GlassService):
     - Retail: identified by vehicle (year/make/model)
     - Walk-in: minimal info
     """
+    
+    # Tenant-aware manager
+    objects = TenantManager()
     
     # Keep QUEUE_CHOICES as alias for consistency with Repair
     QUEUE_CHOICES = GlassService.STATUS_CHOICES

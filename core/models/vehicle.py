@@ -12,6 +12,7 @@ Author: Amelia (Clawdbot AI)
 """
 
 from django.db import models
+from apps.tenants.managers import TenantManager
 
 
 class Vehicle(models.Model):
@@ -23,6 +24,15 @@ class Vehicle(models.Model):
     - Retail: year/make/model is primary (e.g., "2024 Ford F-150")
     - Walk-in: minimal info, maybe just make/model
     """
+    
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='vehicles',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
     
     customer = models.ForeignKey(
         'core.Customer',
@@ -77,6 +87,9 @@ class Vehicle(models.Model):
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # Tenant-aware manager
+    objects = TenantManager()
     
     class Meta:
         ordering = ['customer', 'unit_number', 'make', 'model']
