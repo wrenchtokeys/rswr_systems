@@ -35,4 +35,20 @@ urlpatterns = [
     path('billing/invoices/<int:invoice_id>/payment/', views.record_payment, name='invoice_payment'),
     path('billing/uninvoiced/<int:customer_id>/', views.get_uninvoiced_repairs, name='uninvoiced_repairs'),
     path('billing/balance/<int:customer_id>/', views.get_customer_balance, name='customer_balance'),
+    
+    # Dashboard & Reports
+    path('dashboard/', views.billing_dashboard, name='dashboard'),
+    path('reports/daily/', views.daily_report, name='daily_report'),
+    path('reports/weekly/', views.weekly_report, name='weekly_report'),
+    
+    # Stripe integration
+    path('stripe/status/', views.stripe_status, name='stripe_status'),
+    path('stripe/invoice/<int:invoice_id>/', views.create_stripe_invoice, name='stripe_invoice'),
+    path('stripe/payment-link/<int:invoice_id>/', views.create_payment_link, name='payment_link'),
+    path('stripe/webhook/', views.stripe_webhook, name='stripe_webhook'),
+    
+    # Reminders
+    path('reminders/summary/', views.reminder_summary, name='reminder_summary'),
+    path('reminders/send/<int:invoice_id>/', views.send_reminder, name='send_reminder'),
+    path('reminders/process/', views.process_all_reminders, name='process_reminders'),
 ]

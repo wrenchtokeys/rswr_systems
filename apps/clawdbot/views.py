@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from django.http import JsonResponse, HttpResponse, Http404, FileResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
 from django.utils import timezone
 import json
 
@@ -31,29 +32,64 @@ def status(request):
     Clawdbot status endpoint.
     Returns basic information about Clawdbot's operational status.
     """
+    from apps.billing.services.stripe_service import StripeService
+    
+    stripe_service = StripeService()
+    
     return JsonResponse({
         'status': 'online',
         'name': 'Amelia',
-        'version': '0.4.0',
+        'version': '0.5.0',
         'capabilities': [
             'invoice_generation',
             'auto_invoice_on_completion',
+            'invoice_tracking',
+            'double_billing_prevention',
+            'payment_recording',
             'customer_invoice_preferences',
-            'repair_queries',
-            'health_checks',
+            'billing_dashboard',
+            'business_reports',
+            'stripe_integration' if stripe_service.is_enabled() else 'stripe_ready',
+            'payment_reminders',
             's3_invoice_storage',
         ],
+        'integrations': {
+            'stripe': stripe_service.is_enabled(),
+            's3': True,
+            'sendgrid': bool(getattr(settings, 'SENDGRID_API_KEY', None)),
+        },
         'endpoints': {
             'status': '/clawdbot/',
             'health': '/clawdbot/health/',
+            'dashboard': '/clawdbot/dashboard/',
             'customers': '/clawdbot/customers/',
             'repairs': '/clawdbot/repairs/<customer_id>/',
             'invoices': {
                 'preview': '/clawdbot/invoices/preview/<customer_id>/',
                 'generate': '/clawdbot/invoices/generate/<customer_id>/',
                 'email': '/clawdbot/invoices/email/<customer_id>/',
-                'saved': '/clawdbot/invoices/saved/',
-                'download': '/clawdbot/invoices/download/<filename>/',
+            },
+            'billing': {
+                'invoices': '/clawdbot/billing/invoices/',
+                'invoice_detail': '/clawdbot/billing/invoices/<id>/',
+                'record_payment': '/clawdbot/billing/invoices/<id>/payment/',
+                'uninvoiced': '/clawdbot/billing/uninvoiced/<customer_id>/',
+                'balance': '/clawdbot/billing/balance/<customer_id>/',
+            },
+            'reports': {
+                'daily': '/clawdbot/reports/daily/',
+                'weekly': '/clawdbot/reports/weekly/',
+            },
+            'stripe': {
+                'status': '/clawdbot/stripe/status/',
+                'create_invoice': '/clawdbot/stripe/invoice/<id>/',
+                'payment_link': '/clawdbot/stripe/payment-link/<id>/',
+                'webhook': '/clawdbot/stripe/webhook/',
+            },
+            'reminders': {
+                'summary': '/clawdbot/reminders/summary/',
+                'send': '/clawdbot/reminders/send/<invoice_id>/',
+                'process_all': '/clawdbot/reminders/process/',
             },
             'preferences': {
                 'get': '/clawdbot/preferences/<customer_id>/',
@@ -797,4 +833,283 @@ def get_customer_balance(request, customer_id):
             'oldest_due': balance['oldest_due'].isoformat() if balance['oldest_due'] else None,
         },
         'outstanding_invoices': invoice_summary,
+    })
+
+
+# =============================================================================
+# DASHBOARD & REPORTING
+# =============================================================================
+
+@require_GET
+def billing_dashboard(request):
+    """
+    Get full billing dashboard with metrics, alerts, and trends.
+    
+    Returns comprehensive business intelligence:
+    - Revenue (today, week, month, year + growth)
+    - Invoice status breakdown
+    - Outstanding and overdue amounts
+    - Payment metrics by method
+    - Customer insights (top outstanding, top revenue)
+    - Actionable alerts
+    - Trend data for charts
+    """
+    from apps.billing.services.dashboard_service import DashboardService
+    
+    service = DashboardService()
+    dashboard = service.get_full_dashboard()
+    
+    return JsonResponse(dashboard)
+
+
+@require_GET
+def daily_report(request):
+    """
+    Generate a daily business report.
+    
+    Query params:
+        - date: Specific date (YYYY-MM-DD), defaults to today
+    """
+    from apps.billing.services.report_service import ReportService
+    
+    date_str = request.GET.get('date')
+    if date_str:
+        try:
+            report_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+    else:
+        report_date = timezone.now().date()
+    
+    service = ReportService()
+    report = service.generate_daily_report(report_date)
+    
+    return JsonResponse(report)
+
+
+@require_GET  
+def weekly_report(request):
+    """
+    Generate a weekly business report.
+    
+    Query params:
+        - week_start: Start date of week (YYYY-MM-DD), defaults to current week
+    """
+    from apps.billing.services.report_service import ReportService
+    
+    date_str = request.GET.get('week_start')
+    if date_str:
+        try:
+            week_start = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+    else:
+        # Default to start of current week (Monday)
+        today = timezone.now().date()
+        week_start = today - timedelta(days=today.weekday())
+    
+    service = ReportService()
+    report = service.generate_weekly_report(week_start)
+    
+    return JsonResponse(report)
+
+
+# =============================================================================
+# STRIPE INTEGRATION
+# =============================================================================
+
+@require_GET
+def stripe_status(request):
+    """Check if Stripe integration is configured and enabled."""
+    from apps.billing.services.stripe_service import StripeService
+    
+    service = StripeService()
+    
+    return JsonResponse({
+        'enabled': service.is_enabled(),
+        'message': 'Stripe integration ready' if service.is_enabled() else 'Stripe not configured (set STRIPE_SECRET_KEY)',
+    })
+
+
+@csrf_exempt
+@require_POST
+def create_stripe_invoice(request, invoice_id):
+    """
+    Create a Stripe invoice from our invoice record.
+    
+    POST body (JSON):
+    {
+        "auto_send": true  (optional, defaults to false)
+    }
+    """
+    from apps.billing.models import Invoice
+    from apps.billing.services.stripe_service import StripeService
+    
+    try:
+        invoice = Invoice.objects.get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+    
+    service = StripeService()
+    if not service.is_enabled():
+        return JsonResponse({'error': 'Stripe not configured'}, status=503)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        data = {}
+    
+    auto_send = data.get('auto_send', False)
+    
+    result = service.create_stripe_invoice(invoice, auto_send=auto_send)
+    
+    if result['success']:
+        return JsonResponse(result)
+    else:
+        return JsonResponse(result, status=400)
+
+
+@require_GET
+def create_payment_link(request, invoice_id):
+    """
+    Create a Stripe payment link for an invoice.
+    Returns a URL that customers can use to pay online.
+    """
+    from apps.billing.models import Invoice
+    from apps.billing.services.stripe_service import StripeService
+    
+    try:
+        invoice = Invoice.objects.get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+    
+    if invoice.amount_due <= 0:
+        return JsonResponse({'error': 'Invoice already paid'}, status=400)
+    
+    service = StripeService()
+    if not service.is_enabled():
+        return JsonResponse({'error': 'Stripe not configured'}, status=503)
+    
+    result = service.create_payment_link(invoice)
+    
+    if result['success']:
+        return JsonResponse({
+            'success': True,
+            'payment_link': result['payment_link'],
+            'invoice_number': invoice.invoice_number,
+            'amount_due': float(invoice.amount_due),
+        })
+    else:
+        return JsonResponse(result, status=400)
+
+
+@csrf_exempt
+def stripe_webhook(request):
+    """
+    Handle incoming Stripe webhook events.
+    Configure this URL in your Stripe dashboard.
+    """
+    from apps.billing.services.stripe_service import StripeService
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    
+    service = StripeService()
+    if not service.is_enabled():
+        return JsonResponse({'error': 'Stripe not configured'}, status=503)
+    
+    payload = request.body
+    sig_header = request.headers.get('Stripe-Signature', '')
+    
+    result = service.handle_webhook(payload, sig_header)
+    
+    if result['success']:
+        return JsonResponse(result)
+    else:
+        return JsonResponse(result, status=400)
+
+
+# =============================================================================
+# REMINDERS
+# =============================================================================
+
+@require_GET
+def reminder_summary(request):
+    """Get summary of invoices needing payment reminders."""
+    from apps.billing.services.reminder_service import ReminderService
+    
+    service = ReminderService()
+    summary = service.get_reminder_summary()
+    
+    return JsonResponse(summary)
+
+
+@csrf_exempt
+@require_POST
+def send_reminder(request, invoice_id):
+    """
+    Send a payment reminder for a specific invoice.
+    
+    POST body (JSON):
+    {
+        "reminder_type": "overdue" | "due_soon" (optional, auto-detected)
+    }
+    """
+    from apps.billing.models import Invoice
+    from apps.billing.services.reminder_service import ReminderService
+    
+    try:
+        invoice = Invoice.objects.get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+    
+    if invoice.status in ('PAID', 'CANCELLED'):
+        return JsonResponse({'error': f'Cannot send reminder for {invoice.status} invoice'}, status=400)
+    
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        data = {}
+    
+    # Auto-detect reminder type if not specified
+    reminder_type = data.get('reminder_type')
+    if not reminder_type:
+        if invoice.is_overdue:
+            reminder_type = 'overdue'
+        else:
+            reminder_type = 'due_soon'
+    
+    service = ReminderService()
+    result = service.send_reminder(invoice, reminder_type)
+    
+    if result['success']:
+        return JsonResponse({
+            'success': True,
+            'invoice_number': invoice.invoice_number,
+            'reminder_type': result['reminder_type'],
+            'sent_to': invoice.customer.email,
+        })
+    else:
+        return JsonResponse(result, status=400)
+
+
+@csrf_exempt
+@require_POST
+def process_all_reminders(request):
+    """
+    Process all pending reminders (due soon + overdue).
+    Typically called by cron/scheduled task.
+    """
+    from apps.billing.services.reminder_service import ReminderService
+    
+    service = ReminderService()
+    
+    due_soon_results = service.process_due_soon_reminders()
+    overdue_results = service.process_overdue_reminders()
+    
+    return JsonResponse({
+        'success': True,
+        'due_soon': due_soon_results,
+        'overdue': overdue_results,
+        'total_sent': due_soon_results['sent'] + overdue_results['sent'],
     })
