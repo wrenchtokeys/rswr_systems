@@ -105,7 +105,9 @@ def customer_dashboard(request):
         total_spent = Repair.objects.filter(customer=customer, queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
         
         # Get recent repairs (limited to 5) for the customer
-        recent_repairs = Repair.objects.filter(customer=customer).order_by('-repair_date')[:5]
+        recent_repairs = Repair.objects.filter(
+            customer=customer
+        ).select_related('technician__user').order_by('-repair_date')[:5]
         
         # Check which of the recent repairs were customer-initiated
         repair_ids = [repair.id for repair in recent_repairs]
@@ -119,7 +121,9 @@ def customer_dashboard(request):
             repair.customer_initiated = repair.id in customer_initiated_approvals
         
         # Get repairs that are awaiting customer approval
-        repairs_awaiting_approval = Repair.objects.filter(customer=customer, queue_status='PENDING').order_by('-repair_date')
+        repairs_awaiting_approval = Repair.objects.filter(
+            customer=customer, queue_status='PENDING'
+        ).select_related('technician__user').order_by('-repair_date')
 
         # Group batched repairs and separate individual repairs
         batch_repairs = {}  # Dictionary: batch_id -> batch_summary
@@ -1486,15 +1490,13 @@ def unit_repair_data_api(request):
             for unit in unit_repairs
         ]
         
-        # For debugging
-        print(f"API Response (unit-repair-data): {data}")
-        
+        logger.debug(f"API Response (unit-repair-data): {len(data)} units")
+
         return JsonResponse(data, safe=False)
     except CustomerUser.DoesNotExist:
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
-        # Log the error and return an error response
-        print(f"Error in unit_repair_data_api: {str(e)}")
+        logger.error(f"Error in unit_repair_data_api: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
 @customer_required
@@ -1543,15 +1545,13 @@ def repair_cost_data_api(request):
             for month, count in sorted(monthly_counts.items())
         ]
         
-        # For debugging
-        print(f"API Response (repair-cost-data): {data}")
-        
+        logger.debug(f"API Response (repair-cost-data): {len(data)} months")
+
         return JsonResponse(data, safe=False)
     except CustomerUser.DoesNotExist:
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
-        # Log the error and return an error response
-        print(f"Error in repair_cost_data_api: {str(e)}")
+        logger.error(f"Error in repair_cost_data_api: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
 @customer_required

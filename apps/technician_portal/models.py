@@ -6,6 +6,9 @@ from django.utils import timezone
 from django.core.validators import FileExtensionValidator, RegexValidator
 from decimal import Decimal
 from core.models import Customer
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Technician(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -162,12 +165,15 @@ class Technician(models.Model):
             instance.technician.save()
 
 class UnitRepairCount(models.Model):
+    """Tracks the number of repairs per unit per customer for progressive pricing."""
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     unit_number = models.CharField(max_length=50)
     repair_count = models.IntegerField(default=0)
 
     class Meta:
         unique_together = ['customer', 'unit_number']
+        verbose_name = 'Unit Repair Count'
+        verbose_name_plural = 'Unit Repair Counts'
         indexes = [
             models.Index(fields=['customer', 'unit_number']),
             models.Index(fields=['repair_count']),
@@ -527,7 +533,7 @@ class Repair(GlassService):
                     )
         except Exception as e:
             # Log the error but don't fail the save
-            print(f"Error auto-applying rewards: {e}")
+            logger.error(f"Error auto-applying rewards: {e}")
     
     def award_completion_points(self):
         """
@@ -581,27 +587,12 @@ class Repair(GlassService):
             reward.points += total_points
             reward.save()
             
-            # Create a notification about the points earned (you could add this to a notifications system later)
-            print(f"Awarded {total_points} points to {customer_user.user.email} for repair completion")
+            logger.info(f"Awarded {total_points} points to {customer_user.user.email} for repair completion")
             if milestone_bonus > 0:
-                print(f"Milestone bonus of {milestone_bonus} points awarded!")
-                
-        except Exception as e:
-            # Log the error but don't fail the save
-            print(f"Error awarding completion points: {e}")
+                logger.info(f"Milestone bonus of {milestone_bonus} points awarded!")
 
-    @staticmethod
-    def calculate_cost(repair_count):
-        if repair_count == 1:
-            return 50
-        elif repair_count == 2:
-            return 40
-        elif repair_count == 3:
-            return 35
-        elif repair_count == 4:
-            return 30
-        else:
-            return 25
+        except Exception as e:
+            logger.error(f"Error awarding completion points: {e}")
 
     # Batch repair helper methods
     @property
@@ -748,6 +739,8 @@ class Repair(GlassService):
 
     class Meta:
         ordering = ['-service_date']
+        verbose_name = 'Repair'
+        verbose_name_plural = 'Repairs'
         indexes = [
             models.Index(fields=['queue_status']),
             models.Index(fields=['customer', 'unit_number']),
@@ -935,6 +928,8 @@ class Replacement(GlassService):
 
     class Meta:
         ordering = ['-service_date']
+        verbose_name = 'Replacement'
+        verbose_name_plural = 'Replacements'
         indexes = [
             models.Index(fields=['queue_status']),
             models.Index(fields=['customer', 'unit_number']),
@@ -952,6 +947,7 @@ class Replacement(GlassService):
 # =============================================================================
 
 class TechnicianNotification(models.Model):
+    """In-app notification for technicians about repairs, batches, and rewards."""
     technician = models.ForeignKey(Technician, on_delete=models.CASCADE, related_name='notifications')
     message = models.TextField()
     read = models.BooleanField(default=False)
@@ -970,6 +966,8 @@ class TechnicianNotification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        verbose_name = 'Technician Notification'
+        verbose_name_plural = 'Technician Notifications'
 
 
 class ViscosityRecommendation(models.Model):

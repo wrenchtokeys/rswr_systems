@@ -87,16 +87,25 @@ def health(request):
 
 @require_GET
 def list_customers(request):
-    """List all customers with repair counts."""
-    customers = Customer.objects.all().order_by('name')
-    
+    """List all customers with repair counts (annotated to avoid N+1)."""
+    from django.db.models import Count, Q
+
+    customers = Customer.objects.annotate(
+        completed_repairs=Count(
+            'repair', filter=Q(repair__queue_status='COMPLETED')
+        ),
+        pending_repairs=Count(
+            'repair', filter=Q(repair__queue_status__in=['PENDING', 'APPROVED', 'IN_PROGRESS'])
+        ),
+    ).order_by('name')
+
     return JsonResponse({
         'customers': [{
             'id': c.id,
             'name': c.name,
             'email': c.email,
-            'completed_repairs': Repair.objects.filter(customer=c, queue_status='COMPLETED').count(),
-            'pending_repairs': Repair.objects.filter(customer=c, queue_status__in=['PENDING', 'APPROVED', 'IN_PROGRESS']).count(),
+            'completed_repairs': c.completed_repairs,
+            'pending_repairs': c.pending_repairs,
         } for c in customers],
         'total': customers.count(),
     })

@@ -12,12 +12,39 @@ from decimal import Decimal
 from typing import Optional, Tuple
 from core.models import Customer
 from apps.customer_portal.pricing_models import CustomerPricing
-from apps.technician_portal.models import Repair, UnitRepairCount
+from apps.technician_portal.models import UnitRepairCount
+
+
+# Default pricing tiers (previously on Repair.calculate_cost static method)
+DEFAULT_PRICING = {
+    1: Decimal('50.00'),
+    2: Decimal('40.00'),
+    3: Decimal('35.00'),
+    4: Decimal('30.00'),
+}
+DEFAULT_PRICE_5_PLUS = Decimal('25.00')
+
+
+def get_default_repair_price(repair_count: int) -> Decimal:
+    """
+    Get the default repair price for a given repair count tier.
+
+    Progressive pricing: 1st=$50, 2nd=$40, 3rd=$35, 4th=$30, 5+=$25.
+
+    Args:
+        repair_count: The repair number for this unit (1, 2, 3, 4, 5+)
+
+    Returns:
+        Decimal: The default repair cost
+    """
+    return DEFAULT_PRICING.get(repair_count, DEFAULT_PRICE_5_PLUS)
 
 
 def calculate_repair_cost(customer: Customer, repair_count: int) -> Decimal:
     """
     Calculate the cost for a repair based on customer pricing configuration.
+
+    Checks for customer-specific pricing first, falls back to default tiers.
 
     Args:
         customer: The Customer object
@@ -27,20 +54,16 @@ def calculate_repair_cost(customer: Customer, repair_count: int) -> Decimal:
         Decimal: The calculated repair cost
     """
     try:
-        # Try to get custom pricing for this customer
         pricing = CustomerPricing.objects.get(customer=customer, use_custom_pricing=True)
-
-        # Get the custom price for this repair tier
         custom_price = pricing.get_repair_price(repair_count)
 
         if custom_price is not None:
             return Decimal(str(custom_price))
 
     except CustomerPricing.DoesNotExist:
-        pass  # Fall back to default pricing
+        pass
 
-    # Use default pricing from Repair model
-    return Decimal(str(Repair.calculate_cost(repair_count)))
+    return get_default_repair_price(repair_count)
 
 
 def calculate_repair_cost_with_volume_discount(customer: Customer, repair_count: int, total_customer_repairs: int) -> Tuple[Decimal, bool, Decimal]:
@@ -170,11 +193,11 @@ def get_pricing_info(customer: Customer) -> dict:
             'percentage': 0
         },
         'default_pricing': {
-            1: Repair.calculate_cost(1),
-            2: Repair.calculate_cost(2),
-            3: Repair.calculate_cost(3),
-            4: Repair.calculate_cost(4),
-            5: Repair.calculate_cost(5)
+            1: float(get_default_repair_price(1)),
+            2: float(get_default_repair_price(2)),
+            3: float(get_default_repair_price(3)),
+            4: float(get_default_repair_price(4)),
+            5: float(get_default_repair_price(5)),
         }
     }
 

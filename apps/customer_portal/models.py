@@ -4,25 +4,34 @@ from core.models import Customer
 from apps.technician_portal.models import Repair, Replacement
 
 class CustomerUser(models.Model):
-    """Links Django User to a Customer account"""
+    """Links a Django User account to a Customer (company) for portal access."""
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     is_primary_contact = models.BooleanField(default=False)
-    
+
+    class Meta:
+        verbose_name = 'Customer User'
+        verbose_name_plural = 'Customer Users'
+
     def __str__(self):
         return f"{self.user.username} - {self.customer.name}"
 
+
 class CustomerPreference(models.Model):
-    """Stores customer preferences for the portal"""
+    """Stores customer preferences for the portal display and notifications."""
     customer = models.OneToOneField(Customer, on_delete=models.CASCADE)
     receive_email_notifications = models.BooleanField(default=True)
     receive_sms_notifications = models.BooleanField(default=False)
     default_view = models.CharField(
-        max_length=20, 
+        max_length=20,
         choices=[('pending', 'Pending Repairs'), ('completed', 'Completed Repairs')],
         default='pending'
     )
-    
+
+    class Meta:
+        verbose_name = 'Customer Preference'
+        verbose_name_plural = 'Customer Preferences'
+
     def __str__(self):
         return f"Preferences for {self.customer.name}"
 
