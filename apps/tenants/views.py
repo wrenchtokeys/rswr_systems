@@ -2,22 +2,34 @@
 Tenant Subscription API Views
 
 Endpoints for managing SaaS subscriptions:
+- Signup (new shop owner registration)
 - Subscribe to a plan
 - Update (upgrade/downgrade)
 - Cancel / Reactivate
-- View usage
+- View usage & status
 - Billing portal redirect
 
 Author: Amelia (Clawdbot AI)
 """
 
 import logging
+import os
+import re
+from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
+from django.db import transaction
+from django.utils import timezone
+from django.utils.text import slugify
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.authtoken.models import Token
+from rest_framework.throttling import SimpleRateThrottle
 
-from apps.tenants.models import SubscriptionPlan
+from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
 from apps.tenants.services.subscription_service import (
     SubscriptionService,
     SubscriptionError,
@@ -26,6 +38,28 @@ from apps.tenants.services.usage_service import UsageService
 
 logger = logging.getLogger(__name__)
 
+
+# ------------------------------------------------------------------
+# Custom Throttle for Signup
+# ------------------------------------------------------------------
+
+class SignupRateThrottle(SimpleRateThrottle):
+    """
+    Aggressive rate limit on signup to prevent abuse.
+    Uses the client IP as the identifier.
+    """
+    scope = 'signup'
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': self.get_ident(request),
+        }
+
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
 
 def _get_tenant(request):
     """Extract tenant from request, returning error Response if missing."""
@@ -36,6 +70,299 @@ def _get_tenant(request):
             status=status.HTTP_403_FORBIDDEN,
         )
     return tenant, None
+
+
+def _require_owner(request):
+    """
+    Verify the request user is an owner of the current tenant.
+
+    Returns:
+        (tenant, None) on success
+        (None, Response) with 403 if not owner or no tenant context
+    """
+    tenant, error = _get_tenant(request)
+    if error:
+        return None, error
+
+    is_owner = TenantMembership.objects.filter(
+        tenant=tenant,
+        user=request.user,
+        role='owner',
+        is_active=True,
+    ).exists()
+
+    if not is_owner:
+        return None, Response(
+            {'error': 'Only the shop owner can manage billing and subscriptions.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return tenant, None
+
+
+def _generate_unique_slug(business_name):
+    """Generate a unique slug from business name, appending a suffix if needed."""
+    base_slug = slugify(business_name)[:50]
+    slug = base_slug
+    counter = 1
+    while Tenant.objects.filter(slug=slug).exists():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+
+def _send_welcome_email(user, tenant, trial_days=30):
+    """Send a welcome email via SendGrid/SMTP if configured."""
+    sendgrid_key = os.environ.get('SENDGRID_API_KEY')
+    if not sendgrid_key:
+        logger.info(f"No SENDGRID_API_KEY — skipping welcome email for {user.email}")
+        return
+
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+
+        subject = f"Welcome to RS Systems, {user.first_name}! 🎉"
+        message = (
+            f"Hi {user.first_name},\n\n"
+            f"Welcome to RS Systems! Your shop \"{tenant.name}\" is set up and "
+            f"your 30-day free trial has started.\n\n"
+            f"YOUR TRIAL INCLUDES:\n"
+            f"  • Up to 50 repairs per month\n"
+            f"  • 2 technician seats\n"
+            f"  • 10 customer accounts\n"
+            f"  • Full invoicing & billing\n"
+            f"  • 100 MB photo storage\n\n"
+            f"QUICK START:\n"
+            f"  1. Log in and add your first customer\n"
+            f"  2. Create a repair record\n"
+            f"  3. Generate an invoice in one click\n\n"
+            f"Your trial expires in {trial_days} days. Upgrade anytime at "
+            f"/api/tenants/subscribe/ to keep your data.\n\n"
+            f"Need help? Reply to this email or visit our docs.\n\n"
+            f"— The RS Systems Team\n"
+            f"   Built for glass shops, by glass shops."
+        )
+
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        logger.info(f"Welcome email sent to {user.email}")
+    except Exception as e:
+        logger.warning(f"Failed to send welcome email to {user.email}: {e}")
+
+
+# ------------------------------------------------------------------
+# Signup (public)
+# ------------------------------------------------------------------
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([SignupRateThrottle])
+def signup(request):
+    """
+    POST /api/tenants/signup/
+
+    Register a new shop owner with a 30-day free trial.
+
+    Body:
+        {
+            "business_name": "Quick Fix Auto Glass",
+            "email": "owner@quickfix.com",
+            "password": "securepass123",
+            "first_name": "John",
+            "last_name": "Smith",
+            "phone": "555-123-4567"  // optional
+        }
+
+    Returns user info, tenant info, trial details, and auth token.
+    """
+    data = request.data
+
+    # --- Input extraction & sanitization ---
+    business_name = str(data.get('business_name', '')).strip()
+    email = str(data.get('email', '')).strip().lower()
+    password = data.get('password', '')
+    first_name = str(data.get('first_name', '')).strip()
+    last_name = str(data.get('last_name', '')).strip()
+    phone = str(data.get('phone', '')).strip()
+
+    # --- Validation ---
+    errors = {}
+
+    # Business name
+    if not business_name:
+        errors['business_name'] = 'Business name is required.'
+    elif len(business_name) < 2:
+        errors['business_name'] = 'Business name must be at least 2 characters.'
+    elif len(business_name) > 200:
+        errors['business_name'] = 'Business name must be 200 characters or fewer.'
+
+    # Email
+    if not email:
+        errors['email'] = 'Email is required.'
+    else:
+        try:
+            validate_email(email)
+        except DjangoValidationError:
+            errors['email'] = 'Enter a valid email address.'
+
+    if email and User.objects.filter(email=email).exists():
+        errors['email'] = 'An account with this email already exists.'
+
+    # Also check username collision (we use email as username)
+    username = email[:150] if email else ''
+    if username and User.objects.filter(username=username).exists():
+        errors['email'] = 'An account with this email already exists.'
+
+    # Password
+    if not password:
+        errors['password'] = 'Password is required.'
+    else:
+        try:
+            # Build a temporary user object for similarity check
+            temp_user = User(username=username, email=email,
+                             first_name=first_name, last_name=last_name)
+            validate_password(password, user=temp_user)
+        except DjangoValidationError as e:
+            errors['password'] = list(e.messages)
+
+    # Names
+    if not first_name:
+        errors['first_name'] = 'First name is required.'
+    if not last_name:
+        errors['last_name'] = 'Last name is required.'
+
+    if errors:
+        return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    # --- Create everything in a transaction ---
+    try:
+        with transaction.atomic():
+            # 1. Create User
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+            )
+
+            # 2. Create Tenant
+            slug = _generate_unique_slug(business_name)
+            trial_plan = SubscriptionPlan.objects.filter(slug='trial', is_active=True).first()
+
+            tenant = Tenant.objects.create(
+                name=business_name,
+                slug=slug,
+                subdomain=slug,
+                owner=user,
+                business_phone=phone,
+                business_email=email,
+                plan='trial',
+                subscription_plan=trial_plan,
+                subscription_status='trialing',
+                trial_started_at=timezone.now(),
+            )
+
+            # 3. Create owner membership
+            TenantMembership.objects.create(
+                tenant=tenant,
+                user=user,
+                role='owner',
+            )
+
+            # 4. Create auth token
+            token, _ = Token.objects.get_or_create(user=user)
+
+        # 5. Send welcome email (outside transaction — non-blocking)
+        trial_days = trial_plan.trial_days if trial_plan else 30
+        _send_welcome_email(user, tenant, trial_days)
+
+        logger.info(
+            f"New signup: {user.email} — tenant '{tenant.name}' (slug={tenant.slug})"
+        )
+
+        return Response({
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'name': user.get_full_name(),
+            },
+            'tenant': {
+                'id': tenant.id,
+                'name': tenant.name,
+                'slug': tenant.slug,
+            },
+            'plan': {
+                'name': trial_plan.name if trial_plan else 'Trial',
+                'days_remaining': trial_days,
+            },
+            'token': token.key,
+            'message': 'Welcome to RS Systems! Your 30-day free trial has started.',
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        logger.error(f"Signup failed for {email}: {e}")
+        return Response(
+            {'error': 'An unexpected error occurred during signup. Please try again.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+# ------------------------------------------------------------------
+# Tenant Status (dashboard-friendly)
+# ------------------------------------------------------------------
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def tenant_status(request):
+    """
+    GET /api/tenants/status/
+
+    Returns current tenant status in a dashboard-friendly format.
+    Includes plan info, trial status, usage summary, and upgrade URL.
+    """
+    tenant, error = _get_tenant(request)
+    if error:
+        return error
+
+    plan = tenant.subscription_plan
+    usage_svc = UsageService(tenant)
+    usage_summary = usage_svc.get_summary()
+
+    # Trial info
+    trial_info = None
+    if tenant.plan == 'trial' and tenant.trial_started_at:
+        trial_days = plan.trial_days if plan else 30
+        expires_at = tenant.trial_started_at + timezone.timedelta(days=trial_days)
+        trial_info = {
+            'active': not tenant.is_trial_expired,
+            'days_remaining': tenant.trial_days_remaining,
+            'expires_at': expires_at.strftime('%Y-%m-%d'),
+        }
+
+    # Plan details
+    plan_info = {
+        'name': plan.name if plan else 'No Plan',
+        'slug': plan.slug if plan else None,
+        'price': f"${plan.monthly_price}" if plan else '$0',
+    }
+
+    return Response({
+        'tenant': {
+            'name': tenant.name,
+            'slug': tenant.slug,
+        },
+        'plan': plan_info,
+        'subscription_status': tenant.subscription_status,
+        'trial': trial_info,
+        'usage': usage_summary,
+        'upgrade_url': '/api/tenants/subscribe/',
+    })
 
 
 # ------------------------------------------------------------------
@@ -82,6 +409,7 @@ def subscribe(request):
     POST /api/tenants/subscribe/
     
     Start a subscription for the current tenant.
+    Owner-only: only the shop owner can subscribe.
     
     Body:
         {
@@ -92,7 +420,7 @@ def subscribe(request):
     Returns subscription details including client_secret for
     completing payment on the frontend.
     """
-    tenant, error = _get_tenant(request)
+    tenant, error = _require_owner(request)
     if error:
         return error
     
@@ -132,13 +460,14 @@ def update_subscription(request):
     POST /api/tenants/subscription/update/
     
     Change the current subscription plan (upgrade or downgrade).
+    Owner-only: only the shop owner can change plans.
     
     Body:
         {
             "plan": "pro"  // required: new plan slug
         }
     """
-    tenant, error = _get_tenant(request)
+    tenant, error = _require_owner(request)
     if error:
         return error
     
@@ -171,9 +500,10 @@ def cancel_subscription(request):
     POST /api/tenants/subscription/cancel/
     
     Cancel the subscription at end of current billing period.
+    Owner-only: only the shop owner can cancel.
     The tenant retains access until the period ends.
     """
-    tenant, error = _get_tenant(request)
+    tenant, error = _require_owner(request)
     if error:
         return error
     
@@ -199,8 +529,9 @@ def reactivate_subscription(request):
     POST /api/tenants/subscription/reactivate/
     
     Un-cancel a subscription that was set to cancel at period end.
+    Owner-only: only the shop owner can reactivate.
     """
-    tenant, error = _get_tenant(request)
+    tenant, error = _require_owner(request)
     if error:
         return error
     
@@ -247,13 +578,14 @@ def billing_portal(request):
     GET /api/tenants/billing-portal/
     
     Creates a Stripe Billing Portal session and returns the URL.
+    Owner-only: only the shop owner can access billing.
     The frontend should redirect the user to this URL.
     
     Query params:
         return_url — URL to redirect to after leaving the portal
                      (defaults to the Referer header or '/')
     """
-    tenant, error = _get_tenant(request)
+    tenant, error = _require_owner(request)
     if error:
         return error
     
