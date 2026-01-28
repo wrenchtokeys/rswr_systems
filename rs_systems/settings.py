@@ -332,6 +332,21 @@ AWS_SNS_REGION_NAME = os.environ.get('AWS_SNS_REGION', 'us-east-1')
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'False').lower() == 'true'
 
 # =========================================
+# STRIPE CONFIGURATION
+# =========================================
+
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+
+# Stripe mode detection (auto-detect from key prefix)
+STRIPE_TEST_MODE = STRIPE_SECRET_KEY.startswith('sk_test_') if STRIPE_SECRET_KEY else True
+
+# Invoice defaults
+INVOICE_DEFAULT_DUE_DAYS = 30
+INVOICE_FROM_EMAIL = os.environ.get('INVOICE_FROM_EMAIL', 'billing@rockstarwindshield.repair')
+
+# =========================================
 # CELERY CONFIGURATION
 # =========================================
 

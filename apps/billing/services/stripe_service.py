@@ -130,22 +130,26 @@ class StripeService:
             
             # Add line items
             for item in invoice.line_items.all():
+                # Calculate total amount in cents for this line item
+                amount_cents = int(item.amount * 100)
                 stripe.InvoiceItem.create(
                     customer=stripe_customer_id,
                     invoice=stripe_invoice.id,
                     description=item.description,
-                    quantity=item.quantity,
-                    unit_amount=int(item.unit_price * 100),  # Stripe uses cents
+                    amount=amount_cents,  # Total amount in cents
+                    currency='usd',
                     metadata={
                         'repair_id': str(item.repair_id) if item.repair_id else '',
                         'unit_number': item.unit_number,
                     }
                 )
             
-            # Finalize if requested
+            # Finalize to get hosted URL (required before sending)
+            stripe_invoice = stripe.Invoice.finalize_invoice(stripe_invoice.id)
+            
+            # Send to customer if requested
             if auto_send:
-                stripe_invoice = stripe.Invoice.finalize_invoice(stripe_invoice.id)
-                stripe.Invoice.send_invoice(stripe_invoice.id)
+                stripe_invoice = stripe.Invoice.send_invoice(stripe_invoice.id)
             
             # Update our invoice with Stripe IDs
             invoice.stripe_invoice_id = stripe_invoice.id
