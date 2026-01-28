@@ -34,9 +34,9 @@ urlpatterns = [
     path('customers/<int:customer_id>/preferences/', views.get_invoice_preferences, name='preferences_get'),
     path('customers/<int:customer_id>/preferences/update/', views.update_invoice_preferences, name='preferences_update'),
     
-    # Stripe
+    # Stripe (payment channel — not a duplicate invoicing system)
     path('stripe/status/', views.stripe_status, name='stripe_status'),
-    path('stripe/invoice/<int:invoice_id>/', views.create_stripe_invoice, name='stripe_invoice'),
+    path('stripe/checkout/<int:invoice_id>/', views.create_checkout_session, name='stripe_checkout'),
     path('stripe/payment-link/<int:invoice_id>/', views.create_payment_link, name='payment_link'),
     path('stripe/webhook/', views.stripe_webhook, name='stripe_webhook'),
     

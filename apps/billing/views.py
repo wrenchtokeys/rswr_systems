@@ -191,13 +191,13 @@ def create_invoice(request, customer_id):
         import logging
         logging.getLogger(__name__).warning(f"PDF generation failed for {invoice.invoice_number}: {e}")
     
-    # Optionally create in Stripe
+    # Optionally generate Stripe payment link
     stripe_result = None
-    if data.get('send_to_stripe', False):
+    if data.get('send_to_stripe', False) or data.get('payment_link', False):
         from apps.billing.services.stripe_service import StripeService
         stripe_svc = StripeService()
         if stripe_svc.is_enabled():
-            stripe_result = stripe_svc.create_stripe_invoice(invoice, auto_send=True)
+            stripe_result = stripe_svc.create_payment_link(invoice)
     
     # Optionally email
     if data.get('auto_email', False) and customer.email:
@@ -528,8 +528,13 @@ def stripe_status(request):
 
 @csrf_exempt
 @require_POST
-def create_stripe_invoice(request, invoice_id):
-    """Create Stripe invoice from our invoice. POST: {"auto_send": true}"""
+def create_checkout_session(request, invoice_id):
+    """
+    Create a Stripe Checkout Session for an invoice.
+    Customer gets redirected to Stripe's hosted payment page.
+    
+    No duplicate invoice is created in Stripe — just a payment session.
+    """
     from apps.billing.models import Invoice
     from apps.billing.services.stripe_service import StripeService
     
@@ -537,6 +542,9 @@ def create_stripe_invoice(request, invoice_id):
         invoice = Invoice.objects.get(id=invoice_id)
     except Invoice.DoesNotExist:
         return JsonResponse({'error': 'Invoice not found'}, status=404)
+    
+    if invoice.amount_due <= 0:
+        return JsonResponse({'error': 'Invoice already paid'}, status=400)
     
     svc = StripeService()
     if not svc.is_enabled():
@@ -547,7 +555,11 @@ def create_stripe_invoice(request, invoice_id):
     except json.JSONDecodeError:
         data = {}
     
-    result = svc.create_stripe_invoice(invoice, auto_send=data.get('auto_send', True))
+    result = svc.create_checkout_session(
+        invoice,
+        success_url=data.get('success_url'),
+        cancel_url=data.get('cancel_url'),
+    )
     return JsonResponse(result, status=200 if result['success'] else 400)
 
 

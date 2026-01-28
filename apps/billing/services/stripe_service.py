@@ -1,16 +1,18 @@
 """
-Stripe Integration Service - Handles Stripe invoice and payment processing.
+Stripe Integration Service - Payment processing via Stripe.
 
-Provides:
-- Create Stripe invoices from our Invoice records
-- Generate payment links for customers
-- Process Stripe webhook events
-- Sync payment status
+ARCHITECTURE:
+  Our Invoice (DB) = Source of truth for ALL billing
+  Stripe = Payment channel only (not a second invoicing system)
 
-SETUP REQUIRED:
-1. Set STRIPE_SECRET_KEY in environment
-2. Set STRIPE_WEBHOOK_SECRET for webhook verification
-3. Configure webhook endpoint in Stripe dashboard
+We use Stripe Payment Links / Checkout Sessions for online payment.
+We do NOT create Stripe Invoices (which would duplicate our data).
+
+Flow:
+  1. Invoice created in our DB
+  2. Customer wants to pay online → generate Stripe Payment Link
+  3. Customer pays → Stripe webhook fires → we record the Payment
+  4. Or customer pays by check/cash/wire → manually record Payment
 
 Author: Amelia (Clawdbot AI)
 """
@@ -22,7 +24,6 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-# Stripe SDK - only import if available
 try:
     import stripe
     STRIPE_AVAILABLE = True
@@ -33,7 +34,10 @@ except ImportError:
 
 class StripeService:
     """
-    Handles all Stripe integration for invoices and payments.
+    Handles Stripe payment processing for invoices.
+    
+    Stripe is a PAYMENT CHANNEL, not an invoicing system.
+    Our DB (Invoice model) is the single source of truth.
     """
     
     def __init__(self):
@@ -45,162 +49,92 @@ class StripeService:
             self.enabled = True
         else:
             self.enabled = False
-            if not STRIPE_AVAILABLE:
-                logger.debug("Stripe SDK not available")
-            elif not self.api_key:
-                logger.debug("STRIPE_SECRET_KEY not configured")
     
     def is_enabled(self):
-        """Check if Stripe integration is properly configured."""
+        """Check if Stripe is properly configured."""
         return self.enabled
+    
+    # =========================================================================
+    # CUSTOMER MANAGEMENT
+    # =========================================================================
     
     def get_or_create_customer(self, customer):
         """
-        Get or create a Stripe Customer for our Customer record.
-        Persists the Stripe customer ID on the Customer model.
-        
-        Args:
-            customer: Our Customer model instance
-            
-        Returns:
-            str: Stripe customer ID
+        Get or create a Stripe Customer. Persists ID on our Customer model.
         """
         if not self.enabled:
             raise RuntimeError("Stripe not configured")
         
-        # Check if customer already has a Stripe ID stored
+        # Use persisted ID if available
         if customer.stripe_customer_id:
             try:
                 stripe.Customer.retrieve(customer.stripe_customer_id)
                 return customer.stripe_customer_id
             except stripe.error.InvalidRequestError:
-                # Stripe customer deleted, clear and recreate
                 customer.stripe_customer_id = ''
                 customer.save(update_fields=['stripe_customer_id'])
         
-        # Search for existing customer by email in Stripe
+        # Search by email
         if customer.email:
             existing = stripe.Customer.list(email=customer.email, limit=1)
             if existing.data:
-                # Found existing Stripe customer, persist the ID
                 customer.stripe_customer_id = existing.data[0].id
                 customer.save(update_fields=['stripe_customer_id'])
-                logger.info(f"Linked existing Stripe customer {customer.stripe_customer_id} to {customer.name}")
                 return customer.stripe_customer_id
         
-        # Create new Stripe customer
+        # Create new
         stripe_customer = stripe.Customer.create(
             name=customer.name,
             email=customer.email,
             phone=customer.phone,
-            metadata={
-                'rs_systems_customer_id': str(customer.id),
-            }
+            metadata={'rs_systems_customer_id': str(customer.id)},
         )
         
-        # Persist the ID
         customer.stripe_customer_id = stripe_customer.id
         customer.save(update_fields=['stripe_customer_id'])
-        
         logger.info(f"Created Stripe customer {stripe_customer.id} for {customer.name}")
         return stripe_customer.id
     
-    def create_stripe_invoice(self, invoice, auto_send=False):
-        """
-        Create a Stripe Invoice from our Invoice record.
-        
-        Args:
-            invoice: Our Invoice model instance
-            auto_send: Whether to finalize and send immediately
-            
-        Returns:
-            dict: Stripe invoice details
-        """
-        if not self.enabled:
-            return {'success': False, 'error': 'Stripe not configured'}
-        
-        try:
-            # Get or create Stripe customer
-            stripe_customer_id = self.get_or_create_customer(invoice.customer)
-            
-            # Create Stripe invoice
-            stripe_invoice = stripe.Invoice.create(
-                customer=stripe_customer_id,
-                collection_method='send_invoice',
-                days_until_due=30 if not invoice.due_date else (invoice.due_date - timezone.now().date()).days,
-                metadata={
-                    'rs_systems_invoice_id': str(invoice.id),
-                    'rs_systems_invoice_number': invoice.invoice_number,
-                },
-            )
-            
-            # Add line items
-            for item in invoice.line_items.all():
-                # Calculate total amount in cents for this line item
-                amount_cents = int(item.amount * 100)
-                stripe.InvoiceItem.create(
-                    customer=stripe_customer_id,
-                    invoice=stripe_invoice.id,
-                    description=item.description,
-                    amount=amount_cents,  # Total amount in cents
-                    currency='usd',
-                    metadata={
-                        'repair_id': str(item.repair_id) if item.repair_id else '',
-                        'unit_number': item.unit_number,
-                    }
-                )
-            
-            # Finalize to get hosted URL (required before sending)
-            stripe_invoice = stripe.Invoice.finalize_invoice(stripe_invoice.id)
-            
-            # Send to customer if requested
-            if auto_send:
-                stripe_invoice = stripe.Invoice.send_invoice(stripe_invoice.id)
-            
-            # Update our invoice with Stripe IDs
-            invoice.stripe_invoice_id = stripe_invoice.id
-            invoice.stripe_hosted_url = stripe_invoice.hosted_invoice_url or ''
-            invoice.save()
-            
-            logger.info(f"Created Stripe invoice {stripe_invoice.id} for {invoice.invoice_number}")
-            
-            return {
-                'success': True,
-                'stripe_invoice_id': stripe_invoice.id,
-                'hosted_url': stripe_invoice.hosted_invoice_url,
-                'pdf_url': stripe_invoice.invoice_pdf,
-                'status': stripe_invoice.status,
-            }
-            
-        except stripe.error.StripeError as e:
-            logger.error(f"Stripe error creating invoice: {e}")
-            return {'success': False, 'error': str(e)}
+    # =========================================================================
+    # PAYMENT LINKS (PRIMARY PAYMENT METHOD)
+    # =========================================================================
     
     def create_payment_link(self, invoice):
         """
-        Create a Stripe Payment Link for an invoice.
-        This allows one-click payment without needing a full Stripe invoice.
+        Create a one-time Stripe Payment Link for an invoice.
         
-        Args:
-            invoice: Our Invoice model instance
-            
+        This is the primary way customers pay online.
+        No duplicate invoice is created in Stripe — just a pay button.
+        
         Returns:
-            dict: Payment link details
+            dict: {success, payment_link, amount_due}
         """
         if not self.enabled:
             return {'success': False, 'error': 'Stripe not configured'}
         
+        if invoice.amount_due <= 0:
+            return {'success': False, 'error': 'Invoice already paid'}
+        
         try:
-            # Create a price for this specific invoice
+            # Build line item description
+            item_count = invoice.line_items.count()
+            description = (
+                f"Invoice {invoice.invoice_number} - "
+                f"{invoice.customer.name} - "
+                f"{item_count} repair{'s' if item_count != 1 else ''}"
+            )
+            
+            # Create a price for the exact amount due
             price = stripe.Price.create(
                 currency='usd',
                 unit_amount=int(invoice.amount_due * 100),  # Cents
                 product_data={
-                    'name': f'Invoice {invoice.invoice_number}',
+                    'name': description,
                     'metadata': {
                         'invoice_id': str(invoice.id),
-                        'customer_name': invoice.customer.name,
-                    }
+                        'invoice_number': invoice.invoice_number,
+                        'customer_id': str(invoice.customer.id),
+                    },
                 },
             )
             
@@ -208,39 +142,100 @@ class StripeService:
             payment_link = stripe.PaymentLink.create(
                 line_items=[{'price': price.id, 'quantity': 1}],
                 metadata={
-                    'rs_systems_invoice_id': str(invoice.id),
-                    'rs_systems_invoice_number': invoice.invoice_number,
+                    'rs_invoice_id': str(invoice.id),
+                    'rs_invoice_number': invoice.invoice_number,
                 },
                 after_completion={
                     'type': 'redirect',
                     'redirect': {
-                        'url': f'https://rockstarwindshield.repair/payment-complete?invoice={invoice.invoice_number}'
-                    }
-                }
+                        'url': getattr(settings, 'PAYMENT_SUCCESS_URL',
+                                       'https://rockstarwindshield.repair/payment-complete')
+                               + f'?invoice={invoice.invoice_number}'
+                    },
+                },
             )
             
-            logger.info(f"Created payment link for invoice {invoice.invoice_number}")
+            # Store the payment link on the invoice
+            invoice.stripe_hosted_url = payment_link.url
+            invoice.save(update_fields=['stripe_hosted_url'])
+            
+            logger.info(f"Payment link created for {invoice.invoice_number}: {payment_link.url}")
             
             return {
                 'success': True,
                 'payment_link': payment_link.url,
-                'price_id': price.id,
+                'amount_due': float(invoice.amount_due),
             }
             
         except stripe.error.StripeError as e:
-            logger.error(f"Stripe error creating payment link: {e}")
+            logger.error(f"Stripe error: {e}")
             return {'success': False, 'error': str(e)}
+    
+    def create_checkout_session(self, invoice, success_url=None, cancel_url=None):
+        """
+        Create a Stripe Checkout Session for an invoice.
+        Alternative to Payment Links — gives more control over the flow.
+        
+        Returns:
+            dict: {success, checkout_url, session_id}
+        """
+        if not self.enabled:
+            return {'success': False, 'error': 'Stripe not configured'}
+        
+        if invoice.amount_due <= 0:
+            return {'success': False, 'error': 'Invoice already paid'}
+        
+        try:
+            stripe_customer_id = self.get_or_create_customer(invoice.customer)
+            
+            base_url = getattr(settings, 'BASE_URL', 'https://rockstarwindshield.repair')
+            
+            session = stripe.checkout.Session.create(
+                customer=stripe_customer_id,
+                payment_method_types=['card'],
+                line_items=[{
+                    'price_data': {
+                        'currency': 'usd',
+                        'unit_amount': int(invoice.amount_due * 100),
+                        'product_data': {
+                            'name': f'Invoice {invoice.invoice_number}',
+                            'description': f'{invoice.line_items.count()} windshield repair(s) for {invoice.customer.name}',
+                        },
+                    },
+                    'quantity': 1,
+                }],
+                mode='payment',
+                success_url=success_url or f'{base_url}/payment-complete?session={{CHECKOUT_SESSION_ID}}',
+                cancel_url=cancel_url or f'{base_url}/payment-cancelled',
+                metadata={
+                    'rs_invoice_id': str(invoice.id),
+                    'rs_invoice_number': invoice.invoice_number,
+                },
+            )
+            
+            logger.info(f"Checkout session created for {invoice.invoice_number}: {session.id}")
+            
+            return {
+                'success': True,
+                'checkout_url': session.url,
+                'session_id': session.id,
+            }
+            
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe error: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    # =========================================================================
+    # WEBHOOK HANDLING
+    # =========================================================================
     
     def handle_webhook(self, payload, sig_header):
         """
-        Process incoming Stripe webhook events.
+        Process Stripe webhook events.
         
-        Args:
-            payload: Raw request body
-            sig_header: Stripe-Signature header
-            
-        Returns:
-            dict: Processing result
+        Primary events we handle:
+        - checkout.session.completed → customer paid via checkout
+        - payment_intent.succeeded → payment completed
         """
         if not self.enabled:
             return {'success': False, 'error': 'Stripe not configured'}
@@ -252,150 +247,91 @@ class StripeService:
             event = stripe.Webhook.construct_event(
                 payload, sig_header, self.webhook_secret
             )
-        except ValueError as e:
-            logger.error(f"Invalid webhook payload: {e}")
+        except ValueError:
             return {'success': False, 'error': 'Invalid payload'}
-        except stripe.error.SignatureVerificationError as e:
-            logger.error(f"Invalid webhook signature: {e}")
+        except stripe.error.SignatureVerificationError:
             return {'success': False, 'error': 'Invalid signature'}
         
-        # Handle specific events
         event_type = event['type']
         data = event['data']['object']
         
         handlers = {
-            'invoice.paid': self._handle_invoice_paid,
-            'invoice.payment_failed': self._handle_payment_failed,
-            'payment_intent.succeeded': self._handle_payment_succeeded,
             'checkout.session.completed': self._handle_checkout_completed,
+            'payment_intent.succeeded': self._handle_payment_succeeded,
         }
         
         handler = handlers.get(event_type)
         if handler:
             return handler(data)
         
-        logger.debug(f"Unhandled webhook event type: {event_type}")
+        logger.debug(f"Unhandled webhook: {event_type}")
         return {'success': True, 'handled': False, 'event_type': event_type}
     
-    def _handle_invoice_paid(self, stripe_invoice):
-        """Handle Stripe invoice.paid event."""
-        from apps.billing.models import Invoice
-        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-        
-        invoice_id = stripe_invoice.get('metadata', {}).get('rs_systems_invoice_id')
-        if not invoice_id:
-            logger.warning("No rs_systems_invoice_id in Stripe invoice metadata")
-            return {'success': False, 'error': 'No invoice mapping'}
-        
-        try:
-            invoice = Invoice.objects.get(id=invoice_id)
-        except Invoice.DoesNotExist:
-            logger.error(f"Invoice {invoice_id} not found for Stripe invoice")
-            return {'success': False, 'error': 'Invoice not found'}
-        
-        # Record the payment
-        amount_paid = Decimal(stripe_invoice['amount_paid']) / 100  # Convert from cents
-        
-        tracking = InvoiceTrackingService()
-        tracking.record_payment(
-            invoice=invoice,
-            amount=amount_paid,
-            payment_method='STRIPE',
-            stripe_payment_id=stripe_invoice.get('payment_intent', ''),
-            notes=f"Paid via Stripe invoice {stripe_invoice['id']}"
-        )
-        
-        # Update Stripe payment intent ID
-        invoice.stripe_payment_intent_id = stripe_invoice.get('payment_intent', '')
-        invoice.save()
-        
-        logger.info(f"Recorded Stripe payment for invoice {invoice.invoice_number}")
-        
-        return {'success': True, 'invoice_id': invoice.id, 'amount': float(amount_paid)}
-    
-    def _handle_payment_failed(self, stripe_invoice):
-        """Handle Stripe invoice.payment_failed event."""
-        from apps.billing.models import Invoice
-        
-        invoice_id = stripe_invoice.get('metadata', {}).get('rs_systems_invoice_id')
-        if invoice_id:
-            try:
-                invoice = Invoice.objects.get(id=invoice_id)
-                invoice.internal_notes += f"\n[Stripe] Payment failed at {timezone.now()}"
-                invoice.save()
-                logger.warning(f"Payment failed for invoice {invoice.invoice_number}")
-            except Invoice.DoesNotExist:
-                pass
-        
-        return {'success': True, 'event': 'payment_failed'}
-    
-    def _handle_payment_succeeded(self, payment_intent):
-        """Handle payment_intent.succeeded event (for payment links)."""
-        from apps.billing.models import Invoice
-        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-        
-        # Get invoice ID from metadata
-        metadata = payment_intent.get('metadata', {})
-        invoice_id = metadata.get('rs_systems_invoice_id')
+    def _handle_checkout_completed(self, session):
+        """Customer completed a Checkout Session — record the payment."""
+        metadata = session.get('metadata', {})
+        invoice_id = metadata.get('rs_invoice_id')
         
         if not invoice_id:
-            # Try to find from charges
-            logger.debug("No invoice_id in payment_intent metadata")
+            logger.debug("No rs_invoice_id in checkout metadata")
             return {'success': True, 'handled': False}
         
+        amount = Decimal(str(session.get('amount_total', 0))) / 100
+        
+        return self._record_stripe_payment(
+            invoice_id=invoice_id,
+            amount=amount,
+            stripe_payment_id=session.get('payment_intent', ''),
+            notes=f"Paid via Stripe Checkout ({session['id']})",
+        )
+    
+    def _handle_payment_succeeded(self, payment_intent):
+        """Payment intent succeeded — could be from Payment Link or Checkout."""
+        metadata = payment_intent.get('metadata', {})
+        invoice_id = metadata.get('rs_invoice_id')
+        
+        if not invoice_id:
+            return {'success': True, 'handled': False}
+        
+        amount = Decimal(str(payment_intent.get('amount_received', 0))) / 100
+        
+        return self._record_stripe_payment(
+            invoice_id=invoice_id,
+            amount=amount,
+            stripe_payment_id=payment_intent['id'],
+            notes='Paid via Stripe',
+        )
+    
+    def _record_stripe_payment(self, invoice_id, amount, stripe_payment_id='', notes=''):
+        """Record a Stripe payment against our invoice."""
+        from apps.billing.models import Invoice
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        
         try:
             invoice = Invoice.objects.get(id=invoice_id)
         except Invoice.DoesNotExist:
+            logger.error(f"Invoice {invoice_id} not found for Stripe payment")
             return {'success': False, 'error': 'Invoice not found'}
         
-        amount = Decimal(payment_intent['amount_received']) / 100
+        # Don't double-record payments
+        if invoice.payments.filter(stripe_payment_id=stripe_payment_id).exists():
+            logger.info(f"Payment {stripe_payment_id} already recorded")
+            return {'success': True, 'duplicate': True}
         
         tracking = InvoiceTrackingService()
         tracking.record_payment(
             invoice=invoice,
             amount=amount,
             payment_method='STRIPE',
-            stripe_payment_id=payment_intent['id'],
-            notes='Paid via Stripe payment link'
+            stripe_payment_id=stripe_payment_id,
+            notes=notes,
         )
         
-        logger.info(f"Recorded payment link payment for invoice {invoice.invoice_number}")
+        logger.info(f"Stripe payment ${amount} recorded for {invoice.invoice_number}")
         
-        return {'success': True, 'invoice_id': invoice.id, 'amount': float(amount)}
-    
-    def _handle_checkout_completed(self, session):
-        """Handle checkout.session.completed event."""
-        # Similar to payment_intent.succeeded
-        return self._handle_payment_succeeded(session.get('payment_intent', {}))
-    
-    def sync_invoice_status(self, invoice):
-        """
-        Sync our invoice status with Stripe.
-        
-        Args:
-            invoice: Our Invoice model instance
-            
-        Returns:
-            dict: Sync result
-        """
-        if not self.enabled or not invoice.stripe_invoice_id:
-            return {'success': False, 'error': 'No Stripe invoice to sync'}
-        
-        try:
-            stripe_invoice = stripe.Invoice.retrieve(invoice.stripe_invoice_id)
-            
-            result = {
-                'stripe_status': stripe_invoice.status,
-                'amount_paid': float(stripe_invoice.amount_paid / 100),
-                'amount_remaining': float(stripe_invoice.amount_remaining / 100),
-            }
-            
-            # Update hosted URL if changed
-            if stripe_invoice.hosted_invoice_url != invoice.stripe_hosted_url:
-                invoice.stripe_hosted_url = stripe_invoice.hosted_invoice_url or ''
-                invoice.save()
-            
-            return {'success': True, **result}
-            
-        except stripe.error.StripeError as e:
-            return {'success': False, 'error': str(e)}
+        return {
+            'success': True,
+            'invoice_id': invoice.id,
+            'invoice_number': invoice.invoice_number,
+            'amount': float(amount),
+        }

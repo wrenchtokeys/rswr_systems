@@ -8,6 +8,23 @@
 
 The billing app provides comprehensive invoice management, payment tracking, and business intelligence for RS Systems. It's designed to prevent double-billing, track payments (both online and manual), and provide actionable insights.
 
+### Key Architecture Decision
+
+**Our database is the single source of truth for invoices.**
+
+Stripe is a payment channel — NOT a second invoicing system. We use Stripe Payment Links and Checkout Sessions to accept online payments. We do NOT create Stripe Invoices (which would duplicate our data).
+
+```
+Our Invoice (DB) ← Source of truth for ALL billing
+    │
+    ├── Check payment    → manually recorded
+    ├── Cash payment     → manually recorded
+    ├── Wire payment     → manually recorded
+    └── Stripe payment   → Payment Link → webhook → auto-recorded
+```
+
+This means customers who pay by check, cash, or wire are tracked in the same system as online payments. No data duplication.
+
 ## Architecture
 
 ```
@@ -165,12 +182,13 @@ SENDGRID_API_KEY=SG....
 ### Stripe Webhook Setup
 
 1. In Stripe Dashboard → Webhooks → Add endpoint
-2. URL: `https://yourdomain.com/clawdbot/stripe/webhook/`
+2. URL: `https://yourdomain.com/api/billing/stripe/webhook/`
 3. Events to listen for:
-   - `invoice.paid`
-   - `invoice.payment_failed`
-   - `payment_intent.succeeded`
-   - `checkout.session.completed`
+   - `checkout.session.completed` (customer paid via checkout)
+   - `payment_intent.succeeded` (payment link completed)
+
+**Note:** We do NOT use `invoice.paid` because we don't create Stripe Invoices.
+Our DB is the source of truth — Stripe is just a payment channel.
 
 ## Usage Examples
 
