@@ -1,0 +1,263 @@
+"""
+Invoice Tracking Service - Manages invoice lifecycle and prevents double-billing.
+
+This service:
+1. Creates Invoice records when PDFs are generated
+2. Tracks which repairs are invoiced (prevents double-billing)
+3. Manages payment recording
+4. Handles invoice status updates
+
+Author: Amelia (Clawdbot AI)
+"""
+
+import logging
+from datetime import timedelta
+from decimal import Decimal
+from django.utils import timezone
+from django.db import transaction
+from django.db.models import Sum
+
+from apps.billing.models import Invoice, InvoiceLineItem, Payment
+
+logger = logging.getLogger(__name__)
+
+
+class InvoiceTrackingService:
+    """
+    Handles invoice creation, tracking, and payment processing.
+    """
+    
+    DEFAULT_PAYMENT_TERMS_DAYS = 30
+    
+    def create_invoice_from_repairs(self, customer, repairs, invoice_number=None, 
+                                     due_days=None, s3_key=None, auto_send=False):
+        """
+        Create a tracked Invoice from a list of repairs.
+        
+        Args:
+            customer: Customer instance
+            repairs: List of Repair instances to invoice
+            invoice_number: Optional invoice number (auto-generated if not provided)
+            due_days: Days until due (default: 30)
+            s3_key: S3 key where PDF is stored
+            auto_send: Mark as SENT immediately
+            
+        Returns:
+            Invoice instance
+        """
+        if not repairs:
+            raise ValueError("No repairs provided for invoice")
+        
+        # Check for already-invoiced repairs
+        already_invoiced = []
+        for repair in repairs:
+            if repair.invoice_line_items.filter(
+                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
+            ).exists():
+                already_invoiced.append(repair.id)
+        
+        if already_invoiced:
+            raise ValueError(
+                f"Repairs already invoiced: {already_invoiced}. "
+                "Cannot bill the same repair twice."
+            )
+        
+        # Generate invoice number if not provided
+        if not invoice_number:
+            invoice_number = self._generate_invoice_number(customer)
+        
+        # Calculate due date
+        due_days = due_days or self.DEFAULT_PAYMENT_TERMS_DAYS
+        due_date = timezone.now().date() + timedelta(days=due_days)
+        
+        with transaction.atomic():
+            # Create invoice
+            invoice = Invoice.objects.create(
+                invoice_number=invoice_number,
+                customer=customer,
+                invoice_date=timezone.now().date(),
+                due_date=due_date,
+                status='SENT' if auto_send else 'DRAFT',
+                sent_at=timezone.now() if auto_send else None,
+                s3_key=s3_key or '',
+            )
+            
+            # Create line items for each repair
+            subtotal = Decimal('0.00')
+            total_discount = Decimal('0.00')
+            
+            for repair in repairs:
+                discounted = repair.get_discounted_cost()
+                
+                line_item = InvoiceLineItem.objects.create(
+                    invoice=invoice,
+                    repair=repair,
+                    description=f"Windshield repair - Unit #{repair.unit_number} - {repair.get_damage_type_display() or 'Repair'}",
+                    quantity=1,
+                    unit_price=discounted['original_cost'],
+                    discount=discounted['savings'],
+                    amount=discounted['final_cost'],
+                    repair_date=repair.repair_date.date() if repair.repair_date else None,
+                    unit_number=repair.unit_number,
+                )
+                
+                subtotal += discounted['original_cost']
+                total_discount += discounted['savings']
+            
+            # Update invoice totals
+            invoice.subtotal = subtotal
+            invoice.discount = total_discount
+            invoice.total = subtotal - total_discount
+            invoice.save()
+            
+            logger.info(
+                f"Created invoice {invoice_number} for {customer.name}: "
+                f"{len(repairs)} repairs, ${invoice.total}"
+            )
+            
+            return invoice
+    
+    def get_uninvoiced_repairs(self, customer, completed_only=True):
+        """
+        Get repairs that haven't been invoiced yet.
+        
+        Args:
+            customer: Customer instance
+            completed_only: Only return COMPLETED repairs (default: True)
+            
+        Returns:
+            QuerySet of Repair instances
+        """
+        from apps.technician_portal.models import Repair
+        
+        # Get repairs for this customer
+        repairs = Repair.objects.filter(customer=customer)
+        
+        if completed_only:
+            repairs = repairs.filter(queue_status='COMPLETED')
+        
+        # Exclude repairs that are on active invoices
+        # (DRAFT, SENT, PARTIAL, PAID - but not CANCELLED)
+        invoiced_repair_ids = InvoiceLineItem.objects.filter(
+            repair__isnull=False,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
+        ).values_list('repair_id', flat=True)
+        
+        repairs = repairs.exclude(id__in=invoiced_repair_ids)
+        
+        return repairs.order_by('-repair_date')
+    
+    def record_payment(self, invoice, amount, payment_method='OTHER',
+                       reference_number='', notes='', recorded_by=None,
+                       stripe_payment_id='', payment_date=None):
+        """
+        Record a payment against an invoice.
+        
+        Args:
+            invoice: Invoice instance
+            amount: Payment amount (Decimal)
+            payment_method: One of Payment.PAYMENT_METHOD_CHOICES
+            reference_number: Check number, transaction ID, etc.
+            notes: Optional notes
+            recorded_by: User who recorded the payment
+            stripe_payment_id: Stripe payment ID if applicable
+            payment_date: Date of payment (default: today)
+            
+        Returns:
+            Payment instance
+        """
+        if invoice.status == 'CANCELLED':
+            raise ValueError("Cannot record payment on cancelled invoice")
+        
+        payment = Payment.objects.create(
+            invoice=invoice,
+            amount=Decimal(str(amount)),
+            payment_date=payment_date or timezone.now().date(),
+            payment_method=payment_method,
+            reference_number=reference_number,
+            notes=notes,
+            recorded_by=recorded_by,
+            stripe_payment_id=stripe_payment_id,
+        )
+        
+        logger.info(
+            f"Payment recorded: ${amount} on invoice {invoice.invoice_number} "
+            f"via {payment_method}"
+        )
+        
+        return payment
+    
+    def get_outstanding_invoices(self, customer=None, include_overdue_only=False):
+        """
+        Get invoices that haven't been fully paid.
+        
+        Args:
+            customer: Optional customer filter
+            include_overdue_only: Only return overdue invoices
+            
+        Returns:
+            QuerySet of Invoice instances
+        """
+        invoices = Invoice.objects.filter(
+            status__in=['SENT', 'PARTIAL', 'OVERDUE']
+        )
+        
+        if customer:
+            invoices = invoices.filter(customer=customer)
+        
+        if include_overdue_only:
+            invoices = invoices.filter(
+                due_date__lt=timezone.now().date()
+            )
+        
+        return invoices.order_by('due_date')
+    
+    def update_overdue_statuses(self):
+        """
+        Batch update: Mark invoices as OVERDUE if past due date.
+        Run this daily via cron/celery.
+        
+        Returns:
+            int: Number of invoices marked overdue
+        """
+        today = timezone.now().date()
+        
+        updated = Invoice.objects.filter(
+            status__in=['SENT', 'PARTIAL'],
+            due_date__lt=today
+        ).update(status='OVERDUE')
+        
+        if updated:
+            logger.info(f"Marked {updated} invoices as OVERDUE")
+        
+        return updated
+    
+    def get_customer_balance(self, customer):
+        """
+        Get total outstanding balance for a customer.
+        
+        Returns:
+            dict with total_outstanding, invoice_count, oldest_due
+        """
+        invoices = self.get_outstanding_invoices(customer=customer)
+        
+        total = Decimal('0.00')
+        oldest_due = None
+        
+        for inv in invoices:
+            total += inv.amount_due
+            if inv.due_date:
+                if oldest_due is None or inv.due_date < oldest_due:
+                    oldest_due = inv.due_date
+        
+        return {
+            'total_outstanding': total,
+            'invoice_count': invoices.count(),
+            'oldest_due': oldest_due,
+            'invoices': list(invoices),
+        }
+    
+    def _generate_invoice_number(self, customer):
+        """Generate a unique invoice number."""
+        timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+        return f"INV-{customer.id}-{timestamp}"

@@ -516,3 +516,285 @@ def update_invoice_preferences(request, customer_id):
             'include_photos_in_invoice': prefs.include_photos_in_invoice,
         },
     })
+
+
+# =============================================================================
+# INVOICE TRACKING ENDPOINTS
+# =============================================================================
+
+@require_GET
+def list_invoices(request):
+    """
+    List all invoices with optional filters.
+    
+    Query params:
+        - customer_id: Filter by customer
+        - status: Filter by status (DRAFT, SENT, PAID, PARTIAL, OVERDUE, CANCELLED)
+        - outstanding: If 'true', only show unpaid invoices
+    """
+    from apps.billing.models import Invoice
+    
+    invoices = Invoice.objects.all()
+    
+    # Apply filters
+    customer_id = request.GET.get('customer_id')
+    if customer_id:
+        invoices = invoices.filter(customer_id=customer_id)
+    
+    status_filter = request.GET.get('status')
+    if status_filter:
+        invoices = invoices.filter(status=status_filter.upper())
+    
+    outstanding = request.GET.get('outstanding', '').lower() == 'true'
+    if outstanding:
+        invoices = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE'])
+    
+    invoices = invoices.select_related('customer').order_by('-invoice_date')[:50]
+    
+    invoice_data = []
+    for inv in invoices:
+        invoice_data.append({
+            'id': inv.id,
+            'invoice_number': inv.invoice_number,
+            'customer': {
+                'id': inv.customer.id,
+                'name': inv.customer.name,
+            },
+            'invoice_date': inv.invoice_date.isoformat(),
+            'due_date': inv.due_date.isoformat() if inv.due_date else None,
+            'total': float(inv.total),
+            'amount_paid': float(inv.amount_paid),
+            'amount_due': float(inv.amount_due),
+            'status': inv.status,
+            'line_item_count': inv.line_items.count(),
+        })
+    
+    return JsonResponse({
+        'invoices': invoice_data,
+        'count': len(invoice_data),
+    })
+
+
+@require_GET
+def get_invoice(request, invoice_id):
+    """
+    Get detailed invoice information including line items and payments.
+    """
+    from apps.billing.models import Invoice
+    
+    try:
+        invoice = Invoice.objects.select_related('customer').get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+    
+    line_items = []
+    for item in invoice.line_items.all():
+        line_items.append({
+            'id': item.id,
+            'description': item.description,
+            'quantity': item.quantity,
+            'unit_price': float(item.unit_price),
+            'discount': float(item.discount),
+            'amount': float(item.amount),
+            'repair_id': item.repair_id,
+            'unit_number': item.unit_number,
+            'repair_date': item.repair_date.isoformat() if item.repair_date else None,
+        })
+    
+    payments = []
+    for payment in invoice.payments.all():
+        payments.append({
+            'id': payment.id,
+            'amount': float(payment.amount),
+            'payment_date': payment.payment_date.isoformat(),
+            'payment_method': payment.payment_method,
+            'payment_method_display': payment.get_payment_method_display(),
+            'reference_number': payment.reference_number,
+            'notes': payment.notes,
+        })
+    
+    return JsonResponse({
+        'invoice': {
+            'id': invoice.id,
+            'invoice_number': invoice.invoice_number,
+            'customer': {
+                'id': invoice.customer.id,
+                'name': invoice.customer.name,
+                'email': invoice.customer.email,
+            },
+            'invoice_date': invoice.invoice_date.isoformat(),
+            'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+            'subtotal': float(invoice.subtotal),
+            'discount': float(invoice.discount),
+            'total': float(invoice.total),
+            'amount_paid': float(invoice.amount_paid),
+            'amount_due': float(invoice.amount_due),
+            'status': invoice.status,
+            'sent_at': invoice.sent_at.isoformat() if invoice.sent_at else None,
+            'paid_at': invoice.paid_at.isoformat() if invoice.paid_at else None,
+            's3_key': invoice.s3_key,
+            'stripe_invoice_id': invoice.stripe_invoice_id,
+            'stripe_hosted_url': invoice.stripe_hosted_url,
+            'notes': invoice.notes,
+        },
+        'line_items': line_items,
+        'payments': payments,
+    })
+
+
+@require_GET
+def get_uninvoiced_repairs(request, customer_id):
+    """
+    Get repairs that haven't been invoiced yet for a customer.
+    These are available to be added to a new invoice.
+    """
+    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+    
+    try:
+        customer = Customer.objects.get(id=customer_id)
+    except Customer.DoesNotExist:
+        return JsonResponse({'error': 'Customer not found'}, status=404)
+    
+    service = InvoiceTrackingService()
+    repairs = service.get_uninvoiced_repairs(customer)
+    
+    repair_data = []
+    total_value = 0
+    for repair in repairs:
+        discounted = repair.get_discounted_cost()
+        repair_data.append({
+            'id': repair.id,
+            'unit_number': repair.unit_number,
+            'damage_type': repair.get_damage_type_display() or 'Repair',
+            'repair_date': repair.repair_date.isoformat(),
+            'original_cost': float(discounted['original_cost']),
+            'final_cost': float(discounted['final_cost']),
+            'discount_applied': discounted['discount_applied'],
+        })
+        total_value += float(discounted['final_cost'])
+    
+    return JsonResponse({
+        'customer': {
+            'id': customer.id,
+            'name': customer.name,
+        },
+        'uninvoiced_repairs': repair_data,
+        'count': len(repair_data),
+        'total_value': total_value,
+    })
+
+
+@csrf_exempt
+@require_POST
+def record_payment(request, invoice_id):
+    """
+    Record a payment against an invoice.
+    
+    POST body (JSON):
+    {
+        "amount": 150.00,
+        "payment_method": "CHECK" | "CASH" | "WIRE" | "ACH" | "STRIPE" | "OTHER",
+        "reference_number": "Check #1234" (optional),
+        "payment_date": "2026-01-28" (optional, defaults to today),
+        "notes": "Paid in full" (optional)
+    }
+    """
+    from apps.billing.models import Invoice
+    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+    
+    try:
+        invoice = Invoice.objects.get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+    
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON body'}, status=400)
+    
+    if 'amount' not in data:
+        return JsonResponse({'error': 'amount is required'}, status=400)
+    
+    # Parse payment date if provided
+    payment_date = None
+    if data.get('payment_date'):
+        try:
+            payment_date = datetime.strptime(data['payment_date'], '%Y-%m-%d').date()
+        except ValueError:
+            return JsonResponse({'error': 'Invalid payment_date format. Use YYYY-MM-DD'}, status=400)
+    
+    try:
+        service = InvoiceTrackingService()
+        payment = service.record_payment(
+            invoice=invoice,
+            amount=data['amount'],
+            payment_method=data.get('payment_method', 'OTHER').upper(),
+            reference_number=data.get('reference_number', ''),
+            notes=data.get('notes', ''),
+            payment_date=payment_date,
+        )
+        
+        # Refresh invoice to get updated status
+        invoice.refresh_from_db()
+        
+        return JsonResponse({
+            'success': True,
+            'payment': {
+                'id': payment.id,
+                'amount': float(payment.amount),
+                'payment_method': payment.payment_method,
+            },
+            'invoice': {
+                'id': invoice.id,
+                'invoice_number': invoice.invoice_number,
+                'total': float(invoice.total),
+                'amount_paid': float(invoice.amount_paid),
+                'amount_due': float(invoice.amount_due),
+                'status': invoice.status,
+            },
+        })
+        
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@require_GET
+def get_customer_balance(request, customer_id):
+    """
+    Get outstanding balance and invoice summary for a customer.
+    """
+    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+    
+    try:
+        customer = Customer.objects.get(id=customer_id)
+    except Customer.DoesNotExist:
+        return JsonResponse({'error': 'Customer not found'}, status=404)
+    
+    service = InvoiceTrackingService()
+    balance = service.get_customer_balance(customer)
+    
+    # Format invoice list
+    invoice_summary = []
+    for inv in balance['invoices']:
+        invoice_summary.append({
+            'id': inv.id,
+            'invoice_number': inv.invoice_number,
+            'invoice_date': inv.invoice_date.isoformat(),
+            'due_date': inv.due_date.isoformat() if inv.due_date else None,
+            'total': float(inv.total),
+            'amount_due': float(inv.amount_due),
+            'status': inv.status,
+        })
+    
+    return JsonResponse({
+        'customer': {
+            'id': customer.id,
+            'name': customer.name,
+        },
+        'balance': {
+            'total_outstanding': float(balance['total_outstanding']),
+            'invoice_count': balance['invoice_count'],
+            'oldest_due': balance['oldest_due'].isoformat() if balance['oldest_due'] else None,
+        },
+        'outstanding_invoices': invoice_summary,
+    })

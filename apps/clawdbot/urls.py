@@ -28,4 +28,11 @@ urlpatterns = [
     # Customer invoice preferences (GET to read, POST to update)
     path('preferences/<int:customer_id>/', views.get_invoice_preferences, name='preferences_get'),
     path('preferences/<int:customer_id>/update/', views.update_invoice_preferences, name='preferences_update'),
+    
+    # Invoice tracking
+    path('billing/invoices/', views.list_invoices, name='invoices_list'),
+    path('billing/invoices/<int:invoice_id>/', views.get_invoice, name='invoice_detail'),
+    path('billing/invoices/<int:invoice_id>/payment/', views.record_payment, name='invoice_payment'),
+    path('billing/uninvoiced/<int:customer_id>/', views.get_uninvoiced_repairs, name='uninvoiced_repairs'),
+    path('billing/balance/<int:customer_id>/', views.get_customer_balance, name='customer_balance'),
 ]

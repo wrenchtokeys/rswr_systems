@@ -104,6 +104,24 @@ class AutoInvoiceService:
             if s3_key:
                 result['success'] = True
                 result['s3_key'] = s3_key
+                
+                # Create tracked Invoice record (prevents double-billing)
+                try:
+                    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+                    tracking_service = InvoiceTrackingService()
+                    invoice_record = tracking_service.create_invoice_from_repairs(
+                        customer=repair.customer,
+                        repairs=[repair],
+                        invoice_number=invoice_data.invoice_number,
+                        s3_key=s3_key,
+                        auto_send=True  # Mark as sent since it's auto-generated
+                    )
+                    result['invoice_id'] = invoice_record.id
+                    logger.info(f"Created invoice record #{invoice_record.id}")
+                except Exception as e:
+                    # Log but don't fail - PDF was generated successfully
+                    logger.warning(f"Could not create invoice record: {e}")
+                
                 logger.info(f"Auto-generated invoice {invoice_data.invoice_number} for repair #{repair.id} -> s3://{self.s3_bucket}/{s3_key}")
                 
                 # Check if we should email
