@@ -58,7 +58,10 @@ urlpatterns = [
     # Rewards/referrals (accessible from both portals)
     path('referrals/', include('apps.rewards_referrals.urls')),
 
-    # Clawdbot endpoint
+    # Billing API (canonical home for billing endpoints)
+    path('api/billing/', include('apps.billing.urls')),
+
+    # Clawdbot endpoint (Amelia's experimental namespace)
     path('clawdbot/', include('apps.clawdbot.urls')),
 
     # Legacy authentication URLs (redirect to appropriate portal)

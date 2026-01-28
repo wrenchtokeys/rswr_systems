@@ -57,6 +57,7 @@ class StripeService:
     def get_or_create_customer(self, customer):
         """
         Get or create a Stripe Customer for our Customer record.
+        Persists the Stripe customer ID on the Customer model.
         
         Args:
             customer: Our Customer model instance
@@ -68,23 +69,24 @@ class StripeService:
             raise RuntimeError("Stripe not configured")
         
         # Check if customer already has a Stripe ID stored
-        # We'll store this in a simple way - could add a field to Customer model later
-        stripe_customer_id = getattr(customer, 'stripe_customer_id', None)
-        
-        if stripe_customer_id:
+        if customer.stripe_customer_id:
             try:
-                # Verify it still exists in Stripe
-                stripe.Customer.retrieve(stripe_customer_id)
-                return stripe_customer_id
+                stripe.Customer.retrieve(customer.stripe_customer_id)
+                return customer.stripe_customer_id
             except stripe.error.InvalidRequestError:
-                # Customer doesn't exist in Stripe, create new one
-                pass
+                # Stripe customer deleted, clear and recreate
+                customer.stripe_customer_id = ''
+                customer.save(update_fields=['stripe_customer_id'])
         
-        # Search for existing customer by email
+        # Search for existing customer by email in Stripe
         if customer.email:
             existing = stripe.Customer.list(email=customer.email, limit=1)
             if existing.data:
-                return existing.data[0].id
+                # Found existing Stripe customer, persist the ID
+                customer.stripe_customer_id = existing.data[0].id
+                customer.save(update_fields=['stripe_customer_id'])
+                logger.info(f"Linked existing Stripe customer {customer.stripe_customer_id} to {customer.name}")
+                return customer.stripe_customer_id
         
         # Create new Stripe customer
         stripe_customer = stripe.Customer.create(
@@ -95,6 +97,10 @@ class StripeService:
                 'rs_systems_customer_id': str(customer.id),
             }
         )
+        
+        # Persist the ID
+        customer.stripe_customer_id = stripe_customer.id
+        customer.save(update_fields=['stripe_customer_id'])
         
         logger.info(f"Created Stripe customer {stripe_customer.id} for {customer.name}")
         return stripe_customer.id

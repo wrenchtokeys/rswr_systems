@@ -42,6 +42,14 @@ class Customer(models.Model):
         help_text="When phone number was verified"
     )
 
+    # Stripe integration
+    stripe_customer_id = models.CharField(
+        max_length=100,
+        blank=True,
+        db_index=True,
+        help_text="Stripe Customer ID for billing integration"
+    )
+
     class Meta:
         ordering = ['name']
         verbose_name = 'Customer'
