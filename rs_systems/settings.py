@@ -402,17 +402,41 @@ CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_CONCURRENCY', 4))
 # CELERY_TASK_EAGER_PROPAGATES = True
 
 # =========================================
-# CACHING CONFIGURATION (Redis)
+# CACHING CONFIGURATION
 # =========================================
+# Use Redis in production, fall back to local memory cache for dev without Redis
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.environ.get('REDIS_CACHE_URL', 'redis://localhost:6379/1'),
-        'KEY_PREFIX': 'rs_systems',
-        'TIMEOUT': 300,  # 5 minutes default timeout
+REDIS_CACHE_URL = os.environ.get('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+
+def _redis_available():
+    """Check if Redis is reachable (called once at startup)."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        s.connect(('localhost', 6379))
+        s.close()
+        return True
+    except (socket.error, OSError):
+        return False
+
+if _redis_available():
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_CACHE_URL,
+            'KEY_PREFIX': 'rs_systems',
+            'TIMEOUT': 300,
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'KEY_PREFIX': 'rs_systems',
+            'TIMEOUT': 300,
+        }
+    }
 
 # =========================================
 # LOGGING CONFIGURATION
