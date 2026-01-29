@@ -135,7 +135,18 @@ class TechnicianRegistrationForm(UserCreationForm):
 class CustomerForm(forms.ModelForm):
     class Meta:
         model = Customer
-        fields = ['name']
+        fields = ['name', 'primary_technician']
+
+    def __init__(self, *args, **kwargs):
+        self.tenant = kwargs.pop('tenant', None)
+        super().__init__(*args, **kwargs)
+        # Scope primary_technician choices to tenant
+        from apps.technician_portal.models import Technician
+        qs = Technician.objects.filter(is_active=True)
+        if self.tenant:
+            qs = qs.filter(tenant=self.tenant)
+        self.fields['primary_technician'].queryset = qs.order_by('user__first_name')
+        self.fields['primary_technician'].required = False
 
 class CustomDateTimeInput(DateTimeInput):
     input_type = 'datetime-local'

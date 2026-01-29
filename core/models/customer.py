@@ -81,6 +81,16 @@ class Customer(models.Model):
         help_text="When phone number was verified"
     )
 
+    # Primary technician assignment
+    primary_technician = models.ForeignKey(
+        'technician_portal.Technician',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='primary_customers',
+        help_text="Default technician assigned to this customer's repairs"
+    )
+
     # Stripe integration
     stripe_customer_id = models.CharField(
         max_length=100,

@@ -292,6 +292,13 @@ def create_repair(request):
 
                     repair.save()
                     form.save_m2m()
+
+                    # If no technician was explicitly set (shouldn't happen here
+                    # since we default to request.user.technician, but safety net)
+                    if not repair.technician_id:
+                        from apps.tenants.services.assignment_service import auto_assign_repair
+                        auto_assign_repair(repair)
+
                 except AttributeError:
                     messages.error(request, "You don't have a technician profile to create repairs.")
                     return redirect('technician_dashboard')

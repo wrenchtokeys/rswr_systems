@@ -1013,6 +1013,12 @@ def handle_single_repair_request(request, customer):
             queue_status='REQUESTED'
         )
 
+        # Auto-assign technician based on tenant strategy
+        from apps.tenants.services.assignment_service import auto_assign_repair
+        assigned_tech = auto_assign_repair(repair)
+        if assigned_tech:
+            messages.info(request, f'Your repair has been assigned to {assigned_tech.user.get_full_name()}.')
+
         messages.success(request, "Repair request submitted successfully! A technician will review your request.")
         return redirect('customer_dashboard')
     except Exception as e:
@@ -1123,6 +1129,18 @@ def handle_batch_repair_request(request, customer):
                         queue_status='REQUESTED'
                     )
                     created_repairs.append(repair)
+
+        # Auto-assign technicians based on tenant strategy
+        from apps.tenants.services.assignment_service import auto_assign_repair as _auto_assign
+        assigned_any = False
+        for repair in created_repairs:
+            assigned_tech = _auto_assign(repair)
+            if assigned_tech and not assigned_any:
+                assigned_any = True
+                messages.info(
+                    request,
+                    f'Repairs have been assigned to {assigned_tech.user.get_full_name()}.'
+                )
 
         # Success message
         count = len(created_repairs)

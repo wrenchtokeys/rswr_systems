@@ -184,6 +184,44 @@ After initial signup, return at any time:
 
 ---
 
+## Repair Assignment Strategies
+
+Shop owners can configure how new repair requests are automatically assigned to technicians. This is set in **Owner Settings → Repair Assignment**.
+
+### Strategies
+
+| Strategy | Behavior |
+|----------|----------|
+| **Manual** | No auto-assignment. A manager must manually assign every incoming repair. Best for small teams that want full control. |
+| **Primary Tech First** *(default)* | If the customer has a primary technician, auto-assign to them. If not, the repair stays unassigned for manual assignment. |
+| **Smart Auto-Assign** | Tries the primary tech first, then falls back to the eligible technician with the fewest active jobs. Balances workload automatically. |
+| **Round Robin** | Rotates assignments evenly through all eligible technicians by ID order. Ignores workload — purely rotational. |
+
+### Primary Technician
+
+Each customer can have a **primary technician** — a default tech for all their work. Set this in:
+- **Owner Settings → Customers** (badge shown per customer)
+- **Technician Portal → Customer Details** (managers/admins can change via dropdown)
+- **Customer Creation Form** (select during creation)
+
+When a customer with a primary tech submits a repair request:
+1. The system checks the tenant's assignment strategy
+2. If the strategy uses primary tech (primary_first, auto, round_robin respects eligibility)
+3. The repair is auto-assigned and the tech gets an in-app notification
+
+### Eligibility Checks
+
+Auto-assignment only considers technicians who are:
+- **Active** (`is_active=True`)
+- **Belong to the same tenant**
+- **Have the right ability**: `can_repair` for repairs, `can_replace` for replacements
+
+### Notifications
+
+When a repair or replacement is auto-assigned, the technician receives an in-app notification (🔧 badge) visible in their notification panel.
+
+---
+
 ## Summary: How Everyone Connects
 
 ```

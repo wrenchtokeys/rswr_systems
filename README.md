@@ -8,8 +8,9 @@ A shop owner signs up, gets a 30-day free trial, and immediately has access to:
 
 - **Repairs** — Track chip/crack repairs with progressive pricing ($50→$40→$35→$30→$25 per unit)
 - **Replacements** — Full glass swaps with parts + labor + ADAS calibration pricing
-- **Customers** — Fleet accounts (trucking companies), retail individuals, and walk-ins
-- **Technicians** — Team management with role-based access
+- **Auto-Assignment** — Smart repair assignment: primary tech, workload balancing, round-robin, or manual
+- **Customers** — Fleet accounts (trucking companies), retail individuals, and walk-ins with optional primary technician
+- **Technicians** — Team management with role-based access and configurable auto-assignment strategies
 - **Invoicing** — Auto-generated PDF invoices, email delivery, payment tracking
 - **Billing** — Stripe subscriptions with 4 plan tiers, usage tracking, plan enforcement
 

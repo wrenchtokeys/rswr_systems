@@ -135,6 +135,20 @@ class Tenant(models.Model):
     business_address = models.TextField(blank=True)
     logo = models.ImageField(upload_to='tenants/logos/', blank=True)
     
+    # Assignment strategy
+    ASSIGNMENT_STRATEGY_CHOICES = [
+        ('manual', 'Manual — manager assigns all repairs'),
+        ('primary_first', 'Primary Tech First — auto-assign if customer has a primary tech, otherwise queue'),
+        ('auto', 'Smart Auto-Assign — auto-assign based on workload and abilities'),
+        ('round_robin', 'Round Robin — rotate evenly through eligible techs'),
+    ]
+    assignment_strategy = models.CharField(
+        max_length=20,
+        choices=ASSIGNMENT_STRATEGY_CHOICES,
+        default='primary_first',
+        help_text="How new repair requests are assigned to technicians"
+    )
+
     # Settings
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

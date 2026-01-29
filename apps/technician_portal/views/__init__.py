@@ -42,6 +42,7 @@ from .customers import (
     customer_details,
     unit_details,
     mark_unit_replaced,
+    update_primary_technician,
 )
 
 # Reward management

@@ -5,6 +5,7 @@ Customer management views for the technician portal.
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.db.models import Q, Count
+from django.views.decorators.http import require_POST
 
 from apps.technician_portal.models import Technician, Repair, UnitRepairCount
 from core.models import Customer
@@ -22,7 +23,7 @@ def create_customer(request):
     tenant = getattr(request, 'tenant', None)
 
     if request.method == 'POST':
-        form = CustomerForm(request.POST)
+        form = CustomerForm(request.POST, tenant=tenant)
         if form.is_valid():
             customer = form.save(commit=False)
             if tenant:
@@ -31,7 +32,7 @@ def create_customer(request):
             messages.success(request, f"Customer '{customer.name}' has been created successfully.")
             return redirect('technician_dashboard')
     else:
-        form = CustomerForm()
+        form = CustomerForm(tenant=tenant)
     return render(request, 'technician_portal/customer_form.html', {'form': form})
 
 
@@ -106,10 +107,21 @@ def customer_details(request, customer_id):
 
     units = repairs.values_list('unit_number', flat=True).distinct()
 
+    # Determine if user can edit primary technician (admin, owner, or manager)
+    can_edit_customer = request.user.is_staff or technician.is_manager
+
+    # Provide available technicians for the primary tech dropdown
+    available_technicians = Technician.objects.filter(is_active=True)
+    if tenant:
+        available_technicians = available_technicians.filter(tenant=tenant)
+    available_technicians = available_technicians.order_by('user__first_name')
+
     return render(request, 'technician_portal/customer_details.html', {
         'customer': customer,
         'units': units,
         'unit_search': unit_search,
+        'can_edit_customer': can_edit_customer,
+        'available_technicians': available_technicians,
     })
 
 
@@ -153,4 +165,34 @@ def mark_unit_replaced(request, customer_id, unit_number):
     unit_repair_count.repair_count = 0
     unit_repair_count.save()
     messages.success(request, f"Unit #{unit_number} for {customer.name} has been marked as replaced. Repair count reset to 0.")
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def update_primary_technician(request, customer_id):
+    """Update the primary technician for a customer (manager/admin only)."""
+    tenant = getattr(request, 'tenant', None)
+
+    if not request.user.is_staff:
+        if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
+            messages.error(request, "Only managers or admins can change a customer's primary technician.")
+            return redirect('customer_detail', customer_id=customer_id)
+
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
+
+    tech_id = request.POST.get('primary_technician')
+    if tech_id:
+        tech = get_object_or_404(Technician, id=tech_id, is_active=True)
+        customer.primary_technician = tech
+        customer.save(update_fields=['primary_technician'])
+        messages.success(request, f"Primary technician set to {tech.user.get_full_name()}.")
+    else:
+        customer.primary_technician = None
+        customer.save(update_fields=['primary_technician'])
+        messages.success(request, "Primary technician cleared.")
+
     return redirect('customer_detail', customer_id=customer_id)

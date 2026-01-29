@@ -106,6 +106,53 @@
     </div>
 </div>
 
+<!-- Repair Assignment Strategy -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <i class="fas fa-random text-blue-600 text-sm"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Repair Assignment</h3>
+                <p class="text-sm text-gray-500">Choose how new repair requests are assigned to technicians</p>
+            </div>
+        </div>
+    </div>
+    <form method="post" action="{% url 'owner_settings' %}" class="p-6">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="assignment_strategy">
+        <div class="space-y-4">
+            {% for value, label in assignment_strategy_choices %}
+            <label class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors
+                {% if tenant.assignment_strategy == value %}border-blue-500 bg-blue-50{% else %}border-gray-200{% endif %}">
+                <input type="radio" name="assignment_strategy" value="{{ value }}"
+                    {% if tenant.assignment_strategy == value %}checked{% endif %}
+                    class="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                <div>
+                    <span class="text-sm font-medium text-gray-900">{{ label }}</span>
+                    {% if value == 'manual' %}
+                    <p class="text-xs text-gray-500 mt-0.5">A manager must manually assign every repair. Best for small teams with tight control.</p>
+                    {% elif value == 'primary_first' %}
+                    <p class="text-xs text-gray-500 mt-0.5">If a customer has a primary technician, auto-assign to them. Otherwise, queue for manual assignment.</p>
+                    {% elif value == 'auto' %}
+                    <p class="text-xs text-gray-500 mt-0.5">Primary tech first, then assigns to the tech with the fewest active jobs. Balances workload automatically.</p>
+                    {% elif value == 'round_robin' %}
+                    <p class="text-xs text-gray-500 mt-0.5">Rotates assignments evenly through all eligible technicians, regardless of workload.</p>
+                    {% endif %}
+                </div>
+            </label>
+            {% endfor %}
+        </div>
+        <div class="mt-6 flex justify-end">
+            <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <i class="fas fa-save mr-2"></i>
+                Save Strategy
+            </button>
+        </div>
+    </form>
+</div>
+
 <!-- Team Management -->
 <div id="team" class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
     <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -318,6 +365,11 @@
                     {% else %}bg-gray-100 text-gray-800{% endif %}">
                     {{ cust.get_customer_type_display }}
                 </span>
+                {% if cust.primary_technician %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                    <i class="fas fa-user-cog mr-1 text-[10px]"></i>{{ cust.primary_technician.user.get_full_name }}
+                </span>
+                {% endif %}
                 {% if cust.portal_user %}
                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                     <i class="fas fa-check-circle mr-1 text-[10px]"></i>Portal Access

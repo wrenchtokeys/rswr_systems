@@ -3,6 +3,35 @@
 {% block content %}
 <h1>{{ customer.name }}</h1>
 
+<!-- Primary Technician -->
+<div class="card mb-4" style="max-width: 500px;">
+    <div class="card-header"><strong>Primary Technician</strong></div>
+    <div class="card-body">
+        {% if customer.primary_technician %}
+            <p>{{ customer.primary_technician.user.get_full_name }}</p>
+        {% else %}
+            <p class="text-muted">No primary technician assigned</p>
+        {% endif %}
+
+        {% if can_edit_customer %}
+        <form method="post" action="{% url 'update_primary_technician' customer.id %}" class="mt-2">
+            {% csrf_token %}
+            <div class="form-group">
+                <select name="primary_technician" class="form-control">
+                    <option value="">— None —</option>
+                    {% for tech in available_technicians %}
+                        <option value="{{ tech.id }}" {% if customer.primary_technician_id == tech.id %}selected{% endif %}>
+                            {{ tech.user.get_full_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary mt-2">Save</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
 <div class="filter-form">
     <form method="get" class="form-inline">
         <div class="form-group">

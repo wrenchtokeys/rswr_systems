@@ -414,6 +414,17 @@ def replacement_create(request):
             replacement = form.save(commit=False)
             replacement.tenant = tenant
             replacement.save()
+
+            # Auto-assign technician if none was chosen
+            if not replacement.technician_id:
+                from apps.tenants.services.assignment_service import auto_assign_replacement
+                assigned_tech = auto_assign_replacement(replacement)
+                if assigned_tech:
+                    messages.info(
+                        request,
+                        f'Replacement auto-assigned to {assigned_tech.user.get_full_name()}.'
+                    )
+
             messages.success(request, 'Replacement created successfully!')
             return redirect('replacement_detail', pk=replacement.pk)
     else:
@@ -536,6 +547,21 @@ def owner_settings_view(request):
         return redirect('owner_dashboard')
 
     if request.method == 'POST':
+        form_type = request.POST.get('form_type', '')
+
+        if form_type == 'assignment_strategy':
+            # Handle assignment strategy update
+            strategy = request.POST.get('assignment_strategy', '')
+            valid_strategies = [c[0] for c in tenant.ASSIGNMENT_STRATEGY_CHOICES]
+            if strategy in valid_strategies:
+                tenant.assignment_strategy = strategy
+                tenant.save(update_fields=['assignment_strategy'])
+                messages.success(request, 'Repair assignment strategy updated successfully.')
+            else:
+                messages.error(request, 'Invalid assignment strategy selected.')
+            return redirect('owner_settings')
+
+        # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
         tenant.business_phone = request.POST.get('business_phone', '').strip()
         tenant.business_email = request.POST.get('business_email', '').strip()
@@ -567,7 +593,9 @@ def owner_settings_view(request):
     shop_join_url = request.build_absolute_uri(f'/join/{tenant.slug}/')
 
     # Customers list for owner view
-    customers = Customer.objects.filter(tenant=tenant).order_by('name')
+    customers = Customer.objects.filter(tenant=tenant).select_related(
+        'primary_technician__user'
+    ).order_by('name')
     # Annotate with portal access info
     customer_users = {
         cu.customer_id: cu for cu in CustomerUser.objects.filter(
@@ -583,6 +611,7 @@ def owner_settings_view(request):
         'members': members,
         'shop_join_url': shop_join_url,
         'customers': customers,
+        'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
     }
 
     return render(request, 'saas/owner_settings.html', context)
