@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from . import views
+from apps.saas import views as saas_views
 from core.views import preview_email_template, test_notification, check_notification_prefs, celery_status
 
 urlpatterns = [
@@ -75,6 +76,9 @@ urlpatterns = [
     path('accounts/login/', views.login_router, name='login_accounts'),
     path('logout/', views.logout_view, name='logout'),
     path('invite/<uuid:token>/', views.accept_invite, name='accept_invite'),
+
+    # Customer self-signup (shop invite link)
+    path('join/<slug:slug>/', saas_views.shop_join_view, name='shop_join'),
     # path('api-token-auth/', views.obtain_auth_token, name='api_token_auth'),
 ]
 

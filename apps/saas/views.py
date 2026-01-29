@@ -2,7 +2,8 @@
 SaaS UI Views
 
 Template-based views for signup, onboarding, owner dashboard,
-pricing, billing settings, and the replacement form.
+pricing, billing settings, replacement form, shop join (customer
+self-signup), and team management endpoints.
 
 Author: Amelia (Clawdbot AI)
 """
@@ -12,16 +13,21 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import slugify
+from django.views.decorators.http import require_POST
 
-from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
+from apps.tenants.models import InviteToken, SubscriptionPlan, Tenant, TenantMembership
 from apps.tenants.services.usage_service import UsageService
 from apps.tenants.services.subscription_service import SubscriptionService, SubscriptionError
 from apps.tenants.services.signup_service import create_tenant_with_owner, SignupError
 from apps.technician_portal.models import Repair, Replacement, Technician
+from apps.customer_portal.models import CustomerUser
 from core.models import Customer
 
 from .forms import (
@@ -552,14 +558,31 @@ def owner_settings_view(request):
     for tech in Technician.objects.filter(tenant=tenant):
         technicians_by_user[tech.user_id] = tech
 
-    # Annotate members with technician abilities
+    # Annotate members with technician abilities and pending invite status
     for member in members:
         member.technician_record = technicians_by_user.get(member.user_id)
+        member.has_unusable_password = not member.user.has_usable_password()
+
+    # Shop join URL for customer portal
+    shop_join_url = request.build_absolute_uri(f'/join/{tenant.slug}/')
+
+    # Customers list for owner view
+    customers = Customer.objects.filter(tenant=tenant).order_by('name')
+    # Annotate with portal access info
+    customer_users = {
+        cu.customer_id: cu for cu in CustomerUser.objects.filter(
+            customer__tenant=tenant
+        ).select_related('user', 'customer')
+    }
+    for cust in customers:
+        cust.portal_user = customer_users.get(cust.id)
 
     context = {
         'tenant': tenant,
         'membership': membership,
         'members': members,
+        'shop_join_url': shop_join_url,
+        'customers': customers,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -702,4 +725,314 @@ def invite_member(request):
             f'Email could not be sent. Share this invite link manually: {invite_url}'
         )
 
+    return redirect('owner_settings')
+
+
+# ------------------------------------------------------------------
+# 10. Shop Join — Customer Self-Signup (Phase 4)
+# ------------------------------------------------------------------
+
+def shop_join_view(request, slug):
+    """Public page: /join/<slug>/ — customer self-signup for a shop's portal."""
+    tenant = get_object_or_404(Tenant, slug=slug, is_active=True)
+
+    if request.method == 'POST':
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        email = request.POST.get('email', '').strip().lower()
+        phone = request.POST.get('phone', '').strip() or None
+        company_name = request.POST.get('company_name', '').strip()
+        password = request.POST.get('password', '')
+        confirm_password = request.POST.get('confirm_password', '')
+
+        errors = []
+
+        if not first_name or not last_name:
+            errors.append('First and last name are required.')
+        if not email:
+            errors.append('Email is required.')
+        if not password:
+            errors.append('Password is required.')
+        if password != confirm_password:
+            errors.append('Passwords do not match.')
+
+        # Check password strength
+        if password:
+            temp_user = User(username=email[:150], email=email, first_name=first_name, last_name=last_name)
+            try:
+                validate_password(password, user=temp_user)
+            except ValidationError as e:
+                errors.extend(e.messages)
+
+        # Check email uniqueness
+        if email and User.objects.filter(email=email).exists():
+            errors.append('An account with this email already exists. Please log in instead.')
+
+        if errors:
+            return render(request, 'saas/shop_join.html', {
+                'tenant': tenant,
+                'errors': errors,
+                'form_data': {
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'email': email,
+                    'phone': phone or '',
+                    'company_name': company_name,
+                },
+            })
+
+        # All good — create everything
+        try:
+            with transaction.atomic():
+                # 1. Create User
+                user = User.objects.create_user(
+                    username=email[:150],
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+
+                # 2. Create Customer
+                customer_name = company_name if company_name else f"{first_name} {last_name}"
+                customer_type = 'FLEET' if company_name else 'RETAIL'
+
+                # Handle uniqueness: append tenant slug if name collision
+                base_name = customer_name.lower()
+                if Customer.objects.filter(name=base_name).exists():
+                    base_name = f"{base_name} ({tenant.slug})"
+
+                customer = Customer.objects.create(
+                    tenant=tenant,
+                    name=base_name,
+                    customer_type=customer_type,
+                    email=email,
+                    phone=phone,
+                )
+
+                # 3. Create CustomerUser
+                CustomerUser.objects.create(
+                    user=user,
+                    customer=customer,
+                    is_primary_contact=True,
+                )
+
+                # 4. Create TenantMembership
+                TenantMembership.objects.create(
+                    tenant=tenant,
+                    user=user,
+                    role='viewer',
+                )
+
+            # 5. Log them in
+            auth_user = authenticate(request, username=user.username, password=password)
+            if auth_user:
+                login(request, auth_user)
+                request.session['tenant_id'] = tenant.id
+
+            messages.success(request, f'Welcome to {tenant.name}! Your portal account is ready.')
+            return redirect('customer_dashboard')
+
+        except Exception as e:
+            logger.error(f"Shop join error for {email} at {tenant.slug}: {e}")
+            return render(request, 'saas/shop_join.html', {
+                'tenant': tenant,
+                'errors': ['An unexpected error occurred. Please try again.'],
+                'form_data': {
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'email': email,
+                    'phone': phone or '',
+                    'company_name': company_name,
+                },
+            })
+
+    return render(request, 'saas/shop_join.html', {'tenant': tenant})
+
+
+# ------------------------------------------------------------------
+# 11. Team Management Endpoints (Phase 6)
+# ------------------------------------------------------------------
+
+@login_required
+@require_POST
+def update_team_member(request, membership_id):
+    """POST: Update a team member's role and/or abilities."""
+    tenant, my_membership = _get_owner_tenant(request)
+    if not tenant or not my_membership:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_settings')
+
+    target = get_object_or_404(TenantMembership, id=membership_id, tenant=tenant, is_active=True)
+
+    # Can't change own role
+    if target.user == request.user:
+        messages.error(request, 'You cannot change your own role.')
+        return redirect('owner_settings')
+
+    new_role = request.POST.get('role', target.role)
+    can_repair = request.POST.get('can_repair') == 'on'
+    can_replace = request.POST.get('can_replace') == 'on'
+
+    # Only owners can change roles
+    if new_role != target.role and my_membership.role != 'owner':
+        messages.error(request, 'Only the shop owner can change member roles.')
+        return redirect('owner_settings')
+
+    # Validate role
+    if new_role not in ('owner', 'manager', 'technician', 'viewer'):
+        messages.error(request, 'Invalid role.')
+        return redirect('owner_settings')
+
+    with transaction.atomic():
+        old_role = target.role
+        target.role = new_role
+        target.save()
+
+        # Handle Technician record based on role change
+        if new_role in ('technician', 'manager'):
+            from django.contrib.auth.models import Group
+            tech_group, _ = Group.objects.get_or_create(name='Technicians')
+            target.user.groups.add(tech_group)
+
+            tech, created = Technician.objects.get_or_create(
+                user=target.user,
+                defaults={
+                    'tenant': tenant,
+                    'is_manager': (new_role == 'manager'),
+                    'is_active': True,
+                    'can_repair': can_repair,
+                    'can_replace': can_replace,
+                },
+            )
+            if not created:
+                tech.is_manager = (new_role == 'manager')
+                tech.can_repair = can_repair
+                tech.can_replace = can_replace
+                tech.tenant = tenant
+                tech.save()
+        elif old_role in ('technician', 'manager') and new_role not in ('technician', 'manager'):
+            # Deactivate technician record if moving away from tech/manager
+            try:
+                tech = Technician.objects.get(user=target.user)
+                tech.is_active = False
+                tech.save()
+            except Technician.DoesNotExist:
+                pass
+
+    member_name = target.user.get_full_name() or target.user.email
+    messages.success(request, f'Updated {member_name} to {target.get_role_display()}.')
+    return redirect('owner_settings')
+
+
+@login_required
+@require_POST
+def deactivate_team_member(request, membership_id):
+    """POST: Deactivate a team member (soft delete)."""
+    tenant, my_membership = _get_owner_tenant(request)
+    if not tenant or not my_membership:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_settings')
+
+    target = get_object_or_404(TenantMembership, id=membership_id, tenant=tenant, is_active=True)
+
+    # Can't deactivate yourself
+    if target.user == request.user:
+        messages.error(request, 'You cannot deactivate yourself.')
+        return redirect('owner_settings')
+
+    # Managers can only deactivate technicians/viewers
+    if my_membership.role == 'manager' and target.role in ('owner', 'manager'):
+        messages.error(request, 'Managers can only deactivate technicians and viewers.')
+        return redirect('owner_settings')
+
+    # Owners can deactivate anyone except themselves (already checked)
+    if my_membership.role not in ('owner', 'manager'):
+        messages.error(request, 'You do not have permission to deactivate team members.')
+        return redirect('owner_settings')
+
+    with transaction.atomic():
+        target.is_active = False
+        target.save()
+
+        # Also deactivate technician record if exists
+        try:
+            tech = Technician.objects.get(user=target.user, tenant=tenant)
+            tech.is_active = False
+            tech.save()
+        except Technician.DoesNotExist:
+            pass
+
+    member_name = target.user.get_full_name() or target.user.email
+    messages.success(request, f'{member_name} has been deactivated from the team.')
+    return redirect('owner_settings')
+
+
+@login_required
+@require_POST
+def resend_invite(request, membership_id):
+    """POST: Resend invite email to a member who hasn't set their password."""
+    tenant, my_membership = _get_owner_tenant(request)
+    if not tenant or not my_membership:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_settings')
+
+    if my_membership.role not in ('owner', 'manager'):
+        messages.error(request, 'Only owners and managers can resend invites.')
+        return redirect('owner_settings')
+
+    target = get_object_or_404(TenantMembership, id=membership_id, tenant=tenant, is_active=True)
+
+    if target.user.has_usable_password():
+        messages.info(request, f'{target.user.email} has already set their password.')
+        return redirect('owner_settings')
+
+    # Create new InviteToken
+    invite_token = InviteToken(
+        tenant=tenant,
+        user=target.user,
+        role=target.role,
+        invited_by=request.user,
+    )
+    invite_token.save()
+
+    invite_url = f"https://{request.get_host()}/invite/{invite_token.token}/"
+
+    # Send email
+    email_sent = False
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+
+        inviter_name = request.user.get_full_name() or request.user.email
+        subject = f"Reminder: You're invited to join {tenant.name} on RS Systems"
+        body = (
+            f"Hi {target.user.first_name},\n\n"
+            f"{inviter_name} has re-sent your invitation to join {tenant.name} as a {target.get_role_display()}.\n\n"
+            f"Click here to set your password and get started:\n"
+            f"{invite_url}\n\n"
+            f"This link expires in 7 days.\n\n"
+            f"— RS Systems"
+        )
+
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[target.user.email],
+            fail_silently=False,
+        )
+        email_sent = True
+    except Exception as e:
+        logger.warning(f"Failed to resend invite to {target.user.email}: {e}")
+
+    member_name = target.user.get_full_name() or target.user.email
+    if email_sent:
+        messages.success(request, f'Invite re-sent to {member_name}.')
+    else:
+        messages.success(
+            request,
+            f'New invite created for {member_name}. '
+            f'Email could not be sent. Share manually: {invite_url}'
+        )
     return redirect('owner_settings')

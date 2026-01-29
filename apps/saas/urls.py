@@ -26,6 +26,11 @@ urlpatterns = [
     path('owner/settings/', views.owner_settings_view, name='owner_settings'),
     path('owner/settings/invite/', views.invite_member, name='owner_invite_member'),
 
+    # Team management (Phase 6)
+    path('owner/team/<int:membership_id>/update/', views.update_team_member, name='update_team_member'),
+    path('owner/team/<int:membership_id>/deactivate/', views.deactivate_team_member, name='deactivate_team_member'),
+    path('owner/team/<int:membership_id>/resend-invite/', views.resend_invite, name='resend_invite'),
+
     # Replacement management
     path('tech/replacement/new/', views.replacement_create, name='replacement_create'),
     path('tech/replacement/<int:pk>/', views.replacement_detail, name='replacement_detail'),

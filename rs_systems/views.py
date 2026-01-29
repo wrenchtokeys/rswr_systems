@@ -83,6 +83,9 @@ def _route_authenticated_user(request, user):
     # Check if user is a CustomerUser → customer dashboard
     try:
         customer_user = CustomerUser.objects.get(user=user)
+        # Set tenant from customer's tenant FK
+        if customer_user.customer.tenant_id:
+            request.session['tenant_id'] = customer_user.customer.tenant_id
         return redirect('customer_dashboard')
     except CustomerUser.DoesNotExist:
         pass

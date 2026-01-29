@@ -97,7 +97,7 @@ python manage.py runserver 0.0.0.0:8000
 
 ## Manual Testing Walkthrough
 
-### The Full Flow (5 minutes)
+### The Full Flow (10 minutes)
 
 **1. Sign up as a shop owner:**
 - Go to http://localhost:8000/signup/
@@ -115,17 +115,38 @@ python manage.py runserver 0.0.0.0:8000
 - http://localhost:8000/owner/billing/ — current plan, upgrade options, usage breakdown
 - http://localhost:8000/owner/settings/ — business info, team management, invite members
 
-**4. Use the technician portal:**
+**4. Invite a technician:**
+- Go to http://localhost:8000/owner/settings/#team
+- Click "Invite Member" → fill in name, email, role = Technician
+- Check abilities (can repair, can replace)
+- Click "Send Invite" — note the invite URL in the success message
+- Open the invite URL in an incognito window: `/invite/<token>/`
+- Set a password → auto-routed to technician dashboard
+
+**5. Use the technician portal:**
 - http://localhost:8000/tech/ — repair queue, customer list, dashboard
 - Create a repair: pick a customer, enter unit number, submit
 - Create a replacement: http://localhost:8000/tech/replacement/new/
 
-**5. Use the customer portal:**
-- Create a customer user through admin (http://localhost:8000/admin/)
-- Log in at http://localhost:8000/app/login/
-- View repair history, approve/deny pending repairs
+**6. Invite a customer (portal link):**
+- Go to http://localhost:8000/owner/settings/ → "Customer Portal" card
+- Click "Copy Link" to copy the shop join URL: `/join/<slug>/`
+- Open the link in an incognito window
+- Sign up with name, email, (optional company name), password
+- Auto-routed to the customer dashboard at `/app/`
 
-**6. Test billing (requires Stripe test keys):**
+**7. Use the customer portal:**
+- http://localhost:8000/app/ — customer dashboard with repair tracking
+- View repair history, approve/deny pending repairs
+- Request new repairs, view rewards
+
+**8. Manage team roles and abilities:**
+- Go to http://localhost:8000/owner/settings/#team
+- Click "Edit" on any team member → change role, toggle abilities
+- "Deactivate" removes a member (soft delete)
+- "Resend Invite" for members who haven't accepted yet
+
+**9. Test billing (requires Stripe test keys):**
 ```bash
 export STRIPE_SECRET_KEY="sk_test_..."
 export STRIPE_PUBLISHABLE_KEY="pk_test_..."
@@ -216,6 +237,47 @@ python manage.py test apps.billing.tests.test_api_security
 └────────────────────────────────────────────────────────────┘
 ```
 
+### Role Hierarchy
+
+```
+Owner ─────────── Full access: billing, settings, team management, all data
+  │
+  ├─ Manager ──── Manage repairs, invite technicians, update abilities
+  │
+  ├─ Technician ─ Create/manage repairs and replacements (scoped by abilities)
+  │
+  └─ Viewer ───── Read-only access to dashboard and reports
+  
+Customer ──────── Portal access: view repairs, approve work, request service
+```
+
+### TenantMembership Roles
+
+| Role | Portal | Can Invite | Can Manage Team | Can Manage Billing | Can Do Repairs |
+|------|--------|------------|-----------------|-------------------|----------------|
+| Owner | Owner Dashboard | ✅ All roles | ✅ Full control | ✅ | Via tech abilities |
+| Manager | Owner Dashboard | ✅ Tech/Viewer | ✅ Deactivate tech/viewer | ❌ | Via tech abilities |
+| Technician | Tech Portal | ❌ | ❌ | ❌ | ✅ (per abilities) |
+| Viewer | Owner Dashboard | ❌ | ❌ | ❌ | ❌ |
+| Customer | Customer Portal | ❌ | ❌ | ❌ | Request only |
+
+### Invite Flows
+
+**Team Invite (owner/manager → technician/manager/viewer):**
+1. Owner opens Settings → Team → "Invite Member"
+2. Fills in name, email, role, abilities
+3. System creates User (no password), TenantMembership, Technician record, InviteToken
+4. Sends email with `/invite/<token>/` link (7-day expiry)
+5. Invitee clicks link → sets password → auto-routed to appropriate portal
+
+**Customer Self-Signup (public join link):**
+1. Owner copies shop join link from Settings → Customer Portal card
+2. Shares `/join/<slug>/` with customers
+3. Customer visits link → sees shop-branded signup page
+4. Creates account (name, email, optional company, password)
+5. System creates User, Customer, CustomerUser, TenantMembership
+6. Auto-logged in → redirected to customer portal at `/app/`
+
 ### Apps
 
 | App | Purpose |
@@ -251,14 +313,20 @@ python manage.py test apps.billing.tests.test_api_security
 
 ### URL Structure
 
-| URL | Access | Portal |
-|-----|--------|--------|
-| `/signup/` | Public | Registration |
+| URL | Access | Purpose |
+|-----|--------|---------|
+| `/signup/` | Public | Owner registration |
+| `/login/` | Public | Unified login (routes by role) |
 | `/pricing/` | Public | Plan comparison |
-| `/onboarding/` | Auth | Setup wizard |
-| `/owner/` | Owner | Dashboard |
+| `/invite/<token>/` | Public | Accept team invite, set password |
+| `/join/<slug>/` | Public | Customer self-signup for a shop |
+| `/onboarding/` | Auth | Setup wizard (post-signup) |
+| `/owner/` | Owner/Manager | Owner dashboard |
 | `/owner/billing/` | Owner | Billing management |
-| `/owner/settings/` | Owner | Business info + team |
+| `/owner/settings/` | Owner/Manager | Business info, team, customers |
+| `/owner/team/<id>/update/` | Owner | Update member role/abilities |
+| `/owner/team/<id>/deactivate/` | Owner/Manager | Deactivate team member |
+| `/owner/team/<id>/resend-invite/` | Owner/Manager | Resend invite email |
 | `/tech/` | Technician | Repair management |
 | `/tech/replacement/new/` | Technician | New replacement |
 | `/app/` | Customer | Customer portal |
@@ -332,6 +400,7 @@ python manage.py security_audit
 ## Documentation
 
 See the [`docs/`](docs/) directory for detailed guides:
+- [User Flows](docs/USER_FLOWS.md) — Complete user journeys for every role
 - [Developer Guide](docs/DEVELOPER_GUIDE.md)
 - [Deployment Guide](docs/deployment/AWS_DEPLOYMENT.md)
 - [API Documentation](docs/user-guides/ADMIN_GUIDE.md) — or visit `/api/schema/swagger-ui/`
