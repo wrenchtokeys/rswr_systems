@@ -178,6 +178,8 @@ else:
     DATABASES = {
         'default': dj_database_url.config(default=db_url, conn_max_age=600),
     }
+    # Ensure TEST config exists for Django test runner
+    DATABASES['default'].setdefault('TEST', {})
     
     # For production, ensure we're using a persistent database
     if ENVIRONMENT == 'production' and 'sqlite' in db_url.lower():

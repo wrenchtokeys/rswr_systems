@@ -387,11 +387,14 @@ class TenantMiddlewareTest(BaseTestCase):
         self.assertEqual(request.tenant, self.tenant)
 
     def test_stale_session_cleared(self):
-        """Stale tenant_id in session gets removed."""
+        """Stale tenant_id in session gets cleared and falls back to membership."""
         request = self._make_request(user=self.owner)
         request.session = {'tenant_id': 99999}  # non-existent
         self.middleware.process_request(request)
-        self.assertNotIn('tenant_id', request.session)
+        # Stale ID is cleared, then fallback finds user's membership
+        # So tenant_id is now set to the valid tenant
+        self.assertEqual(request.tenant, self.tenant)
+        self.assertEqual(request.session.get('tenant_id'), self.tenant.id)
 
     def test_session_tenant_requires_membership(self):
         """Session tenant_id only works if user has membership."""
@@ -445,10 +448,23 @@ class TenantMiddlewareTest(BaseTestCase):
         self.middleware.process_request(request)
         self.assertIsNone(request.tenant)
 
-    def test_nonexistent_slug_returns_none(self):
-        """Non-existent slug in header returns tenant=None."""
+    def test_nonexistent_slug_falls_back(self):
+        """Non-existent slug in header falls back to membership-based resolution."""
         request = self._make_request(
             user=self.owner,
+            headers={'HTTP_X_TENANT_SLUG': 'nonexistent-shop'},
+        )
+        self.middleware.process_request(request)
+        # Header fails, but fallback finds user's membership
+        self.assertEqual(request.tenant, self.tenant)
+
+    def test_nonexistent_slug_no_membership_returns_none(self):
+        """Non-existent slug returns None for user with no memberships."""
+        lonely_user = User.objects.create_user(
+            'lonely@test.com', 'lonely@test.com', 'TestPass123!'
+        )
+        request = self._make_request(
+            user=lonely_user,
             headers={'HTTP_X_TENANT_SLUG': 'nonexistent-shop'},
         )
         self.middleware.process_request(request)
@@ -1069,11 +1085,11 @@ class TenantIsolationTest(TestCase):
         customers_b = Customer.objects.filter(tenant=self.tenant_b)
         self.assertEqual(customers_a.count(), 1)
         self.assertEqual(customers_b.count(), 1)
-        self.assertEqual(customers_a.first().name, 'Customer A')
-        self.assertEqual(customers_b.first().name, 'Customer B')
+        self.assertEqual(customers_a.first().name, 'customer a')
+        self.assertEqual(customers_b.first().name, 'customer b')
 
     def test_middleware_isolates_tenant_access(self):
-        """User A cannot resolve Tenant B via middleware."""
+        """User A cannot resolve Tenant B via middleware — falls back to own tenant."""
         factory = RequestFactory()
         middleware = TenantMiddleware(get_response=lambda r: None)
 
@@ -1081,8 +1097,11 @@ class TenantIsolationTest(TestCase):
         request.user = self.owner_a
         request.session = {}
         middleware.process_request(request)
-        # Owner A has no membership in Tenant B
-        self.assertIsNone(request.tenant)
+        # Owner A has no membership in Tenant B, so header fails.
+        # Fallback resolves to Owner A's own tenant (Shop A).
+        self.assertEqual(request.tenant, self.tenant_a)
+        # Crucially: NOT Tenant B
+        self.assertNotEqual(request.tenant, self.tenant_b)
 
     def test_invoice_data_isolated(self):
         """Invoices are scoped to their tenant."""

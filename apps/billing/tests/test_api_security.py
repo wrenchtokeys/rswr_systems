@@ -206,8 +206,8 @@ class BillingDataIsolationTest(BillingBaseTestCase):
         customers_b = Customer.objects.filter(tenant=self.tenant_b)
         self.assertEqual(customers_a.count(), 1)
         self.assertEqual(customers_b.count(), 1)
-        self.assertEqual(customers_a.first().name, 'Customer A')
-        self.assertEqual(customers_b.first().name, 'Customer B')
+        self.assertEqual(customers_a.first().name, 'customer a')
+        self.assertEqual(customers_b.first().name, 'customer b')
 
 
 # ======================================================================

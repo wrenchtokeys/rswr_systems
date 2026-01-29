@@ -345,9 +345,10 @@ class OnboardingTest(SaaSBaseTestCase):
         self.assertIn('step=4', response.url)
 
         from core.models import Customer
+        # Customer model lowercases the name on save
         self.assertTrue(
             Customer.objects.filter(
-                tenant=self.tenant, name='EOS Trucking'
+                tenant=self.tenant, name='eos trucking'
             ).exists()
         )
 
@@ -616,7 +617,7 @@ class ReplacementFormTest(SaaSBaseTestCase):
         form = response.context['form']
         customer_qs = form.fields['customer'].queryset
         self.assertEqual(customer_qs.count(), 1)
-        self.assertEqual(customer_qs.first().name, 'Fleet Co')
+        self.assertEqual(customer_qs.first().name, 'fleet co')
 
 
 # ======================================================================
