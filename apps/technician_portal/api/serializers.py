@@ -21,7 +21,7 @@ class RepairSerializer(serializers.ModelSerializer):
     class Meta:
         model = Repair
         fields = [
-            'id', 'technician', 'customer', 'unit_number', 'repair_date', 
+            'id', 'technician', 'customer', 'unit_number', 'service_date', 
             'description', 'cost', 'queue_status', 'damage_type', 
             'drilled_before_repair', 'windshield_temperature', 'resin_viscosity'
         ]
@@ -36,7 +36,7 @@ class ReplacementSerializer(serializers.ModelSerializer):
     class Meta:
         model = Replacement
         fields = [
-            'id', 'technician', 'customer', 'unit_number', 'repair_date',
+            'id', 'technician', 'customer', 'unit_number', 'service_date',
             'description', 'cost', 'queue_status',
             'glass_position', 'glass_type', 'nags_number',
             'parts_cost', 'labor_cost', 'requires_adas_calibration', 'adas_calibration_cost',

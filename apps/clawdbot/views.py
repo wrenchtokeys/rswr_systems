@@ -58,7 +58,7 @@ def status(request):
     return JsonResponse({
         'status': 'online',
         'name': 'Amelia',
-        'version': '0.6.0',
+        'version': '0.9.0',
         'capabilities': [
             'invoice_generation',
             'auto_invoice_on_completion',
@@ -161,8 +161,8 @@ def list_repairs(request, customer_id):
         customer=customer,
         tenant=tenant,
         queue_status='COMPLETED',
-        repair_date__gte=start_date
-    ).select_related('technician', 'technician__user').order_by('-repair_date')
+        service_date__gte=start_date
+    ).select_related('technician', 'technician__user').order_by('-service_date')
 
     repair_data = []
     for r in repairs:
@@ -171,7 +171,7 @@ def list_repairs(request, customer_id):
             'id': r.id,
             'unit_number': r.unit_number,
             'damage_type': r.get_damage_type_display() or 'Unknown',
-            'repair_date': r.repair_date.isoformat(),
+            'service_date': r.repair_date.isoformat(),
             'cost': float(disc['final_cost']),
             'has_photos': r.has_photos(),
         })
@@ -229,7 +229,7 @@ def invoice_preview(request, customer_id):
         'line_items': [{
             'unit_number': item.unit_number,
             'damage_type': item.damage_type,
-            'repair_date': item.repair_date.isoformat(),
+            'service_date': item.repair_date.isoformat(),
             'final_cost': float(item.final_cost),
         } for item in invoice_data.line_items],
         'totals': {

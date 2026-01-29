@@ -47,14 +47,14 @@ class ReportService:
         # Repairs completed
         repairs_completed = Repair.objects.filter(
             queue_status='COMPLETED',
-            repair_date__date=report_date
+            service_date__date=report_date
         )
         repair_count = repairs_completed.count()
         repair_revenue = sum(r.cost for r in repairs_completed)
         
         prev_repairs = Repair.objects.filter(
             queue_status='COMPLETED',
-            repair_date__date=prev_date
+            service_date__date=prev_date
         ).count()
         
         # Invoices created
@@ -160,16 +160,16 @@ class ReportService:
         # Repairs
         repairs = Repair.objects.filter(
             queue_status='COMPLETED',
-            repair_date__date__gte=week_start,
-            repair_date__date__lte=week_end
+            service_date__date__gte=week_start,
+            service_date__date__lte=week_end
         )
         repair_count = repairs.count()
         repair_revenue = sum(r.cost for r in repairs)
         
         prev_repairs = Repair.objects.filter(
             queue_status='COMPLETED',
-            repair_date__date__gte=prev_week_start,
-            repair_date__date__lte=prev_week_end
+            service_date__date__gte=prev_week_start,
+            service_date__date__lte=prev_week_end
         ).count()
         
         # Invoices
@@ -196,7 +196,7 @@ class ReportService:
         daily_breakdown = []
         for i in range(7):
             day = week_start + timedelta(days=i)
-            day_repairs = repairs.filter(repair_date__date=day).count()
+            day_repairs = repairs.filter(service_date__date=day).count()
             day_payments = payments.filter(payment_date=day).aggregate(
                 Sum('amount')
             )['amount__sum'] or Decimal('0')

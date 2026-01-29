@@ -44,7 +44,7 @@ def reward_fulfillment_detail(request, redemption_id):
             )
             if tenant:
                 repair_qs = repair_qs.filter(tenant=tenant)
-            customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-repair_date')
+            customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-service_date')
         except Customer.DoesNotExist:
             pass
 

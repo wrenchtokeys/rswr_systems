@@ -20,6 +20,7 @@ from django.utils.text import slugify
 from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
 from apps.tenants.services.usage_service import UsageService
 from apps.tenants.services.subscription_service import SubscriptionService, SubscriptionError
+from apps.tenants.services.signup_service import create_tenant_with_owner, SignupError
 from apps.technician_portal.models import Repair, Replacement, Technician
 from core.models import Customer
 
@@ -37,16 +38,6 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
-
-def _generate_unique_slug(business_name):
-    base_slug = slugify(business_name)[:50]
-    slug = base_slug
-    counter = 1
-    while Tenant.objects.filter(slug=slug).exists():
-        slug = f"{base_slug}-{counter}"
-        counter += 1
-    return slug
-
 
 def _get_owner_tenant(request):
     """Return (tenant, membership) for the current user, or (None, None)."""
@@ -81,47 +72,25 @@ def signup_view(request):
         form = SignupForm(request.POST)
         if form.is_valid():
             try:
-                with transaction.atomic():
-                    cd = form.cleaned_data
-                    email = cd['email']
-                    username = email[:150]
+                cd = form.cleaned_data
 
-                    user = User.objects.create_user(
-                        username=username,
-                        email=email,
-                        password=cd['password'],
-                        first_name=cd['first_name'],
-                        last_name=cd['last_name'],
-                    )
-
-                    slug = _generate_unique_slug(cd['business_name'])
-                    trial_plan = SubscriptionPlan.objects.filter(
-                        slug='trial', is_active=True
-                    ).first()
-
-                    tenant = Tenant.objects.create(
-                        name=cd['business_name'],
-                        slug=slug,
-                        subdomain=slug,
-                        owner=user,
-                        business_email=email,
-                        plan='trial',
-                        subscription_plan=trial_plan,
-                        subscription_status='trialing',
-                        trial_started_at=timezone.now(),
-                    )
-
-                    TenantMembership.objects.create(
-                        tenant=tenant, user=user, role='owner',
-                    )
+                # Use shared signup service (same logic as API endpoint)
+                result = create_tenant_with_owner(
+                    business_name=cd['business_name'],
+                    email=cd['email'],
+                    password=cd['password'],
+                    first_name=cd['first_name'],
+                    last_name=cd['last_name'],
+                )
+                user = result['user']
+                tenant = result['tenant']
 
                 # Log the user in
-                user = authenticate(
-                    request, username=username, password=cd['password']
+                auth_user = authenticate(
+                    request, username=user.username, password=cd['password']
                 )
-                if user:
-                    login(request, user)
-                    # Store tenant in session
+                if auth_user:
+                    login(request, auth_user)
                     request.session['tenant_id'] = tenant.id
 
                 messages.success(
@@ -129,9 +98,10 @@ def signup_view(request):
                     f'Welcome to RS Systems, {cd["first_name"]}! '
                     f'Your 30-day free trial has started.',
                 )
-                logger.info(f"New signup: {email} — tenant '{tenant.name}'")
                 return redirect('onboarding')
 
+            except SignupError as e:
+                messages.error(request, str(e))
             except Exception as e:
                 logger.error(f"Signup error: {e}")
                 messages.error(

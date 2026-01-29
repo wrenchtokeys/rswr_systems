@@ -239,46 +239,25 @@ def signup(request):
     if errors:
         return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
 
-    # --- Create everything in a transaction ---
+    # --- Create everything via shared signup service ---
     try:
-        with transaction.atomic():
-            # 1. Create User
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password,
-                first_name=first_name,
-                last_name=last_name,
-            )
+        from apps.tenants.services.signup_service import create_tenant_with_owner, SignupError
+        result = create_tenant_with_owner(
+            business_name=business_name,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+        )
+        user = result['user']
+        tenant = result['tenant']
 
-            # 2. Create Tenant
-            slug = _generate_unique_slug(business_name)
-            trial_plan = SubscriptionPlan.objects.filter(slug='trial', is_active=True).first()
+        # Create auth token (API-specific — UI uses session auth)
+        token, _ = Token.objects.get_or_create(user=user)
 
-            tenant = Tenant.objects.create(
-                name=business_name,
-                slug=slug,
-                subdomain=slug,
-                owner=user,
-                business_phone=phone,
-                business_email=email,
-                plan='trial',
-                subscription_plan=trial_plan,
-                subscription_status='trialing',
-                trial_started_at=timezone.now(),
-            )
-
-            # 3. Create owner membership
-            TenantMembership.objects.create(
-                tenant=tenant,
-                user=user,
-                role='owner',
-            )
-
-            # 4. Create auth token
-            token, _ = Token.objects.get_or_create(user=user)
-
-        # 5. Send welcome email (outside transaction — non-blocking)
+        # Send welcome email (non-blocking)
+        trial_plan = tenant.subscription_plan
         trial_days = trial_plan.trial_days if trial_plan else 30
         _send_welcome_email(user, tenant, trial_days)
 
@@ -305,6 +284,11 @@ def signup(request):
             'message': 'Welcome to RS Systems! Your 30-day free trial has started.',
         }, status=status.HTTP_201_CREATED)
 
+    except SignupError as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     except Exception as e:
         logger.error(f"Signup failed for {email}: {e}")
         return Response(

@@ -1,201 +1,206 @@
-# Amelia's Development Log & Strategic Plan
+# RS Systems — Development Log & Architecture
 
 *Last Updated: January 29, 2026*  
 *Branch: `amelia`*  
-*Version: 0.8.0*
+*Version: 0.9.0*
 
 ---
 
-## The Product Vision
+## The Product
 
-RS Systems serves auto glass shops. The software needs to be:
-- **Dead simple** — shop owners don't have time for complex software
-- **Extremely powerful** — handles fleet accounts, retail walk-ins, repairs AND replacements
-- **Multi-tenant** — every glass shop gets their own account
-- **Self-sustaining** — shops pay via Stripe subscription
+RS Systems is a **multi-tenant SaaS platform for auto glass shops**. A shop owner signs up, gets a free trial, and can manage their entire business: repairs, replacements, customers, technicians, invoicing, and billing.
 
-### Customer Types We Must Support
+### Architecture Overview
 
-| Type | Example | Current Support | Priority |
-|------|---------|----------------|----------|
-| Fleet accounts | EOS Trucking (50 trucks) | ✅ Built | — |
-| Retail / Individual | John's F-150 | ❌ Not built | 🔴 HIGH |
-| One-time walk-ins | Random person | ❌ Not built | 🔴 HIGH |
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    RS Systems SaaS                          │
+├──────────┬──────────┬──────────┬──────────┬────────────────┤
+│  Signup  │  Owner   │ Technician│ Customer │   API Layer   │
+│  & Onboard│ Dashboard│  Portal  │  Portal  │  (DRF + JSON) │
+├──────────┴──────────┴──────────┴──────────┴────────────────┤
+│              TenantMiddleware (request.tenant)              │
+├────────────────────────────────────────────────────────────┤
+│  tenants │  billing │ tech_portal │ customer │  rewards    │
+│  (Tenant │ (Invoice │  (Repair,  │ (Portal, │ (Points,    │
+│  Members │  Payment │ Replacement│  Approve,│  Referrals) │
+│  Plans)  │  Stripe) │ Technician)│  Request)│             │
+├────────────────────────────────────────────────────────────┤
+│              core (Customer, Vehicle, Notifications)       │
+├────────────────────────────────────────────────────────────┤
+│                PostgreSQL + S3 (tenant-scoped)             │
+└────────────────────────────────────────────────────────────┘
+```
 
-### Service Types We Must Support
+### User Types & Portals
 
-| Service | Example | Current Support | Priority |
-|---------|---------|----------------|----------|
-| Windshield repair | Chip/crack fill | ✅ Built | — |
-| Windshield replacement | Full glass swap | ❌ Not built | 🔴 HIGH |
-| Side/back glass | Door window replacement | ❌ Not built | 🟡 MEDIUM |
-| ADAS calibration | Post-replacement sensor cal | ❌ Not built | 🟡 MEDIUM |
+| User Type | Portal | URL | Description |
+|-----------|--------|-----|-------------|
+| Shop Owner | Owner Dashboard | `/owner/` | Billing, usage, settings, team |
+| Technician | Tech Portal | `/tech/` | Repairs, replacements, customers |
+| Customer | Customer Portal | `/app/` | View repairs, approve, request |
+| New User | Signup | `/signup/` | Registration + 30-day trial |
+
+### Service Types
+
+| Service | Model | Pricing | Fields |
+|---------|-------|---------|--------|
+| Repair | `Repair` (extends `GlassService`) | Progressive ($50→$40→$35→$30→$25 per unit) | damage_type, resin_viscosity, batch support |
+| Replacement | `Replacement` (extends `GlassService`) | Parts + Labor + ADAS calibration | glass_position, NAGS #, OEM/aftermarket |
+
+### Customer Types
+
+| Type | Example | Behavior |
+|------|---------|----------|
+| Fleet | EOS Trucking (50 trucks) | Unit numbers, progressive pricing |
+| Retail | John's F-150 | Vehicle (year/make/model/VIN) |
+| Walk-in | One-time customer | Minimal info |
 
 ---
 
-## Architecture
+## App Structure
 
 ```
-                  ┌──────────────────────────────────────────────────────┐
-                  │                   RS Systems                        │
-                  │                                                      │
-                  │   ┌─────────┐  ┌──────────┐  ┌──────────────────┐  │
-  API Requests ──→│   │ Django  │→ │ Tenant   │→ │  Business Logic  │  │
-                  │   │ Auth    │  │ Middleware│  │  (scoped by      │  │
-                  │   └─────────┘  └──────────┘  │   request.tenant) │  │
-                  │                               └────────┬─────────┘  │
-                  │                                        │            │
-                  │   ┌──────────────┬──────────────┬──────┴─────────┐  │
-                  │   │ Tenants App  │ Billing App  │  Tech Portal   │  │
-                  │   │ (SaaS/sub)   │ (invoices)   │  (repairs)     │  │
-                  │   └──────┬───────┴──────┬───────┴──────┬─────────┘  │
-                  │          │              │              │            │
-                  │   ┌──────┴──────────────┴──────────────┴─────────┐  │
-                  │   │              PostgreSQL (RDS)                 │  │
-                  │   │      All tables have tenant FK               │  │
-                  │   └──────────────────────────────────────────────┘  │
-                  │          │                     │                    │
-                  │   ┌──────┴──────┐       ┌──────┴──────┐            │
-                  │   │   Stripe    │       │  AWS S3     │            │
-                  │   │ (payments)  │       │ (photos)    │            │
-                  │   └─────────────┘       └─────────────┘            │
-                  └──────────────────────────────────────────────────────┘
-
-  Signup Flow:
-  ┌────────┐   POST /signup/   ┌──────────┐   Token   ┌───────────┐
-  │  Shop  │ ───────────────→  │ Create:  │ ───────→  │ Dashboard │
-  │ Owner  │                   │ User +   │           │ (30-day   │
-  └────────┘                   │ Tenant + │           │  trial)   │
-                               │ Member   │           └───────────┘
-                               └──────────┘
+apps/
+├── tenants/              # Multi-tenant + SaaS billing
+│   ├── models.py         # Tenant, TenantMembership, SubscriptionPlan
+│   ├── middleware.py      # TenantMiddleware (request.tenant)
+│   ├── mixins.py          # TenantQuerysetMixin, PlanEnforcementMixin
+│   ├── managers.py        # TenantManager (.for_tenant())
+│   ├── views.py           # Subscription API (DRF)
+│   ├── webhooks.py        # Stripe webhook handler
+│   ├── owner_views.py     # Owner dashboard (if separate)
+│   └── services/
+│       ├── signup_service.py       # Shared signup logic
+│       ├── subscription_service.py # Stripe lifecycle
+│       └── usage_service.py        # Plan limit tracking
+│
+├── saas/                 # SaaS UI pages
+│   ├── views.py          # Signup, onboarding, dashboard, billing, replacement
+│   ├── forms.py          # SignupForm, onboarding forms, ReplacementForm
+│   └── urls.py           # /signup/, /pricing/, /owner/*, /tech/replacement/*
+│
+├── billing/              # Invoice + payment system
+│   ├── models.py         # Invoice, InvoiceLineItem, Payment
+│   ├── views.py          # REST API (auth + tenant-scoped)
+│   ├── signals.py        # Auto-invoice on repair/replacement completion
+│   └── services/         # PDF gen, email, tracking, Stripe, reminders, reports
+│
+├── technician_portal/    # Technician-facing features
+│   ├── models.py         # GlassService (abstract), Repair, Replacement, Technician
+│   ├── views/            # Split into: dashboard, repairs, customers, batch, etc.
+│   ├── api/              # DRF serializers, views, URLs
+│   ├── forms.py          # RepairForm
+│   └── services/         # Pricing, batch pricing
+│
+├── customer_portal/      # Customer-facing features
+│   ├── models.py         # CustomerUser, RepairApproval, Preferences
+│   ├── views.py          # Dashboard, repair history, approval workflow
+│   └── forms.py          # Customer forms
+│
+├── rewards_referrals/    # Loyalty & referral program
+├── clawdbot/             # Amelia's API namespace
+└── security/             # Login attempts, audit, rate limiting
 ```
 
 ---
 
-## Execution Plan (Ordered by Impact)
+## Subscription Plans
 
-### Phase 1: Expand the Data Model ✅ COMPLETE
-- ✅ Fleet, retail, walk-in customer types
-- ✅ Replacement service support
-- ✅ Vehicle model
-- ✅ Insurance integration fields
-
-### Phase 2: Multi-Tenant Architecture ✅ COMPLETE
-- ✅ Tenant model with slug/subdomain
-- ✅ TenantMembership with role-based access
-- ✅ TenantMiddleware (auto-resolution from header/session/membership)
-- ✅ Tenant FK on all business models
-- ✅ Tenant-scoped S3 paths
-
-### Phase 3: SaaS Billing (Stripe Subscriptions) ✅ COMPLETE
-- ✅ SubscriptionPlan model (Trial/Starter/Pro/Enterprise)
-- ✅ Stripe subscription lifecycle (create/update/cancel/reactivate)
-- ✅ Usage tracking service (repairs, techs, customers, storage)
-- ✅ Plan enforcement mixin
-- ✅ Stripe webhook handler
-- ✅ Billing portal redirect
-- ✅ seed_plans management command
-
-### Phase 4: UX & Onboarding ✅ COMPLETE
-- ✅ **Signup endpoint** — `POST /api/tenants/signup/` (creates User + Tenant + Membership + Token)
-- ✅ **Trial status endpoint** — `GET /api/tenants/status/` (dashboard-friendly status)
-- ✅ **Welcome email** — SendGrid integration on signup
-- ✅ **Owner-only billing** — `_require_owner()` guard on all subscription endpoints
-- ✅ **Rate limiting** — DRF throttling (20/min anon, 60/min user, 5/hr signup)
-- ✅ **Password validation** — Django validators + custom signup validation
-- ✅ **Input sanitization** — Whitespace stripping, email normalization, length checks
-- ✅ **Custom SignupRateThrottle** — IP-based aggressive rate limiting
-- ✅ **Tenants README** — Full documentation (architecture, API reference, security)
-
-### Phase 5: UX Simplicity 🔵 ONGOING
-- Onboarding wizard for new shops
-- One-click invoice generation
-- Mobile-first technician interface
-- Customer self-service portal
-- Smart defaults everywhere
+| Plan | Monthly | Annual | Repairs/mo | Techs | Customers | Storage |
+|------|---------|--------|------------|-------|-----------|---------|
+| Trial | Free | — | 50 | 2 | 10 | 500 MB |
+| Starter | $49 | $470 | 200 | 5 | 50 | 500 MB |
+| Pro | $99 | $950 | Unlimited | 15 | Unlimited | 500 MB |
+| Enterprise | $249 | $2,390 | Unlimited | Unlimited | Unlimited | 500 MB |
 
 ---
 
-## What I've Built So Far
+## Security Model
 
-### Tenants/SaaS System (`apps/tenants/`)
-```
-apps/tenants/
-├── models.py              # Tenant, TenantMembership, SubscriptionPlan
-├── views.py               # Signup, status, subscribe, cancel, usage, billing portal
-├── urls.py                # /api/tenants/*
-├── middleware.py           # TenantMiddleware (request.tenant resolution)
-├── mixins.py              # PlanEnforcementMixin
-├── admin.py               # Admin with tenant scoping
-├── webhooks.py            # Stripe subscription webhooks
-├── README.md              # Full documentation
-├── services/
-│   ├── subscription_service.py  # Stripe lifecycle
-│   └── usage_service.py         # Usage tracking
-└── management/commands/
-    └── seed_plans.py            # Seed 4 standard plans
-```
-
-### Billing System (`apps/billing/`)
-```
-apps/billing/
-├── models.py              # Invoice, InvoiceLineItem, Payment
-├── views.py               # REST API (15+ endpoints)
-├── urls.py                # /api/billing/*
-├── admin.py               # Admin with status badges
-├── signals.py             # Auto-invoice on repair completion
-├── management/commands/
-│   └── process_billing.py # Cron automation
-└── services/
-    ├── invoice_service.py         # PDF generation
-    ├── invoice_email_service.py   # Email with attachments
-    ├── invoice_tracking_service.py # Tracking + double-billing prevention
-    ├── auto_invoice_service.py    # Auto-generate on completion
-    ├── dashboard_service.py       # Business metrics
-    ├── report_service.py          # Daily/weekly reports
-    ├── reminder_service.py        # Payment reminders
-    └── stripe_service.py          # Payment Links
-```
-
-### Architecture Decisions
-
-**Our DB = source of truth.** Stripe is a payment channel, not a second invoicing system.
-
-**Billing lives in `apps/billing/`.** Clawdbot is a thin API layer. Business logic belongs in domain apps.
-
-**Multi-tenant isolation.** Every query is scoped by `request.tenant`. No data leaks between shops.
-
-**Owner-only billing.** Only shop owners can manage subscriptions. Enforced by `_require_owner()` on all billing endpoints.
-
-**URL structure:** `/api/tenants/*` for SaaS management. `/api/billing/*` for invoicing. `/clawdbot/*` for legacy.
+| Layer | Implementation |
+|-------|---------------|
+| Authentication | `@login_required` on all data endpoints |
+| Tenant Isolation | Every query filtered by `request.tenant` |
+| CSRF | Enabled on all endpoints (exempt only Stripe webhooks) |
+| Rate Limiting | 20/min anon, 60/min user, 5/hr signup |
+| Owner-only Billing | `_require_owner()` on subscription endpoints |
+| Stripe Webhooks | Signature verification via `STRIPE_WEBHOOK_SECRET` |
+| Password Policy | Django validators (min length, similarity, common passwords) |
+| Login Attempts | Rate-limited (10/hr), logged via security app |
 
 ---
 
-## Security Features
+## User Flow
 
-| Feature | Implementation |
-|---------|---------------|
-| Rate limiting | DRF throttling: 20/min anon, 60/min user, 5/hr signup |
-| Password validation | Django validators (length, common, numeric, similarity) |
-| Owner-only billing | `_require_owner()` checks TenantMembership role |
-| Tenant isolation | Middleware + FK scoping on all queries |
-| Input sanitization | Strip whitespace, lowercase email, validate lengths |
-| CSRF protection | Django middleware enabled |
-| Token auth | DRF TokenAuthentication for API access |
-| Stripe webhooks | Signature verification |
+### New Shop Owner
+```
+/signup/ → /onboarding/ (4 steps) → /owner/ (dashboard)
+    │           │
+    │           ├─ Step 1: Business info
+    │           ├─ Step 2: Add technician
+    │           ├─ Step 3: Add customer
+    │           └─ Step 4: Done!
+    │
+    └─ Creates: User + Tenant (trial) + TenantMembership (owner)
+```
+
+### Returning User (Login)
+```
+/login/ → login_router checks role:
+    ├─ Owner/Manager → /owner/
+    ├─ Customer → /app/
+    └─ Technician → /tech/
+```
+
+### Subscription Lifecycle
+```
+Trial (30 days) → Subscribe (Stripe) → Active → Cancel → Expired
+                                         ↑                  │
+                                         └── Reactivate ────┘
+```
 
 ---
 
-## Code Stats
+## API Endpoints
 
-| Metric | Count |
-|--------|-------|
-| Django apps | 7 (tenants, billing, tech portal, customer portal, rewards, security, clawdbot) |
-| API endpoints (tenants) | 10 |
-| API endpoints (billing) | 15+ |
-| Services | 10+ |
-| Management commands | 3+ |
-| Subscription plans | 4 |
+### Tenant/Subscription (`/api/tenants/`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/plans/` | Public | List subscription plans |
+| POST | `/signup/` | Public | Register new shop |
+| GET | `/status/` | Auth | Tenant status + usage |
+| POST | `/subscribe/` | Owner | Start Stripe subscription |
+| POST | `/subscription/update/` | Owner | Change plan |
+| POST | `/subscription/cancel/` | Owner | Cancel at period end |
+| POST | `/subscription/reactivate/` | Owner | Un-cancel |
+| GET | `/usage/` | Auth | Usage vs plan limits |
+| GET | `/billing-portal/` | Owner | Stripe portal redirect |
+| POST | `/webhooks/stripe/` | Stripe | Webhook handler |
+
+### Billing (`/api/billing/`)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/dashboard/` | Auth+Tenant | Billing metrics |
+| GET | `/invoices/` | Auth+Tenant | List invoices |
+| POST | `/invoices/create/<id>/` | Auth+Tenant | Create invoice |
+| POST | `/invoices/<id>/payment/` | Auth+Tenant | Record payment |
+| POST | `/invoices/<id>/cancel/` | Auth+Tenant | Cancel invoice |
+
+### UI Pages
+| URL | Access | Description |
+|-----|--------|-------------|
+| `/signup/` | Public | Registration |
+| `/pricing/` | Public | Plan comparison |
+| `/onboarding/` | Auth | Setup wizard |
+| `/owner/` | Auth (owner) | Dashboard |
+| `/owner/billing/` | Auth (owner) | Billing settings |
+| `/owner/settings/` | Auth (owner) | Business info + team |
+| `/tech/` | Auth (tech) | Technician dashboard |
+| `/tech/replacement/new/` | Auth (tech) | New replacement form |
+| `/app/` | Auth (customer) | Customer dashboard |
+
+---
 
 ## Commit History (amelia branch)
 
@@ -214,7 +219,50 @@ apps/billing/
 | Jan 28 | `f045bd0c` | Stripe integration configured |
 | Jan 28 | `29705ff0` | URL migration + management commands |
 | Jan 28 | `b96eb815` | Fix Stripe architecture |
-| Jan 29 | *pending* | Signup flow, security hardening, UX polish (Phase 4) |
+| Jan 28 | `d576f4b1` | Expand data model (retail, replacements, vehicles) |
+| Jan 28 | `bdbf89bb` | **Split Repair/Replacement into separate models** |
+| Jan 28 | `301a329e` | Phase 1c codebase cleanup |
+| Jan 28 | `a47ebd39` | **Phase 2: Multi-tenant architecture** |
+| Jan 28 | `fedbf71e` | **Phase 3: SaaS billing + Stripe subscriptions** |
+| Jan 28 | `5268a3a9` | Phase 4: Signup, security, UX polish |
+| Jan 28 | `851ef52d` | Complete SaaS UI (signup, onboarding, dashboard) |
+| Jan 28 | `56777536` | Enhanced owner settings + invite modal |
+| Jan 29 | `1f7bd7f2` | **Security: Auth + tenant scoping on ALL APIs** |
+| Jan 29 | TBD | Audit fixes: field rename compat, login routing, docs |
+
+---
+
+## Development Phases — ALL COMPLETE
+
+### ✅ Phase 1: Data Model Expansion
+- 1a: Retail/walk-in customer types
+- 1b: Replacement services (separate model)
+- 1c: Code cleanup (views split, N+1 fixed, deprecated code removed)
+
+### ✅ Phase 2: Multi-Tenant Architecture
+- Tenant model with owner, business info, Stripe IDs
+- TenantMembership (owner/manager/technician/viewer roles)
+- Tenant FK on all business models
+- TenantMiddleware + TenantManager
+- Data migration for existing records
+
+### ✅ Phase 3: SaaS Billing
+- SubscriptionPlan model (4 tiers)
+- Stripe subscription lifecycle (create/update/cancel/reactivate)
+- Usage tracking and plan enforcement
+- Webhook handler with signature verification
+- Billing portal integration
+
+### ✅ Phase 4: UX & Security
+- Full signup flow (UI + API)
+- 4-step onboarding wizard
+- Owner dashboard with usage meters
+- Billing settings with plan comparison
+- Pricing page
+- Replacement form (separate from repair)
+- Auth + tenant scoping on ALL endpoints
+- Rate limiting, CSRF enforcement
+- Login routing by role
 
 ---
 

@@ -328,7 +328,7 @@ def get_invoice(request, invoice_id):
             'amount': float(item.amount),
             'repair_id': item.repair_id,
             'unit_number': item.unit_number,
-            'repair_date': item.repair_date.isoformat() if item.repair_date else None,
+            'service_date': item.repair_date.isoformat() if item.repair_date else None,
         } for item in invoice.line_items.all()],
         'payments': [{
             'id': p.id,
@@ -469,7 +469,7 @@ def get_uninvoiced_repairs(request, customer_id):
             'id': r.id,
             'unit_number': r.unit_number,
             'damage_type': r.get_damage_type_display() or 'Repair',
-            'repair_date': r.repair_date.isoformat(),
+            'service_date': r.repair_date.isoformat(),
             'cost': float(disc['final_cost']),
         })
         total += float(disc['final_cost'])

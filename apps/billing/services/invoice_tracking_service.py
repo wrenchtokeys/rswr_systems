@@ -145,7 +145,7 @@ class InvoiceTrackingService:
         
         repairs = repairs.exclude(id__in=invoiced_repair_ids)
         
-        return repairs.order_by('-repair_date')
+        return repairs.order_by('-service_date')
     
     def record_payment(self, invoice, amount, payment_method='OTHER',
                        reference_number='', notes='', recorded_by=None,

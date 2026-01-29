@@ -162,7 +162,7 @@ class CustomerRepairPreference(models.Model):
             units_repaired_today = Repair.objects.filter(
                 customer=self.customer,
                 technician=technician,
-                repair_date__date=visit_date,
+                service_date__date=visit_date,
                 queue_status__in=['APPROVED', 'IN_PROGRESS', 'COMPLETED']
             ).values('unit_number').distinct().count()
 

@@ -302,7 +302,7 @@ def team_overview(request):
             'pending_repairs': tech.pending_repairs_count,
             'completed_repairs': tech.completed_repairs_count,
             'completion_rate': round(completion_rate, 1),
-            'recent_repairs': recent_qs.select_related('customer').order_by('-repair_date')[:5]
+            'recent_repairs': recent_qs.select_related('customer').order_by('-service_date')[:5]
         })
 
     total_team_repairs = sum(stat['total_repairs'] for stat in team_stats)

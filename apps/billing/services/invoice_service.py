@@ -275,12 +275,12 @@ class InvoiceService:
             queryset = queryset.filter(id__in=repair_ids)
         
         if start_date:
-            queryset = queryset.filter(repair_date__gte=start_date)
+            queryset = queryset.filter(service_date__gte=start_date)
         
         if end_date:
-            queryset = queryset.filter(repair_date__lte=end_date)
+            queryset = queryset.filter(service_date__lte=end_date)
         
-        return queryset.order_by('repair_date')
+        return queryset.order_by('service_date')
     
     def _build_line_item(self, repair: Repair) -> InvoiceLineItem:
         """Convert a Repair object to an InvoiceLineItem"""

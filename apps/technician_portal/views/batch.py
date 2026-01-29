@@ -125,7 +125,7 @@ def create_multi_break_repair(request):
         try:
             customer_id = request.POST.get('customer')
             unit_number = request.POST.get('unit_number')
-            repair_date_str = request.POST.get('repair_date')
+            repair_date_str = request.POST.get('repair_date', request.POST.get('service_date'))
             breaks_count = int(request.POST.get('breaks_count', 0))
 
             logger.info(f"[MULTI-BREAK] Request received - customer_id={customer_id}, unit={unit_number}, date={repair_date_str}, breaks={breaks_count}")
@@ -250,7 +250,7 @@ def create_multi_break_repair(request):
                         technician=technician,
                         customer=customer,
                         unit_number=unit_number,
-                        repair_date=repair_date,
+                        service_date=repair_date,
                         damage_type=damage_type,
                         drilled_before_repair=drilled_before,
                         windshield_temperature=Decimal(windshield_temp) if windshield_temp else None,
@@ -453,7 +453,7 @@ def convert_to_batch(request, repair_id):
                     unit_number=original_repair.unit_number,
                     technician=original_repair.technician,
                     damage_type=damage_type,
-                    repair_date=original_repair.repair_date,
+                    service_date=original_repair.service_date,
                     cost=cost,
                     queue_status=original_repair.queue_status,
                     repair_batch_id=batch_id,

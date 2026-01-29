@@ -123,22 +123,41 @@ def technician_login_view(request):
     return render(request, 'technician_login.html', {'form': form, 'portal_type': 'technician'})
 
 def login_router(request):
-    """Legacy login URL that redirects to appropriate portal"""
+    """Legacy login URL that redirects to appropriate portal based on user role."""
     # Check if user is already authenticated
     if request.user.is_authenticated:
         from apps.customer_portal.models import CustomerUser
         from apps.technician_portal.models import Technician
-        
+        from apps.tenants.models import TenantMembership
+
+        # Check if user is a tenant owner/manager → owner dashboard
+        owner_membership = TenantMembership.objects.filter(
+            user=request.user, is_active=True, role__in=['owner', 'manager']
+        ).first()
+        if owner_membership:
+            return redirect('owner_dashboard')
+
+        # Check if user is a customer → customer dashboard
         try:
             customer_user = CustomerUser.objects.get(user=request.user)
             return redirect('customer_dashboard')
         except CustomerUser.DoesNotExist:
-            try:
-                technician = Technician.objects.get(user=request.user)
-                return redirect('technician_dashboard')
-            except Technician.DoesNotExist:
-                pass
-    
+            pass
+
+        # Check if user is a technician → technician dashboard
+        try:
+            technician = Technician.objects.get(user=request.user)
+            return redirect('technician_dashboard')
+        except Technician.DoesNotExist:
+            pass
+
+        # Fallback: if they have any tenant membership, send to owner dashboard
+        any_membership = TenantMembership.objects.filter(
+            user=request.user, is_active=True
+        ).first()
+        if any_membership:
+            return redirect('owner_dashboard')
+
     # For unauthenticated users, show portal selection
     return render(request, 'login_router.html')
 

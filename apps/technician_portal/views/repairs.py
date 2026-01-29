@@ -51,7 +51,7 @@ def repair_list(request):
         repairs = repairs.filter(tenant=tenant)
 
     # Optimize query with select_related
-    repairs = repairs.select_related('customer', 'technician__user').order_by('-repair_date')
+    repairs = repairs.select_related('customer', 'technician__user').order_by('-service_date')
 
     # Get filter parameters
     customer_search = request.GET.get('customer_search', '')
@@ -79,7 +79,7 @@ def repair_list(request):
         try:
             from datetime import datetime
             date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
-            repairs = repairs.filter(repair_date__gte=date_from_obj)
+            repairs = repairs.filter(service_date__gte=date_from_obj)
         except ValueError:
             pass
 
@@ -87,7 +87,7 @@ def repair_list(request):
         try:
             from datetime import datetime
             date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
-            repairs = repairs.filter(repair_date__lte=date_to_obj)
+            repairs = repairs.filter(service_date__lte=date_to_obj)
         except ValueError:
             pass
 
@@ -108,13 +108,16 @@ def repair_list(request):
         'in_progress': repairs.filter(queue_status='IN_PROGRESS').count(),
         'completed_this_week': repairs.filter(
             queue_status='COMPLETED',
-            repair_date__gte=timezone.now().date() - timezone.timedelta(days=7)
+            service_date__gte=timezone.now().date() - timezone.timedelta(days=7)
         ).count()
     }
 
     # Sorting
-    sort_by = request.GET.get('sort', '-repair_date')
-    valid_sorts = ['repair_date', '-repair_date', 'customer__name', '-customer__name',
+    sort_by = request.GET.get('sort', '-service_date')
+    # Accept both repair_date (legacy templates) and service_date (new field name)
+    if sort_by in ('repair_date', '-repair_date'):
+        sort_by = sort_by.replace('repair_date', 'service_date')
+    valid_sorts = ['service_date', '-service_date', 'customer__name', '-customer__name',
                    'unit_number', '-unit_number', 'cost', '-cost', 'queue_status', '-queue_status']
     if sort_by in valid_sorts:
         repairs = repairs.order_by(sort_by)

@@ -689,7 +689,7 @@ class Repair(GlassService):
             'batch_id': batch_id,
             'customer': first_repair.customer,
             'unit_number': first_repair.unit_number,
-            'repair_date': first_repair.service_date,
+            'service_date': first_repair.service_date,
             'break_count': break_count,
             'total_cost': total_cost,
             'statuses': statuses,

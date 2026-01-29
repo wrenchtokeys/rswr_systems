@@ -107,7 +107,7 @@ def customer_dashboard(request):
         # Get recent repairs (limited to 5) for the customer
         recent_repairs = Repair.objects.filter(
             customer=customer
-        ).select_related('technician__user').order_by('-repair_date')[:5]
+        ).select_related('technician__user').order_by('-service_date')[:5]
         
         # Check which of the recent repairs were customer-initiated
         repair_ids = [repair.id for repair in recent_repairs]
@@ -123,7 +123,7 @@ def customer_dashboard(request):
         # Get repairs that are awaiting customer approval
         repairs_awaiting_approval = Repair.objects.filter(
             customer=customer, queue_status='PENDING'
-        ).select_related('technician__user').order_by('-repair_date')
+        ).select_related('technician__user').order_by('-service_date')
 
         # Group batched repairs and separate individual repairs
         batch_repairs = {}  # Dictionary: batch_id -> batch_summary
@@ -290,7 +290,7 @@ def customer_repairs(request):
 
         # Get filter parameters
         status_filter = request.GET.get('status', 'all')
-        sort_by = request.GET.get('sort', '-repair_date')  # Default: newest first
+        sort_by = request.GET.get('sort', '-service_date')  # Default: newest first
         unit_search = request.GET.get('unit_search', '')
         damage_type_filter = request.GET.get('damage_type', 'all')
         date_from = request.GET.get('date_from', '')
@@ -318,7 +318,7 @@ def customer_repairs(request):
             try:
                 from datetime import datetime
                 date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
-                repairs = repairs.filter(repair_date__gte=date_from_obj)
+                repairs = repairs.filter(service_date__gte=date_from_obj)
             except ValueError:
                 pass
 
@@ -326,12 +326,14 @@ def customer_repairs(request):
             try:
                 from datetime import datetime
                 date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
-                repairs = repairs.filter(repair_date__lte=date_to_obj)
+                repairs = repairs.filter(service_date__lte=date_to_obj)
             except ValueError:
                 pass
 
-        # Apply sorting
-        valid_sorts = ['repair_date', '-repair_date', 'unit_number', '-unit_number',
+        # Apply sorting — accept both repair_date (legacy) and service_date (new field)
+        if sort_by in ('repair_date', '-repair_date'):
+            sort_by = sort_by.replace('repair_date', 'service_date')
+        valid_sorts = ['service_date', '-service_date', 'unit_number', '-unit_number',
                        'cost', '-cost', 'queue_status', '-queue_status']
         if sort_by in valid_sorts:
             repairs = repairs.order_by(sort_by)
@@ -344,7 +346,7 @@ def customer_repairs(request):
             'in_progress': repairs.filter(queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
             'completed_this_month': repairs.filter(
                 queue_status='COMPLETED',
-                repair_date__gte=timezone.now().date().replace(day=1)
+                service_date__gte=timezone.now().date().replace(day=1)
             ).count(),
             'total_cost': repairs.filter(queue_status='COMPLETED').aggregate(
                 total=models.Sum('cost')
@@ -405,7 +407,7 @@ def customer_repairs(request):
                 batch_summaries.append({
                     'batch_id': batch_id,
                     'unit_number': first_repair.unit_number,
-                    'repair_date': first_repair.repair_date,
+                    'service_date': first_repair.repair_date,
                     'break_count': len(batch_repairs),
                     'total_cost': total_cost,
                     'overall_status': overall_status,
@@ -417,7 +419,7 @@ def customer_repairs(request):
                 })
 
         # Sort batch summaries by date (newest first)
-        batch_summaries.sort(key=lambda b: b['repair_date'], reverse=True)
+        batch_summaries.sort(key=lambda b: b['service_date'], reverse=True)
 
         # Pagination - combine batches and individual repairs for display
         # Each batch counts as 1 item, each individual repair counts as 1 item
@@ -1529,7 +1531,7 @@ def repair_cost_data_api(request):
         # Get all repairs for this customer
         repairs = Repair.objects.filter(
             customer=customer
-        ).order_by('repair_date')
+        ).order_by('service_date')
         
         # Group repairs by month and count them
         monthly_counts = defaultdict(int)

@@ -50,7 +50,7 @@ def technician_dashboard(request):
             qs = Repair.objects.filter(queue_status='REQUESTED')
             if tenant:
                 qs = qs.filter(tenant=tenant)
-            customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-repair_date')
+            customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-service_date')
         else:
             customer_requested_repairs = Repair.objects.none()
 
@@ -80,7 +80,7 @@ def technician_dashboard(request):
             id__in=recent_approvals,
             technician=technician,
             queue_status='APPROVED'
-        ).select_related('customer').order_by('-repair_date')
+        ).select_related('customer').order_by('-service_date')
 
         # Group batch repairs and separate individual repairs
         batch_repairs_approved = {}
@@ -104,7 +104,7 @@ def technician_dashboard(request):
         repairs_active = Repair.objects.filter(
             technician=technician,
             queue_status__in=['IN_PROGRESS', 'APPROVED']
-        ).select_related('customer').order_by('-repair_date')
+        ).select_related('customer').order_by('-service_date')
 
         batch_repairs_in_progress = {}
         individual_repairs_in_progress = []
@@ -130,8 +130,8 @@ def technician_dashboard(request):
         recent_completions = Repair.objects.filter(
             technician=technician,
             queue_status='COMPLETED',
-            repair_date__gte=timezone.now() - timedelta(days=7)
-        ).select_related('customer').order_by('-repair_date')
+            service_date__gte=timezone.now() - timedelta(days=7)
+        ).select_related('customer').order_by('-service_date')
 
         batch_repairs_completed = {}
         individual_repairs_completed = []
@@ -163,7 +163,7 @@ def technician_dashboard(request):
         qs = Repair.objects.filter(queue_status='REQUESTED')
         if tenant:
             qs = qs.filter(tenant=tenant)
-        customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-repair_date')
+        customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-service_date')
 
         assigned_redemptions = []
         all_pending_redemptions = RewardRedemption.objects.filter(

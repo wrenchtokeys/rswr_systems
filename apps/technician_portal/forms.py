@@ -198,10 +198,10 @@ class RepairForm(forms.ModelForm):
             # This is an existing repair being edited - keep existing date
             # But ensure widget has proper format
             if self.instance.service_date:
-                self.fields['repair_date'].initial = self.instance.service_date
+                self.fields['service_date'].initial = self.instance.service_date
                 # Convert to local timezone for datetime-local input
                 local_time = timezone.localtime(self.instance.service_date)
-                self.fields['repair_date'].widget.attrs['value'] = local_time.strftime('%Y-%m-%dT%H:%M')
+                self.fields['service_date'].widget.attrs['value'] = local_time.strftime('%Y-%m-%dT%H:%M')
         # For new repairs, JavaScript will set the current time in the user's browser timezone
         # See static/js/repair_form.js lines 40-54 for client-side initialization
         
@@ -249,7 +249,7 @@ class RepairForm(forms.ModelForm):
         cleaned_data = super().clean()
         
         # Map repair_date field to service_date on the model
-        repair_date_value = cleaned_data.get('repair_date')
+        repair_date_value = cleaned_data.get('service_date')
         if repair_date_value:
             cleaned_data['service_date'] = repair_date_value
         
@@ -351,7 +351,7 @@ class RepairForm(forms.ModelForm):
     def save(self, commit=True):
         """Override save to map repair_date → service_date on the model instance."""
         instance = super().save(commit=False)
-        repair_date_value = self.cleaned_data.get('repair_date')
+        repair_date_value = self.cleaned_data.get('service_date')
         if repair_date_value:
             instance.service_date = repair_date_value
         if commit:
