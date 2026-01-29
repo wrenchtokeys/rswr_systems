@@ -1,8 +1,8 @@
-{% extends "base.html" %}
+{% extends "saas/base_owner.html" %}
 
 {% block title %}New Replacement | RS Systems{% endblock %}
 
-{% block extra_css %}
+{% block extra_head %}
 <style>
     .insurance-fields, .adas-cost-field {
         display: none;
@@ -13,11 +13,8 @@
 </style>
 {% endblock %}
 
-{% block portal_name %}RS Systems - New Replacement{% endblock %}
-
 {% block content %}
-<div class="min-h-screen bg-gray-50">
-    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="max-w-3xl mx-auto">
         <!-- Header -->
         <div class="mb-8">
             <a href="{% url 'owner_dashboard' %}" class="text-sm text-blue-600 hover:text-blue-800 mb-2 inline-block">
@@ -185,9 +182,9 @@
                 </button>
             </div>
         </form>
-    </div>
 </div>
 {% endblock %}
+
 
 {% block extra_js %}
 <script>

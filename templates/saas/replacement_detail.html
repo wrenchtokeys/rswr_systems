@@ -1,12 +1,9 @@
-{% extends "base.html" %}
+{% extends "saas/base_owner.html" %}
 
 {% block title %}Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
-{% block portal_name %}RS Systems - Replacement Detail{% endblock %}
-
 {% block content %}
-<div class="min-h-screen bg-gray-50">
-    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="max-w-3xl mx-auto">
         <!-- Header -->
         <div class="mb-8">
             <a href="{% url 'owner_dashboard' %}" class="text-sm text-blue-600 hover:text-blue-800 mb-2 inline-block">
@@ -103,6 +100,5 @@
             </div>
             {% endif %}
         </div>
-    </div>
 </div>
 {% endblock %}

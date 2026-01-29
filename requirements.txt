@@ -20,5 +20,8 @@ django-celery-beat==2.7.0
 django-celery-results==2.5.1
 flower==2.0.1
 
+# Payments
+stripe>=8.0.0
+
 # Error tracking and monitoring
 sentry-sdk==1.40.0 

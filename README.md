@@ -42,16 +42,34 @@ pip install -r requirements.txt
 
 ### 3. Set up the database
 
+**Option A: PostgreSQL (recommended for production-like testing)**
+
 ```bash
-# Create a local PostgreSQL database
+# Linux — Create a local PostgreSQL database
 sudo -u postgres psql -c "CREATE DATABASE rs_systems_local;"
 sudo -u postgres psql -c "CREATE USER rs_local WITH PASSWORD 'localpass123';"
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE rs_systems_local TO rs_local;"
 sudo -u postgres psql -c "ALTER USER rs_local CREATEDB;"  # Needed for tests
 
+# macOS (Homebrew) — use psql directly (no `sudo -u postgres` needed)
+# brew install postgresql@16 && brew services start postgresql@16
+psql postgres -c "CREATE DATABASE rs_systems_local;"
+psql postgres -c "CREATE USER rs_local WITH PASSWORD 'localpass123';"
+psql postgres -c "GRANT ALL PRIVILEGES ON DATABASE rs_systems_local TO rs_local;"
+psql postgres -c "ALTER USER rs_local CREATEDB;"
+
 # Set environment variable
 export LOCAL_DATABASE_URL="postgresql://rs_local:localpass123@localhost:5432/rs_systems_local"
 ```
+
+**Option B: SQLite (quickest local setup — no install needed)**
+
+```bash
+# Skip the PostgreSQL setup entirely. Just set:
+export LOCAL_DATABASE_URL="sqlite:///db.sqlite3"
+```
+
+> **Note:** SQLite works for quick local testing but doesn't support all PostgreSQL features (e.g., `JSONField` lookups, concurrent writes). Use PostgreSQL for anything beyond basic dev work.
 
 ### 4. Run migrations & seed data
 
