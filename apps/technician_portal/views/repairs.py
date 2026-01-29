@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 @technician_required
 def repair_list(request):
     """List repairs with filtering, sorting, and pagination."""
+    tenant = getattr(request, 'tenant', None)
+
     if not request.user.is_staff:
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have a technician profile to view repairs.")
@@ -43,6 +45,10 @@ def repair_list(request):
     else:
         repairs = Repair.objects.all()
         technician = None
+
+    # Tenant scoping
+    if tenant:
+        repairs = repairs.filter(tenant=tenant)
 
     # Optimize query with select_related
     repairs = repairs.select_related('customer', 'technician__user').order_by('-repair_date')
@@ -150,10 +156,11 @@ def repair_list(request):
 @technician_required
 def repair_detail(request, repair_id):
     """Display repair details with permission checks and batch context."""
-    repair = get_object_or_404(
-        Repair.objects.select_related('customer', 'technician__user'),
-        id=repair_id
-    )
+    tenant = getattr(request, 'tenant', None)
+    qs = Repair.objects.select_related('customer', 'technician__user')
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    repair = get_object_or_404(qs, id=repair_id)
 
     can_update_status = False
     can_assign_repair = False
@@ -313,12 +320,17 @@ def create_repair(request):
 @technician_required
 def update_repair(request, repair_id):
     """Update an existing repair with permission and security checks."""
+    tenant = getattr(request, 'tenant', None)
+
     if not request.user.is_staff:
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have a technician profile to manage repairs.")
             return redirect('technician_dashboard')
 
-        repair = get_object_or_404(Repair, id=repair_id)
+        qs = Repair.objects.all()
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        repair = get_object_or_404(qs, id=repair_id)
         logger.info(f"UPDATE_REPAIR: Got repair #{repair.id}, technician_id={repair.technician_id}")
 
         user_is_manager = request.user.technician.is_manager if hasattr(request.user, 'technician') else False
@@ -334,7 +346,10 @@ def update_repair(request, repair_id):
             messages.error(request, "You can only edit repairs assigned to you.")
             return redirect('repair_detail', repair_id=repair.id)
     else:
-        repair = get_object_or_404(Repair, id=repair_id)
+        qs = Repair.objects.all()
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        repair = get_object_or_404(qs, id=repair_id)
 
     if request.method == 'POST':
         logger.info(f"UPDATE_REPAIR POST: Processing form for repair #{repair.id}")
@@ -426,7 +441,11 @@ def update_repair(request, repair_id):
 @technician_required
 def update_queue_status(request, repair_id):
     """Update repair queue status with permission checks."""
-    repair = get_object_or_404(Repair, id=repair_id)
+    tenant = getattr(request, 'tenant', None)
+    qs = Repair.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    repair = get_object_or_404(qs, id=repair_id)
 
     if not request.user.is_staff:
         if not hasattr(request.user, 'technician'):
@@ -523,12 +542,17 @@ def update_queue_status(request, repair_id):
 @technician_required
 def assign_repair(request, repair_id):
     """Manager assigns a REQUESTED repair to a technician."""
+    tenant = getattr(request, 'tenant', None)
+
     if not request.user.is_staff:
         if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
             messages.error(request, "Only managers can assign repairs.")
             return redirect('technician_dashboard')
 
-    repair = get_object_or_404(Repair, id=repair_id)
+    qs = Repair.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    repair = get_object_or_404(qs, id=repair_id)
 
     if repair.queue_status != 'REQUESTED':
         messages.error(request, "Only REQUESTED repairs can be assigned. This repair is already assigned.")
@@ -602,12 +626,17 @@ def assign_repair(request, repair_id):
 @technician_required
 def reassign_to_self(request, repair_id):
     """Manager reassigns a team member's repair to themselves."""
+    tenant = getattr(request, 'tenant', None)
+
     if not request.user.is_staff:
         if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
             messages.error(request, "Only managers can reassign repairs.")
             return redirect('technician_dashboard')
 
-    repair = get_object_or_404(Repair, id=repair_id)
+    qs = Repair.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    repair = get_object_or_404(qs, id=repair_id)
 
     if not request.user.is_staff:
         manager = request.user.technician
@@ -660,13 +689,17 @@ def reassign_to_self(request, repair_id):
 @technician_required
 def check_existing_repair(request):
     """AJAX endpoint to check for existing active repairs on a unit."""
+    tenant = getattr(request, 'tenant', None)
     customer_id = request.GET.get('customer')
     unit_number = request.GET.get('unit_number')
-    existing_repair = Repair.objects.filter(
+    qs = Repair.objects.filter(
         customer_id=customer_id,
         unit_number=unit_number,
         queue_status__in=['PENDING', 'APPROVED', 'IN_PROGRESS']
-    ).first()
+    )
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    existing_repair = qs.first()
 
     if existing_repair:
         return JsonResponse({

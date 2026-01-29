@@ -210,25 +210,31 @@ def profile_creation(request):
             company_address = request.POST.get('company_address')
             
             try:
-                # Create new customer
+                # Create new customer — associate with tenant
+                tenant = getattr(request, 'tenant', None)
                 customer = Customer.objects.create(
                     name=company_name,
                     email=company_email,
                     phone=company_phone,
-                    address=company_address
+                    address=company_address,
+                    tenant=tenant,
                 )
             except Exception as e:
                 messages.error(request, f"Error creating company: {str(e)}")
-                customers = Customer.objects.all()
+                tenant = getattr(request, 'tenant', None)
+                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
                 return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
         else:
             # Use existing customer
             customer_id = request.POST.get('customer')
             try:
-                customer = Customer.objects.get(id=customer_id)
+                tenant = getattr(request, 'tenant', None)
+                customer_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+                customer = customer_qs.get(id=customer_id)
             except Customer.DoesNotExist:
                 messages.error(request, "Selected company does not exist.")
-                customers = Customer.objects.all()
+                tenant = getattr(request, 'tenant', None)
+                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
                 return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
         
         # Create CustomerUser record
@@ -268,8 +274,12 @@ def profile_creation(request):
         except Exception as e:
             messages.error(request, f"Error creating profile: {str(e)}")
     
-    # Get all customers for the dropdown
-    customers = Customer.objects.all()
+    # Get all customers for the dropdown — scoped to tenant if available
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        customers = Customer.objects.filter(tenant=tenant)
+    else:
+        customers = Customer.objects.all()
     return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
 
 @customer_required
@@ -980,8 +990,9 @@ def handle_single_repair_request(request, customer):
             return render(request, 'customer_portal/request_repair.html')
         damage_photo = convert_heic_to_jpeg(damage_photo)
 
-    # Find available technician
-    technician = get_available_technician()
+    # Find available technician (scoped to tenant)
+    tenant = getattr(request, 'tenant', None)
+    technician = get_available_technician(tenant=tenant)
     if not technician:
         messages.error(request, "No technicians available. Please try again later.")
         return render(request, 'customer_portal/request_repair.html')
@@ -989,6 +1000,7 @@ def handle_single_repair_request(request, customer):
     # Create the repair
     try:
         repair = Repair.objects.create(
+            tenant=tenant,
             technician=technician,
             customer=customer,
             unit_number=unit_number,
@@ -1024,8 +1036,9 @@ def handle_batch_repair_request(request, customer):
             messages.error(request, "Please add at least one unit to submit.")
             return render(request, 'customer_portal/request_repair.html')
 
-        # Find available technician
-        technician = get_available_technician()
+        # Find available technician (scoped to tenant)
+        tenant = getattr(request, 'tenant', None)
+        technician = get_available_technician(tenant=tenant)
         if not technician:
             messages.error(request, "No technicians available. Please try again later.")
             return render(request, 'customer_portal/request_repair.html')
@@ -1065,6 +1078,7 @@ def handle_batch_repair_request(request, customer):
                     batch_id = uuid.uuid4()
                     for break_num in range(1, break_count + 1):
                         repair = Repair.objects.create(
+                            tenant=tenant,
                             technician=technician,
                             customer=customer,
                             unit_number=unit_number,
@@ -1081,6 +1095,7 @@ def handle_batch_repair_request(request, customer):
                 elif has_multiple_breaks:
                     # Multi-break estimate (unknown count)
                     repair = Repair.objects.create(
+                        tenant=tenant,
                         technician=technician,
                         customer=customer,
                         unit_number=unit_number,
@@ -1095,6 +1110,7 @@ def handle_batch_repair_request(request, customer):
                 else:
                     # Single break repair (no batch fields)
                     repair = Repair.objects.create(
+                        tenant=tenant,
                         technician=technician,
                         customer=customer,
                         unit_number=unit_number,
@@ -1170,14 +1186,18 @@ def validate_repair_photo(photo_file):
     return True, ""
 
 
-def get_available_technician():
+def get_available_technician(tenant=None):
     """
     Get an available technician using round-robin assignment.
+    Scoped to tenant if provided.
 
     Returns:
         Technician object or None if no technicians available
     """
-    technicians = Technician.objects.annotate(
+    technicians = Technician.objects.all()
+    if tenant:
+        technicians = technicians.filter(tenant=tenant)
+    technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')
 

@@ -8,6 +8,8 @@ proxied here for backward compatibility.
 Non-billing endpoints (status, health, customer/repair queries)
 remain here as they're clawdbot-specific.
 
+Security: Data endpoints require authentication and tenant scoping.
+         Status/health endpoints remain public for monitoring.
 Author: Amelia (Clawdbot AI)
 """
 
@@ -16,6 +18,7 @@ from datetime import datetime, timedelta
 from django.http import JsonResponse, HttpResponse, FileResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.utils import timezone
 import json
@@ -25,15 +28,33 @@ from apps.technician_portal.models import Repair, Replacement
 
 
 # =============================================================================
-# CLAWDBOT-SPECIFIC ENDPOINTS (status, health, data queries)
+# HELPERS
+# =============================================================================
+
+def _get_tenant_or_403(request):
+    """
+    Extract tenant from request. Returns (tenant, None) on success
+    or (None, JsonResponse) on failure.
+    """
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        return None, JsonResponse(
+            {'error': 'No tenant context. Ensure you are logged in and belong to an organization.'},
+            status=403,
+        )
+    return tenant, None
+
+
+# =============================================================================
+# CLAWDBOT-SPECIFIC ENDPOINTS (status, health — public for monitoring)
 # =============================================================================
 
 @require_GET
 def status(request):
-    """Clawdbot status endpoint."""
+    """Clawdbot status endpoint. Public — no sensitive data."""
     from apps.billing.services.stripe_service import StripeService
     stripe_service = StripeService()
-    
+
     return JsonResponse({
         'status': 'online',
         'name': 'Amelia',
@@ -67,7 +88,7 @@ def status(request):
 
 @require_GET
 def health(request):
-    """Health check endpoint."""
+    """Health check endpoint. Public — no sensitive data."""
     from django.db import connection
     try:
         with connection.cursor() as cursor:
@@ -85,12 +106,21 @@ def health(request):
         }, status=503)
 
 
+# =============================================================================
+# DATA ENDPOINTS (require auth + tenant scoping)
+# =============================================================================
+
+@login_required
 @require_GET
 def list_customers(request):
     """List all customers with repair counts (annotated to avoid N+1)."""
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
     from django.db.models import Count, Q
 
-    customers = Customer.objects.annotate(
+    customers = Customer.objects.filter(tenant=tenant).annotate(
         completed_repairs=Count(
             'repair', filter=Q(repair__queue_status='COMPLETED')
         ),
@@ -111,23 +141,29 @@ def list_customers(request):
     })
 
 
+@login_required
 @require_GET
 def list_repairs(request, customer_id):
     """List completed repairs for a customer."""
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
     try:
-        customer = Customer.objects.get(id=customer_id)
+        customer = Customer.objects.get(id=customer_id, tenant=tenant)
     except Customer.DoesNotExist:
         return JsonResponse({'error': 'Customer not found'}, status=404)
-    
+
     days = int(request.GET.get('days', 30))
     start_date = timezone.now() - timedelta(days=days)
-    
+
     repairs = Repair.objects.filter(
         customer=customer,
+        tenant=tenant,
         queue_status='COMPLETED',
         repair_date__gte=start_date
     ).select_related('technician', 'technician__user').order_by('-repair_date')
-    
+
     repair_data = []
     for r in repairs:
         disc = r.get_discounted_cost()
@@ -139,7 +175,7 @@ def list_repairs(request, customer_id):
             'cost': float(disc['final_cost']),
             'has_photos': r.has_photos(),
         })
-    
+
     return JsonResponse({
         'customer': {'id': customer.id, 'name': customer.name},
         'repairs': repair_data,
@@ -151,23 +187,28 @@ def list_repairs(request, customer_id):
 # INVOICE GENERATION (original clawdbot features - PDF generation)
 # =============================================================================
 
+@login_required
 @require_GET
 def invoice_preview(request, customer_id):
     """Preview invoice data without generating PDF."""
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
     from apps.billing.services.invoice_service import InvoiceService
-    
+
     try:
-        customer = Customer.objects.get(id=customer_id)
+        customer = Customer.objects.get(id=customer_id, tenant=tenant)
     except Customer.DoesNotExist:
         return JsonResponse({'error': 'Customer not found'}, status=404)
-    
+
     repair_ids = request.GET.get('repair_ids')
     if repair_ids:
         repair_ids = [int(x.strip()) for x in repair_ids.split(',')]
-    
+
     days = int(request.GET.get('days', 30))
     start_date = timezone.now() - timedelta(days=days)
-    
+
     service = InvoiceService()
     try:
         invoice_data = service.build_invoice_data(
@@ -177,10 +218,10 @@ def invoice_preview(request, customer_id):
         )
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
-    
+
     if not invoice_data.line_items:
         return JsonResponse({'error': 'No completed repairs found'}, status=404)
-    
+
     return JsonResponse({
         'preview': True,
         'invoice_number': invoice_data.invoice_number,
@@ -199,23 +240,28 @@ def invoice_preview(request, customer_id):
     })
 
 
+@login_required
 @require_GET
 def generate_invoice(request, customer_id):
     """Generate and download a PDF invoice."""
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
     from apps.billing.services.invoice_service import InvoiceService
-    
+
     try:
-        customer = Customer.objects.get(id=customer_id)
+        customer = Customer.objects.get(id=customer_id, tenant=tenant)
     except Customer.DoesNotExist:
         return JsonResponse({'error': 'Customer not found'}, status=404)
-    
+
     repair_ids = request.GET.get('repair_ids')
     if repair_ids:
         repair_ids = [int(x.strip()) for x in repair_ids.split(',')]
-    
+
     days = int(request.GET.get('days', 30))
     start_date = timezone.now() - timedelta(days=days)
-    
+
     service = InvoiceService()
     try:
         pdf_bytes, invoice_data = service.generate_invoice(
@@ -225,10 +271,10 @@ def generate_invoice(request, customer_id):
         )
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
-    
+
     if not invoice_data.line_items:
         return JsonResponse({'error': 'No completed repairs found'}, status=404)
-    
+
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     filename = f"invoice_{customer.name.replace(' ', '_')}_{invoice_data.invoice_number}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{filename}"'

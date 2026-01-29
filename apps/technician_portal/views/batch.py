@@ -138,8 +138,12 @@ def create_multi_break_repair(request):
                     return JsonResponse({'success': False, 'error': error_msg}, status=400)
                 return redirect('create_multi_break_repair')
 
+            tenant = getattr(request, 'tenant', None)
             try:
-                customer = Customer.objects.get(id=customer_id)
+                customer_qs = Customer.objects.all()
+                if tenant:
+                    customer_qs = customer_qs.filter(tenant=tenant)
+                customer = customer_qs.get(id=customer_id)
                 logger.info(f"[MULTI-BREAK] Customer found: {customer.name} (ID: {customer.id})")
             except Customer.DoesNotExist:
                 error_msg = f"Invalid customer selected (ID: {customer_id})."
@@ -242,6 +246,7 @@ def create_multi_break_repair(request):
                             return redirect('create_multi_break_repair')
 
                     repair = Repair(
+                        tenant=tenant,
                         technician=technician,
                         customer=customer,
                         unit_number=unit_number,
@@ -342,9 +347,13 @@ def create_multi_break_repair(request):
 
     else:
         # GET request
+        tenant = getattr(request, 'tenant', None)
+        customer_qs = Customer.objects.all()
+        if tenant:
+            customer_qs = customer_qs.filter(tenant=tenant)
         return render(request, 'technician_portal/multi_break_repair_form.html', {
             'is_admin': request.user.is_staff,
-            'customers': Customer.objects.all().order_by('name'),
+            'customers': customer_qs.order_by('name'),
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
         })
 
@@ -353,7 +362,11 @@ def create_multi_break_repair(request):
 @transaction.atomic
 def convert_to_batch(request, repair_id):
     """Convert a single repair into a multi-break batch by adding additional breaks."""
-    original_repair = get_object_or_404(Repair, id=repair_id)
+    tenant = getattr(request, 'tenant', None)
+    qs = Repair.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    original_repair = get_object_or_404(qs, id=repair_id)
 
     if not request.user.is_staff:
         if not hasattr(request.user, 'technician'):

@@ -19,10 +19,15 @@ logger = logging.getLogger(__name__)
 @admin_required
 def create_customer(request):
     """Create a new customer (admin only)."""
+    tenant = getattr(request, 'tenant', None)
+
     if request.method == 'POST':
         form = CustomerForm(request.POST)
         if form.is_valid():
-            customer = form.save()
+            customer = form.save(commit=False)
+            if tenant:
+                customer.tenant = tenant
+            customer.save()
             messages.success(request, f"Customer '{customer.name}' has been created successfully.")
             return redirect('technician_dashboard')
     else:
@@ -33,15 +38,24 @@ def create_customer(request):
 @technician_required
 def customer_list(request):
     """List all customers accessible to the current technician."""
+    tenant = getattr(request, 'tenant', None)
+
     if request.user.is_staff:
-        customers = Customer.objects.all().order_by('name')
+        customers = Customer.objects.all()
+        if tenant:
+            customers = customers.filter(tenant=tenant)
+        customers = customers.order_by('name')
     else:
         if hasattr(request.user, 'technician'):
             technician = request.user.technician
-            customer_ids = Repair.objects.filter(
-                technician=technician
-            ).values_list('customer_id', flat=True).distinct()
-            customers = Customer.objects.filter(id__in=customer_ids).order_by('name')
+            repair_qs = Repair.objects.filter(technician=technician)
+            if tenant:
+                repair_qs = repair_qs.filter(tenant=tenant)
+            customer_ids = repair_qs.values_list('customer_id', flat=True).distinct()
+            customers = Customer.objects.filter(id__in=customer_ids)
+            if tenant:
+                customers = customers.filter(tenant=tenant)
+            customers = customers.order_by('name')
         else:
             customers = Customer.objects.none()
 
@@ -71,13 +85,20 @@ def customer_list(request):
 @technician_required
 def customer_details(request, customer_id):
     """View customer details with unit listing for current technician."""
+    tenant = getattr(request, 'tenant', None)
     technician = get_object_or_404(Technician, user=request.user)
-    customer = get_object_or_404(Customer, id=customer_id)
+
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
 
     repairs = Repair.objects.filter(
         technician=technician,
         customer=customer
     ).exclude(queue_status__in=['REQUESTED', 'PENDING'])
+    if tenant:
+        repairs = repairs.filter(tenant=tenant)
 
     unit_search = request.GET.get('unit_search', '')
     if unit_search:
@@ -95,8 +116,13 @@ def customer_details(request, customer_id):
 @technician_required
 def unit_details(request, customer_id, unit_number):
     """View all repairs for a specific unit."""
+    tenant = getattr(request, 'tenant', None)
     technician = get_object_or_404(Technician, user=request.user)
-    customer = get_object_or_404(Customer, id=customer_id)
+
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
 
     repairs = Repair.objects.filter(
         technician=technician,
@@ -105,6 +131,8 @@ def unit_details(request, customer_id, unit_number):
     ).exclude(
         queue_status__in=['REQUESTED', 'PENDING']
     ).select_related('customer', 'technician__user')
+    if tenant:
+        repairs = repairs.filter(tenant=tenant)
 
     return render(request, 'technician_portal/unit_details.html', {
         'customer': customer,
@@ -116,7 +144,11 @@ def unit_details(request, customer_id, unit_number):
 @technician_required
 def mark_unit_replaced(request, customer_id, unit_number):
     """Mark a unit's windshield as replaced, resetting repair count."""
-    customer = get_object_or_404(Customer, id=customer_id)
+    tenant = getattr(request, 'tenant', None)
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
     unit_repair_count = get_object_or_404(UnitRepairCount, customer=customer, unit_number=unit_number)
     unit_repair_count.repair_count = 0
     unit_repair_count.save()

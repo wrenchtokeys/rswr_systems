@@ -40,13 +40,17 @@ def technician_dashboard(request):
     if hasattr(request.user, 'technician'):
         technician = request.user.technician
 
+    # Tenant scoping
+    tenant = getattr(request, 'tenant', None)
+
     # Get customer-requested repairs (ONLY for managers)
     if technician:
         # Only MANAGERS can see REQUESTED repairs (for assignment purposes)
         if technician.is_manager:
-            customer_requested_repairs = Repair.objects.filter(
-                queue_status='REQUESTED'
-            ).select_related('customer', 'technician').order_by('-repair_date')
+            qs = Repair.objects.filter(queue_status='REQUESTED')
+            if tenant:
+                qs = qs.filter(tenant=tenant)
+            customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-repair_date')
         else:
             customer_requested_repairs = Repair.objects.none()
 
@@ -156,9 +160,10 @@ def technician_dashboard(request):
         }
     else:
         # For admins without a technician profile
-        customer_requested_repairs = Repair.objects.filter(
-            queue_status='REQUESTED'
-        ).select_related('customer', 'technician').order_by('-repair_date')
+        qs = Repair.objects.filter(queue_status='REQUESTED')
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-repair_date')
 
         assigned_redemptions = []
         all_pending_redemptions = RewardRedemption.objects.filter(
@@ -185,10 +190,15 @@ def technician_dashboard(request):
     admin_data = None
 
     if is_admin:
+        repair_qs = Repair.objects.all()
+        customer_qs = Customer.objects.all()
+        if tenant:
+            repair_qs = repair_qs.filter(tenant=tenant)
+            customer_qs = customer_qs.filter(tenant=tenant)
         admin_data = {
-            'total_repairs': Repair.objects.count(),
-            'pending_repairs': Repair.objects.filter(queue_status='PENDING').count(),
-            'customers': Customer.objects.count(),
+            'total_repairs': repair_qs.count(),
+            'pending_repairs': repair_qs.filter(queue_status='PENDING').count(),
+            'customers': customer_qs.count(),
             'technicians': Technician.objects.count(),
             'pending_redemptions': RewardRedemption.objects.filter(status='PENDING').count()
         }

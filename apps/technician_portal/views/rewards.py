@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @technician_required
 def reward_fulfillment_detail(request, redemption_id):
     """View details of a reward redemption and mark as fulfilled."""
+    tenant = getattr(request, 'tenant', None)
     technician = get_object_or_404(Technician, user=request.user)
 
     redemption = get_object_or_404(RewardRedemption, id=redemption_id)
@@ -33,11 +34,17 @@ def reward_fulfillment_detail(request, redemption_id):
     if redemption.reward and redemption.reward.customer_user and redemption.reward.customer_user.user:
         customer_email = redemption.reward.customer_user.user.email
         try:
-            customer = Customer.objects.get(email=customer_email)
-            customer_repairs = Repair.objects.filter(
+            customer_qs = Customer.objects.all()
+            if tenant:
+                customer_qs = customer_qs.filter(tenant=tenant)
+            customer = customer_qs.get(email=customer_email)
+            repair_qs = Repair.objects.filter(
                 customer=customer,
                 queue_status__in=['APPROVED', 'IN_PROGRESS']
-            ).select_related('customer', 'technician').order_by('-repair_date')
+            )
+            if tenant:
+                repair_qs = repair_qs.filter(tenant=tenant)
+            customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-repair_date')
         except Customer.DoesNotExist:
             pass
 
@@ -81,13 +88,20 @@ def reward_fulfillment_detail(request, redemption_id):
 @technician_required
 def apply_reward_to_repair(request, repair_id):
     """Apply a reward redemption to a specific repair."""
+    tenant = getattr(request, 'tenant', None)
     if request.user.is_staff:
-        repair = get_object_or_404(Repair, id=repair_id)
+        qs = Repair.objects.all()
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        repair = get_object_or_404(qs, id=repair_id)
     else:
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have a technician profile.")
             return redirect('technician_dashboard')
-        repair = get_object_or_404(Repair, id=repair_id, technician=request.user.technician)
+        qs = Repair.objects.filter(technician=request.user.technician)
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        repair = get_object_or_404(qs, id=repair_id)
 
     if request.method == 'POST':
         redemption_id = request.POST.get('redemption_id')

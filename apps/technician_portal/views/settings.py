@@ -286,9 +286,15 @@ def team_overview(request):
         ),
     )
 
+    tenant = getattr(request, 'tenant', None)
+
     team_stats = []
     for tech in team_members_annotated:
         completion_rate = (tech.completed_repairs_count / tech.total_repairs * 100) if tech.total_repairs > 0 else 0
+
+        recent_qs = Repair.objects.filter(technician=tech)
+        if tenant:
+            recent_qs = recent_qs.filter(tenant=tenant)
 
         team_stats.append({
             'technician': tech,
@@ -296,9 +302,7 @@ def team_overview(request):
             'pending_repairs': tech.pending_repairs_count,
             'completed_repairs': tech.completed_repairs_count,
             'completion_rate': round(completion_rate, 1),
-            'recent_repairs': Repair.objects.filter(
-                technician=tech
-            ).select_related('customer').order_by('-repair_date')[:5]
+            'recent_repairs': recent_qs.select_related('customer').order_by('-repair_date')[:5]
         })
 
     total_team_repairs = sum(stat['total_repairs'] for stat in team_stats)

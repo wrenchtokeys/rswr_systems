@@ -453,8 +453,8 @@ def replacement_detail(request, pk):
     """View a glass replacement."""
     tenant = getattr(request, 'tenant', None)
     replacement = get_object_or_404(Replacement, pk=pk)
-    # Check tenant access
-    if tenant and replacement.tenant_id and replacement.tenant_id != tenant.id:
+    # Strict tenant check — deny if no tenant or tenant mismatch
+    if not tenant or replacement.tenant_id != tenant.id:
         messages.error(request, 'Access denied.')
         return redirect('owner_dashboard')
 
