@@ -682,7 +682,7 @@ def invite_member(request):
         )
         invite_token.save()
 
-        invite_url = f"https://{request.get_host()}/invite/{invite_token.token}/"
+        invite_url = request.build_absolute_uri(f"/invite/{invite_token.token}/")
 
     # Try to send invite email
     email_sent = False
@@ -996,7 +996,7 @@ def resend_invite(request, membership_id):
     )
     invite_token.save()
 
-    invite_url = f"https://{request.get_host()}/invite/{invite_token.token}/"
+    invite_url = request.build_absolute_uri(f"/invite/{invite_token.token}/")
 
     # Send email
     email_sent = False
