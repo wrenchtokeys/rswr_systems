@@ -13,7 +13,7 @@ import json
 import logging
 
 from apps.technician_portal.models import Technician, Repair, ViscosityRecommendation
-from apps.technician_portal.decorators import technician_required, manager_required
+from apps.technician_portal.decorators import technician_required, manager_required, is_tenant_admin
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def manager_settings_dashboard(request):
         team_count = manager.managed_technicians.filter(is_active=True).count()
 
     context = {
-        'is_admin': request.user.is_staff,
+        'is_admin': is_tenant_admin(request.user),
         'technician': manager,
         'viscosity_rules_count': viscosity_rules_count,
         'team_count': team_count,
@@ -70,7 +70,7 @@ def manage_viscosity_rules(request):
     ]
 
     context = {
-        'is_admin': request.user.is_staff,
+        'is_admin': is_tenant_admin(request.user),
         'technician': manager,
         'rules_with_position': rules_with_position,
         'badge_colors': ViscosityRecommendation.BADGE_COLOR_CHOICES,
@@ -310,7 +310,7 @@ def team_overview(request):
     total_team_completed = sum(stat['completed_repairs'] for stat in team_stats)
 
     context = {
-        'is_admin': request.user.is_staff,
+        'is_admin': is_tenant_admin(request.user),
         'technician': manager,
         'team_stats': team_stats,
         'total_team_repairs': total_team_repairs,

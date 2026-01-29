@@ -6,6 +6,31 @@ from django.shortcuts import redirect
 from django.contrib import messages
 
 
+def is_tenant_admin(user):
+    """
+    Check if user has admin-level access for their tenant.
+    
+    Returns True if:
+    - Django staff/superuser (legacy admin access)
+    - Tenant owner or manager (SaaS admin access)
+    
+    This replaces is_staff checks throughout the tech portal so that
+    SaaS owners/managers get full access without needing Django staff status.
+    """
+    if user.is_staff:
+        return True
+    
+    try:
+        from apps.tenants.models import TenantMembership
+        return TenantMembership.objects.filter(
+            user=user,
+            is_active=True,
+            role__in=['owner', 'manager']
+        ).exists()
+    except Exception:
+        return False
+
+
 def manager_required(view_func):
     """
     Decorator to restrict view access to managers and staff users only.

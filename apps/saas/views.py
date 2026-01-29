@@ -46,23 +46,30 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------
 
 def _get_owner_tenant(request):
-    """Return (tenant, membership) for the current user, or (None, None)."""
+    """Return (tenant, membership) for owner/manager users, or (None, None).
+    
+    Only returns a membership if the user has owner or manager role.
+    Viewers, technicians, and customers get (None, None) — they shouldn't
+    access the owner dashboard.
+    """
     tenant = getattr(request, 'tenant', None)
     if not tenant:
-        # Try to find one — check owner first, then manager
         membership = (
             TenantMembership.objects
             .filter(user=request.user, is_active=True, role__in=['owner', 'manager'])
             .select_related('tenant')
-            .order_by('role')  # 'manager' < 'owner' alphabetically, but we want owner first
+            .order_by('role')
             .first()
         )
         if membership:
             return membership.tenant, membership
         return None, None
     membership = TenantMembership.objects.filter(
-        user=request.user, tenant=tenant, is_active=True
+        user=request.user, tenant=tenant, is_active=True,
+        role__in=['owner', 'manager']
     ).first()
+    if not membership:
+        return None, None
     return tenant, membership
 
 

@@ -10,7 +10,7 @@ from apps.customer_portal.models import CustomerUser
 from apps.rewards_referrals.models import RewardRedemption
 from apps.rewards_referrals.services import RewardFulfillmentService
 from core.models import Customer
-from apps.technician_portal.decorators import technician_required
+from apps.technician_portal.decorators import technician_required, is_tenant_admin
 
 import logging
 
@@ -26,7 +26,7 @@ def reward_fulfillment_detail(request, redemption_id):
     redemption = get_object_or_404(RewardRedemption, id=redemption_id)
 
     is_assigned_technician = (redemption.assigned_technician == technician)
-    is_admin = request.user.is_staff
+    is_admin = is_tenant_admin(request.user)
     can_fulfill = is_assigned_technician or is_admin
 
     # Get customer repairs for applying reward
@@ -89,7 +89,7 @@ def reward_fulfillment_detail(request, redemption_id):
 def apply_reward_to_repair(request, repair_id):
     """Apply a reward redemption to a specific repair."""
     tenant = getattr(request, 'tenant', None)
-    if request.user.is_staff:
+    if is_tenant_admin(request.user):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)

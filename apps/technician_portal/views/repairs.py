@@ -14,7 +14,7 @@ import logging
 from apps.technician_portal.models import Technician, Repair, TechnicianNotification
 from apps.customer_portal.models import RepairApproval, CustomerUser, CustomerRepairPreference
 from apps.technician_portal.forms import RepairForm
-from apps.technician_portal.decorators import technician_required
+from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from common.utils import convert_heic_to_jpeg
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def repair_list(request):
     """List repairs with filtering, sorting, and pagination."""
     tenant = getattr(request, 'tenant', None)
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have a technician profile to view repairs.")
             return redirect('technician_dashboard')
@@ -41,7 +41,7 @@ def repair_list(request):
         else:
             repairs = Repair.objects.filter(
                 technician=technician
-            ).exclude(queue_status__in=['REQUESTED', 'PENDING'])
+            ).exclude(queue_status='REQUESTED')
     else:
         repairs = Repair.objects.all()
         technician = None
@@ -91,7 +91,7 @@ def repair_list(request):
         except ValueError:
             pass
 
-    if technician and (request.user.is_staff or technician.is_manager):
+    if technician and (is_tenant_admin(request.user) or technician.is_manager):
         if assignment_filter == 'mine':
             repairs = repairs.filter(technician=technician)
         elif assignment_filter == 'unassigned':
@@ -149,7 +149,7 @@ def repair_list(request):
         'page_size': page_size,
         'queue_choices': Repair.QUEUE_CHOICES,
         'damage_types': damage_types,
-        'is_admin': request.user.is_staff,
+        'is_admin': is_tenant_admin(request.user),
         'technician': technician,
     }
 
@@ -184,14 +184,16 @@ def repair_detail(request, repair_id):
             unread_notifications.update(read=True)
             logger.info(f"Auto-marked {unread_count} notification(s) as read for technician {technician.user.username} viewing repair #{repair.id}")
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         if not technician:
             messages.error(request, "You don't have a technician profile to view repairs.")
             return redirect('technician_dashboard')
 
         if repair.queue_status == 'PENDING':
-            messages.error(request, "This repair is pending customer approval and cannot be viewed by technicians.")
-            return redirect('technician_dashboard')
+            # Tech can view their own pending repairs but not others'
+            if repair.technician != technician and not technician.is_manager:
+                messages.error(request, "This repair is pending customer approval.")
+                return redirect('technician_dashboard')
 
         if repair.queue_status == 'REQUESTED':
             if not technician.is_manager:
@@ -237,7 +239,7 @@ def repair_detail(request, repair_id):
     return render(request, 'technician_portal/repair_detail.html', {
         'repair': repair,
         'TIME_ZONE': timezone.get_current_timezone_name(),
-        'is_admin': request.user.is_staff,
+        'is_admin': is_tenant_admin(request.user),
         'can_update_status': can_update_status,
         'can_assign_repair': can_assign_repair,
         'can_reassign_to_self': can_reassign_to_self,
@@ -259,10 +261,11 @@ def create_repair(request):
 
         form = RepairForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
-            if request.user.is_staff:
+            if is_tenant_admin(request.user):
                 if form.cleaned_data.get('technician'):
                     repair = form.save(commit=False)
                     repair.technician = form.cleaned_data.get('technician')
+                    repair.tenant = getattr(request, 'tenant', None)
                     repair.save()
                     form.save_m2m()
                     messages.success(request, f"Repair has been created and assigned to {repair.technician.user.get_full_name()}")
@@ -276,6 +279,7 @@ def create_repair(request):
                 try:
                     repair = form.save(commit=False)
                     repair.technician = request.user.technician
+                    repair.tenant = getattr(request, 'tenant', None)
 
                     # Check customer preferences for approval
                     try:
@@ -322,7 +326,7 @@ def create_repair(request):
     return render(request, 'technician_portal/repair_form.html', {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
-        'is_admin': request.user.is_staff,
+        'is_admin': is_tenant_admin(request.user),
         'expected_cost': expected_cost
     })
 
@@ -332,7 +336,7 @@ def update_repair(request, repair_id):
     """Update an existing repair with permission and security checks."""
     tenant = getattr(request, 'tenant', None)
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have a technician profile to manage repairs.")
             return redirect('technician_dashboard')
@@ -386,7 +390,7 @@ def update_repair(request, repair_id):
                         current_photo.delete(save=False)
                         setattr(updated_repair, field_name, None)
 
-            if not request.user.is_staff:
+            if not is_tenant_admin(request.user):
                 logger.info(f"UPDATE_REPAIR: Restoring technician_id from original_technician_id={original_technician_id}")
                 updated_repair.technician_id = original_technician_id
             elif form.cleaned_data.get('technician'):
@@ -424,7 +428,7 @@ def update_repair(request, repair_id):
         form = RepairForm(instance=repair, user=request.user)
 
         if repair.queue_status == 'COMPLETED':
-            user_is_manager = (request.user.is_staff or
+            user_is_manager = (is_tenant_admin(request.user) or
                              (hasattr(request.user, 'technician') and request.user.technician.is_manager))
             if user_is_manager:
                 messages.info(request, "You're editing a completed repair. You can add or update photos for documentation/AI training purposes.")
@@ -441,7 +445,7 @@ def update_repair(request, repair_id):
     return render(request, 'technician_portal/repair_form.html', {
         'form': form,
         'repair': repair,
-        'is_admin': request.user.is_staff,
+        'is_admin': is_tenant_admin(request.user),
         'expected_cost': expected_cost,
         'batch_id': batch_id,
         'batch_repairs': batch_repairs,
@@ -457,7 +461,7 @@ def update_queue_status(request, repair_id):
         qs = qs.filter(tenant=tenant)
     repair = get_object_or_404(qs, id=repair_id)
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have a technician profile to update repairs.")
             return redirect('technician_dashboard')
@@ -491,7 +495,7 @@ def update_queue_status(request, repair_id):
         if new_status in dict(Repair.QUEUE_CHOICES):
             if old_status == 'REQUESTED':
                 # Auto-assign to the manager accepting the repair
-                if not request.user.is_staff and hasattr(request.user, 'technician'):
+                if not is_tenant_admin(request.user) and hasattr(request.user, 'technician'):
                     repair.technician = request.user.technician
                     messages.info(request, "Repair assigned to you.")
 
@@ -554,7 +558,7 @@ def assign_repair(request, repair_id):
     """Manager assigns a REQUESTED repair to a technician."""
     tenant = getattr(request, 'tenant', None)
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
             messages.error(request, "Only managers can assign repairs.")
             return redirect('technician_dashboard')
@@ -578,7 +582,7 @@ def assign_repair(request, repair_id):
         try:
             assigned_tech = Technician.objects.get(id=technician_id)
 
-            if not request.user.is_staff:
+            if not is_tenant_admin(request.user):
                 manager = request.user.technician
                 if assigned_tech.id != manager.id and not manager.manages_technician(assigned_tech):
                     messages.error(request, "You can only assign repairs to yourself or technicians you manage.")
@@ -618,7 +622,7 @@ def assign_repair(request, repair_id):
             return redirect('assign_repair', repair_id=repair.id)
 
     # GET request
-    if request.user.is_staff:
+    if is_tenant_admin(request.user):
         available_technicians = Technician.objects.filter(is_active=True).order_by('user__first_name')
     else:
         manager = request.user.technician
@@ -638,7 +642,7 @@ def reassign_to_self(request, repair_id):
     """Manager reassigns a team member's repair to themselves."""
     tenant = getattr(request, 'tenant', None)
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
             messages.error(request, "Only managers can reassign repairs.")
             return redirect('technician_dashboard')
@@ -648,7 +652,7 @@ def reassign_to_self(request, repair_id):
         qs = qs.filter(tenant=tenant)
     repair = get_object_or_404(qs, id=repair_id)
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         manager = request.user.technician
 
         if not repair.technician or not manager.manages_technician(repair.technician):
@@ -662,7 +666,7 @@ def reassign_to_self(request, repair_id):
     if request.method == 'POST':
         old_technician = repair.technician
 
-        if not request.user.is_staff:
+        if not is_tenant_admin(request.user):
             repair.technician = request.user.technician
             repair.save()
 

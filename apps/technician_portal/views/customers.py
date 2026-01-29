@@ -10,16 +10,16 @@ from django.views.decorators.http import require_POST
 from apps.technician_portal.models import Technician, Repair, UnitRepairCount
 from core.models import Customer
 from apps.technician_portal.forms import CustomerForm
-from apps.technician_portal.decorators import technician_required, admin_required
+from apps.technician_portal.decorators import technician_required, admin_required, is_tenant_admin
 
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-@admin_required
+@technician_required
 def create_customer(request):
-    """Create a new customer (admin only)."""
+    """Create a new customer."""
     tenant = getattr(request, 'tenant', None)
 
     if request.method == 'POST':
@@ -41,7 +41,7 @@ def customer_list(request):
     """List all customers accessible to the current technician."""
     tenant = getattr(request, 'tenant', None)
 
-    if request.user.is_staff:
+    if is_tenant_admin(request.user):
         customers = Customer.objects.all()
         if tenant:
             customers = customers.filter(tenant=tenant)
@@ -79,7 +79,7 @@ def customer_list(request):
     return render(request, 'technician_portal/customer_list.html', {
         'customers': customers,
         'search_query': search_query,
-        'is_admin': request.user.is_staff
+        'is_admin': is_tenant_admin(request.user)
     })
 
 
@@ -108,7 +108,7 @@ def customer_details(request, customer_id):
     units = repairs.values_list('unit_number', flat=True).distinct()
 
     # Determine if user can edit primary technician (admin, owner, or manager)
-    can_edit_customer = request.user.is_staff or technician.is_manager
+    can_edit_customer = is_tenant_admin(request.user) or technician.is_manager
 
     # Provide available technicians for the primary tech dropdown
     available_technicians = Technician.objects.filter(is_active=True)
@@ -174,7 +174,7 @@ def update_primary_technician(request, customer_id):
     """Update the primary technician for a customer (manager/admin only)."""
     tenant = getattr(request, 'tenant', None)
 
-    if not request.user.is_staff:
+    if not is_tenant_admin(request.user):
         if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
             messages.error(request, "Only managers or admins can change a customer's primary technician.")
             return redirect('customer_detail', customer_id=customer_id)

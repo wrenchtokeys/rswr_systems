@@ -78,12 +78,20 @@ def _route_authenticated_user(request, user):
         elif membership.role == 'technician':
             return redirect('technician_dashboard')
         elif membership.role == 'viewer':
-            return redirect('owner_dashboard')
+            # Viewers could be customers (joined via /join/) or read-only staff.
+            # Check for CustomerUser first — customers go to customer portal.
+            try:
+                customer_user = CustomerUser.objects.get(user=user)
+                if customer_user.customer.tenant_id:
+                    request.session['tenant_id'] = customer_user.customer.tenant_id
+                return redirect('customer_dashboard')
+            except CustomerUser.DoesNotExist:
+                # Read-only staff viewer — send to owner dashboard (read-only)
+                return redirect('owner_dashboard')
 
-    # Check if user is a CustomerUser → customer dashboard
+    # Check if user is a CustomerUser without a TenantMembership
     try:
         customer_user = CustomerUser.objects.get(user=user)
-        # Set tenant from customer's tenant FK
         if customer_user.customer.tenant_id:
             request.session['tenant_id'] = customer_user.customer.tenant_id
         return redirect('customer_dashboard')

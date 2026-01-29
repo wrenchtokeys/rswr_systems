@@ -14,7 +14,7 @@ from apps.customer_portal.models import RepairApproval
 from apps.rewards_referrals.models import RewardRedemption
 from core.models import Customer, Notification
 from apps.technician_portal.forms import TechnicianRegistrationForm
-from apps.technician_portal.decorators import technician_required
+from apps.technician_portal.decorators import technician_required, is_tenant_admin
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,7 @@ def technician_dashboard(request):
         }
 
     # Extra data for admin users
-    is_admin = request.user.is_staff
+    is_admin = is_tenant_admin(request.user)
     admin_data = None
 
     if is_admin:
