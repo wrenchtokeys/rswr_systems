@@ -3,120 +3,202 @@
 {% block title %}Settings | {{ tenant.name }} | RS Systems{% endblock %}
 
 {% block content %}
+
 <div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900">Shop Settings</h1>
-    <p class="text-gray-500 mt-1">Manage your business info and team.</p>
+    <h1 class="text-3xl font-bold text-gray-900">Settings</h1>
+    <p class="text-gray-500 mt-1">Manage your business info and team</p>
 </div>
 
-<!-- Business Info -->
+<!-- Business Information -->
 <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
     <div class="px-6 py-4 border-b border-gray-200">
-        <h2 class="text-lg font-semibold text-gray-900">Business Information</h2>
+        <h3 class="text-lg font-semibold text-gray-900">Business Information</h3>
     </div>
-    <div class="p-6">
-        <form method="post" enctype="multipart/form-data" class="space-y-5">
-            {% csrf_token %}
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
-                    <input type="text" name="business_name" value="{{ tenant.name }}"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                    <input type="text" name="business_phone" value="{{ tenant.business_phone }}"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                        placeholder="(555) 123-4567">
-                </div>
-            </div>
+    <form method="post" enctype="multipart/form-data" class="p-6">
+        {% csrf_token %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <!-- Business Name -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" name="business_email" value="{{ tenant.business_email }}"
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                <label for="business_name" class="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+                <input type="text" id="business_name" name="business_name" value="{{ tenant.name }}"
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition">
+            </div>
+
+            <!-- Business Email -->
+            <div>
+                <label for="business_email" class="block text-sm font-medium text-gray-700 mb-1">Business Email</label>
+                <input type="email" id="business_email" name="business_email" value="{{ tenant.business_email }}"
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
                     placeholder="info@yourbusiness.com">
             </div>
+
+            <!-- Phone -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                <textarea name="business_address" rows="3"
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                    placeholder="123 Main St, Suite 100">{{ tenant.business_address }}</textarea>
+                <label for="business_phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <input type="tel" id="business_phone" name="business_phone" value="{{ tenant.business_phone }}"
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
+                    placeholder="(555) 123-4567">
             </div>
+
+            <!-- Logo -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Logo</label>
-                <input type="file" name="logo" accept="image/*"
-                    class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-                {% if tenant.logo %}
-                <p class="text-xs text-gray-400 mt-1">Current: {{ tenant.logo.name }}</p>
-                {% endif %}
+                <label for="logo" class="block text-sm font-medium text-gray-700 mb-1">Business Logo</label>
+                <div class="flex items-center gap-3">
+                    {% if tenant.logo %}
+                    <img src="{{ tenant.logo.url }}" alt="Logo" class="w-12 h-12 rounded-lg object-cover border border-gray-200">
+                    {% else %}
+                    <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center border border-gray-200">
+                        <i class="fas fa-image text-gray-400"></i>
+                    </div>
+                    {% endif %}
+                    <input type="file" id="logo" name="logo" accept="image/*"
+                        class="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                </div>
             </div>
-            <div>
-                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-                    <i class="fas fa-save mr-2"></i>Save Changes
-                </button>
-            </div>
-        </form>
-    </div>
+        </div>
+
+        <!-- Address -->
+        <div class="mt-6">
+            <label for="business_address" class="block text-sm font-medium text-gray-700 mb-1">Business Address</label>
+            <textarea id="business_address" name="business_address" rows="3"
+                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
+                placeholder="123 Main St, Suite 100, City, State">{{ tenant.business_address }}</textarea>
+        </div>
+
+        <!-- Save -->
+        <div class="mt-6 flex justify-end">
+            <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <i class="fas fa-save mr-2"></i>
+                Save Changes
+            </button>
+        </div>
+    </form>
 </div>
 
-<!-- Team Members -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-gray-900">Team Members</h2>
-        <span class="text-sm text-gray-500">{{ members.count }} member{{ members.count|pluralize }}</span>
+<!-- Team Management -->
+<div id="team" class="bg-white rounded-xl shadow-sm border border-gray-200">
+    <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+            <h3 class="text-lg font-semibold text-gray-900">Team Members</h3>
+            <p class="text-sm text-gray-500 mt-0.5">{{ members|length }} member{{ members|length|pluralize }}</p>
+        </div>
+        {% if membership.role == 'owner' or membership.role == 'manager' %}
+        <button onclick="document.getElementById('inviteModal').classList.remove('hidden')"
+            class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+            <i class="fas fa-user-plus mr-2"></i>
+            Invite Member
+        </button>
+        {% endif %}
     </div>
+
+    {% if members %}
     <div class="divide-y divide-gray-100">
-        {% for m in members %}
-        <div class="px-6 py-4 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                    <i class="fas fa-user text-gray-500 text-sm"></i>
+        {% for member in members %}
+        <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 transition-colors">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+                    {% if member.role == 'owner' %}bg-purple-100
+                    {% elif member.role == 'manager' %}bg-blue-100
+                    {% elif member.role == 'technician' %}bg-green-100
+                    {% else %}bg-gray-100{% endif %}">
+                    <i class="fas fa-user
+                        {% if member.role == 'owner' %}text-purple-600
+                        {% elif member.role == 'manager' %}text-blue-600
+                        {% elif member.role == 'technician' %}text-green-600
+                        {% else %}text-gray-500{% endif %} text-sm"></i>
                 </div>
                 <div>
-                    <div class="text-sm font-medium text-gray-900">{{ m.user.get_full_name|default:m.user.username }}</div>
-                    <div class="text-xs text-gray-500">{{ m.user.email }}</div>
+                    <div class="text-sm font-medium text-gray-900">
+                        {{ member.user.get_full_name|default:member.user.username }}
+                    </div>
+                    <div class="text-xs text-gray-500">{{ member.user.email }}</div>
                 </div>
             </div>
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                {% if m.role == 'owner' %}bg-purple-100 text-purple-800
-                {% elif m.role == 'manager' %}bg-blue-100 text-blue-800
-                {% elif m.role == 'technician' %}bg-green-100 text-green-800
-                {% else %}bg-gray-100 text-gray-800{% endif %}">
-                {{ m.get_role_display }}
-            </span>
+            <div class="flex items-center gap-3 sm:ml-auto">
+                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+                    {% if member.role == 'owner' %}bg-purple-100 text-purple-800
+                    {% elif member.role == 'manager' %}bg-blue-100 text-blue-800
+                    {% elif member.role == 'technician' %}bg-green-100 text-green-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ member.get_role_display }}
+                </span>
+                <span class="text-xs text-gray-400">Joined {{ member.joined_at|date:"M d, Y" }}</span>
+            </div>
         </div>
         {% endfor %}
     </div>
-
-    <!-- Invite form -->
-    {% if membership.role == 'owner' or membership.role == 'manager' %}
-    <div class="p-6 bg-gray-50 border-t border-gray-200">
-        <h3 class="text-sm font-semibold text-gray-700 mb-3">Invite Team Member</h3>
-        <form method="post" action="{% url 'owner_invite_member' %}" class="flex flex-wrap gap-3 items-end">
-            {% csrf_token %}
-            <div class="flex-1 min-w-[150px]">
-                <input type="text" name="first_name" placeholder="First name" required
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-            </div>
-            <div class="flex-1 min-w-[150px]">
-                <input type="text" name="last_name" placeholder="Last name" required
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-            </div>
-            <div class="flex-1 min-w-[200px]">
-                <input type="email" name="email" placeholder="Email" required
-                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-            </div>
-            <div class="min-w-[140px]">
-                <select name="role" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
-                    <option value="technician">Technician</option>
-                    <option value="manager">Manager</option>
-                    <option value="viewer">Viewer</option>
-                </select>
-            </div>
-            <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
-                <i class="fas fa-user-plus mr-1"></i>Invite
-            </button>
-        </form>
+    {% else %}
+    <div class="p-6 text-center">
+        <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-users text-gray-400 text-xl"></i>
+        </div>
+        <p class="text-gray-500">No team members yet. Invite your first team member to get started.</p>
     </div>
     {% endif %}
 </div>
+
+<!-- Invite Member Modal -->
+<div id="inviteModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="document.getElementById('inviteModal').classList.add('hidden')"></div>
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold text-gray-900">Invite Team Member</h3>
+                <button onclick="document.getElementById('inviteModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form method="post" action="{% url 'owner_invite_member' %}">
+                {% csrf_token %}
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="invite_first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                            <input type="text" id="invite_first_name" name="first_name" required
+                                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        </div>
+                        <div>
+                            <label for="invite_last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                            <input type="text" id="invite_last_name" name="last_name" required
+                                class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="invite_email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="invite_email" name="email" required
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+
+                    <div>
+                        <label for="invite_role" class="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                        <select id="invite_role" name="role"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
+                            <option value="technician">Technician</option>
+                            <option value="manager">Manager</option>
+                            <option value="viewer">Viewer</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Technicians manage repairs. Managers can also invite members. Viewers have read-only access.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button type="button" onclick="document.getElementById('inviteModal').classList.add('hidden')"
+                        class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                        class="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-paper-plane mr-2"></i>
+                        Send Invite
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
