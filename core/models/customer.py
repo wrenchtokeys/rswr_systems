@@ -42,8 +42,8 @@ class Customer(models.Model):
         help_text="Fleet = business account. Retail = individual person. Walk-in = one-time."
     )
     
-    name = models.CharField(max_length=100, unique=True)
-    email = models.EmailField(unique=True, null=True, blank=True)
+    name = models.CharField(max_length=100)
+    email = models.EmailField(null=True, blank=True)
     phone = models.CharField(
         max_length=20,
         null=True,
@@ -106,10 +106,24 @@ class Customer(models.Model):
         ordering = ['name']
         verbose_name = 'Customer'
         verbose_name_plural = 'Customers'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'name'],
+                name='unique_customer_name_per_tenant',
+            ),
+            models.UniqueConstraint(
+                fields=['tenant', 'email'],
+                name='unique_customer_email_per_tenant',
+                condition=models.Q(email__isnull=False),
+            ),
+        ]
 
     def __str__(self):
         return self.name
 
     def save(self, *args, **kwargs):
-        self.name = self.name.lower()
+        # Preserve original casing — lowercasing names like "EOS Trucking"
+        # or "Penske" is incorrect for display
+        if self.name:
+            self.name = self.name.strip()
         super().save(*args, **kwargs)

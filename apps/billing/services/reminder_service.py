@@ -31,11 +31,18 @@ class ReminderService:
         'after_due': [1, 7, 14, 30],  # Days after due date
     }
     
-    def __init__(self):
+    def __init__(self, tenant=None):
+        self.tenant = tenant
         self.from_email = getattr(
             settings, 'INVOICE_FROM_EMAIL', 
             'billing@rockstarwindshield.repair'
         )
+    
+    def _filter(self, qs):
+        """Apply tenant filter to any queryset."""
+        if self.tenant:
+            return qs.filter(tenant=self.tenant)
+        return qs.none()
     
     def send_reminder(self, invoice, reminder_type='overdue'):
         """
@@ -93,7 +100,7 @@ class ReminderService:
         for days_before in self.REMINDER_SCHEDULE['before_due']:
             target_due_date = today + timedelta(days=days_before)
             
-            invoices = Invoice.objects.filter(
+            invoices = self._filter(Invoice.objects).filter(
                 status__in=['SENT', 'PARTIAL'],
                 due_date=target_due_date
             )
@@ -130,7 +137,7 @@ class ReminderService:
         for days_after in self.REMINDER_SCHEDULE['after_due']:
             target_due_date = today - timedelta(days=days_after)
             
-            invoices = Invoice.objects.filter(
+            invoices = self._filter(Invoice.objects).filter(
                 status__in=['SENT', 'PARTIAL', 'OVERDUE'],
                 due_date=target_due_date
             )
@@ -335,17 +342,17 @@ Email: billing@rockstarwindshield.repair
         today = timezone.now().date()
         
         # Due soon (next 7 days)
-        due_soon = Invoice.objects.filter(
+        due_soon = self._filter(Invoice.objects).filter(
             status__in=['SENT', 'PARTIAL'],
             due_date__gte=today,
             due_date__lte=today + timedelta(days=7)
         ).count()
         
         # Overdue
-        overdue = Invoice.objects.filter(status='OVERDUE').count()
+        overdue = self._filter(Invoice.objects).filter(status='OVERDUE').count()
         
         # Severely overdue (30+ days)
-        severely_overdue = Invoice.objects.filter(
+        severely_overdue = self._filter(Invoice.objects).filter(
             status='OVERDUE',
             due_date__lte=today - timedelta(days=30)
         ).count()

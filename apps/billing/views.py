@@ -52,8 +52,7 @@ def dashboard(request):
         return err
 
     from apps.billing.services.dashboard_service import DashboardService
-    # TODO: Pass tenant to DashboardService for full tenant scoping
-    return JsonResponse(DashboardService().get_full_dashboard())
+    return JsonResponse(DashboardService(tenant).get_full_dashboard())
 
 
 @login_required
@@ -75,8 +74,7 @@ def daily_report(request):
     else:
         report_date = timezone.now().date()
 
-    # TODO: Pass tenant to ReportService for full tenant scoping
-    return JsonResponse(ReportService().generate_daily_report(report_date))
+    return JsonResponse(ReportService(tenant).generate_daily_report(report_date))
 
 
 @login_required
@@ -99,8 +97,7 @@ def weekly_report(request):
         today = timezone.now().date()
         week_start = today - timedelta(days=today.weekday())
 
-    # TODO: Pass tenant to ReportService for full tenant scoping
-    return JsonResponse(ReportService().generate_weekly_report(week_start))
+    return JsonResponse(ReportService(tenant).generate_weekly_report(week_start))
 
 
 # =============================================================================
@@ -726,8 +723,7 @@ def reminder_summary(request):
         return err
 
     from apps.billing.services.reminder_service import ReminderService
-    # TODO: Pass tenant to ReminderService for full tenant scoping
-    return JsonResponse(ReminderService().get_reminder_summary())
+    return JsonResponse(ReminderService(tenant).get_reminder_summary())
 
 
 @login_required
@@ -755,7 +751,7 @@ def send_reminder(request, invoice_id):
         data = {}
 
     reminder_type = data.get('reminder_type', 'overdue' if invoice.is_overdue else 'due_soon')
-    result = ReminderService().send_reminder(invoice, reminder_type)
+    result = ReminderService(tenant).send_reminder(invoice, reminder_type)
 
     if result['success']:
         return JsonResponse({'success': True, 'sent_to': invoice.customer.email})
@@ -772,8 +768,7 @@ def process_all_reminders(request):
 
     from apps.billing.services.reminder_service import ReminderService
 
-    # TODO: Pass tenant to ReminderService for full tenant scoping
-    svc = ReminderService()
+    svc = ReminderService(tenant)
     due_soon = svc.process_due_soon_reminders()
     overdue = svc.process_overdue_reminders()
 

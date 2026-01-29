@@ -25,7 +25,17 @@ logger = logging.getLogger(__name__)
 class DashboardService:
     """
     Generates real-time dashboard metrics for the billing system.
+    All queries are scoped to a tenant for data isolation.
     """
+    
+    def __init__(self, tenant=None):
+        self.tenant = tenant
+    
+    def _filter(self, qs):
+        """Apply tenant filter to any queryset."""
+        if self.tenant:
+            return qs.filter(tenant=self.tenant)
+        return qs.none()
     
     def get_full_dashboard(self):
         """
@@ -61,7 +71,7 @@ class DashboardService:
         prev_month_end = month_start - timedelta(seconds=1)
         
         def sum_payments(start, end=None):
-            qs = Payment.objects.filter(payment_date__gte=start.date())
+            qs = self._filter(Payment.objects).filter(payment_date__gte=start.date())
             if end:
                 qs = qs.filter(payment_date__lte=end.date())
             result = qs.aggregate(total=Sum('amount'))['total']
@@ -91,7 +101,7 @@ class DashboardService:
         """
         from apps.billing.models import Invoice
         
-        invoices = Invoice.objects.exclude(status='CANCELLED')
+        invoices = self._filter(Invoice.objects).exclude(status='CANCELLED')
         
         # Counts by status
         status_counts = dict(
@@ -151,7 +161,7 @@ class DashboardService:
         now = timezone.now()
         thirty_days_ago = now - timedelta(days=30)
         
-        recent_payments = Payment.objects.filter(
+        recent_payments = self._filter(Payment.objects).filter(
             payment_date__gte=thirty_days_ago.date()
         )
         
@@ -164,7 +174,7 @@ class DashboardService:
         )
         
         # Recent payments list
-        latest = Payment.objects.select_related('invoice', 'invoice__customer').order_by('-created_at')[:10]
+        latest = self._filter(Payment.objects).select_related('invoice', 'invoice__customer').order_by('-created_at')[:10]
         latest_list = [
             {
                 'id': p.id,
@@ -194,7 +204,7 @@ class DashboardService:
         from core.models import Customer
         
         # Customers with outstanding balances
-        outstanding_by_customer = Invoice.objects.filter(
+        outstanding_by_customer = self._filter(Invoice.objects).filter(
             status__in=['SENT', 'PARTIAL', 'OVERDUE']
         ).values('customer__id', 'customer__name').annotate(
             outstanding=Sum(F('total') - F('amount_paid')),
@@ -212,7 +222,7 @@ class DashboardService:
         ]
         
         # Top customers by revenue (all time)
-        top_revenue = Invoice.objects.filter(
+        top_revenue = self._filter(Invoice.objects).filter(
             status='PAID'
         ).values('customer__id', 'customer__name').annotate(
             total_paid=Sum('amount_paid')
@@ -243,7 +253,7 @@ class DashboardService:
         alerts = []
         
         # Overdue invoices
-        overdue = Invoice.objects.filter(status='OVERDUE')
+        overdue = self._filter(Invoice.objects).filter(status='OVERDUE')
         if overdue.exists():
             total_overdue = sum(inv.amount_due for inv in overdue)
             alerts.append({
@@ -256,7 +266,7 @@ class DashboardService:
         
         # Invoices due soon (next 7 days)
         now = timezone.now().date()
-        due_soon = Invoice.objects.filter(
+        due_soon = self._filter(Invoice.objects).filter(
             status__in=['SENT', 'PARTIAL'],
             due_date__gte=now,
             due_date__lte=now + timedelta(days=7)
@@ -272,7 +282,7 @@ class DashboardService:
             })
         
         # Large outstanding single invoice (> $500)
-        large_outstanding = Invoice.objects.filter(
+        large_outstanding = self._filter(Invoice.objects).filter(
             status__in=['SENT', 'PARTIAL', 'OVERDUE']
         ).annotate(
             due=F('total') - F('amount_paid')
@@ -321,7 +331,7 @@ class DashboardService:
         
         # Daily revenue for last 30 days
         thirty_days_ago = now - timedelta(days=30)
-        daily_revenue = Payment.objects.filter(
+        daily_revenue = self._filter(Payment.objects).filter(
             payment_date__gte=thirty_days_ago.date()
         ).annotate(
             day=TruncDate('payment_date')
@@ -336,7 +346,7 @@ class DashboardService:
         
         # Weekly invoice count for last 12 weeks
         twelve_weeks_ago = now - timedelta(weeks=12)
-        weekly_invoices = Invoice.objects.filter(
+        weekly_invoices = self._filter(Invoice.objects).filter(
             created_at__gte=twelve_weeks_ago
         ).annotate(
             week=TruncWeek('created_at')

@@ -206,12 +206,17 @@ class UnitRepairCount(models.Model):
     objects = TenantManager()
 
     class Meta:
-        unique_together = ['customer', 'unit_number']
         verbose_name = 'Unit Repair Count'
         verbose_name_plural = 'Unit Repair Counts'
         indexes = [
             models.Index(fields=['customer', 'unit_number']),
             models.Index(fields=['repair_count']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'customer', 'unit_number'],
+                name='unique_unit_repair_count_per_tenant',
+            ),
         ]
 
     def __str__(self):

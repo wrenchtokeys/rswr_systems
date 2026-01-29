@@ -49,7 +49,7 @@ class Invoice(models.Model):
     )
     
     # Core fields
-    invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
+    invoice_number = models.CharField(max_length=50, db_index=True)
     customer = models.ForeignKey(
         'core.Customer',
         on_delete=models.PROTECT,  # Don't delete customers with invoices
@@ -120,6 +120,12 @@ class Invoice(models.Model):
         indexes = [
             models.Index(fields=['customer', 'status']),
             models.Index(fields=['due_date', 'status']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'invoice_number'],
+                name='unique_invoice_number_per_tenant',
+            ),
         ]
     
     def __str__(self):

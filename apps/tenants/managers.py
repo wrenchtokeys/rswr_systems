@@ -21,9 +21,15 @@ class TenantQuerySet(models.QuerySet):
     """QuerySet that supports tenant filtering."""
     
     def for_tenant(self, tenant):
-        """Filter queryset to a specific tenant."""
+        """Filter queryset to a specific tenant.
+        
+        Returns an empty queryset if tenant is None — this is a safety
+        measure to prevent data leaks. Callers that intentionally want
+        all records (e.g., migrations, management commands) should use
+        .all() directly instead of .for_tenant(None).
+        """
         if tenant is None:
-            return self
+            return self.none()
         return self.filter(tenant=tenant)
 
 

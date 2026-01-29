@@ -22,7 +22,17 @@ logger = logging.getLogger(__name__)
 class ReportService:
     """
     Generates business reports for different time periods.
+    All queries scoped to a tenant for data isolation.
     """
+    
+    def __init__(self, tenant=None):
+        self.tenant = tenant
+    
+    def _filter(self, qs):
+        """Apply tenant filter to any queryset."""
+        if self.tenant:
+            return qs.filter(tenant=self.tenant)
+        return qs.none()
     
     def generate_daily_report(self, report_date):
         """
@@ -45,31 +55,31 @@ class ReportService:
         prev_date = report_date - timedelta(days=1)
         
         # Repairs completed
-        repairs_completed = Repair.objects.filter(
+        repairs_completed = self._filter(Repair.objects).filter(
             queue_status='COMPLETED',
             service_date__date=report_date
         )
         repair_count = repairs_completed.count()
         repair_revenue = sum(r.cost for r in repairs_completed)
         
-        prev_repairs = Repair.objects.filter(
+        prev_repairs = self._filter(Repair.objects).filter(
             queue_status='COMPLETED',
             service_date__date=prev_date
         ).count()
         
         # Invoices created
-        invoices_created = Invoice.objects.filter(
+        invoices_created = self._filter(Invoice.objects).filter(
             invoice_date=report_date
         )
         invoice_count = invoices_created.count()
         invoice_total = invoices_created.aggregate(Sum('total'))['total__sum'] or Decimal('0')
         
         # Payments received
-        payments = Payment.objects.filter(payment_date=report_date)
+        payments = self._filter(Payment.objects).filter(payment_date=report_date)
         payment_count = payments.count()
         payment_total = payments.aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
         
-        prev_payments = Payment.objects.filter(
+        prev_payments = self._filter(Payment.objects).filter(
             payment_date=prev_date
         ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
         
@@ -83,14 +93,14 @@ class ReportService:
             payment_by_method[method]['total'] += float(p.amount)
         
         # Outstanding snapshot
-        outstanding = Invoice.objects.filter(
+        outstanding = self._filter(Invoice.objects).filter(
             status__in=['SENT', 'PARTIAL', 'OVERDUE']
         ).aggregate(
             total=Sum(F('total') - F('amount_paid')),
             count=Count('id')
         )
         
-        overdue = Invoice.objects.filter(status='OVERDUE').aggregate(
+        overdue = self._filter(Invoice.objects).filter(status='OVERDUE').aggregate(
             total=Sum(F('total') - F('amount_paid')),
             count=Count('id')
         )
@@ -158,7 +168,7 @@ class ReportService:
         prev_week_end = week_start - timedelta(days=1)
         
         # Repairs
-        repairs = Repair.objects.filter(
+        repairs = self._filter(Repair.objects).filter(
             queue_status='COMPLETED',
             service_date__date__gte=week_start,
             service_date__date__lte=week_end
@@ -166,14 +176,14 @@ class ReportService:
         repair_count = repairs.count()
         repair_revenue = sum(r.cost for r in repairs)
         
-        prev_repairs = Repair.objects.filter(
+        prev_repairs = self._filter(Repair.objects).filter(
             queue_status='COMPLETED',
             service_date__date__gte=prev_week_start,
             service_date__date__lte=prev_week_end
         ).count()
         
         # Invoices
-        invoices = Invoice.objects.filter(
+        invoices = self._filter(Invoice.objects).filter(
             invoice_date__gte=week_start,
             invoice_date__lte=week_end
         )
@@ -181,13 +191,13 @@ class ReportService:
         invoice_total = invoices.aggregate(Sum('total'))['total__sum'] or Decimal('0')
         
         # Payments
-        payments = Payment.objects.filter(
+        payments = self._filter(Payment.objects).filter(
             payment_date__gte=week_start,
             payment_date__lte=week_end
         )
         payment_total = payments.aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
         
-        prev_payments = Payment.objects.filter(
+        prev_payments = self._filter(Payment.objects).filter(
             payment_date__gte=prev_week_start,
             payment_date__lte=prev_week_end
         ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
