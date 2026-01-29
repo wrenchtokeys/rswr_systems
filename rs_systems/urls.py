@@ -70,10 +70,11 @@ urlpatterns = [
     # SaaS UI (signup, onboarding, owner dashboard, pricing, billing, replacement)
     path('', include('apps.saas.urls')),
 
-    # Legacy authentication URLs (redirect to appropriate portal)
-    path('accounts/login/', views.login_router, name='login'),
-    path('login/', views.login_router, name='login_legacy'),
+    # Unified login & invite acceptance
+    path('login/', views.login_router, name='login'),
+    path('accounts/login/', views.login_router, name='login_accounts'),
     path('logout/', views.logout_view, name='logout'),
+    path('invite/<uuid:token>/', views.accept_invite, name='accept_invite'),
     # path('api-token-auth/', views.obtain_auth_token, name='api_token_auth'),
 ]
 

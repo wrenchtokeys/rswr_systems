@@ -313,4 +313,6 @@ class ReplacementForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if tenant:
             self.fields['customer'].queryset = Customer.objects.filter(tenant=tenant)
-            self.fields['technician'].queryset = Technician.objects.filter(tenant=tenant)
+            self.fields['technician'].queryset = Technician.objects.filter(
+                tenant=tenant, can_replace=True, is_active=True
+            )

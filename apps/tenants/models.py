@@ -1,12 +1,15 @@
 """
 Multi-Tenant Models
 
-Provides Tenant, TenantMembership, and SubscriptionPlan models for
-isolating business data and managing SaaS billing across multiple
-glass shops on the RS Systems platform.
+Provides Tenant, TenantMembership, SubscriptionPlan, and InviteToken
+models for isolating business data and managing SaaS billing across
+multiple glass shops on the RS Systems platform.
 
 Author: Amelia (Clawdbot AI)
 """
+
+import uuid
+from datetime import timedelta
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -263,3 +266,30 @@ class TenantMembership(models.Model):
     
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} — {self.tenant.name} ({self.get_role_display()})"
+
+
+class InviteToken(models.Model):
+    """Token for invited users to set their password and join a shop."""
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='invite_tokens')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='invite_tokens')
+    role = models.CharField(max_length=20, choices=TenantMembership.ROLE_CHOICES)
+    invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='sent_invites')
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Invite for {self.user.email} to {self.tenant.name} ({self.role})"
+
+    @property
+    def is_valid(self):
+        return self.used_at is None and self.expires_at > timezone.now()
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(days=7)
+        super().save(*args, **kwargs)

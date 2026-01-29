@@ -55,6 +55,16 @@ class Technician(models.Model):
         help_text="When phone number was verified"
     )
 
+    # Technician Abilities
+    can_repair = models.BooleanField(
+        default=True,
+        help_text="Can perform chip/crack repairs"
+    )
+    can_replace = models.BooleanField(
+        default=False,
+        help_text="Can perform glass replacements"
+    )
+
     # Dual Role Support
     is_manager = models.BooleanField(
         default=False,

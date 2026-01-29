@@ -43,11 +43,12 @@ def _get_owner_tenant(request):
     """Return (tenant, membership) for the current user, or (None, None)."""
     tenant = getattr(request, 'tenant', None)
     if not tenant:
-        # Try to find one
+        # Try to find one — check owner first, then manager
         membership = (
             TenantMembership.objects
-            .filter(user=request.user, is_active=True, role='owner')
+            .filter(user=request.user, is_active=True, role__in=['owner', 'manager'])
             .select_related('tenant')
+            .order_by('role')  # 'manager' < 'owner' alphabetically, but we want owner first
             .first()
         )
         if membership:
@@ -546,6 +547,15 @@ def owner_settings_view(request):
         is_active=True,
     ).select_related('user').order_by('role', 'joined_at')
 
+    # Build a dict of user_id → Technician for ability badges
+    technicians_by_user = {}
+    for tech in Technician.objects.filter(tenant=tenant):
+        technicians_by_user[tech.user_id] = tech
+
+    # Annotate members with technician abilities
+    for member in members:
+        member.technician_record = technicians_by_user.get(member.user_id)
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -557,7 +567,7 @@ def owner_settings_view(request):
 
 @login_required
 def invite_member(request):
-    """POST /owner/settings/invite/ — invite a new team member."""
+    """POST /owner/settings/invite/ — invite a new team member with invite token."""
     if request.method != 'POST':
         return redirect('owner_settings')
 
@@ -574,6 +584,10 @@ def invite_member(request):
     first_name = request.POST.get('first_name', '').strip()
     last_name = request.POST.get('last_name', '').strip()
     role = request.POST.get('role', 'viewer')
+
+    # Ability checkboxes for technicians/managers
+    can_repair = request.POST.get('can_repair') == 'on'
+    can_replace = request.POST.get('can_replace') == 'on'
 
     if not email:
         messages.error(request, 'Email is required.')
@@ -612,11 +626,80 @@ def invite_member(request):
             messages.success(request, f'{email} has been re-added to the team.')
         return redirect('owner_settings')
 
-    TenantMembership.objects.create(
-        tenant=tenant,
-        user=user,
-        role=role,
-    )
+    with transaction.atomic():
+        TenantMembership.objects.create(
+            tenant=tenant,
+            user=user,
+            role=role,
+        )
 
-    messages.success(request, f'{first_name} {last_name} ({email}) has been invited as {role}.')
+        # Create Technician record for technician/manager roles
+        if role in ('technician', 'manager'):
+            from django.contrib.auth.models import Group
+            tech_group, _ = Group.objects.get_or_create(name='Technicians')
+            user.groups.add(tech_group)
+
+            if not Technician.objects.filter(user=user).exists():
+                Technician.objects.create(
+                    tenant=tenant,
+                    user=user,
+                    is_manager=(role == 'manager'),
+                    is_active=True,
+                    can_repair=can_repair,
+                    can_replace=can_replace,
+                )
+
+        # Create InviteToken
+        from apps.tenants.models import InviteToken
+        invite_token = InviteToken(
+            tenant=tenant,
+            user=user,
+            role=role,
+            invited_by=request.user,
+        )
+        invite_token.save()
+
+        invite_url = f"https://{request.get_host()}/invite/{invite_token.token}/"
+
+    # Try to send invite email
+    email_sent = False
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+
+        inviter_name = request.user.get_full_name() or request.user.email
+        subject = f"You're invited to join {tenant.name} on RS Systems"
+        body = (
+            f"Hi {first_name},\n\n"
+            f"{inviter_name} has invited you to join {tenant.name} as a {role}.\n\n"
+            f"Click here to set your password and get started:\n"
+            f"{invite_url}\n\n"
+            f"This link expires in 7 days.\n\n"
+            f"— RS Systems"
+        )
+
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+        email_sent = True
+    except Exception as e:
+        logger.warning(f"Failed to send invite email to {email}: {e}")
+
+    if email_sent:
+        messages.success(
+            request,
+            f'{first_name} {last_name} ({email}) has been invited as {role}. '
+            f'An invite email has been sent.'
+        )
+    else:
+        messages.success(
+            request,
+            f'{first_name} {last_name} ({email}) has been invited as {role}. '
+            f'Email could not be sent. Share this invite link manually: {invite_url}'
+        )
+
     return redirect('owner_settings')

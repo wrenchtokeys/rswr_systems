@@ -177,6 +177,11 @@ class RepairForm(forms.ModelForm):
         
         # Set the damage type choices
         self.fields['damage_type'].choices = Repair.DAMAGE_TYPE_CHOICES
+
+        # Filter technician dropdown to only show techs who can do repairs
+        self.fields['technician'].queryset = Technician.objects.filter(
+            can_repair=True, is_active=True
+        )
         
         # Hide technician field for non-admin users
         if self.user and not self.user.is_staff:

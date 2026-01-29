@@ -114,7 +114,7 @@
                     <div class="text-xs text-gray-500">{{ member.user.email }}</div>
                 </div>
             </div>
-            <div class="flex items-center gap-3 sm:ml-auto">
+            <div class="flex items-center gap-2 sm:ml-auto flex-wrap">
                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
                     {% if member.role == 'owner' %}bg-purple-100 text-purple-800
                     {% elif member.role == 'manager' %}bg-blue-100 text-blue-800
@@ -122,6 +122,18 @@
                     {% else %}bg-gray-100 text-gray-800{% endif %}">
                     {{ member.get_role_display }}
                 </span>
+                {% if member.technician_record %}
+                    {% if member.technician_record.can_repair %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        <i class="fas fa-tools mr-1 text-[10px]"></i>Repairs
+                    </span>
+                    {% endif %}
+                    {% if member.technician_record.can_replace %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                        <i class="fas fa-exchange-alt mr-1 text-[10px]"></i>Replacements
+                    </span>
+                    {% endif %}
+                {% endif %}
                 <span class="text-xs text-gray-400">Joined {{ member.joined_at|date:"M d, Y" }}</span>
             </div>
         </div>
@@ -173,7 +185,7 @@
 
                     <div>
                         <label for="invite_role" class="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                        <select id="invite_role" name="role"
+                        <select id="invite_role" name="role" onchange="toggleAbilities()"
                             class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
                             <option value="technician">Technician</option>
                             <option value="manager">Manager</option>
@@ -182,6 +194,29 @@
                         <p class="text-xs text-gray-500 mt-1">
                             Technicians manage repairs. Managers can also invite members. Viewers have read-only access.
                         </p>
+                    </div>
+
+                    <!-- Technician Abilities (shown for technician/manager roles) -->
+                    <div id="abilityFields" class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <p class="text-sm font-medium text-gray-700 mb-3">Technician Abilities</p>
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="can_repair" checked
+                                    class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">
+                                    <i class="fas fa-tools text-amber-500 mr-1"></i>
+                                    Can do repairs (chip/crack)
+                                </span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="can_replace"
+                                    class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700">
+                                    <i class="fas fa-exchange-alt text-teal-500 mr-1"></i>
+                                    Can do replacements (full glass)
+                                </span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
@@ -202,3 +237,19 @@
 </div>
 
 {% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleAbilities() {
+    const role = document.getElementById('invite_role').value;
+    const abilityFields = document.getElementById('abilityFields');
+    if (role === 'technician' || role === 'manager') {
+        abilityFields.style.display = '';
+    } else {
+        abilityFields.style.display = 'none';
+    }
+}
+// Run on page load to set initial state
+document.addEventListener('DOMContentLoaded', toggleAbilities);
+</script>
+{% endblock extra_js %}

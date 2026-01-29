@@ -10,7 +10,8 @@ from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from django.core.management import call_command
 from django.contrib.auth import get_user_model
-from django.db import connection
+from django.db import connection, models
+from django.utils import timezone
 from django_ratelimit.decorators import ratelimit
 import io
 import sys
@@ -37,134 +38,225 @@ def home(request):
     # No automatic redirects for authenticated users
     return render(request, 'landing.html')
 
-@ratelimit(key='ip', rate='10/h', method='POST')
 def customer_login_view(request):
-    """Login view specifically for customers"""
-    if request.user.is_authenticated:
+    """Legacy customer login — redirects to unified login."""
+    return redirect('login')
+
+def technician_login_view(request):
+    """Legacy technician login — redirects to unified login."""
+    return redirect('login')
+
+def _route_authenticated_user(request, user):
+    """Route an authenticated user to the appropriate portal based on their role.
+    Returns a redirect response or None if no valid destination found."""
+    from apps.customer_portal.models import CustomerUser
+    from apps.technician_portal.models import Technician
+    from apps.tenants.models import TenantMembership
+
+    # Check TenantMembership first for role-based routing
+    membership = (
+        TenantMembership.objects
+        .filter(user=user, is_active=True)
+        .select_related('tenant')
+        .order_by(
+            models.Case(
+                models.When(role='owner', then=0),
+                models.When(role='manager', then=1),
+                models.When(role='technician', then=2),
+                models.When(role='viewer', then=3),
+                default=4,
+                output_field=models.IntegerField(),
+            )
+        )
+        .first()
+    )
+
+    if membership:
+        request.session['tenant_id'] = membership.tenant.id
+        if membership.role in ('owner', 'manager'):
+            return redirect('owner_dashboard')
+        elif membership.role == 'technician':
+            return redirect('technician_dashboard')
+        elif membership.role == 'viewer':
+            return redirect('owner_dashboard')
+
+    # Check if user is a CustomerUser → customer dashboard
+    try:
+        customer_user = CustomerUser.objects.get(user=user)
         return redirect('customer_dashboard')
+    except CustomerUser.DoesNotExist:
+        pass
 
-    # Check if rate limited
-    if getattr(request, 'limited', False):
-        messages.error(request, "Too many login attempts. Please try again in an hour.")
-        return render(request, 'customer_login.html', {'form': AuthenticationForm(), 'portal_type': 'customer'})
+    return None
 
-    if request.method == 'POST':
-        form = AuthenticationForm(request, data=request.POST)
-        username = request.POST.get('username', '')
-
-        if form.is_valid():
-            password = form.cleaned_data.get('password')
-            user = authenticate(username=username, password=password)
-            if user is not None:
-                # Verify user is a customer
-                from apps.customer_portal.models import CustomerUser
-                try:
-                    customer_user = CustomerUser.objects.get(user=user)
-                    # Log successful login
-                    from apps.security.models import LoginAttempt
-                    LoginAttempt.log_attempt(request, username, True, 'customer')
-                    login(request, user)
-                    next_url = request.GET.get('next', 'customer_dashboard')
-                    return redirect(next_url)
-                except CustomerUser.DoesNotExist:
-                    # Log failed attempt - wrong portal
-                    from apps.security.models import LoginAttempt
-                    LoginAttempt.log_attempt(request, username, False, 'customer', 'Not a customer account')
-                    messages.error(request, "This account is not authorized for customer access.")
-            else:
-                # Log failed attempt - bad credentials
-                from apps.security.models import LoginAttempt
-                LoginAttempt.log_attempt(request, username, False, 'customer', 'Invalid credentials')
-        else:
-            # Log failed attempt - form validation failed
-            if username:
-                from apps.security.models import LoginAttempt
-                LoginAttempt.log_attempt(request, username, False, 'customer', 'Form validation failed')
-    else:
-        form = AuthenticationForm()
-
-    return render(request, 'customer_login.html', {'form': form, 'portal_type': 'customer'})
 
 @ratelimit(key='ip', rate='10/h', method='POST')
-def technician_login_view(request):
-    """Login view specifically for technicians"""
-    if request.user.is_authenticated:
-        from apps.technician_portal.models import Technician
-        try:
-            technician = Technician.objects.get(user=request.user)
-            return redirect('technician_dashboard')
-        except Technician.DoesNotExist:
-            pass
+def login_router(request):
+    """Unified login page — authenticates user and routes to appropriate portal."""
+    from apps.tenants.models import TenantMembership
 
-    # Check if rate limited
-    if getattr(request, 'limited', False):
-        messages.error(request, "Too many login attempts. Please try again in an hour.")
-        return render(request, 'technician_login.html', {'form': AuthenticationForm(), 'portal_type': 'technician'})
+    # Already authenticated? Route them.
+    if request.user.is_authenticated:
+        dest = _route_authenticated_user(request, request.user)
+        if dest:
+            return dest
+        # Fallback for authenticated users with no clear destination
+        return redirect('home')
+
+    context = {
+        'next': request.GET.get('next', ''),
+    }
 
     if request.method == 'POST':
-        form = AuthenticationForm(request, data=request.POST)
-        if form.is_valid():
-            username = form.cleaned_data.get('username')
-            password = form.cleaned_data.get('password')
-            user = authenticate(username=username, password=password)
-            if user is not None:
-                # Verify user is a technician
-                from apps.technician_portal.models import Technician
-                try:
-                    technician = Technician.objects.get(user=user)
-                    login(request, user)
-                    next_url = request.GET.get('next', 'technician_dashboard')
-                    return redirect(next_url)
-                except Technician.DoesNotExist:
-                    messages.error(request, "This account is not authorized for technician access.")
-    else:
-        form = AuthenticationForm()
+        # Check rate limit
+        if getattr(request, 'limited', False):
+            context['error'] = 'Too many login attempts. Please try again later.'
+            return render(request, 'saas/login.html', context)
 
-    return render(request, 'technician_login.html', {'form': form, 'portal_type': 'technician'})
+        email = request.POST.get('email', '').strip().lower()
+        password = request.POST.get('password', '')
+        context['email'] = email
 
-def login_router(request):
-    """Legacy login URL that redirects to appropriate portal based on user role."""
-    # Check if user is already authenticated
-    if request.user.is_authenticated:
-        from apps.customer_portal.models import CustomerUser
-        from apps.technician_portal.models import Technician
-        from apps.tenants.models import TenantMembership
+        if not email or not password:
+            context['error'] = 'Please enter both email and password.'
+            return render(request, 'saas/login.html', context)
 
-        # Check if user is a tenant owner/manager → owner dashboard
-        owner_membership = TenantMembership.objects.filter(
-            user=request.user, is_active=True, role__in=['owner', 'manager']
-        ).first()
-        if owner_membership:
-            return redirect('owner_dashboard')
-
-        # Check if user is a customer → customer dashboard
+        # Find user by email (username is email in our system)
+        User = get_user_model()
         try:
-            customer_user = CustomerUser.objects.get(user=request.user)
-            return redirect('customer_dashboard')
-        except CustomerUser.DoesNotExist:
-            pass
+            user_obj = User.objects.get(email=email)
+        except User.DoesNotExist:
+            try:
+                user_obj = User.objects.get(username=email)
+            except User.DoesNotExist:
+                user_obj = None
 
-        # Check if user is a technician → technician dashboard
-        try:
-            technician = Technician.objects.get(user=request.user)
-            return redirect('technician_dashboard')
-        except Technician.DoesNotExist:
-            pass
+        if user_obj is None:
+            # Log failed attempt
+            from apps.security.models import LoginAttempt
+            LoginAttempt.log_attempt(request, email, False, 'unified', 'User not found')
+            context['error'] = 'Invalid email or password.'
+            return render(request, 'saas/login.html', context)
 
-        # Fallback: if they have any tenant membership, send to owner dashboard
-        any_membership = TenantMembership.objects.filter(
-            user=request.user, is_active=True
-        ).first()
-        if any_membership:
-            return redirect('owner_dashboard')
+        # Check if user has an unusable password (invited but not yet accepted)
+        if not user_obj.has_usable_password():
+            context['error'] = 'Your account has not been set up yet. Please check your email for an invite link, or contact your shop owner.'
+            return render(request, 'saas/login.html', context)
 
-    # For unauthenticated users, show portal selection
-    return render(request, 'login_router.html')
+        # Authenticate
+        user = authenticate(request, username=user_obj.username, password=password)
+        if user is None:
+            from apps.security.models import LoginAttempt
+            LoginAttempt.log_attempt(request, email, False, 'unified', 'Invalid credentials')
+            context['error'] = 'Invalid email or password.'
+            return render(request, 'saas/login.html', context)
+
+        # Log successful login
+        from apps.security.models import LoginAttempt
+        LoginAttempt.log_attempt(request, email, True, 'unified')
+
+        login(request, user)
+
+        # Check for ?next= redirect
+        next_url = request.POST.get('next', '') or request.GET.get('next', '')
+        if next_url:
+            return redirect(next_url)
+
+        # Route based on role
+        dest = _route_authenticated_user(request, user)
+        if dest:
+            return dest
+
+        # No membership and not a customer — show error
+        logout(request)
+        context['error'] = 'No shop account found. Please contact your shop owner or sign up for a new account.'
+        context['email'] = email
+        return render(request, 'saas/login.html', context)
+
+    return render(request, 'saas/login.html', context)
 
 @require_POST
 def logout_view(request):
     logout(request)
-    return redirect('home')
+    return redirect('login')
+
+def accept_invite(request, token):
+    """Accept an invite token — set password and join the shop."""
+    from apps.tenants.models import InviteToken, TenantMembership
+    from apps.technician_portal.models import Technician
+    from django.contrib.auth.models import Group
+    from django.db import transaction
+
+    try:
+        invite = InviteToken.objects.select_related('tenant', 'user').get(token=token)
+    except InviteToken.DoesNotExist:
+        return render(request, 'saas/invite_accept.html', {'invite_valid': False})
+
+    if not invite.is_valid:
+        return render(request, 'saas/invite_accept.html', {'invite_valid': False})
+
+    context = {
+        'invite_valid': True,
+        'shop_name': invite.tenant.name,
+        'role_display': invite.get_role_display(),
+    }
+
+    if request.method == 'POST':
+        password = request.POST.get('password', '')
+        password_confirm = request.POST.get('password_confirm', '')
+
+        if len(password) < 8:
+            context['error'] = 'Password must be at least 8 characters long.'
+            return render(request, 'saas/invite_accept.html', context)
+
+        if password != password_confirm:
+            context['error'] = 'Passwords do not match.'
+            return render(request, 'saas/invite_accept.html', context)
+
+        with transaction.atomic():
+            user = invite.user
+            user.set_password(password)
+            user.save()
+
+            invite.used_at = timezone.now()
+            invite.save()
+
+            # Ensure Technician record exists for technician/manager roles
+            if invite.role in ('technician', 'manager'):
+                tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                user.groups.add(tech_group)
+
+                if not Technician.objects.filter(user=user).exists():
+                    Technician.objects.create(
+                        tenant=invite.tenant,
+                        user=user,
+                        is_manager=(invite.role == 'manager'),
+                        is_active=True,
+                        can_repair=True,
+                        can_replace=False,
+                    )
+                else:
+                    tech = Technician.objects.get(user=user)
+                    if invite.role == 'manager':
+                        tech.is_manager = True
+                        tech.save()
+
+        # Log the user in
+        auth_user = authenticate(request, username=user.username, password=password)
+        if auth_user:
+            login(request, auth_user)
+            request.session['tenant_id'] = invite.tenant.id
+
+        messages.success(request, f'Welcome to {invite.tenant.name}! Your account is ready.')
+
+        # Route to appropriate portal
+        dest = _route_authenticated_user(request, auth_user or user)
+        if dest:
+            return dest
+        return redirect('home')
+
+    return render(request, 'saas/invite_accept.html', context)
+
 
 @staff_member_required
 def register_technician(request):
