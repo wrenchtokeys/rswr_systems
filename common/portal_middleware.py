@@ -27,8 +27,9 @@ class PortalAccessMiddleware:
         if not request.user.is_authenticated:
             return None
             
-        # Skip for admin, API, and auth URLs
-        skip_paths = ['/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/']
+        # Skip for admin, API, auth, and SaaS UI URLs
+        skip_paths = ['/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/',
+                      '/signup/', '/pricing/', '/onboarding/', '/owner/']
         if any(request.path.startswith(path) for path in skip_paths):
             return None
             

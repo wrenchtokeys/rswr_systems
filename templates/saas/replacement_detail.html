@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Replacement #{{ replacement.id }} | RS Systems{% endblock %}
+
+{% block portal_name %}RS Systems - Replacement Detail{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <a href="{% url 'owner_dashboard' %}" class="text-sm text-blue-600 hover:text-blue-800 mb-2 inline-block">
+                <i class="fas fa-arrow-left mr-1"></i> Back to Dashboard
+            </a>
+            <div class="flex items-center justify-between">
+                <h1 class="text-3xl font-bold text-gray-900">Replacement #{{ replacement.id }}</h1>
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
+                    {% if replacement.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
+                    {% elif replacement.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
+                    {% elif replacement.queue_status == 'APPROVED' %}bg-blue-100 text-blue-800
+                    {% elif replacement.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ replacement.get_queue_status_display }}
+                </span>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <!-- Assignment -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-users mr-2 text-purple-500"></i>Assignment</h2>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div><span class="text-gray-500">Customer:</span> <span class="font-medium text-gray-900">{{ replacement.customer.name|title|default:"—" }}</span></div>
+                    <div><span class="text-gray-500">Technician:</span> <span class="font-medium text-gray-900">{{ replacement.technician.user.get_full_name|default:"—" }}</span></div>
+                    <div><span class="text-gray-500">Date:</span> <span class="font-medium text-gray-900">{{ replacement.service_date|date:"M d, Y h:i A" }}</span></div>
+                </div>
+            </div>
+
+            <!-- Vehicle -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-car mr-2 text-blue-500"></i>Vehicle Info</h2>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div><span class="text-gray-500">Unit #:</span> <span class="font-medium text-gray-900">{{ replacement.unit_number }}</span></div>
+                    <div><span class="text-gray-500">Glass Position:</span> <span class="font-medium text-gray-900">{{ replacement.get_glass_position_display|default:"—" }}</span></div>
+                    <div><span class="text-gray-500">Glass Type:</span> <span class="font-medium text-gray-900">{{ replacement.get_glass_type_display|default:"—" }}</span></div>
+                    <div><span class="text-gray-500">NAGS #:</span> <span class="font-medium text-gray-900">{{ replacement.nags_number|default:"—" }}</span></div>
+                </div>
+            </div>
+
+            <!-- Pricing -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-dollar-sign mr-2 text-green-500"></i>Pricing</h2>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-gray-500">Parts</span><span class="font-medium">${{ replacement.parts_cost|floatformat:2|default:"0.00" }}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Labor</span><span class="font-medium">${{ replacement.labor_cost|floatformat:2|default:"0.00" }}</span></div>
+                    {% if replacement.requires_adas_calibration %}
+                    <div class="flex justify-between"><span class="text-gray-500">ADAS Calibration</span><span class="font-medium">${{ replacement.adas_calibration_cost|floatformat:2|default:"0.00" }}</span></div>
+                    {% endif %}
+                    <div class="border-t border-gray-200 pt-2 mt-2">
+                        <div class="flex justify-between text-lg"><span class="font-semibold text-gray-900">Total</span><span class="font-bold text-gray-900">${{ replacement.cost|floatformat:2 }}</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Insurance -->
+            {% if replacement.insurance_claim %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-shield-alt mr-2 text-yellow-500"></i>Insurance</h2>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div><span class="text-gray-500">Company:</span> <span class="font-medium">{{ replacement.insurance_company|default:"—" }}</span></div>
+                    <div><span class="text-gray-500">Claim #:</span> <span class="font-medium">{{ replacement.claim_number|default:"—" }}</span></div>
+                    <div><span class="text-gray-500">Deductible:</span> <span class="font-medium">${{ replacement.deductible|floatformat:2|default:"—" }}</span></div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Notes -->
+            {% if replacement.description %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-sticky-note mr-2 text-gray-500"></i>Notes</h2>
+                <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ replacement.description }}</p>
+            </div>
+            {% endif %}
+
+            <!-- Photos -->
+            {% if replacement.damage_photo_before or replacement.damage_photo_after %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-camera mr-2 text-gray-500"></i>Photos</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    {% if replacement.damage_photo_before %}
+                    <div>
+                        <p class="text-xs text-gray-500 mb-2">Before</p>
+                        <img src="{{ replacement.damage_photo_before.url }}" alt="Before" class="rounded-lg w-full object-cover">
+                    </div>
+                    {% endif %}
+                    {% if replacement.damage_photo_after %}
+                    <div>
+                        <p class="text-xs text-gray-500 mb-2">After</p>
+                        <img src="{{ replacement.damage_photo_after.url }}" alt="After" class="rounded-lg w-full object-cover">
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -67,6 +67,9 @@ urlpatterns = [
     # Clawdbot endpoint (Amelia's experimental namespace)
     path('clawdbot/', include('apps.clawdbot.urls')),
 
+    # SaaS UI (signup, onboarding, owner dashboard, pricing, billing, replacement)
+    path('', include('apps.saas.urls')),
+
     # Legacy authentication URLs (redirect to appropriate portal)
     path('accounts/login/', views.login_router, name='login'),
     path('login/', views.login_router, name='login_legacy'),

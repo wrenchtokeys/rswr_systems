@@ -81,9 +81,15 @@
                     </div>
                 </form>
                 
-                <div class="mt-6 text-center">
+                <div class="mt-6 text-center space-y-2">
                     <p class="text-sm text-gray-600">
                         Don't have an account? 
+                        <a href="{% url 'signup' %}" class="font-medium text-blue-600 hover:text-blue-500">
+                            Start your free trial
+                        </a>
+                    </p>
+                    <p class="text-sm text-gray-600">
+                        Customer portal? 
                         <a href="{% url 'customer_register' %}" class="font-medium text-blue-600 hover:text-blue-500">
                             Register here
                         </a>

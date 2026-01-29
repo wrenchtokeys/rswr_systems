@@ -1,0 +1,122 @@
+{% extends "saas/base_owner.html" %}
+
+{% block title %}Settings | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Shop Settings</h1>
+    <p class="text-gray-500 mt-1">Manage your business info and team.</p>
+</div>
+
+<!-- Business Info -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Business Information</h2>
+    </div>
+    <div class="p-6">
+        <form method="post" enctype="multipart/form-data" class="space-y-5">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+                    <input type="text" name="business_name" value="{{ tenant.name }}"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input type="text" name="business_phone" value="{{ tenant.business_phone }}"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="(555) 123-4567">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" name="business_email" value="{{ tenant.business_email }}"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                    placeholder="info@yourbusiness.com">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                <textarea name="business_address" rows="3"
+                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                    placeholder="123 Main St, Suite 100">{{ tenant.business_address }}</textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Logo</label>
+                <input type="file" name="logo" accept="image/*"
+                    class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                {% if tenant.logo %}
+                <p class="text-xs text-gray-400 mt-1">Current: {{ tenant.logo.name }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-save mr-2"></i>Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Team Members -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-900">Team Members</h2>
+        <span class="text-sm text-gray-500">{{ members.count }} member{{ members.count|pluralize }}</span>
+    </div>
+    <div class="divide-y divide-gray-100">
+        {% for m in members %}
+        <div class="px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                    <i class="fas fa-user text-gray-500 text-sm"></i>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-gray-900">{{ m.user.get_full_name|default:m.user.username }}</div>
+                    <div class="text-xs text-gray-500">{{ m.user.email }}</div>
+                </div>
+            </div>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                {% if m.role == 'owner' %}bg-purple-100 text-purple-800
+                {% elif m.role == 'manager' %}bg-blue-100 text-blue-800
+                {% elif m.role == 'technician' %}bg-green-100 text-green-800
+                {% else %}bg-gray-100 text-gray-800{% endif %}">
+                {{ m.get_role_display }}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Invite form -->
+    {% if membership.role == 'owner' or membership.role == 'manager' %}
+    <div class="p-6 bg-gray-50 border-t border-gray-200">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">Invite Team Member</h3>
+        <form method="post" action="{% url 'owner_invite_member' %}" class="flex flex-wrap gap-3 items-end">
+            {% csrf_token %}
+            <div class="flex-1 min-w-[150px]">
+                <input type="text" name="first_name" placeholder="First name" required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <input type="text" name="last_name" placeholder="Last name" required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <input type="email" name="email" placeholder="Email" required
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+            </div>
+            <div class="min-w-[140px]">
+                <select name="role" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                    <option value="technician">Technician</option>
+                    <option value="manager">Manager</option>
+                    <option value="viewer">Viewer</option>
+                </select>
+            </div>
+            <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                <i class="fas fa-user-plus mr-1"></i>Invite
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
