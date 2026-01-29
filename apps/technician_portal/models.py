@@ -90,7 +90,7 @@ class Technician(models.Model):
         blank=True,
         symmetrical=False,
         related_name='managers',
-        help_text="Technicians managed by this manager"
+        help_text="Technicians managed by this manager (must be same tenant)"
     )
 
     # Performance Tracking
@@ -135,20 +135,38 @@ class Technician(models.Model):
         return f"{self.user.get_full_name()} - {self.expertise}{role}"
 
     def clean(self):
-        """Validate technician data before saving"""
+        """Validate technician data before saving."""
         from django.core.exceptions import ValidationError
-
-        # Non-managers cannot manage other technicians
-        if not self.is_manager and self.pk:
-            # Check if managed_technicians will be set (can't check m2m before save)
-            # This will be enforced in the admin save_model method
-            pass
 
         # If not a manager, clear manager-specific fields
         if not self.is_manager:
             self.approval_limit = None
             self.can_assign_work = False
             self.can_override_pricing = False
+
+    def validate_managed_technicians(self):
+        """
+        Validate managed_technicians M2M after save.
+        Call this after adding to managed_technicians to ensure
+        all managed techs belong to the same tenant.
+        
+        M2M fields can't be validated in clean() (not yet saved),
+        so this must be called explicitly.
+        """
+        from django.core.exceptions import ValidationError
+        
+        if not self.pk or not self.tenant:
+            return
+        
+        cross_tenant = self.managed_technicians.exclude(tenant=self.tenant)
+        if cross_tenant.exists():
+            bad_techs = list(cross_tenant.values_list('user__email', flat=True))
+            # Remove the cross-tenant techs
+            self.managed_technicians.remove(*cross_tenant)
+            raise ValidationError(
+                f"Cannot manage technicians from a different shop. "
+                f"Removed: {', '.join(bad_techs)}"
+            )
 
     def get_managed_technicians_count(self):
         """Get the number of technicians this manager supervises"""

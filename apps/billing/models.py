@@ -190,10 +190,10 @@ class InvoiceLineItem(models.Model):
     # Link to repair (if applicable)
     repair = models.ForeignKey(
         'technician_portal.Repair',
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True, blank=True,
         related_name='invoice_line_items',
-        help_text="The repair this line item is for"
+        help_text="The repair this line item is for. PROTECT prevents deleting invoiced repairs."
     )
     
     # Line item details

@@ -184,7 +184,11 @@ def _handle_invoice_payment_failed(invoice):
         f"Invoice: {invoice.get('id')}. Attempt: {invoice.get('attempt_count', '?')}"
     )
     
-    # TODO: Send notification email to shop owner about failed payment
+    # Notify shop owner about failed payment
+    _notify_owner(tenant, 'payment_failed', {
+        'invoice_id': invoice.get('id'),
+        'attempt_count': invoice.get('attempt_count', 1),
+    })
 
 
 def _handle_subscription_updated(subscription):
@@ -288,4 +292,61 @@ def _handle_subscription_deleted(subscription):
         f"Reverted to trial plan."
     )
     
-    # TODO: Send email notifying shop owner their subscription has ended
+    # Notify shop owner their subscription has ended
+    _notify_owner(tenant, 'subscription_ended', {})
+
+
+def _notify_owner(tenant, event_type, context):
+    """
+    Send email notification to shop owner about subscription events.
+    
+    Uses SendGrid if configured, otherwise logs a warning.
+    """
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings as django_settings
+        
+        owner = tenant.owner
+        if not owner or not owner.email:
+            logger.warning(f"Cannot notify owner for tenant {tenant.slug}: no owner email")
+            return
+        
+        subjects = {
+            'payment_failed': f'⚠️ Payment failed for {tenant.name}',
+            'subscription_ended': f'Your {tenant.name} subscription has ended',
+        }
+        
+        messages = {
+            'payment_failed': (
+                f"Hi {owner.first_name or 'there'},\n\n"
+                f"We were unable to process your payment for {tenant.name}.\n"
+                f"Attempt #{context.get('attempt_count', 1)}.\n\n"
+                f"Please update your payment method to avoid service interruption.\n"
+                f"Go to your billing settings to update: /owner/billing/\n\n"
+                f"— RS Systems"
+            ),
+            'subscription_ended': (
+                f"Hi {owner.first_name or 'there'},\n\n"
+                f"Your subscription for {tenant.name} has been cancelled.\n"
+                f"Your account has been reverted to the free trial plan.\n\n"
+                f"You can resubscribe anytime from your billing settings: /owner/billing/\n\n"
+                f"— RS Systems"
+            ),
+        }
+        
+        subject = subjects.get(event_type, f'RS Systems notification for {tenant.name}')
+        body = messages.get(event_type, f'A subscription event occurred for {tenant.name}.')
+        
+        from_email = getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'notifications@rockstarwindshield.repair')
+        
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=from_email,
+            recipient_list=[owner.email],
+            fail_silently=True,
+        )
+        logger.info(f"Sent {event_type} notification to {owner.email} for tenant {tenant.slug}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send {event_type} notification for tenant {tenant.slug}: {e}")

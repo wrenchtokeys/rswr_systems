@@ -1,6 +1,9 @@
+import logging
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.contrib import messages
+
+logger = logging.getLogger(__name__)
 
 
 class PortalAccessMiddleware:
@@ -38,8 +41,8 @@ class PortalAccessMiddleware:
             if not self._is_customer_user(request.user):
                 try:
                     messages.error(request, "You don't have access to the customer portal.")
-                except:
-                    pass  # Continue without message if messages framework unavailable
+                except Exception as e:
+                    logger.debug(f"Could not add portal access message: {e}")
                 return redirect('technician_dashboard')
                 
         # Check technician portal access  
@@ -47,8 +50,8 @@ class PortalAccessMiddleware:
             if not self._is_technician_user(request.user):
                 try:
                     messages.error(request, "You don't have access to the technician portal.")
-                except:
-                    pass  # Continue without message if messages framework unavailable
+                except Exception as e:
+                    logger.debug(f"Could not add portal access message: {e}")
                 return redirect('customer_dashboard')
         
         return None
