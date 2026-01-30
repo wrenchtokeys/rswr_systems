@@ -215,6 +215,10 @@ def create_invoice(request, customer_id):
             invoice.save(update_fields=['tenant'])
     except ValueError as e:
         return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(f"Invoice creation failed for customer {customer_id}")
+        return JsonResponse({'error': f'Invoice creation failed: {str(e)}'}, status=500)
 
     # Generate PDF and save to S3
     try:
