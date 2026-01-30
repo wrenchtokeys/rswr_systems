@@ -171,35 +171,25 @@ def onboarding_view(request):
                 return redirect('/onboarding/?step=2')
 
         elif step == '2':
+            # Step 2: Add ANOTHER technician (owner is already set up from signup)
             form = OnboardingTechnicianForm(request.POST)
             if form.is_valid():
                 cd = form.cleaned_data
                 try:
                     with transaction.atomic():
-                        if cd.get('add_self'):
-                            # Add current user as technician if not already
-                            if not Technician.objects.filter(user=request.user).exists():
-                                Technician.objects.create(
-                                    tenant=tenant,
-                                    user=request.user,
-                                    phone_number=cd.get('tech_phone', ''),
-                                    is_manager=True,
-                                    is_active=True,
-                                )
-                                # Add to Technicians group
-                                from django.contrib.auth.models import Group
-                                tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                request.user.groups.add(tech_group)
-                        else:
-                            # Create a new user + technician
-                            tech_email = cd.get('tech_email', '')
-                            tech_username = tech_email[:150] if tech_email else f"tech_{cd['tech_first_name'].lower()}_{tenant.slug}"
+                        # Create a new user + technician (not yourself — you're already set up)
+                        tech_email = cd.get('tech_email', '')
+                        tech_first = cd.get('tech_first_name', '')
+                        tech_last = cd.get('tech_last_name', '')
+
+                        if tech_email or tech_first:
+                            tech_username = tech_email[:150] if tech_email else f"tech_{tech_first.lower()}_{tenant.slug}"
                             if not User.objects.filter(username=tech_username).exists():
                                 tech_user = User.objects.create_user(
                                     username=tech_username,
                                     email=tech_email or '',
-                                    first_name=cd['tech_first_name'],
-                                    last_name=cd['tech_last_name'],
+                                    first_name=tech_first,
+                                    last_name=tech_last,
                                     password=User.objects.make_random_password(),
                                 )
                                 Technician.objects.create(
@@ -214,14 +204,20 @@ def onboarding_view(request):
                                 from django.contrib.auth.models import Group
                                 tech_group, _ = Group.objects.get_or_create(name='Technicians')
                                 tech_user.groups.add(tech_group)
+                                messages.success(request, 'Technician added!')
+                            else:
+                                messages.info(request, 'A user with that email already exists.')
+                        else:
+                            messages.info(request, 'No technician info provided.')
 
-                    messages.success(request, 'Technician added!')
                 except Exception as e:
                     logger.error(f"Onboarding tech error: {e}")
                     messages.error(request, f'Could not add technician: {e}')
 
+                # Only advance on valid form
                 request.session['onboarding_step'] = '3'
                 return redirect('/onboarding/?step=3')
+            # Invalid form — stay on step 2 (fall through to GET handler)
 
         elif step == '3':
             form = OnboardingCustomerForm(request.POST)
@@ -245,8 +241,10 @@ def onboarding_view(request):
                     logger.error(f"Onboarding customer error: {e}")
                     messages.error(request, f'Could not add customer: {e}')
 
+                # Only advance on valid form
                 request.session['onboarding_step'] = '4'
                 return redirect('/onboarding/?step=4')
+            # Invalid form — stay on step 3 (fall through to GET handler)
 
         elif step == '4':
             # Done — clear onboarding state
@@ -272,11 +270,12 @@ def onboarding_view(request):
             'business_address': tenant.business_address,
         })
     elif step == '2':
+        # Owner already has tech profile from signup — step 2 is for adding ANOTHER tech
         context['form'] = OnboardingTechnicianForm(initial={
-            'tech_first_name': request.user.first_name,
-            'tech_last_name': request.user.last_name,
-            'tech_email': request.user.email,
-            'add_self': True,
+            'tech_first_name': '',
+            'tech_last_name': '',
+            'tech_email': '',
+            'add_self': False,
         })
     elif step == '3':
         context['form'] = OnboardingCustomerForm()

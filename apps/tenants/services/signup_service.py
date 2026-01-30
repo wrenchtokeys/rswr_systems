@@ -117,6 +117,20 @@ def create_tenant_with_owner(
                 role='owner',
             )
 
+            # Auto-create Technician profile for the owner
+            # Every owner starts as a working tech (is_manager=True).
+            from apps.technician_portal.models import Technician
+            from django.contrib.auth.models import Group
+
+            Technician.objects.create(
+                tenant=tenant,
+                user=user,
+                is_manager=True,
+                is_active=True,
+            )
+            tech_group, _ = Group.objects.get_or_create(name='Technicians')
+            user.groups.add(tech_group)
+
             logger.info(
                 f"New signup: {email} — tenant '{business_name}' (slug={slug})"
             )
