@@ -139,7 +139,8 @@ def onboarding_view(request):
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
         messages.error(request, 'No shop found for your account.')
-        return redirect('home')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
 
     # Determine current step from GET param or session
     step = request.GET.get('step', request.session.get('onboarding_step', '1'))
@@ -412,7 +413,8 @@ def replacement_create(request):
     tenant = getattr(request, 'tenant', None)
     if not tenant:
         messages.error(request, 'No shop context. Please log in.')
-        return redirect('home')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
 
     # Check limits
     usage_svc = UsageService(tenant)

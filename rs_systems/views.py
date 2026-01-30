@@ -112,7 +112,8 @@ def login_router(request):
         if dest:
             return dest
         # Fallback for authenticated users with no clear destination
-        return redirect('home')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
 
     context = {
         'next': request.GET.get('next', ''),
@@ -264,7 +265,8 @@ def accept_invite(request, token):
         dest = _route_authenticated_user(request, auth_user or user)
         if dest:
             return dest
-        return redirect('home')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(auth_user or user)
 
     return render(request, 'saas/invite_accept.html', context)
 
