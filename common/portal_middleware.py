@@ -1,106 +1,70 @@
+"""
+Portal Access Middleware — ensures users access the correct portal.
+
+Uses common.auth as the single source of truth.
+"""
 import logging
 from django.shortcuts import redirect
-from django.urls import reverse
 from django.contrib import messages
+
+from common.auth import can_access, get_user_role, redirect_to_portal
 
 logger = logging.getLogger(__name__)
 
 
 class PortalAccessMiddleware:
-    """
-    Middleware to ensure users access the correct portal based on their account type.
-    """
-    
+    """Ensure users access the correct portal based on their role."""
+
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        # Process the request before view
-        self.process_request(request)
-        
-        # Get the response from the view
-        response = self.get_response(request)
-        
-        return response
+        result = self.process_request(request)
+        if result:
+            return result
+        return self.get_response(request)
 
     def process_request(self, request):
-        """Check portal access permissions"""
-        
-        # Skip middleware for unauthenticated users and certain paths
         if not request.user.is_authenticated:
             return None
-            
+
         # Skip for admin, API, auth, and public/SaaS UI URLs
-        skip_paths = ['/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/',
-                      '/signup/', '/pricing/', '/onboarding/', '/login/', '/invite/',
-                      '/join/', '/health/']
+        skip_paths = [
+            '/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/',
+            '/signup/', '/pricing/', '/onboarding/', '/login/', '/invite/',
+            '/join/', '/health/', '/clawdbot/',
+        ]
         if any(request.path.startswith(path) for path in skip_paths):
             return None
-        
-        # Owner portal: only owners/managers
+
+        tenant = getattr(request, 'tenant', None)
+        role = get_user_role(request.user, tenant)
+
+        # Owner portal: only owners/managers/superusers/staff
         if request.path.startswith('/owner/'):
-            if not self._is_owner_or_manager(request.user):
+            if role not in ('superuser', 'owner', 'manager'):
                 try:
                     messages.error(request, "You don't have access to the owner dashboard.")
-                except Exception as e:
-                    logger.debug(f"Could not add portal access message: {e}")
-                # Route them to where they belong
-                if self._is_customer_user(request.user):
-                    return redirect('customer_dashboard')
-                elif self._is_technician_user(request.user):
-                    return redirect('technician_dashboard')
-                return redirect('login')
+                except Exception:
+                    pass
+                return redirect_to_portal(request.user)
 
-        # Customer portal: only customer users (and owners/managers for oversight)
+        # Customer portal: customer users + owners/managers for oversight
         elif request.path.startswith('/app/'):
-            if not self._is_customer_user(request.user) and not self._is_owner_or_manager(request.user):
+            if role not in ('viewer', 'customer', 'superuser', 'owner', 'manager'):
                 try:
                     messages.error(request, "You don't have access to the customer portal.")
-                except Exception as e:
-                    logger.debug(f"Could not add portal access message: {e}")
-                if self._is_technician_user(request.user):
-                    return redirect('technician_dashboard')
-                return redirect('login')
-                
-        # Technician portal: only technicians (and owners/managers who are also techs)
+                except Exception:
+                    pass
+                return redirect_to_portal(request.user)
+
+        # Technician portal: anyone who can access repairs/customers
         elif request.path.startswith('/tech/'):
-            if not self._is_technician_user(request.user) and not self._is_owner_or_manager(request.user):
+            if not can_access(request.user, 'repairs', tenant) and not can_access(request.user, 'customers', tenant):
                 try:
                     messages.error(request, "You don't have access to the technician portal.")
-                except Exception as e:
-                    logger.debug(f"Could not add portal access message: {e}")
-                if self._is_customer_user(request.user):
-                    return redirect('customer_dashboard')
-                return redirect('login')
-        
+                except Exception:
+                    pass
+                return redirect_to_portal(request.user)
+
         return None
-    
-    def _is_owner_or_manager(self, user):
-        """Check if user is a tenant owner or manager."""
-        if user.is_staff:
-            return True
-        try:
-            from apps.tenants.models import TenantMembership
-            return TenantMembership.objects.filter(
-                user=user, is_active=True, role__in=['owner', 'manager']
-            ).exists()
-        except Exception:
-            return False
-    
-    def _is_customer_user(self, user):
-        """Check if user is a customer."""
-        try:
-            from apps.customer_portal.models import CustomerUser
-            return CustomerUser.objects.filter(user=user).exists()
-        except Exception:
-            return False
-    
-    def _is_technician_user(self, user):
-        """Check if user has a technician profile."""
-        if user.is_staff:
-            return True
-        try:
-            from apps.technician_portal.models import Technician
-            return Technician.objects.filter(user=user).exists()
-        except Exception:
-            return False
