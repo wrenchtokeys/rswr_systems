@@ -1,4 +1,4 @@
-# RS Systems — Stability & UX Overhaul Plan
+# RS Systems — Stability & UX Plan
 
 **Author:** Amelia  
 **Date:** January 30, 2026  
@@ -6,290 +6,306 @@
 
 ---
 
-## The Problem
+## Who Uses This System?
 
-The system has grown organically across multiple build phases. Each phase added features (tech portal, customer portal, owner/SaaS portal, billing) but they were built with different access control assumptions. The result:
+### The Shop Owner (Drake's #1 customer)
+A windshield repair shop owner. Probably runs a small operation — 1 to 5 people. They're often the primary technician too. They signed up because they're tired of paper and texts.
 
-- Users get redirected to wrong portals or the landing page (feels like logout)
-- Owners who aren't technicians can't access features they should
-- Owners who ARE technicians don't always get recognized as techs
-- Creating customers requires tech portal access that owners may not have
-- Cross-portal navigation has gaps
-- The overall flow is confusing from a user perspective
+**What they want to do:**
+1. Add a customer (a trucking company, a dealership)
+2. Log a repair they did
+3. See what repairs are pending, completed, owed
+4. Send an invoice
+5. Eventually: invite a tech to help them
 
-**This isn't a bug-by-bug problem. It's an architecture problem.**
+**What they DON'T want to think about:**
+- "Portals" — they don't care what URL they're on
+- "Access control" — they own the shop, they can do everything
+- "Switching contexts" — one interface, everything accessible
+
+**What actually happens today:**
+1. They sign up → onboarding wizard → lands on owner dashboard ✓
+2. Dashboard has "New Customer" button — great! They click it.
+3. **They get bounced to the home page. Looks like they're logged out.** ✗
+4. They try "New Repair" — same thing. ✗
+5. They try "Tech Portal" in the nav — same thing. ✗
+6. They can't do the basic thing they signed up to do.
+
+**Why it fails:** The "New Customer" button links to `/tech/customers/create/` which requires technician access. The owner doesn't have it because the onboarding silently failed to create their technician profile. Even if it DID work, the page shows the wrong navigation (customer portal nav instead of owner nav).
 
 ---
 
-## Root Causes
+### The Technician (employee)
+Gets an invite from the shop owner. Sets password, logs in. Needs a focused work interface.
 
-### 1. Dual Identity System
-Users are identified two ways that can disagree:
-- **Model records:** `Technician` model, `CustomerUser` model (existence = access)
-- **TenantMembership role:** owner, manager, technician, viewer
+**What they want:**
+1. See their assigned repairs
+2. Update repair status (completed, in progress)
+3. Create new repairs in the field
+4. Look up customer info
 
-Example conflict: An owner signs up → gets TenantMembership(role='owner') → adds self as tech in onboarding → gets Technician model + Technicians group. But the system checks different things in different places:
-- Middleware checks TenantMembership
-- `@technician_required` checks `is_staff`, then Group, then Technician model, then TenantMembership
-- `@customer_required` checks CustomerUser model only
-- `_get_owner_tenant()` checks TenantMembership role
+**What they DON'T need:**
+- Billing settings, pricing, team management
+- Business analytics, revenue numbers
+- Anything about running the shop
 
-**Fix:** One source of truth for "what can this user do?" — TenantMembership role, with model records as supplementary data.
+**Current experience:** Works OK if the invite flow succeeds. Login routes to `/tech/`. But the invite flow can fail silently too (invite token issues).
 
-### 2. `is_staff` Gate
-The original codebase was single-tenant Django admin. Many checks use `request.user.is_staff` which SaaS owners don't have. We've been replacing these with `is_tenant_admin()` but some remain, and the `admin_required` decorator still checks `is_staff` only.
+---
 
-**Fix:** Audit and replace every `is_staff` check with tenant-aware role checks.
+### The Customer (fleet manager)
+Manages a fleet of trucks. Gets their windshields repaired by Drake's shop.
 
-### 3. Onboarding Creates Incomplete State
-Step 2 (add technician) has a critical bug: it redirects to step 3 even if the form is invalid. The Technician record, Group membership, etc. may never be created, but the user thinks it worked.
+**What they want:**
+1. See their repair history
+2. Know what's pending, what's done
+3. Approve/deny repair requests
+4. View and pay invoices
 
-```python
-# Current code — redirect is OUTSIDE the if block
-elif step == '2':
-    form = OnboardingTechnicianForm(request.POST)
-    if form.is_valid():
-        # ... create technician ...
-    request.session['onboarding_step'] = '3'  # ← Always runs!
-    return redirect('/onboarding/?step=3')     # ← Always runs!
-```
+**Current experience:** Join link works. Portal works. But re-login routes them to the owner dashboard instead of their customer portal. (Fixed in local code, not deployed.)
 
-**Fix:** Only advance steps on successful save. Show validation errors.
+---
 
-### 4. Three Competing Access Control Layers
-1. **PortalAccessMiddleware** — checks TenantMembership + model records
-2. **View decorators** (`@technician_required`, `@customer_required`, `@owner_or_manager_required`) — check their own criteria
-3. **`_get_owner_tenant()`** — checks TenantMembership role
+## What's Actually Wrong
 
-These can disagree: middleware allows a request, but the decorator blocks it (or vice versa). When they disagree, users get confusing redirects.
+### Problem 1: Owner Can't Do Anything After Signup
+The owner dashboard looks great — revenue cards, usage meters, quick action buttons. But every quick action button leads to a dead end.
 
-**Fix:** Consolidate into one access control layer. Decorators are the right place (per-view). Middleware should only handle obvious cross-portal violations as a safety net.
+**Root cause chain:**
+1. Owner signs up → `create_tenant_with_owner()` creates user + tenant + owner membership. **No Technician profile. Not in Technicians group. Not is_staff.** Just a regular user with an owner TenantMembership.
+2. Onboarding step 2 says "Add yourself as a technician" with `add_self` checked by default.
+3. Owner fills out the form and submits.
+4. **BUG:** Even if the form has a validation error, the code advances to step 3. The Technician profile may never be created. The owner doesn't know.
+5. Onboarding completes. Owner thinks they're set up.
+6. Owner clicks "New Customer" → hits `@technician_required` → decorator checks:
+   - `is_staff`? No. 
+   - In Technicians group? No (onboarding failed silently).
+   - Has Technician profile? No (same).
+   - Owner/manager TenantMembership? Yes — but only in my unreleased local code.
+7. Decorator rejects them → redirects to `home` (the marketing landing page) → owner thinks they're logged out.
 
-### 5. Redirect-to-Home = Perceived Logout
-When access is denied, many paths redirect to `home` (the landing/marketing page). This page looks like the user is logged out because it's designed for anonymous visitors. Users think the system logged them out.
+**Even if onboarding succeeds:** The tech portal pages use `base.html` which shows the wrong navigation. It checks `is_superuser or 'Technicians' in groups` to decide which nav to show. SaaS owners who aren't superusers and whose Technicians group membership was silently skipped see the CUSTOMER navigation on tech portal pages. Total confusion.
 
-**Fix:** Never redirect authenticated users to the landing page. Denied users go to their correct portal with an error message, or to a "no access" page.
+### Problem 2: Three Portals Is One Too Many (for owners)
+The system has:
+- `/owner/` — Owner dashboard (billing, settings, analytics)
+- `/tech/` — Technician portal (repairs, customers, work)
+- `/app/` — Customer portal (their repairs, invoices)
 
-### 6. Customer Creation UX
-Creating a customer requires navigating to the tech portal (`/tech/customers/create/`). But:
-- Owners without tech access can't get there
-- Even owners WITH tech access have to switch portals
-- There's no customer creation from the owner dashboard
+For a technician or customer, this makes sense — they each have a focused view. But for the **owner**, having to switch between `/owner/` (to see revenue) and `/tech/` (to add a customer) is confusing. The owner OWNS everything — they should see it all in one place.
 
-**Fix:** Customer creation should be accessible from the owner portal too.
+### Problem 3: Access Control Is Checking 5 Different Things
+The system has too many ways to identify "what can this user do":
+
+| Check | Where it's used | What it means |
+|-------|----------------|---------------|
+| `user.is_staff` | `admin_required`, `base.html` nav, various views | Django admin user — SaaS owners DON'T have this |
+| `user.is_superuser` | `base.html` nav, logo URL | Django superuser — only the site admin |
+| `user.groups (Technicians)` | `base.html` nav, `has_technician_access()` | Added during onboarding/invite — can fail silently |
+| `Technician` model exists | `has_technician_access()`, `technician_required` | Created during onboarding — can fail silently |
+| `TenantMembership.role` | Middleware, `_get_owner_tenant()`, `owner_or_manager_required` | The actual role system — most reliable |
+| `CustomerUser` model exists | `customer_required`, middleware | Links Django user to a Customer record |
+
+These checks disagree constantly. The middleware says "allowed", the decorator says "denied". The nav shows tech links, but the pages reject the user.
+
+### Problem 4: "Redirect to Home" = Perceived Logout
+When any access check fails, the user gets sent to `/` — the marketing landing page. This page is designed for anonymous visitors. An authenticated user landing here thinks the system logged them out. It's the worst possible error UX.
 
 ---
 
 ## The Plan
 
-### Phase 1: Fix Access Control Foundation (CRITICAL)
-**Goal:** Every user type can access exactly the right portals. No dead ends, no false logouts.
+### Phase 1: Make the Owner's Day-One Work (TOP PRIORITY)
+**Goal:** Owner signs up, adds a customer, creates a repair. No errors. No confusion. 30 minutes or less.
 
-#### 1.1 Unify the permission model
-Create a single `get_user_role(user)` function that returns the user's effective role:
-```python
-def get_user_role(user, tenant=None):
-    """Returns: 'superadmin', 'owner', 'manager', 'technician', 'customer', 'viewer', or None"""
-```
-All decorators and middleware use this one function.
+This is the critical path. Nothing else matters if the owner can't do basic work.
 
-#### 1.2 Fix onboarding step progression
-- Only advance to next step on successful save
-- Show form validation errors
-- Verify Technician + Group are actually created when "add self" is checked
-- Add a verification step: after onboarding, confirm the user's state is correct
+#### 1.1 Fix onboarding so the owner IS a technician
+After signup, the owner needs to be able to do tech work. Period. Don't make them opt in — just do it.
 
-#### 1.3 Fix decorators to use unified role check
-- `@technician_required` → uses `get_user_role()`, owners/managers pass
-- `@customer_required` → uses `get_user_role()`, owners/managers pass (oversight)
-- `@owner_or_manager_required` → uses `get_user_role()`
-- `admin_required` → replace `is_staff` with `get_user_role() in ('owner', 'manager', 'superadmin')`
-- All denied redirects go to user's correct portal, never to `/` (home)
+**Changes:**
+- In `create_tenant_with_owner()`: automatically create a Technician profile and add to Technicians group. Every owner is also their shop's first technician.
+- Remove the confusing "Add yourself as a technician" checkbox from onboarding step 2. Instead, step 2 becomes "Add another technician" (optional — skip if they're solo).
+- Fix the step progression bug: only advance to next step on successful save.
 
-#### 1.4 Simplify middleware
-Middleware becomes a pure safety net — just prevents cross-portal access for users who bypassed decorators (e.g., direct URL entry). All real access control lives in decorators.
+**Why:** In the real world, every small shop owner IS their first technician. Making this automatic eliminates the silent failure and the confused state.
 
-#### 1.5 Fix redirect chains
-Map every denied-access scenario and verify the redirect target is accessible:
-| User Role | Tries to access | Redirect to |
-|-----------|----------------|-------------|
-| Owner (no tech) | /tech/ | /owner/ |
-| Owner (with tech) | /tech/ | Allow |
-| Technician | /owner/ | /tech/ |
-| Technician | /app/ | /tech/ |
-| Customer | /tech/ | /app/ |
-| Customer | /owner/ | /app/ |
-| Anonymous | Any portal | /login/ |
+#### 1.2 Fix tech portal pages to show correct nav for owners
+When an owner visits a `/tech/` page (via Quick Actions buttons on their dashboard), they should see their owner navigation — not the old tech/customer nav from `base.html`.
 
-**Deliverables:** Updated decorators, middleware, redirect map. Every user type tested.
+**Changes:**
+- Tech portal templates that owners will commonly use (customer_form, repair_form, repair_list, customer_list) should detect the owner and show owner nav.
+- Simplest approach: these templates extend `base.html` → create a new template tag or context variable that picks the right base template based on user role.
+- Or: move the most-used forms (create customer, create repair) into the owner portal namespace so they use `base_owner.html` natively.
 
----
+#### 1.3 Never redirect to home
+No authenticated user should ever land on the marketing page as a result of an access denied.
 
-### Phase 2: Fix User Flows End-to-End (HIGH)
-**Goal:** Complete every core workflow without errors or confusion.
+**Changes:**
+- `technician_required`: redirect to `owner_dashboard` for owners, `customer_dashboard` for customers
+- `customer_required`: redirect to `owner_dashboard` for owners, `technician_dashboard` for techs
+- `owner_or_manager_required`: redirect to `technician_dashboard` for techs, `customer_dashboard` for customers
+- Middleware: same pattern
+- Remove `return redirect('home')` from every decorator for authenticated users
 
-#### 2.1 Owner signup → onboarding → dashboard
-- [ ] Signup creates user + tenant + owner membership ✓
-- [ ] Onboarding step 1 (business info) saves correctly
-- [ ] Onboarding step 2 (add tech) — fix form validation, ensure tech is created
-- [ ] Onboarding step 3 (add customer) — saves correctly
-- [ ] Onboarding completes → owner dashboard loads with data
-- [ ] Owner sees correct nav (dashboard, billing, settings, tech portal if applicable)
+#### 1.4 Owner nav that makes sense
+Current owner nav: `Dashboard | Billing | Settings | [Tech Portal]`
 
-#### 2.2 Owner creates first customer
-**Current path:** Owner → Tech Portal → Customers → Create ← too many steps, may not work
+Better owner nav: `Dashboard | Customers | Repairs | Billing | Settings`
 
-**Better path:** Owner dashboard should have a "Add Customer" action that works directly. Options:
-1. Add customer creation to owner portal (duplicate the form)
-2. Make the tech portal customer creation accessible to owners seamlessly
-3. Add a "Quick Actions" section to owner dashboard with common tasks
+"Customers" links to the customer list (currently at `/tech/customers/`).
+"Repairs" links to the repair list (currently at `/tech/repairs/`).
+These pages already exist — we're just putting them in the nav where the owner expects them.
 
-**Recommendation:** Option 3 — Quick Actions on dashboard with links that work for the user's role.
+Remove the "Tech Portal" link entirely. The owner doesn't need a separate portal — they have everything.
 
-#### 2.3 Owner creates first repair
-Same issue — repair creation is in tech portal. Owner needs to get there smoothly.
-
-#### 2.4 Tech invite → accept → login → work
-- [ ] Owner invites tech from settings
-- [ ] Tech receives invite link
-- [ ] Tech sets password
-- [ ] Tech logs in → routed to /tech/
-- [ ] Tech can see customers, create repairs, update status
-
-#### 2.5 Customer join → login → view repairs
-- [ ] Customer uses join link (/join/<slug>/)
-- [ ] Customer account created, auto-logged in
-- [ ] Customer re-login routes to /app/ (not /owner/)
-- [ ] Customer can view repairs, submit requests, edit company
-
-**Deliverables:** Each flow tested manually. Screenshots or test script.
+**Deliverables:** Owner signs up → completes onboarding → clicks "New Customer" → form loads → saves → back to dashboard. No errors, no wrong nav, no dead ends.
 
 ---
 
-### Phase 3: UX Simplification (MEDIUM)
-**Goal:** The system feels like one app, not three separate portals stitched together.
+### Phase 2: Fix Every User's Login Experience
+**Goal:** Every user type logs in and lands in the right place. Every time.
 
-#### 3.1 Owner dashboard as command center
-The owner dashboard should be the hub. Add:
-- Quick stats (customers, repairs this week, revenue)
-- Quick actions: Add Customer, Create Repair, Invite Technician
-- Recent activity feed
-- Link to tech portal if they're also a tech
+#### 2.1 Login routing (already fixed locally, needs deploy)
+- Customers → `/app/`
+- Technicians → `/tech/`
+- Owners/managers → `/owner/`
+- Customer with viewer TenantMembership → check CustomerUser first → `/app/`
 
-#### 3.2 Navigation clarity
-- Owner nav: Dashboard | Customers | Repairs | Billing | Settings
-- Tech nav: Dashboard | Repairs | Customers | Notifications
-- Customer nav: Dashboard | Repairs | Company
+#### 2.2 Cross-portal access control
+Simple rules, enforced consistently:
+- **Owners/managers** can access: `/owner/`, `/tech/`, `/app/` (full oversight)
+- **Technicians** can access: `/tech/` only
+- **Customers** can access: `/app/` only
+- **Anonymous** → `/login/`
+- **Denied** → redirect to user's correct portal (never to `/`)
 
-Remove confusing cross-portal links. Each portal should feel self-contained.
+#### 2.3 Kill `is_staff` and `is_superuser` as permission checks
+Replace every instance of:
+- `is_staff` → `is_tenant_admin(user)` (owner/manager OR Django staff)
+- `is_superuser or 'Technicians' in groups` → `has_technician_access(user)` or the context processor
 
-#### 3.3 Reduce portal-switching
-For owner-technicians (most common case for small shops), minimize the need to switch between /owner/ and /tech/. Options:
-- Merge the most-used tech features into the owner portal
-- Or: seamless portal switch with clear visual indicator
+This is a search-and-replace across templates AND views. No more dual identity system.
 
-#### 3.4 Error messages that help
-Replace generic "You don't have access" with specific guidance:
-- "You need to add yourself as a technician to access this. Go to Settings → Team."
-- "This page is for shop owners. You're logged in as a technician."
-
-**Deliverables:** Updated templates, navigation, dashboard.
+**Deliverables:** Test matrix — every user type logs in, accesses their portal, gets blocked from other portals correctly.
 
 ---
 
-### Phase 4: Billing & Invoice Fixes (MEDIUM)
-**Goal:** Invoice creation works reliably end-to-end.
+### Phase 3: Make It Feel Like One App
+**Goal:** The system feels coherent. No "two different apps" feeling.
 
-#### 4.1 Fix create_invoice error handling
-- Wrap all external calls (PDF, S3, Stripe) in try/except ✓ (done)
-- Return meaningful JSON errors ✓ (done)
-- Add tenant parameter to all service calls ✓ (done)
+#### 3.1 Owner sees tech data in their portal
+Add to owner dashboard or as separate owner pages:
+- **Customers page** (`/owner/customers/`) — list of customers, with "Add Customer" button. Uses `base_owner.html`.
+- **Repairs page** (`/owner/repairs/`) — list of all repairs across technicians. Uses `base_owner.html`.
+- **Customer detail** (`/owner/customers/<id>/`) — view customer repairs, create invoice.
 
-#### 4.2 Test invoice flow end-to-end
-- Create customer → create repair → complete repair → create invoice → verify PDF → verify S3 → verify email
+These can be thin wrappers around existing tech portal views/querysets, just with the owner template.
 
-#### 4.3 Owner-friendly invoicing
-Currently billing is API-only. Add a UI for:
-- Viewing uninvoiced repairs per customer
-- One-click "Generate Invoice" from owner dashboard
-- Invoice history with status
+#### 3.2 Simplify onboarding
+Current: 4 steps (Business Info → Add Technician → Add Customer → Done).
+Better: 3 steps (Business Info → Add First Customer → You're Ready).
 
-**Deliverables:** Working invoice flow, UI for common billing tasks.
+Why remove "Add Technician" step: The owner IS a technician (auto-created in Phase 1). They can invite additional techs later from Settings. For day-one, they just need a customer to bill.
+
+#### 3.3 Smart nav across portals
+When an owner navigates to a `/tech/` page (for any feature we haven't moved to `/owner/` yet), the page should:
+1. Show the owner nav (Dashboard | Customers | Repairs | Billing | Settings)
+2. Have a breadcrumb showing where they are
+3. Not feel like they "left" their dashboard
+
+Implementation: context processor checks user role → templates use `{% if is_owner_or_manager %}` to extend `base_owner.html` instead of `base.html`.
+
+#### 3.4 Consistent visual language
+All three portals should feel like the same app with different views:
+- Same font, colors, spacing
+- Same header style
+- Tech portal currently uses older `base.html` styling vs owner portal's modern Tailwind
+
+This is a bigger effort — may be a future phase.
+
+**Deliverables:** Owner has Customers and Repairs pages in their own portal. No portal-switching needed for daily work.
 
 ---
 
-### Phase 5: Testing & Deployment (HIGH)
-**Goal:** Changes actually reach the server Drake is testing on.
+### Phase 4: Billing That Works
+**Goal:** Owner can generate and send invoices from the UI.
 
-#### 5.1 Deployment pipeline
-- All fixes are on the `amelia` branch locally
-- Need to push to remote and deploy to AWS
-- Document the deployment process
+#### 4.1 Fix invoice creation (already done locally)
+- Error handling hardened ✓
+- Tenant parameter fixed ✓
+- PDF/S3/Stripe failures don't crash the endpoint ✓
 
-#### 5.2 Automated smoke tests
-Create a test script that validates all core flows:
-```bash
-# test_flows.sh
-# 1. Sign up new owner
-# 2. Complete onboarding
-# 3. Verify owner can access dashboard, tech portal, create customer
-# 4. Invite a technician
-# 5. Accept invite, verify tech access
-# 6. Create customer join link, join as customer
-# 7. Verify customer routing
-# 8. Create and complete a repair
-# 9. Generate invoice
-```
+#### 4.2 Invoice UI for owners
+- Owner's customer detail page shows "X uninvoiced repairs — Generate Invoice" button
+- Invoice history list with statuses
+- One-click "Send to customer" (email)
 
-#### 5.3 Regression checklist
-Before each deploy, verify:
-- [ ] Owner signup → onboarding → dashboard
-- [ ] Owner can create customer
-- [ ] Owner can create repair  
-- [ ] Tech invite → accept → login → /tech/
-- [ ] Customer join → login → /app/
-- [ ] Cross-portal access blocked correctly
-- [ ] Invoice creation doesn't 500
+#### 4.3 Payment recording
+- Owner can mark invoice as paid (cash, check, Stripe)
+- Dashboard shows outstanding balance across all customers
 
-**Deliverables:** Deploy script, smoke test, regression checklist.
+**Deliverables:** End-to-end flow: repairs done → click "Generate Invoice" → PDF created → email sent → payment recorded.
+
+---
+
+### Phase 5: Polish & Testing
+**Goal:** Confidence that it works. Prevention of regressions.
+
+#### 5.1 Smoke test script
+Automated script that tests every core flow:
+1. Sign up → onboarding → dashboard
+2. Create customer
+3. Create repair
+4. Complete repair
+5. Generate invoice
+6. Invite technician → accept → login
+7. Customer join → login → view repairs
+
+#### 5.2 Error handling audit
+Every view should:
+- Never 500 — always catch exceptions and show meaningful errors
+- Never redirect to an inaccessible page
+- Show a flash message explaining what happened
+
+#### 5.3 Deployment
+Push `amelia` branch → PR → deploy to AWS.
 
 ---
 
 ## Execution Order
 
-| Order | Phase | Est. Effort | Why This Order |
-|-------|-------|-------------|----------------|
-| 1 | 1.2 — Fix onboarding | 1 hour | Broken onboarding means broken users from the start |
-| 2 | 1.1 + 1.3 — Unified permissions | 2 hours | Foundation for everything else |
-| 3 | 1.4 + 1.5 — Middleware + redirects | 1 hour | Clean up the safety net |
-| 4 | 2.1-2.5 — End-to-end flows | 2 hours | Verify everything works together |
-| 5 | 5.1 — Deploy | 30 min | Get fixes to the real server |
-| 6 | 3.1-3.4 — UX simplification | 3 hours | Polish after stability |
-| 7 | 4.1-4.3 — Billing fixes | 2 hours | Lower priority, API works |
-| 8 | 5.2-5.3 — Testing | 1 hour | Prevent regressions |
+| Step | What | Why First | Time |
+|------|------|-----------|------|
+| **1** | Fix `create_tenant_with_owner()` to auto-create Technician | Owner's day-one is broken without this | 30 min |
+| **2** | Fix onboarding step 2 progression + make "add tech" optional | Prevents incomplete state | 30 min |
+| **3** | Fix all decorator redirects (never → home) | Stops the "logged out" feeling | 1 hr |
+| **4** | Add Customers + Repairs to owner nav | Owner can find things | 30 min |
+| **5** | Deploy to AWS | Get fixes to the real server | 30 min |
+| **6** | Fix login routing + cross-portal rules | All users land correctly | 1 hr |
+| **7** | Replace is_staff/is_superuser checks | Kill the dual identity system | 2 hrs |
+| **8** | Owner customer/repair pages (/owner/customers/, /owner/repairs/) | One-portal experience | 3 hrs |
+| **9** | Invoice UI | End-to-end billing | 3 hrs |
+| **10** | Smoke tests + error audit | Prevent regressions | 2 hrs |
 
-**Total estimated effort: ~12 hours of focused work**
+**Steps 1-5 fix the critical path: ~3 hours.**  
+**Steps 6-10 build the complete experience: ~11 hours.**  
+**Total: ~14 hours.**
 
 ---
 
-## What's Already Done
-
-Commits on `amelia` branch (not yet deployed):
-- `d43b5de0` — Middleware overhaul, customer routing, invoice tenant fix
+## What's Already Done (local, not deployed)
+- `d43b5de0` — Middleware overhaul, customer routing fix
 - `a3ae8f2f` — Invoice error handling hardened
-- `57148ae5` — Onboarding redirect, rate limit, LOGIN_URL
-- `50e846bc` — `@owner_or_manager_required` decorator, conditional tech portal nav
-
-These address many symptoms but not the root causes listed above. The plan above goes deeper.
+- `57148ae5` — Onboarding step 4 redirect, rate limit, LOGIN_URL
+- `50e846bc` — `@owner_or_manager_required`, conditional tech nav, owners recognized as techs in decorators
 
 ---
 
 ## Decision Points for Drake
 
-1. **Owner portal scope:** Should owners be able to create customers and repairs directly from /owner/, or is switching to /tech/ acceptable?
+1. **Auto-technician on signup?** I think every owner should automatically be a technician. It's the common case and eliminates the biggest bug. But if you see owners who DON'T do repairs (pure management), we could make it a clear choice during onboarding instead.
 
-2. **Portal merge:** For single-technician shops (owner IS the tech), should we merge the owner and tech portals into one view?
+2. **Keep or kill the "Tech Portal" link for owners?** My recommendation: kill it. Replace with Customers + Repairs links that go to the same data but feel like part of the owner dashboard. The separate tech portal is for employees only.
 
-3. **Deployment process:** Can I push to `amelia` branch and you deploy? Or should I prepare PRs for `main`?
-
-4. **Priority:** Is getting the current code deployed more urgent than the deeper refactor?
+3. **Priority — deploy now or build more first?** Steps 1-5 could be done and deployed today. Steps 6-10 are the bigger polish. Your call on which approach.
