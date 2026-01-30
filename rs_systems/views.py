@@ -101,7 +101,7 @@ def _route_authenticated_user(request, user):
     return None
 
 
-@ratelimit(key='ip', rate='10/h', method='POST')
+@ratelimit(key='ip', rate='30/h', method='POST')
 def login_router(request):
     """Unified login page — authenticates user and routes to appropriate portal."""
     from apps.tenants.models import TenantMembership

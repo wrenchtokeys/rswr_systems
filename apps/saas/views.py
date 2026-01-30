@@ -252,6 +252,12 @@ def onboarding_view(request):
             request.session.pop('onboarding_step', None)
             return redirect('owner_dashboard')
 
+    # Step 4 GET = onboarding complete — redirect straight to dashboard
+    if step == '4':
+        request.session.pop('onboarding_step', None)
+        messages.success(request, "Setup complete! Welcome to your dashboard.")
+        return redirect('owner_dashboard')
+
     # Build context for GET
     context = {
         'step': step,
