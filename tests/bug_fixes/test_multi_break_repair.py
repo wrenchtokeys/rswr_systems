@@ -17,6 +17,7 @@ from apps.technician_portal.forms import RepairForm
 from apps.customer_portal.models import CustomerRepairPreference, CustomerUser, RepairApproval
 from apps.customer_portal.pricing_models import CustomerPricing
 from core.models import Customer
+from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from apps.technician_portal.services.batch_pricing_service import (
     calculate_batch_pricing,
     calculate_batch_total,
@@ -621,10 +622,21 @@ class MultiBreakTechnicalFieldsTestCase(TestCase):
 
     def setUp(self):
         """Set up test data"""
+        # Create tenant for permission system
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial', defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True}
+        )
+        self.owner_user = User.objects.create_user(username='owner', password='testpass123')
+        self.tenant = Tenant.objects.create(
+            name='Test Shop', slug='test-shop', subdomain='test-shop',
+            owner=self.owner_user, plan='trial', subscription_plan=plan,
+        )
+
         self.customer = Customer.objects.create(
             name="Tech Field Corp",
             address="456 Tech St",
-            email="techfields@example.com"
+            email="techfields@example.com",
+            tenant=self.tenant,
         )
 
         # Create technician user
@@ -636,8 +648,10 @@ class MultiBreakTechnicalFieldsTestCase(TestCase):
             user=self.tech_user,
             phone_number='555-0200',
             is_manager=False,
-            can_override_pricing=False
+            can_override_pricing=False,
+            tenant=self.tenant,
         )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.tech_user, role='technician')
 
         # Create manager user
         self.manager_user = User.objects.create_user(
@@ -649,8 +663,10 @@ class MultiBreakTechnicalFieldsTestCase(TestCase):
             phone_number='555-0201',
             is_manager=True,
             can_override_pricing=True,
-            approval_limit=Decimal('200.00')
+            approval_limit=Decimal('200.00'),
+            tenant=self.tenant,
         )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.manager_user, role='manager')
 
         # Login helper
         self.client.login(username='techuser', password='testpass123')
@@ -918,12 +934,23 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
     """Test customer portal batch approval functionality"""
 
     def setUp(self):
+        # Create tenant for permission system
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial', defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True}
+        )
+        self.owner_user = User.objects.create_user(username='owner', password='testpass123')
+        self.tenant = Tenant.objects.create(
+            name='Test Shop', slug='test-shop', subdomain='test-shop',
+            owner=self.owner_user, plan='trial', subscription_plan=plan,
+        )
+
         # Create test customer
-        self.customer = Customer.objects.create(name='Test Customer')
+        self.customer = Customer.objects.create(name='Test Customer', tenant=self.tenant)
 
         # Create test technician user
         self.tech_user = User.objects.create_user(username='techuser', password='testpass123')
-        self.technician = Technician.objects.create(user=self.tech_user, phone_number='555-1234')
+        self.technician = Technician.objects.create(user=self.tech_user, phone_number='555-1234', tenant=self.tenant)
+        TenantMembership.objects.create(tenant=self.tenant, user=self.tech_user, role='technician')
 
         # Create customer user for portal access
         self.customer_user_account = User.objects.create_user(username='customeruser', password='testpass123')
@@ -931,6 +958,7 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
             user=self.customer_user_account,
             customer=self.customer
         )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.customer_user_account, role='viewer')
 
         # Create a batch of 3 repairs
         self.batch_id = uuid.uuid4()
@@ -946,7 +974,8 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
                 technician=self.technician,
                 repair_batch_id=self.batch_id,
                 break_number=i + 1,
-                total_breaks_in_batch=3
+                total_breaks_in_batch=3,
+                tenant=self.tenant,
             )
             self.repairs.append(repair)
 
@@ -1109,12 +1138,23 @@ class TechnicianPortalBatchTestCase(TestCase):
     """Test technician portal batch functionality"""
 
     def setUp(self):
+        # Create tenant for permission system
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial', defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True}
+        )
+        self.owner_user = User.objects.create_user(username='owner', password='testpass123')
+        self.tenant = Tenant.objects.create(
+            name='Test Shop', slug='test-shop-batch', subdomain='test-shop-batch',
+            owner=self.owner_user, plan='trial', subscription_plan=plan,
+        )
+
         # Create test customer
-        self.customer = Customer.objects.create(name='Test Customer')
+        self.customer = Customer.objects.create(name='Test Customer', tenant=self.tenant)
 
         # Create test technician user
         self.tech_user = User.objects.create_user(username='techuser', password='testpass123')
-        self.technician = Technician.objects.create(user=self.tech_user, phone_number='555-1234')
+        self.technician = Technician.objects.create(user=self.tech_user, phone_number='555-1234', tenant=self.tenant)
+        TenantMembership.objects.create(tenant=self.tenant, user=self.tech_user, role='technician')
 
         # Create a batch of 3 repairs
         self.batch_id = uuid.uuid4()
@@ -1130,7 +1170,8 @@ class TechnicianPortalBatchTestCase(TestCase):
                 technician=self.technician,
                 repair_batch_id=self.batch_id,
                 break_number=i + 1,
-                total_breaks_in_batch=3
+                total_breaks_in_batch=3,
+                tenant=self.tenant,
             )
             self.repairs.append(repair)
 
