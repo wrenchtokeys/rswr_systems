@@ -68,9 +68,27 @@ export LOCAL_DATABASE_URL="postgresql://rs_local:localpass123@localhost:5432/rs_
 ```bash
 # Skip the PostgreSQL setup entirely. Just set:
 export LOCAL_DATABASE_URL="sqlite:///db.sqlite3"
+
+# Or simply unset the variable — Django defaults to SQLite automatically:
+unset LOCAL_DATABASE_URL
 ```
 
 > **Note:** SQLite works for quick local testing but doesn't support all PostgreSQL features (e.g., `JSONField` lookups, concurrent writes). Use PostgreSQL for anything beyond basic dev work.
+
+**Troubleshooting: PostgreSQL connection errors**
+
+If you see `Connection refused` or `password authentication failed` when running `migrate`, PostgreSQL is either not running or not configured with the expected user. The fastest fix:
+
+```bash
+unset LOCAL_DATABASE_URL
+python manage.py migrate
+```
+
+This bypasses PostgreSQL entirely and uses SQLite. To make it permanent, remove any `export LOCAL_DATABASE_URL=postgresql://...` line from your `~/.zshrc` or `~/.bashrc`, or replace it with:
+
+```bash
+export LOCAL_DATABASE_URL="sqlite:///db.sqlite3"
+```
 
 ### 4. Run migrations & seed data
 
