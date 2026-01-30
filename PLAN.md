@@ -2,6 +2,7 @@
 
 **Author:** Amelia  
 **Date:** January 30, 2026  
+**Status:** Steps 1–5 COMPLETE ✅ | Step 6 (deploy) pending
 
 ---
 
@@ -51,7 +52,7 @@ That's it. Not a rewrite. Not a new URL structure. Not a capabilities framework.
 
 ## The Actual Plan
 
-### Step 1: One Permission Function (4 hours)
+### Step 1: One Permission Function (4 hours) ✅ DONE
 
 Create `common/auth.py` with one function:
 
@@ -90,7 +91,7 @@ Then replace all 182 permission checks. Not new logic — just routing the exist
 
 **What this fixes:** Owner clicks "New Customer" → `@requires('customers')` → checks TenantMembership → owner role → allowed. Done.
 
-### Step 2: One Base Template (6 hours)
+### Step 2: One Base Template (6 hours) ✅ DONE
 
 Don't build a new template from scratch. Take `base_owner.html` — it's already good — and make it THE base template for everyone who works at the shop.
 
@@ -123,7 +124,7 @@ That's ~25 template files. Search and replace. The content doesn't change — ju
 
 **What this fixes:** Owner clicks "New Customer" → lands on customer_form.html → sees their normal nav (Dashboard, Repairs, Customers, etc.) → same styling → feels like the same app.
 
-### Step 3: Fix Signup & Onboarding (2 hours)
+### Step 3: Fix Signup & Onboarding (2 hours) ✅ DONE
 
 **Signup:**
 In `create_tenant_with_owner()`, after creating the TenantMembership, also create a Technician profile and add to Technicians group. Every owner starts as a tech. The Technicians group and Technician model are still used by existing code throughout — we're not removing them, just making sure they exist.
@@ -144,7 +145,7 @@ Or even simpler: cut onboarding to 2 steps:
 
 The setup checklist on the dashboard handles the rest (add customer, log repair, etc.) by linking to real pages. No more wizard that can fail silently.
 
-### Step 4: Fix Redirects (1 hour)
+### Step 4: Fix Redirects (1 hour) ✅ DONE
 
 Audit every `return redirect('home')` for authenticated users. Replace with:
 
@@ -165,7 +166,7 @@ grep -rn "redirect('home')" --include='*.py' | grep -v venv
 
 Replace each one.
 
-### Step 5: Owner Nav Update (1 hour)
+### Step 5: Owner Nav Update (1 hour) ✅ DONE
 
 The owner nav currently says: `Dashboard | Billing | Settings | [Tech Portal]`
 
@@ -178,7 +179,7 @@ These link to existing pages:
 
 The URLs stay the same. We're just putting them in the nav where the owner expects them.
 
-### Step 6: Deploy (1 hour)
+### Step 6: Deploy (1 hour) ⏳ NEXT
 
 Push. Merge to main or deploy from amelia. Get it on AWS.
 
@@ -212,15 +213,18 @@ After ~15 hours of work:
 
 ## Schedule
 
-| Day | What | Hours |
-|-----|------|-------|
-| 1 | Step 1: Permission function + decorator + replace checks | 4 |
-| 1 | Step 3: Fix signup (auto-tech) + onboarding (step progression) | 2 |
-| 2 | Step 2: base_app.html + migrate tech templates | 6 |
-| 2 | Step 4: Fix redirects | 1 |
-| 2 | Step 5: Owner nav update | 1 |
-| 3 | Step 6: Test everything + deploy | 1-2 |
-| **Total** | | **~15 hours** |
+| Day | What | Hours | Status |
+|-----|------|-------|--------|
+| 1 | Step 1: Permission function + decorator + replace checks | 4 | ✅ Done |
+| 1 | Step 3: Fix signup (auto-tech) + onboarding (step progression) | 2 | ✅ Done |
+| 1 | Step 2: base_app.html + migrate tech templates | 6 | ✅ Done |
+| 1 | Step 4: Fix redirects | 1 | ✅ Done |
+| 1 | Step 5: Owner nav update | 1 | ✅ Done |
+| - | Step 6: Test everything + deploy | 1-2 | ⏳ Next |
+| **Total** | | **~15 hours** | **5/6 done** |
+
+**Completed:** January 30, 2026 — all pre-deploy steps done in one session.
+**28 tests passing** across permissions, templates, signup, redirects, and navigation.
 
 Three days of focused work. Not three weeks. Not sixty hours.
 
