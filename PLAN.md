@@ -1,311 +1,640 @@
-# RS Systems — Stability & UX Plan
+# RS Systems — Complete Redesign Plan
 
 **Author:** Amelia  
 **Date:** January 30, 2026  
-**Status:** DRAFT — awaiting Drake's review
+**Status:** PLAN — for Drake's review before execution
 
 ---
 
-## Who Uses This System?
+## Vision
 
-### The Shop Owner (Drake's #1 customer)
-A windshield repair shop owner. Probably runs a small operation — 1 to 5 people. They're often the primary technician too. They signed up because they're tired of paper and texts.
+RS Systems should be the Shopify of windshield repair. A shop owner signs up, adds their first customer in under 5 minutes, and never has to read a manual. Every screen should be obvious. Every action should be one or two clicks away.
 
-**What they want to do:**
-1. Add a customer (a trucking company, a dealership)
-2. Log a repair they did
-3. See what repairs are pending, completed, owed
-4. Send an invoice
-5. Eventually: invite a tech to help them
-
-**What they DON'T want to think about:**
-- "Portals" — they don't care what URL they're on
-- "Access control" — they own the shop, they can do everything
-- "Switching contexts" — one interface, everything accessible
-
-**What actually happens today:**
-1. They sign up → onboarding wizard → lands on owner dashboard ✓
-2. Dashboard has "New Customer" button — great! They click it.
-3. **They get bounced to the home page. Looks like they're logged out.** ✗
-4. They try "New Repair" — same thing. ✗
-5. They try "Tech Portal" in the nav — same thing. ✗
-6. They can't do the basic thing they signed up to do.
-
-**Why it fails:** The "New Customer" button links to `/tech/customers/create/` which requires technician access. The owner doesn't have it because the onboarding silently failed to create their technician profile. Even if it DID work, the page shows the wrong navigation (customer portal nav instead of owner nav).
+**Design principles:**
+1. **5-minute time to value** — signup to first logged repair in under 5 minutes
+2. **One interface per role** — no portal switching, no confusion
+3. **Progressive disclosure** — simple by default, powerful when you dig in
+4. **Mobile-first for field work** — techs are in parking lots, not at desks
+5. **Zero dead ends** — every click leads somewhere useful or explains why not
 
 ---
 
-### The Technician (employee)
-Gets an invite from the shop owner. Sets password, logs in. Needs a focused work interface.
+## The Three Users
 
-**What they want:**
-1. See their assigned repairs
-2. Update repair status (completed, in progress)
-3. Create new repairs in the field
-4. Look up customer info
+### 1. Shop Owner / Manager
+*"I run the shop. I need to see everything and do everything."*
 
-**What they DON'T need:**
-- Billing settings, pricing, team management
-- Business analytics, revenue numbers
-- Anything about running the shop
+This is Drake's primary customer. Usually a small operation (1-5 people). The owner is almost always the first technician too. They signed up to replace paper and texts.
 
-**Current experience:** Works OK if the invite flow succeeds. Login routes to `/tech/`. But the invite flow can fail silently too (invite token issues).
+**Their day:**
+- Morning: Check what repairs are scheduled, any new customer requests
+- During the day: Log repairs as they do them, take photos, note damage types
+- End of day: Review completed work, send invoices, check payments
+- Weekly: Look at revenue, manage team, follow up on unpaid invoices
 
----
+**What they need on screen:**
+```
+┌─────────────────────────────────────────────────────┐
+│  RS Systems          Customers  Repairs  Invoices   │
+│  [Shop Name]                          Settings  [U] │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  Good morning, Drake!                               │
+│                                                     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐            │
+│  │ 12       │ │ 3        │ │ $4,250   │            │
+│  │ Repairs  │ │ Pending  │ │ Owed     │            │
+│  │ this mo  │ │ approval │ │ to you   │            │
+│  └──────────┘ └──────────┘ └──────────┘            │
+│                                                     │
+│  [+ New Repair]  [+ New Customer]  [+ Invoice]      │
+│                                                     │
+│  Today's Repairs                                    │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ EOS Trucking  │ Unit 847  │ Star chip │ ✓   │    │
+│  │ EOS Trucking  │ Unit 302  │ Bullseye  │ ...  │    │
+│  │ Penske        │ Unit 1205 │ Crack     │ ○   │    │
+│  └─────────────────────────────────────────────┘    │
+│                                                     │
+│  Outstanding Invoices                               │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ INV-001  │ EOS Trucking  │ $1,250 │ 15 days │    │
+│  │ INV-003  │ West Tree     │ $375   │ OVERDUE │    │
+│  └─────────────────────────────────────────────┘    │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
 
-### The Customer (fleet manager)
-Manages a fleet of trucks. Gets their windshields repaired by Drake's shop.
+**Navigation:** `Dashboard | Customers | Repairs | Invoices | Settings`
 
-**What they want:**
-1. See their repair history
-2. Know what's pending, what's done
-3. Approve/deny repair requests
-4. View and pay invoices
+That's it. Five items. Everything they need.
 
-**Current experience:** Join link works. Portal works. But re-login routes them to the owner dashboard instead of their customer portal. (Fixed in local code, not deployed.)
+- **Dashboard** = overview + quick actions + today's work + alerts
+- **Customers** = list of all customers, click to see their repairs & invoices, add new
+- **Repairs** = all repairs, filter by status/customer/tech/date, add new
+- **Invoices** = all invoices, create new, track payments, send reminders
+- **Settings** = business info, team management (invite techs), pricing rules, notifications, billing/plan
 
----
+No "Tech Portal". No "Owner Dashboard" vs "Repair Management". It's all one thing.
 
-## What's Actually Wrong
+### 2. Technician (Employee)
+*"I fix windshields. Show me what I need to do today."*
 
-### Problem 1: Owner Can't Do Anything After Signup
-The owner dashboard looks great — revenue cards, usage meters, quick action buttons. But every quick action button leads to a dead end.
+Gets invited by the shop owner. Works in the field. Needs a focused, mobile-friendly interface.
 
-**Root cause chain:**
-1. Owner signs up → `create_tenant_with_owner()` creates user + tenant + owner membership. **No Technician profile. Not in Technicians group. Not is_staff.** Just a regular user with an owner TenantMembership.
-2. Onboarding step 2 says "Add yourself as a technician" with `add_self` checked by default.
-3. Owner fills out the form and submits.
-4. **BUG:** Even if the form has a validation error, the code advances to step 3. The Technician profile may never be created. The owner doesn't know.
-5. Onboarding completes. Owner thinks they're set up.
-6. Owner clicks "New Customer" → hits `@technician_required` → decorator checks:
-   - `is_staff`? No. 
-   - In Technicians group? No (onboarding failed silently).
-   - Has Technician profile? No (same).
-   - Owner/manager TenantMembership? Yes — but only in my unreleased local code.
-7. Decorator rejects them → redirects to `home` (the marketing landing page) → owner thinks they're logged out.
+**Their day:**
+- Morning: Check assigned repairs for today
+- At the job: Pull up customer info, log repair, take photos, mark complete
+- Between jobs: Check for new assignments, customer requests to review
 
-**Even if onboarding succeeds:** The tech portal pages use `base.html` which shows the wrong navigation. It checks `is_superuser or 'Technicians' in groups` to decide which nav to show. SaaS owners who aren't superusers and whose Technicians group membership was silently skipped see the CUSTOMER navigation on tech portal pages. Total confusion.
+**What they need on screen:**
+```
+┌─────────────────────────────────────────────────────┐
+│  RS Systems                              [🔔] [U]   │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  My Repairs Today  (3)                              │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ EOS Trucking  │ Unit 847  │ [Start]         │    │
+│  │ Penske        │ Unit 1205 │ [Start]         │    │
+│  │ West Tree     │ Unit 009  │ [Start]         │    │
+│  └─────────────────────────────────────────────┘    │
+│                                                     │
+│  [+ Log New Repair]                                 │
+│                                                     │
+│  Recent Completed                                   │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ EOS Trucking  │ Unit 302  │ Done today      │    │
+│  │ AP&T          │ Unit 155  │ Done yesterday  │    │
+│  └─────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────┘
+```
 
-### Problem 2: Three Portals Is One Too Many (for owners)
-The system has:
-- `/owner/` — Owner dashboard (billing, settings, analytics)
-- `/tech/` — Technician portal (repairs, customers, work)
-- `/app/` — Customer portal (their repairs, invoices)
+**Navigation:** `My Repairs | Customers | Notifications`
 
-For a technician or customer, this makes sense — they each have a focused view. But for the **owner**, having to switch between `/owner/` (to see revenue) and `/tech/` (to add a customer) is confusing. The owner OWNS everything — they should see it all in one place.
+Three items. That's all a tech needs. Managers get a fourth: `Team`.
 
-### Problem 3: Access Control Is Checking 5 Different Things
-The system has too many ways to identify "what can this user do":
+### 3. Customer (Fleet Manager)
+*"Show me what's been repaired on my trucks and what I owe."*
 
-| Check | Where it's used | What it means |
-|-------|----------------|---------------|
-| `user.is_staff` | `admin_required`, `base.html` nav, various views | Django admin user — SaaS owners DON'T have this |
-| `user.is_superuser` | `base.html` nav, logo URL | Django superuser — only the site admin |
-| `user.groups (Technicians)` | `base.html` nav, `has_technician_access()` | Added during onboarding/invite — can fail silently |
-| `Technician` model exists | `has_technician_access()`, `technician_required` | Created during onboarding — can fail silently |
-| `TenantMembership.role` | Middleware, `_get_owner_tenant()`, `owner_or_manager_required` | The actual role system — most reliable |
-| `CustomerUser` model exists | `customer_required`, middleware | Links Django user to a Customer record |
+Gets a link from the shop. Checks in occasionally to see repair status and pay invoices.
 
-These checks disagree constantly. The middleware says "allowed", the decorator says "denied". The nav shows tech links, but the pages reject the user.
+**What they need on screen:**
+```
+┌─────────────────────────────────────────────────────┐
+│  RS Systems                              [🔔] [U]   │
+│  Rockstar Windshield Repair                         │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  EOS Trucking                                       │
+│                                                     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐            │
+│  │ 47       │ │ 2        │ │ $625     │            │
+│  │ Repairs  │ │ Pending  │ │ Balance  │            │
+│  │ total    │ │ approval │ │ due      │            │
+│  └──────────┘ └──────────┘ └──────────┘            │
+│                                                     │
+│  Needs Your Attention                               │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ Unit 847  │ Star chip  │ [Approve] [Deny]   │    │
+│  │ Unit 302  │ Bullseye   │ [Approve] [Deny]   │    │
+│  └─────────────────────────────────────────────┘    │
+│                                                     │
+│  Recent Repairs                                     │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ Unit 1205 │ Completed Jan 28 │ $45          │    │
+│  │ Unit 009  │ In Progress      │ $45          │    │
+│  └─────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────┘
+```
 
-### Problem 4: "Redirect to Home" = Perceived Logout
-When any access check fails, the user gets sent to `/` — the marketing landing page. This page is designed for anonymous visitors. An authenticated user landing here thinks the system logged them out. It's the worst possible error UX.
+**Navigation:** `Dashboard | Repairs | Invoices | Company`
 
----
-
-## The Plan
-
-### Phase 1: Make the Owner's Day-One Work (TOP PRIORITY)
-**Goal:** Owner signs up, adds a customer, creates a repair. No errors. No confusion. 30 minutes or less.
-
-This is the critical path. Nothing else matters if the owner can't do basic work.
-
-#### 1.1 Fix onboarding so the owner IS a technician
-After signup, the owner needs to be able to do tech work. Period. Don't make them opt in — just do it.
-
-**Changes:**
-- In `create_tenant_with_owner()`: automatically create a Technician profile and add to Technicians group. Every owner is also their shop's first technician.
-- Remove the confusing "Add yourself as a technician" checkbox from onboarding step 2. Instead, step 2 becomes "Add another technician" (optional — skip if they're solo).
-- Fix the step progression bug: only advance to next step on successful save.
-
-**Why:** In the real world, every small shop owner IS their first technician. Making this automatic eliminates the silent failure and the confused state.
-
-#### 1.2 Fix tech portal pages to show correct nav for owners
-When an owner visits a `/tech/` page (via Quick Actions buttons on their dashboard), they should see their owner navigation — not the old tech/customer nav from `base.html`.
-
-**Changes:**
-- Tech portal templates that owners will commonly use (customer_form, repair_form, repair_list, customer_list) should detect the owner and show owner nav.
-- Simplest approach: these templates extend `base.html` → create a new template tag or context variable that picks the right base template based on user role.
-- Or: move the most-used forms (create customer, create repair) into the owner portal namespace so they use `base_owner.html` natively.
-
-#### 1.3 Never redirect to home
-No authenticated user should ever land on the marketing page as a result of an access denied.
-
-**Changes:**
-- `technician_required`: redirect to `owner_dashboard` for owners, `customer_dashboard` for customers
-- `customer_required`: redirect to `owner_dashboard` for owners, `technician_dashboard` for techs
-- `owner_or_manager_required`: redirect to `technician_dashboard` for techs, `customer_dashboard` for customers
-- Middleware: same pattern
-- Remove `return redirect('home')` from every decorator for authenticated users
-
-#### 1.4 Owner nav that makes sense
-Current owner nav: `Dashboard | Billing | Settings | [Tech Portal]`
-
-Better owner nav: `Dashboard | Customers | Repairs | Billing | Settings`
-
-"Customers" links to the customer list (currently at `/tech/customers/`).
-"Repairs" links to the repair list (currently at `/tech/repairs/`).
-These pages already exist — we're just putting them in the nav where the owner expects them.
-
-Remove the "Tech Portal" link entirely. The owner doesn't need a separate portal — they have everything.
-
-**Deliverables:** Owner signs up → completes onboarding → clicks "New Customer" → form loads → saves → back to dashboard. No errors, no wrong nav, no dead ends.
-
----
-
-### Phase 2: Fix Every User's Login Experience
-**Goal:** Every user type logs in and lands in the right place. Every time.
-
-#### 2.1 Login routing (already fixed locally, needs deploy)
-- Customers → `/app/`
-- Technicians → `/tech/`
-- Owners/managers → `/owner/`
-- Customer with viewer TenantMembership → check CustomerUser first → `/app/`
-
-#### 2.2 Cross-portal access control
-Simple rules, enforced consistently:
-- **Owners/managers** can access: `/owner/`, `/tech/`, `/app/` (full oversight)
-- **Technicians** can access: `/tech/` only
-- **Customers** can access: `/app/` only
-- **Anonymous** → `/login/`
-- **Denied** → redirect to user's correct portal (never to `/`)
-
-#### 2.3 Kill `is_staff` and `is_superuser` as permission checks
-Replace every instance of:
-- `is_staff` → `is_tenant_admin(user)` (owner/manager OR Django staff)
-- `is_superuser or 'Technicians' in groups` → `has_technician_access(user)` or the context processor
-
-This is a search-and-replace across templates AND views. No more dual identity system.
-
-**Deliverables:** Test matrix — every user type logs in, accesses their portal, gets blocked from other portals correctly.
+Four items. Clean, read-mostly interface.
 
 ---
 
-### Phase 3: Make It Feel Like One App
-**Goal:** The system feels coherent. No "two different apps" feeling.
+## What's Wrong Today (Structural)
 
-#### 3.1 Owner sees tech data in their portal
-Add to owner dashboard or as separate owner pages:
-- **Customers page** (`/owner/customers/`) — list of customers, with "Add Customer" button. Uses `base_owner.html`.
-- **Repairs page** (`/owner/repairs/`) — list of all repairs across technicians. Uses `base_owner.html`.
-- **Customer detail** (`/owner/customers/<id>/`) — view customer repairs, create invoice.
+### 1. Three Portals Instead of Three Roles
+The system was built as three separate mini-apps:
+- `/owner/` — SaaS management (9 views, `base_owner.html` template)
+- `/tech/` — Repair work (25+ views, `base.html` template)
+- `/app/` — Customer view (20+ views, `base_customer.html` template)
 
-These can be thin wrappers around existing tech portal views/querysets, just with the owner template.
+Each has its own base template, its own styling, its own nav, its own access control logic. They don't share anything.
 
-#### 3.2 Simplify onboarding
-Current: 4 steps (Business Info → Add Technician → Add Customer → Done).
-Better: 3 steps (Business Info → Add First Customer → You're Ready).
+**The problem:** The owner needs features from BOTH `/owner/` and `/tech/`. But switching between them changes the entire UI — different nav, different styling, different feel. And the access control doesn't reliably let them cross.
 
-Why remove "Add Technician" step: The owner IS a technician (auto-created in Phase 1). They can invite additional techs later from Settings. For day-one, they just need a customer to bill.
+**The fix:** The owner should have ONE interface that includes everything they need. Customers and Repairs should be part of the owner's nav, not buried in a separate portal.
 
-#### 3.3 Smart nav across portals
-When an owner navigates to a `/tech/` page (for any feature we haven't moved to `/owner/` yet), the page should:
-1. Show the owner nav (Dashboard | Customers | Repairs | Billing | Settings)
-2. Have a breadcrumb showing where they are
-3. Not feel like they "left" their dashboard
+### 2. Five Identity Systems
+The codebase checks "who is this user" in five different, conflicting ways:
 
-Implementation: context processor checks user role → templates use `{% if is_owner_or_manager %}` to extend `base_owner.html` instead of `base.html`.
+| System | Source of truth | Problem |
+|--------|----------------|---------|
+| `user.is_staff` | Django admin flag | SaaS owners don't have it |
+| `user.is_superuser` | Django superuser flag | Only site admin, but used in template nav |
+| `user.groups` | Django groups ("Technicians") | Set during onboarding — can fail silently |
+| Model records | `Technician`, `CustomerUser` exist? | Created during onboarding — can fail silently |
+| `TenantMembership.role` | Tenant role system | The actual intended authority — but not always checked |
 
-#### 3.4 Consistent visual language
-All three portals should feel like the same app with different views:
-- Same font, colors, spacing
-- Same header style
-- Tech portal currently uses older `base.html` styling vs owner portal's modern Tailwind
+**The fix:** `TenantMembership.role` is the single source of truth. Everything else is supplementary data. One function: `get_user_permissions(user, tenant)` → returns what they can do.
 
-This is a bigger effort — may be a future phase.
+### 3. Onboarding That Creates Broken Users
+The 4-step wizard has a critical bug: form validation failures silently advance to the next step. The owner thinks they completed setup, but their Technician profile was never created. Then nothing works.
 
-**Deliverables:** Owner has Customers and Repairs pages in their own portal. No portal-switching needed for daily work.
+Beyond the bug, the wizard asks the wrong questions at the wrong time:
+- Step 2 asks "Add a technician" — confusing. Am I the technician? Do I add someone else? What if I just want to try the app first?
+- Step 3 asks "Add a customer" — better, but what if I don't have customer details handy?
 
----
+**The fix:** Minimal onboarding. Get the owner to their dashboard fast. Let them discover features naturally.
 
-### Phase 4: Billing That Works
-**Goal:** Owner can generate and send invoices from the UI.
+### 4. Templates Are Three Different Apps
+- `base.html` — old styling, `<header>` with `<ul>` nav, loads Tailwind via CDN in individual templates
+- `base_owner.html` — modern Tailwind, sticky nav, dropdown menus, consistent styling
+- `base_customer.html` — modern Tailwind, similar to owner but different color scheme
 
-#### 4.1 Fix invoice creation (already done locally)
-- Error handling hardened ✓
-- Tenant parameter fixed ✓
-- PDF/S3/Stripe failures don't crash the endpoint ✓
+The tech portal templates extend `base.html` but then load Tailwind via `<script>` tag in `extra_css` blocks. This means every tech page has different Tailwind config. The nav in `base.html` checks `is_superuser` and group membership to decide what to show — wrong for SaaS users.
 
-#### 4.2 Invoice UI for owners
-- Owner's customer detail page shows "X uninvoiced repairs — Generate Invoice" button
-- Invoice history list with statuses
-- One-click "Send to customer" (email)
+**The fix:** One unified base template system. Role determines which nav to show, not which base template to extend.
 
-#### 4.3 Payment recording
-- Owner can mark invoice as paid (cash, check, Stripe)
-- Dashboard shows outstanding balance across all customers
+### 5. Dead-End Redirects
+When access is denied, users land on the marketing homepage (`/`). For an authenticated user, this page has no navigation to get back to their dashboard. It looks and feels like a logout. Devastating UX.
 
-**Deliverables:** End-to-end flow: repairs done → click "Generate Invoice" → PDF created → email sent → payment recorded.
+**The fix:** Authenticated users should NEVER see the marketing page as a result of navigation. Access denied = redirect to their portal with an error message.
 
 ---
 
-### Phase 5: Polish & Testing
-**Goal:** Confidence that it works. Prevention of regressions.
+## The Architecture
 
-#### 5.1 Smoke test script
-Automated script that tests every core flow:
-1. Sign up → onboarding → dashboard
-2. Create customer
-3. Create repair
-4. Complete repair
-5. Generate invoice
-6. Invite technician → accept → login
-7. Customer join → login → view repairs
+### URL Structure
 
-#### 5.2 Error handling audit
-Every view should:
-- Never 500 — always catch exceptions and show meaningful errors
-- Never redirect to an inaccessible page
-- Show a flash message explaining what happened
+```
+# Public (no auth)
+/                           → Marketing landing page
+/signup/                    → Sign up
+/login/                     → Log in
+/pricing/                   → Pricing page
+/join/<slug>/               → Customer self-signup for a shop
 
-#### 5.3 Deployment
-Push `amelia` branch → PR → deploy to AWS.
+# Owner / Manager (auth + owner/manager role)
+/dashboard/                 → Owner dashboard (overview, stats, quick actions)
+/customers/                 → Customer list + search
+/customers/new/             → Create customer
+/customers/<id>/            → Customer detail (repairs, invoices, balance)
+/repairs/                   → All repairs (filterable by status, customer, tech, date)
+/repairs/new/               → Create repair
+/repairs/<id>/              → Repair detail (status, photos, history)
+/invoices/                  → Invoice list
+/invoices/new/<customer>/   → Create invoice for customer
+/invoices/<id>/             → Invoice detail
+/team/                      → Team management (invite, roles, abilities)
+/team/invite/               → Invite a technician
+/settings/                  → Business settings (info, pricing rules, notifications)
+/settings/billing/          → Subscription billing (plan, payment method)
+/setup/                     → Post-signup setup wizard (minimal)
+
+# Technician (auth + technician role)
+/tech/                      → Tech dashboard (my repairs today)
+/tech/repairs/              → My repair list
+/tech/repairs/new/          → Log a repair
+/tech/repairs/<id>/         → Repair detail
+/tech/customers/            → Customer list (read-only for regular techs)
+/tech/notifications/        → Notifications
+/tech/profile/              → My profile
+
+# Customer (auth + customer role)
+/my/                        → Customer dashboard (their shop's repairs)
+/my/repairs/                → Their repair list
+/my/repairs/<id>/           → Repair detail + approve/deny
+/my/invoices/               → Their invoices
+/my/company/                → Company info edit
+/my/notifications/          → Notifications
+
+# API (unchanged)
+/api/                       → REST API
+/api/billing/               → Billing API
+/admin/                     → Django admin (superusers only)
+```
+
+**Key changes:**
+- Owner pages move from `/owner/` to root-level (`/dashboard/`, `/customers/`, `/repairs/`, etc.) — these are the primary experience
+- Customer portal moves from `/app/` to `/my/` — clearer meaning ("my stuff")
+- Tech portal stays at `/tech/` — it's the employee interface
+- Owner can access `/tech/` pages for oversight, but shouldn't need to for daily work
+
+### Template Architecture
+
+```
+templates/
+  base_app.html              → Shared foundation (head, fonts, Tailwind, body wrapper)
+  
+  layouts/
+    nav_owner.html           → Owner nav: Dashboard | Customers | Repairs | Invoices | Settings
+    nav_tech.html            → Tech nav: My Repairs | Customers | Notifications
+    nav_customer.html        → Customer nav: Dashboard | Repairs | Invoices | Company
+    shell.html               → Full page shell (uses nav_*.html based on user role)
+  
+  owner/                     → Owner-specific page content
+    dashboard.html
+    customer_list.html
+    customer_detail.html
+    customer_form.html
+    repair_list.html
+    repair_detail.html
+    repair_form.html
+    invoice_list.html
+    invoice_detail.html
+    invoice_create.html
+    team.html
+    settings.html
+    settings_billing.html
+    setup.html               → Post-signup setup (replaces onboarding)
+  
+  tech/                      → Technician-specific page content
+    dashboard.html
+    repair_list.html
+    repair_detail.html
+    repair_form.html
+    customer_list.html
+    notifications.html
+    profile.html
+  
+  customer/                  → Customer-specific page content
+    dashboard.html
+    repair_list.html
+    repair_detail.html
+    invoice_list.html
+    company.html
+    notifications.html
+  
+  public/                    → Unauthenticated pages
+    landing.html
+    signup.html
+    login.html
+    pricing.html
+    join.html                → Customer self-signup
+    invite_accept.html
+```
+
+**One base template** (`base_app.html`) with **one shell** (`shell.html`) that includes the right nav based on user role. No more three different styling systems.
+
+### Permission Model
+
+**Single source of truth:** `TenantMembership.role`
+
+```python
+# One function to rule them all
+def get_user_role(user, tenant=None):
+    """
+    Returns the user's effective role for the given tenant.
+    
+    Priority: owner > manager > technician > customer > viewer > None
+    """
+    if not user.is_authenticated:
+        return None
+    
+    if user.is_superuser:
+        return 'superadmin'
+    
+    # Get membership
+    membership = TenantMembership.objects.filter(
+        user=user, tenant=tenant, is_active=True
+    ).first() if tenant else TenantMembership.objects.filter(
+        user=user, is_active=True
+    ).order_by('role').first()
+    
+    if not membership:
+        # Check for CustomerUser without membership (legacy)
+        if CustomerUser.objects.filter(user=user).exists():
+            return 'customer'
+        return None
+    
+    return membership.role  # 'owner', 'manager', 'technician', 'viewer'
+
+# Three decorators. That's it.
+@shop_required          # Must have ANY active TenantMembership (owner/manager/tech)
+@owner_required         # Must be owner or manager
+@customer_required      # Must be customer (CustomerUser or viewer membership)
+```
+
+**Kill:**
+- `is_staff` checks (replace with role checks)
+- `is_superuser` in templates (replace with role context variable)
+- `Technicians` group checks (replace with role checks)
+- `has_technician_access()` complex logic (replace with simple role check)
+- `admin_required` decorator (replace with `@owner_required`)
+- `technician_required` decorator (replace with `@shop_required`)
+
+**Keep:**
+- `TenantMembership` model (it's correct)
+- `Technician` model (stores tech-specific data like abilities, phone)
+- `CustomerUser` model (links Django user to Customer record)
+- Middleware for tenant resolution (it works fine)
+
+### Signup & Setup Flow
+
+**Current (broken):**
+```
+Signup → 4-step wizard → Owner dashboard (can't do anything)
+```
+
+**New:**
+```
+Signup → Dashboard with setup checklist → Productive immediately
+```
+
+**Signup form:** Business name, your name, email, password. That's it. 30 seconds.
+
+**What happens on signup:**
+1. Create User (not is_staff, not is_superuser)
+2. Create Tenant
+3. Create TenantMembership(role='owner')
+4. Create Technician profile for the user (auto — every owner is their first tech)
+5. Log them in, redirect to `/dashboard/`
+
+**Dashboard shows a setup checklist** (dismissible, comes back until complete):
+```
+Getting Started:
+☑ Create your account                    ← done
+☐ Add your first customer                ← link to /customers/new/
+☐ Log your first repair                  ← link to /repairs/new/
+☐ Set your pricing                       ← link to /settings/#pricing
+☐ Invite a technician (optional)         ← link to /team/invite/
+```
+
+Each item links directly to the relevant page. No wizard. No multi-step form that can fail silently. Just direct links to real pages they'll use every day. The checklist teaches them the interface by using it.
+
+**Why this is better:**
+- Owner is productive immediately (the dashboard IS the app)
+- No silent failures (each page works independently)
+- They learn the nav naturally by completing checklist items
+- Optional items (like inviting a tech) don't block required ones
+- If they skip the checklist and just start adding repairs, that's fine too
+
+### Data Model
+
+The current data model is actually solid. No changes needed to core models:
+- `Tenant` → the shop
+- `TenantMembership` → who can access the shop and their role
+- `Customer` → fleet account / retail / walk-in
+- `Technician` → employee with repair abilities
+- `Repair` (extends `GlassService`) → the core work unit
+- `Invoice` → billing document linking to repairs
+- `CustomerUser` → links a Django user to a Customer (for portal access)
+
+**Small additions:**
+- Add `setup_completed` boolean to `Tenant` (hides/shows setup checklist)
+- Add `setup_checklist` JSON field to `Tenant` (tracks which steps are done)
+
+### Middleware & Access Control
+
+**TenantMiddleware** (keep as-is): Resolves `request.tenant` from session/header/membership.
+
+**PortalAccessMiddleware** (simplify):
+```python
+class PortalAccessMiddleware:
+    """
+    Simple cross-portal guard. The real access control is in decorators.
+    This just prevents obvious URL mistakes.
+    """
+    def process_request(self, request):
+        if not request.user.is_authenticated:
+            return None
+        
+        role = get_user_role(request.user, request.tenant)
+        path = request.path
+        
+        # Customers can only access /my/ and public pages
+        if role == 'customer' and self._is_shop_page(path):
+            return redirect('/my/')
+        
+        # Techs can only access /tech/ and public pages
+        if role == 'technician' and self._is_owner_page(path):
+            return redirect('/tech/')
+        
+        return None
+    
+    def _is_shop_page(self, path):
+        return any(path.startswith(p) for p in 
+            ['/dashboard/', '/customers/', '/repairs/', '/invoices/', '/team/', '/settings/', '/tech/'])
+    
+    def _is_owner_page(self, path):
+        return any(path.startswith(p) for p in
+            ['/dashboard/', '/invoices/', '/team/', '/settings/'])
+```
 
 ---
 
-## Execution Order
+## Execution Plan
 
-| Step | What | Why First | Time |
-|------|------|-----------|------|
-| **1** | Fix `create_tenant_with_owner()` to auto-create Technician | Owner's day-one is broken without this | 30 min |
-| **2** | Fix onboarding step 2 progression + make "add tech" optional | Prevents incomplete state | 30 min |
-| **3** | Fix all decorator redirects (never → home) | Stops the "logged out" feeling | 1 hr |
-| **4** | Add Customers + Repairs to owner nav | Owner can find things | 30 min |
-| **5** | Deploy to AWS | Get fixes to the real server | 30 min |
-| **6** | Fix login routing + cross-portal rules | All users land correctly | 1 hr |
-| **7** | Replace is_staff/is_superuser checks | Kill the dual identity system | 2 hrs |
-| **8** | Owner customer/repair pages (/owner/customers/, /owner/repairs/) | One-portal experience | 3 hrs |
-| **9** | Invoice UI | End-to-end billing | 3 hrs |
-| **10** | Smoke tests + error audit | Prevent regressions | 2 hrs |
+### Phase 0: Foundation (Before Any UI Work)
+**Goal:** Permission system works. No dead ends. No phantom logouts.
 
-**Steps 1-5 fix the critical path: ~3 hours.**  
-**Steps 6-10 build the complete experience: ~11 hours.**  
-**Total: ~14 hours.**
+| # | Task | Details | Time |
+|---|------|---------|------|
+| 0.1 | Create `get_user_role()` function | Single source of truth in `common/auth.py` | 30 min |
+| 0.2 | Create `@shop_required`, `@owner_required` decorators | Replace all existing decorators | 1 hr |
+| 0.3 | Fix signup to auto-create Technician | In `create_tenant_with_owner()` | 15 min |
+| 0.4 | Fix onboarding step progression bug | Only advance on valid form | 15 min |
+| 0.5 | Fix ALL redirect-to-home paths | Authenticated users → their portal, never `/` | 1 hr |
+| 0.6 | Fix login routing | Customer viewer → `/my/`, owner → `/dashboard/`, tech → `/tech/` | 30 min |
+| 0.7 | Replace `is_staff`/`is_superuser` checks | Across all views and templates | 2 hrs |
+
+**Deliverable:** Every user type can log in, reach their portal, and never hit a dead end. ~5.5 hrs.
+
+### Phase 1: Unified Base Template
+**Goal:** One visual system. All portals look like the same app.
+
+| # | Task | Details | Time |
+|---|------|---------|------|
+| 1.1 | Create `base_app.html` | Foundation: head, Tailwind config, Inter font, body wrapper | 1 hr |
+| 1.2 | Create `layouts/shell.html` | Page shell with sticky nav, messages, content area | 1 hr |
+| 1.3 | Create role-based nav templates | `nav_owner.html`, `nav_tech.html`, `nav_customer.html` | 1 hr |
+| 1.4 | Migrate owner templates to new base | `owner_dashboard` → extends `shell.html` | 2 hrs |
+| 1.5 | Migrate tech templates to new base | All tech pages → extends `shell.html` | 3 hrs |
+| 1.6 | Migrate customer templates to new base | All customer pages → extends `shell.html` | 2 hrs |
+
+**Deliverable:** All pages share one visual system. Nav adapts to role. ~10 hrs.
+
+### Phase 2: Owner Experience
+**Goal:** Owner has everything they need at their fingertips. No portal switching.
+
+| # | Task | Details | Time |
+|---|------|---------|------|
+| 2.1 | New URL structure for owner | `/dashboard/`, `/customers/`, `/repairs/`, `/invoices/`, `/settings/` | 1 hr |
+| 2.2 | Owner dashboard redesign | Stats + quick actions + today's work + outstanding invoices + setup checklist | 3 hrs |
+| 2.3 | Owner customer list page | All customers with search, repair counts, balance due | 2 hrs |
+| 2.4 | Owner customer detail page | Customer info + repairs + invoices + "Create Invoice" button | 2 hrs |
+| 2.5 | Owner repair list page | All repairs, filterable by status/customer/tech/date | 2 hrs |
+| 2.6 | Owner repair form | Create repair: pick customer, unit, damage, photos. Save and done. | 2 hrs |
+| 2.7 | Owner invoice list page | All invoices with status, filters, totals | 2 hrs |
+| 2.8 | Owner invoice creation | Select customer → see uninvoiced repairs → generate invoice | 2 hrs |
+| 2.9 | Setup checklist (replaces wizard) | Dashboard shows getting-started items, tracks completion | 1 hr |
+| 2.10 | Settings consolidation | Business info + team + pricing + subscription in one place | 2 hrs |
+
+**Deliverable:** Complete owner experience. They never need `/tech/`. ~19 hrs.
+
+### Phase 3: Technician Experience
+**Goal:** Clean, focused, mobile-friendly tech interface.
+
+| # | Task | Details | Time |
+|---|------|---------|------|
+| 3.1 | Tech dashboard redesign | Today's repairs + quick actions + recent completed | 2 hrs |
+| 3.2 | Tech repair list | My assigned repairs, filterable | 1 hr |
+| 3.3 | Tech repair form | Streamlined for field use: customer, unit, damage, photo, save | 2 hrs |
+| 3.4 | Tech repair detail | Status update, photos, notes, cost | 1 hr |
+| 3.5 | Mobile optimization | Touch targets, swipe actions, camera integration | 3 hrs |
+| 3.6 | Manager features | Team view, assign repairs, approve customer requests | 2 hrs |
+
+**Deliverable:** Tech interface is clean and mobile-friendly. ~11 hrs.
+
+### Phase 4: Customer Experience
+**Goal:** Customer sees their stuff clearly. Can approve/deny and pay.
+
+| # | Task | Details | Time |
+|---|------|---------|------|
+| 4.1 | Move customer portal to `/my/` | Update URLs, redirects, nav | 1 hr |
+| 4.2 | Customer dashboard redesign | Pending approvals + recent repairs + balance due | 2 hrs |
+| 4.3 | Customer repair list | Their repairs with status, photos, history | 1 hr |
+| 4.4 | Customer invoice list | Their invoices with pay button (Stripe) | 2 hrs |
+| 4.5 | Join flow polish | Clean signup, auto-login, straight to dashboard | 1 hr |
+
+**Deliverable:** Customer portal is clean and useful. ~7 hrs.
+
+### Phase 5: Billing & Invoicing
+**Goal:** End-to-end invoicing from the owner interface.
+
+| # | Task | Details | Time |
+|---|------|---------|------|
+| 5.1 | Invoice creation UI | Owner clicks customer → sees uninvoiced repairs → one-click invoice | 3 hrs |
+| 5.2 | Invoice PDF generation | Clean PDF with shop logo, line items, payment instructions | 2 hrs |
+| 5.3 | Email delivery | Send invoice via email with PDF attached | 1 hr |
+| 5.4 | Payment recording | Mark paid (cash/check/Stripe), partial payments | 1 hr |
+| 5.5 | Payment reminders | Automated overdue reminders via email | 1 hr |
+| 5.6 | Stripe integration | Customer pays via Stripe checkout link | 2 hrs |
+
+**Deliverable:** Full invoice lifecycle from creation to payment. ~10 hrs.
+
+### Phase 6: Testing & Deployment
+**Goal:** Confidence. No regressions.
+
+| # | Task | Details | Time |
+|---|------|---------|------|
+| 6.1 | Automated smoke tests | Script that validates all core flows | 3 hrs |
+| 6.2 | Error handling audit | Every view: no 500s, meaningful errors, helpful messages | 2 hrs |
+| 6.3 | Redirect audit | Every access-denied path → user lands somewhere helpful | 1 hr |
+| 6.4 | Migration script | Old URLs → new URLs (301 redirects for bookmarks) | 1 hr |
+| 6.5 | Deploy to AWS | Push, migrate, verify | 1 hr |
+
+**Deliverable:** Production deployment with confidence. ~8 hrs.
 
 ---
 
-## What's Already Done (local, not deployed)
-- `d43b5de0` — Middleware overhaul, customer routing fix
-- `a3ae8f2f` — Invoice error handling hardened
-- `57148ae5` — Onboarding step 4 redirect, rate limit, LOGIN_URL
-- `50e846bc` — `@owner_or_manager_required`, conditional tech nav, owners recognized as techs in decorators
+## Timeline
+
+| Phase | Description | Effort | Priority |
+|-------|-------------|--------|----------|
+| **0** | Foundation (permissions, signup, redirects) | ~5.5 hrs | **CRITICAL** — nothing works without this |
+| **1** | Unified base template | ~10 hrs | **HIGH** — stops the "three different apps" feel |
+| **2** | Owner experience | ~19 hrs | **HIGH** — this IS the product |
+| **3** | Technician experience | ~11 hrs | **MEDIUM** — works today, needs polish |
+| **4** | Customer experience | ~7 hrs | **MEDIUM** — works today, needs restructure |
+| **5** | Billing & invoicing | ~10 hrs | **MEDIUM** — important but not day-one blocker |
+| **6** | Testing & deployment | ~8 hrs | **HIGH** — nothing matters if it's not deployed |
+
+**Total: ~70 hours of focused work.**
+
+**Recommended order:** Phase 0 → Phase 1 → Phase 2 → Phase 6 → Phase 3 → Phase 4 → Phase 5
+
+Phase 0 + 1 + 2 gives us a working owner experience (~35 hrs). Deploy that. Then iterate.
 
 ---
 
-## Decision Points for Drake
+## What We Keep vs. Replace
 
-1. **Auto-technician on signup?** I think every owner should automatically be a technician. It's the common case and eliminates the biggest bug. But if you see owners who DON'T do repairs (pure management), we could make it a clear choice during onboarding instead.
+### Keep (working and well-built)
+- Data models (Customer, Repair, Invoice, Technician, Tenant, etc.)
+- Tenant middleware (resolves request.tenant)
+- Billing services (InvoiceTrackingService, DashboardService, etc.)
+- Email services and templates
+- API endpoints (/api/)
+- Signup service (create_tenant_with_owner — just add auto-technician)
+- Rewards/referrals system
+- Pricing engine (viscosity rules, damage type pricing)
 
-2. **Keep or kill the "Tech Portal" link for owners?** My recommendation: kill it. Replace with Customers + Repairs links that go to the same data but feel like part of the owner dashboard. The separate tech portal is for employees only.
+### Rebuild (structurally broken)
+- Permission decorators (5 overlapping systems → 3 clean ones)
+- Base templates (3 different styling systems → 1 unified)
+- Owner views (separate portal → integrated experience)
+- Onboarding wizard (4-step form → setup checklist)
+- Portal middleware (complex redirect logic → simple role guard)
+- Template nav logic (checks is_staff/is_superuser → checks role)
 
-3. **Priority — deploy now or build more first?** Steps 1-5 could be done and deployed today. Steps 6-10 are the bigger polish. Your call on which approach.
+### Retire (no longer needed after rebuild)
+- `base.html` (replaced by `base_app.html` + `shell.html`)
+- `base_owner.html` (merged into unified shell)
+- `admin_required` decorator (replaced by `@owner_required`)
+- `technician_required` decorator (replaced by `@shop_required`)
+- Old onboarding wizard templates and views
+- `/owner/` URL prefix (replaced by root-level URLs)
+- `/app/` URL prefix (replaced by `/my/`)
+
+---
+
+## Non-Negotiables
+
+1. **Every signed-in click leads somewhere useful.** No dead ends. No phantom logouts. No "access denied" with no explanation.
+
+2. **Owners never NEED the tech portal.** Everything is in their interface. Tech portal exists for employees only.
+
+3. **One visual language.** Every page looks like the same app regardless of who's viewing it.
+
+4. **5-minute time to value.** Signup → add customer → log repair in under 5 minutes. No mandatory wizard.
+
+5. **Mobile works.** Techs are in parking lots. Touch targets, readable text, camera access.
+
+---
+
+*This plan replaces all previous planning documents. Ready for Drake's review before execution.*
