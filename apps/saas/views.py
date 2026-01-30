@@ -833,14 +833,13 @@ def shop_join_view(request, slug):
                 customer_name = company_name if company_name else f"{first_name} {last_name}"
                 customer_type = 'FLEET' if company_name else 'RETAIL'
 
-                # Handle uniqueness: append tenant slug if name collision
-                base_name = customer_name.lower()
-                if Customer.objects.filter(name=base_name).exists():
-                    base_name = f"{base_name} ({tenant.slug})"
+                # Check uniqueness within this tenant
+                if Customer.objects.filter(tenant=tenant, name=customer_name).exists():
+                    customer_name = f"{customer_name} ({user.email})"
 
                 customer = Customer.objects.create(
                     tenant=tenant,
-                    name=base_name,
+                    name=customer_name,
                     customer_type=customer_type,
                     email=email,
                     phone=phone,

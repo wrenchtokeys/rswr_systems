@@ -30,46 +30,77 @@ class PortalAccessMiddleware:
         if not request.user.is_authenticated:
             return None
             
-        # Skip for admin, API, auth, and SaaS UI URLs
+        # Skip for admin, API, auth, and public/SaaS UI URLs
         skip_paths = ['/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/',
-                      '/signup/', '/pricing/', '/onboarding/', '/owner/']
+                      '/signup/', '/pricing/', '/onboarding/', '/login/', '/invite/',
+                      '/join/', '/health/']
         if any(request.path.startswith(path) for path in skip_paths):
             return None
-            
-        # Check customer portal access
-        if request.path.startswith('/app/'):
-            if not self._is_customer_user(request.user):
+        
+        # Owner portal: only owners/managers
+        if request.path.startswith('/owner/'):
+            if not self._is_owner_or_manager(request.user):
+                try:
+                    messages.error(request, "You don't have access to the owner dashboard.")
+                except Exception as e:
+                    logger.debug(f"Could not add portal access message: {e}")
+                # Route them to where they belong
+                if self._is_customer_user(request.user):
+                    return redirect('customer_dashboard')
+                elif self._is_technician_user(request.user):
+                    return redirect('technician_dashboard')
+                return redirect('login')
+
+        # Customer portal: only customer users (and owners/managers for oversight)
+        elif request.path.startswith('/app/'):
+            if not self._is_customer_user(request.user) and not self._is_owner_or_manager(request.user):
                 try:
                     messages.error(request, "You don't have access to the customer portal.")
                 except Exception as e:
                     logger.debug(f"Could not add portal access message: {e}")
-                return redirect('technician_dashboard')
+                if self._is_technician_user(request.user):
+                    return redirect('technician_dashboard')
+                return redirect('login')
                 
-        # Check technician portal access  
+        # Technician portal: only technicians (and owners/managers who are also techs)
         elif request.path.startswith('/tech/'):
-            if not self._is_technician_user(request.user):
+            if not self._is_technician_user(request.user) and not self._is_owner_or_manager(request.user):
                 try:
                     messages.error(request, "You don't have access to the technician portal.")
                 except Exception as e:
                     logger.debug(f"Could not add portal access message: {e}")
-                return redirect('customer_dashboard')
+                if self._is_customer_user(request.user):
+                    return redirect('customer_dashboard')
+                return redirect('login')
         
         return None
     
+    def _is_owner_or_manager(self, user):
+        """Check if user is a tenant owner or manager."""
+        if user.is_staff:
+            return True
+        try:
+            from apps.tenants.models import TenantMembership
+            return TenantMembership.objects.filter(
+                user=user, is_active=True, role__in=['owner', 'manager']
+            ).exists()
+        except Exception:
+            return False
+    
     def _is_customer_user(self, user):
-        """Check if user is a customer"""
+        """Check if user is a customer."""
         try:
             from apps.customer_portal.models import CustomerUser
-            CustomerUser.objects.get(user=user)
-            return True
-        except CustomerUser.DoesNotExist:
+            return CustomerUser.objects.filter(user=user).exists()
+        except Exception:
             return False
     
     def _is_technician_user(self, user):
-        """Check if user is a technician"""
+        """Check if user has a technician profile."""
+        if user.is_staff:
+            return True
         try:
             from apps.technician_portal.models import Technician
-            Technician.objects.get(user=user)
-            return True
-        except Technician.DoesNotExist:
+            return Technician.objects.filter(user=user).exists()
+        except Exception:
             return False

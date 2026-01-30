@@ -25,9 +25,13 @@ logger = logging.getLogger(__name__)
 class InvoiceTrackingService:
     """
     Handles invoice creation, tracking, and payment processing.
+    All operations scoped to a tenant.
     """
     
     DEFAULT_PAYMENT_TERMS_DAYS = 30
+    
+    def __init__(self, tenant=None):
+        self.tenant = tenant
     
     def create_invoice_from_repairs(self, customer, repairs, invoice_number=None, 
                                      due_days=None, s3_key=None, auto_send=False):
@@ -73,6 +77,7 @@ class InvoiceTrackingService:
         with transaction.atomic():
             # Create invoice
             invoice = Invoice.objects.create(
+                tenant=self.tenant or customer.tenant,
                 invoice_number=invoice_number,
                 customer=customer,
                 invoice_date=timezone.now().date(),

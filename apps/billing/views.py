@@ -178,7 +178,7 @@ def create_invoice(request, customer_id):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
-    tracking = InvoiceTrackingService()
+    tracking = InvoiceTrackingService(tenant=tenant)
 
     # Determine which repairs to invoice
     if data.get('repair_ids'):
@@ -374,7 +374,7 @@ def record_payment(request, invoice_id):
             return JsonResponse({'error': 'Invalid date. Use YYYY-MM-DD'}, status=400)
 
     try:
-        service = InvoiceTrackingService()
+        service = InvoiceTrackingService(tenant=tenant)
         payment = service.record_payment(
             invoice=invoice,
             amount=data['amount'],
@@ -456,7 +456,7 @@ def get_uninvoiced_repairs(request, customer_id):
     except Customer.DoesNotExist:
         return JsonResponse({'error': 'Customer not found'}, status=404)
 
-    repairs = InvoiceTrackingService().get_uninvoiced_repairs(customer)
+    repairs = InvoiceTrackingService(tenant=tenant).get_uninvoiced_repairs(customer)
 
     total = 0
     repair_data = []
@@ -494,7 +494,7 @@ def get_customer_balance(request, customer_id):
     except Customer.DoesNotExist:
         return JsonResponse({'error': 'Customer not found'}, status=404)
 
-    balance = InvoiceTrackingService().get_customer_balance(customer)
+    balance = InvoiceTrackingService(tenant=tenant).get_customer_balance(customer)
 
     return JsonResponse({
         'customer': {'id': customer.id, 'name': customer.name},
