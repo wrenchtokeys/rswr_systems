@@ -1,0 +1,220 @@
+{% extends "saas/base_public.html" %}
+
+{% block title %}Setup Your Shop | RS Systems{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-12">
+    <!-- Progress bar -->
+    <div class="mb-10">
+        <div class="flex items-center justify-between mb-2">
+            {% for s in "1234" %}
+            <div class="flex items-center {% if not forloop.last %}flex-1{% endif %}">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                    {% if s == step %}bg-blue-600 text-white ring-4 ring-blue-100
+                    {% elif s < step %}bg-green-500 text-white
+                    {% else %}bg-gray-200 text-gray-500{% endif %}">
+                    {% if s < step %}
+                        <i class="fas fa-check"></i>
+                    {% else %}
+                        {{ s }}
+                    {% endif %}
+                </div>
+                {% if not forloop.last %}
+                <div class="flex-1 h-1 mx-2 rounded {% if s < step %}bg-green-500{% else %}bg-gray-200{% endif %}"></div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="flex justify-between text-xs text-gray-500 px-1">
+            <span>Business</span>
+            <span>Technician</span>
+            <span>Customer</span>
+            <span>Done!</span>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-lg p-8">
+        {% if step == "1" %}
+        <!-- STEP 1: Business Info -->
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-store text-blue-600 text-2xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Tell us about your business</h2>
+            <p class="text-gray-500 mt-1">This info appears on invoices and customer communications.</p>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="space-y-5">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Business Phone</label>
+                {{ form.business_phone }}
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Business Email</label>
+                {{ form.business_email }}
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Business Address</label>
+                {{ form.business_address }}
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Logo</label>
+                {{ form.logo }}
+                <p class="mt-1 text-xs text-gray-400">Optional. Upload your shop logo (JPG, PNG).</p>
+            </div>
+            <div class="flex items-center justify-between pt-4">
+                <button type="submit" name="action" value="skip" class="text-gray-500 hover:text-gray-700 text-sm font-medium">
+                    Skip for now →
+                </button>
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    Save & Continue <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </form>
+
+        {% elif step == "2" %}
+        <!-- STEP 2: First Technician -->
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-user-hard-hat text-green-600 text-2xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Add your first technician</h2>
+            <p class="text-gray-500 mt-1">You can add yourself or invite a team member.</p>
+        </div>
+
+        <form method="post" class="space-y-5">
+            {% csrf_token %}
+            <div class="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                {{ form.add_self }}
+                <label for="id_add_self" class="text-sm font-medium text-blue-800 cursor-pointer">
+                    Add myself as a technician (recommended for small shops)
+                </label>
+            </div>
+            <div id="tech-fields">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                        {{ form.tech_first_name }}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                        {{ form.tech_last_name }}
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    {{ form.tech_email }}
+                </div>
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    {{ form.tech_phone }}
+                </div>
+            </div>
+            <div class="flex items-center justify-between pt-4">
+                <button type="submit" name="action" value="skip" class="text-gray-500 hover:text-gray-700 text-sm font-medium">
+                    Skip for now →
+                </button>
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    Add Technician <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </form>
+
+        {% elif step == "3" %}
+        <!-- STEP 3: First Customer -->
+        <div class="text-center mb-8">
+            <div class="w-16 h-16 bg-purple-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-building text-purple-600 text-2xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900">Add your first customer</h2>
+            <p class="text-gray-500 mt-1">Fleet account, individual, or walk-in — you can always add more later.</p>
+        </div>
+
+        <form method="post" class="space-y-5">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Customer Name</label>
+                {{ form.customer_name }}
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Customer Type</label>
+                {{ form.customer_type }}
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                {{ form.customer_email }}
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                {{ form.customer_phone }}
+            </div>
+            <div class="flex items-center justify-between pt-4">
+                <button type="submit" name="action" value="skip" class="text-gray-500 hover:text-gray-700 text-sm font-medium">
+                    Skip for now →
+                </button>
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    Add Customer <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </form>
+
+        {% elif step == "4" %}
+        <!-- STEP 4: Done! -->
+        <div class="text-center">
+            <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-check-circle text-green-500 text-4xl"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-gray-900 mb-2">You're all set! 🎉</h2>
+            <p class="text-gray-500 mb-8">Your shop <strong>{{ tenant.name }}</strong> is ready to go. Here's what you can do next:</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-left">
+                <a href="{% url 'create_repair' %}" class="flex items-center space-x-3 p-4 bg-green-50 rounded-lg border border-green-200 hover:bg-green-100 transition-colors">
+                    <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-tools text-white"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">New Repair</div>
+                        <div class="text-xs text-gray-500">Log a chip or crack repair</div>
+                    </div>
+                </a>
+                <a href="{% url 'replacement_create' %}" class="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors">
+                    <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-car-crash text-white"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">New Replacement</div>
+                        <div class="text-xs text-gray-500">Full glass swap job</div>
+                    </div>
+                </a>
+                <a href="{% url 'create_customer' %}" class="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg border border-purple-200 hover:bg-purple-100 transition-colors">
+                    <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-user-plus text-white"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">Add Customer</div>
+                        <div class="text-xs text-gray-500">Fleet or individual</div>
+                    </div>
+                </a>
+                <a href="{% url 'owner_dashboard' %}" class="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
+                    <div class="w-10 h-10 bg-gray-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-tachometer-alt text-white"></i>
+                    </div>
+                    <div>
+                        <div class="font-semibold text-gray-900">Dashboard</div>
+                        <div class="text-xs text-gray-500">See your shop overview</div>
+                    </div>
+                </a>
+            </div>
+
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex items-center px-8 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    Go to Dashboard <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

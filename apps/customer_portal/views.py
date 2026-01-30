@@ -105,7 +105,9 @@ def customer_dashboard(request):
         total_spent = Repair.objects.filter(customer=customer, queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
         
         # Get recent repairs (limited to 5) for the customer
-        recent_repairs = Repair.objects.filter(customer=customer).order_by('-repair_date')[:5]
+        recent_repairs = Repair.objects.filter(
+            customer=customer
+        ).select_related('technician__user').order_by('-service_date')[:5]
         
         # Check which of the recent repairs were customer-initiated
         repair_ids = [repair.id for repair in recent_repairs]
@@ -119,7 +121,9 @@ def customer_dashboard(request):
             repair.customer_initiated = repair.id in customer_initiated_approvals
         
         # Get repairs that are awaiting customer approval
-        repairs_awaiting_approval = Repair.objects.filter(customer=customer, queue_status='PENDING').order_by('-repair_date')
+        repairs_awaiting_approval = Repair.objects.filter(
+            customer=customer, queue_status='PENDING'
+        ).select_related('technician__user').order_by('-service_date')
 
         # Group batched repairs and separate individual repairs
         batch_repairs = {}  # Dictionary: batch_id -> batch_summary
@@ -206,25 +210,31 @@ def profile_creation(request):
             company_address = request.POST.get('company_address')
             
             try:
-                # Create new customer
+                # Create new customer — associate with tenant
+                tenant = getattr(request, 'tenant', None)
                 customer = Customer.objects.create(
                     name=company_name,
                     email=company_email,
                     phone=company_phone,
-                    address=company_address
+                    address=company_address,
+                    tenant=tenant,
                 )
             except Exception as e:
                 messages.error(request, f"Error creating company: {str(e)}")
-                customers = Customer.objects.all()
+                tenant = getattr(request, 'tenant', None)
+                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
                 return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
         else:
             # Use existing customer
             customer_id = request.POST.get('customer')
             try:
-                customer = Customer.objects.get(id=customer_id)
+                tenant = getattr(request, 'tenant', None)
+                customer_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+                customer = customer_qs.get(id=customer_id)
             except Customer.DoesNotExist:
                 messages.error(request, "Selected company does not exist.")
-                customers = Customer.objects.all()
+                tenant = getattr(request, 'tenant', None)
+                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
                 return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
         
         # Create CustomerUser record
@@ -264,8 +274,12 @@ def profile_creation(request):
         except Exception as e:
             messages.error(request, f"Error creating profile: {str(e)}")
     
-    # Get all customers for the dropdown
-    customers = Customer.objects.all()
+    # Get all customers for the dropdown — scoped to tenant if available
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        customers = Customer.objects.filter(tenant=tenant)
+    else:
+        customers = Customer.objects.all()
     return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
 
 @customer_required
@@ -276,7 +290,7 @@ def customer_repairs(request):
 
         # Get filter parameters
         status_filter = request.GET.get('status', 'all')
-        sort_by = request.GET.get('sort', '-repair_date')  # Default: newest first
+        sort_by = request.GET.get('sort', '-service_date')  # Default: newest first
         unit_search = request.GET.get('unit_search', '')
         damage_type_filter = request.GET.get('damage_type', 'all')
         date_from = request.GET.get('date_from', '')
@@ -304,7 +318,7 @@ def customer_repairs(request):
             try:
                 from datetime import datetime
                 date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
-                repairs = repairs.filter(repair_date__gte=date_from_obj)
+                repairs = repairs.filter(service_date__gte=date_from_obj)
             except ValueError:
                 pass
 
@@ -312,12 +326,14 @@ def customer_repairs(request):
             try:
                 from datetime import datetime
                 date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
-                repairs = repairs.filter(repair_date__lte=date_to_obj)
+                repairs = repairs.filter(service_date__lte=date_to_obj)
             except ValueError:
                 pass
 
-        # Apply sorting
-        valid_sorts = ['repair_date', '-repair_date', 'unit_number', '-unit_number',
+        # Apply sorting — accept both repair_date (legacy) and service_date (new field)
+        if sort_by in ('repair_date', '-repair_date'):
+            sort_by = sort_by.replace('repair_date', 'service_date')
+        valid_sorts = ['service_date', '-service_date', 'unit_number', '-unit_number',
                        'cost', '-cost', 'queue_status', '-queue_status']
         if sort_by in valid_sorts:
             repairs = repairs.order_by(sort_by)
@@ -330,7 +346,7 @@ def customer_repairs(request):
             'in_progress': repairs.filter(queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
             'completed_this_month': repairs.filter(
                 queue_status='COMPLETED',
-                repair_date__gte=timezone.now().date().replace(day=1)
+                service_date__gte=timezone.now().date().replace(day=1)
             ).count(),
             'total_cost': repairs.filter(queue_status='COMPLETED').aggregate(
                 total=models.Sum('cost')
@@ -391,7 +407,7 @@ def customer_repairs(request):
                 batch_summaries.append({
                     'batch_id': batch_id,
                     'unit_number': first_repair.unit_number,
-                    'repair_date': first_repair.repair_date,
+                    'service_date': first_repair.repair_date,
                     'break_count': len(batch_repairs),
                     'total_cost': total_cost,
                     'overall_status': overall_status,
@@ -403,7 +419,7 @@ def customer_repairs(request):
                 })
 
         # Sort batch summaries by date (newest first)
-        batch_summaries.sort(key=lambda b: b['repair_date'], reverse=True)
+        batch_summaries.sort(key=lambda b: b['service_date'], reverse=True)
 
         # Pagination - combine batches and individual repairs for display
         # Each batch counts as 1 item, each individual repair counts as 1 item
@@ -976,8 +992,9 @@ def handle_single_repair_request(request, customer):
             return render(request, 'customer_portal/request_repair.html')
         damage_photo = convert_heic_to_jpeg(damage_photo)
 
-    # Find available technician
-    technician = get_available_technician()
+    # Find available technician (scoped to tenant)
+    tenant = getattr(request, 'tenant', None)
+    technician = get_available_technician(tenant=tenant)
     if not technician:
         messages.error(request, "No technicians available. Please try again later.")
         return render(request, 'customer_portal/request_repair.html')
@@ -985,6 +1002,7 @@ def handle_single_repair_request(request, customer):
     # Create the repair
     try:
         repair = Repair.objects.create(
+            tenant=tenant,
             technician=technician,
             customer=customer,
             unit_number=unit_number,
@@ -994,6 +1012,12 @@ def handle_single_repair_request(request, customer):
             customer_notes=description,
             queue_status='REQUESTED'
         )
+
+        # Auto-assign technician based on tenant strategy
+        from apps.tenants.services.assignment_service import auto_assign_repair
+        assigned_tech = auto_assign_repair(repair)
+        if assigned_tech:
+            messages.info(request, f'Your repair has been assigned to {assigned_tech.user.get_full_name()}.')
 
         messages.success(request, "Repair request submitted successfully! A technician will review your request.")
         return redirect('customer_dashboard')
@@ -1020,8 +1044,9 @@ def handle_batch_repair_request(request, customer):
             messages.error(request, "Please add at least one unit to submit.")
             return render(request, 'customer_portal/request_repair.html')
 
-        # Find available technician
-        technician = get_available_technician()
+        # Find available technician (scoped to tenant)
+        tenant = getattr(request, 'tenant', None)
+        technician = get_available_technician(tenant=tenant)
         if not technician:
             messages.error(request, "No technicians available. Please try again later.")
             return render(request, 'customer_portal/request_repair.html')
@@ -1061,6 +1086,7 @@ def handle_batch_repair_request(request, customer):
                     batch_id = uuid.uuid4()
                     for break_num in range(1, break_count + 1):
                         repair = Repair.objects.create(
+                            tenant=tenant,
                             technician=technician,
                             customer=customer,
                             unit_number=unit_number,
@@ -1077,6 +1103,7 @@ def handle_batch_repair_request(request, customer):
                 elif has_multiple_breaks:
                     # Multi-break estimate (unknown count)
                     repair = Repair.objects.create(
+                        tenant=tenant,
                         technician=technician,
                         customer=customer,
                         unit_number=unit_number,
@@ -1091,6 +1118,7 @@ def handle_batch_repair_request(request, customer):
                 else:
                     # Single break repair (no batch fields)
                     repair = Repair.objects.create(
+                        tenant=tenant,
                         technician=technician,
                         customer=customer,
                         unit_number=unit_number,
@@ -1101,6 +1129,18 @@ def handle_batch_repair_request(request, customer):
                         queue_status='REQUESTED'
                     )
                     created_repairs.append(repair)
+
+        # Auto-assign technicians based on tenant strategy
+        from apps.tenants.services.assignment_service import auto_assign_repair as _auto_assign
+        assigned_any = False
+        for repair in created_repairs:
+            assigned_tech = _auto_assign(repair)
+            if assigned_tech and not assigned_any:
+                assigned_any = True
+                messages.info(
+                    request,
+                    f'Repairs have been assigned to {assigned_tech.user.get_full_name()}.'
+                )
 
         # Success message
         count = len(created_repairs)
@@ -1166,14 +1206,18 @@ def validate_repair_photo(photo_file):
     return True, ""
 
 
-def get_available_technician():
+def get_available_technician(tenant=None):
     """
     Get an available technician using round-robin assignment.
+    Scoped to tenant if provided.
 
     Returns:
         Technician object or None if no technicians available
     """
-    technicians = Technician.objects.annotate(
+    technicians = Technician.objects.all()
+    if tenant:
+        technicians = technicians.filter(tenant=tenant)
+    technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')
 
@@ -1486,15 +1530,13 @@ def unit_repair_data_api(request):
             for unit in unit_repairs
         ]
         
-        # For debugging
-        print(f"API Response (unit-repair-data): {data}")
-        
+        logger.debug(f"API Response (unit-repair-data): {len(data)} units")
+
         return JsonResponse(data, safe=False)
     except CustomerUser.DoesNotExist:
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
-        # Log the error and return an error response
-        print(f"Error in unit_repair_data_api: {str(e)}")
+        logger.error(f"Error in unit_repair_data_api: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
 @customer_required
@@ -1507,7 +1549,7 @@ def repair_cost_data_api(request):
         # Get all repairs for this customer
         repairs = Repair.objects.filter(
             customer=customer
-        ).order_by('repair_date')
+        ).order_by('service_date')
         
         # Group repairs by month and count them
         monthly_counts = defaultdict(int)
@@ -1543,15 +1585,13 @@ def repair_cost_data_api(request):
             for month, count in sorted(monthly_counts.items())
         ]
         
-        # For debugging
-        print(f"API Response (repair-cost-data): {data}")
-        
+        logger.debug(f"API Response (repair-cost-data): {len(data)} months")
+
         return JsonResponse(data, safe=False)
     except CustomerUser.DoesNotExist:
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
-        # Log the error and return an error response
-        print(f"Error in repair_cost_data_api: {str(e)}")
+        logger.error(f"Error in repair_cost_data_api: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
 
 @customer_required

@@ -1,71 +1,70 @@
+"""
+Portal Access Middleware — ensures users access the correct portal.
+
+Uses common.auth as the single source of truth.
+"""
+import logging
 from django.shortcuts import redirect
-from django.urls import reverse
 from django.contrib import messages
+
+from common.auth import can_access, get_user_role, redirect_to_portal
+
+logger = logging.getLogger(__name__)
 
 
 class PortalAccessMiddleware:
-    """
-    Middleware to ensure users access the correct portal based on their account type.
-    """
-    
+    """Ensure users access the correct portal based on their role."""
+
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        # Process the request before view
-        self.process_request(request)
-        
-        # Get the response from the view
-        response = self.get_response(request)
-        
-        return response
+        result = self.process_request(request)
+        if result:
+            return result
+        return self.get_response(request)
 
     def process_request(self, request):
-        """Check portal access permissions"""
-        
-        # Skip middleware for unauthenticated users and certain paths
         if not request.user.is_authenticated:
             return None
-            
-        # Skip for admin, API, and auth URLs
-        skip_paths = ['/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/']
+
+        # Skip for admin, API, auth, and public/SaaS UI URLs
+        skip_paths = [
+            '/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/',
+            '/signup/', '/pricing/', '/onboarding/', '/login/', '/invite/',
+            '/join/', '/health/', '/clawdbot/',
+        ]
         if any(request.path.startswith(path) for path in skip_paths):
             return None
-            
-        # Check customer portal access
-        if request.path.startswith('/app/'):
-            if not self._is_customer_user(request.user):
+
+        tenant = getattr(request, 'tenant', None)
+        role = get_user_role(request.user, tenant)
+
+        # Owner portal: only owners/managers/superusers/staff
+        if request.path.startswith('/owner/'):
+            if role not in ('superuser', 'owner', 'manager'):
+                try:
+                    messages.error(request, "You don't have access to the owner dashboard.")
+                except Exception:
+                    pass
+                return redirect_to_portal(request.user)
+
+        # Customer portal: customer users + owners/managers for oversight
+        elif request.path.startswith('/app/'):
+            if role not in ('viewer', 'customer', 'superuser', 'owner', 'manager'):
                 try:
                     messages.error(request, "You don't have access to the customer portal.")
-                except:
-                    pass  # Continue without message if messages framework unavailable
-                return redirect('technician_dashboard')
-                
-        # Check technician portal access  
+                except Exception:
+                    pass
+                return redirect_to_portal(request.user)
+
+        # Technician portal: anyone who can access repairs/customers
         elif request.path.startswith('/tech/'):
-            if not self._is_technician_user(request.user):
+            if not can_access(request.user, 'repairs', tenant) and not can_access(request.user, 'customers', tenant):
                 try:
                     messages.error(request, "You don't have access to the technician portal.")
-                except:
-                    pass  # Continue without message if messages framework unavailable
-                return redirect('customer_dashboard')
-        
+                except Exception:
+                    pass
+                return redirect_to_portal(request.user)
+
         return None
-    
-    def _is_customer_user(self, user):
-        """Check if user is a customer"""
-        try:
-            from apps.customer_portal.models import CustomerUser
-            CustomerUser.objects.get(user=user)
-            return True
-        except CustomerUser.DoesNotExist:
-            return False
-    
-    def _is_technician_user(self, user):
-        """Check if user is a technician"""
-        try:
-            from apps.technician_portal.models import Technician
-            Technician.objects.get(user=user)
-            return True
-        except Technician.DoesNotExist:
-            return False

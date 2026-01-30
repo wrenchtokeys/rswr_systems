@@ -20,6 +20,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from . import views
+from apps.saas import views as saas_views
 from core.views import preview_email_template, test_notification, check_notification_prefs, celery_status
 
 urlpatterns = [
@@ -58,13 +59,26 @@ urlpatterns = [
     # Rewards/referrals (accessible from both portals)
     path('referrals/', include('apps.rewards_referrals.urls')),
 
-    # Clawdbot endpoint
+    # Billing API (canonical home for billing endpoints)
+    path('api/billing/', include('apps.billing.urls')),
+
+    # Tenant subscription & billing API
+    path('api/tenants/', include('apps.tenants.urls')),
+
+    # Clawdbot endpoint (Amelia's experimental namespace)
     path('clawdbot/', include('apps.clawdbot.urls')),
 
-    # Legacy authentication URLs (redirect to appropriate portal)
-    path('accounts/login/', views.login_router, name='login'),
-    path('login/', views.login_router, name='login_legacy'),
+    # SaaS UI (signup, onboarding, owner dashboard, pricing, billing, replacement)
+    path('', include('apps.saas.urls')),
+
+    # Unified login & invite acceptance
+    path('login/', views.login_router, name='login'),
+    path('accounts/login/', views.login_router, name='login_accounts'),
     path('logout/', views.logout_view, name='logout'),
+    path('invite/<uuid:token>/', views.accept_invite, name='accept_invite'),
+
+    # Customer self-signup (shop invite link)
+    path('join/<slug:slug>/', saas_views.shop_join_view, name='shop_join'),
     # path('api-token-auth/', views.obtain_auth_token, name='api_token_auth'),
 ]
 

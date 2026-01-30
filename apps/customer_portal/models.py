@@ -1,33 +1,42 @@
 from django.db import models
 from django.contrib.auth.models import User
 from core.models import Customer
-from apps.technician_portal.models import Repair
+from apps.technician_portal.models import Repair, Replacement
 
 class CustomerUser(models.Model):
-    """Links Django User to a Customer account"""
+    """Links a Django User account to a Customer (company) for portal access."""
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     is_primary_contact = models.BooleanField(default=False)
-    
+
+    class Meta:
+        verbose_name = 'Customer User'
+        verbose_name_plural = 'Customer Users'
+
     def __str__(self):
         return f"{self.user.username} - {self.customer.name}"
 
+
 class CustomerPreference(models.Model):
-    """Stores customer preferences for the portal"""
+    """Stores customer preferences for the portal display and notifications."""
     customer = models.OneToOneField(Customer, on_delete=models.CASCADE)
     receive_email_notifications = models.BooleanField(default=True)
     receive_sms_notifications = models.BooleanField(default=False)
     default_view = models.CharField(
-        max_length=20, 
+        max_length=20,
         choices=[('pending', 'Pending Repairs'), ('completed', 'Completed Repairs')],
         default='pending'
     )
-    
+
+    class Meta:
+        verbose_name = 'Customer Preference'
+        verbose_name_plural = 'Customer Preferences'
+
     def __str__(self):
         return f"Preferences for {self.customer.name}"
 
 class CustomerRepairPreference(models.Model):
-    """Stores customer preferences for field repair approval workflow"""
+    """Stores customer preferences for field repair approval workflow and invoicing"""
 
     APPROVAL_MODE_CHOICES = [
         ('AUTO_APPROVE', 'Auto-approve all field repairs'),
@@ -40,6 +49,13 @@ class CustomerRepairPreference(models.Model):
         ('BIWEEKLY', 'Bi-weekly (Every 2 weeks)'),
         ('MONTHLY', 'Monthly'),
         ('QUARTERLY', 'Quarterly (Every 3 months)'),
+    ]
+
+    # Invoice preference choices
+    INVOICE_PREFERENCE_CHOICES = [
+        ('per_ticket', 'Invoice per repair (auto-generate when completed)'),
+        ('batch', 'Batch invoicing (group repairs together)'),
+        ('manual', 'Manual only (never auto-generate)'),
     ]
 
     customer = models.OneToOneField(Customer, on_delete=models.CASCADE, related_name='repair_preferences')
@@ -87,6 +103,27 @@ class CustomerRepairPreference(models.Model):
         help_text="Preferred days of week for lot walking (stored as list)"
     )
 
+    # Invoice preferences
+    invoice_preference = models.CharField(
+        max_length=20,
+        choices=INVOICE_PREFERENCE_CHOICES,
+        default='batch',
+        help_text="How should invoices be generated for this customer?"
+    )
+    billing_email = models.EmailField(
+        null=True,
+        blank=True,
+        help_text="Email for invoices (uses customer email if blank)"
+    )
+    auto_email_invoices = models.BooleanField(
+        default=False,
+        help_text="Automatically email invoices when generated?"
+    )
+    include_photos_in_invoice = models.BooleanField(
+        default=True,
+        help_text="Include repair photos in invoice emails?"
+    )
+
     # Tracking
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -125,7 +162,7 @@ class CustomerRepairPreference(models.Model):
             units_repaired_today = Repair.objects.filter(
                 customer=self.customer,
                 technician=technician,
-                repair_date__date=visit_date,
+                service_date__date=visit_date,
                 queue_status__in=['APPROVED', 'IN_PROGRESS', 'COMPLETED']
             ).values('unit_number').distinct().count()
 

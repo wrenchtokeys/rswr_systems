@@ -178,6 +178,8 @@ else:
     DATABASES = {
         'default': dj_database_url.config(default=db_url, conn_max_age=600),
     }
+    # Ensure TEST config exists for Django test runner
+    DATABASES['default'].setdefault('TEST', {})
     
     # For production, ensure we're using a persistent database
     if ENVIRONMENT == 'production' and 'sqlite' in db_url.lower():
@@ -201,6 +203,9 @@ INSTALLED_APPS = [
     'apps.rewards_referrals',
     'apps.security',
     'apps.clawdbot',
+    'apps.billing',
+    'apps.tenants',
+    'apps.saas',
     'core',  # Core app (includes Customer model and notification system)
     'drf_spectacular',
     'django_cleanup.apps.CleanupConfig',  # Must be last - automatically deletes files when models are deleted
@@ -213,6 +218,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.tenants.middleware.TenantMiddleware',  # Multi-tenant resolution
     'common.portal_middleware.PortalAccessMiddleware',  # Portal access control
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -234,6 +240,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'common.context_processors.portal_access',
             ],
         },
     },
@@ -261,8 +268,8 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/tech/'
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/login/'
 LOGOUT_REDIRECT_URL = '/login/'
 
 # =========================================
@@ -277,6 +284,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '20/minute',
+        'user': '60/minute',
+        'signup': '5/hour',
+    },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
@@ -331,6 +347,21 @@ AWS_SNS_REGION_NAME = os.environ.get('AWS_SNS_REGION', 'us-east-1')
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'False').lower() == 'true'
 
 # =========================================
+# STRIPE CONFIGURATION
+# =========================================
+
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+
+# Stripe mode detection (auto-detect from key prefix)
+STRIPE_TEST_MODE = STRIPE_SECRET_KEY.startswith('sk_test_') if STRIPE_SECRET_KEY else True
+
+# Invoice defaults
+INVOICE_DEFAULT_DUE_DAYS = 30
+INVOICE_FROM_EMAIL = os.environ.get('INVOICE_FROM_EMAIL', 'billing@rockstarwindshield.repair')
+
+# =========================================
 # CELERY CONFIGURATION
 # =========================================
 
@@ -372,17 +403,41 @@ CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_CONCURRENCY', 4))
 # CELERY_TASK_EAGER_PROPAGATES = True
 
 # =========================================
-# CACHING CONFIGURATION (Redis)
+# CACHING CONFIGURATION
 # =========================================
+# Use Redis in production, fall back to local memory cache for dev without Redis
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.environ.get('REDIS_CACHE_URL', 'redis://localhost:6379/1'),
-        'KEY_PREFIX': 'rs_systems',
-        'TIMEOUT': 300,  # 5 minutes default timeout
+REDIS_CACHE_URL = os.environ.get('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+
+def _redis_available():
+    """Check if Redis is reachable (called once at startup)."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        s.connect(('localhost', 6379))
+        s.close()
+        return True
+    except (socket.error, OSError):
+        return False
+
+if _redis_available():
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_CACHE_URL,
+            'KEY_PREFIX': 'rs_systems',
+            'TIMEOUT': 300,
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'KEY_PREFIX': 'rs_systems',
+            'TIMEOUT': 300,
+        }
+    }
 
 # =========================================
 # LOGGING CONFIGURATION

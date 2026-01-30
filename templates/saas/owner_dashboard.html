@@ -1,0 +1,244 @@
+{% extends "saas/base_owner.html" %}
+
+{% block title %}Dashboard | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<!-- Trial Banner -->
+{% if is_trial %}
+<div class="mb-6 p-4 rounded-xl {% if is_trial_expired %}bg-red-50 border border-red-200{% elif trial_days_remaining <= 7 %}bg-yellow-50 border border-yellow-200{% else %}bg-blue-50 border border-blue-200{% endif %}" id="trialBanner">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div class="flex items-center space-x-3">
+            {% if is_trial_expired %}
+                <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle text-red-600"></i>
+                </div>
+                <div>
+                    <p class="font-semibold text-red-800">Your free trial has expired</p>
+                    <p class="text-sm text-red-600">Upgrade now to keep using RS Systems.</p>
+                </div>
+            {% elif trial_days_remaining <= 7 %}
+                <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-clock text-yellow-600"></i>
+                </div>
+                <div>
+                    <p class="font-semibold text-yellow-800">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left in your free trial</p>
+                    <p class="text-sm text-yellow-600">Don't lose your data — upgrade to a paid plan.</p>
+                </div>
+            {% else %}
+                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-gift text-blue-600"></i>
+                </div>
+                <div>
+                    <p class="font-semibold text-blue-800">Free trial — {{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} remaining</p>
+                    <p class="text-sm text-blue-600">You're on the free trial. Upgrade anytime for more features.</p>
+                </div>
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="{% url 'billing_settings' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0">
+                <i class="fas fa-arrow-up mr-2"></i>Upgrade Now
+            </a>
+            <button onclick="document.getElementById('trialBanner').style.display='none'" class="text-gray-400 hover:text-gray-600 p-1">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Welcome Header -->
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Welcome back, {{ request.user.first_name|default:request.user.username }}!</h1>
+    <p class="text-gray-500 mt-1">Here's what's happening at {{ tenant.name }}</p>
+</div>
+
+<!-- Revenue Summary -->
+<div class="mb-8">
+    <div class="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+                <div class="text-blue-100 text-sm font-medium mb-1">Revenue This Month</div>
+                <div class="text-3xl sm:text-4xl font-bold">${{ total_revenue|floatformat:2 }}</div>
+                <div class="text-blue-200 text-sm mt-2">
+                    <span class="mr-4">
+                        <i class="fas fa-tools mr-1"></i>
+                        Repairs: ${{ repair_revenue|floatformat:2 }}
+                    </span>
+                    <span>
+                        <i class="fas fa-car mr-1"></i>
+                        Replacements: ${{ replacement_revenue|floatformat:2 }}
+                    </span>
+                </div>
+            </div>
+            <div class="flex-shrink-0">
+                <div class="w-16 h-16 rounded-full bg-white bg-opacity-20 flex items-center justify-center">
+                    <i class="fas fa-dollar-sign text-3xl text-white"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Usage Meters -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+    <!-- Repairs This Month -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-medium text-gray-500">Repairs This Month</h3>
+            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
+                <i class="fas fa-tools text-green-600 text-sm"></i>
+            </div>
+        </div>
+        <div class="text-3xl font-bold text-gray-900 mb-2">{{ usage.repairs.used }}</div>
+        {% if usage.repairs.limit %}
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-1">
+            <div class="h-2 rounded-full transition-all duration-500
+                {% if usage.repairs.percent >= 90 %}bg-red-500
+                {% elif usage.repairs.percent >= 70 %}bg-yellow-500
+                {% else %}bg-green-500{% endif %}"
+                style="width: {% if usage.repairs.percent %}{{ usage.repairs.percent }}{% else %}0{% endif %}%"></div>
+        </div>
+        <p class="text-xs text-gray-500">{{ usage.repairs.used }} of {{ usage.repairs.limit }} used</p>
+        {% else %}
+        <p class="text-xs text-gray-500">Unlimited</p>
+        {% endif %}
+    </div>
+
+    <!-- Technicians -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-medium text-gray-500">Technicians</h3>
+            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <i class="fas fa-users text-blue-600 text-sm"></i>
+            </div>
+        </div>
+        <div class="text-3xl font-bold text-gray-900 mb-2">{{ usage.technicians.used }}</div>
+        {% if usage.technicians.limit %}
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-1">
+            <div class="h-2 rounded-full transition-all duration-500
+                {% if usage.technicians.percent >= 90 %}bg-red-500
+                {% elif usage.technicians.percent >= 70 %}bg-yellow-500
+                {% else %}bg-blue-500{% endif %}"
+                style="width: {% if usage.technicians.percent %}{{ usage.technicians.percent }}{% else %}0{% endif %}%"></div>
+        </div>
+        <p class="text-xs text-gray-500">{{ usage.technicians.used }} of {{ usage.technicians.limit }} seats</p>
+        {% else %}
+        <p class="text-xs text-gray-500">Unlimited</p>
+        {% endif %}
+    </div>
+
+    <!-- Customers -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-medium text-gray-500">Customers</h3>
+            <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                <i class="fas fa-building text-purple-600 text-sm"></i>
+            </div>
+        </div>
+        <div class="text-3xl font-bold text-gray-900 mb-2">{{ usage.customers.used }}</div>
+        {% if usage.customers.limit %}
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-1">
+            <div class="h-2 rounded-full transition-all duration-500
+                {% if usage.customers.percent >= 90 %}bg-red-500
+                {% elif usage.customers.percent >= 70 %}bg-yellow-500
+                {% else %}bg-purple-500{% endif %}"
+                style="width: {% if usage.customers.percent %}{{ usage.customers.percent }}{% else %}0{% endif %}%"></div>
+        </div>
+        <p class="text-xs text-gray-500">{{ usage.customers.used }} of {{ usage.customers.limit }} accounts</p>
+        {% else %}
+        <p class="text-xs text-gray-500">Unlimited</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="mb-8">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <a href="{% url 'create_repair' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-green-300 hover:shadow-md transition-all group">
+            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-green-200 transition-colors">
+                <i class="fas fa-tools text-green-600 text-lg"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-900">New Repair</span>
+        </a>
+        <a href="{% url 'replacement_create' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all group">
+            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-blue-200 transition-colors">
+                <i class="fas fa-car-crash text-blue-600 text-lg"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-900">New Replacement</span>
+        </a>
+        <a href="{% url 'create_customer' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all group">
+            <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-purple-200 transition-colors">
+                <i class="fas fa-user-plus text-purple-600 text-lg"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-900">New Customer</span>
+        </a>
+        <a href="{% url 'repair_list' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-amber-300 hover:shadow-md transition-all group">
+            <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-amber-200 transition-colors">
+                <i class="fas fa-file-invoice-dollar text-amber-600 text-lg"></i>
+            </div>
+            <span class="text-sm font-medium text-gray-900">View Repairs</span>
+        </a>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-gray-900">Recent Activity</h2>
+        <a href="{% url 'repair_list' %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">View all →</a>
+    </div>
+    {% if recent_activity %}
+    <div class="divide-y divide-gray-100">
+        {% for item in recent_activity %}
+        <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 transition-colors">
+            <div class="flex items-center space-x-4">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
+                    {% if item.status == 'COMPLETED' %}bg-green-100
+                    {% elif item.status == 'IN_PROGRESS' %}bg-orange-100
+                    {% elif item.status == 'APPROVED' %}bg-blue-100
+                    {% else %}bg-gray-100{% endif %}">
+                    <i class="fas {% if item.type == 'Replacement' %}fa-car-crash{% else %}fa-tools{% endif %}
+                        {% if item.status == 'COMPLETED' %}text-green-600
+                        {% elif item.status == 'IN_PROGRESS' %}text-orange-600
+                        {% elif item.status == 'APPROVED' %}text-blue-600
+                        {% else %}text-gray-600{% endif %} text-sm"></i>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-gray-900">
+                        {{ item.type }} — {{ item.customer }}
+                    </div>
+                    <div class="text-xs text-gray-500">
+                        Unit {{ item.unit }} • {{ item.date|date:"M d, Y" }}
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3 sm:ml-auto">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                    {% if item.status == 'COMPLETED' %}bg-green-100 text-green-800
+                    {% elif item.status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
+                    {% elif item.status == 'APPROVED' %}bg-blue-100 text-blue-800
+                    {% elif item.status == 'PENDING' %}bg-yellow-100 text-yellow-800
+                    {% elif item.status == 'DENIED' %}bg-red-100 text-red-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ item.status_display }}
+                </span>
+                <span class="text-sm font-semibold text-gray-900">${{ item.cost|floatformat:2 }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="px-6 py-12 text-center">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-inbox text-gray-400 text-2xl"></i>
+        </div>
+        <h3 class="text-sm font-medium text-gray-900 mb-1">No activity yet</h3>
+        <p class="text-sm text-gray-500 mb-4">Create your first repair or replacement to get started.</p>
+        <a href="{% url 'create_repair' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+            <i class="fas fa-plus mr-2"></i>Create Repair
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

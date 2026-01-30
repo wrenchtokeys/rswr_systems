@@ -261,8 +261,8 @@ class CustomerRepairPreferenceAdmin(admin.ModelAdmin):
     4. Tracking - Created/updated timestamps (collapsed)
     """
     form = CustomerRepairPreferenceForm
-    list_display = ['customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'lot_walking_enabled', 'lot_walking_frequency', 'updated_at']
-    list_filter = ['field_repair_approval_mode', 'lot_walking_enabled', 'lot_walking_frequency', 'updated_at']
+    list_display = ['customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'updated_at']
+    list_filter = ['field_repair_approval_mode', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'lot_walking_frequency', 'updated_at']
     search_fields = ['customer__name']
     list_select_related = ['customer']
     readonly_fields = ['created_at', 'updated_at']
@@ -278,6 +278,13 @@ class CustomerRepairPreferenceAdmin(admin.ModelAdmin):
         ('Lot Walking Service Settings', {
             'fields': ('lot_walking_enabled', 'lot_walking_frequency', 'lot_walking_time', 'lot_walking_days_choices'),
             'description': 'Configure scheduled lot walking service for this customer. Enable the service and set the frequency, preferred time, and days.'
+        }),
+        ('Invoice Settings', {
+            'fields': ('invoice_preference', 'billing_email', 'auto_email_invoices', 'include_photos_in_invoice'),
+            'description': 'Configure how invoices should be generated and delivered for this customer. '
+                          '"Per repair" = auto-generate when each repair completes. '
+                          '"Batch" = group repairs together (manual trigger). '
+                          '"Manual" = never auto-generate.'
         }),
         ('Tracking', {
             'fields': ('created_at', 'updated_at'),

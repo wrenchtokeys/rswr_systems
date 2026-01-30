@@ -33,6 +33,7 @@ urlpatterns = [
     path('customers/', views.customer_list, name='technician_customers'),
     path('customers/create/', views.create_customer, name='create_customer'),
     path('customers/<int:customer_id>/', views.customer_details, name='customer_detail'),
+    path('customers/<int:customer_id>/primary-tech/', views.update_primary_technician, name='update_primary_technician'),
     path('customers/<int:customer_id>/units/<str:unit_number>/', views.unit_details, name='unit_details'),
     path('customers/<int:customer_id>/units/<str:unit_number>/replace/', views.mark_unit_replaced, name='mark_unit_replaced'),
     

@@ -1,0 +1,327 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing — RS Systems</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50 font-sans">
+
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <a href="/" class="flex items-center gap-2 font-bold text-lg text-gray-900">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-car-crash text-white text-sm"></i>
+                    </div>
+                    RS Systems
+                </a>
+                <div class="flex items-center gap-4">
+                    {% if user.is_authenticated %}
+                    <a href="{% url 'owner_dashboard' %}" class="text-gray-600 hover:text-gray-900 text-sm font-medium">Dashboard</a>
+                    <a href="{% url 'billing_settings' %}" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                        Manage Plan
+                    </a>
+                    {% else %}
+                    <a href="{% url 'login' %}" class="text-gray-600 hover:text-gray-900 text-sm font-medium">Log In</a>
+                    <a href="{% url 'signup' %}" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                        Start Free Trial
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <div class="bg-white py-16 sm:py-24">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-4">
+                Simple, Transparent Pricing
+            </h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Start free. Upgrade as you grow. No hidden fees, no contracts.
+            </p>
+        </div>
+    </div>
+
+    <!-- Pricing Cards -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 pb-20">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {% for plan in plans %}
+            <div class="bg-white rounded-2xl shadow-lg border-2 p-8 relative flex flex-col
+                {% if plan.slug == 'pro' %}border-green-400 ring-2 ring-green-100{% else %}border-gray-200{% endif %}">
+
+                {% if plan.slug == 'pro' %}
+                <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                    <span class="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-bold bg-green-600 text-white shadow-lg">
+                        <i class="fas fa-star mr-1.5 text-xs"></i>
+                        Most Popular
+                    </span>
+                </div>
+                {% endif %}
+
+                <div class="text-center mb-6 {% if plan.slug == 'pro' %}mt-2{% endif %}">
+                    <h3 class="text-xl font-bold text-gray-900">{{ plan.name }}</h3>
+                    <div class="mt-4">
+                        {% if plan.is_free %}
+                        <span class="text-5xl font-extrabold text-gray-900">Free</span>
+                        <div class="text-sm text-gray-500 mt-1">{{ plan.trial_days }}-day trial</div>
+                        {% else %}
+                        <span class="text-5xl font-extrabold text-gray-900">${{ plan.monthly_price|floatformat:0 }}</span>
+                        <span class="text-gray-500 text-lg">/mo</span>
+                        {% if plan.annual_price %}
+                        <div class="text-sm text-green-600 mt-1">
+                            or ${{ plan.annual_price|floatformat:0 }}/yr — save more!
+                        </div>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+
+                <ul class="space-y-3 mb-8 flex-1">
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">
+                            {% if plan.max_repairs_per_month %}{{ plan.max_repairs_per_month }} repairs/month{% else %}Unlimited repairs{% endif %}
+                        </span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">
+                            {% if plan.max_technicians %}{{ plan.max_technicians }} technician seats{% else %}Unlimited technicians{% endif %}
+                        </span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">
+                            {% if plan.max_customers %}{{ plan.max_customers }} customer accounts{% else %}Unlimited customers{% endif %}
+                        </span>
+                    </li>
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">
+                            {% if plan.max_storage_mb >= 1024 %}{{ plan.max_storage_mb|floatformat:0 }} MB{% else %}{{ plan.max_storage_mb }} MB{% endif %} storage
+                        </span>
+                    </li>
+                    {% if plan.features.invoicing %}
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">Full invoicing</span>
+                    </li>
+                    {% endif %}
+                    {% if plan.features.customer_portal %}
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">Customer portal</span>
+                    </li>
+                    {% endif %}
+                    {% if plan.features.rewards %}
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">Rewards & referrals</span>
+                    </li>
+                    {% endif %}
+                    {% if plan.features.api_access %}
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">API access</span>
+                    </li>
+                    {% endif %}
+                    {% if plan.features.custom_branding %}
+                    <li class="flex items-start gap-2.5">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 text-sm flex-shrink-0"></i>
+                        <span class="text-gray-600 text-sm">Custom branding</span>
+                    </li>
+                    {% endif %}
+                </ul>
+
+                {% if user.is_authenticated %}
+                    {% if plan.slug == 'pro' %}
+                    <a href="{% url 'billing_settings' %}" class="w-full inline-flex items-center justify-center py-3 text-sm font-semibold rounded-xl bg-green-600 text-white hover:bg-green-700 transition-all shadow-lg shadow-green-200">
+                        Upgrade to Pro
+                    </a>
+                    {% elif plan.is_free %}
+                    <div class="w-full py-3 text-center text-sm font-medium text-gray-400 border border-gray-200 rounded-xl">
+                        Free Trial
+                    </div>
+                    {% else %}
+                    <a href="{% url 'billing_settings' %}" class="w-full inline-flex items-center justify-center py-3 text-sm font-semibold rounded-xl border-2 border-gray-300 text-gray-700 hover:border-blue-600 hover:text-blue-600 transition-all">
+                        Choose {{ plan.name }}
+                    </a>
+                    {% endif %}
+                {% else %}
+                    {% if plan.is_free %}
+                    <a href="{% url 'signup' %}" class="w-full inline-flex items-center justify-center py-3 text-sm font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-all shadow-lg shadow-blue-200">
+                        Start Free Trial
+                    </a>
+                    {% elif plan.slug == 'pro' %}
+                    <a href="{% url 'signup' %}" class="w-full inline-flex items-center justify-center py-3 text-sm font-semibold rounded-xl bg-green-600 text-white hover:bg-green-700 transition-all shadow-lg shadow-green-200">
+                        Start Free Trial
+                    </a>
+                    {% else %}
+                    <a href="{% url 'signup' %}" class="w-full inline-flex items-center justify-center py-3 text-sm font-semibold rounded-xl border-2 border-gray-300 text-gray-700 hover:border-blue-600 hover:text-blue-600 transition-all">
+                        Start Free Trial
+                    </a>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Feature Comparison Grid -->
+    <div class="bg-white py-16 sm:py-20 border-t border-gray-200">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 class="text-3xl font-bold text-gray-900 text-center mb-12">Compare All Features</h2>
+
+            <div class="overflow-x-auto -mx-4 sm:mx-0">
+                <table class="w-full min-w-[600px]">
+                    <thead>
+                        <tr class="border-b-2 border-gray-200">
+                            <th class="text-left py-4 px-4 text-sm font-semibold text-gray-900 w-1/3">Feature</th>
+                            {% for plan in plans %}
+                            <th class="text-center py-4 px-4 text-sm font-semibold
+                                {% if plan.slug == 'pro' %}text-green-700{% else %}text-gray-900{% endif %}">
+                                {{ plan.name }}
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Repairs per month</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-sm text-center text-gray-900 font-medium">
+                                {% if plan.max_repairs_per_month %}{{ plan.max_repairs_per_month }}{% else %}<i class="fas fa-infinity text-green-500"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Technician seats</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-sm text-center text-gray-900 font-medium">
+                                {% if plan.max_technicians %}{{ plan.max_technicians }}{% else %}<i class="fas fa-infinity text-green-500"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Customer accounts</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-sm text-center text-gray-900 font-medium">
+                                {% if plan.max_customers %}{{ plan.max_customers }}{% else %}<i class="fas fa-infinity text-green-500"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Photo storage</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-sm text-center text-gray-900 font-medium">
+                                {{ plan.max_storage_mb }} MB
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Invoicing</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-center">
+                                {% if plan.features.invoicing %}<i class="fas fa-check-circle text-green-500"></i>{% else %}<i class="fas fa-minus text-gray-300"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Customer portal</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-center">
+                                {% if plan.features.customer_portal %}<i class="fas fa-check-circle text-green-500"></i>{% else %}<i class="fas fa-minus text-gray-300"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Rewards & referrals</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-center">
+                                {% if plan.features.rewards %}<i class="fas fa-check-circle text-green-500"></i>{% else %}<i class="fas fa-minus text-gray-300"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">API access</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-center">
+                                {% if plan.features.api_access %}<i class="fas fa-check-circle text-green-500"></i>{% else %}<i class="fas fa-minus text-gray-300"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Custom branding</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-center">
+                                {% if plan.features.custom_branding %}<i class="fas fa-check-circle text-green-500"></i>{% else %}<i class="fas fa-minus text-gray-300"></i>{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3.5 px-4 text-sm text-gray-600">Support</td>
+                            {% for plan in plans %}
+                            <td class="py-3.5 px-4 text-sm text-center text-gray-900 font-medium">
+                                {% if plan.slug == 'enterprise' %}Dedicated
+                                {% elif plan.slug == 'pro' %}Priority
+                                {% elif plan.slug == 'starter' %}Email & chat
+                                {% else %}Email
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="bg-gradient-to-r from-blue-600 to-blue-800 py-16">
+        <div class="max-w-3xl mx-auto px-4 text-center">
+            <h2 class="text-3xl font-bold text-white mb-4">Ready to get started?</h2>
+            <p class="text-blue-100 text-lg mb-8">
+                Start your free trial today. No credit card required.
+            </p>
+            {% if user.is_authenticated %}
+            <a href="{% url 'owner_dashboard' %}" class="inline-flex items-center px-8 py-3.5 bg-white text-blue-700 text-lg font-semibold rounded-xl hover:bg-blue-50 transition-colors shadow-lg">
+                Go to Dashboard
+                <i class="fas fa-arrow-right ml-2"></i>
+            </a>
+            {% else %}
+            <a href="{% url 'signup' %}" class="inline-flex items-center px-8 py-3.5 bg-white text-blue-700 text-lg font-semibold rounded-xl hover:bg-blue-50 transition-colors shadow-lg">
+                Start Free Trial
+                <i class="fas fa-arrow-right ml-2"></i>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-gray-400 py-10">
+        <div class="max-w-7xl mx-auto px-4 text-center">
+            <p>&copy; {% now "Y" %} RS Systems. All rights reserved.</p>
+        </div>
+    </footer>
+
+</body>
+</html>

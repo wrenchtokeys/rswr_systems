@@ -1,5 +1,5 @@
 from django import forms
-from .models import Technician, Repair, Customer, UnitRepairCount
+from .models import Technician, Repair, Replacement, Customer, UnitRepairCount
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.forms.widgets import DateTimeInput
@@ -7,7 +7,7 @@ import logging
 
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
-from .models import Technician, Repair, Customer, UnitRepairCount
+from .models import Technician, Repair, Replacement, Customer, UnitRepairCount
 from core.models import TechnicianNotificationPreference
 from django.utils import timezone
 from django.forms.widgets import DateTimeInput
@@ -135,7 +135,18 @@ class TechnicianRegistrationForm(UserCreationForm):
 class CustomerForm(forms.ModelForm):
     class Meta:
         model = Customer
-        fields = ['name']
+        fields = ['name', 'primary_technician']
+
+    def __init__(self, *args, **kwargs):
+        self.tenant = kwargs.pop('tenant', None)
+        super().__init__(*args, **kwargs)
+        # Scope primary_technician choices to tenant
+        from apps.technician_portal.models import Technician
+        qs = Technician.objects.filter(is_active=True)
+        if self.tenant:
+            qs = qs.filter(tenant=self.tenant)
+        self.fields['primary_technician'].queryset = qs.order_by('user__first_name')
+        self.fields['primary_technician'].required = False
 
 class CustomDateTimeInput(DateTimeInput):
     input_type = 'datetime-local'
@@ -149,6 +160,7 @@ class RepairForm(forms.ModelForm):
         required=False,  # Not required because it might be set automatically for non-admin users
         help_text="Only required for admin users. Regular technicians will be automatically assigned."
     )
+    # Expose service_date as repair_date for backward compatibility in templates/views
     repair_date = forms.DateTimeField(
         widget=CustomDateTimeInput()
     )
@@ -165,7 +177,7 @@ class RepairForm(forms.ModelForm):
 
     class Meta:
         model = Repair
-        fields = ['technician', 'customer', 'unit_number', 'repair_date', 'queue_status', 'damage_type',
+        fields = ['technician', 'customer', 'unit_number', 'queue_status', 'damage_type',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
                   'cost_override', 'override_reason', 'repair_batch_id', 'break_number', 'total_breaks_in_batch']
@@ -176,6 +188,11 @@ class RepairForm(forms.ModelForm):
         
         # Set the damage type choices
         self.fields['damage_type'].choices = Repair.DAMAGE_TYPE_CHOICES
+
+        # Filter technician dropdown to only show techs who can do repairs
+        self.fields['technician'].queryset = Technician.objects.filter(
+            can_repair=True, is_active=True
+        )
         
         # Hide technician field for non-admin users
         if self.user and not self.user.is_staff:
@@ -192,14 +209,14 @@ class RepairForm(forms.ModelForm):
             self.fields['cost_override'].widget = forms.HiddenInput()
             self.fields['override_reason'].widget = forms.HiddenInput()
         
-        # Auto-populate repair_date for existing repairs
+        # Auto-populate repair_date from service_date for existing repairs
         if self.instance and self.instance.pk:
             # This is an existing repair being edited - keep existing date
             # But ensure widget has proper format
-            if self.instance.repair_date:
-                self.fields['repair_date'].initial = self.instance.repair_date
+            if self.instance.service_date:
+                self.fields['repair_date'].initial = self.instance.service_date
                 # Convert to local timezone for datetime-local input
-                local_time = timezone.localtime(self.instance.repair_date)
+                local_time = timezone.localtime(self.instance.service_date)
                 self.fields['repair_date'].widget.attrs['value'] = local_time.strftime('%Y-%m-%dT%H:%M')
         # For new repairs, JavaScript will set the current time in the user's browser timezone
         # See static/js/repair_form.js lines 40-54 for client-side initialization
@@ -246,6 +263,12 @@ class RepairForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        
+        # Map repair_date form field → service_date model field
+        repair_date_value = cleaned_data.get('repair_date')
+        if repair_date_value:
+            cleaned_data['service_date'] = repair_date_value
+        
         customer = cleaned_data.get('customer')
         unit_number = cleaned_data.get('unit_number')
         queue_status = cleaned_data.get('queue_status')
@@ -340,6 +363,17 @@ class RepairForm(forms.ModelForm):
                     )
 
         return cleaned_data
+
+    def save(self, commit=True):
+        """Override save to map repair_date → service_date on the model instance."""
+        instance = super().save(commit=False)
+        repair_date_value = self.cleaned_data.get('repair_date')
+        if repair_date_value:
+            instance.service_date = repair_date_value
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
 class TechnicianNotificationPreferenceForm(forms.ModelForm):

@@ -1,109 +1,105 @@
 """
 Custom decorators for technician portal views.
+
+These now delegate to common.auth for the single source of truth.
+Kept as thin wrappers for backward compatibility during transition.
 """
 from functools import wraps
 from django.shortcuts import redirect
 from django.contrib import messages
 
+from common.auth import can_access, get_user_role, redirect_to_portal
 
-def manager_required(view_func):
+
+def is_tenant_admin(user):
     """
-    Decorator to restrict view access to managers and staff users only.
+    Check if user has admin-level access for their tenant.
 
-    Usage:
-        @technician_required
-        @manager_required
-        def my_manager_view(request):
-            # View logic here
-
-    Permissions:
-        - Staff users (is_staff=True) can always access
-        - Technicians with is_manager=True can access
-        - All others are redirected with error message
+    Returns True if user is superuser, staff, owner, or manager.
     """
-    @wraps(view_func)
-    def _wrapped_view(request, *args, **kwargs):
-        # Staff users always have access
-        if request.user.is_staff:
-            return view_func(request, *args, **kwargs)
+    role = get_user_role(user)
+    return role in ('superuser', 'owner', 'manager')
 
-        # Check if user has technician profile with manager status
-        if hasattr(request.user, 'technician'):
-            technician = request.user.technician
-            if technician and technician.is_manager:
-                return view_func(request, *args, **kwargs)
 
-        # Access denied
-        messages.warning(request, "This page requires manager privileges.")
-        return redirect('technician_dashboard')
-
-    return _wrapped_view
-
-# Add a helper function to safely check if a user has technician access
 def has_technician_access(user):
-    """Helper function to check if a user has technician access through profile or admin privileges"""
-    # Admin users always have access
-    if user.is_staff:
-        return True
-
-    # Check if user is in the Technicians group
-    if user.groups.filter(name='Technicians').exists():
-        return True
-
-    # Non-admin users need a technician profile
-    try:
-        return hasattr(user, 'technician') and user.technician is not None
-    except:
+    """Check if a user has technician access (repairs or customers)."""
+    if not user or not user.is_authenticated:
         return False
+    return can_access(user, 'repairs') or can_access(user, 'customers')
+
 
 def is_working_manager(user):
     """
-    Helper function to check if a user is a working manager.
-    A working manager is someone who:
-    1. Has a technician profile AND
-    2. Has is_manager=True flag
-
-    This allows them to both assign work AND complete repairs themselves.
+    Check if a user is a working manager (has technician profile + is_manager).
     """
     if not hasattr(user, 'technician'):
         return False
     try:
         technician = user.technician
         return technician is not None and technician.is_manager
-    except:
+    except Exception:
         return False
 
-# Custom decorator to ensure only technicians can access views
+
 def technician_required(view_func):
+    """Decorator: user must be able to access repairs or customers."""
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
-        # Check if user is authenticated
         if not request.user.is_authenticated:
             messages.info(request, "Please log in to access the technician portal.")
             return redirect('login')
-        
-        # Check if user has technician access
-        if has_technician_access(request.user):
+
+        tenant = getattr(request, 'tenant', None)
+        if can_access(request.user, 'repairs', tenant) or can_access(request.user, 'customers', tenant):
             return view_func(request, *args, **kwargs)
-            
-        # User doesn't have access
-        messages.warning(request, "Your account does not have technician access. Please contact an administrator if you believe this is an error.")
-        return redirect('home')
+
+        messages.warning(
+            request,
+            "Your account does not have technician access. "
+            "Please contact an administrator if you believe this is an error."
+        )
+        return redirect_to_portal(request.user)
+
     return _wrapped_view
 
-# Admin required decorator
-def admin_required(view_func):
+
+def manager_required(view_func):
+    """Decorator: user must be owner, manager, or staff."""
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
-        # Check if user is authenticated
         if not request.user.is_authenticated:
             messages.info(request, "Please log in to access this feature.")
             return redirect('login')
-        
-        # Check if user is admin
-        if not request.user.is_staff:
-            messages.warning(request, "This action requires administrator privileges.")
-            return redirect('technician_dashboard')
-            
-        return view_func(request, *args, **kwargs)
+
+        if is_tenant_admin(request.user):
+            return view_func(request, *args, **kwargs)
+
+        # Also allow technicians with is_manager flag
+        if hasattr(request.user, 'technician'):
+            try:
+                if request.user.technician and request.user.technician.is_manager:
+                    return view_func(request, *args, **kwargs)
+            except Exception:
+                pass
+
+        messages.warning(request, "This page requires manager privileges.")
+        return redirect_to_portal(request.user)
+
+    return _wrapped_view
+
+
+def admin_required(view_func):
+    """Decorator: user must be staff or owner/manager."""
+    @wraps(view_func)
+    def _wrapped_view(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            messages.info(request, "Please log in to access this feature.")
+            return redirect('login')
+
+        if is_tenant_admin(request.user):
+            return view_func(request, *args, **kwargs)
+
+        messages.warning(request, "This action requires administrator privileges.")
+        return redirect_to_portal(request.user)
+
     return _wrapped_view

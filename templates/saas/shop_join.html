@@ -1,0 +1,206 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join {{ tenant.name }} | Customer Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>body { font-family: 'Inter', system-ui, sans-serif; }</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+{% if messages %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+    {% for message in messages %}
+    <div class="mb-2 p-4 rounded-lg text-sm font-medium
+        {% if message.tags == 'success' %}bg-green-50 text-green-800 border border-green-200
+        {% elif message.tags == 'error' %}bg-red-50 text-red-800 border border-red-200
+        {% else %}bg-blue-50 text-blue-800 border border-blue-200{% endif %}">
+        <div class="flex justify-between items-center">
+            <span>{{ message }}</span>
+            <button onclick="this.parentElement.parentElement.remove()" class="text-current opacity-50 hover:opacity-100">&times;</button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="flex min-h-screen bg-gray-50">
+    <!-- Left: Brand panel -->
+    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 to-blue-800 items-center justify-center relative overflow-hidden">
+        <div class="absolute inset-0 opacity-10">
+            <div class="absolute top-20 left-20 w-40 h-40 border-2 border-white rounded-full"></div>
+            <div class="absolute bottom-32 right-16 w-64 h-64 border-2 border-white rounded-full"></div>
+            <div class="absolute top-1/2 left-1/3 w-24 h-24 border-2 border-white rounded-full"></div>
+        </div>
+        <div class="max-w-md text-center relative z-10 px-8">
+            {% if tenant.logo %}
+            <img src="{{ tenant.logo.url }}" alt="{{ tenant.name }}" class="w-24 h-24 rounded-2xl mx-auto mb-6 object-cover shadow-lg border-2 border-white/20">
+            {% else %}
+            <div class="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-8">
+                <i class="fas fa-store text-white text-3xl"></i>
+            </div>
+            {% endif %}
+            <h1 class="text-3xl font-bold text-white mb-4">{{ tenant.name }}</h1>
+            <p class="text-xl text-blue-100 mb-10">Your windshield repair &amp; replacement portal</p>
+
+            <div class="space-y-5 text-left">
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-bell text-white"></i>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-white">Request &amp; Monitor Repairs</p>
+                        <p class="text-blue-200 text-sm">Submit repair requests and track every job from start to finish</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-check-circle text-white"></i>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-white">Approve Work Orders</p>
+                        <p class="text-blue-200 text-sm">Review and approve field-discovered damage on your vehicles instantly</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-file-invoice-dollar text-white"></i>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-white">Invoices &amp; History</p>
+                        <p class="text-blue-200 text-sm">Access invoices, payment history, and complete repair records</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-4">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-gift text-white"></i>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-white">Earn Rewards</p>
+                        <p class="text-blue-200 text-sm">Refer others and earn loyalty rewards on future services</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Signup form -->
+    <div class="w-full lg:w-1/2 flex items-center justify-center p-8">
+        <div class="max-w-md w-full">
+            <div class="text-center mb-8 lg:hidden">
+                {% if tenant.logo %}
+                <img src="{{ tenant.logo.url }}" alt="{{ tenant.name }}" class="w-16 h-16 rounded-xl mx-auto mb-4 object-cover">
+                {% endif %}
+                <h2 class="text-2xl font-bold text-gray-900">{{ tenant.name }}</h2>
+                <p class="text-gray-500 mt-1">Customer Portal</p>
+            </div>
+
+            <div class="hidden lg:block mb-8">
+                <h2 class="text-2xl font-bold text-gray-900">Create Your Account</h2>
+                <p class="text-gray-500 mt-1">Get access to {{ tenant.name }}'s customer portal</p>
+            </div>
+
+            {% if errors %}
+            <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div class="flex items-start">
+                    <i class="fas fa-exclamation-circle text-red-500 mt-0.5 mr-3 flex-shrink-0"></i>
+                    <div class="text-sm text-red-700">
+                        {% for error in errors %}
+                        <p{% if not forloop.last %} class="mb-1"{% endif %}>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <form method="post" class="space-y-5">
+                {% csrf_token %}
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                        <input type="text" id="first_name" name="first_name" required
+                            value="{{ form_data.first_name|default:'' }}"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                            placeholder="First name">
+                    </div>
+                    <div>
+                        <label for="last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                        <input type="text" id="last_name" name="last_name" required
+                            value="{{ form_data.last_name|default:'' }}"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                            placeholder="Last name">
+                    </div>
+                </div>
+
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="email" name="email" required
+                        value="{{ form_data.email|default:'' }}"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="you@company.com">
+                </div>
+
+                <div>
+                    <label for="phone" class="block text-sm font-medium text-gray-700 mb-1">
+                        Phone <span class="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <input type="tel" id="phone" name="phone"
+                        value="{{ form_data.phone|default:'' }}"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="(555) 123-4567">
+                </div>
+
+                <div>
+                    <label for="company_name" class="block text-sm font-medium text-gray-700 mb-1">
+                        Company Name <span class="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <input type="text" id="company_name" name="company_name"
+                        value="{{ form_data.company_name|default:'' }}"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="Leave blank for personal account">
+                    <p class="text-xs text-gray-500 mt-1">Fleet customers: enter your company name. Individuals: leave blank.</p>
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input type="password" id="password" name="password" required minlength="8"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="••••••••">
+                </div>
+
+                <div>
+                    <label for="confirm_password" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required minlength="8"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        placeholder="••••••••">
+                </div>
+
+                <button type="submit"
+                    class="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                    <i class="fas fa-user-plus mr-2"></i>
+                    Create Account
+                </button>
+            </form>
+
+            <p class="text-center text-sm text-gray-500 mt-6">
+                Already have an account?
+                <a href="{% url 'login' %}" class="text-blue-600 font-medium hover:text-blue-700">Log in</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Minimal footer — no pricing/signup links -->
+<footer class="bg-white border-t border-gray-200 py-6">
+    <div class="max-w-7xl mx-auto px-4 text-center">
+        <p class="text-sm text-gray-400">&copy; {% now "Y" %} {{ tenant.name }} — Powered by RS Systems</p>
+    </div>
+</footer>
+
+</body>
+</html>

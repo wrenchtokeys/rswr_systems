@@ -1,0 +1,314 @@
+{% extends "saas/base_owner.html" %}
+
+{% block title %}Billing & Plans | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Billing & Plans</h1>
+    <p class="text-gray-500 mt-1">Manage your subscription and payment method</p>
+</div>
+
+<!-- Current Plan Card -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+    <div class="p-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+                <div class="text-sm text-gray-500 font-medium mb-1">Current Plan</div>
+                <div class="flex items-center gap-3">
+                    <h2 class="text-2xl font-bold text-gray-900">
+                        {{ current_plan.name|default:"No Plan" }}
+                    </h2>
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+                        {% if tenant.subscription_status == 'active' %}bg-green-100 text-green-800
+                        {% elif tenant.subscription_status == 'trialing' %}bg-amber-100 text-amber-800
+                        {% elif tenant.subscription_status == 'past_due' %}bg-red-100 text-red-800
+                        {% elif tenant.subscription_status == 'canceled' %}bg-gray-100 text-gray-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ tenant.get_subscription_status_display }}
+                    </span>
+                </div>
+                {% if current_plan %}
+                <div class="text-gray-500 mt-1">
+                    {% if current_plan.is_free %}
+                        Free {% if is_trial %} — {{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} remaining{% endif %}
+                    {% else %}
+                        ${{ current_plan.monthly_price }}/month
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="flex flex-wrap gap-2">
+                {% if tenant.stripe_customer_id %}
+                <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm">
+                    <i class="fas fa-credit-card mr-2"></i>
+                    Manage Payment Method
+                </a>
+                {% endif %}
+                {% if tenant.subscription_status == 'active' %}
+                <button onclick="document.getElementById('cancelModal').classList.remove('hidden')" class="inline-flex items-center px-4 py-2 bg-white border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors shadow-sm">
+                    <i class="fas fa-times-circle mr-2"></i>
+                    Cancel Subscription
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Usage Breakdown -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Usage This Month</h3>
+    </div>
+    <div class="p-6 space-y-5">
+        <!-- Repairs -->
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-tools text-gray-500"></i>
+                    <span class="text-sm font-medium text-gray-700">Repairs</span>
+                </div>
+                <span class="text-sm font-semibold text-gray-900">
+                    {{ usage.repairs.used }}{% if usage.repairs.limit %} / {{ usage.repairs.limit }}{% else %} (unlimited){% endif %}
+                </span>
+            </div>
+            {% if usage.repairs.limit %}
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="h-3 rounded-full transition-all duration-500
+                    {% if usage.repairs.percent >= 90 %}bg-red-500
+                    {% elif usage.repairs.percent >= 70 %}bg-yellow-500
+                    {% else %}bg-green-500{% endif %}"
+                    style="width: {% if usage.repairs.percent %}{{ usage.repairs.percent }}{% else %}0{% endif %}%"></div>
+            </div>
+            {% else %}
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="bg-green-500 h-3 rounded-full" style="width: 5%"></div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Technicians -->
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-user-cog text-gray-500"></i>
+                    <span class="text-sm font-medium text-gray-700">Technicians</span>
+                </div>
+                <span class="text-sm font-semibold text-gray-900">
+                    {{ usage.technicians.used }}{% if usage.technicians.limit %} / {{ usage.technicians.limit }}{% else %} (unlimited){% endif %}
+                </span>
+            </div>
+            {% if usage.technicians.limit %}
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="h-3 rounded-full transition-all duration-500
+                    {% if usage.technicians.percent >= 90 %}bg-red-500
+                    {% elif usage.technicians.percent >= 70 %}bg-yellow-500
+                    {% else %}bg-blue-500{% endif %}"
+                    style="width: {% if usage.technicians.percent %}{{ usage.technicians.percent }}{% else %}0{% endif %}%"></div>
+            </div>
+            {% else %}
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="bg-blue-500 h-3 rounded-full" style="width: 5%"></div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Customers -->
+        <div>
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-users text-gray-500"></i>
+                    <span class="text-sm font-medium text-gray-700">Customers</span>
+                </div>
+                <span class="text-sm font-semibold text-gray-900">
+                    {{ usage.customers.used }}{% if usage.customers.limit %} / {{ usage.customers.limit }}{% else %} (unlimited){% endif %}
+                </span>
+            </div>
+            {% if usage.customers.limit %}
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="h-3 rounded-full transition-all duration-500
+                    {% if usage.customers.percent >= 90 %}bg-red-500
+                    {% elif usage.customers.percent >= 70 %}bg-yellow-500
+                    {% else %}bg-purple-500{% endif %}"
+                    style="width: {% if usage.customers.percent %}{{ usage.customers.percent }}{% else %}0{% endif %}%"></div>
+            </div>
+            {% else %}
+            <div class="w-full bg-gray-200 rounded-full h-3">
+                <div class="bg-purple-500 h-3 rounded-full" style="width: 5%"></div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Plan Comparison -->
+<div class="mb-8">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Available Plans</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-{{ plans|length }} gap-4">
+        {% for plan in plans %}
+        <div class="bg-white rounded-xl border-2 p-6 shadow-sm relative
+            {% if plan.slug == tenant.plan %}border-blue-500{% elif plan.slug == 'pro' %}border-green-400{% else %}border-gray-200{% endif %}">
+
+            {% if plan.slug == tenant.plan %}
+            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-600 text-white">
+                    Current Plan
+                </span>
+            </div>
+            {% elif plan.slug == 'pro' %}
+            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-600 text-white">
+                    Most Popular
+                </span>
+            </div>
+            {% endif %}
+
+            <div class="text-center mb-4 mt-2">
+                <h4 class="text-lg font-bold text-gray-900">{{ plan.name }}</h4>
+                <div class="mt-2">
+                    {% if plan.is_free %}
+                    <span class="text-3xl font-bold text-gray-900">Free</span>
+                    {% else %}
+                    <span class="text-3xl font-bold text-gray-900">${{ plan.monthly_price|floatformat:0 }}</span>
+                    <span class="text-gray-500">/mo</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <ul class="space-y-2 mb-6 text-sm">
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">
+                        {% if plan.max_repairs_per_month %}{{ plan.max_repairs_per_month }} repairs/mo{% else %}Unlimited repairs{% endif %}
+                    </span>
+                </li>
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">
+                        {% if plan.max_technicians %}{{ plan.max_technicians }} technicians{% else %}Unlimited technicians{% endif %}
+                    </span>
+                </li>
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">
+                        {% if plan.max_customers %}{{ plan.max_customers }} customers{% else %}Unlimited customers{% endif %}
+                    </span>
+                </li>
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">{{ plan.max_storage_mb }} MB storage</span>
+                </li>
+                {% if plan.features.invoicing %}
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">Invoicing</span>
+                </li>
+                {% endif %}
+                {% if plan.features.rewards %}
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">Rewards & referrals</span>
+                </li>
+                {% endif %}
+                {% if plan.features.api_access %}
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">API access</span>
+                </li>
+                {% endif %}
+                {% if plan.features.custom_branding %}
+                <li class="flex items-center gap-2">
+                    <i class="fas fa-check text-green-500 text-xs"></i>
+                    <span class="text-gray-600">Custom branding</span>
+                </li>
+                {% endif %}
+            </ul>
+
+            {% if plan.slug != tenant.plan and not plan.is_free %}
+            <form method="post" action="{% url 'billing_update_plan' %}">
+                {% csrf_token %}
+                <input type="hidden" name="plan" value="{{ plan.slug }}">
+                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2.5
+                    {% if plan.slug == 'pro' %}bg-green-600 hover:bg-green-700{% else %}bg-blue-600 hover:bg-blue-700{% endif %}
+                    text-white text-sm font-medium rounded-lg transition-colors shadow-sm">
+                    {% if current_plan and plan.monthly_price > current_plan.monthly_price %}
+                        Upgrade
+                    {% else %}
+                        Switch Plan
+                    {% endif %}
+                </button>
+            </form>
+            {% elif plan.slug == tenant.plan %}
+            <div class="w-full text-center py-2.5 text-sm font-medium text-gray-500">
+                ✓ Active
+            </div>
+            {% elif plan.is_free %}
+            <div class="w-full text-center py-2.5 text-sm font-medium text-gray-400">
+                Free trial
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Payment History -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Payment History</h3>
+    </div>
+    <div class="p-6">
+        {% if tenant.stripe_customer_id %}
+        <div class="text-center text-gray-500 py-6">
+            <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-file-invoice-dollar text-gray-400 text-xl"></i>
+            </div>
+            <p class="mb-3">View your complete payment history and download invoices through the Stripe Billing Portal.</p>
+            <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                <i class="fas fa-external-link-alt mr-2"></i>
+                Open Billing Portal
+            </a>
+        </div>
+        {% else %}
+        <div class="text-center text-gray-500 py-6">
+            <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-receipt text-gray-400 text-xl"></i>
+            </div>
+            <p>No payment history yet. Subscribe to a paid plan to get started.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Cancel Subscription Modal -->
+<div id="cancelModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="document.getElementById('cancelModal').classList.add('hidden')"></div>
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-900">Cancel Subscription?</h3>
+                <p class="text-gray-500 mt-2">
+                    Your subscription will remain active until the end of the current billing period.
+                    After that, you'll lose access to premium features.
+                </p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('cancelModal').classList.add('hidden')" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                    Keep Subscription
+                </button>
+                <form method="post" action="{% url 'billing_cancel' %}" class="flex-1">
+                    {% csrf_token %}
+                    <button type="submit" class="w-full px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors">
+                        Yes, Cancel
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
