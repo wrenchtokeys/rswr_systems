@@ -18,6 +18,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from common.decorators import owner_or_manager_required
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
@@ -287,7 +288,7 @@ def onboarding_view(request):
 # 4. Owner dashboard
 # ------------------------------------------------------------------
 
-@login_required
+@owner_or_manager_required
 def owner_dashboard(request):
     """Owner dashboard with trial banner, usage, quick actions, recent activity."""
     tenant, membership = _get_owner_tenant(request)
@@ -343,7 +344,7 @@ def pricing_view(request):
 # 6. Billing settings
 # ------------------------------------------------------------------
 
-@login_required
+@owner_or_manager_required
 def billing_view(request):
     """Billing settings for subscribed owners."""
     tenant, membership = _get_owner_tenant(request)
@@ -406,7 +407,7 @@ def billing_view(request):
 # 7. Replacement form
 # ------------------------------------------------------------------
 
-@login_required
+@owner_or_manager_required
 def replacement_create(request):
     """Create a new glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -449,7 +450,7 @@ def replacement_create(request):
     })
 
 
-@login_required
+@owner_or_manager_required
 def replacement_detail(request, pk):
     """View a glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -469,7 +470,7 @@ def replacement_detail(request, pk):
 # 8. Billing — plan update, cancel, portal redirect
 # ------------------------------------------------------------------
 
-@login_required
+@owner_or_manager_required
 def billing_update_plan(request):
     """POST /owner/billing/update/ — upgrade or downgrade plan."""
     if request.method != 'POST':
@@ -505,7 +506,7 @@ def billing_update_plan(request):
     return redirect('billing_settings')
 
 
-@login_required
+@owner_or_manager_required
 def billing_cancel(request):
     """POST /owner/billing/cancel/ — cancel subscription at end of period."""
     if request.method != 'POST':
@@ -526,7 +527,7 @@ def billing_cancel(request):
     return redirect('billing_settings')
 
 
-@login_required
+@owner_or_manager_required
 def billing_portal_redirect(request):
     """GET /owner/billing/portal/ — redirect to Stripe Billing Portal."""
     tenant, membership = _get_owner_tenant(request)
@@ -548,7 +549,7 @@ def billing_portal_redirect(request):
 # 9. Owner Settings
 # ------------------------------------------------------------------
 
-@login_required
+@owner_or_manager_required
 def owner_settings_view(request):
     """GET/POST /owner/settings/ — business info form + team management."""
     tenant, membership = _get_owner_tenant(request)
@@ -630,7 +631,7 @@ def owner_settings_view(request):
     return render(request, 'saas/owner_settings.html', context)
 
 
-@login_required
+@owner_or_manager_required
 def invite_member(request):
     """POST /owner/settings/invite/ — invite a new team member with invite token."""
     if request.method != 'POST':
@@ -895,7 +896,7 @@ def shop_join_view(request, slug):
 # 11. Team Management Endpoints (Phase 6)
 # ------------------------------------------------------------------
 
-@login_required
+@owner_or_manager_required
 @require_POST
 def update_team_member(request, membership_id):
     """POST: Update a team member's role and/or abilities."""
@@ -966,7 +967,7 @@ def update_team_member(request, membership_id):
     return redirect('owner_settings')
 
 
-@login_required
+@owner_or_manager_required
 @require_POST
 def deactivate_team_member(request, membership_id):
     """POST: Deactivate a team member (soft delete)."""
@@ -1009,7 +1010,7 @@ def deactivate_team_member(request, membership_id):
     return redirect('owner_settings')
 
 
-@login_required
+@owner_or_manager_required
 @require_POST
 def resend_invite(request, membership_id):
     """POST: Resend invite email to a member who hasn't set their password."""

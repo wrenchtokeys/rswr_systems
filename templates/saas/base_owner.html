@@ -54,7 +54,7 @@
                         <a href="{% url 'owner_dashboard' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'owner_dashboard' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Dashboard</a>
                         <a href="{% url 'billing_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'billing_settings' or 'billing' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Billing</a>
                         <a href="{% url 'owner_settings' %}" class="text-sm font-medium {% if 'settings' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Settings</a>
-                        <a href="{% url 'technician_dashboard' %}" class="text-sm font-medium text-gray-600 hover:text-gray-900">Tech Portal</a>
+                        {% if has_tech_access %}<a href="{% url 'technician_dashboard' %}" class="text-sm font-medium text-gray-600 hover:text-gray-900">Tech Portal</a>{% endif %}
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">

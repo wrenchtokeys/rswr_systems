@@ -77,9 +77,22 @@ def has_technician_access(user):
 
     # Non-admin users need a technician profile
     try:
-        return hasattr(user, 'technician') and user.technician is not None
-    except:
-        return False
+        if hasattr(user, 'technician') and user.technician is not None:
+            return True
+    except Exception:
+        pass
+
+    # Tenant owners/managers can access tech portal for oversight
+    try:
+        from apps.tenants.models import TenantMembership
+        if TenantMembership.objects.filter(
+            user=user, is_active=True, role__in=['owner', 'manager']
+        ).exists():
+            return True
+    except Exception:
+        pass
+
+    return False
 
 def is_working_manager(user):
     """
@@ -111,8 +124,15 @@ def technician_required(view_func):
         if has_technician_access(request.user):
             return view_func(request, *args, **kwargs)
             
-        # User doesn't have access
+        # User doesn't have access — route to their correct portal
         messages.warning(request, "Your account does not have technician access. Please contact an administrator if you believe this is an error.")
+        # Check if they're a customer
+        try:
+            from apps.customer_portal.models import CustomerUser
+            if CustomerUser.objects.filter(user=request.user).exists():
+                return redirect('customer_dashboard')
+        except Exception:
+            pass
         return redirect('home')
     return _wrapped_view
 
