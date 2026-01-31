@@ -224,6 +224,10 @@
                         <i class="fas fa-shield-alt"></i>
                         <span>Security</span>
                     </button>
+                    <button type="button" class="tab-button" data-tab="billing">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                        <span>Billing & Invoicing</span>
+                    </button>
                 </div>
             </div>
 
@@ -539,6 +543,119 @@
                                     Confirm New Password
                                 </label>
                                 <input type="password" class="form-input" id="confirm_password" name="confirm_password" placeholder="Re-enter your new password">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Billing & Invoicing Tab -->
+                <div class="tab-content p-6" id="billing-tab" style="display: none;">
+                    <!-- Invoice Preference Card -->
+                    <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-purple-100 text-purple-600 p-2 rounded-lg">
+                                    <i class="fas fa-file-invoice-dollar text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        Invoice Generation Mode
+                                        <span class="tooltip-trigger">
+                                            <i class="fas fa-circle-question text-sm"></i>
+                                            <span class="tooltip-content">
+                                                Choose how and when invoices are generated for your repairs
+                                            </span>
+                                        </span>
+                                    </h3>
+                                    <p class="text-sm text-gray-600">Configure how invoices are created for completed repairs</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="radio-group">
+                            {% for radio in repair_form.invoice_preference %}
+                            <label class="radio-option">
+                                {{ radio.tag }}
+                                <div class="flex-1">
+                                    <div class="font-medium text-gray-900">
+                                        {% if radio.value == 'per_ticket' %}
+                                        Per Repair
+                                        {% elif radio.value == 'batch' %}
+                                        Batch Invoicing
+                                        {% elif radio.value == 'manual' %}
+                                        Manual Only
+                                        {% else %}
+                                        {{ radio.choice_label }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="text-sm text-gray-600 mt-1">
+                                        {% if radio.value == 'per_ticket' %}
+                                        An invoice is automatically generated each time a repair is completed
+                                        {% elif radio.value == 'batch' %}
+                                        Repairs are grouped together and invoiced periodically (recommended for high-volume accounts)
+                                        {% elif radio.value == 'manual' %}
+                                        Invoices are only created when manually requested — no automatic generation
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- Email & Delivery Settings Card -->
+                    <div class="bg-white border border-gray-200 rounded-lg p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-blue-100 text-blue-600 p-2 rounded-lg">
+                                    <i class="fas fa-envelope text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-semibold text-gray-900">Email & Delivery Settings</h3>
+                                    <p class="text-sm text-gray-600">Configure how invoices are delivered to your team</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Billing Email -->
+                        <div class="form-group">
+                            <label for="{{ repair_form.billing_email.id_for_label }}" class="form-label">
+                                <i class="fas fa-at text-gray-400"></i>
+                                Billing Email Address
+                                <span class="tooltip-trigger">
+                                    <i class="fas fa-circle-question text-sm"></i>
+                                    <span class="tooltip-content">
+                                        Invoices will be sent to this address. Leave blank to use your account email.
+                                    </span>
+                                </span>
+                            </label>
+                            <input type="email" class="form-input max-w-md" id="{{ repair_form.billing_email.id_for_label }}" name="{{ repair_form.billing_email.name }}" value="{{ repair_form.billing_email.value|default:'' }}" placeholder="billing@yourcompany.com">
+                            <p class="text-xs text-gray-500 mt-1">Leave blank to use your primary account email</p>
+                        </div>
+
+                        <!-- Auto Email Toggle -->
+                        <div class="flex items-start gap-3 p-4 bg-gray-50 rounded-lg mb-4">
+                            <div class="flex items-center h-5">
+                                <input type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" id="{{ repair_form.auto_email_invoices.id_for_label }}" name="{{ repair_form.auto_email_invoices.name }}" {% if repair_form.auto_email_invoices.value %}checked{% endif %}>
+                            </div>
+                            <div class="flex-1">
+                                <label for="{{ repair_form.auto_email_invoices.id_for_label }}" class="text-sm font-medium text-gray-900 cursor-pointer">
+                                    Automatically Email Invoices
+                                </label>
+                                <p class="text-xs text-gray-600 mt-1">When enabled, invoices are automatically emailed as soon as they are generated</p>
+                            </div>
+                        </div>
+
+                        <!-- Include Photos Toggle -->
+                        <div class="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                            <div class="flex items-center h-5">
+                                <input type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" id="{{ repair_form.include_photos_in_invoice.id_for_label }}" name="{{ repair_form.include_photos_in_invoice.name }}" {% if repair_form.include_photos_in_invoice.value %}checked{% endif %}>
+                            </div>
+                            <div class="flex-1">
+                                <label for="{{ repair_form.include_photos_in_invoice.id_for_label }}" class="text-sm font-medium text-gray-900 cursor-pointer">
+                                    Include Repair Photos in Invoices
+                                </label>
+                                <p class="text-xs text-gray-600 mt-1">Attach before/after repair photos to invoice emails for documentation purposes</p>
                             </div>
                         </div>
                     </div>
