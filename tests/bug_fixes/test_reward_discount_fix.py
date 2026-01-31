@@ -9,7 +9,7 @@ import os
 import django
 
 # Setup Django environment
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'rs_systems.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'rs_systems.settings.development')
 django.setup()
 
 from decimal import Decimal

@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Setup Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'rs_systems.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'rs_systems.settings.development')
 django.setup()
 
 from django.contrib.auth import get_user_model

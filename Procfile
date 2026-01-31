@@ -1,1 +1,1 @@
-web: gunicorn --env DJANGO_SETTINGS_MODULE=rs_systems.settings_aws rs_systems.wsgi:application --bind=0.0.0.0:8000 
+web: gunicorn --env DJANGO_SETTINGS_MODULE=rs_systems.settings.production rs_systems.wsgi:application --bind=0.0.0.0:8000 

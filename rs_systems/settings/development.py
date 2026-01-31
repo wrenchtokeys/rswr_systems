@@ -1,0 +1,190 @@
+"""
+Development settings for rs_systems project.
+
+Imports everything from base.py and adds dev-specific overrides.
+Used by manage.py and local development.
+"""
+
+import os
+import dj_database_url
+from dotenv import load_dotenv
+from .base import *  # noqa: F401,F403
+
+# Load environment variables from .env file in project root
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+# =========================================
+# CORE
+# =========================================
+
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-only-key-not-for-production')
+
+DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
+
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+
+# =========================================
+# CORS
+# =========================================
+
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000').split(',')
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:8000').split(',')
+CORS_ALLOW_CREDENTIALS = os.environ.get('CORS_ALLOW_CREDENTIALS', 'True').lower() == 'true'
+
+# =========================================
+# DATABASE
+# =========================================
+
+USE_AWS_DB = os.environ.get('USE_AWS_DB', 'False').lower() == 'true'
+
+if USE_AWS_DB:
+    db_url = os.environ.get('AWS_DATABASE_URL')
+else:
+    db_url = os.environ.get('LOCAL_DATABASE_URL')
+
+if not db_url:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+else:
+    DATABASES = {
+        'default': dj_database_url.config(default=db_url, conn_max_age=600),
+    }
+    DATABASES['default'].setdefault('TEST', {})
+
+# =========================================
+# MEDIA FILES
+# =========================================
+
+USE_S3 = os.environ.get('USE_S3', 'False').lower() == 'true'
+
+if USE_S3:
+    AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+    AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
+    AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1')
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_S3_VERIFY = True
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/'
+else:
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+    os.makedirs(os.path.join(MEDIA_ROOT, 'repair_photos', 'before'), exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_ROOT, 'repair_photos', 'after'), exist_ok=True)
+
+# =========================================
+# SECURITY
+# =========================================
+
+USE_HTTPS = os.environ.get('USE_HTTPS', 'False').lower() == 'true'
+IS_CLOUD_DEPLOYMENT = any(host.endswith(('.railway.app', '.herokuapp.com', '.vercel.app')) for host in ALLOWED_HOSTS)
+
+if IS_CLOUD_DEPLOYMENT or USE_HTTPS:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = not IS_CLOUD_DEPLOYMENT  # Cloud providers handle SSL termination
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+else:
+    SECURE_PROXY_SSL_HEADER = None
+    SECURE_SSL_REDIRECT = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+
+# =========================================
+# CACHING
+# =========================================
+
+REDIS_CACHE_URL = os.environ.get('REDIS_CACHE_URL', 'redis://localhost:6379/1')
+
+
+def _redis_available():
+    """Check if Redis is reachable (called once at startup)."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        s.connect(('localhost', 6379))
+        s.close()
+        return True
+    except (socket.error, OSError):
+        return False
+
+
+if _redis_available():
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_CACHE_URL,
+            'KEY_PREFIX': 'rs_systems',
+            'TIMEOUT': 300,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'KEY_PREFIX': 'rs_systems',
+            'TIMEOUT': 300,
+        }
+    }
+
+# =========================================
+# CELERY (Dev overrides)
+# =========================================
+
+TIME_ZONE = os.environ.get('TIME_ZONE', 'America/Chicago')
+CELERY_TIMEZONE = TIME_ZONE
+
+CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_CONCURRENCY', 4))
+
+# Development: Uncomment to run tasks synchronously for easier debugging
+# CELERY_TASK_ALWAYS_EAGER = True
+# CELERY_TASK_EAGER_PROPAGATES = True
+
+# =========================================
+# LOGGING
+# =========================================
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

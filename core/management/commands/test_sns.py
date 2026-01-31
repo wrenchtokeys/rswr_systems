@@ -167,7 +167,7 @@ RS Systems - Phase 2''',
             self.stdout.write(self.style.ERROR(f'Error: {str(e)}'))
             self.stdout.write('')
             self.stdout.write(self.style.WARNING('Missing required settings:'))
-            self.stdout.write('Ensure the following are set in settings_aws.py:')
+            self.stdout.write('Ensure the following are set in your settings (base.py / production.py):')
             self.stdout.write('- AWS_SNS_REGION_NAME')
             self.stdout.write('- AWS_ACCESS_KEY_ID')
             self.stdout.write('- AWS_SECRET_ACCESS_KEY')

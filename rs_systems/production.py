@@ -4,7 +4,7 @@ Production settings for cloud deployment
 
 import os
 from dotenv import load_dotenv
-from rs_systems.settings import *
+from rs_systems.settings.base import *
 
 # Load environment variables from .env file
 load_dotenv()

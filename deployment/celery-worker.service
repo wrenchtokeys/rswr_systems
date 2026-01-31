@@ -10,7 +10,7 @@ WorkingDirectory=/var/www/rs_systems
 
 # Environment variables
 Environment="PATH=/var/www/rs_systems/venv/bin:/usr/local/bin:/usr/bin:/bin"
-Environment="DJANGO_SETTINGS_MODULE=rs_systems.settings_aws"
+Environment="DJANGO_SETTINGS_MODULE=rs_systems.settings.production"
 Environment="ENVIRONMENT=production"
 
 # Load additional environment variables from file (optional)

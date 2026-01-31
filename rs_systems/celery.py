@@ -15,14 +15,8 @@ from celery.schedules import crontab
 logger = logging.getLogger(__name__)
 
 # Set Django settings module
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'rs_systems.settings')
-
-# Determine which settings to use based on environment
-if os.environ.get('ENVIRONMENT') == 'production':
-    os.environ['DJANGO_SETTINGS_MODULE'] = 'rs_systems.settings_aws'
-elif os.environ.get('USE_AWS_DB') == 'true':
-    # If using AWS database, likely want AWS settings
-    os.environ['DJANGO_SETTINGS_MODULE'] = 'rs_systems.settings_aws'
+# Production sets this via Procfile / .ebextensions; default to development for local use
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'rs_systems.settings.development')
 
 # Create Celery app
 app = Celery('rs_systems')

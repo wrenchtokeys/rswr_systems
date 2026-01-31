@@ -91,7 +91,7 @@ Before installing, you may need to customize these paths:
 
 ### Environment Variables
 
-Service files use `DJANGO_SETTINGS_MODULE=rs_systems.settings_aws`. To load additional environment variables:
+Service files use `DJANGO_SETTINGS_MODULE=rs_systems.settings.production`. To load additional environment variables:
 
 **Option 1: EnvironmentFile (Recommended)**
 
