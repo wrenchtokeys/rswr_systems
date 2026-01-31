@@ -1,7 +1,8 @@
 # Billing & Payments Roadmap
 
 > Created: Jan 31, 2026 — Amelia
-> Status: Planning
+> Last updated: Jan 31, 2026
+> Status: In Progress
 > Priority: High — core revenue feature
 
 ## Current State (What Exists)
@@ -9,18 +10,23 @@
 ### ✅ Working
 - **Auto-invoice on completion**: Per-ticket invoicing generates PDF, saves to S3, emails to customer
 - **Invoice model**: Full Invoice + LineItem + Payment models with status tracking
-- **Stripe service**: Payment Links / Checkout Sessions (code exists, needs Stripe keys configured)
+- **BillingConfig**: Singleton with company address (street/city/state/zip), configurable via Admin > Billing > Billing Configuration
+- **Payment terms**: Default COD (Cash on Delivery). Options: COD, Due on Receipt, NET15/30/45/60. Shown on PDF.
+- **Stripe integration**: Payment Links auto-generated on invoice creation, Checkout Sessions, webhook handler
+- **Stripe keys**: Configured in EB prod (test mode). Webhook at `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
+- **Invoice emails**: Include PDF attachment, repair photos, payment terms, and Stripe pay link
 - **Reminder service**: Overdue/upcoming reminders (code exists, not wired to UI)
 - **Billing API**: 15+ endpoints at `/api/billing/` (dashboard, CRUD, Stripe, reminders)
 - **Customer preferences**: `invoice_preference` (per_ticket/batch/manual), `billing_email`, `auto_email_invoices`
-- **Owner billing page**: `/owner/billing/` — subscription management (SaaS billing, NOT customer billing)
-- **Customer account settings**: Billing tab with invoice preference radio buttons
+- **Configurable invoice prefix, footer text** via BillingConfig
 
-### ❌ Missing / Not Working
-- **No payment terms** — customers can't request/have net 30, net 60, etc.
-- **No Stripe keys configured** — `STRIPE_SECRET_KEY` not set in production
-- **No pay-online link in invoice emails** — emails have PDF but no "Pay Now" button
-- **No check payment address on invoices** — PDF doesn't include company mailing address
+### ⏳ Needs Drake Action
+- **Set `STRIPE_WEBHOOK_SECRET` in EB** — grab from Stripe Dashboard (starts with `whsec_`). Without this, webhooks reject all events and payments won't auto-record.
+- **Run migration on prod** — `python manage.py migrate billing` (for BillingConfig + payment_terms)
+- **Fill in BillingConfig** — Admin > Billing > Billing Configuration (company address)
+
+### ❌ Not Yet Built
+- **No payment confirmation emails** — invoice flips to PAID but no one gets notified
 - **No payment status in portals** — no one can see if an invoice is paid/unpaid
 - **No reminder UI** — reminder service exists but no portal buttons to trigger them
 - **No owner billing dashboard for customer invoices** — owner billing page is for SaaS subscription only
@@ -29,109 +35,63 @@
 
 ---
 
-## Phase 1: Payment Terms & Customer Preferences (Owner Dashboard)
-**Goal**: Owner can set payment terms per customer. Customers can request terms.
+## ~~Phase 1: Payment Terms & Customer Preferences~~ ✅ DONE (PR #13)
 
-### 1.1 Model Changes
-```python
-# CustomerRepairPreference — add fields:
-payment_terms = models.CharField(
-    max_length=20,
-    choices=[
-        ('due_on_receipt', 'Due on Receipt'),
-        ('net_15', 'Net 15'),
-        ('net_30', 'Net 30'),
-        ('net_45', 'Net 45'),
-        ('net_60', 'Net 60'),
-    ],
-    default='due_on_receipt'
-)
-payment_terms_approved = models.BooleanField(default=False)
-payment_terms_requested = models.CharField(max_length=20, blank=True)  # What customer asked for
-```
-
-### 1.2 Owner Dashboard — Customer Billing Management
-- New page: `/owner/customers/<id>/billing/` or section in customer detail
-- Shows: current payment terms, outstanding balance, invoice history
-- Actions: approve/change payment terms, send reminder, view invoices
-- Table view: all customers with balance due, sorted by amount/age
-
-### 1.3 Customer Portal — Request Terms
-- In account settings billing tab, add "Request Payment Terms" dropdown
-- When customer selects net terms, it creates a pending request
-- Owner gets notification of the request
-- Owner approves → terms take effect on next invoice
-
-### 1.4 Auto-set Due Dates
-- When invoice is generated, `due_date` calculated from `payment_terms`
-- `due_on_receipt` = invoice date
-- `net_30` = invoice date + 30 days, etc.
-
-**Estimated effort**: ~8 hours
+- [x] BillingConfig singleton: company address, default payment terms, invoice defaults
+- [x] Payment terms on Invoice model (COD default, NET15/30/45/60 options)
+- [x] Due date auto-calculated from terms (COD=today, NET30=+30 days)
+- [x] Payment terms displayed on invoice PDF
+- [x] Configurable via Admin > Billing > Billing Configuration
+- [ ] Per-customer payment terms override (future — currently uses global default)
+- [ ] Customer portal: request payment terms (future)
 
 ---
 
-## Phase 2: Stripe Integration (Pay Online)
-**Goal**: Customers can pay invoices online via Stripe link in email.
+## ~~Phase 2: Stripe Integration (Pay Online)~~ ✅ DONE
 
-### 2.1 Stripe Setup
-- Configure `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` in EB env
-- Create Stripe account (or verify existing) at dashboard.stripe.com
-- Set webhook URL: `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
-
-### 2.2 Pay Now Button in Invoice Email
-- Invoice email template gets "Pay Online" button
-- Links to Stripe Checkout Session (generated per invoice)
-- Flow: Customer clicks → Stripe hosted page → pays → webhook fires → Payment recorded → Invoice status updated
-
-### 2.3 Stripe Webhook Handler
-- `stripe_webhook` view already exists in billing/views.py
-- Handles `checkout.session.completed` event
-- Creates Payment record, updates Invoice status
-- Sends payment confirmation email
-
-### 2.4 Payment Link in Invoice PDF
-- QR code or short URL on the PDF itself
-- Customer can scan to pay even from a printed invoice
-
-**Estimated effort**: ~10 hours
-**Prerequisite**: Stripe account with API keys
+- [x] Stripe keys configured in EB (test mode)
+- [x] Webhook endpoint: `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
+- [x] Payment Links auto-generated on every invoice creation
+- [x] Checkout Sessions supported
+- [x] Webhook handles checkout.session.completed + payment_intent.succeeded
+- [x] Auto-records Payment → updates Invoice status to PAID
+- [x] Invoice emails include "Pay Online" link
+- [ ] **BLOCKED**: Set `STRIPE_WEBHOOK_SECRET` in EB (Drake)
+- [ ] QR code on PDF for scan-to-pay (future)
 
 ---
 
-## Phase 3: Check Payment Support
-**Goal**: Invoices include mailing address for check payments.
+## ~~Phase 3: Check Payment Support~~ ✅ DONE (PR #13)
 
-### 3.1 Company Address in Tenant Model
-```python
-# Tenant — add fields (or TenantBillingConfig):
-billing_address_line1 = models.CharField(max_length=200, blank=True)
-billing_address_line2 = models.CharField(max_length=200, blank=True)
-billing_city = models.CharField(max_length=100, blank=True)
-billing_state = models.CharField(max_length=50, blank=True)
-billing_zip = models.CharField(max_length=20, blank=True)
-billing_phone = models.CharField(max_length=20, blank=True)
-```
-
-### 3.2 Owner Settings — Company Billing Info
-- In owner settings, section for company billing address
-- Required before invoicing is enabled
-- Shows on all invoices and emails
-
-### 3.3 Invoice PDF Update
-- Add company address block ("Make checks payable to...")
-- Include company logo, phone, email
-- Professional invoice layout with remittance section
-
-### 3.4 Invoice Email Template
-- Footer with: "Pay online at [link] or mail check to [address]"
-- Clear payment instructions
-
-**Estimated effort**: ~6 hours
+- [x] BillingConfig: structured address fields (street, city, state, zip, phone, email)
+- [x] Company address shown on invoice PDF header
+- [x] Configurable via Admin dashboard
+- [ ] "Make checks payable to..." section on PDF (future polish)
 
 ---
 
-## Phase 4: Payment Status in Portals
+## Phase 4: Payment Confirmation Emails ← NEXT
+**Goal**: Notify customer and owner when payment is received.
+
+### 4.1 Customer Payment Receipt
+- Email customer when payment recorded (Stripe webhook or manual entry)
+- Include: amount paid, payment method, remaining balance, invoice number
+- Template consistent with invoice email styling
+
+### 4.2 Owner Payment Notification
+- Email/notify Drake when any payment comes in
+- Include: customer name, amount, method, invoice number
+
+### 4.3 Stripe Refund Handling
+- Handle `charge.refunded` webhook event
+- Update Payment record, adjust Invoice status
+- Notify owner
+
+**Estimated effort**: ~4 hours
+
+---
+
+## Phase 5: Payment Status in Portals
 **Goal**: All three portals show invoice/payment status.
 
 ### 4.1 Owner Portal — Invoice Dashboard
@@ -163,7 +123,7 @@ billing_phone = models.CharField(max_length=20, blank=True)
 
 ---
 
-## Phase 5: Polish & Automation
+## Phase 6: Polish & Automation
 **Goal**: Production-ready billing that runs itself.
 
 ### 5.1 Batch Invoicing
@@ -192,26 +152,23 @@ billing_phone = models.CharField(max_length=20, blank=True)
 
 ## Implementation Order
 
-| Priority | Phase | Description | Hours | Dependencies |
-|----------|-------|-------------|-------|--------------|
-| 🔴 P0 | 1 | Payment terms & customer prefs | 8 | None |
-| 🔴 P0 | 3 | Check address on invoices | 6 | None |
-| 🟡 P1 | 4 | Payment status in portals | 15 | Phase 1 |
-| 🟡 P1 | 2 | Stripe integration | 10 | Stripe account |
-| 🟢 P2 | 5 | Automation & reports | 12 | Phases 1-4 |
+| Priority | Phase | Description | Status | Hours |
+|----------|-------|-------------|--------|-------|
+| ✅ | 1 | Payment terms & BillingConfig | DONE | — |
+| ✅ | 2 | Stripe integration | DONE (needs webhook secret) | — |
+| ✅ | 3 | Company address on invoices | DONE | — |
+| 🔴 P0 | 4 | Payment confirmation emails | NEXT | ~4 |
+| 🟡 P1 | 5 | Payment status in portals | — | ~15 |
+| 🟢 P2 | 6 | Automation & reports | — | ~12 |
 
-**Total estimated**: ~51 hours
+**Remaining estimated**: ~31 hours
 
-### Quick Wins (can do first)
-1. Add company address to invoice PDF + email (Phase 3) — ~2 hrs
-2. Payment terms model fields + due date calculation (Phase 1.1, 1.4) — ~2 hrs
-3. Owner invoice list page (Phase 4.1) — ~4 hrs
+### Resolved Questions
+- **Stripe account**: ✅ Test keys configured in EB
+- **Default terms**: COD (Cash on Delivery) per Drake
+- **Company address**: Configurable via BillingConfig admin (Drake to fill in)
 
----
-
-## Questions for Drake
-1. **Stripe account**: Do you have one? Test or live keys?
-2. **Company address**: What address goes on invoices for check payments?
-3. **Default terms**: Should new customers default to "Due on Receipt" or something else?
-4. **Reminder frequency**: How aggressive? (e.g., 7 days, then weekly?)
-5. **Batch invoicing**: For fleet customers, weekly or monthly consolidation?
+### Open Questions
+- **Reminder frequency**: How aggressive? (e.g., 7 days, then weekly?)
+- **Batch invoicing**: For fleet customers, weekly or monthly consolidation?
+- **Per-customer payment terms**: Need override per customer, or global default enough for now?
