@@ -25,6 +25,7 @@ from .repairs import (
     assign_repair,
     reassign_to_self,
     check_existing_repair,
+    bulk_repair_action,
 )
 
 # Multi-break batch operations
