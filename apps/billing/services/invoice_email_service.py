@@ -140,11 +140,13 @@ class InvoiceEmailService:
         
         return attachments
     
-    def _build_email_body(self, invoice_data: InvoiceData, include_photos: bool) -> str:
+    def _build_email_body(self, invoice_data: InvoiceData, include_photos: bool,
+                          payment_link: str = None) -> str:
         """Build the email body text"""
         lines = [
             f"Invoice #{invoice_data.invoice_number}",
             f"Date: {invoice_data.invoice_date.strftime('%B %d, %Y')}",
+            f"Payment Terms: {invoice_data.payment_terms_display}",
             "",
             f"Customer: {invoice_data.customer_name}",
             "",
@@ -166,6 +168,14 @@ class InvoiceEmailService:
         if invoice_data.total_discount > 0:
             lines.append(f"(Includes ${invoice_data.total_discount:.2f} in discounts)")
             lines.append("")
+        
+        # Stripe payment link
+        if payment_link:
+            lines.extend([
+                "💳 Pay Online:",
+                payment_link,
+                "",
+            ])
         
         if include_photos:
             lines.extend([
@@ -240,9 +250,24 @@ class InvoiceEmailService:
                 )
                 photos = self._get_photo_attachments(list(repairs))
             
+            # Look up Stripe payment link from invoice record (if exists)
+            payment_link = None
+            try:
+                from apps.billing.models import Invoice
+                invoice_record = Invoice.objects.filter(
+                    invoice_number=invoice_data.invoice_number
+                ).first()
+                if invoice_record and invoice_record.stripe_hosted_url:
+                    payment_link = invoice_record.stripe_hosted_url
+            except Exception:
+                pass
+            
             # Build email
             subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
-            body = self._build_email_body(invoice_data, include_photos=len(photos) > 0)
+            body = self._build_email_body(
+                invoice_data, include_photos=len(photos) > 0,
+                payment_link=payment_link
+            )
             
             email = EmailMessage(
                 subject=subject,

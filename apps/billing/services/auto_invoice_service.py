@@ -106,6 +106,7 @@ class AutoInvoiceService:
                 result['s3_key'] = s3_key
                 
                 # Create tracked Invoice record (prevents double-billing)
+                invoice_record = None
                 try:
                     from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
                     tracking_service = InvoiceTrackingService()
@@ -121,6 +122,16 @@ class AutoInvoiceService:
                 except Exception as e:
                     # Log but don't fail - PDF was generated successfully
                     logger.warning(f"Could not create invoice record: {e}")
+                
+                # Generate Stripe payment link if Stripe is configured
+                if invoice_record:
+                    try:
+                        stripe_result = self._create_payment_link(invoice_record)
+                        if stripe_result and stripe_result.get('success'):
+                            result['payment_link'] = stripe_result['payment_link']
+                            logger.info(f"Stripe payment link created for {invoice_data.invoice_number}")
+                    except Exception as e:
+                        logger.warning(f"Could not create Stripe payment link: {e}")
                 
                 logger.info(f"Auto-generated invoice {invoice_data.invoice_number} for repair #{repair.id} -> s3://{self.s3_bucket}/{s3_key}")
                 
@@ -145,6 +156,31 @@ class AutoInvoiceService:
             logger.error(f"Error generating auto-invoice for repair #{repair.id}: {e}")
         
         return result
+    
+    def _create_payment_link(self, invoice):
+        """
+        Generate a Stripe payment link for an invoice (if Stripe is configured).
+        
+        Args:
+            invoice: Invoice model instance
+            
+        Returns:
+            dict with success/payment_link or None if Stripe not configured
+        """
+        try:
+            from apps.billing.services.stripe_service import StripeService
+            stripe_svc = StripeService()
+            if not stripe_svc.is_enabled():
+                logger.debug("Stripe not configured, skipping payment link")
+                return None
+            
+            if invoice.amount_due <= 0:
+                return None
+            
+            return stripe_svc.create_payment_link(invoice)
+        except Exception as e:
+            logger.warning(f"Stripe payment link error: {e}")
+            return None
     
     def _save_to_s3(self, pdf_bytes, customer_id, invoice_number):
         """

@@ -244,12 +244,12 @@ def create_invoice(request, customer_id):
         import logging
         logging.getLogger(__name__).warning(f"PDF generation failed for {invoice.invoice_number}: {e}")
 
-    # Optionally generate Stripe payment link
+    # Generate Stripe payment link (auto when Stripe is configured, skip with no_payment_link=true)
     stripe_result = None
-    if data.get('send_to_stripe', False) or data.get('payment_link', False):
+    if not data.get('no_payment_link', False):
         from apps.billing.services.stripe_service import StripeService
         stripe_svc = StripeService()
-        if stripe_svc.is_enabled():
+        if stripe_svc.is_enabled() and invoice.amount_due > 0:
             stripe_result = stripe_svc.create_payment_link(invoice)
 
     # Optionally email
