@@ -20,7 +20,7 @@ import boto3
 from botocore.exceptions import ClientError
 from django.utils import timezone
 
-from apps.clawdbot.services.invoice_service import InvoiceData
+from apps.billing.services.invoice_service import InvoiceData
 
 
 # S3 path structure: invoices/{customer_id}/{year}/{invoice_number}.pdf
