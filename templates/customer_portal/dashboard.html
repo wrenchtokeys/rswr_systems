@@ -275,7 +275,7 @@
                                             </svg>
                                             Pending Approval
                                         </span>
-                                        <span class="text-sm text-gray-600">Technician: <span class="font-medium">{{ repair.technician.user.get_full_name }}</span></span>
+                                        <span class="text-sm text-gray-600">Technician: <span class="font-medium">{% if repair.technician %}{{ repair.technician.user.get_full_name }}{% else %}Unassigned{% endif %}</span></span>
                                         <span class="text-sm text-gray-600">Est. Cost: <span class="font-semibold text-green-600">${{ repair.cost|default:"0.00" }}</span></span>
                                         <span class="text-sm text-gray-500">{{ repair.repair_date|date:"M d, Y" }}</span>
                                     </div>

@@ -278,7 +278,7 @@
                         <div class="space-y-2 text-sm">
                             <div><span class="font-medium text-green-700">Date:</span> <span class="text-green-900">{{ repair.repair_date|date:"F j, Y, g:i a" }}</span></div>
                             <div><span class="font-medium text-green-700">Damage Type:</span> <span class="text-green-900">{{ repair.damage_type }}</span></div>
-                            <div><span class="font-medium text-green-700">Technician:</span> <span class="text-green-900">{{ repair.technician.user.get_full_name }}</span></div>
+                            <div><span class="font-medium text-green-700">Technician:</span> <span class="text-green-900">{% if repair.technician %}{{ repair.technician.user.get_full_name }}{% else %}<em class="text-gray-400">Unassigned</em>{% endif %}</span></div>
                         </div>
                     </div>
 
