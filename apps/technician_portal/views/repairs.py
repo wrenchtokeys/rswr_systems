@@ -510,12 +510,14 @@ def update_queue_status(request, repair_id):
                     customer_user = customer_users.first()
 
                 if customer_user:
-                    RepairApproval.objects.create(
+                    RepairApproval.objects.update_or_create(
                         repair=repair,
-                        approved=True,
-                        approved_by=customer_user,
-                        approval_date=timezone.now(),
-                        notes="Auto-approved as customer initiated the request"
+                        defaults={
+                            'approved': True,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': "Auto-approved as customer initiated the request",
+                        }
                     )
 
                 messages.success(request, "Repair request has been accepted and added to your schedule. The customer has been notified.")
@@ -600,12 +602,14 @@ def assign_repair(request, repair_id):
                 customer_user = customer_users.first()
 
             if customer_user:
-                RepairApproval.objects.create(
+                RepairApproval.objects.update_or_create(
                     repair=repair,
-                    approved=True,
-                    approved_by=customer_user,
-                    approval_date=timezone.now(),
-                    notes="Auto-approved - customer requested repair"
+                    defaults={
+                        'approved': True,
+                        'approved_by': customer_user,
+                        'approval_date': timezone.now(),
+                        'notes': "Auto-approved - customer requested repair",
+                    }
                 )
 
             TechnicianNotification.objects.create(
