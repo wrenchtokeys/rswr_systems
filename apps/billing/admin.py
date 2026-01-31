@@ -2,6 +2,7 @@
 Billing Admin - Invoice and Payment management
 
 Provides admin interfaces for:
+- Billing configuration (company address, payment terms)
 - Viewing and managing invoices
 - Recording payments
 - Tracking outstanding balances
@@ -14,7 +15,61 @@ from django.utils.html import format_html
 from django.urls import reverse
 from decimal import Decimal
 
-from .models import Invoice, InvoiceLineItem, Payment
+from .models import BillingConfig, Invoice, InvoiceLineItem, Payment
+
+
+# =============================================================================
+# BILLING CONFIGURATION (Singleton)
+# =============================================================================
+
+@admin.register(BillingConfig)
+class BillingConfigAdmin(admin.ModelAdmin):
+    """
+    Singleton billing settings — company address, payment terms, invoice defaults.
+    Always shows the single instance; Add button is hidden when it exists.
+    """
+
+    fieldsets = (
+        ('Company Information (shown on invoices)', {
+            'fields': (
+                'company_name',
+                'company_address', 'company_city', 'company_state', 'company_zip',
+                'company_phone', 'company_email', 'company_website',
+            ),
+        }),
+        ('Default Payment Terms', {
+            'fields': ('default_payment_terms', 'default_due_days'),
+            'description': (
+                'These defaults apply to new invoices. COD = Cash on Delivery (due immediately). '
+                'NET30 = 30 days to pay, etc.'
+            ),
+        }),
+        ('Invoice Defaults', {
+            'fields': ('invoice_footer_note', 'invoice_number_prefix'),
+        }),
+    )
+
+    list_display = ['__str__', 'company_name', 'default_payment_terms', 'updated_at']
+
+    def has_add_permission(self, request):
+        # Only allow adding if no instance exists yet
+        return not BillingConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        """Redirect list view straight to the singleton edit page."""
+        instance = BillingConfig.get_instance()
+        from django.shortcuts import redirect
+        return redirect(
+            reverse('admin:billing_billingconfig_change', args=[instance.pk])
+        )
+
+
+# =============================================================================
+# INVOICES
+# =============================================================================
 
 
 class InvoiceLineItemInline(admin.TabularInline):
@@ -46,6 +101,7 @@ class InvoiceAdmin(admin.ModelAdmin):
     
     list_display = [
         'invoice_number', 'customer_link', 'invoice_date', 'due_date',
+        'payment_terms',
         'total_display', 'amount_paid_display', 'amount_due_display', 
         'status_badge', 'line_item_count'
     ]
@@ -59,7 +115,7 @@ class InvoiceAdmin(admin.ModelAdmin):
     
     fieldsets = (
         ('Invoice Details', {
-            'fields': ('invoice_number', 'customer', 'status')
+            'fields': ('invoice_number', 'customer', 'status', 'payment_terms')
         }),
         ('Dates', {
             'fields': ('invoice_date', 'due_date', 'sent_at', 'paid_at')
