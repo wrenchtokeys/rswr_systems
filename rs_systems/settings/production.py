@@ -232,6 +232,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'apps.billing': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     },
 }
 
