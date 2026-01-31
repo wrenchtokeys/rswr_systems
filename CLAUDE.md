@@ -555,3 +555,38 @@ All files that pointed to `settings_aws` or bare `rs_systems.settings` were upda
 
 ### Why this matters
 Adding a new Django app or middleware now requires exactly one edit to `base.py`. Both development and production inherit it. The class of bug that crashed the deploy is structurally impossible with this layout.
+
+## Deployment to AWS Elastic Beanstalk
+
+### How to deploy
+```bash
+eb deploy        # from /Users/drakeduncan/projects/rs_systems_branch2
+eb events | head -20   # check for success
+curl -I https://rockstarwindshield.repair/health/   # should return 200
+```
+
+### Critical: EB environment variables override config files
+The EB console/`eb setenv` environment variables **take precedence** over `option_settings` in `.ebextensions/*.config` files. If a deploy fails, check `eb printenv` to verify `DJANGO_SETTINGS_MODULE` is set correctly.
+
+**Current required EB environment variable:**
+```
+DJANGO_SETTINGS_MODULE=rs_systems.settings.production
+```
+
+If this is wrong (e.g., still pointing to an old deleted module), fix it with:
+```bash
+eb setenv DJANGO_SETTINGS_MODULE=rs_systems.settings.production
+```
+
+### Deploy checklist
+1. Commit and push all changes to `main`
+2. Run `eb deploy`
+3. If deploy fails, check `eb events | head -20` and `eb logs` for the error
+4. Verify with `curl -I https://rockstarwindshield.repair/health/` (expect 200)
+5. **Never change `DJANGO_SETTINGS_MODULE`** in the EB console — it must stay as `rs_systems.settings.production`
+
+### Common deploy failure causes
+- **Missing EB env var**: `eb printenv` shows wrong `DJANGO_SETTINGS_MODULE` → fix with `eb setenv`
+- **New app/middleware not in base.py**: Add to `rs_systems/settings/base.py`, not individual env files
+- **Missing Python package**: Add to `requirements.txt` before deploying
+- **collectstatic fails**: Usually a settings import error — check that production.py loads cleanly
