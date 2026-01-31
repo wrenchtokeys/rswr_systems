@@ -21,7 +21,7 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils import timezone
 
-from apps.clawdbot.services.invoice_service import InvoiceService, InvoiceData
+from apps.billing.services.invoice_service import InvoiceService, InvoiceData
 from apps.technician_portal.models import Repair
 
 
