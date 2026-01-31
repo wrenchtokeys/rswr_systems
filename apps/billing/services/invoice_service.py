@@ -147,17 +147,12 @@ class InvoiceService:
             self.HEADER_COLOR = config.secondary_color or ROYAL_BLUE
             self.PRIMARY_COLOR = config.primary_color or "#2C5282"
             
-            # Logo - try to get the file path or URL
+            # Logo - get URL (works for both local and S3 storage)
             if config.logo:
                 try:
-                    # Try local file path first
-                    if hasattr(config.logo, 'path') and os.path.exists(config.logo.path):
-                        self.logo_path = config.logo.path
-                    else:
-                        # Get URL for S3/remote storage
-                        self.logo_url = config.logo.url
+                    self.logo_url = config.logo.url
                 except Exception as e:
-                    print(f"Could not load logo path: {e}")
+                    print(f"Could not load logo URL: {e}")
                     
         except Exception as e:
             print(f"Could not load email branding config: {e}")
@@ -167,34 +162,50 @@ class InvoiceService:
     def _get_logo_for_pdf(self, max_width=3*inch, max_height=1.2*inch):
         """
         Get logo as a ReportLab Image object, properly sized.
+        Supports local files and S3/remote URLs.
         
         Returns:
             RLImage or None if no logo available
         """
+        import tempfile
+        
         if not hasattr(self, 'logo_path') and not hasattr(self, 'logo_url'):
             return None
             
         try:
+            img = None
+            
             # Try local path first
             if hasattr(self, 'logo_path') and self.logo_path and os.path.exists(self.logo_path):
                 img = RLImage(self.logo_path)
             elif hasattr(self, 'logo_url') and self.logo_url:
-                # Download from URL to temp file
-                if self.logo_url.startswith('http'):
-                    # Remote URL
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                        urllib.request.urlretrieve(self.logo_url, tmp.name)
-                        img = RLImage(tmp.name)
-                else:
-                    # Local media URL - construct full path
-                    media_root = getattr(settings, 'MEDIA_ROOT', '')
-                    full_path = os.path.join(media_root, self.logo_url.lstrip('/media/'))
-                    if os.path.exists(full_path):
-                        img = RLImage(full_path)
+                url = self.logo_url
+                
+                # Make sure we have a full URL
+                if url.startswith('//'):
+                    url = 'https:' + url
+                elif not url.startswith('http'):
+                    # Try to build full URL from S3 settings
+                    s3_domain = getattr(settings, 'AWS_S3_CUSTOM_DOMAIN', None)
+                    if s3_domain:
+                        url = f'https://{s3_domain}/{url.lstrip("/")}'
                     else:
-                        return None
-            else:
+                        # Local media URL — construct full path
+                        media_root = getattr(settings, 'MEDIA_ROOT', '')
+                        full_path = os.path.join(media_root, url.lstrip('/media/'))
+                        if os.path.exists(full_path):
+                            img = RLImage(full_path)
+                
+                # Download from URL if we haven't loaded yet
+                if img is None and url.startswith('http'):
+                    tmp = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                    try:
+                        urllib.request.urlretrieve(url, tmp.name)
+                        img = RLImage(tmp.name)
+                    finally:
+                        tmp.close()
+            
+            if img is None:
                 return None
             
             # Calculate aspect ratio and size
