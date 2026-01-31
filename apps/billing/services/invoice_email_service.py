@@ -266,7 +266,6 @@ class InvoiceEmailService:
             # Save invoice locally for record keeping
             # (S3 saving requires write permissions - not available yet)
             try:
-                import os
                 invoice_dir = f"/home/ubuntu/invoices/{customer_id}"
                 os.makedirs(invoice_dir, exist_ok=True)
                 local_path = f"{invoice_dir}/{invoice_data.invoice_number}.pdf"
