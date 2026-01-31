@@ -172,3 +172,27 @@
 - **Reminder frequency**: How aggressive? (e.g., 7 days, then weekly?)
 - **Batch invoicing**: For fleet customers, weekly or monthly consolidation?
 - **Per-customer payment terms**: Need override per customer, or global default enough for now?
+
+---
+
+## Phase 7: SaaS Subscription Billing (Glass Shops)
+
+Separate from customer billing — this is charging glass shops to use RS Systems.
+
+**Already built:**
+- SubscriptionPlan model (Trial/Starter $49/Pro $99/Enterprise $249)
+- Plan limits (repairs/month, technicians, customers, storage)
+- Feature flags per plan
+- SubscriptionService + signup flow
+- Owner billing page at `/owner/billing/`
+- Tenant webhook handler
+
+**Still needed:**
+- [ ] Create Stripe Products + Prices in Stripe Dashboard
+- [ ] Copy `stripe_price_id` / `stripe_annual_price_id` into SubscriptionPlan records
+- [ ] Wire up subscription checkout flow (owner upgrades/downgrades plan)
+- [ ] Handle subscription webhooks (invoice.paid, customer.subscription.updated/deleted)
+- [ ] Dunning — handle failed subscription payments gracefully
+- [ ] Usage enforcement — block actions when plan limits hit (repairs, techs, storage)
+- [ ] Trial expiration → prompt to upgrade
+- [ ] Billing portal link (Stripe Customer Portal for managing payment method/invoices)
