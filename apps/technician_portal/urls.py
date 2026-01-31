@@ -22,6 +22,7 @@ urlpatterns = [
     path('repairs/<int:repair_id>/update/', views.update_repair, name='update_repair'),
     path('repairs/<int:repair_id>/update-status/', views.update_queue_status, name='update_queue_status'),
     path('check-existing-repair/', views.check_existing_repair, name='check_existing_repair'),
+    path('repairs/bulk-action/', views.bulk_repair_action, name='tech_bulk_repair_action'),
     path('api/batch-pricing/', views.get_batch_pricing_json, name='get_batch_pricing'),
     path('api/viscosity-suggestion/', views.get_viscosity_suggestion, name='get_viscosity_suggestion'),
 

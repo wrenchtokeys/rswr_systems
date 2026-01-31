@@ -5,6 +5,7 @@ Repair CRUD, list, detail, and status management views.
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.core.paginator import Paginator
@@ -723,3 +724,126 @@ def check_existing_repair(request):
             'warning_message': f"There is already a {existing_repair.get_queue_status_display()} repair for this unit."
         })
     return JsonResponse({'existing_repair': False})
+
+
+@technician_required
+def bulk_repair_action(request):
+    """Handle bulk approve or deny actions for multiple repairs (technician/manager)."""
+    if request.method != 'POST':
+        messages.error(request, "Invalid request method.")
+        return redirect('repair_list')
+
+    if not hasattr(request.user, 'technician'):
+        messages.error(request, "You don't have a technician profile.")
+        return redirect('technician_dashboard')
+
+    technician = request.user.technician
+    is_admin = is_tenant_admin(request.user)
+
+    # Only managers and admins can bulk-approve
+    if not is_admin and not technician.is_manager:
+        messages.error(request, "Only managers can perform bulk actions on repairs.")
+        return redirect('repair_list')
+
+    action = request.POST.get('action')
+    if action not in ['approve', 'deny']:
+        messages.error(request, "Invalid action specified.")
+        return redirect('repair_list')
+
+    repair_ids = request.POST.getlist('repair_ids')
+    if not repair_ids:
+        messages.error(request, "No repairs selected.")
+        return redirect('repair_list')
+
+    tenant = getattr(request, 'tenant', None)
+
+    with transaction.atomic():
+        # Get repairs that are PENDING or REQUESTED
+        repairs = Repair.objects.filter(
+            id__in=repair_ids,
+            queue_status__in=['PENDING', 'REQUESTED']
+        ).select_related('customer', 'technician')
+
+        if tenant:
+            repairs = repairs.filter(tenant=tenant)
+
+        if not repairs.exists():
+            messages.error(request, "No valid repairs found to process.")
+            return redirect('repair_list')
+
+        processed_count = 0
+
+        for repair in repairs:
+            if action == 'approve':
+                # For REQUESTED repairs, assign to the acting technician
+                if repair.queue_status == 'REQUESTED' and not repair.technician:
+                    repair.technician = technician
+
+                repair.queue_status = 'APPROVED'
+                repair.save()
+
+                # Create approval record
+                customer_users = CustomerUser.objects.filter(customer=repair.customer)
+                customer_user = customer_users.filter(is_primary_contact=True).first()
+                if not customer_user and customer_users.exists():
+                    customer_user = customer_users.first()
+
+                if customer_user:
+                    RepairApproval.objects.update_or_create(
+                        repair=repair,
+                        defaults={
+                            'approved': True,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': f'Bulk approved by technician {technician.user.get_full_name()}'
+                        }
+                    )
+
+                # Notify assigned technician if different from actor
+                if repair.technician and repair.technician != technician:
+                    TechnicianNotification.objects.create(
+                        technician=repair.technician,
+                        message=f"✅ Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been approved.",
+                        read=False,
+                        repair=repair
+                    )
+
+            else:  # deny
+                repair.queue_status = 'DENIED'
+                repair.save()
+
+                # Create denial record
+                customer_users = CustomerUser.objects.filter(customer=repair.customer)
+                customer_user = customer_users.filter(is_primary_contact=True).first()
+                if not customer_user and customer_users.exists():
+                    customer_user = customer_users.first()
+
+                if customer_user:
+                    RepairApproval.objects.update_or_create(
+                        repair=repair,
+                        defaults={
+                            'approved': False,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': f'Bulk denied by technician {technician.user.get_full_name()}'
+                        }
+                    )
+
+                # Notify assigned technician if different from actor
+                if repair.technician and repair.technician != technician:
+                    TechnicianNotification.objects.create(
+                        technician=repair.technician,
+                        message=f"❌ Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been denied.",
+                        read=False,
+                        repair=repair
+                    )
+
+            processed_count += 1
+
+        action_word = "approved" if action == 'approve' else "denied"
+        messages.success(
+            request,
+            f"Successfully {action_word} {processed_count} repair{'' if processed_count == 1 else 's'}."
+        )
+
+    return redirect('repair_list')

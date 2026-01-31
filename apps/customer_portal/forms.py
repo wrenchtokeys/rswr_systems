@@ -46,6 +46,11 @@ class RepairPreferenceForm(forms.ModelForm):
             'lot_walking_enabled',
             'lot_walking_frequency',
             'lot_walking_time',
+            # Billing & Invoicing
+            'invoice_preference',
+            'billing_email',
+            'auto_email_invoices',
+            'include_photos_in_invoice',
         ]
 
         # Customize how fields appear in the form
@@ -60,6 +65,11 @@ class RepairPreferenceForm(forms.ModelForm):
                 'class': 'form-control',
                 'type': 'time'
             }),
+            'invoice_preference': forms.RadioSelect(),
+            'billing_email': forms.EmailInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'billing@yourcompany.com'
+            }),
         }
 
         # Custom labels (what users see)
@@ -69,6 +79,10 @@ class RepairPreferenceForm(forms.ModelForm):
             'lot_walking_enabled': 'Enable Lot Walking Service',
             'lot_walking_frequency': 'Lot Walking Frequency',
             'lot_walking_time': 'Preferred Time',
+            'invoice_preference': 'Invoice Generation Mode',
+            'billing_email': 'Billing Email Address',
+            'auto_email_invoices': 'Automatically Email Invoices',
+            'include_photos_in_invoice': 'Include Photos in Invoices',
         }
 
     def __init__(self, *args, **kwargs):

@@ -77,6 +77,39 @@
 {% block content %}
 <div class="min-h-screen bg-gray-50">
     <div class="max-w-full px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Bulk Action Toolbar (Hidden by default, shown via JavaScript) -->
+        <div id="bulk-toolbar" class="hidden fixed bottom-0 left-0 right-0 bg-green-600 shadow-lg border-t-4 border-green-700 z-50 transition-all">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span class="text-white font-medium">
+                            <span id="selected-count">0</span> repair<span id="plural-s">s</span> selected
+                        </span>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button onclick="bulkApprove()" class="inline-flex items-center px-6 py-2.5 bg-white text-green-700 font-medium rounded-lg hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors shadow-md">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            Approve Selected (<span id="approve-count">0</span>)
+                        </button>
+                        <button onclick="bulkDeny()" class="inline-flex items-center px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors shadow-md">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                            Deny Selected (<span id="deny-count">0</span>)
+                        </button>
+                        <button onclick="deselectAll()" class="inline-flex items-center px-4 py-2.5 bg-green-500 text-white font-medium rounded-lg hover:bg-green-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">
+                            Deselect All
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Page Header -->
         <div class="mb-6">
             <div class="flex items-center justify-between">
@@ -372,6 +405,9 @@
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50 sticky-header">
                             <tr>
+                                <th scope="col" class="px-4 py-3 text-left">
+                                    <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)" class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" title="Select all pending/requested repairs">
+                                </th>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     ID
                                 </th>
@@ -409,6 +445,13 @@
                         <tbody class="bg-white divide-y divide-gray-200">
                             {% for repair in repairs %}
                             <tr class="table-row {% if repair.queue_status == 'REQUESTED' %}bg-yellow-50{% endif %}">
+                                <td class="px-4 py-4 whitespace-nowrap">
+                                    {% if repair.queue_status == 'PENDING' or repair.queue_status == 'REQUESTED' %}
+                                    <input type="checkbox" class="repair-checkbox w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" data-repair-id="{{ repair.id }}" onchange="updateBulkToolbar()">
+                                    {% else %}
+                                    <span class="text-gray-300">—</span>
+                                    {% endif %}
+                                </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                     #{{ repair.id }}
                                     {% if repair.repair_batch_id %}
@@ -491,7 +534,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="{% if is_admin %}10{% else %}9{% endif %}" class="px-6 py-12 text-center">
+                                <td colspan="{% if is_admin %}11{% else %}10{% endif %}" class="px-6 py-12 text-center">
                                     <div class="text-gray-500">
                                         <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -623,6 +666,110 @@ function changeSort(sortBy) {
     url.searchParams.set('sort', sortBy);
     url.searchParams.set('page', '1'); // Reset to first page
     window.location.href = url.toString();
+}
+
+// Bulk selection management
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.repair-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+    });
+    updateBulkToolbar();
+}
+
+function updateBulkToolbar() {
+    const checkboxes = document.querySelectorAll('.repair-checkbox:checked');
+    const count = checkboxes.length;
+    const toolbar = document.getElementById('bulk-toolbar');
+
+    if (count > 0) {
+        toolbar.classList.remove('hidden');
+        document.getElementById('selected-count').textContent = count;
+        document.getElementById('approve-count').textContent = count;
+        document.getElementById('deny-count').textContent = count;
+        document.getElementById('plural-s').textContent = count === 1 ? '' : 's';
+    } else {
+        toolbar.classList.add('hidden');
+    }
+
+    // Update select-all checkbox state
+    const allCheckboxes = document.querySelectorAll('.repair-checkbox');
+    const selectAllCheckbox = document.getElementById('select-all');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = allCheckboxes.length > 0 && count === allCheckboxes.length;
+        selectAllCheckbox.indeterminate = count > 0 && count < allCheckboxes.length;
+    }
+}
+
+function deselectAll() {
+    const checkboxes = document.querySelectorAll('.repair-checkbox');
+    checkboxes.forEach(cb => {
+        cb.checked = false;
+    });
+    document.getElementById('select-all').checked = false;
+    updateBulkToolbar();
+}
+
+function getSelectedRepairIds() {
+    const repairIds = [];
+    const checkboxes = document.querySelectorAll('.repair-checkbox:checked');
+    checkboxes.forEach(cb => {
+        if (cb.dataset.repairId) {
+            repairIds.push(cb.dataset.repairId);
+        }
+    });
+    return repairIds;
+}
+
+function bulkApprove() {
+    const repairIds = getSelectedRepairIds();
+    if (repairIds.length === 0) return;
+
+    if (confirm(`Are you sure you want to approve ${repairIds.length} repair${repairIds.length === 1 ? '' : 's'}?`)) {
+        submitBulkAction('approve', repairIds);
+    }
+}
+
+function bulkDeny() {
+    const repairIds = getSelectedRepairIds();
+    if (repairIds.length === 0) return;
+
+    if (confirm(`Are you sure you want to deny ${repairIds.length} repair${repairIds.length === 1 ? '' : 's'}?`)) {
+        submitBulkAction('deny', repairIds);
+    }
+}
+
+function submitBulkAction(action, repairIds) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '{% url "tech_bulk_repair_action" %}';
+
+    // Add CSRF token
+    const csrfToken = '{{ csrf_token }}';
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrfmiddlewaretoken';
+    csrfInput.value = csrfToken;
+    form.appendChild(csrfInput);
+
+    // Add action
+    const actionInput = document.createElement('input');
+    actionInput.type = 'hidden';
+    actionInput.name = 'action';
+    actionInput.value = action;
+    form.appendChild(actionInput);
+
+    // Add repair IDs
+    repairIds.forEach(id => {
+        const idInput = document.createElement('input');
+        idInput.type = 'hidden';
+        idInput.name = 'repair_ids';
+        idInput.value = id;
+        form.appendChild(idInput);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
 }
 
 // Export to CSV
