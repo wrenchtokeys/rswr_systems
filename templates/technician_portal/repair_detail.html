@@ -68,6 +68,7 @@
                             <p class="text-sm text-blue-700">Break {{ repair.break_number }} of {{ repair.total_breaks_in_batch }} for Unit {{ repair.unit_number }}</p>
                         </div>
                     </div>
+                    {% if repair.repair_batch_id %}
                     <a href="{% url 'technician_batch_detail' repair.repair_batch_id %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -75,6 +76,7 @@
                         </svg>
                         View All {{ repair.total_breaks_in_batch }} Breaks
                     </a>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -114,7 +116,7 @@
                         </h3>
                         <div class="flex flex-wrap gap-2">
                             <!-- Batch Navigation (if part of batch) -->
-                            {% if repair.is_part_of_batch and batch_info %}
+                            {% if repair.is_part_of_batch and batch_info and repair.repair_batch_id %}
                             <a href="{% url 'technician_batch_detail' repair.repair_batch_id %}" class="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                                 <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
@@ -278,7 +280,7 @@
                         <div class="space-y-2 text-sm">
                             <div><span class="font-medium text-green-700">Date:</span> <span class="text-green-900">{{ repair.repair_date|date:"F j, Y, g:i a" }}</span></div>
                             <div><span class="font-medium text-green-700">Damage Type:</span> <span class="text-green-900">{{ repair.damage_type }}</span></div>
-                            <div><span class="font-medium text-green-700">Technician:</span> <span class="text-green-900">{{ repair.technician.user.get_full_name }}</span></div>
+                            <div><span class="font-medium text-green-700">Technician:</span> <span class="text-green-900">{% if repair.technician %}{{ repair.technician.user.get_full_name }}{% else %}<em class="text-gray-400">Unassigned</em>{% endif %}</span></div>
                         </div>
                     </div>
 
