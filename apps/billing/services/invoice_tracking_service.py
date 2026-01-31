@@ -32,6 +32,18 @@ class InvoiceTrackingService:
     
     def __init__(self, tenant=None):
         self.tenant = tenant
+        self._billing_config = None
+    
+    @property
+    def billing_config(self):
+        """Lazy-load the BillingConfig singleton."""
+        if self._billing_config is None:
+            try:
+                from apps.billing.models import BillingConfig
+                self._billing_config = BillingConfig.get_instance()
+            except Exception:
+                self._billing_config = None
+        return self._billing_config
     
     def create_invoice_from_repairs(self, customer, repairs, invoice_number=None, 
                                      due_days=None, s3_key=None, auto_send=False):
@@ -70,9 +82,16 @@ class InvoiceTrackingService:
         if not invoice_number:
             invoice_number = self._generate_invoice_number(customer)
         
-        # Calculate due date
-        due_days = due_days or self.DEFAULT_PAYMENT_TERMS_DAYS
-        due_date = timezone.now().date() + timedelta(days=due_days)
+        # Get payment terms from BillingConfig
+        payment_terms = 'COD'
+        if self.billing_config:
+            payment_terms = self.billing_config.default_payment_terms
+            # Use config-based due days if caller didn't specify
+            if due_days is None:
+                due_days = self.billing_config.due_days_for_terms
+        
+        due_days = due_days or 0
+        due_date = timezone.now().date() + timedelta(days=due_days) if due_days > 0 else timezone.now().date()
         
         with transaction.atomic():
             # Create invoice
@@ -82,6 +101,7 @@ class InvoiceTrackingService:
                 customer=customer,
                 invoice_date=timezone.now().date(),
                 due_date=due_date,
+                payment_terms=payment_terms,
                 status='SENT' if auto_send else 'DRAFT',
                 sent_at=timezone.now() if auto_send else None,
                 s3_key=s3_key or '',
@@ -263,6 +283,9 @@ class InvoiceTrackingService:
         }
     
     def _generate_invoice_number(self, customer):
-        """Generate a unique invoice number."""
+        """Generate a unique invoice number using configurable prefix."""
+        prefix = 'INV'
+        if self.billing_config:
+            prefix = self.billing_config.invoice_number_prefix or 'INV'
         timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-        return f"INV-{customer.id}-{timestamp}"
+        return f"{prefix}-{customer.id}-{timestamp}"

@@ -6,16 +6,168 @@ Tracks:
 - Which repairs are on each invoice (prevents double-billing)
 - Payment status and history
 - Stripe integration IDs
+- Billing configuration (company address, payment terms)
 
 Author: Amelia (Clawdbot AI)
 """
 
 from django.db import models
 from django.utils import timezone
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, RegexValidator
+from django.core.exceptions import ValidationError
 from decimal import Decimal
 from apps.tenants.managers import TenantManager
 
+
+# =============================================================================
+# BILLING CONFIGURATION (Singleton)
+# =============================================================================
+
+class BillingConfig(models.Model):
+    """
+    Singleton billing configuration — controls company info on invoices,
+    default payment terms, and other billing defaults.
+
+    Editable via Admin Dashboard → Billing → Billing Configuration.
+    """
+
+    PAYMENT_TERMS_CHOICES = [
+        ('COD', 'Cash on Delivery (COD)'),
+        ('DUE_ON_RECEIPT', 'Due on Receipt'),
+        ('NET15', 'Net 15'),
+        ('NET30', 'Net 30'),
+        ('NET45', 'Net 45'),
+        ('NET60', 'Net 60'),
+    ]
+
+    # Singleton enforcement
+    singleton_id = models.BooleanField(default=True, unique=True, editable=False)
+
+    # === COMPANY INFO (shown on invoices) ===
+    company_name = models.CharField(
+        max_length=200,
+        default='Rockstar Windshield Repair',
+        help_text='Company name displayed on invoices',
+    )
+    company_address = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Street address (e.g., 123 Main St)',
+    )
+    company_city = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text='City',
+    )
+    company_state = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text='State (e.g., TX)',
+    )
+    company_zip = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text='ZIP / Postal code',
+    )
+    company_phone = models.CharField(
+        max_length=30,
+        blank=True,
+        help_text='Phone number shown on invoices',
+    )
+    company_email = models.EmailField(
+        blank=True,
+        help_text='Email shown on invoices',
+    )
+    company_website = models.URLField(
+        blank=True,
+        help_text='Website URL shown on invoices',
+    )
+
+    # === DEFAULT PAYMENT TERMS ===
+    default_payment_terms = models.CharField(
+        max_length=20,
+        choices=PAYMENT_TERMS_CHOICES,
+        default='COD',
+        help_text='Default payment terms for new invoices',
+    )
+    default_due_days = models.PositiveIntegerField(
+        default=0,
+        help_text='Default days until invoice is due (0 = due on receipt/COD). '
+                  'Overridden by payment terms if set (e.g., NET30 = 30 days).',
+    )
+
+    # === INVOICE DEFAULTS ===
+    invoice_footer_note = models.TextField(
+        blank=True,
+        default='Thank you for your business!',
+        help_text='Footer text printed at the bottom of every invoice',
+    )
+    invoice_number_prefix = models.CharField(
+        max_length=20,
+        default='INV',
+        help_text='Prefix for auto-generated invoice numbers (e.g., INV → INV-1-20260131...)',
+    )
+
+    # === METADATA ===
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Billing Configuration'
+        verbose_name_plural = 'Billing Configuration'
+
+    def __str__(self):
+        return f'Billing Configuration (updated {self.updated_at.strftime("%Y-%m-%d %H:%M") if self.updated_at else "never"})'
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton
+        if not self.pk and BillingConfig.objects.exists():
+            raise ValidationError('Only one BillingConfig instance is allowed.')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Billing configuration cannot be deleted.')
+
+    @classmethod
+    def get_instance(cls):
+        """Get the singleton instance, creating with defaults if needed."""
+        instance, created = cls.objects.get_or_create(singleton_id=True)
+        return instance
+
+    @property
+    def full_address(self):
+        """Return formatted multi-line company address."""
+        lines = []
+        if self.company_address:
+            lines.append(self.company_address)
+        city_state_zip = ''
+        if self.company_city:
+            city_state_zip = self.company_city
+        if self.company_state:
+            city_state_zip += f', {self.company_state}' if city_state_zip else self.company_state
+        if self.company_zip:
+            city_state_zip += f' {self.company_zip}' if city_state_zip else self.company_zip
+        if city_state_zip:
+            lines.append(city_state_zip)
+        return '\n'.join(lines)
+
+    @property
+    def due_days_for_terms(self):
+        """Return the number of due days implied by payment terms."""
+        terms_days = {
+            'COD': 0,
+            'DUE_ON_RECEIPT': 0,
+            'NET15': 15,
+            'NET30': 30,
+            'NET45': 45,
+            'NET60': 60,
+        }
+        return terms_days.get(self.default_payment_terms, self.default_due_days)
+
+
+# =============================================================================
+# INVOICE
+# =============================================================================
 
 class Invoice(models.Model):
     """
@@ -59,6 +211,14 @@ class Invoice(models.Model):
     # Dates
     invoice_date = models.DateField(default=timezone.now)
     due_date = models.DateField(null=True, blank=True)
+    
+    # Payment terms
+    payment_terms = models.CharField(
+        max_length=20,
+        choices=BillingConfig.PAYMENT_TERMS_CHOICES,
+        default='COD',
+        help_text='Payment terms for this invoice',
+    )
     
     # Amounts
     subtotal = models.DecimalField(

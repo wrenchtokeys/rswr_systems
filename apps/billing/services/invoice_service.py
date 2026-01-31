@@ -74,6 +74,8 @@ class InvoiceData:
     total_discount: Decimal
     total: Decimal
     notes: str = ""
+    payment_terms: str = "COD"
+    payment_terms_display: str = "Cash on Delivery (COD)"
 
 
 class InvoiceService:
@@ -104,17 +106,42 @@ class InvoiceService:
         self._setup_custom_styles()
     
     def _load_branding_config(self):
-        """Load company info and logo from EmailBrandingConfig or use defaults"""
+        """
+        Load company info from BillingConfig first, then EmailBrandingConfig
+        for colors/logo. BillingConfig is the source of truth for address
+        and payment terms on invoices.
+        """
         self.logo_path = None
+        self.DEFAULT_PAYMENT_TERMS = 'COD'
+        self.INVOICE_FOOTER = 'Thank you for your business!'
         
+        # --- BillingConfig (address + payment terms) ---
+        try:
+            from apps.billing.models import BillingConfig
+            billing_cfg = BillingConfig.get_instance()
+            self.COMPANY_NAME = billing_cfg.company_name or "Rockstar Windshield Repair"
+            self.COMPANY_ADDRESS = billing_cfg.full_address
+            self.COMPANY_PHONE = billing_cfg.company_phone or ""
+            self.COMPANY_EMAIL = billing_cfg.company_email or ""
+            self.COMPANY_WEBSITE = billing_cfg.company_website or ""
+            self.DEFAULT_PAYMENT_TERMS = billing_cfg.default_payment_terms
+            self.DEFAULT_DUE_DAYS = billing_cfg.due_days_for_terms
+            self.INVOICE_FOOTER = billing_cfg.invoice_footer_note or 'Thank you for your business!'
+            self.INVOICE_PREFIX = billing_cfg.invoice_number_prefix or 'INV'
+        except Exception as e:
+            print(f"Could not load billing config: {e}")
+            self.COMPANY_NAME = "Rockstar Windshield Repair"
+            self.COMPANY_ADDRESS = ""
+            self.COMPANY_PHONE = ""
+            self.COMPANY_EMAIL = ""
+            self.COMPANY_WEBSITE = ""
+            self.DEFAULT_DUE_DAYS = 0
+            self.INVOICE_PREFIX = 'INV'
+        
+        # --- EmailBrandingConfig (colors + logo) ---
         try:
             from core.models.email_branding import EmailBrandingConfig
             config = EmailBrandingConfig.get_instance()
-            self.COMPANY_NAME = config.company_name or "Rockstar Windshield Repair"
-            self.COMPANY_ADDRESS = config.company_address or ""
-            self.COMPANY_PHONE = config.support_phone or ""
-            self.COMPANY_EMAIL = config.support_email or ""
-            self.COMPANY_WEBSITE = config.website_url or ""
             
             # Colors - use secondary color for headers (more readable)
             self.HEADER_COLOR = config.secondary_color or ROYAL_BLUE
@@ -133,13 +160,7 @@ class InvoiceService:
                     print(f"Could not load logo path: {e}")
                     
         except Exception as e:
-            # Fallback to defaults if config not available
-            print(f"Could not load branding config: {e}")
-            self.COMPANY_NAME = "Rockstar Windshield Repair"
-            self.COMPANY_ADDRESS = ""
-            self.COMPANY_PHONE = ""
-            self.COMPANY_EMAIL = ""
-            self.COMPANY_WEBSITE = ""
+            print(f"Could not load email branding config: {e}")
             self.HEADER_COLOR = ROYAL_BLUE
             self.PRIMARY_COLOR = "#2C5282"
     
@@ -312,9 +333,10 @@ class InvoiceService:
         )
     
     def _generate_invoice_number(self, customer_id: int) -> str:
-        """Generate a unique invoice number"""
+        """Generate a unique invoice number using configurable prefix"""
+        prefix = getattr(self, 'INVOICE_PREFIX', 'INV')
         timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-        return f"INV-{customer_id}-{timestamp}"
+        return f"{prefix}-{customer_id}-{timestamp}"
     
     def build_invoice_data(
         self,
@@ -366,16 +388,29 @@ class InvoiceService:
                 city_state_zip += f" {customer.zip_code}"
             address_parts.append(city_state_zip)
         
+        # Get payment terms (from BillingConfig defaults)
+        payment_terms = getattr(self, 'DEFAULT_PAYMENT_TERMS', 'COD')
+        terms_display_map = {
+            'COD': 'Cash on Delivery (COD)',
+            'DUE_ON_RECEIPT': 'Due on Receipt',
+            'NET15': 'Net 15',
+            'NET30': 'Net 30',
+            'NET45': 'Net 45',
+            'NET60': 'Net 60',
+        }
+        
         return InvoiceData(
             invoice_number=self._generate_invoice_number(customer_id),
             invoice_date=timezone.now(),
-            customer_name=customer.name.title(),  # Capitalize customer name
+            customer_name=customer.name,  # Preserve original casing
             customer_email=customer.email,
             customer_address='\n'.join(address_parts) if address_parts else None,
             line_items=line_items,
             subtotal=subtotal,
             total_discount=total_discount,
-            total=total
+            total=total,
+            payment_terms=payment_terms,
+            payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
         )
     
     def generate_pdf(self, invoice_data: InvoiceData, include_photos: bool = True) -> bytes:
@@ -457,13 +492,14 @@ class InvoiceService:
                 Paragraph(f"<b>Date:</b> {invoice_data.invoice_date.strftime('%B %d, %Y')}", self.styles['Normal']),
                 Paragraph(f"{invoice_data.customer_name}", self.styles['CustomerInfo'])
             ],
+            [
+                Paragraph(f"<b>Payment Terms:</b> {invoice_data.payment_terms_display}", self.styles['Normal']),
+                Paragraph("", self.styles['Normal'])
+            ],
         ]
         
         if invoice_data.customer_email:
-            invoice_info.append([
-                Paragraph("", self.styles['Normal']),
-                Paragraph(f"{invoice_data.customer_email}", self.styles['CustomerInfo'])
-            ])
+            invoice_info[-1][1] = Paragraph(f"{invoice_data.customer_email}", self.styles['CustomerInfo'])
         
         if invoice_data.customer_address:
             invoice_info.append([
@@ -576,10 +612,11 @@ class InvoiceService:
         
         story.append(totals_table)
         
-        # Footer note
+        # Footer note (configurable via BillingConfig)
+        footer_text = getattr(self, 'INVOICE_FOOTER', 'Thank you for your business!')
         story.append(Spacer(1, 40))
         story.append(Paragraph(
-            "Thank you for your business!",
+            footer_text,
             ParagraphStyle(
                 name='ThankYou',
                 parent=self.styles['Normal'],
