@@ -578,12 +578,18 @@ If this is wrong (e.g., still pointing to an old deleted module), fix it with:
 eb setenv DJANGO_SETTINGS_MODULE=rs_systems.settings.production
 ```
 
-### Deploy checklist
-1. Commit and push all changes to `main`
-2. Run `eb deploy`
-3. If deploy fails, check `eb events | head -20` and `eb logs` for the error
-4. Verify with `curl -I https://rockstarwindshield.repair/health/` (expect 200)
-5. **Never change `DJANGO_SETTINGS_MODULE`** in the EB console — it must stay as `rs_systems.settings.production`
+### Deploy workflow
+EB deploys from the **local `main` branch**. If you're working on a feature branch:
+1. Commit and push your feature branch
+2. Merge into `main` (via GitHub PR or `git merge`)
+3. `git checkout main && git pull origin main` to ensure local main is up to date
+4. Run `eb deploy` from the project root (deploys whatever is on the local `main` branch)
+5. Check `eb events | head -20` for success
+6. Verify with `curl -I https://rockstarwindshield.repair/health/` (expect 200)
+
+**Important:** `eb deploy` packages the **local working directory**, not what's on GitHub. Always pull latest `main` before deploying. Never deploy from a feature branch.
+
+**Never change `DJANGO_SETTINGS_MODULE`** in the EB console — it must stay as `rs_systems.settings.production`.
 
 ### Common deploy failure causes
 - **Missing EB env var**: `eb printenv` shows wrong `DJANGO_SETTINGS_MODULE` → fix with `eb setenv`
