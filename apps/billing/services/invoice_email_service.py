@@ -224,11 +224,6 @@ class InvoiceEmailService:
             Tuple of (success: bool, message: str)
         """
         try:
-            # Set logo path
-            logo_path = '/home/ubuntu/rswr_systems/media/email_branding/logo_02_jpg-01_copy_optimized.jpg'
-            if os.path.exists(logo_path):
-                self.invoice_service.logo_path = logo_path
-            
             # Generate invoice
             start_date = timezone.now() - timedelta(days=days) if not repair_ids else None
             pdf_bytes, invoice_data = self.invoice_service.generate_invoice(
@@ -251,14 +246,27 @@ class InvoiceEmailService:
                 photos = self._get_photo_attachments(list(repairs))
             
             # Look up Stripe payment link from invoice record (if exists)
+            # We search by repair_ids since the invoice_number in invoice_data
+            # is freshly generated and won't match the DB record.
             payment_link = None
             try:
-                from apps.billing.models import Invoice
-                invoice_record = Invoice.objects.filter(
-                    invoice_number=invoice_data.invoice_number
-                ).first()
-                if invoice_record and invoice_record.stripe_hosted_url:
-                    payment_link = invoice_record.stripe_hosted_url
+                from apps.billing.models import InvoiceLineItem
+                if repair_ids:
+                    line_item = InvoiceLineItem.objects.filter(
+                        repair_id__in=repair_ids,
+                        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
+                    ).select_related('invoice').first()
+                    if line_item and line_item.invoice.stripe_hosted_url:
+                        payment_link = line_item.invoice.stripe_hosted_url
+                else:
+                    # Fallback: find most recent invoice for this customer
+                    from apps.billing.models import Invoice
+                    invoice_record = Invoice.objects.filter(
+                        customer_id=customer_id,
+                        stripe_hosted_url__gt='',
+                    ).order_by('-created_at').first()
+                    if invoice_record:
+                        payment_link = invoice_record.stripe_hosted_url
             except Exception:
                 pass
             
