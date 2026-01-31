@@ -336,9 +336,11 @@
                                     {% endfor %}
                                 </div>
                             </div>
+                            {% if batch.batch_id %}
                             <a href="{% url 'technician_batch_detail' batch.batch_id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-orange-600 text-white text-xs font-medium rounded hover:bg-orange-700 transition-colors">
                                 Continue
                             </a>
+                            {% endif %}
                         </div>
                     </div>
                     {% endfor %}
@@ -393,6 +395,7 @@
                                     {% endfor %}
                                 </div>
                             </div>
+                            {% if batch.batch_id %}
                             <div class="flex-shrink-0 flex flex-col gap-1">
                                 <form action="{% url 'technician_batch_start_work' batch.batch_id %}" method="post" class="inline">
                                     {% csrf_token %}
@@ -404,6 +407,7 @@
                                     Details
                                 </a>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
                     {% endfor %}
