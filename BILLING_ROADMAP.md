@@ -149,8 +149,10 @@
 | ✅ | 2 | Stripe integration | DONE (needs webhook secret) | — |
 | ✅ | 3 | Company address on invoices | DONE | — |
 | ✅ | 4 | Payment confirmation emails | DONE | — |
-| 🟡 P1 | 5 | Payment status in portals | — | ~15 |
+| 🟡 P1 | 5 | Invoice portals & payment management | In Progress | ~15 |
 | 🟢 P2 | 6 | Automation & reports | — | ~12 |
+| 🔴 P1 | 7 | SaaS subscription billing | — | TBD |
+| 🟡 P1 | 8 | Sales tax by zip code | — | ~8-12 |
 
 **Remaining estimated**: ~31 hours
 
@@ -188,17 +190,24 @@ Stripe checkout charges the tax-inclusive total — no additional tax added at p
 
 ### Tasks (regardless of approach)
 - [ ] Add `tax_rate`, `tax_amount` fields to Invoice model
+- [ ] Add `tax_enabled` toggle to BillingConfig (global on/off — **default: off**)
+- [ ] Add `tax_exempt` flag on Customer model (per-customer override)
 - [ ] Calculate tax at invoice creation time (not at checkout)
-- [ ] Invoice PDF shows: subtotal + tax + total
-- [ ] Email templates show tax breakdown
+- [ ] Invoice PDF shows: subtotal + tax + total (or just subtotal = total if no tax)
+- [ ] Email templates show tax breakdown (hide tax line when zero)
 - [ ] Stripe checkout charges the tax-inclusive `total` (no additional tax)
 - [ ] Check/cash payments are for the same tax-inclusive total
 - [ ] Determine service location per repair (customer address? job site zip?)
-- [ ] Handle tax-exempt customers (some fleets may have exemptions)
 - [ ] Tax reporting: monthly/quarterly totals for filing
 
+### No-tax mode
+- BillingConfig.tax_enabled = False → invoices skip tax entirely (subtotal = total)
+- Customer.tax_exempt = True → that customer always gets $0 tax regardless of global setting
+- This lets Drake run without tax initially and flip it on when ready
+- Tax-exempt useful for government accounts, resellers, or fleets with exemption certs
+
 **Estimated effort**: ~8-12 hours depending on approach
-**Priority**: P1 — legal compliance
+**Priority**: P1 — legal compliance (but can launch with tax_enabled=False initially)
 
 ---
 
