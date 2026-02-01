@@ -166,6 +166,22 @@ class InvoiceEmailService:
             lines.append(f"Discounts: -${invoice_data.total_discount:.2f}")
 
         if hasattr(invoice_data, 'tax_amount') and invoice_data.tax_amount > 0:
+            has_breakdown = (
+                getattr(invoice_data, 'state_tax_rate', 0) > 0 or
+                getattr(invoice_data, 'county_tax_rate', 0) > 0 or
+                getattr(invoice_data, 'city_tax_rate', 0) > 0
+            )
+            if has_breakdown:
+                def _fmt(r):
+                    return f"{r:.3f}".rstrip('0').rstrip('.')
+                if getattr(invoice_data, 'state_tax_rate', 0) > 0:
+                    lines.append(f"  State Tax: {_fmt(invoice_data.state_tax_rate)}%")
+                if getattr(invoice_data, 'county_tax_rate', 0) > 0:
+                    lines.append(f"  County Tax: {_fmt(invoice_data.county_tax_rate)}%")
+                if getattr(invoice_data, 'city_tax_rate', 0) > 0:
+                    lines.append(f"  City Tax: {_fmt(invoice_data.city_tax_rate)}%")
+                if getattr(invoice_data, 'special_tax_rate', 0) > 0:
+                    lines.append(f"  Special Tax: {_fmt(invoice_data.special_tax_rate)}%")
             rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
             lines.append(f"Tax ({rate_display}%): ${invoice_data.tax_amount:.2f}")
 

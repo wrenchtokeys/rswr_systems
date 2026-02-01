@@ -124,10 +124,39 @@
                         </tr>
                         {% endif %}
                         {% if invoice.tax_amount > 0 %}
+                            {% if invoice.state_tax_rate > 0 or invoice.county_tax_rate > 0 or invoice.city_tax_rate > 0 %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-1 text-xs text-gray-500 text-right">State Tax ({{ invoice.state_tax_rate }}%)</td>
+                            <td class="px-6 py-1 text-xs text-gray-500 text-right"></td>
+                        </tr>
+                                {% if invoice.county_tax_rate > 0 %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-1 text-xs text-gray-500 text-right">County Tax ({{ invoice.county_tax_rate }}%)</td>
+                            <td class="px-6 py-1 text-xs text-gray-500 text-right"></td>
+                        </tr>
+                                {% endif %}
+                                {% if invoice.city_tax_rate > 0 %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-1 text-xs text-gray-500 text-right">City Tax ({{ invoice.city_tax_rate }}%)</td>
+                            <td class="px-6 py-1 text-xs text-gray-500 text-right"></td>
+                        </tr>
+                                {% endif %}
+                                {% if invoice.special_tax_rate > 0 %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-1 text-xs text-gray-500 text-right">Special Tax ({{ invoice.special_tax_rate }}%)</td>
+                            <td class="px-6 py-1 text-xs text-gray-500 text-right"></td>
+                        </tr>
+                                {% endif %}
+                        <tr>
+                            <td colspan="3" class="px-6 py-2 text-sm text-gray-600 text-right">Total Tax ({{ invoice.tax_rate }}%)</td>
+                            <td class="px-6 py-2 text-sm text-gray-900 text-right">${{ invoice.tax_amount|floatformat:2 }}</td>
+                        </tr>
+                            {% else %}
                         <tr>
                             <td colspan="3" class="px-6 py-2 text-sm text-gray-600 text-right">Tax ({{ invoice.tax_rate }}%)</td>
                             <td class="px-6 py-2 text-sm text-gray-900 text-right">${{ invoice.tax_amount|floatformat:2 }}</td>
                         </tr>
+                            {% endif %}
                         {% endif %}
                         <tr class="border-t-2 border-gray-300">
                             <td colspan="3" class="px-6 py-3 text-sm font-bold text-gray-900 text-right">Total</td>

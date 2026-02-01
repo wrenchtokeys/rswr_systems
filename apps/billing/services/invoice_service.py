@@ -16,7 +16,7 @@ import io
 import os
 import urllib.request
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 
@@ -77,6 +77,10 @@ class InvoiceData:
     payment_terms: str = "COD"
     payment_terms_display: str = "Cash on Delivery (COD)"
     tax_rate: Decimal = Decimal('0.000')
+    state_tax_rate: Decimal = Decimal('0.000')
+    county_tax_rate: Decimal = Decimal('0.000')
+    city_tax_rate: Decimal = Decimal('0.000')
+    special_tax_rate: Decimal = Decimal('0.000')
     tax_amount: Decimal = Decimal('0.00')
 
 
@@ -403,6 +407,10 @@ class InvoiceService:
         
         # Calculate tax (if enabled)
         tax_rate = Decimal('0.000')
+        state_tax_rate = Decimal('0.000')
+        county_tax_rate = Decimal('0.000')
+        city_tax_rate = Decimal('0.000')
+        special_tax_rate = Decimal('0.000')
         tax_amount = Decimal('0.00')
         try:
             from apps.billing.services.tax_service import TaxService
@@ -412,6 +420,10 @@ class InvoiceService:
                 customer=customer,
             )
             tax_rate = tax_result['rate']
+            state_tax_rate = tax_result['state_rate']
+            county_tax_rate = tax_result['county_rate']
+            city_tax_rate = tax_result['city_rate']
+            special_tax_rate = tax_result['special_rate']
             tax_amount = tax_result['amount']
         except Exception as e:
             import logging
@@ -441,6 +453,10 @@ class InvoiceService:
             total_discount=total_discount,
             total=total_with_tax,
             tax_rate=tax_rate,
+            state_tax_rate=state_tax_rate,
+            county_tax_rate=county_tax_rate,
+            city_tax_rate=city_tax_rate,
+            special_tax_rate=special_tax_rate,
             tax_amount=tax_amount,
             payment_terms=payment_terms,
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
@@ -631,13 +647,58 @@ class InvoiceService:
             ])
         
         if invoice_data.tax_amount > 0:
-            # Format rate: "Tax (9.5%)" — strip trailing zeros
-            rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
-            totals_data.append([
-                '',
-                Paragraph(f"<b>Tax ({rate_display}%):</b>", self.styles['Normal']),
-                Paragraph(f"${invoice_data.tax_amount:.2f}", self.styles['Normal'])
-            ])
+            # Show component tax rates if breakdown is available
+            has_breakdown = (
+                invoice_data.state_tax_rate > 0 or
+                invoice_data.county_tax_rate > 0 or
+                invoice_data.city_tax_rate > 0 or
+                invoice_data.special_tax_rate > 0
+            )
+            if has_breakdown:
+                # Individual rate lines
+                def _fmt_rate(r):
+                    return f"{r:.3f}".rstrip('0').rstrip('.')
+
+                if invoice_data.state_tax_rate > 0:
+                    state_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.state_tax_rate / Decimal('100')
+                    state_amt = state_amt.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    totals_data.append([
+                        '',
+                        Paragraph(f"State Tax ({_fmt_rate(invoice_data.state_tax_rate)}%):", self.styles['Normal']),
+                        Paragraph(f"${state_amt:.2f}", self.styles['Normal'])
+                    ])
+                if invoice_data.county_tax_rate > 0:
+                    county_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.county_tax_rate / Decimal('100')
+                    county_amt = county_amt.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    totals_data.append([
+                        '',
+                        Paragraph(f"County Tax ({_fmt_rate(invoice_data.county_tax_rate)}%):", self.styles['Normal']),
+                        Paragraph(f"${county_amt:.2f}", self.styles['Normal'])
+                    ])
+                if invoice_data.city_tax_rate > 0:
+                    city_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.city_tax_rate / Decimal('100')
+                    city_amt = city_amt.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    totals_data.append([
+                        '',
+                        Paragraph(f"City Tax ({_fmt_rate(invoice_data.city_tax_rate)}%):", self.styles['Normal']),
+                        Paragraph(f"${city_amt:.2f}", self.styles['Normal'])
+                    ])
+                if invoice_data.special_tax_rate > 0:
+                    special_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.special_tax_rate / Decimal('100')
+                    special_amt = special_amt.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    totals_data.append([
+                        '',
+                        Paragraph(f"Special Tax ({_fmt_rate(invoice_data.special_tax_rate)}%):", self.styles['Normal']),
+                        Paragraph(f"${special_amt:.2f}", self.styles['Normal'])
+                    ])
+            else:
+                # Fallback: single combined rate (when using default_tax_rate with no breakdown)
+                rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
+                totals_data.append([
+                    '',
+                    Paragraph(f"<b>Tax ({rate_display}%):</b>", self.styles['Normal']),
+                    Paragraph(f"${invoice_data.tax_amount:.2f}", self.styles['Normal'])
+                ])
         
         totals_data.append([
             '',

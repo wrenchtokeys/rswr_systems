@@ -242,7 +242,23 @@ class Invoice(models.Model):
     )
     tax_rate = models.DecimalField(
         max_digits=5, decimal_places=3, default=Decimal('0.000'),
-        help_text="Tax rate applied (percentage, e.g., 9.500 = 9.5%)"
+        help_text="Combined tax rate applied (percentage, e.g., 9.500 = 9.5%)"
+    )
+    state_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text="State portion of tax rate"
+    )
+    county_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text="County portion of tax rate"
+    )
+    city_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text="City portion of tax rate"
+    )
+    special_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text="Special district portion of tax rate"
     )
     tax_amount = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0.00'),

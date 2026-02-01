@@ -64,9 +64,13 @@ class TaxService:
             return False
         return config.tax_enabled
 
-    def get_tax_rate(self, city=None, state='AR', zip_code=None, tenant=None):
+    def get_tax_rate(self, city=None, state='AR', zip_code=None, tenant=None, detail=False):
         """
-        Look up the tax rate. Returns Decimal percentage or 0 if not found.
+        Look up the tax rate.
+
+        If detail=False (default): Returns Decimal percentage or 0 if not found.
+        If detail=True: Returns dict with state_rate, county_rate, city_rate,
+            special_rate, total_rate — or None if not found.
 
         Lookup order:
         1. City + State — tenant-specific, then global (tenant=None)
@@ -90,12 +94,14 @@ class TaxService:
             state_clean = state.strip()
             for qs in querysets:
                 try:
-                    rate = qs.filter(
+                    rate_obj = qs.filter(
                         city__iexact=city_clean,
                         state__iexact=state_clean,
-                    ).values_list('total_rate', flat=True).first()
-                    if rate is not None:
-                        return rate
+                    ).values('total_rate', 'state_rate', 'county_rate', 'city_rate', 'special_rate').first()
+                    if rate_obj is not None:
+                        if detail:
+                            return rate_obj
+                        return rate_obj['total_rate']
                 except Exception as e:
                     logger.warning(f"Tax rate lookup by city failed: {e}")
 
@@ -104,14 +110,18 @@ class TaxService:
             zip_clean = zip_code.strip()
             for qs in querysets:
                 try:
-                    rate = qs.filter(
+                    rate_obj = qs.filter(
                         zip_code=zip_clean,
-                    ).values_list('total_rate', flat=True).first()
-                    if rate is not None:
-                        return rate
+                    ).values('total_rate', 'state_rate', 'county_rate', 'city_rate', 'special_rate').first()
+                    if rate_obj is not None:
+                        if detail:
+                            return rate_obj
+                        return rate_obj['total_rate']
                 except Exception as e:
                     logger.warning(f"Tax rate lookup by zip failed: {e}")
 
+        if detail:
+            return None
         return Decimal('0.000')
 
     def calculate_tax(self, subtotal, city=None, state=None, zip_code=None, customer=None, tenant=None):
@@ -142,6 +152,10 @@ class TaxService:
         """
         result = {
             'rate': Decimal('0.000'),
+            'state_rate': Decimal('0.000'),
+            'county_rate': Decimal('0.000'),
+            'city_rate': Decimal('0.000'),
+            'special_rate': Decimal('0.000'),
             'amount': Decimal('0.00'),
             'exempt': False,
             'enabled': False,
@@ -175,21 +189,24 @@ class TaxService:
             result['city'] = city or ''
             result['state'] = state or ''
 
-        # If a default tax rate is set, use it directly — simplest setup.
-        # City-specific TaxRate entries override this if they exist.
+        # Default rate as fallback (no component breakdown available)
+        rate = Decimal('0.000')
         if config and config.default_tax_rate > 0:
             rate = config.default_tax_rate
-        else:
-            rate = Decimal('0.000')
 
         # Derive tenant from customer if not provided
         if tenant is None and customer is not None:
             tenant = getattr(customer, 'tenant', None)
 
-        # Try city-specific rate (overrides default if found)
-        city_rate = self.get_tax_rate(city=city, state=state, zip_code=zip_code, tenant=tenant)
-        if city_rate > 0:
-            rate = city_rate
+        # Try city-specific rate with full breakdown (overrides default)
+        rate_detail = self.get_tax_rate(city=city, state=state, zip_code=zip_code, tenant=tenant, detail=True)
+        if rate_detail is not None:
+            rate = rate_detail['total_rate']
+            result['state_rate'] = rate_detail['state_rate']
+            result['county_rate'] = rate_detail['county_rate']
+            result['city_rate'] = rate_detail['city_rate']
+            result['special_rate'] = rate_detail['special_rate']
+
         result['rate'] = rate
 
         if rate > 0 and subtotal > 0:
@@ -223,8 +240,12 @@ class TaxService:
             tenant=tenant,
         )
 
-        # Apply to invoice
+        # Apply to invoice (total + component breakdown)
         invoice.tax_rate = tax_result['rate']
+        invoice.state_tax_rate = tax_result['state_rate']
+        invoice.county_tax_rate = tax_result['county_rate']
+        invoice.city_tax_rate = tax_result['city_rate']
+        invoice.special_tax_rate = tax_result['special_rate']
         invoice.tax_amount = tax_result['amount']
         invoice.total = taxable + tax_result['amount']
 
