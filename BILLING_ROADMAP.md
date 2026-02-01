@@ -83,33 +83,32 @@
 
 ---
 
-## Phase 5: Payment Status in Portals
-**Goal**: All three portals show invoice/payment status.
+## Phase 5: Invoice Portals & Payment Management
+**Goal**: Customers can view/pay invoices. Owners can manage payments.
 
-### 4.1 Owner Portal — Invoice Dashboard
-- New page: `/owner/invoices/` (or tab on existing dashboard)
-- Table: all invoices with status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️)
-- Filters: by customer, status, date range
-- Actions: view PDF, record manual payment, send reminder, cancel
-- Summary cards: total outstanding, overdue amount, payments this month
+### 5.1 Customer Portal — My Invoices
+- [ ] Invoice list page: `/app/invoices/`
+- [ ] Click invoice → detail view (receipt): line items, subtotal, tax, total, payment history
+- [ ] Status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️)
+- [ ] "Pay Now" button → Stripe checkout (charges tax-inclusive total)
+- [ ] Download PDF link
+- [ ] Payment history per invoice
 
-### 4.2 Customer Portal — My Invoices
-- New page: `/app/invoices/` (or tab in account settings)
-- List of all invoices for this customer
-- Status, amount, due date, pay button (Stripe)
-- Download PDF link
-- Payment history
+### 5.2 Owner Portal — Invoice Dashboard
+- [ ] Invoice list page: `/owner/invoices/`
+- [ ] Table: all invoices with status badges, filters by customer/status/date
+- [ ] **Record Manual Payment form** (cash, check, wire, ACH) — amount, method, reference #, date, notes
+- [ ] Actions: view PDF, record payment, send reminder, cancel
+- [ ] Summary cards: total outstanding, overdue amount, payments this month
 
-### 4.3 Technician Portal — Payment Badge
-- On repair detail: show invoice status badge if invoiced
-- On repair list: optional column showing if repair has been invoiced/paid
-- Helps techs know if customer is in good standing
+### 5.3 Technician Portal — Payment Badge
+- [ ] On repair detail: show invoice status badge if invoiced
+- [ ] On repair list: optional column showing if repair has been invoiced/paid
 
-### 4.4 Reminder System
-- Owner can click "Send Reminder" on any overdue invoice
-- Auto-reminders: configurable schedule (7 days, 14 days, 30 days overdue)
-- Reminder count tracked per invoice
-- Customer sees "Payment Reminder" in notification bell
+### 5.4 Reminder System
+- [ ] Owner can click "Send Reminder" on any overdue invoice
+- [ ] Auto-reminders: configurable schedule (7 days, 14 days, 30 days overdue)
+- [ ] Reminder count tracked per invoice
 
 **Estimated effort**: ~15 hours
 
@@ -172,31 +171,31 @@
 **Goal**: Automatically calculate and apply correct sales tax per invoice based on service location.
 
 ### Why it's complex
-- Texas state rate: 6.25%
-- Cities/counties/special districts add up to 2% more (combined max 8.25%)
+- Arkansas state rate: 6.5%
+- Cities/counties add local taxes on top (combined can reach 11.625%)
 - Rate varies by zip code — some zips span multiple jurisdictions
 - Rates change periodically
 
-### Options (pick one)
-1. **Stripe Tax** — Enable `automatic_tax` on checkout sessions. Stripe calculates based on your address + customer location. ~$0.50/txn fee. Handles compliance/reporting. Easiest.
-2. **Tax API** (TaxJar, Avalara, etc.) — Dedicated tax calculation service. More accurate for edge cases. Monthly fee.
-3. **Local tax table** — Maintain a zip→rate lookup table ourselves. Free but we own the maintenance. Texas Comptroller publishes quarterly rate files.
+### Key constraint: tax must be on the invoice, not at checkout
+If tax is only added at Stripe checkout, customers paying by check/cash would skip tax.
+Tax MUST be calculated at invoice creation time and shown on the PDF.
+Stripe checkout charges the tax-inclusive total — no additional tax added at payment.
+
+### Options (pick one for rate lookup)
+1. **Stripe Tax Calculations API** — Use Stripe's tax calculation endpoint at invoice creation to get the rate, store it on our invoice. Checkout charges the pre-calculated total. ~$0.50/txn.
+2. **Tax API** (TaxJar, Avalara, etc.) — Dedicated tax calculation at invoice creation. Monthly fee.
+3. **Local tax table** — Maintain a zip→rate lookup table ourselves. Free but we own the maintenance. Arkansas Dept of Finance publishes rate files.
 
 ### Tasks (regardless of approach)
-- [ ] Add `tax_rate` and `tax_amount` fields to Invoice model
-- [ ] Show tax as separate line item on invoice PDF
-- [ ] Show tax breakdown in email templates
-- [ ] Apply tax in Stripe checkout session (either via Stripe Tax or as line item)
+- [ ] Add `tax_rate`, `tax_amount` fields to Invoice model
+- [ ] Calculate tax at invoice creation time (not at checkout)
+- [ ] Invoice PDF shows: subtotal + tax + total
+- [ ] Email templates show tax breakdown
+- [ ] Stripe checkout charges the tax-inclusive `total` (no additional tax)
+- [ ] Check/cash payments are for the same tax-inclusive total
 - [ ] Determine service location per repair (customer address? job site zip?)
 - [ ] Handle tax-exempt customers (some fleets may have exemptions)
 - [ ] Tax reporting: monthly/quarterly totals for filing
-
-### Stripe Tax path (recommended)
-- [ ] Enable Stripe Tax in dashboard + set origin address
-- [ ] Add `automatic_tax={'enabled': True}` to checkout session creation
-- [ ] Add `tax_behavior='exclusive'` to price_data (tax added on top)
-- [ ] Store tax amount from Stripe webhook response on Invoice
-- [ ] Tax reports available in Stripe dashboard
 
 **Estimated effort**: ~8-12 hours depending on approach
 **Priority**: P1 — legal compliance
