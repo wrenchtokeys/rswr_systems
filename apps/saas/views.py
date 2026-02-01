@@ -15,7 +15,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import models, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from common.decorators import owner_or_manager_required
@@ -684,6 +684,19 @@ def owner_settings_view(request):
     for cust in customers:
         cust.portal_user = customer_users.get(cust.id)
 
+    # Tax rates for Billing tab
+    tax_rates = TaxRate.objects.filter(
+        models.Q(tenant=tenant) | models.Q(tenant__isnull=True)
+    ).order_by('state', 'city')
+    try:
+        billing_config = BillingConfig.get_instance()
+        tax_enabled = billing_config.tax_enabled
+    except Exception:
+        tax_enabled = False
+
+    # Active tab from query string
+    active_tab = request.GET.get('tab', 'general')
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -691,6 +704,9 @@ def owner_settings_view(request):
         'shop_join_url': shop_join_url,
         'customers': customers,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
+        'tax_rates': tax_rates,
+        'tax_enabled': tax_enabled,
+        'active_tab': active_tab,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -1358,33 +1374,15 @@ def owner_record_payment(request, invoice_id):
 # ─── Tax Rate Management ─────────────────────────────────────────────
 @owner_or_manager_required
 def owner_tax_rates(request):
-    """GET /owner/tax-rates/ — list and manage tax rates."""
-    tenant, membership = _get_owner_tenant(request)
-    if not tenant:
-        messages.error(request, 'No shop found.')
-        return redirect('signup')
-
-    tax_rates = TaxRate.objects.filter(tenant=tenant).order_by('state', 'city')
-
-    # Get tax enabled status
-    try:
-        config = BillingConfig.get_instance()
-        tax_enabled = config.tax_enabled
-    except Exception:
-        tax_enabled = False
-
-    context = {
-        'tax_rates': tax_rates,
-        'tax_enabled': tax_enabled,
-    }
-    return render(request, 'saas/owner_tax_rates.html', context)
+    """GET /owner/tax-rates/ — redirect to settings billing tab."""
+    return redirect('/owner/settings/?tab=billing')
 
 
 @owner_or_manager_required
 def owner_add_tax_rate(request):
     """POST /owner/tax-rates/add/ — add a new tax rate."""
     if request.method != 'POST':
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
@@ -1400,11 +1398,11 @@ def owner_add_tax_rate(request):
 
     if not city:
         messages.error(request, 'City is required.')
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     if not state or len(state) != 2:
         messages.error(request, 'Please enter a valid 2-letter state code.')
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     try:
         state_rate = Decimal(request.POST.get('state_rate', '0'))
@@ -1413,12 +1411,12 @@ def owner_add_tax_rate(request):
         special_rate = Decimal(request.POST.get('special_rate', '0'))
     except (InvalidOperation, ValueError):
         messages.error(request, 'Invalid rate value. Enter numbers only.')
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     # Check for duplicates
     if TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).exists():
         messages.error(request, f'A tax rate for {city}, {state} already exists.')
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     TaxRate.objects.create(
         tenant=tenant,
@@ -1434,14 +1432,14 @@ def owner_add_tax_rate(request):
 
     total = state_rate + county_rate + city_rate + special_rate
     messages.success(request, f'Tax rate added: {city}, {state} — {total}%')
-    return redirect('owner_tax_rates')
+    return redirect('/owner/settings/?tab=billing')
 
 
 @owner_or_manager_required
 def owner_edit_tax_rate(request, rate_id):
     """POST /owner/tax-rates/<id>/edit/ — update a tax rate."""
     if request.method != 'POST':
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
@@ -1468,18 +1466,18 @@ def owner_edit_tax_rate(request, rate_id):
         rate.special_rate = Decimal(request.POST.get('special_rate', rate.special_rate))
     except (InvalidOperation, ValueError):
         messages.error(request, 'Invalid rate value.')
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     rate.save()  # total auto-calculates
     messages.success(request, f'Tax rate updated: {rate.city}, {rate.state} — {rate.total_rate}%')
-    return redirect('owner_tax_rates')
+    return redirect('/owner/settings/?tab=billing')
 
 
 @owner_or_manager_required
 def owner_delete_tax_rate(request, rate_id):
     """POST /owner/tax-rates/<id>/delete/ — remove a tax rate."""
     if request.method != 'POST':
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
@@ -1489,14 +1487,14 @@ def owner_delete_tax_rate(request, rate_id):
     city_state = f'{rate.city}, {rate.state}'
     rate.delete()
     messages.success(request, f'Tax rate removed: {city_state}')
-    return redirect('owner_tax_rates')
+    return redirect('/owner/settings/?tab=billing')
 
 
 @owner_or_manager_required
 def owner_toggle_tax(request):
     """POST /owner/tax-rates/toggle/ — enable/disable tax globally."""
     if request.method != 'POST':
-        return redirect('owner_tax_rates')
+        return redirect('/owner/settings/?tab=billing')
 
     try:
         config = BillingConfig.get_instance()
@@ -1511,4 +1509,4 @@ def owner_toggle_tax(request):
         logger.error(f"Error toggling tax: {e}")
         messages.error(request, 'Could not update tax setting.')
 
-    return redirect('owner_tax_rates')
+    return redirect('/owner/settings/?tab=billing')
