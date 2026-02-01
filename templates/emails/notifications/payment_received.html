@@ -1,0 +1,172 @@
+{% extends "emails/base.html" %}
+
+{% block email_title %}Payment Received - Invoice {{ invoice.invoice_number }}{% endblock %}
+
+{% block preheader %}We received your payment of ${{ payment.amount }} for invoice {{ invoice.invoice_number }}. {% if invoice.status == 'PAID' %}Your invoice is now paid in full.{% else %}Remaining balance: ${{ invoice.amount_due }}.{% endif %}{% endblock %}
+
+{% block content %}
+<!-- Success Badge -->
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+    <tr>
+        <td style="text-align: center; padding-bottom: 20px;">
+            <div style="display: inline-block; background-color: {{ branding.success_color }}; color: white; padding: 10px 20px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 14px; font-weight: bold; letter-spacing: 0.5px;">
+                ✓ PAYMENT RECEIVED
+            </div>
+        </td>
+    </tr>
+</table>
+
+<!-- Main Heading -->
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+    <tr>
+        <td style="padding-bottom: 20px;">
+            <h1 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 24px; font-weight: bold; line-height: 1.3;">
+                Payment Confirmed 💳
+            </h1>
+            <p style="margin: 10px 0 0 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 16px; line-height: 24px;">
+                Thank you for your payment{% if invoice.customer %}, {{ invoice.customer.name }}{% endif %}.
+                {% if invoice.status == 'PAID' %}Your invoice has been paid in full.{% endif %}
+            </p>
+        </td>
+    </tr>
+</table>
+
+<!-- Payment Details Card -->
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f0fdf4; border: 2px solid {{ branding.success_color }}; border-radius: 8px; margin-bottom: 30px;">
+    <tr>
+        <td style="padding: 25px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                    <td style="padding-bottom: 15px;">
+                        <h2 style="margin: 0; color: {{ branding.success_color }}; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
+                            Payment Details
+                        </h2>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Amount Paid:</strong>
+                                    <span style="color: {{ branding.success_color }}; font-weight: bold; font-size: 18px;">${{ payment.amount }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Payment Method:</strong>
+                                    <span style="color: #666666;">{{ payment.get_payment_method_display }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Payment Date:</strong>
+                                    <span style="color: #666666;">{{ payment.payment_date|date:"M d, Y" }}</span>
+                                </td>
+                            </tr>
+                            {% if payment.reference_number %}
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Reference:</strong>
+                                    <span style="color: #666666;">{{ payment.reference_number }}</span>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<!-- Invoice Summary Card -->
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 30px;">
+    <tr>
+        <td style="padding: 25px;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                    <td style="padding-bottom: 15px;">
+                        <h2 style="margin: 0; color: {{ branding.text_color }}; font-family: {{ branding.heading_font }}; font-size: 18px; font-weight: bold;">
+                            Invoice Summary
+                        </h2>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Invoice #:</strong>
+                                    <span style="color: #666666;">{{ invoice.invoice_number }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Invoice Total:</strong>
+                                    <span style="color: #666666;">${{ invoice.total }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Total Paid:</strong>
+                                    <span style="color: {{ branding.success_color }};">${{ invoice.amount_paid }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px; border-top: 2px solid #e2e8f0;">
+                                    <strong style="color: {{ branding.text_color }};">Remaining Balance:</strong>
+                                    {% if invoice.amount_due > 0 %}
+                                    <span style="color: {{ branding.danger_color }}; font-weight: bold;">${{ invoice.amount_due }}</span>
+                                    {% else %}
+                                    <span style="color: {{ branding.success_color }}; font-weight: bold;">$0.00 — PAID IN FULL ✓</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Status:</strong>
+                                    {% if invoice.status == 'PAID' %}
+                                    <span style="background-color: {{ branding.success_color }}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">PAID</span>
+                                    {% elif invoice.status == 'PARTIAL' %}
+                                    <span style="background-color: #ffc107; color: #333; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">PARTIALLY PAID</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<!-- Pay remaining balance button (if partial) -->
+{% if invoice.amount_due > 0 and invoice.stripe_hosted_url %}
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 20px;">
+    <tr>
+        <td style="text-align: center; padding: 20px 0;">
+            <a href="{{ invoice.stripe_hosted_url }}" style="background-color: {{ branding.primary_color }}; color: white; text-decoration: none; padding: 14px 35px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold; display: inline-block;">
+                Pay Remaining Balance
+            </a>
+        </td>
+    </tr>
+</table>
+{% endif %}
+
+<!-- Thank You Note -->
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+    <tr>
+        <td style="padding: 20px; background-color: #f0f8ff; border-left: 4px solid {{ branding.secondary_color }}; border-radius: 0 4px 4px 0;">
+            <p style="margin: 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 22px; color: #555555;">
+                <strong style="color: {{ branding.text_color }};">Thank you for your prompt payment!</strong><br>
+                If you have any questions about this payment or invoice, please don't hesitate to reach out.
+                {% if branding.support_email %}<br><br>Contact us at <a href="mailto:{{ branding.support_email }}" style="color: {{ branding.primary_color }}; text-decoration: none;">{{ branding.support_email }}</a>{% endif %}
+                {% if branding.support_phone %} or <a href="tel:{{ branding.support_phone }}" style="color: {{ branding.primary_color }}; text-decoration: none;">{{ branding.support_phone }}</a>{% endif %}
+            </p>
+        </td>
+    </tr>
+</table>
+{% endblock %}
+
+{% block unsubscribe_url %}/app/settings/notifications/{% endblock %}

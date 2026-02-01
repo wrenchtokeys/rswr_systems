@@ -1,0 +1,27 @@
+PAYMENT RECEIVED
+
+Thank you for your payment{% if invoice.customer %}, {{ invoice.customer.name }}{% endif %}.
+
+PAYMENT DETAILS
+-----------------------------------------
+Amount Paid:    ${{ payment.amount }}
+Payment Method: {{ payment.get_payment_method_display }}
+Payment Date:   {{ payment.payment_date|date:"M d, Y" }}{% if payment.reference_number %}
+Reference:      {{ payment.reference_number }}{% endif %}
+
+INVOICE SUMMARY
+-----------------------------------------
+Invoice #:         {{ invoice.invoice_number }}
+Invoice Total:     ${{ invoice.total }}
+Total Paid:        ${{ invoice.amount_paid }}
+Remaining Balance: {% if invoice.amount_due > 0 %}${{ invoice.amount_due }}{% else %}$0.00 - PAID IN FULL{% endif %}
+Status:            {{ invoice.get_status_display }}
+
+{% if invoice.amount_due > 0 and invoice.stripe_hosted_url %}Pay remaining balance online: {{ invoice.stripe_hosted_url }}
+{% endif %}
+Thank you for your prompt payment!
+
+--
+{{ branding.company_name }}{% if branding.support_email %}
+{{ branding.support_email }}{% endif %}{% if branding.support_phone %}
+{{ branding.support_phone }}{% endif %}
