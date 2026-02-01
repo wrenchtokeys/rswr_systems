@@ -119,9 +119,18 @@ class TaxService:
 
         return Decimal('0.000')
 
-    def calculate_tax(self, subtotal, city=None, state='AR', zip_code=None, customer=None, tenant=None):
+    def calculate_tax(self, subtotal, city=None, state=None, zip_code=None, customer=None, tenant=None):
         """
         Calculate tax for an amount.
+
+        Tax rate is determined by the SHOP's location (BillingConfig company
+        address), not the customer's address. This is correct for mobile
+        service businesses where the shop's jurisdiction applies.
+
+        Lookup priority for location:
+        1. Explicit city/state/zip passed by caller
+        2. BillingConfig company_city / company_state / company_zip
+        3. Fallback to default_tax_rate
 
         Returns dict:
             {
@@ -142,7 +151,7 @@ class TaxService:
             'exempt': False,
             'enabled': False,
             'city': city or '',
-            'state': state or 'AR',
+            'state': state or '',
         }
 
         # Check if tax is enabled globally
@@ -156,15 +165,18 @@ class TaxService:
                 result['exempt'] = True
                 return result
 
-            # Use customer's city/state if not provided
-            if not city and hasattr(customer, 'city') and customer.city:
-                city = customer.city
-                result['city'] = city
-            if not state and hasattr(customer, 'state') and customer.state:
-                state = customer.state
-                result['state'] = state
-            if not zip_code and hasattr(customer, 'zip_code') and customer.zip_code:
-                zip_code = customer.zip_code
+        # Use shop location from BillingConfig if not explicitly provided
+        if not city or not state:
+            config = self._get_billing_config()
+            if config:
+                if not city and config.company_city:
+                    city = config.company_city
+                if not state and config.company_state:
+                    state = config.company_state
+                if not zip_code and config.company_zip:
+                    zip_code = config.company_zip
+            result['city'] = city or ''
+            result['state'] = state or ''
 
         # Derive tenant from customer if not provided
         if tenant is None and customer is not None:
