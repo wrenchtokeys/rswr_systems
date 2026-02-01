@@ -288,6 +288,63 @@ def onboarding_view(request):
 # 4. Owner dashboard
 # ------------------------------------------------------------------
 
+
+def _get_billing_context(tenant):
+    """Build billing summary context for the owner dashboard."""
+    from apps.billing.models import Invoice, Payment
+    from django.db.models import Sum, Count, Q
+    from decimal import Decimal
+
+    try:
+        # Outstanding invoices
+        outstanding = Invoice.objects.filter(
+            tenant=tenant,
+            status__in=['SENT', 'PARTIAL', 'OVERDUE'],
+        ).select_related('customer').order_by('due_date')
+
+        total_outstanding = outstanding.aggregate(
+            total=Sum('total') - Sum('amount_paid')
+        )
+        outstanding_amount = (total_outstanding.get('total') or Decimal('0.00'))
+
+        overdue_count = outstanding.filter(status='OVERDUE').count()
+
+        # Recent payments (last 10)
+        recent_payments = Payment.objects.filter(
+            invoice__tenant=tenant,
+        ).select_related(
+            'invoice', 'invoice__customer'
+        ).order_by('-payment_date', '-created_at')[:10]
+
+        # Payments this month
+        from django.utils import timezone
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        payments_this_month = Payment.objects.filter(
+            invoice__tenant=tenant,
+            created_at__gte=month_start,
+        ).aggregate(total=Sum('amount'))
+        collected_this_month = payments_this_month.get('total') or Decimal('0.00')
+
+        return {
+            'outstanding_invoices': outstanding[:10],
+            'outstanding_count': outstanding.count(),
+            'outstanding_amount': outstanding_amount,
+            'overdue_count': overdue_count,
+            'recent_payments': recent_payments,
+            'collected_this_month': collected_this_month,
+        }
+    except Exception:
+        return {
+            'outstanding_invoices': [],
+            'outstanding_count': 0,
+            'outstanding_amount': Decimal('0.00'),
+            'overdue_count': 0,
+            'recent_payments': [],
+            'collected_this_month': Decimal('0.00'),
+        }
+
+
 @owner_or_manager_required
 def owner_dashboard(request):
     """Owner dashboard with trial banner, usage, quick actions, recent activity."""
@@ -318,6 +375,9 @@ def owner_dashboard(request):
         reverse=True,
     )[:5]
 
+    # Billing summary
+    billing_context = _get_billing_context(tenant)
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -327,6 +387,7 @@ def owner_dashboard(request):
         'is_trial': tenant.plan == 'trial',
         'is_trial_expired': tenant.is_trial_expired,
     }
+    context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
 
 

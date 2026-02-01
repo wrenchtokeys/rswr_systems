@@ -319,7 +319,7 @@ class StripeService:
             return {'success': True, 'duplicate': True}
         
         tracking = InvoiceTrackingService()
-        tracking.record_payment(
+        payment = tracking.record_payment(
             invoice=invoice,
             amount=amount,
             payment_method='STRIPE',
@@ -328,6 +328,16 @@ class StripeService:
         )
         
         logger.info(f"Stripe payment ${amount} recorded for {invoice.invoice_number}")
+        
+        # Send payment confirmation emails
+        try:
+            from apps.billing.services.payment_notification_service import PaymentNotificationService
+            invoice.refresh_from_db()  # Reload to get updated status/amounts
+            notif = PaymentNotificationService()
+            notif_result = notif.notify_payment(payment)
+            logger.info(f"Payment notifications: customer={notif_result['customer_sent']}, owner={notif_result['owner_sent']}")
+        except Exception as e:
+            logger.warning(f"Payment notification failed (non-fatal): {e}")
         
         return {
             'success': True,

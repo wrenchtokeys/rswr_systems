@@ -70,24 +70,16 @@
 
 ---
 
-## Phase 4: Payment Confirmation Emails ← NEXT
-**Goal**: Notify customer and owner when payment is received.
+## ~~Phase 4: Payment Confirmation Emails~~ ✅ DONE (PR #16)
 
-### 4.1 Customer Payment Receipt
-- Email customer when payment recorded (Stripe webhook or manual entry)
-- Include: amount paid, payment method, remaining balance, invoice number
-- Template consistent with invoice email styling
-
-### 4.2 Owner Payment Notification
-- Email/notify Drake when any payment comes in
-- Include: customer name, amount, method, invoice number
-
-### 4.3 Stripe Refund Handling
-- Handle `charge.refunded` webhook event
-- Update Payment record, adjust Invoice status
-- Notify owner
-
-**Estimated effort**: ~4 hours
+- [x] Customer receipt email (branded HTML + plain text)
+- [x] Shows: amount, method, date, invoice summary, remaining balance
+- [x] "Pay Remaining Balance" button for partial payments with Stripe link
+- [x] Owner notification email (plain text, subject shows amount + customer + status)
+- [x] Wired into Stripe webhook (auto on online payment)
+- [x] Wired into manual payment API (auto on record_payment)
+- [x] Non-fatal — notification failures don't break payment recording
+- [ ] Stripe refund handling (charge.refunded webhook → future)
 
 ---
 
@@ -157,7 +149,7 @@
 | ✅ | 1 | Payment terms & BillingConfig | DONE | — |
 | ✅ | 2 | Stripe integration | DONE (needs webhook secret) | — |
 | ✅ | 3 | Company address on invoices | DONE | — |
-| 🔴 P0 | 4 | Payment confirmation emails | NEXT | ~4 |
+| ✅ | 4 | Payment confirmation emails | DONE | — |
 | 🟡 P1 | 5 | Payment status in portals | — | ~15 |
 | 🟢 P2 | 6 | Automation & reports | — | ~12 |
 

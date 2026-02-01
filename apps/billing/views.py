@@ -390,6 +390,15 @@ def record_payment(request, invoice_id):
 
         invoice.refresh_from_db()
 
+        # Send payment confirmation emails (non-blocking)
+        notif_result = {'customer_sent': False, 'owner_sent': False}
+        if not data.get('skip_notifications', False):
+            try:
+                from apps.billing.services.payment_notification_service import PaymentNotificationService
+                notif_result = PaymentNotificationService().notify_payment(payment)
+            except Exception:
+                pass
+
         return JsonResponse({
             'success': True,
             'payment': {
@@ -404,6 +413,7 @@ def record_payment(request, invoice_id):
                 'amount_due': float(invoice.amount_due),
                 'status': invoice.status,
             },
+            'notifications': notif_result,
         })
     except ValueError as e:
         return JsonResponse({'error': str(e)}, status=400)
