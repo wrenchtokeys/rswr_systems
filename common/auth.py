@@ -143,7 +143,11 @@ def redirect_to_portal(user):
     elif role in ('viewer', 'customer'):
         return redirect('customer_dashboard')
     else:
-        return redirect('login')
+        # Don't redirect back to login for authenticated users (causes loop)
+        # Superusers/staff go to admin, everyone else to owner dashboard
+        if user.is_staff:
+            return redirect('/admin/')
+        return redirect('owner_dashboard')
 
 
 def requires(area):

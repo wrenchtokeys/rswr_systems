@@ -37,8 +37,14 @@ def health_check(request):
         }, status=500)
 
 def home(request):
-    # The root page is now a marketing landing page
-    # No automatic redirects for authenticated users
+    # Authenticated users go to their portal, visitors see landing page
+    if request.user.is_authenticated:
+        dest = _route_authenticated_user(request, request.user)
+        if dest:
+            return dest
+        if request.user.is_staff:
+            return redirect('/admin/')
+        return redirect('owner_dashboard')
     return render(request, 'landing.html')
 
 def customer_login_view(request):
@@ -109,14 +115,15 @@ def login_router(request):
     """Unified login page — authenticates user and routes to appropriate portal."""
     from apps.tenants.models import TenantMembership
 
-    # Already authenticated? Route them.
+    # Already authenticated? Route them (never redirect back to login).
     if request.user.is_authenticated:
         dest = _route_authenticated_user(request, request.user)
         if dest:
             return dest
-        # Fallback for authenticated users with no clear destination
-        from common.auth import redirect_to_portal
-        return redirect_to_portal(request.user)
+        # Fallback: staff go to admin, everyone else to owner dashboard
+        if request.user.is_staff:
+            return redirect('/admin/')
+        return redirect('owner_dashboard')
 
     context = {
         'next': request.GET.get('next', ''),
