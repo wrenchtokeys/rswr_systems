@@ -661,6 +661,22 @@ def owner_settings_view(request):
                 messages.error(request, 'Invalid assignment strategy selected.')
             return redirect('owner_settings')
 
+        if form_type == 'billing_location':
+            # Update shop location for tax calculation
+            try:
+                config = BillingConfig.get_instance()
+                config.company_city = request.POST.get('company_city', '').strip()
+                config.company_state = request.POST.get('company_state', '').strip().upper()
+                config.company_zip = request.POST.get('company_zip', '').strip()
+                config.save()
+                from django.core.cache import cache
+                cache.delete('billing_config_tax')
+                messages.success(request, f'Shop location updated: {config.company_city}, {config.company_state}')
+            except Exception as e:
+                logger.error(f"Error updating billing location: {e}")
+                messages.error(request, 'Could not update shop location.')
+            return redirect('/owner/settings/?tab=billing')
+
         # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
         tenant.business_phone = request.POST.get('business_phone', '').strip()
@@ -713,6 +729,7 @@ def owner_settings_view(request):
         billing_config = BillingConfig.get_instance()
         tax_enabled = billing_config.tax_enabled
     except Exception:
+        billing_config = None
         tax_enabled = False
 
     # Active tab from query string
@@ -727,6 +744,7 @@ def owner_settings_view(request):
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
         'tax_rates': tax_rates,
         'tax_enabled': tax_enabled,
+        'billing_config': billing_config,
         'active_tab': active_tab,
     }
 
