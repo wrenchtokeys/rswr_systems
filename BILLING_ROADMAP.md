@@ -26,12 +26,14 @@
 - **Fill in BillingConfig** — Admin > Billing > Billing Configuration (company address)
 
 ### ❌ Not Yet Built
-- **No payment confirmation emails** — invoice flips to PAID but no one gets notified
-- **No payment status in portals** — no one can see if an invoice is paid/unpaid
+- ~~**No payment confirmation emails**~~ ✅ Done (Phase 4)
+- ~~**No payment status in portals**~~ ✅ Done (Phase 5)
 - **No reminder UI** — reminder service exists but no portal buttons to trigger them
-- **No owner billing dashboard for customer invoices** — owner billing page is for SaaS subscription only
-- **Customer portal has no invoice history/payment view**
-- **Tech portal has no payment visibility**
+- ~~**No owner billing dashboard for customer invoices**~~ ✅ Done (Phase 5.2)
+- ~~**Customer portal has no invoice history/payment view**~~ ✅ Done (Phase 5.1)
+- **Tech portal has no payment visibility** (deferred)
+- **No sales tax calculation** — invoices have no tax (Phase 8)
+- **No manual payment UI** ✅ Done — owner can record cash/check/wire/ACH (Phase 5.2)
 
 ---
 
@@ -83,23 +85,27 @@
 
 ---
 
-## Phase 5: Invoice Portals & Payment Management
+## Phase 5: Invoice Portals & Payment Management ✅ DONE (PR #16)
 **Goal**: Customers can view/pay invoices. Owners can manage payments.
 
-### 5.1 Customer Portal — My Invoices
-- [ ] Invoice list page: `/app/invoices/`
-- [ ] Click invoice → detail view (receipt): line items, subtotal, tax, total, payment history
-- [ ] Status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️)
-- [ ] "Pay Now" button → Stripe checkout (charges tax-inclusive total)
-- [ ] Download PDF link
-- [ ] Payment history per invoice
+### 5.1 Customer Portal — My Invoices ✅
+- [x] Invoice list page: `/app/invoices/`
+- [x] Click invoice → detail view (receipt): line items, subtotal, discount, total, payment history
+- [x] Status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️, Cancelled)
+- [x] "Pay Now" button → Stripe checkout (creates session, redirects)
+- [x] Download PDF link (S3)
+- [x] Payment history per invoice
+- [x] "Invoices" nav link added to customer portal
 
-### 5.2 Owner Portal — Invoice Dashboard
-- [ ] Invoice list page: `/owner/invoices/`
-- [ ] Table: all invoices with status badges, filters by customer/status/date
-- [ ] **Record Manual Payment form** (cash, check, wire, ACH) — amount, method, reference #, date, notes
-- [ ] Actions: view PDF, record payment, send reminder, cancel
-- [ ] Summary cards: total outstanding, overdue amount, payments this month
+### 5.2 Owner Portal — Invoice Dashboard ✅
+- [x] Invoice list page: `/owner/invoices/` with summary cards
+- [x] Table: all invoices with status badges, filters by customer + status
+- [x] **Record Manual Payment form** (cash, check, wire, ACH, credit card, other)
+- [x] Form fields: amount (defaults to balance), method, reference #, date, notes
+- [x] Auto-updates invoice status + sends confirmation emails
+- [x] Actions: view PDF, record payment
+- [x] Summary cards: total outstanding, overdue amount, payments this month, invoices this month
+- [x] Owner dashboard linked to invoice list
 
 ### 5.3 Technician Portal — Payment Badge
 - [ ] On repair detail: show invoice status badge if invoiced
@@ -110,7 +116,7 @@
 - [ ] Auto-reminders: configurable schedule (7 days, 14 days, 30 days overdue)
 - [ ] Reminder count tracked per invoice
 
-**Estimated effort**: ~15 hours
+**Note**: 5.3 and 5.4 deferred to Phase 6 (polish)
 
 ---
 
@@ -149,7 +155,7 @@
 | ✅ | 2 | Stripe integration | DONE (needs webhook secret) | — |
 | ✅ | 3 | Company address on invoices | DONE | — |
 | ✅ | 4 | Payment confirmation emails | DONE | — |
-| 🟡 P1 | 5 | Invoice portals & payment management | In Progress | ~15 |
+| ✅ | 5 | Invoice portals & payment management | DONE (5.1 + 5.2) | — |
 | 🟢 P2 | 6 | Automation & reports | — | ~12 |
 | 🔴 P1 | 7 | SaaS subscription billing | — | TBD |
 | 🟡 P1 | 8 | Sales tax by zip code | — | ~8-12 |
