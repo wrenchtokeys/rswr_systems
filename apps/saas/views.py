@@ -329,6 +329,21 @@ def _get_billing_context(tenant):
         ).aggregate(total=Sum('amount'))
         collected_this_month = payments_this_month.get('total') or Decimal('0.00')
 
+        # Revenue this month — sum of cost for completed repairs/replacements
+        repair_revenue = Repair.objects.filter(
+            tenant=tenant,
+            queue_status='COMPLETED',
+            service_date__gte=month_start,
+        ).aggregate(total=Sum('cost'))['total'] or Decimal('0.00')
+
+        replacement_revenue = Replacement.objects.filter(
+            tenant=tenant,
+            queue_status='COMPLETED',
+            service_date__gte=month_start,
+        ).aggregate(total=Sum('cost'))['total'] or Decimal('0.00')
+
+        total_revenue = repair_revenue + replacement_revenue
+
         return {
             'outstanding_invoices': outstanding[:10],
             'outstanding_count': outstanding.count(),
@@ -336,6 +351,9 @@ def _get_billing_context(tenant):
             'overdue_count': overdue_count,
             'recent_payments': recent_payments,
             'collected_this_month': collected_this_month,
+            'total_revenue': total_revenue,
+            'repair_revenue': repair_revenue,
+            'replacement_revenue': replacement_revenue,
         }
     except Exception:
         return {
@@ -345,6 +363,9 @@ def _get_billing_context(tenant):
             'overdue_count': 0,
             'recent_payments': [],
             'collected_this_month': Decimal('0.00'),
+            'total_revenue': Decimal('0.00'),
+            'repair_revenue': Decimal('0.00'),
+            'replacement_revenue': Decimal('0.00'),
         }
 
 
