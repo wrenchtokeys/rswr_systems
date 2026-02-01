@@ -442,7 +442,9 @@
         <form method="post" action="{% url 'owner_settings' %}" class="p-6">
             {% csrf_token %}
             <input type="hidden" name="form_type" value="billing_location">
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+
+            <!-- Shop Location -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">City</label>
                     <input type="text" name="company_city" value="{{ billing_config.company_city|default:'' }}"
@@ -461,29 +463,67 @@
                         placeholder="e.g. 72103"
                         class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tax Rate %</label>
-                    <input type="number" name="default_tax_rate" value="{{ billing_config.default_tax_rate|default:'0.000' }}"
-                        step="0.001" min="0" max="20" placeholder="e.g. 9.750"
-                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+            </div>
+
+            <!-- Tax Rate Breakdown -->
+            <div class="border border-gray-200 rounded-lg p-4 mb-4">
+                <p class="text-sm font-medium text-gray-700 mb-3">Tax Rate Breakdown</p>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">State %</label>
+                        <input type="number" name="state_tax_rate" id="state_tax_rate"
+                            value="{{ billing_config.state_tax_rate|default:'6.500' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">County %</label>
+                        <input type="number" name="county_tax_rate" id="county_tax_rate"
+                            value="{{ billing_config.county_tax_rate|default:'0.000' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">City %</label>
+                        <input type="number" name="city_tax_rate" id="city_tax_rate"
+                            value="{{ billing_config.city_tax_rate|default:'0.000' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Special %</label>
+                        <input type="number" name="special_tax_rate" id="special_tax_rate"
+                            value="{{ billing_config.special_tax_rate|default:'0.000' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
                 </div>
-                <div class="flex items-end">
-                    <button type="submit" class="w-full inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <div class="flex items-center justify-between">
+                    <div class="text-sm text-gray-600">
+                        Total Rate: <span id="tax-total-display" class="font-bold text-lg text-gray-900">0.000%</span>
+                    </div>
+                    <input type="hidden" name="default_tax_rate" id="default_tax_rate" value="{{ billing_config.default_tax_rate|default:'0.000' }}">
+                    <button type="submit" class="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
                         <i class="fas fa-save mr-2"></i>Save
                     </button>
                 </div>
             </div>
+
             {% if tax_enabled and not billing_config.default_tax_rate or billing_config.default_tax_rate == 0 %}
-            <div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <p class="text-sm text-amber-700"><i class="fas fa-exclamation-triangle mr-1"></i> Tax is enabled but rate is 0%. Enter your local tax rate above.</p>
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p class="text-sm text-amber-700"><i class="fas fa-exclamation-triangle mr-1"></i> Tax is enabled but rate is 0%. Enter your rates above.</p>
             </div>
             {% elif tax_enabled and billing_config.default_tax_rate > 0 %}
-            <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
                 <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> All invoices will include {{ billing_config.default_tax_rate }}% sales tax.</p>
             </div>
             {% endif %}
             {% if not tax_enabled %}
-            <div class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+            <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                 <p class="text-sm text-gray-500"><i class="fas fa-info-circle mr-1"></i> Tax is disabled. Enable it above to add tax to invoices.</p>
             </div>
             {% endif %}
@@ -588,6 +628,17 @@ function switchTab(name) {
 }
 
 // ---- Tax rate helpers ----
+function updateTaxTotal() {
+    const state = parseFloat(document.getElementById('state_tax_rate').value) || 0;
+    const county = parseFloat(document.getElementById('county_tax_rate').value) || 0;
+    const city = parseFloat(document.getElementById('city_tax_rate').value) || 0;
+    const special = parseFloat(document.getElementById('special_tax_rate').value) || 0;
+    const total = state + county + city + special;
+    document.getElementById('tax-total-display').textContent = total.toFixed(3) + '%';
+    document.getElementById('default_tax_rate').value = total.toFixed(3);
+}
+
+// Legacy helpers for old TaxRate forms (if any remain)
 function updateTotal(form) {
     const inputs = form.querySelectorAll('.rate-input');
     let total = 0;
@@ -645,7 +696,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const activeTab = '{{ active_tab|default:"general" }}';
     switchTab(activeTab);
     toggleAbilities();
-    // Init totals
+    // Init tax total display
+    if (document.getElementById('state_tax_rate')) updateTaxTotal();
+    // Init legacy totals
     document.querySelectorAll('form').forEach(form => {
         if (form.querySelector('.rate-input')) updateTotal(form);
     });

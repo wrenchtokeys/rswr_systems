@@ -118,7 +118,23 @@ class BillingConfig(models.Model):
         max_digits=5,
         decimal_places=3,
         default=Decimal('0.000'),
-        help_text='Fallback tax rate if city lookup fails (percentage). 0 = no fallback.',
+        help_text='Combined tax rate (auto-calculated from components). Percentage, e.g. 9.500 = 9.5%.',
+    )
+    state_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('6.500'),
+        help_text='State sales tax rate (percentage)',
+    )
+    county_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text='County sales tax rate (percentage)',
+    )
+    city_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text='City sales tax rate (percentage)',
+    )
+    special_tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text='Special district tax rate (percentage)',
     )
 
     # === METADATA ===

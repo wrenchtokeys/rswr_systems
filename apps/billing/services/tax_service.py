@@ -1,49 +1,38 @@
 """
 Tax Service — Sales tax calculation for RS Systems invoices.
 
-Tax is calculated at invoice creation time and stored on the invoice.
-The same total applies whether they pay via Stripe, check, or cash.
+Dead simple: shop owner sets their tax rate in Settings → Billing & Tax.
+That rate gets applied to every invoice (unless customer is tax-exempt).
 
-Shop owners add tax rates for the areas they serve (no pre-loaded data).
-Total rate auto-calculates from state + county + city + special on save.
-
-Lookup priority:
-1. City + State (case-insensitive, tenant-scoped)
-2. ZIP code (tenant-scoped)
-3. BillingConfig.default_tax_rate fallback
-4. Zero
+No tax table lookups, no city matching, no complexity.
+Rate is broken down into state/county/city/special for the invoice.
 
 Author: Amelia (Clawdbot AI)
 """
 
 import logging
 from decimal import Decimal, ROUND_HALF_UP
-from functools import lru_cache
 
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
-# Cache keys
 _BILLING_CONFIG_CACHE_KEY = 'billing_config_tax'
 _BILLING_CONFIG_CACHE_TTL = 300  # 5 minutes
 
 
 class TaxService:
     """
-    Tax calculation service. Looks up rate by city+state, applies to invoice.
+    Tax calculation service. Reads rate from BillingConfig, applies to invoices.
 
     Usage:
         tax_svc = TaxService()
-        rate = tax_svc.get_tax_rate(city='Little Rock', state='AR')
-        tax_amount = tax_svc.calculate_tax(subtotal=Decimal('150.00'), city='Little Rock', state='AR')
+        result = tax_svc.calculate_tax(subtotal=Decimal('150.00'))
+        # result = {'rate': 9.5, 'amount': 14.25, 'state_rate': 6.5, ...}
     """
 
     def _get_billing_config(self):
-        """
-        Get the BillingConfig singleton with caching.
-        Returns the instance or None.
-        """
+        """Get the BillingConfig singleton with caching."""
         config = cache.get(_BILLING_CONFIG_CACHE_KEY)
         if config is not None:
             return config
@@ -64,91 +53,21 @@ class TaxService:
             return False
         return config.tax_enabled
 
-    def get_tax_rate(self, city=None, state='AR', zip_code=None, tenant=None, detail=False):
-        """
-        Look up the tax rate.
-
-        If detail=False (default): Returns Decimal percentage or 0 if not found.
-        If detail=True: Returns dict with state_rate, county_rate, city_rate,
-            special_rate, total_rate — or None if not found.
-
-        Lookup order:
-        1. City + State — tenant-specific, then global (tenant=None)
-        2. ZIP code — tenant-specific, then global
-        3. BillingConfig.default_tax_rate
-        4. Decimal('0.000')
-        """
-        from apps.billing.models import TaxRate
-
-        active_qs = TaxRate.objects.filter(is_active=True)
-
-        # Build list of querysets: tenant-specific first, then global fallback
-        querysets = []
-        if tenant:
-            querysets.append(active_qs.filter(tenant=tenant))
-        querysets.append(active_qs.filter(tenant__isnull=True))
-
-        # Try city + state first (most accurate)
-        if city and state:
-            city_clean = city.strip()
-            state_clean = state.strip()
-            for qs in querysets:
-                try:
-                    rate_obj = qs.filter(
-                        city__iexact=city_clean,
-                        state__iexact=state_clean,
-                    ).values('total_rate', 'state_rate', 'county_rate', 'city_rate', 'special_rate').first()
-                    if rate_obj is not None:
-                        if detail:
-                            return rate_obj
-                        return rate_obj['total_rate']
-                except Exception as e:
-                    logger.warning(f"Tax rate lookup by city failed: {e}")
-
-        # Fall back to zip code
-        if zip_code:
-            zip_clean = zip_code.strip()
-            for qs in querysets:
-                try:
-                    rate_obj = qs.filter(
-                        zip_code=zip_clean,
-                    ).values('total_rate', 'state_rate', 'county_rate', 'city_rate', 'special_rate').first()
-                    if rate_obj is not None:
-                        if detail:
-                            return rate_obj
-                        return rate_obj['total_rate']
-                except Exception as e:
-                    logger.warning(f"Tax rate lookup by zip failed: {e}")
-
-        if detail:
-            return None
-        return Decimal('0.000')
-
-    def calculate_tax(self, subtotal, city=None, state=None, zip_code=None, customer=None, tenant=None):
+    def calculate_tax(self, subtotal, customer=None, **kwargs):
         """
         Calculate tax for an amount.
 
-        Tax rate is determined by the SHOP's location (BillingConfig company
-        address), not the customer's address. This is correct for mobile
-        service businesses where the shop's jurisdiction applies.
-
-        Lookup priority for location:
-        1. Explicit city/state/zip passed by caller
-        2. BillingConfig company_city / company_state / company_zip
-        3. Fallback to default_tax_rate
-
         Returns dict:
             {
-                'rate': Decimal,      # Tax rate percentage
-                'amount': Decimal,    # Tax amount in dollars
-                'exempt': bool,       # Whether customer is tax exempt
-                'enabled': bool,      # Whether tax is enabled globally
-                'city': str,          # City used for lookup
-                'state': str,         # State used for lookup
+                'rate': Decimal,          # Combined tax rate percentage
+                'state_rate': Decimal,    # State portion
+                'county_rate': Decimal,   # County portion
+                'city_rate': Decimal,     # City portion
+                'special_rate': Decimal,  # Special district portion
+                'amount': Decimal,        # Tax amount in dollars
+                'exempt': bool,           # Whether customer is tax exempt
+                'enabled': bool,          # Whether tax is enabled globally
             }
-
-        If customer is tax_exempt, returns amount=0.
-        If BillingConfig.tax_enabled is False, returns amount=0.
         """
         result = {
             'rate': Decimal('0.000'),
@@ -159,12 +78,11 @@ class TaxService:
             'amount': Decimal('0.00'),
             'exempt': False,
             'enabled': False,
-            'city': city or '',
-            'state': state or '',
         }
 
-        # Check if tax is enabled globally
-        if not self.is_tax_enabled():
+        # Check if tax is enabled
+        config = self._get_billing_config()
+        if config is None or not config.tax_enabled:
             return result
         result['enabled'] = True
 
@@ -174,43 +92,15 @@ class TaxService:
                 result['exempt'] = True
                 return result
 
-        # Get billing config for shop location and default rate
-        config = self._get_billing_config()
-
-        # Use shop location from BillingConfig if not explicitly provided
-        if not city or not state:
-            if config:
-                if not city and config.company_city:
-                    city = config.company_city
-                if not state and config.company_state:
-                    state = config.company_state
-                if not zip_code and config.company_zip:
-                    zip_code = config.company_zip
-            result['city'] = city or ''
-            result['state'] = state or ''
-
-        # Default rate as fallback (no component breakdown available)
-        rate = Decimal('0.000')
-        if config and config.default_tax_rate > 0:
-            rate = config.default_tax_rate
-
-        # Derive tenant from customer if not provided
-        if tenant is None and customer is not None:
-            tenant = getattr(customer, 'tenant', None)
-
-        # Try city-specific rate with full breakdown (overrides default)
-        rate_detail = self.get_tax_rate(city=city, state=state, zip_code=zip_code, tenant=tenant, detail=True)
-        if rate_detail is not None:
-            rate = rate_detail['total_rate']
-            result['state_rate'] = rate_detail['state_rate']
-            result['county_rate'] = rate_detail['county_rate']
-            result['city_rate'] = rate_detail['city_rate']
-            result['special_rate'] = rate_detail['special_rate']
-
+        # Read rates directly from BillingConfig
+        rate = config.default_tax_rate or Decimal('0.000')
         result['rate'] = rate
+        result['state_rate'] = getattr(config, 'state_tax_rate', Decimal('0.000')) or Decimal('0.000')
+        result['county_rate'] = getattr(config, 'county_tax_rate', Decimal('0.000')) or Decimal('0.000')
+        result['city_rate'] = getattr(config, 'city_tax_rate', Decimal('0.000')) or Decimal('0.000')
+        result['special_rate'] = getattr(config, 'special_tax_rate', Decimal('0.000')) or Decimal('0.000')
 
         if rate > 0 and subtotal > 0:
-            # Calculate: tax_amount = round(subtotal * rate / 100, 2)
             tax_amount = (subtotal * rate / Decimal('100')).quantize(
                 Decimal('0.01'), rounding=ROUND_HALF_UP
             )
@@ -221,24 +111,12 @@ class TaxService:
     def apply_tax_to_invoice(self, invoice):
         """
         Calculate and apply tax to an existing invoice.
-        Uses customer's city/state for rate lookup.
-        Updates invoice.tax_rate, invoice.tax_amount, invoice.total.
-
-        This method does NOT call invoice.save() — the caller is responsible
-        for saving (so it can be part of a larger transaction).
+        Updates tax fields on invoice. Does NOT call invoice.save().
         """
         customer = invoice.customer
-
-        # Calculate taxable amount = subtotal - discount
         taxable = invoice.subtotal - invoice.discount
 
-        # Calculate tax
-        tenant = getattr(invoice, 'tenant', None) or getattr(customer, 'tenant', None)
-        tax_result = self.calculate_tax(
-            subtotal=taxable,
-            customer=customer,
-            tenant=tenant,
-        )
+        tax_result = self.calculate_tax(subtotal=taxable, customer=customer)
 
         # Apply to invoice (total + component breakdown)
         invoice.tax_rate = tax_result['rate']

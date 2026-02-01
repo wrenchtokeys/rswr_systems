@@ -662,17 +662,32 @@ def owner_settings_view(request):
             return redirect('owner_settings')
 
         if form_type == 'billing_location':
-            # Update shop location + tax rate
+            # Update shop location + tax rate breakdown
             try:
                 from decimal import Decimal, InvalidOperation
                 config = BillingConfig.get_instance()
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
                 config.company_zip = request.POST.get('company_zip', '').strip()
-                try:
-                    config.default_tax_rate = Decimal(request.POST.get('default_tax_rate', '0'))
-                except (InvalidOperation, ValueError):
-                    pass
+
+                # Parse component rates
+                def _dec(field, default='0'):
+                    try:
+                        return Decimal(request.POST.get(field, default))
+                    except (InvalidOperation, ValueError):
+                        return Decimal(default)
+
+                config.state_tax_rate = _dec('state_tax_rate', '6.500')
+                config.county_tax_rate = _dec('county_tax_rate', '0')
+                config.city_tax_rate = _dec('city_tax_rate', '0')
+                config.special_tax_rate = _dec('special_tax_rate', '0')
+
+                # Total auto-calculates from components
+                config.default_tax_rate = (
+                    config.state_tax_rate + config.county_tax_rate +
+                    config.city_tax_rate + config.special_tax_rate
+                )
+
                 config.save()
                 from django.core.cache import cache
                 cache.delete('billing_config_tax')
