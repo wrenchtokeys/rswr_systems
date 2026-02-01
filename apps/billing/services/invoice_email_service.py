@@ -159,15 +159,20 @@ class InvoiceEmailService:
             if item.description:
                 lines.append(f"    {item.description[:100]}")
         
+        lines.append("-" * 40)
+
+        if invoice_data.total_discount > 0:
+            lines.append(f"Subtotal: ${invoice_data.subtotal:.2f}")
+            lines.append(f"Discounts: -${invoice_data.total_discount:.2f}")
+
+        if hasattr(invoice_data, 'tax_amount') and invoice_data.tax_amount > 0:
+            rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
+            lines.append(f"Tax ({rate_display}%): ${invoice_data.tax_amount:.2f}")
+
         lines.extend([
-            "-" * 40,
             f"Total: ${invoice_data.total:.2f}",
             "",
         ])
-        
-        if invoice_data.total_discount > 0:
-            lines.append(f"(Includes ${invoice_data.total_discount:.2f} in discounts)")
-            lines.append("")
         
         # Stripe payment link
         if payment_link:

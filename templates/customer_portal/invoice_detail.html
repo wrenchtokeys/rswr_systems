@@ -169,6 +169,12 @@
                 <span class="text-green-600 font-medium">-${{ invoice.discount|floatformat:2 }}</span>
             </div>
             {% endif %}
+            {% if invoice.tax_amount > 0 %}
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Tax ({{ invoice.tax_rate }}%)</span>
+                <span class="text-gray-900 font-medium">${{ invoice.tax_amount|floatformat:2 }}</span>
+            </div>
+            {% endif %}
             <div class="flex justify-between text-base font-bold border-t border-gray-300 pt-2 mt-2">
                 <span class="text-gray-900">Total</span>
                 <span class="text-gray-900">${{ invoice.total|floatformat:2 }}</span>

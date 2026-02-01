@@ -7,6 +7,7 @@ Tracks:
 - Payment status and history
 - Stripe integration IDs
 - Billing configuration (company address, payment terms)
+- Sales tax rates and per-invoice tax calculation
 
 Author: Amelia (Clawdbot AI)
 """
@@ -106,6 +107,18 @@ class BillingConfig(models.Model):
         max_length=20,
         default='INV',
         help_text='Prefix for auto-generated invoice numbers (e.g., INV → INV-1-20260131...)',
+    )
+
+    # === SALES TAX ===
+    tax_enabled = models.BooleanField(
+        default=False,
+        help_text='Enable sales tax calculation on invoices. When disabled, all invoices have zero tax.',
+    )
+    default_tax_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=3,
+        default=Decimal('0.000'),
+        help_text='Fallback tax rate if city lookup fails (percentage). 0 = no fallback.',
     )
 
     # === METADATA ===
@@ -226,6 +239,14 @@ class Invoice(models.Model):
     )
     discount = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0.00')
+    )
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text="Tax rate applied (percentage, e.g., 9.500 = 9.5%)"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Calculated tax amount"
     )
     total = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0.00')
@@ -459,3 +480,41 @@ class Payment(models.Model):
         invoice.amount_paid = total_paid
         invoice.update_status()
         invoice.save()
+
+
+# =============================================================================
+# TAX RATES
+# =============================================================================
+
+class TaxRate(models.Model):
+    """
+    Sales tax rates by city/county in Arkansas.
+    Loaded from state-published rate files. Lookup by city+state or zip.
+    """
+    city = models.CharField(max_length=100, db_index=True)
+    county = models.CharField(max_length=100, blank=True, db_index=True)
+    state = models.CharField(max_length=2, default='AR', db_index=True)
+    zip_code = models.CharField(max_length=10, blank=True, db_index=True)
+
+    # Rates stored as percentages (e.g., 9.500 means 9.5%)
+    state_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('6.500'))
+    county_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
+    city_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
+    special_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
+    total_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, db_index=True,
+        help_text="Combined total rate (state + county + city + special)"
+    )
+
+    effective_date = models.DateField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['state', 'city']
+        indexes = [
+            models.Index(fields=['city', 'state']),
+            models.Index(fields=['zip_code']),
+        ]
+
+    def __str__(self):
+        return f"{self.city}, {self.state} — {self.total_rate}%"

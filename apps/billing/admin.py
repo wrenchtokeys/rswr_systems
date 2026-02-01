@@ -15,7 +15,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from decimal import Decimal
 
-from .models import BillingConfig, Invoice, InvoiceLineItem, Payment
+from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate
 
 
 # =============================================================================
@@ -46,6 +46,14 @@ class BillingConfigAdmin(admin.ModelAdmin):
         }),
         ('Invoice Defaults', {
             'fields': ('invoice_footer_note', 'invoice_number_prefix'),
+        }),
+        ('Sales Tax', {
+            'fields': ('tax_enabled', 'default_tax_rate'),
+            'description': (
+                'Enable sales tax calculation on invoices. When enabled, tax is looked up by '
+                'customer city/state from the Tax Rates table. The default rate is used as a '
+                'fallback if no city match is found.'
+            ),
         }),
     )
 
@@ -121,7 +129,7 @@ class InvoiceAdmin(admin.ModelAdmin):
             'fields': ('invoice_date', 'due_date', 'sent_at', 'paid_at')
         }),
         ('Amounts', {
-            'fields': ('subtotal', 'discount', 'total', 'amount_paid')
+            'fields': ('subtotal', 'discount', 'tax_rate', 'tax_amount', 'total', 'amount_paid')
         }),
         ('Storage & Integration', {
             'fields': ('s3_key', 'stripe_invoice_id', 'stripe_hosted_url'),
@@ -225,3 +233,31 @@ class PaymentAdmin(admin.ModelAdmin):
         return f"${obj.amount:,.2f}"
     amount_display.short_description = 'Amount'
     amount_display.admin_order_field = 'amount'
+
+
+# =============================================================================
+# TAX RATES
+# =============================================================================
+
+@admin.register(TaxRate)
+class TaxRateAdmin(admin.ModelAdmin):
+    """Admin for viewing/editing sales tax rates."""
+
+    list_display = ['city', 'county', 'state', 'total_rate', 'is_active', 'effective_date']
+    list_filter = ['state', 'is_active', 'county']
+    search_fields = ['city', 'county', 'zip_code']
+    list_editable = ['total_rate', 'is_active']
+    list_per_page = 50
+    ordering = ['state', 'city']
+
+    fieldsets = (
+        ('Location', {
+            'fields': ('city', 'county', 'state', 'zip_code'),
+        }),
+        ('Rates', {
+            'fields': ('state_rate', 'county_rate', 'city_rate', 'special_rate', 'total_rate'),
+        }),
+        ('Status', {
+            'fields': ('effective_date', 'is_active'),
+        }),
+    )

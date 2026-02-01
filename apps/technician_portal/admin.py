@@ -188,8 +188,9 @@ class ReplacementAdmin(admin.ModelAdmin):
 
 
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ['name', 'email', 'phone', 'address', 'get_primary_contact']
+    list_display = ['name', 'email', 'phone', 'address', 'tax_exempt', 'get_primary_contact']
     search_fields = ['name', 'email', 'phone']
+    list_filter = ['customer_type', 'tax_exempt']
     
     def get_primary_contact(self, obj):
         from apps.customer_portal.models import CustomerUser

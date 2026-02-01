@@ -132,7 +132,17 @@ class InvoiceTrackingService:
             # Update invoice totals
             invoice.subtotal = subtotal
             invoice.discount = total_discount
-            invoice.total = subtotal - total_discount
+            invoice.total = subtotal - total_discount  # default before tax
+
+            # Apply sales tax (if enabled)
+            try:
+                from apps.billing.services.tax_service import TaxService
+                tax_svc = TaxService()
+                tax_svc.apply_tax_to_invoice(invoice)
+            except Exception as e:
+                # Tax failure should not block invoice creation
+                logger.warning(f"Tax calculation failed for invoice {invoice.invoice_number}: {e}")
+
             invoice.save()
             
             logger.info(

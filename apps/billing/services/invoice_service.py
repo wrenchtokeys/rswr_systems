@@ -76,6 +76,8 @@ class InvoiceData:
     notes: str = ""
     payment_terms: str = "COD"
     payment_terms_display: str = "Cash on Delivery (COD)"
+    tax_rate: Decimal = Decimal('0.000')
+    tax_amount: Decimal = Decimal('0.00')
 
 
 class InvoiceService:
@@ -399,6 +401,24 @@ class InvoiceService:
                 city_state_zip += f" {customer.zip_code}"
             address_parts.append(city_state_zip)
         
+        # Calculate tax (if enabled)
+        tax_rate = Decimal('0.000')
+        tax_amount = Decimal('0.00')
+        try:
+            from apps.billing.services.tax_service import TaxService
+            tax_svc = TaxService()
+            tax_result = tax_svc.calculate_tax(
+                subtotal=total,  # tax on post-discount amount
+                customer=customer,
+            )
+            tax_rate = tax_result['rate']
+            tax_amount = tax_result['amount']
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Tax calculation error in build_invoice_data: {e}")
+
+        total_with_tax = total + tax_amount
+
         # Get payment terms (from BillingConfig defaults)
         payment_terms = getattr(self, 'DEFAULT_PAYMENT_TERMS', 'COD')
         terms_display_map = {
@@ -419,7 +439,9 @@ class InvoiceService:
             line_items=line_items,
             subtotal=subtotal,
             total_discount=total_discount,
-            total=total,
+            total=total_with_tax,
+            tax_rate=tax_rate,
+            tax_amount=tax_amount,
             payment_terms=payment_terms,
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
         )
@@ -594,16 +616,27 @@ class InvoiceService:
         # Totals
         totals_data = []
         
-        if invoice_data.total_discount > 0:
+        if invoice_data.total_discount > 0 or invoice_data.tax_amount > 0:
             totals_data.append([
                 '',
                 Paragraph("<b>Subtotal:</b>", self.styles['Normal']),
                 Paragraph(f"${invoice_data.subtotal:.2f}", self.styles['Normal'])
             ])
+        
+        if invoice_data.total_discount > 0:
             totals_data.append([
                 '',
                 Paragraph("<b>Discounts:</b>", self.styles['Normal']),
                 Paragraph(f"-${invoice_data.total_discount:.2f}", self.styles['Normal'])
+            ])
+        
+        if invoice_data.tax_amount > 0:
+            # Format rate: "Tax (9.5%)" — strip trailing zeros
+            rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
+            totals_data.append([
+                '',
+                Paragraph(f"<b>Tax ({rate_display}%):</b>", self.styles['Normal']),
+                Paragraph(f"${invoice_data.tax_amount:.2f}", self.styles['Normal'])
             ])
         
         totals_data.append([

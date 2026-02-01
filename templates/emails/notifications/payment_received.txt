@@ -11,7 +11,8 @@ Reference:      {{ payment.reference_number }}{% endif %}
 
 INVOICE SUMMARY
 -----------------------------------------
-Invoice #:         {{ invoice.invoice_number }}
+Invoice #:         {{ invoice.invoice_number }}{% if invoice.tax_amount > 0 %}
+Tax ({{ invoice.tax_rate }}%):  ${{ invoice.tax_amount }}{% endif %}
 Invoice Total:     ${{ invoice.total }}
 Total Paid:        ${{ invoice.amount_paid }}
 Remaining Balance: {% if invoice.amount_due > 0 %}${{ invoice.amount_due }}{% else %}$0.00 - PAID IN FULL{% endif %}

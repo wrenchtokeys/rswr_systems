@@ -1,0 +1,202 @@
+"""
+Tax Service — Sales tax calculation for RS Systems invoices.
+
+Tax is calculated at invoice creation time and stored on the invoice.
+The same total applies whether they pay via Stripe, check, or cash.
+
+Lookup priority:
+1. City + State (case-insensitive)
+2. ZIP code
+3. BillingConfig.default_tax_rate fallback
+4. Zero
+
+Performance: Uses Django cache for BillingConfig and rate lookups.
+The TaxRate table has ~700 rows — small enough to query inline.
+
+Author: Amelia (Clawdbot AI)
+"""
+
+import logging
+from decimal import Decimal, ROUND_HALF_UP
+from functools import lru_cache
+
+from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
+
+# Cache keys
+_BILLING_CONFIG_CACHE_KEY = 'billing_config_tax'
+_BILLING_CONFIG_CACHE_TTL = 300  # 5 minutes
+
+
+class TaxService:
+    """
+    Tax calculation service. Looks up rate by city+state, applies to invoice.
+
+    Usage:
+        tax_svc = TaxService()
+        rate = tax_svc.get_tax_rate(city='Little Rock', state='AR')
+        tax_amount = tax_svc.calculate_tax(subtotal=Decimal('150.00'), city='Little Rock', state='AR')
+    """
+
+    def _get_billing_config(self):
+        """
+        Get the BillingConfig singleton with caching.
+        Returns the instance or None.
+        """
+        config = cache.get(_BILLING_CONFIG_CACHE_KEY)
+        if config is not None:
+            return config
+
+        try:
+            from apps.billing.models import BillingConfig
+            config = BillingConfig.get_instance()
+            cache.set(_BILLING_CONFIG_CACHE_KEY, config, _BILLING_CONFIG_CACHE_TTL)
+            return config
+        except Exception as e:
+            logger.warning(f"Could not load BillingConfig: {e}")
+            return None
+
+    def is_tax_enabled(self):
+        """Check whether tax calculation is enabled globally."""
+        config = self._get_billing_config()
+        if config is None:
+            return False
+        return config.tax_enabled
+
+    def get_tax_rate(self, city=None, state='AR', zip_code=None):
+        """
+        Look up the tax rate. Returns Decimal percentage or 0 if not found.
+
+        Lookup order:
+        1. City + State (case-insensitive, active only)
+        2. ZIP code (active only)
+        3. BillingConfig.default_tax_rate
+        4. Decimal('0.000')
+        """
+        from apps.billing.models import TaxRate
+
+        # Try city + state first (most accurate)
+        if city and state:
+            try:
+                rate = TaxRate.objects.filter(
+                    city__iexact=city.strip(),
+                    state__iexact=state.strip(),
+                    is_active=True,
+                ).values_list('total_rate', flat=True).first()
+                if rate is not None:
+                    return rate
+            except Exception as e:
+                logger.warning(f"Tax rate lookup by city failed: {e}")
+
+        # Fall back to zip code
+        if zip_code:
+            try:
+                rate = TaxRate.objects.filter(
+                    zip_code=zip_code.strip(),
+                    is_active=True,
+                ).values_list('total_rate', flat=True).first()
+                if rate is not None:
+                    return rate
+            except Exception as e:
+                logger.warning(f"Tax rate lookup by zip failed: {e}")
+
+        # Fall back to BillingConfig.default_tax_rate
+        config = self._get_billing_config()
+        if config and config.default_tax_rate > 0:
+            return config.default_tax_rate
+
+        return Decimal('0.000')
+
+    def calculate_tax(self, subtotal, city=None, state='AR', zip_code=None, customer=None):
+        """
+        Calculate tax for an amount.
+
+        Returns dict:
+            {
+                'rate': Decimal,      # Tax rate percentage
+                'amount': Decimal,    # Tax amount in dollars
+                'exempt': bool,       # Whether customer is tax exempt
+                'enabled': bool,      # Whether tax is enabled globally
+                'city': str,          # City used for lookup
+                'state': str,         # State used for lookup
+            }
+
+        If customer is tax_exempt, returns amount=0.
+        If BillingConfig.tax_enabled is False, returns amount=0.
+        """
+        result = {
+            'rate': Decimal('0.000'),
+            'amount': Decimal('0.00'),
+            'exempt': False,
+            'enabled': False,
+            'city': city or '',
+            'state': state or 'AR',
+        }
+
+        # Check if tax is enabled globally
+        if not self.is_tax_enabled():
+            return result
+        result['enabled'] = True
+
+        # Check customer exemption
+        if customer is not None:
+            if getattr(customer, 'tax_exempt', False):
+                result['exempt'] = True
+                return result
+
+            # Use customer's city/state if not provided
+            if not city and hasattr(customer, 'city') and customer.city:
+                city = customer.city
+                result['city'] = city
+            if not state and hasattr(customer, 'state') and customer.state:
+                state = customer.state
+                result['state'] = state
+            if not zip_code and hasattr(customer, 'zip_code') and customer.zip_code:
+                zip_code = customer.zip_code
+
+        # Look up rate
+        rate = self.get_tax_rate(city=city, state=state, zip_code=zip_code)
+        result['rate'] = rate
+
+        if rate > 0 and subtotal > 0:
+            # Calculate: tax_amount = round(subtotal * rate / 100, 2)
+            tax_amount = (subtotal * rate / Decimal('100')).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP
+            )
+            result['amount'] = tax_amount
+
+        return result
+
+    def apply_tax_to_invoice(self, invoice):
+        """
+        Calculate and apply tax to an existing invoice.
+        Uses customer's city/state for rate lookup.
+        Updates invoice.tax_rate, invoice.tax_amount, invoice.total.
+
+        This method does NOT call invoice.save() — the caller is responsible
+        for saving (so it can be part of a larger transaction).
+        """
+        customer = invoice.customer
+
+        # Calculate taxable amount = subtotal - discount
+        taxable = invoice.subtotal - invoice.discount
+
+        # Calculate tax
+        tax_result = self.calculate_tax(
+            subtotal=taxable,
+            customer=customer,
+        )
+
+        # Apply to invoice
+        invoice.tax_rate = tax_result['rate']
+        invoice.tax_amount = tax_result['amount']
+        invoice.total = taxable + tax_result['amount']
+
+        logger.debug(
+            f"Tax applied to invoice {getattr(invoice, 'invoice_number', '?')}: "
+            f"taxable=${taxable}, rate={tax_result['rate']}%, "
+            f"tax=${tax_result['amount']}, total=${invoice.total}"
+        )
+
+        return tax_result
