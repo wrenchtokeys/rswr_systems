@@ -226,7 +226,25 @@ function createInvoice(customerId, customerName) {
         },
         body: JSON.stringify({ all_uninvoiced: true }),
     })
-    .then(r => r.json())
+    .then(r => {
+        if (!r.ok) {
+            return r.text().then(text => {
+                // Try to parse as JSON first
+                try {
+                    const data = JSON.parse(text);
+                    throw new Error(data.error || `Server error ${r.status}`);
+                } catch (e) {
+                    if (e.message.startsWith('Server error') || e.message !== 'Server error') {
+                        // Extract error from Django HTML debug page if possible
+                        const match = text.match(/<pre class="exception_value">(.*?)<\/pre>/s);
+                        throw new Error(match ? match[1].trim() : `Server error ${r.status}: check terminal for details`);
+                    }
+                    throw e;
+                }
+            });
+        }
+        return r.json();
+    })
     .then(data => {
         if (data.success) {
             window.location.reload();

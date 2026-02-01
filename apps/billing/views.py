@@ -246,11 +246,15 @@ def create_invoice(request, customer_id):
 
     # Generate Stripe payment link (auto when Stripe is configured, skip with no_payment_link=true)
     stripe_result = None
-    if not data.get('no_payment_link', False):
-        from apps.billing.services.stripe_service import StripeService
-        stripe_svc = StripeService()
-        if stripe_svc.is_enabled() and invoice.amount_due > 0:
-            stripe_result = stripe_svc.create_payment_link(invoice)
+    try:
+        if not data.get('no_payment_link', False):
+            from apps.billing.services.stripe_service import StripeService
+            stripe_svc = StripeService()
+            if stripe_svc.is_enabled() and invoice.amount_due > 0:
+                stripe_result = stripe_svc.create_payment_link(invoice)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Stripe link failed for {invoice.invoice_number}: {e}")
 
     # Optionally email
     if data.get('auto_email', False) and customer.email:
@@ -265,19 +269,26 @@ def create_invoice(request, customer_id):
         except Exception:
             pass
 
-    return JsonResponse({
-        'success': True,
-        'invoice': {
-            'id': invoice.id,
-            'invoice_number': invoice.invoice_number,
-            'total': float(invoice.total),
-            'status': invoice.status,
-            'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
-            'line_items': invoice.line_items.count(),
-            's3_key': invoice.s3_key,
-            'stripe': stripe_result,
-        },
-    })
+    try:
+        return JsonResponse({
+            'success': True,
+            'invoice': {
+                'id': invoice.id,
+                'invoice_number': invoice.invoice_number,
+                'total': float(invoice.total),
+                'tax_rate': float(invoice.tax_rate),
+                'tax_amount': float(invoice.tax_amount),
+                'status': invoice.status,
+                'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+                'line_items': invoice.line_items.count(),
+                's3_key': getattr(invoice, 's3_key', ''),
+                'stripe': stripe_result,
+            },
+        })
+    except Exception as e:
+        import logging, traceback
+        logging.getLogger(__name__).error(f"Response build failed: {traceback.format_exc()}")
+        return JsonResponse({'error': f'Invoice created but response failed: {str(e)}'}, status=500)
 
 
 @login_required
