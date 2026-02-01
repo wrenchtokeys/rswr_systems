@@ -158,7 +158,7 @@ def login_router(request):
         if user_obj is None:
             # Log failed attempt
             from apps.security.models import LoginAttempt
-            LoginAttempt.log_attempt(request, email, False, 'unified', 'User not found')
+            LoginAttempt.log_attempt(request, login_id, False, 'unified', 'User not found')
             context['error'] = 'Invalid email or password.'
             return render(request, 'saas/login.html', context)
 
@@ -171,13 +171,13 @@ def login_router(request):
         user = authenticate(request, username=user_obj.username, password=password)
         if user is None:
             from apps.security.models import LoginAttempt
-            LoginAttempt.log_attempt(request, email, False, 'unified', 'Invalid credentials')
+            LoginAttempt.log_attempt(request, login_id, False, 'unified', 'Invalid credentials')
             context['error'] = 'Invalid email or password.'
             return render(request, 'saas/login.html', context)
 
         # Log successful login
         from apps.security.models import LoginAttempt
-        LoginAttempt.log_attempt(request, email, True, 'unified')
+        LoginAttempt.log_attempt(request, login_id, True, 'unified')
 
         login(request, user)
 
@@ -194,7 +194,7 @@ def login_router(request):
         # No membership and not a customer — show error
         logout(request)
         context['error'] = 'No shop account found. Please contact your shop owner or sign up for a new account.'
-        context['email'] = email
+        context['email'] = login_id
         return render(request, 'saas/login.html', context)
 
     return render(request, 'saas/login.html', context)
