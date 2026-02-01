@@ -84,6 +84,46 @@
     </form>
 </div>
 
+{% csrf_token %}
+<!-- Uninvoiced Work -->
+{% if uninvoiced_customers %}
+<div class="bg-white rounded-xl shadow-sm border border-amber-200 mb-6">
+    <div class="px-6 py-4 border-b border-amber-100 bg-amber-50 rounded-t-xl">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                <i class="fas fa-clock text-amber-600 text-sm"></i>
+            </div>
+            <div>
+                <h3 class="text-sm font-semibold text-amber-900">Uninvoiced Completed Work</h3>
+                <p class="text-xs text-amber-700">{{ uninvoiced_customers|length }} customer{{ uninvoiced_customers|length|pluralize }} with completed repairs ready to invoice</p>
+            </div>
+        </div>
+    </div>
+    <div class="divide-y divide-gray-100">
+        {% for item in uninvoiced_customers %}
+        <div class="px-6 py-3 flex items-center justify-between hover:bg-gray-50">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                    <i class="fas fa-truck text-indigo-600 text-xs"></i>
+                </div>
+                <div>
+                    <span class="text-sm font-medium text-gray-900 capitalize">{{ item.customer.name }}</span>
+                    <span class="text-xs text-gray-500 ml-2">{{ item.count }} repair{{ item.count|pluralize }}</span>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="text-sm font-semibold text-gray-900">${{ item.total|floatformat:2 }}</span>
+                <button onclick="createInvoice({{ item.customer.id }}, '{{ item.customer.name|escapejs }}')"
+                    class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-file-invoice mr-1.5"></i>Create Invoice
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Invoice Table -->
 <div class="bg-white rounded-xl shadow-sm border border-gray-200">
     {% if invoices %}
@@ -168,4 +208,35 @@
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function createInvoice(customerId, customerName) {
+    if (!confirm(`Create invoice for all uninvoiced repairs for ${customerName}?`)) return;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+    fetch(`/api/billing/invoices/create/${customerId}/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+        },
+        body: JSON.stringify({ all_uninvoiced: true }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to create invoice');
+        }
+    })
+    .catch(err => {
+        alert('Error creating invoice: ' + err.message);
+    });
+}
+</script>
 {% endblock %}

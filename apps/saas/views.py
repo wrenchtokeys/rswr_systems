@@ -1230,6 +1230,22 @@ def owner_invoice_list(request):
     # Customer list for filter dropdown
     customers = Customer.objects.filter(tenant=tenant).order_by('name')
 
+    # Uninvoiced completed repairs per customer
+    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+    tracking = InvoiceTrackingService(tenant=tenant)
+    uninvoiced_customers = []
+    for cust in customers:
+        uninvoiced = tracking.get_uninvoiced_repairs(cust)
+        count = uninvoiced.count() if hasattr(uninvoiced, 'count') else len(uninvoiced)
+        if count > 0:
+            # Sum up costs
+            total_cost = sum(r.cost or 0 for r in uninvoiced)
+            uninvoiced_customers.append({
+                'customer': cust,
+                'count': count,
+                'total': total_cost,
+            })
+
     context = {
         'tenant': tenant,
         'invoices': invoices,
@@ -1240,6 +1256,7 @@ def owner_invoice_list(request):
         'overdue_amount': overdue_amount,
         'payments_month_amount': payments_month_amount,
         'invoices_this_month': invoices_this_month,
+        'uninvoiced_customers': uninvoiced_customers,
     }
     return render(request, 'saas/owner_invoices.html', context)
 
