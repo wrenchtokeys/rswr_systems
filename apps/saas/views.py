@@ -186,7 +186,8 @@ def onboarding_view(request):
                         tech_last = cd.get('tech_last_name', '')
 
                         if tech_email or tech_first:
-                            tech_username = tech_email[:150] if tech_email else f"tech_{tech_first.lower()}_{tenant.slug}"
+                            from apps.tenants.services.signup_service import generate_unique_username
+                            tech_username = generate_unique_username(tech_email or '', tech_first)
                             if not User.objects.filter(username=tech_username).exists():
                                 tech_user = User.objects.create_user(
                                     username=tech_username,
@@ -730,10 +731,8 @@ def invite_member(request):
     # Check if user already exists
     user = User.objects.filter(email=email).first()
     if not user:
-        username = email[:150]
-        if User.objects.filter(username=username).exists():
-            messages.error(request, 'A user with this email already exists.')
-            return redirect('owner_settings')
+        from apps.tenants.services.signup_service import generate_unique_username
+        username = generate_unique_username(email, first_name)
 
         user = User.objects.create_user(
             username=username,
@@ -865,7 +864,7 @@ def shop_join_view(request, slug):
 
         # Check password strength
         if password:
-            temp_user = User(username=email[:150], email=email, first_name=first_name, last_name=last_name)
+            temp_user = User(username='temp', email=email, first_name=first_name, last_name=last_name)
             try:
                 validate_password(password, user=temp_user)
             except ValidationError as e:
@@ -892,8 +891,9 @@ def shop_join_view(request, slug):
         try:
             with transaction.atomic():
                 # 1. Create User
+                from apps.tenants.services.signup_service import generate_unique_username
                 user = User.objects.create_user(
-                    username=email[:150],
+                    username=generate_unique_username(email, first_name),
                     email=email,
                     password=password,
                     first_name=first_name,

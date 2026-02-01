@@ -213,18 +213,13 @@ def signup(request):
     if email and User.objects.filter(email=email).exists():
         errors['email'] = 'An account with this email already exists.'
 
-    # Also check username collision (we use email as username)
-    username = email[:150] if email else ''
-    if username and User.objects.filter(username=username).exists():
-        errors['email'] = 'An account with this email already exists.'
-
     # Password
     if not password:
         errors['password'] = 'Password is required.'
     else:
         try:
             # Build a temporary user object for similarity check
-            temp_user = User(username=username, email=email,
+            temp_user = User(username='temp', email=email,
                              first_name=first_name, last_name=last_name)
             validate_password(password, user=temp_user)
         except DjangoValidationError as e:

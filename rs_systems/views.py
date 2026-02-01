@@ -128,21 +128,23 @@ def login_router(request):
             context['error'] = 'Too many login attempts. Please try again later.'
             return render(request, 'saas/login.html', context)
 
-        email = request.POST.get('email', '').strip().lower()
+        login_id = request.POST.get('email', '').strip()
         password = request.POST.get('password', '')
-        context['email'] = email
+        context['email'] = login_id
 
-        if not email or not password:
-            context['error'] = 'Please enter both email and password.'
+        if not login_id or not password:
+            context['error'] = 'Please enter your username or email and password.'
             return render(request, 'saas/login.html', context)
 
-        # Find user by email (username is email in our system)
+        # Find user by email or username
         User = get_user_model()
+        login_id_lower = login_id.lower()
         try:
-            user_obj = User.objects.get(email=email)
+            user_obj = User.objects.get(email=login_id_lower)
         except User.DoesNotExist:
             try:
-                user_obj = User.objects.get(username=email)
+                # Try username (case-insensitive)
+                user_obj = User.objects.get(username__iexact=login_id)
             except User.DoesNotExist:
                 user_obj = None
 

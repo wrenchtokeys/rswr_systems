@@ -37,6 +37,29 @@ def generate_unique_slug(business_name):
     return slug
 
 
+def generate_unique_username(email, first_name=''):
+    """
+    Generate a unique username. Tries first_name first, falls back to email prefix.
+    Never uses the full email as username.
+    """
+    # Try first name
+    if first_name and first_name.strip():
+        base = first_name.strip().lower().replace(' ', '')[:30]
+    else:
+        # Use email prefix (before @)
+        base = email.split('@')[0].lower()[:30]
+
+    if not base:
+        base = 'user'
+
+    username = base
+    counter = 1
+    while User.objects.filter(username=username).exists():
+        username = f"{base}{counter}"
+        counter += 1
+    return username
+
+
 def create_tenant_with_owner(
     business_name,
     email,
@@ -44,6 +67,7 @@ def create_tenant_with_owner(
     first_name='',
     last_name='',
     phone='',
+    username='',
 ):
     """
     Create a new tenant with an owner account.
@@ -53,11 +77,12 @@ def create_tenant_with_owner(
 
     Args:
         business_name: Name of the glass shop
-        email: Owner's email address (also used as username)
+        email: Owner's email address
         password: Owner's password (should be pre-validated)
         first_name: Owner's first name
         last_name: Owner's last name
         phone: Business phone (optional)
+        username: Preferred username (optional, auto-generated if blank)
 
     Returns:
         dict with 'user', 'tenant', 'membership' keys
@@ -71,9 +96,13 @@ def create_tenant_with_owner(
     if User.objects.filter(email=email).exists():
         raise SignupError('An account with this email already exists.')
 
-    username = email[:150]
-    if User.objects.filter(username=username).exists():
-        raise SignupError('An account with this email already exists.')
+    # Generate username if not provided
+    if not username or not username.strip():
+        username = generate_unique_username(email, first_name)
+    else:
+        username = username.strip()[:150]
+        if User.objects.filter(username=username).exists():
+            raise SignupError(f'Username "{username}" is already taken.')
 
     if not business_name or len(business_name.strip()) < 2:
         raise SignupError('Business name must be at least 2 characters.')
