@@ -1,184 +1,101 @@
-# Amelia's Implementation Roadmap
+# RS Systems — Roadmap
 
-*Living document - updated as I work*
-*Last Updated: January 27, 2026*
-
----
-
-## 🎯 Active Projects
-
-### 1. Invoice Automation System
-**Priority**: HIGH
-**Status**: Planning
-
-#### The Problem
-Drake manually:
-1. Downloads photos from S3
-2. Crops/renames each photo (`[unit] - before.jpg`, `[unit] - after.jpg`)
-3. Creates invoice in QuickBooks Online
-4. Copies repair details (unit, damage location, price)
-5. Attaches photos
-6. Repeats for EVERY repair
-
-This takes 10-15 minutes per invoice. With growth, this doesn't scale.
-
-#### The Solution
-
-**Phase 1: PDF Invoice Generator** (Start here)
-- Generate professional PDF invoices from RS Systems data
-- Embed resized photos (before/after) directly in PDF
-- Support per-repair AND batch invoicing (customer preference)
-- Include: unit #, damage type, location, price, photos, totals
-- Branding: Rockstar Windshield Repair logo/colors
-
-**Phase 2: Stripe Integration** (Multi-tenant ready)
-- Stripe Connect for multi-tenant billing
-- Each glass shop (tenant) has own Stripe account
-- RS Systems takes platform fee
-- Automated payment collection
-- Subscription billing for SaaS customers
-
-**Phase 3: QuickBooks Integration** (Optional)
-- QBO API sync for those who want it
-- Export invoices to QuickBooks
-- May not be needed if Stripe handles everything
-
-#### Technical Design
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Invoice Service                          │
-├─────────────────────────────────────────────────────────────┤
-│  Input: customer_id, date_range, invoice_type               │
-│                                                              │
-│  1. Query completed repairs for customer/date range          │
-│  2. Fetch photos from S3 (resize, no cropping needed)        │
-│  3. Generate PDF with ReportLab or WeasyPrint                │
-│  4. Option A: Return PDF for download                        │
-│  5. Option B: Send to Stripe as invoice                      │
-│  6. Option C: Email directly to customer                     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### Photo Handling
-- S3 photos are RAW (not cropped) - intentional for future ML training
-- Customer-submitted photos: stored separately for damage assessment model
-- Technician proof-of-work photos: `before/` and `after/` prefixes
-- Invoice generator will resize (not crop) to fit invoice layout
-- Original S3 files remain untouched
-
-#### Customer Invoice Preferences (to add to model)
-```python
-class CustomerInvoicePreference(models.Model):
-    customer = models.OneToOneField(Customer, on_delete=models.CASCADE)
-    invoice_frequency = models.CharField(choices=[
-        ('PER_REPAIR', 'Invoice per repair'),
-        ('PER_VISIT', 'Invoice per visit'),
-        ('WEEKLY', 'Weekly batch'),
-        ('BIWEEKLY', 'Bi-weekly batch'),
-        ('MONTHLY', 'Monthly batch'),
-    ])
-    payment_method = models.CharField(choices=[
-        ('INVOICE', 'Invoice (net 30)'),
-        ('STRIPE', 'Pay online via Stripe'),
-        ('CASH', 'Cash/Check on site'),
-    ])
-    include_photos = models.BooleanField(default=True)
-    email_invoice = models.BooleanField(default=True)
-    invoice_email = models.EmailField(blank=True)  # Override customer email
-```
+*High-level project status and what's next.*
+*Last Updated: February 1, 2026*
 
 ---
 
-### 2. X (Twitter) Growth Strategy
-**Priority**: HIGH
-**Status**: Research
+## ✅ Completed
 
-#### Handle: @wrenchtokeys
+### Unified Permissions & Templates (v2.0.0 — Jan 30, 2026)
+Single permission system (`common/auth.py`), one base template (`base_app.html`), fixed signup/onboarding. The foundation everything else is built on.
+→ Details: [`PLAN.md`](/PLAN.md)
 
-#### Content Pillars
+### Billing & Invoicing (v2.1.0–2.2.0 — Jan 31 – Feb 1, 2026)
+Full invoicing lifecycle: auto-invoice on completion, PDF generation, Stripe payments, payment confirmation emails, customer invoice portal, owner invoice dashboard, tech on-site payment collection, manual payment recording.
+→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) (Phases 1-5 complete)
 
-**Pillar 1: Tradesman Who Codes**
-- Unique angle: blue collar meets tech
-- "I fix windshields by day, build SaaS by night"
-- Relatable to both trades and dev communities
+### SaaS Multi-Tenant Architecture
+Tenants app with `Tenant`, `TenantMembership`, `SubscriptionPlan` models. Signup flow, onboarding wizard, owner portal with billing page. Subscription plans defined (Trial/Starter/Pro/Enterprise) but not yet wired to Stripe checkout.
 
-**Pillar 2: Building in Public**
-- RS Systems development journey
-- Lessons learned, mistakes made
-- Real revenue/user numbers (when ready)
+### Manager Settings (v1.7.0 — Nov 2025)
+Viscosity rules management, team overview dashboard, `@manager_required` decorator.
 
-**Pillar 3: Industry Disruption**
-- "The windshield repair industry still uses paper and texts"
-- Pain points only an insider would know
-- Why tech is finally coming to trades
+### Notifications (v1.4.0+ — Oct 2025)
+Email + SMS notification system with SendGrid. Repair status changes, assignment alerts, approval requests.
 
-**Pillar 4: Educational Content**
-- Windshield repair tips (can this chip be fixed?)
-- Fleet maintenance insights
-- Behind-the-scenes of mobile repair business
-
-#### Content Strategy
-- 1 thread per week (in-depth, valuable)
-- 2-3 short posts per day (observations, hot takes, replies)
-- Engage with tech/trades/SaaS communities
-- Reply to bigger accounts in the space
+### Rewards & Referrals (v1.0.0 — Jul 2025)
+Referral codes, point-based rewards, flexible redemption options.
 
 ---
 
-### 3. Clawdbot Endpoint Experimentation
-**Priority**: MEDIUM
-**Status**: Ready
+## 🔜 Next Up
 
-#### What Exists
-- Endpoint: `rockstarwindshield.repair/clawdbot/`
-- Status check: `/clawdbot/`
-- Health check: `/clawdbot/health/`
+### Sales Tax (Billing Phase 8)
+Add `tax_rate`, `tax_amount` to invoices. Tax calculated at invoice creation (not Stripe checkout) so check/cash customers pay the same total. Arkansas has state + local rates varying by zip code.
+- Ships with `tax_enabled=False` by default — flip on when ready
+- Per-customer `tax_exempt` flag for government/exempt accounts
+→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-8-sales-tax-by-zip-code) (~8-12 hours)
 
-#### What I Can Build
-- My own experimental views
-- A/B test new features
-- Demo invoice generation
-- API endpoints for my tools
+### Billing Automation (Phase 6)
+- Batch invoicing for `batch` preference customers
+- Overdue auto-processing (daily status check + reminder emails)
+- Aging reports (current/30/60/90+ days)
+- Statement of account per customer
+→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-6-polish--automation) (~12 hours)
+
+### SaaS Subscription Billing (Phase 7)
+Wire up Stripe Products/Prices for subscription plans, checkout flow, subscription webhooks, usage enforcement, trial expiration.
+→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-7-saas-subscription-billing-glass-shops)
+
+### Deploy v2.x to AWS
+PLAN.md Step 6 — push the unified permissions/template/billing stack to production. Run migrations, verify Stripe webhook secret is set, fill in BillingConfig.
 
 ---
 
 ## 📋 Backlog
 
-### Technical Improvements
-- [ ] Split technician_portal/views.py into service layer
-- [ ] Add API rate limiting to DRF endpoints
-- [ ] Query optimization audit (N+1 fixes)
-- [ ] Deprecate Repair.calculate_cost() static method
+### Near-term
+- Tech portal: payment badge on repair list (invoiced/paid indicator)
+- Reminder system UI (owner clicks "Send Reminder" on overdue invoices)
+- QR code on PDF invoices for scan-to-pay
+- Per-customer payment terms override
 
-### SaaS Features
-- [ ] Multi-tenant model (Tenant → Customer relationship)
-- [ ] Customer self-registration flow
-- [ ] Tenant onboarding wizard
-- [ ] Subscription management
+### Medium-term
+- Mobile optimization / PWA (offline mode, camera, GPS)
+- Lot walking scheduler (backend scheduling from customer preferences)
+- Owner-native customer/repair pages (instead of wrapping tech portal)
+- Customer portal refresh (unified styling with `base_app.html`)
 
-### Mobile/Real-time
-- [ ] Django Channels for WebSocket support
-- [ ] Push notifications (FCM)
-- [ ] PWA service worker
-
-### AI/ML (Future)
-- [ ] Damage assessment from customer photos
-- [ ] "Can this be repaired?" classifier
-- [ ] Training data: customer-submitted photos with repair outcomes
+### Long-term
+- AI/ML damage assessment from customer photos
+- QuickBooks integration (maybe — Stripe may handle everything)
+- Advanced analytics dashboard
+- Smart technician assignment (workload + distance)
 
 ---
 
-## 📝 Decision Log
+## 🐦 X/Twitter Strategy
+**Handle**: @wrenchtokeys
+**Status**: Research phase
 
-| Date | Decision | Rationale |
-|------|----------|-----------|
-| 2026-01-27 | Start with Stripe over QuickBooks | Multi-tenant ready, modern, better DX |
-| 2026-01-27 | PDF first, then Stripe | Quick win, proves value, Stripe adds complexity |
-| 2026-01-27 | Don't crop S3 photos | Raw data needed for future ML training |
+Content pillars: tradesman who codes, building in public, industry disruption, educational content. Strategy documented but not yet executing.
+
+---
+
+## 🤖 Clawdbot Endpoint
+**Status**: Active — used for development
+
+- Status: `/clawdbot/`
+- Customers: `/clawdbot/customers/`
+- Repairs: `/clawdbot/repairs/<customer_id>/`
+- Invoice preview/generation endpoints
 
 ---
 
 ## 🔗 Related Docs
-- [AMELIA_README.md](../AMELIA_README.md) - Strategic codebase assessment
-- [SAAS_NOTIFICATION_STRATEGY.md](strategy/SAAS_NOTIFICATION_STRATEGY.md) - Notification architecture
+- [`PLAN.md`](/PLAN.md) — Unified permissions/template plan (complete)
+- [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) — Detailed billing roadmap (Phases 1-5 done)
+- [`docs/development/CHANGELOG.md`](docs/development/CHANGELOG.md) — Version history
+- [`docs/development/FUTURE_FEATURES.md`](docs/development/FUTURE_FEATURES.md) — Feature backlog
+- [`apps/billing/README.md`](apps/billing/README.md) — Billing app technical docs
