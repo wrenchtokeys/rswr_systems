@@ -23,6 +23,11 @@ urlpatterns = [
     path('batch/<uuid:batch_id>/approve/', views.customer_batch_approve, name='customer_batch_approve'),
     path('batch/<uuid:batch_id>/deny/', views.customer_batch_deny, name='customer_batch_deny'),
     
+    # Invoices
+    path('invoices/', views.customer_invoices, name='customer_invoices'),
+    path('invoices/<int:invoice_id>/', views.customer_invoice_detail, name='customer_invoice_detail'),
+    path('invoices/<int:invoice_id>/pay/', views.customer_invoice_pay, name='customer_invoice_pay'),
+
     # Company and account management
     path('company/edit/', views.edit_company, name='edit_company'),
     path('account/settings/', views.account_settings, name='customer_account_settings'),

@@ -31,6 +31,11 @@ urlpatterns = [
     path('owner/team/<int:membership_id>/deactivate/', views.deactivate_team_member, name='deactivate_team_member'),
     path('owner/team/<int:membership_id>/resend-invite/', views.resend_invite, name='resend_invite'),
 
+    # Owner invoice management & manual payments
+    path('owner/invoices/', views.owner_invoice_list, name='owner_invoice_list'),
+    path('owner/invoices/<int:invoice_id>/', views.owner_invoice_detail, name='owner_invoice_detail'),
+    path('owner/invoices/<int:invoice_id>/record-payment/', views.owner_record_payment, name='owner_record_payment'),
+
     # Replacement management
     path('tech/replacement/new/', views.replacement_create, name='replacement_create'),
     path('tech/replacement/<int:pk>/', views.replacement_detail, name='replacement_detail'),

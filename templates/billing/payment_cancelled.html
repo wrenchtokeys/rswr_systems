@@ -1,0 +1,50 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Cancelled | Rockstar Windshield Repair</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center font-sans">
+    <div class="max-w-md w-full mx-4">
+        <div class="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div class="mx-auto w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mb-6">
+                <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                </svg>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">Payment Cancelled</h1>
+            <p class="text-gray-600 mb-6">
+                Your payment was not processed. No charges were made to your account.
+            </p>
+            <p class="text-gray-500 text-sm mb-6">
+                If you'd like to try again, you can use the payment link in your invoice email. 
+                If you're experiencing issues, please contact us.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <a href="mailto:info@rockstarwindshield.repair" class="inline-block border border-gray-300 text-gray-700 px-6 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                    Contact Us
+                </a>
+                <a href="/" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                    Return Home
+                </a>
+            </div>
+        </div>
+        <p class="text-center text-gray-400 text-sm mt-6">Rockstar Windshield Repair</p>
+    </div>
+</body>
+</html>

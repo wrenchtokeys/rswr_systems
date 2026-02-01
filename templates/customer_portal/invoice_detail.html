@@ -1,0 +1,252 @@
+{% extends "customer_portal/base_customer.html" %}
+
+{% block title %}Invoice {{ invoice.invoice_number }} | Customer Portal{% endblock %}
+
+{% block content %}
+<!-- Back link -->
+<div class="mb-6">
+    <a href="{% url 'customer_invoices' %}" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        <i class="fas fa-arrow-left mr-2"></i>
+        Back to Invoices
+    </a>
+</div>
+
+<!-- Payment status messages -->
+{% if request.GET.payment == 'success' %}
+<div class="mb-6 p-4 rounded-lg bg-green-50 text-green-800 border border-green-200 text-sm font-medium">
+    <div class="flex items-center gap-2">
+        <i class="fas fa-check-circle"></i>
+        <span>Payment submitted successfully! It may take a moment for your payment to be processed.</span>
+    </div>
+</div>
+{% elif request.GET.payment == 'cancelled' %}
+<div class="mb-6 p-4 rounded-lg bg-yellow-50 text-yellow-800 border border-yellow-200 text-sm font-medium">
+    <div class="flex items-center gap-2">
+        <i class="fas fa-info-circle"></i>
+        <span>Payment was cancelled. You can try again when you're ready.</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Invoice Header -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <div class="p-6 sm:p-8">
+        <!-- Top row: Invoice number + status -->
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Invoice {{ invoice.invoice_number }}</h1>
+                <p class="text-sm text-gray-500 mt-1">{{ customer.name }}</p>
+            </div>
+            <div class="flex items-center gap-3">
+                {% if invoice.status == 'PAID' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-green-100 text-green-800">
+                        ✅ Paid
+                    </span>
+                {% elif invoice.status == 'OVERDUE' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-red-100 text-red-800">
+                        🔴 Overdue
+                    </span>
+                {% elif invoice.status == 'SENT' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
+                        📤 Sent
+                    </span>
+                {% elif invoice.status == 'PARTIAL' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800">
+                        ⚠️ Partially Paid
+                    </span>
+                {% elif invoice.status == 'CANCELLED' %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-100 text-gray-500 line-through">
+                        Cancelled
+                    </span>
+                {% else %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-gray-100 text-gray-600">
+                        {{ invoice.get_status_display }}
+                    </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Invoice meta grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 bg-gray-50 rounded-lg p-4">
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase">Invoice Date</div>
+                <div class="text-sm font-semibold text-gray-900 mt-0.5">{{ invoice.invoice_date|date:"M d, Y" }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase">Due Date</div>
+                <div class="text-sm font-semibold text-gray-900 mt-0.5">
+                    {% if invoice.due_date %}
+                        {{ invoice.due_date|date:"M d, Y" }}
+                    {% else %}
+                        Due on Receipt
+                    {% endif %}
+                </div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase">Payment Terms</div>
+                <div class="text-sm font-semibold text-gray-900 mt-0.5">{{ invoice.get_payment_terms_display }}</div>
+            </div>
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase">Amount Due</div>
+                <div class="text-sm font-bold mt-0.5 {% if invoice.amount_due > 0 %}text-red-600{% else %}text-green-600{% endif %}">
+                    ${{ invoice.amount_due|floatformat:2 }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Line Items -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Line Items</h2>
+    </div>
+
+    <!-- Desktop Table -->
+    <div class="hidden sm:block overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit #</th>
+                    <th class="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Qty</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Unit Price</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for item in line_items %}
+                <tr>
+                    <td class="px-6 py-4 text-sm text-gray-900">
+                        {{ item.description }}
+                        {% if item.repair_date %}
+                        <div class="text-xs text-gray-400 mt-0.5">{{ item.repair_date|date:"M d, Y" }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-600">{{ item.unit_number|default:"—" }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600 text-center">{{ item.quantity }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600 text-right">${{ item.unit_price|floatformat:2 }}</td>
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900 text-right">${{ item.amount|floatformat:2 }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="px-6 py-8 text-center text-sm text-gray-400">No line items</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Mobile Line Items -->
+    <div class="sm:hidden divide-y divide-gray-100">
+        {% for item in line_items %}
+        <div class="p-4">
+            <div class="flex justify-between items-start mb-1">
+                <div class="text-sm font-medium text-gray-900 flex-1 mr-4">{{ item.description }}</div>
+                <div class="text-sm font-semibold text-gray-900">${{ item.amount|floatformat:2 }}</div>
+            </div>
+            <div class="flex gap-4 text-xs text-gray-500">
+                {% if item.unit_number %}<span>Unit: {{ item.unit_number }}</span>{% endif %}
+                <span>{{ item.quantity }} × ${{ item.unit_price|floatformat:2 }}</span>
+                {% if item.repair_date %}<span>{{ item.repair_date|date:"M d, Y" }}</span>{% endif %}
+            </div>
+        </div>
+        {% empty %}
+        <div class="p-8 text-center text-sm text-gray-400">No line items</div>
+        {% endfor %}
+    </div>
+
+    <!-- Totals -->
+    <div class="border-t border-gray-200 bg-gray-50">
+        <div class="max-w-xs ml-auto p-6 space-y-2">
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Subtotal</span>
+                <span class="text-gray-900 font-medium">${{ invoice.subtotal|floatformat:2 }}</span>
+            </div>
+            {% if invoice.discount > 0 %}
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Discount</span>
+                <span class="text-green-600 font-medium">-${{ invoice.discount|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between text-base font-bold border-t border-gray-300 pt-2 mt-2">
+                <span class="text-gray-900">Total</span>
+                <span class="text-gray-900">${{ invoice.total|floatformat:2 }}</span>
+            </div>
+            {% if invoice.amount_paid > 0 %}
+            <div class="flex justify-between text-sm">
+                <span class="text-gray-500">Amount Paid</span>
+                <span class="text-green-600 font-medium">-${{ invoice.amount_paid|floatformat:2 }}</span>
+            </div>
+            <div class="flex justify-between text-base font-bold border-t border-gray-300 pt-2">
+                <span class="text-gray-900">Amount Due</span>
+                <span class="{% if invoice.amount_due > 0 %}text-red-600{% else %}text-green-600{% endif %}">${{ invoice.amount_due|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Payment History -->
+{% if payments %}
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Payment History</h2>
+    </div>
+    <div class="divide-y divide-gray-100">
+        {% for payment in payments %}
+        <div class="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-check text-green-600 text-xs"></i>
+                </div>
+                <div>
+                    <div class="text-sm font-medium text-gray-900">${{ payment.amount|floatformat:2 }}</div>
+                    <div class="text-xs text-gray-500">
+                        {{ payment.payment_date|date:"M d, Y" }}
+                        · {{ payment.get_payment_method_display }}
+                        {% if payment.reference_number %} · Ref: {{ payment.reference_number }}{% endif %}
+                    </div>
+                    {% if payment.notes %}
+                    <div class="text-xs text-gray-400 mt-0.5">{{ payment.notes }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Notes -->
+{% if invoice.notes %}
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Notes</h2>
+    </div>
+    <div class="p-6">
+        <p class="text-sm text-gray-600 whitespace-pre-line">{{ invoice.notes }}</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- Actions -->
+<div class="flex flex-col sm:flex-row gap-3 mb-8">
+    {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' and invoice.status != 'PAID' %}
+    <form method="post" action="{% url 'customer_invoice_pay' invoice.id %}">
+        {% csrf_token %}
+        <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+            <i class="fas fa-credit-card"></i>
+            Pay Now — ${{ invoice.amount_due|floatformat:2 }}
+        </button>
+    </form>
+    {% endif %}
+
+    {% if pdf_url %}
+    <a href="{{ pdf_url }}" target="_blank" rel="noopener" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-white text-gray-700 font-semibold rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors">
+        <i class="fas fa-file-pdf"></i>
+        Download PDF
+    </a>
+    {% endif %}
+</div>
+{% endblock %}

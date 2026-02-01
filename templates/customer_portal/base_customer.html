@@ -71,6 +71,9 @@
                         <a href="{% url 'customer_request_repair' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'customer_request_repair' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
                             Request Repair
                         </a>
+                        <a href="{% url 'customer_invoices' %}" class="text-sm font-medium {% if 'invoice' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
+                            Invoices
+                        </a>
                         <a href="{% url 'customer_rewards' %}" class="text-sm font-medium {% if 'reward' in request.resolver_match.url_name or 'referral' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
                             Rewards
                         </a>
@@ -124,6 +127,7 @@
                     <a href="{% url 'customer_dashboard' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Dashboard</a>
                     <a href="{% url 'customer_repairs' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">My Repairs</a>
                     <a href="{% url 'customer_request_repair' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Request Repair</a>
+                    <a href="{% url 'customer_invoices' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Invoices</a>
                     <a href="{% url 'customer_rewards' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Rewards</a>
                 </div>
             </div>

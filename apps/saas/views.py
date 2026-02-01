@@ -39,6 +39,8 @@ from .forms import (
     ReplacementForm,
 )
 
+from apps.billing.models import Invoice, Payment
+
 logger = logging.getLogger(__name__)
 
 
@@ -1140,3 +1142,214 @@ def resend_invite(request, membership_id):
             f'Email could not be sent. Share manually: {invite_url}'
         )
     return redirect('owner_settings')
+
+
+# ------------------------------------------------------------------
+# 12. Owner Invoice Management & Manual Payment Recording
+# ------------------------------------------------------------------
+
+@owner_or_manager_required
+def owner_invoice_list(request):
+    """GET /owner/invoices/ — list all invoices across all customers."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    from django.db.models import Sum, Q, Count
+    from decimal import Decimal
+
+    # Base queryset — all invoices for this tenant
+    invoices = Invoice.objects.filter(
+        customer__tenant=tenant,
+    ).select_related('customer').order_by('-invoice_date', '-created_at')
+
+    # --- Filters ---
+    status_filter = request.GET.get('status', 'all')
+    customer_filter = request.GET.get('customer', '')
+
+    if status_filter == 'paid':
+        invoices = invoices.filter(status='PAID')
+    elif status_filter == 'unpaid':
+        invoices = invoices.filter(status__in=['SENT', 'PARTIAL', 'DRAFT'])
+    elif status_filter == 'overdue':
+        invoices = invoices.filter(status='OVERDUE')
+    elif status_filter == 'partial':
+        invoices = invoices.filter(status='PARTIAL')
+
+    if customer_filter:
+        try:
+            invoices = invoices.filter(customer_id=int(customer_filter))
+        except (ValueError, TypeError):
+            pass
+
+    # --- Summary cards ---
+    all_invoices = Invoice.objects.filter(customer__tenant=tenant)
+
+    outstanding_qs = all_invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE'])
+    total_outstanding = outstanding_qs.aggregate(
+        total=Sum('total') - Sum('amount_paid')
+    )
+    outstanding_amount = total_outstanding.get('total') or Decimal('0.00')
+
+    overdue_qs = all_invoices.filter(status='OVERDUE')
+    overdue_agg = overdue_qs.aggregate(
+        total=Sum('total') - Sum('amount_paid')
+    )
+    overdue_amount = overdue_agg.get('total') or Decimal('0.00')
+
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    payments_this_month = Payment.objects.filter(
+        invoice__customer__tenant=tenant,
+        created_at__gte=month_start,
+    ).aggregate(total=Sum('amount'))
+    payments_month_amount = payments_this_month.get('total') or Decimal('0.00')
+
+    invoices_this_month = all_invoices.filter(
+        created_at__gte=month_start,
+    ).count()
+
+    # Customer list for filter dropdown
+    customers = Customer.objects.filter(tenant=tenant).order_by('name')
+
+    context = {
+        'tenant': tenant,
+        'invoices': invoices,
+        'customers': customers,
+        'status_filter': status_filter,
+        'customer_filter': customer_filter,
+        'outstanding_amount': outstanding_amount,
+        'overdue_amount': overdue_amount,
+        'payments_month_amount': payments_month_amount,
+        'invoices_this_month': invoices_this_month,
+    }
+    return render(request, 'saas/owner_invoices.html', context)
+
+
+@owner_or_manager_required
+def owner_invoice_detail(request, invoice_id):
+    """GET /owner/invoices/<id>/ — invoice detail with payment history."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+    line_items = invoice.line_items.all().order_by('id')
+    payments = invoice.payments.all().order_by('-payment_date', '-created_at')
+
+    # Payment method choices for the form (exclude STRIPE — that's automatic)
+    payment_methods = [
+        choice for choice in Payment.PAYMENT_METHOD_CHOICES
+        if choice[0] != 'STRIPE'
+    ]
+
+    # PDF download URL
+    pdf_url = None
+    if invoice.s3_key:
+        pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+
+    context = {
+        'tenant': tenant,
+        'invoice': invoice,
+        'line_items': line_items,
+        'payments': payments,
+        'payment_methods': payment_methods,
+        'pdf_url': pdf_url,
+        'today': timezone.now().date(),
+    }
+    return render(request, 'saas/owner_invoice_detail.html', context)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_record_payment(request, invoice_id):
+    """POST /owner/invoices/<id>/record-payment/ — record a manual payment."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+
+    # Parse and validate fields
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        amount = Decimal(request.POST.get('amount', '0'))
+    except (InvalidOperation, TypeError):
+        messages.error(request, 'Invalid amount. Please enter a valid number.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    payment_method = request.POST.get('payment_method', 'OTHER')
+    reference_number = request.POST.get('reference_number', '').strip()
+    payment_date_str = request.POST.get('payment_date', '')
+    notes = request.POST.get('notes', '').strip()
+
+    # Validate amount
+    if amount <= Decimal('0'):
+        messages.error(request, 'Payment amount must be greater than zero.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    if amount > invoice.amount_due:
+        messages.error(
+            request,
+            f'Payment amount (${amount}) exceeds the amount due (${invoice.amount_due}).'
+        )
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    if invoice.status in ('PAID', 'CANCELLED'):
+        messages.error(request, f'Cannot record payment — invoice is {invoice.get_status_display()}.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    # Validate payment method
+    valid_methods = [c[0] for c in Payment.PAYMENT_METHOD_CHOICES]
+    if payment_method not in valid_methods:
+        messages.error(request, 'Invalid payment method.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    # Parse payment date
+    from datetime import date
+    payment_date = timezone.now().date()
+    if payment_date_str:
+        try:
+            payment_date = date.fromisoformat(payment_date_str)
+        except ValueError:
+            messages.error(request, 'Invalid payment date.')
+            return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    # Create the Payment record
+    try:
+        with transaction.atomic():
+            payment = Payment.objects.create(
+                invoice=invoice,
+                amount=amount,
+                payment_date=payment_date,
+                payment_method=payment_method,
+                reference_number=reference_number,
+                notes=notes,
+                recorded_by=request.user,
+            )
+            # Payment.save() already calls _update_invoice_totals()
+
+        # Send payment confirmation emails (best-effort, don't fail the request)
+        try:
+            from apps.billing.services.payment_notification_service import PaymentNotificationService
+            notification_svc = PaymentNotificationService()
+            notification_svc.notify_payment(payment)
+        except Exception as e:
+            logger.warning(f"Payment notification failed: {e}")
+
+        messages.success(
+            request,
+            f'Payment of ${amount} recorded successfully via '
+            f'{payment.get_payment_method_display()}.'
+        )
+
+    except Exception as e:
+        logger.error(f"Error recording payment for invoice {invoice.invoice_number}: {e}")
+        messages.error(request, 'An error occurred while recording the payment. Please try again.')
+
+    return redirect('owner_invoice_detail', invoice_id=invoice.id)

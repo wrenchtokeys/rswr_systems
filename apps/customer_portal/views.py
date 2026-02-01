@@ -8,6 +8,7 @@ from core.models import Customer
 from apps.technician_portal.models import Repair, UnitRepairCount, TechnicianNotification, Technician
 from apps.rewards_referrals.models import ReferralCode, RewardOption, RewardRedemption, Referral
 from apps.rewards_referrals.services import ReferralService, RewardService
+from apps.billing.models import Invoice
 from .forms import RepairPreferenceForm, CustomerNotificationPreferenceForm
 from .models import CustomerRepairPreference
 from .models import CustomerUser, RepairApproval
@@ -2225,3 +2226,118 @@ def customer_get_unread_count(request):
     except Exception as e:
         logger.error(f"Error getting unread count: {str(e)}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# =============================================================================
+# INVOICES
+# =============================================================================
+
+@customer_required
+def customer_invoices(request):
+    """List all invoices for the logged-in customer (excluding drafts)."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        invoices = Invoice.objects.filter(
+            customer=customer
+        ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
+
+        return render(request, 'customer_portal/invoices.html', {
+            'invoices': invoices,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_invoice_detail(request, invoice_id):
+    """Full receipt view for a single invoice."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
+
+        # Don't let customers see draft invoices
+        if invoice.status == 'DRAFT':
+            messages.warning(request, "This invoice is not available.")
+            return redirect('customer_invoices')
+
+        line_items = invoice.line_items.all().order_by('id')
+        payments = invoice.payments.all().order_by('-payment_date')
+
+        # Build PDF URL if s3_key exists
+        pdf_url = None
+        if invoice.s3_key:
+            pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+
+        return render(request, 'customer_portal/invoice_detail.html', {
+            'invoice': invoice,
+            'line_items': line_items,
+            'payments': payments,
+            'pdf_url': pdf_url,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_invoice_pay(request, invoice_id):
+    """Create a Stripe checkout session and redirect to payment."""
+    if request.method != 'POST':
+        return redirect('customer_invoice_detail', invoice_id=invoice_id)
+
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
+
+        # Validate the invoice can be paid
+        if invoice.status in ('CANCELLED', 'PAID', 'DRAFT'):
+            messages.warning(request, "This invoice cannot be paid.")
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
+
+        if invoice.amount_due <= 0:
+            messages.info(request, "This invoice is already fully paid.")
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
+
+        # If there's already a Stripe hosted URL, redirect there
+        if invoice.stripe_hosted_url:
+            return redirect(invoice.stripe_hosted_url)
+
+        # Create a Stripe checkout session
+        from apps.billing.services.stripe_service import StripeService
+
+        stripe_svc = StripeService()
+
+        if not stripe_svc.is_enabled():
+            messages.error(request, "Online payments are not currently available. Please contact us for payment options.")
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
+
+        base_url = getattr(settings, 'BASE_URL', 'https://rockstarwindshield.repair')
+        success_url = f"{base_url}/app/invoices/{invoice.id}/?payment=success"
+        cancel_url = f"{base_url}/app/invoices/{invoice.id}/?payment=cancelled"
+
+        result = stripe_svc.create_checkout_session(
+            invoice,
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+
+        if result.get('success'):
+            return redirect(result['checkout_url'])
+        else:
+            error_msg = result.get('error', 'Unknown error')
+            logger.error(f"Stripe checkout failed for invoice {invoice.invoice_number}: {error_msg}")
+            messages.error(request, f"Could not initiate payment: {error_msg}")
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
+
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')

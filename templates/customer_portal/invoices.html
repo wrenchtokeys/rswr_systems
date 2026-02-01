@@ -1,0 +1,167 @@
+{% extends "customer_portal/base_customer.html" %}
+
+{% block title %}Invoices | Customer Portal{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">Invoices</h1>
+    <p class="text-sm text-gray-500 mt-1">View and manage your invoices</p>
+</div>
+
+{% if invoices %}
+<!-- Summary Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    {% with total_outstanding=0 total_paid=0 overdue_count=0 %}
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-sm font-medium text-gray-500">Total Invoices</div>
+        <div class="text-2xl font-bold text-gray-900 mt-1">{{ invoices|length }}</div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-sm font-medium text-gray-500">Paid</div>
+        <div class="text-2xl font-bold text-green-600 mt-1">
+            {% with paid_count=0 %}
+            {% for inv in invoices %}{% if inv.status == 'PAID' %}{{ paid_count|add:"1" }}{% endif %}{% endfor %}
+            {% endwith %}
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-sm font-medium text-gray-500">Outstanding</div>
+        <div class="text-2xl font-bold text-blue-600 mt-1">
+            {% for inv in invoices %}{% if inv.status == 'SENT' or inv.status == 'PARTIAL' or inv.status == 'OVERDUE' %}{{ outstanding_count|add:"1" }}{% endif %}{% endfor %}
+        </div>
+    </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="text-sm font-medium text-gray-500">Overdue</div>
+        <div class="text-2xl font-bold text-red-600 mt-1">
+            {% for inv in invoices %}{% if inv.status == 'OVERDUE' %}{{ overdue_count|add:"1" }}{% endif %}{% endfor %}
+        </div>
+    </div>
+    {% endwith %}
+</div>
+
+<!-- Invoice Table -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <!-- Desktop Table -->
+    <div class="hidden md:block overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice #</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount Due</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for invoice in invoices %}
+                <tr class="hover:bg-gray-50 cursor-pointer transition-colors" onclick="window.location='{% url 'customer_invoice_detail' invoice.id %}'">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="text-sm font-semibold text-blue-600">{{ invoice.invoice_number }}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {{ invoice.invoice_date|date:"M d, Y" }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {% if invoice.due_date %}
+                            {{ invoice.due_date|date:"M d, Y" }}
+                        {% else %}
+                            <span class="text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if invoice.status == 'PAID' %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                ✅ Paid
+                            </span>
+                        {% elif invoice.status == 'OVERDUE' %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                🔴 Overdue
+                            </span>
+                        {% elif invoice.status == 'SENT' %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                📤 Sent
+                            </span>
+                        {% elif invoice.status == 'PARTIAL' %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                ⚠️ Partial
+                            </span>
+                        {% elif invoice.status == 'CANCELLED' %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 line-through">
+                                Cancelled
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                {{ invoice.get_status_display }}
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 text-right">
+                        ${{ invoice.total|floatformat:2 }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-right">
+                        {% if invoice.amount_due > 0 %}
+                            <span class="text-red-600">${{ invoice.amount_due|floatformat:2 }}</span>
+                        {% else %}
+                            <span class="text-green-600">$0.00</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Mobile Cards -->
+    <div class="md:hidden divide-y divide-gray-200">
+        {% for invoice in invoices %}
+        <a href="{% url 'customer_invoice_detail' invoice.id %}" class="block p-4 hover:bg-gray-50 transition-colors">
+            <div class="flex justify-between items-start mb-2">
+                <span class="text-sm font-semibold text-blue-600">{{ invoice.invoice_number }}</span>
+                {% if invoice.status == 'PAID' %}
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">✅ Paid</span>
+                {% elif invoice.status == 'OVERDUE' %}
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">🔴 Overdue</span>
+                {% elif invoice.status == 'SENT' %}
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">📤 Sent</span>
+                {% elif invoice.status == 'PARTIAL' %}
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">⚠️ Partial</span>
+                {% elif invoice.status == 'CANCELLED' %}
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 line-through">Cancelled</span>
+                {% else %}
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">{{ invoice.get_status_display }}</span>
+                {% endif %}
+            </div>
+            <div class="flex justify-between items-end">
+                <div class="text-xs text-gray-500">
+                    <div>{{ invoice.invoice_date|date:"M d, Y" }}</div>
+                    {% if invoice.due_date %}
+                    <div>Due: {{ invoice.due_date|date:"M d, Y" }}</div>
+                    {% endif %}
+                </div>
+                <div class="text-right">
+                    <div class="text-sm font-bold text-gray-900">${{ invoice.total|floatformat:2 }}</div>
+                    {% if invoice.amount_due > 0 %}
+                        <div class="text-xs text-red-600">Due: ${{ invoice.amount_due|floatformat:2 }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+
+{% else %}
+<!-- Empty State -->
+<div class="bg-white rounded-xl border border-gray-200 p-12 text-center">
+    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+        <i class="fas fa-file-invoice-dollar text-gray-400 text-2xl"></i>
+    </div>
+    <h3 class="text-lg font-semibold text-gray-900 mb-2">No invoices yet</h3>
+    <p class="text-gray-500 text-sm max-w-md mx-auto">
+        When your repair service provider creates an invoice for your completed repairs, it will appear here.
+    </p>
+</div>
+{% endif %}
+{% endblock %}

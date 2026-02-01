@@ -156,6 +156,9 @@
 <div class="mb-8">
     <div class="flex items-center justify-between mb-4">
         <h2 class="text-lg font-semibold text-gray-900">Billing</h2>
+        <a href="{% url 'owner_invoice_list' %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">
+            View all invoices →
+        </a>
     </div>
 
     <!-- Billing Metric Cards -->
@@ -211,8 +214,8 @@
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-100">
                     {% for inv in outstanding_invoices %}
-                    <tr class="hover:bg-gray-50">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ inv.invoice_number }}</td>
+                    <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{{ inv.invoice_number }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ inv.customer.name }}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                             {% if inv.due_date %}{{ inv.due_date|date:"M d, Y" }}{% else %}—{% endif %}

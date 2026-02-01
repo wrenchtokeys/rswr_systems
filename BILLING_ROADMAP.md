@@ -26,12 +26,14 @@
 - **Fill in BillingConfig** — Admin > Billing > Billing Configuration (company address)
 
 ### ❌ Not Yet Built
-- **No payment confirmation emails** — invoice flips to PAID but no one gets notified
-- **No payment status in portals** — no one can see if an invoice is paid/unpaid
+- ~~**No payment confirmation emails**~~ ✅ Done (Phase 4)
+- ~~**No payment status in portals**~~ ✅ Done (Phase 5)
 - **No reminder UI** — reminder service exists but no portal buttons to trigger them
-- **No owner billing dashboard for customer invoices** — owner billing page is for SaaS subscription only
-- **Customer portal has no invoice history/payment view**
-- **Tech portal has no payment visibility**
+- ~~**No owner billing dashboard for customer invoices**~~ ✅ Done (Phase 5.2)
+- ~~**Customer portal has no invoice history/payment view**~~ ✅ Done (Phase 5.1)
+- **Tech portal has no payment visibility** (deferred)
+- **No sales tax calculation** — invoices have no tax (Phase 8)
+- **No manual payment UI** ✅ Done — owner can record cash/check/wire/ACH (Phase 5.2)
 
 ---
 
@@ -83,35 +85,38 @@
 
 ---
 
-## Phase 5: Payment Status in Portals
-**Goal**: All three portals show invoice/payment status.
+## Phase 5: Invoice Portals & Payment Management ✅ DONE (PR #16)
+**Goal**: Customers can view/pay invoices. Owners can manage payments.
 
-### 4.1 Owner Portal — Invoice Dashboard
-- New page: `/owner/invoices/` (or tab on existing dashboard)
-- Table: all invoices with status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️)
-- Filters: by customer, status, date range
-- Actions: view PDF, record manual payment, send reminder, cancel
-- Summary cards: total outstanding, overdue amount, payments this month
+### 5.1 Customer Portal — My Invoices ✅
+- [x] Invoice list page: `/app/invoices/`
+- [x] Click invoice → detail view (receipt): line items, subtotal, discount, total, payment history
+- [x] Status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️, Cancelled)
+- [x] "Pay Now" button → Stripe checkout (creates session, redirects)
+- [x] Download PDF link (S3)
+- [x] Payment history per invoice
+- [x] "Invoices" nav link added to customer portal
 
-### 4.2 Customer Portal — My Invoices
-- New page: `/app/invoices/` (or tab in account settings)
-- List of all invoices for this customer
-- Status, amount, due date, pay button (Stripe)
-- Download PDF link
-- Payment history
+### 5.2 Owner Portal — Invoice Dashboard ✅
+- [x] Invoice list page: `/owner/invoices/` with summary cards
+- [x] Table: all invoices with status badges, filters by customer + status
+- [x] **Record Manual Payment form** (cash, check, wire, ACH, credit card, other)
+- [x] Form fields: amount (defaults to balance), method, reference #, date, notes
+- [x] Auto-updates invoice status + sends confirmation emails
+- [x] Actions: view PDF, record payment
+- [x] Summary cards: total outstanding, overdue amount, payments this month, invoices this month
+- [x] Owner dashboard linked to invoice list
 
-### 4.3 Technician Portal — Payment Badge
-- On repair detail: show invoice status badge if invoiced
-- On repair list: optional column showing if repair has been invoiced/paid
-- Helps techs know if customer is in good standing
+### 5.3 Technician Portal — Payment Badge
+- [ ] On repair detail: show invoice status badge if invoiced
+- [ ] On repair list: optional column showing if repair has been invoiced/paid
 
-### 4.4 Reminder System
-- Owner can click "Send Reminder" on any overdue invoice
-- Auto-reminders: configurable schedule (7 days, 14 days, 30 days overdue)
-- Reminder count tracked per invoice
-- Customer sees "Payment Reminder" in notification bell
+### 5.4 Reminder System
+- [ ] Owner can click "Send Reminder" on any overdue invoice
+- [ ] Auto-reminders: configurable schedule (7 days, 14 days, 30 days overdue)
+- [ ] Reminder count tracked per invoice
 
-**Estimated effort**: ~15 hours
+**Note**: 5.3 and 5.4 deferred to Phase 6 (polish)
 
 ---
 
@@ -150,8 +155,10 @@
 | ✅ | 2 | Stripe integration | DONE (needs webhook secret) | — |
 | ✅ | 3 | Company address on invoices | DONE | — |
 | ✅ | 4 | Payment confirmation emails | DONE | — |
-| 🟡 P1 | 5 | Payment status in portals | — | ~15 |
+| ✅ | 5 | Invoice portals & payment management | DONE (5.1 + 5.2) | — |
 | 🟢 P2 | 6 | Automation & reports | — | ~12 |
+| 🔴 P1 | 7 | SaaS subscription billing | — | TBD |
+| 🟡 P1 | 8 | Sales tax by zip code | — | ~8-12 |
 
 **Remaining estimated**: ~31 hours
 
@@ -164,6 +171,49 @@
 - **Reminder frequency**: How aggressive? (e.g., 7 days, then weekly?)
 - **Batch invoicing**: For fleet customers, weekly or monthly consolidation?
 - **Per-customer payment terms**: Need override per customer, or global default enough for now?
+
+---
+
+## Phase 8: Sales Tax by Zip Code
+
+**Goal**: Automatically calculate and apply correct sales tax per invoice based on service location.
+
+### Why it's complex
+- Arkansas state rate: 6.5%
+- Cities/counties add local taxes on top (combined can reach 11.625%)
+- Rate varies by zip code — some zips span multiple jurisdictions
+- Rates change periodically
+
+### Key constraint: tax must be on the invoice, not at checkout
+If tax is only added at Stripe checkout, customers paying by check/cash would skip tax.
+Tax MUST be calculated at invoice creation time and shown on the PDF.
+Stripe checkout charges the tax-inclusive total — no additional tax added at payment.
+
+### Options (pick one for rate lookup)
+1. **Stripe Tax Calculations API** — Use Stripe's tax calculation endpoint at invoice creation to get the rate, store it on our invoice. Checkout charges the pre-calculated total. ~$0.50/txn.
+2. **Tax API** (TaxJar, Avalara, etc.) — Dedicated tax calculation at invoice creation. Monthly fee.
+3. **Local tax table** — Maintain a zip→rate lookup table ourselves. Free but we own the maintenance. Arkansas Dept of Finance publishes rate files.
+
+### Tasks (regardless of approach)
+- [ ] Add `tax_rate`, `tax_amount` fields to Invoice model
+- [ ] Add `tax_enabled` toggle to BillingConfig (global on/off — **default: off**)
+- [ ] Add `tax_exempt` flag on Customer model (per-customer override)
+- [ ] Calculate tax at invoice creation time (not at checkout)
+- [ ] Invoice PDF shows: subtotal + tax + total (or just subtotal = total if no tax)
+- [ ] Email templates show tax breakdown (hide tax line when zero)
+- [ ] Stripe checkout charges the tax-inclusive `total` (no additional tax)
+- [ ] Check/cash payments are for the same tax-inclusive total
+- [ ] Determine service location per repair (customer address? job site zip?)
+- [ ] Tax reporting: monthly/quarterly totals for filing
+
+### No-tax mode
+- BillingConfig.tax_enabled = False → invoices skip tax entirely (subtotal = total)
+- Customer.tax_exempt = True → that customer always gets $0 tax regardless of global setting
+- This lets Drake run without tax initially and flip it on when ready
+- Tax-exempt useful for government accounts, resellers, or fleets with exemption certs
+
+**Estimated effort**: ~8-12 hours depending on approach
+**Priority**: P1 — legal compliance (but can launch with tax_enabled=False initially)
 
 ---
 
