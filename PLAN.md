@@ -183,6 +183,8 @@ The URLs stay the same. We're just putting them in the nav where the owner expec
 
 Push. Merge to main or deploy from amelia. Get it on AWS.
 
+**Note (Feb 2026):** All billing work (v2.1.0, v2.2.0) was built on this foundation. The unified permissions and base_app.html template are load-bearing — every new feature since Jan 30 depends on them. Deploy includes all of v2.0–2.2.
+
 ---
 
 ## What This Gives Us

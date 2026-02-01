@@ -12,163 +12,111 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.2.0] - February 1, 2026
+
+### 🧾 INVOICE PORTALS & PAYMENT MANAGEMENT
+
+Full invoice visibility and payment handling across all three portals.
+
+#### Added — Customer Portal
+- **Invoice List** (`/app/invoices/`): Customers see all their invoices with status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️, Cancelled)
+- **Invoice Detail** (`/app/invoices/<id>/`): Line items, totals, payment history, PDF download
+- **Pay Now**: One-click Stripe checkout from invoice detail page
+- **"Invoices" nav link** added to customer portal navigation
+
+#### Added — Owner Portal
+- **Invoice Dashboard** (`/owner/invoices/`): Summary cards (outstanding, overdue, payments this month) + full invoice table with filters
+- **Manual Payment Recording**: Form on invoice detail — record cash, check, wire, ACH, credit card payments with reference number, date, notes
+- **Auto-status updates**: Recording payment automatically updates invoice status + sends confirmation emails
+- **PDF view + payment actions** on every invoice row
+
+#### Added — Technician Portal
+- **Collect Payment On-Site** (`/tech/repairs/<id>/collect-payment/`): Techs can record cash/check payments from repair detail page for completed+invoiced repairs
+- Payment auto-linked to invoice, confirmation emails sent
+
+#### Added — Stripe Landing Pages
+- `/payment-complete` — Branded thank-you page after successful Stripe payment
+- `/payment-cancelled` — Return page for cancelled Stripe checkouts
+
+#### Technical Details
+- Customer views: `apps/customer_portal/views.py` (`customer_invoices`, `customer_invoice_detail`, `customer_invoice_pay`)
+- Owner views: `apps/saas/views.py` (`owner_invoice_list`, `owner_invoice_detail`)
+- Tech view: `apps/technician_portal/views/repairs.py` (`tech_collect_payment`)
+- Templates: `customer_portal/invoices/`, `saas/owner_invoices.html`, `saas/owner_invoice_detail.html`
+
+---
+
+## [2.1.0] - January 31, 2026
+
+### 💰 BILLING & INVOICING SYSTEM
+
+Complete billing infrastructure: auto-invoicing, Stripe payments, payment confirmation emails.
+
+#### Added
+- **BillingConfig** singleton: Company address (street/city/state/zip), default payment terms, invoice prefix/footer — configurable via Admin > Billing
+- **Payment Terms**: COD (default), Due on Receipt, NET15/30/45/60. Due date auto-calculated. Displayed on PDF invoices.
+- **Stripe Integration**: Payment Links auto-generated on invoice creation. Checkout Sessions. Webhook handler at `/api/billing/stripe/webhook/`
+- **Auto-Invoice on Completion**: Django signal fires on repair COMPLETED → generates PDF → saves to S3 → emails customer (for `per_ticket` preference customers)
+- **Payment Confirmation Emails**: Branded HTML receipt to customer (amount, method, date, remaining balance with "Pay Remaining" link for partials). Plain text notification to owner.
+- **Payment Status in Portals**: Owner dashboard and repair detail pages show invoice/payment status
+- **15+ Billing API Endpoints** at `/api/billing/` — dashboard, CRUD, Stripe, reminders, customer preferences
+
+#### Technical Details
+- Invoice + InvoiceLineItem + Payment models with double-billing prevention
+- Services: `invoice_service.py` (PDF), `auto_invoice_service.py`, `stripe_service.py`, `invoice_email_service.py`, `reminder_service.py`, `dashboard_service.py`, `report_service.py`
+- Stripe webhook handles `checkout.session.completed` + `payment_intent.succeeded` → auto-records Payment → updates Invoice status
+- Full billing roadmap: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md)
+
+---
+
+## [2.0.0] - January 30, 2026
+
+### 🏗️ UNIFIED PERMISSIONS, TEMPLATES & ONBOARDING
+
+Major architectural overhaul: one permission system, one base template, fixed signup flow. Built in a single session — 28 tests passing.
+
+#### Added
+- **Unified Permission System** (`common/auth.py`):
+  - `can_access(user, area, tenant)` — single function replacing 182 scattered permission checks across 7 mechanisms
+  - `@requires('area')` decorator for all views
+  - Context processor providing `user_can_repair`, `user_can_invoice`, etc. to all templates
+  - Areas: repairs, customers, invoices, reports, team, settings
+- **`base_app.html`** — One base template for all shop staff (owner, manager, tech). Modern Tailwind, sticky nav, adapts to user capabilities. Replaces the old `base.html` / `base_owner.html` split.
+- **Settings Package**: Refactored `settings.py` into `rs_systems/settings/base.py`, `development.py`, `production.py`
+
+#### Changed
+- **Signup & Onboarding**: `create_tenant_with_owner()` now auto-creates Technician profile + adds to Technicians group. Onboarding cut to 2 steps (business info → dashboard). No more silent failures.
+- **All redirects**: `redirect('home')` for authenticated users replaced with `redirect_to_portal(user)` — customers go to `/app/`, staff go to `/tech/dashboard/`
+- **Owner Navigation**: Changed from `Dashboard | Billing | Settings | [Tech Portal]` to `Dashboard | Repairs | Customers | Invoices | Settings` — linking to existing pages
+- **~25 tech portal templates** updated from `{% extends "base.html" %}` to `{% extends "base_app.html" %}`
+
+#### Fixed
+- Onboarding wizard silently advancing on form failures, leaving users without Technician profiles
+- Owners landing on `base.html` pages with wrong nav after clicking dashboard actions
+- Authenticated users being redirected to landing page instead of their portal
+
+#### Details
+- Full plan and rationale: [`PLAN.md`](/PLAN.md)
+- Steps 1-5 completed in one day. Step 6 (deploy to AWS) pending.
+
+---
+
 ## [1.7.0] - November 18, 2025
 
 ### 🎛️ MANAGER SETTINGS PORTAL
 
 #### Added
-- **Manager Settings Dashboard**: Centralized configuration hub for managers (`/tech/settings/`)
-  - **Card-Based Navigation**: Modern tile layout for feature discovery
-  - **Permission Control**: Accessible to managers (`is_manager=True`) and staff users only
-  - **User Dropdown Link**: "Manager Settings" option added to navigation menu (templates/base.html:102-106)
-  - **Future Feature Placeholders**: Visual indicators for Pricing Configuration and Audit Log (planned Phase 2-3)
-  - **Admin Badge**: Special indicator for staff users with elevated privileges
-
-- **Viscosity Rules Management**: Configure temperature-based resin viscosity recommendations (`/tech/settings/viscosity/`)
-  - **Card-Based Interface**: Visual display of each rule with all key information
-  - **Auto-Priority System**: Rules automatically assigned priority order (no manual input needed)
-    - **Visual Priority Badges**: 🥇 Gold (1st), 🥈 Silver (2nd), 🥉 Bronze (3rd), numbered badges (4th+)
-    - **Automatic Assignment**: New rules get `(max existing priority + 10)`
-    - **Zero Cognitive Load**: Users never see numeric priority values, only position
-    - **Evaluation Order**: Rules checked 1st → 2nd → 3rd... until match found
-  - **Modal Editing**: Click "Edit" to modify rules in overlay form without page refresh
-  - **Toggle Switches**: Quick enable/disable functionality in card header
-  - **Add New Rules**: Green "Add New Rule" button opens creation modal
-  - **Delete Confirmation**: Safety dialog before removing rules
-  - **Badge Previews**: See exactly how viscosity recommendations appear to technicians
-  - **Real-Time Updates**: AJAX operations with toast notifications for all actions
-  - **Mobile Responsive**: Fully functional on all screen sizes
-
-- **Team Overview**: Performance dashboard for managed technicians (`/tech/settings/team/`)
-  - **Team Summary Stats**: Overall repairs, pending count, completed count across all managed technicians
-  - **Individual Performance Cards**: Detailed stats for each managed technician
-    - Total repairs assigned
-    - Pending repairs count
-    - Completed repairs count
-    - Completion rate percentage with visual progress bars
-  - **Recent Repairs List**: Last 5 repairs for each team member with status badges
-  - **Contact Information**: Email and phone for each technician
-  - **Access Control**: Only shows technicians in manager's `managed_technicians` M2M relationship
-
-- **Manager Permission Decorator**: New `@manager_required` decorator for view-level access control
-  - **Location**: `apps/technician_portal/decorators.py`
-  - **Functionality**: Restricts access to managers (`is_manager=True`) and staff users
-  - **Usage**: Stack with `@technician_required` for double protection
-  - **Redirect**: Non-managers redirected to dashboard with warning message
-
-#### Technical Implementation
-
-**Files Created** (11 files):
-1. `apps/technician_portal/decorators.py` - Permission decorators
-2. `templates/technician_portal/settings/settings_dashboard.html` - Main settings hub
-3. `templates/technician_portal/settings/viscosity_rules.html` - Viscosity rules management
-4. `templates/technician_portal/settings/team_overview.html` - Team performance dashboard
-5. `templates/technician_portal/settings/partials/` - Directory for reusable components
-6. `static/js/manager_settings.js` - AJAX modal handling (9.3KB)
-7. `static/css/components/manager-settings.css` - Professional styling (16KB)
-8. `docs/development/MANAGER_SETTINGS_ROADMAP.md` - Feature roadmap and planning document
-
-**Files Modified**:
-1. `apps/technician_portal/views.py` - Added 7 new view functions:
-   - `manager_settings_dashboard()` - Main settings hub (line 2003)
-   - `manage_viscosity_rules()` - List and manage rules (line 2029)
-   - `create_viscosity_rule()` - AJAX create endpoint (line 2051)
-   - `update_viscosity_rule()` - AJAX update endpoint (line 2108)
-   - `delete_viscosity_rule()` - AJAX delete endpoint (line 2165)
-   - `toggle_viscosity_rule()` - AJAX toggle active status (line 2191)
-   - `team_overview()` - Team performance dashboard (line 2218)
-
-2. `apps/technician_portal/urls.py` - Added 8 new URL patterns:
-   - `/tech/settings/` - Main dashboard
-   - `/tech/settings/viscosity/` - Viscosity rules page
-   - `/tech/settings/team/` - Team overview page
-   - `/tech/settings/api/viscosity/create/` - Create API endpoint
-   - `/tech/settings/api/viscosity/<id>/update/` - Update API endpoint
-   - `/tech/settings/api/viscosity/<id>/delete/` - Delete API endpoint
-   - `/tech/settings/api/viscosity/<id>/toggle/` - Toggle API endpoint
-
-3. `apps/technician_portal/models.py` - Added public method for template access:
-   - `ViscosityRecommendation.get_temp_range_display()` - Public wrapper for template usage (line 780)
-
-4. `templates/base.html` - Navigation integration (lines 102-106):
-   - Added "Manager Settings" link to user dropdown menu
-   - Conditional display based on manager status
-
-5. `docs/user-guides/VISCOSITY_CONFIGURATION_GUIDE.md` - Updated for manager access:
-   - Added "For Managers (Recommended)" section with step-by-step instructions
-   - Documented card-based interface features
-   - Updated all CRUD operation procedures
-   - Clarified admin vs manager access differences
-
-**URL Structure**:
-```
-/tech/settings/                         → Manager Settings Dashboard
-/tech/settings/viscosity/               → Viscosity Rules Management
-/tech/settings/team/                    → Team Overview
-/tech/settings/api/viscosity/create/    → Create Rule API
-/tech/settings/api/viscosity/<id>/update/ → Update Rule API
-/tech/settings/api/viscosity/<id>/delete/ → Delete Rule API
-/tech/settings/api/viscosity/<id>/toggle/ → Toggle Rule API
-```
-
-**Frontend Stack**:
-- Pure JavaScript (no frameworks) with Fetch API for AJAX
-- Custom CSS with card-based design system matching repair form aesthetic
-- Mobile-first responsive layout
-- Toast notifications for user feedback
-
-**Backend Stack**:
-- Django views with permission decorators
-- RESTful AJAX API endpoints
-- JSON responses for all API calls
-- Transaction safety for database operations
+- **Manager Settings Dashboard** (`/tech/settings/`): Card-based navigation hub for managers
+- **Viscosity Rules Management** (`/tech/settings/viscosity/`): CRUD interface with auto-priority system (🥇🥈🥉 badges), modal editing, toggle switches, AJAX operations
+- **Team Overview** (`/tech/settings/team/`): Performance dashboard — per-technician stats, completion rates, recent repairs
+- **`@manager_required` decorator** for view-level access control
 
 #### Changed
-- **Viscosity Rules UX Overhaul**: Removed confusing priority number input, implemented auto-priority system
-  - **Previous**: Manual priority number field with confusing "lower = higher priority" label
-  - **New**: Automatic priority assignment with visual badges (🥇 🥈 🥉)
-  - **Benefit**: Zero cognitive load - users see position (1st, 2nd, 3rd) instead of abstract numbers
-  - **Backend**: Auto-assigns `display_order = max + 10` for new rules
-  - **Frontend**: Priority badges with gold/silver/bronze gradients for top 3
-  - **Files Modified**:
-    - `apps/technician_portal/views.py:2087-2127` (auto-assignment logic)
-    - `apps/technician_portal/views.py:2063-2071` (ordinal suffix helper)
-    - `templates/technician_portal/settings/viscosity_rules.html:119-127` (removed field)
-    - `templates/technician_portal/settings/viscosity_rules.html:34-43` (priority badges)
-    - `static/js/manager_settings.js:112-121` (removed display_order from payload)
-    - `static/css/components/manager-settings.css:203-249` (badge styling)
-
-- **ViscosityRecommendation Model**: Added public `get_temp_range_display()` method
-  - **Previous**: Only private `_get_temp_range_display()` method (inaccessible from templates)
-  - **New**: Public wrapper method for Django template access
-  - **Rationale**: Django templates cannot call methods starting with underscore
-  - **Location**: `apps/technician_portal/models.py:780-785`
+- Viscosity rules UX: removed confusing manual priority input, replaced with automatic ordering + visual badges
+- `ViscosityRecommendation` model: added public `get_temp_range_display()` for template access
 
 #### Fixed
-- **Template Syntax Error**: Fixed `Variables and attributes may not begin with underscores` error
-  - **Issue**: Templates tried to call `rule._get_temp_range_display` (private method)
-  - **Fix**: Created public `get_temp_range_display()` method, updated template to use it
-  - **Impact**: Viscosity rules page now renders without errors
-  - **Location**: `templates/technician_portal/settings/viscosity_rules.html:51`
-
-#### Documentation Updates
-- **Manager Settings Roadmap**: Comprehensive planning document created
-  - **Phase 1 (Completed)**: Documented all current features with technical details
-  - **Phase 2 (Planned)**: Pricing Management features (tiers, overrides, approvals)
-  - **Phase 3 (Planned)**: Audit & Reporting features (logs, history, analytics)
-  - **Phase 4 (Future)**: Advanced features (scheduling, integrations, notifications)
-  - **Location**: `docs/development/MANAGER_SETTINGS_ROADMAP.md`
-
-- **Viscosity Configuration Guide**: Updated for manager access
-  - Added manager-specific instructions
-  - Documented card-based interface features
-  - Updated CRUD operation procedures
-  - **Location**: `docs/user-guides/VISCOSITY_CONFIGURATION_GUIDE.md`
-
-#### Future Enhancements (Documented in Roadmap)
-- **Pricing Configuration** (Phase 2): Custom pricing tiers, per-customer rules, volume discounts, override approval workflow
-- **Audit Log** (Phase 3): Pricing override tracking, manager action history, team performance reports
-- **Advanced Features** (Phase 4): Team scheduling, performance analytics, custom notifications, integration settings
+- Template syntax error from calling private `_get_temp_range_display` method
 
 ---
 
@@ -177,125 +125,17 @@ All notable changes to the RS Systems windshield repair management platform.
 ### 🗄️ STORAGE & DATA MANAGEMENT
 
 #### Added
-- **Automatic Photo Deletion**: Photos now automatically delete when repairs are removed
-  - **Package**: Installed `django-cleanup==9.0.0` for automatic file cleanup
-  - **Integration**: Added to `INSTALLED_APPS` as last entry (required for proper functionality)
-  - **Scope**: Applies to all ImageField models (repair photos, profile pictures, etc.)
-  - **Storage Support**: Works with both S3 (production) and local media (development)
-  - **Migration**: Database migration created for cascade behavior updates
-  - **Location**: `requirements.txt:8`, `rs_systems/settings.py:208`
-
-- **Storage Audit Command**: New management command to identify and clean orphaned files
-  - **Command**: `python manage.py audit_repair_photos`
-  - **Features**:
-    - Lists all orphaned files in S3 with sizes and modification dates
-    - Detects missing files (referenced in DB but not in S3)
-    - Calculates storage costs (~$0.023 per GB/month)
-    - Dry-run mode by default (safe to run anytime)
-    - `--delete` flag to actually remove orphaned files
-  - **Use Cases**:
-    - Monthly maintenance audits
-    - Post-bulk deletion cleanup
-    - Storage cost investigation
-    - System health checks
-  - **Location**: `core/management/commands/audit_repair_photos.py`
+- **Automatic Photo Deletion**: `django-cleanup` package deletes S3 files when repairs are removed
+- **Storage Audit Command**: `python manage.py audit_repair_photos` — finds orphaned files, calculates storage costs, optional `--delete`
 
 #### Changed
-- **TechnicianNotification Cascade**: Updated to CASCADE when repairs are deleted
-  - **Previous**: `on_delete=models.SET_NULL` (notifications kept, repair link cleared)
-  - **New**: `on_delete=models.CASCADE` (notifications deleted with repair)
-  - **Rationale**: Notifications are directly tied to repairs; no value in orphaned notifications
-  - **Location**: `apps/technician_portal/models.py:575`
-
-- **RewardRedemption Cascade**: Remains SET_NULL (intentionally preserved)
-  - **Behavior**: `on_delete=models.SET_NULL` (redemption kept, repair link cleared)
-  - **Rationale**: Preserves audit trail and point balance integrity
-  - **Use Case**: If repair accidentally deleted, customer points/redemption history preserved
-  - **Location**: `apps/rewards_referrals/models.py:164`
+- `TechnicianNotification` cascade behavior: SET_NULL → CASCADE (notifications deleted with repair)
 
 #### Fixed
-- **Orphaned Photo Files**: Photos remained in S3 after repair deletion
-  - **Issue**: Before November 2025, deleting repairs left photos in S3 storage
-  - **Root Cause**: No automatic file cleanup mechanism configured
-  - **Impact**:
-    - Storage bloat (14+ orphaned files, ~16 MB in production)
-    - Security risk (deleted repair photos still accessible via URL)
-    - Ongoing storage costs (~$0.0004/month for current orphans)
-    - GDPR/privacy concerns (deleted data remained accessible)
-  - **Fix**: `django-cleanup` now automatically deletes files on model deletion
-  - **Verification**: Use `audit_repair_photos` command to confirm cleanup
-
-- **Cascade Behavior Inconsistency**: Some related records were orphaned, others weren't
-  - **Issue**: Mixed use of CASCADE and SET_NULL without clear business logic
-  - **Fix**: Standardized cascade behavior:
-    - `RepairApproval`: CASCADE ✓ (already correct)
-    - `TechnicianNotification`: CASCADE ✓ (updated)
-    - `RewardRedemption`: SET_NULL ✓ (intentionally preserved for audit trail)
-  - **Result**: Predictable, documented deletion behavior
+- Orphaned photos remaining in S3 after repair deletion (14+ files, ~16 MB in production)
 
 #### Security
-- **Privacy Enhancement**: Deleted repairs now fully remove associated photos
-  - **Before**: Photos remained accessible via S3 URLs even after repair deletion
-  - **After**: Photos automatically deleted, URLs become inaccessible
-  - **Compliance**: Better GDPR compliance (data deletion requests)
-  - **Audit Trail**: Redemption records preserved for financial integrity
-
-#### Documentation Updates
-- **CLAUDE.md**: Added "Maintenance Commands" section (line 42-50)
-  - Documented `audit_repair_photos` command usage
-  - Added to essential commands for developers
-
-- **Admin Guide**: Added comprehensive "Storage Management" section
-  - Complete guide to `audit_repair_photos` command (lines 597-773)
-  - Example outputs for audit and delete operations
-  - Safety guidelines and best practices
-  - When to delete vs. when to investigate
-  - Storage cost calculation explanation
-  - Added to monthly/quarterly maintenance tasks
-  - Added to Quick Reference Commands section (line 862)
-  - **Location**: `docs/user-guides/ADMIN_GUIDE.md:597-773`
-
-- **AWS Deployment Guide**: Updated maintenance schedules
-  - Monthly: "Audit S3 storage for orphaned files" (line 574)
-  - Quarterly: "Clean up orphaned repair photos" (line 581)
-  - **Location**: `docs/deployment/AWS_DEPLOYMENT.md:574,581`
-
-#### Migration Notes
-- **Database Migration**: `apps/technician_portal/migrations/0011_alter_repair_damage_type_and_more.py`
-  - Alters `TechnicianNotification.repair` foreign key to CASCADE
-  - Safe to apply (no data loss, only affects future deletions)
-  - Run via: `python manage.py migrate`
-
-- **Cleanup Existing Orphans**: One-time cleanup recommended
-  ```bash
-  # 1. Audit first (safe, read-only)
-  python manage.py audit_repair_photos
-
-  # 2. Review output, then delete orphans
-  python manage.py audit_repair_photos --delete
-  ```
-
-#### Technical Details
-- **django-cleanup Behavior**:
-  - Hooks into Django's post_delete signal
-  - Deletes files synchronously during model deletion
-  - Works with all Django storage backends (S3, local, custom)
-  - Must be last in INSTALLED_APPS to catch all model deletes
-  - Handles failed deletions gracefully (logs error but doesn't block)
-
-- **Cascade Summary**:
-  | Related Model | Cascade Behavior | Data Preserved? | Reason |
-  |--------------|------------------|-----------------|--------|
-  | RepairApproval | CASCADE | No | Approval tied to specific repair |
-  | TechnicianNotification | CASCADE | No | Notification about specific repair |
-  | RewardRedemption | SET_NULL | Yes | Preserve audit trail & points |
-  | Photos (S3/files) | DELETE | No | Automatic cleanup via django-cleanup |
-
-- **Supported Photo Fields**:
-  - `Repair.customer_submitted_photo` → `repair_photos/customer_submitted/`
-  - `Repair.damage_photo_before` → `repair_photos/before/`
-  - `Repair.damage_photo_after` → `repair_photos/after/`
-  - All automatically deleted when parent Repair is deleted
+- Deleted repair photos now actually removed from S3 (GDPR compliance improvement)
 
 ---
 
@@ -304,125 +144,13 @@ All notable changes to the RS Systems windshield repair management platform.
 ### 🔒 BACKUP & DATA PROTECTION
 
 #### Changed
-- **Backup System Migration**: Transitioned from custom scripts to AWS-managed backup solutions
-  - **RDS Retention Increased**: Database backup retention extended from 7 to 30 days
-  - **Point-in-Time Recovery**: Can now restore database to any second within last 30 days
-  - **Backup Window**: Automated daily backups at 3:29-3:59 AM UTC
-  - **Recovery Window**: 4.3x longer protection window for data recovery
-  - **Location**: AWS RDS automated backups for `rs-systems-production-db`
-
-- **S3 Versioning Enabled**: Media files now protected against accidental deletion
-  - **Versioning**: Enabled on `rs-systems-media-20251029` bucket
-  - **Retention**: Deleted/replaced photos recoverable for 30 days
-  - **Lifecycle Policy**: Automatic cleanup of old versions after 30 days
-  - **Cost Control**: Prevents storage bloat with automated cleanup
-  - **Application Impact**: Zero - delete operations work normally
-  - **Hidden Protection**: Version history invisible to users, accessible for recovery
-
-- **Lifecycle Policies**: Three automated rules for cost optimization
-  - `DeleteOldVersionsAfter30Days`: Removes non-current versions after 30 days
-  - `CleanupExpiredDeleteMarkers`: Removes expired delete markers automatically
-  - `AbortIncompleteMultipartUploads`: Cleans up failed uploads after 7 days
+- **RDS backup retention**: 7 → 30 days with point-in-time recovery
+- **S3 versioning enabled**: Deleted/replaced photos recoverable for 30 days
+- **Lifecycle policies**: Auto-cleanup of old versions, expired markers, incomplete uploads
 
 #### Removed
-- **Custom Backup System**: Deprecated SQLite-based backup scripts
-  - Removed `.ebextensions/07_backup_system.config` (Elastic Beanstalk cron job)
-  - Removed `scripts/backup_system.py` (custom backup script)
-  - **Reason**: Script designed for SQLite but production uses PostgreSQL
-  - **Impact**: System was failing silently for 67+ days with empty backup bucket
-  - **Replacement**: AWS RDS automated backups + S3 versioning
-
-- **Empty S3 Bucket**: Deleted unused `rs-systems-backups-20250823` bucket
-  - Bucket was completely empty (0 objects, 0 bytes)
-  - Cron job was running but failing to create backups
-  - Reduced AWS account clutter
-
-#### Fixed
-- **Silent Backup Failures**: Custom backup system was designed for SQLite but production uses PostgreSQL
-  - Daily cron job ran but failed to find `db.sqlite3` file
-  - No error alerts or notifications of failure
-  - Backup bucket remained empty since creation (August 23, 2025)
-  - Fixed by replacing with AWS-managed solutions that monitor automatically
-
-#### Security
-- **Enhanced Data Protection**: Multiple layers of backup protection
-  - Database: 30-day automated snapshots + point-in-time recovery
-  - Photos: S3 versioning with 30-day deleted file recovery
-  - Compliance: Better meets data retention requirements
-  - Disaster Recovery: Can restore to any point in last month
-
-#### Cost Impact
-- **Estimated Monthly Cost**: ~$10-15/month
-  - RDS extended retention (7→30 days): ~$10/month
-  - S3 versioning storage: ~$0.50-5/month (grows with photo uploads)
-- **Cost Controls**: Automatic cleanup prevents runaway costs
-- **Value**: 4.3x longer recovery window + accidental deletion protection
-
-#### Documentation Updates
-- **AWS Deployment Guide**: Completely rewrote Backup & Recovery section
-  - Updated database retention from 7 to 30 days (line 81)
-  - Replaced entire section with AWS-managed backup documentation (lines 293-508)
-  - Added RDS automated backup commands and procedures
-  - Added S3 versioning recovery procedures
-  - Added cost optimization guidelines
-  - Added backup validation and testing procedures
-  - Added migration notes explaining the change
-  - **Location**: `docs/deployment/AWS_DEPLOYMENT.md:293-508`
-
-#### Technical Details
-- **RDS Configuration**:
-  - Database: `rs-systems-production-db` (PostgreSQL 15.14)
-  - Backup retention: 30 days (configurable via AWS CLI)
-  - Backup window: 3:29-3:59 AM UTC daily
-  - Latest restorable time: Real-time (within 5 minutes)
-  - Storage: AWS-managed (encrypted at rest)
-
-- **S3 Versioning**:
-  - Bucket: `rs-systems-media-20251029`
-  - Status: Enabled
-  - Version retention: 30 days for non-current versions
-  - Recovery: Version-specific restore via AWS CLI
-  - Impact: Transparent to application code
-
-- **Verification Commands**:
-  ```bash
-  # Check RDS backup status
-  aws rds describe-db-instances --db-instance-identifier rs-systems-production-db
-
-  # Check S3 versioning status
-  aws s3api get-bucket-versioning --bucket rs-systems-media-20251029
-
-  # List available snapshots
-  aws rds describe-db-snapshots --db-instance-identifier rs-systems-production-db
-  ```
-
-#### Benefits
-- ✅ 30-day database recovery window (was 7 days)
-- ✅ Deleted photos recoverable for 30 days (was permanent loss)
-- ✅ AWS-managed = no maintenance required
-- ✅ Point-in-time restore to any second within 30 days
-- ✅ Automatic monitoring and alerts built into AWS
-- ✅ No custom code to maintain or debug
-- ✅ Better compliance and audit trail
-- ✅ Cost-optimized with automatic cleanup
-
-#### Recovery Procedures
-- **Database**: Point-in-time restore or snapshot restore via AWS CLI
-- **Photos**: Version-specific recovery using S3 API
-- **Testing**: Monthly recovery tests recommended
-- **Documentation**: Complete recovery procedures in AWS_DEPLOYMENT.md
-
-### Files Modified
-4 files changed:
-- `docs/deployment/AWS_DEPLOYMENT.md` - Complete Backup & Recovery section rewrite
-- `docs/development/CHANGELOG.md` - This changelog entry
-- `.ebextensions/07_backup_system.config` - Removed (deprecated)
-- `scripts/backup_system.py` - Removed (deprecated)
-
-### AWS Resources Modified
-- RDS instance `rs-systems-production-db` - Backup retention 7→30 days
-- S3 bucket `rs-systems-media-20251029` - Versioning enabled
-- S3 bucket `rs-systems-backups-20250823` - Deleted (empty)
+- Custom SQLite backup system (was silently failing since August — production uses PostgreSQL)
+- Empty `rs-systems-backups-20250823` S3 bucket
 
 ---
 
@@ -431,68 +159,8 @@ All notable changes to the RS Systems windshield repair management platform.
 ### 🔧 ADMIN ENHANCEMENTS
 
 #### Added
-- **Lot Walking Admin Configuration**: Full admin dashboard support for configuring customer lot walking preferences
-  - **New Admin Fieldset**: "Lot Walking Service Settings" section in CustomerRepairPreference admin
-  - **Enhanced Form**: `CustomerRepairPreferenceForm` now includes lot walking fields with custom widgets
-  - **Day Selection**: Checkbox widget for selecting preferred days of the week (Monday-Sunday)
-  - **Time Picker**: Time input widget with Django admin styling for preferred time selection
-  - **Frequency Dropdown**: Select from Weekly, Bi-weekly, Monthly, or Quarterly schedules
-  - **Form Validation**: Automatic validation ensures frequency is required when lot walking is enabled (time and days are optional)
-  - **Data Storage**: Preferences stored in existing `CustomerRepairPreference.lot_walking_days` JSONField
-  - **Location**: `apps/customer_portal/admin.py:88-202`
-
-- **Enhanced Admin List Display**: Better visibility of lot walking settings at a glance
-  - Added `lot_walking_enabled` column to list view (✓/✗ indicator)
-  - Added `lot_walking_frequency` column showing schedule (Weekly/Bi-weekly/Monthly/Quarterly)
-  - List view now shows: Customer | Approval Mode | Threshold | Lot Walking | Frequency | Updated
-
-- **Advanced Filtering**: Quick filters for lot walking configuration
-  - Filter by lot walking enabled (Yes/No)
-  - Filter by lot walking frequency (Weekly/Bi-weekly/Monthly/Quarterly)
-  - Combined with existing approval mode and date filters
-  - Enables quick searches like "Show all customers with weekly lot walking"
-
-#### Changed
-- **CustomerRepairPreferenceForm**: Extended with lot walking UI components
-  - Added `lot_walking_days_choices` field with checkbox widget
-  - Custom `__init__()` method pre-populates checkboxes from JSON data
-  - Custom `save()` method converts checkbox selections to JSON list
-  - Enhanced `clean()` method validates lot walking dependencies
-  - Time field widget styled with Django admin classes (`vTimeField`)
-
-- **CustomerRepairPreferenceAdmin**: Reorganized with lot walking section
-  - New fieldset between "Field Repair Approval Settings" and "Tracking"
-  - Clear section description explaining lot walking configuration
-  - Updated list_display to show lot walking status
-  - Updated list_filter for lot walking options
-
-#### Technical Details
-- **No Database Changes**: Uses existing `lot_walking_enabled`, `lot_walking_frequency`, `lot_walking_time`, and `lot_walking_days` fields from `CustomerRepairPreference` model (added in v1.5.0)
-- **Form Widget Pattern**: Converts between JSONField storage and checkbox UI seamlessly
-- **Validation Rules**:
-  - `lot_walking_frequency` required when `lot_walking_enabled` is True
-  - `lot_walking_time` optional (preferred time can be left blank)
-  - `lot_walking_days_choices` optional (defaults to empty list if not selected)
-- **Admin Integration**: Fully integrated with Django admin using standard ModelAdmin patterns
-
-#### Benefits
-- ✅ Admins can configure lot walking schedules without database access
-- ✅ User-friendly checkboxes replace manual JSON editing
-- ✅ Time picker provides consistent time format
-- ✅ Form validation prevents incomplete configurations
-- ✅ List filters enable quick overview of lot walking customers
-- ✅ Complements customer-facing lot walking UI from v1.5.0
-
-#### Documentation Updates
-- **Admin Guide**: Added "Lot Walking Service Configuration" section (lines 302-351)
-- **Admin Guide**: Added Example 4 showing lot walking customer workflow (lines 391-406)
-- **Admin Guide**: Added Task 6 for configuring lot walking service (lines 535-552)
-- **Admin Guide**: Updated version to 1.6.1 and date to October 29, 2025
-
-### Files Modified
-2 files changed, ~140 additions:
-- `apps/customer_portal/admin.py` - Enhanced form and admin configuration
-- `docs/user-guides/ADMIN_GUIDE.md` - Documentation updates
+- **Lot Walking Admin Configuration**: Checkbox widgets for day selection, time picker, frequency dropdown in CustomerRepairPreference admin
+- **Enhanced admin list**: `lot_walking_enabled` and `lot_walking_frequency` columns + filters
 
 ---
 
@@ -501,86 +169,14 @@ All notable changes to the RS Systems windshield repair management platform.
 ### 📸 IMAGE UPLOAD ENHANCEMENTS
 
 #### Added
-- **HEIC/HEIF Image Support**: Native iPhone photo format support for unedited AI training photos
-  - Automatic conversion to JPEG for browser compatibility
-  - Pillow-HEIF integration for server-side image processing
-  - High-quality conversion (95% JPEG quality) preserves image details
-  - Transparent conversion - users upload HEIC, system stores JPEG
-  - Extensions: `.heic`, `.heif` now accepted alongside `.jpg`, `.jpeg`, `.png`, `.webp`
-  - Location: `common/utils.py:convert_heic_to_jpeg()`
-
-- **Increased Upload Size Limits**: Expanded from 2.5MB to 10MB
-  - Django settings: `DATA_UPLOAD_MAX_MEMORY_SIZE` and `FILE_UPLOAD_MAX_MEMORY_SIZE` set to 10MB
-  - AWS Nginx configuration: `client_max_body_size` set to 10MB
-  - Application validation remains at 5MB with clear error messages
-  - Supports high-resolution photos for AI model training
-  - Locations: `rs_systems/settings.py`, `rs_systems/settings_aws.py`, `.ebextensions/00_nginx_upload.config`
-
-- **Image Conversion Utility**: New shared utility module for image processing
-  - Handles HEIC to JPEG conversion
-  - Graceful error handling (returns original file if conversion fails)
-  - Maintains filename with changed extension (.heic → .jpg)
-  - Updates MIME type for proper browser handling
-  - Location: `common/utils.py`
+- **HEIC/HEIF Support**: Native iPhone photo format with auto-conversion to JPEG (95% quality)
+- **10MB Upload Limit**: Increased from 2.5MB (Django + Nginx configured)
+- **Image Conversion Utility** (`common/utils.py`): Shared HEIC→JPEG converter
 
 #### Fixed
-- **Localhost Upload Failures**: "Not an image or corrupted image" error for files 2.5MB-5MB
-  - Root cause: Django's 2.5MB default limit smaller than validation limit
-  - Solution: Increased Django upload limits to 10MB
-
-- **AWS Upload Failures**: "413 Request Entity Too Large" error
-  - Root cause: Nginx default 1MB limit rejected uploads before reaching Django
-  - Solution: Added nginx configuration for 10MB client_max_body_size
-
-- **HEIC Preview Issues**: HEIC images uploaded but didn't display in browser
-  - Root cause: Browsers don't support HEIC format natively
-  - Solution: Automatic server-side conversion to JPEG on upload
-
-#### Changed
-- **Photo Field Validators**: Extended to accept HEIC/HEIF extensions
-  - `damage_photo_before` and `damage_photo_after` now accept 6 formats
-  - Help text updated to mention HEIC support
-  - Migration: `apps/technician_portal/migrations/0009_alter_repair_damage_photo_after_and_more.py`
-
-- **Upload Validation**: MIME type checks now include HEIC formats
-  - Customer portal: `image/heic` and `image/heif` added to allowed types
-  - Error messages updated to mention HEIC support
-  - Location: `apps/customer_portal/views.py:619`
-
-- **View Processing**: All upload views now convert HEIC to JPEG automatically
-  - Customer portal: `request_repair` view
-  - Technician portal: `create_repair` and `update_repair` views
-  - Conversion happens before form processing
-  - Locations: `apps/customer_portal/views.py`, `apps/technician_portal/views.py`
-
-#### Technical Details
-- **Dependencies Added**: `pillow-heif==1.1.1` for HEIC support
-- **Plugin Registration**: Auto-registers HEIC opener on app startup
-  - Location: `apps/technician_portal/apps.py:ready()`
-- **AWS Deployment Ready**: All configurations compatible with Elastic Beanstalk
-- **File Formats Supported**: JPEG, PNG, WebP, HEIC, HEIF
-- **Max File Size**: 10MB (system) / 5MB (validation with user-friendly error)
-
-#### Benefits
-- ✅ Users can upload unedited iPhone photos directly
-- ✅ High-resolution photos supported for AI training
-- ✅ Browser compatibility maintained (all photos viewable)
-- ✅ Consistent user experience across all devices
-- ✅ No user action required (automatic conversion)
-- ✅ Better image quality for damage documentation
-
-### Files Modified
-11 files changed, ~250 additions:
-- `common/utils.py` - NEW: HEIC conversion utility
-- `requirements.txt` - Added pillow-heif dependency
-- `rs_systems/settings.py` - Increased upload size limits
-- `rs_systems/settings_aws.py` - Increased upload size limits
-- `.ebextensions/00_nginx_upload.config` - NEW: Nginx upload configuration
-- `apps/technician_portal/models.py` - Extended file validators
-- `apps/technician_portal/apps.py` - Registered HEIC plugin
-- `apps/customer_portal/views.py` - HEIC conversion + validation
-- `apps/technician_portal/views.py` - HEIC conversion in create/update
-- `apps/technician_portal/migrations/0009_*.py` - NEW: Photo field migration
+- Upload failures for 2.5-5MB files (Django default limit)
+- AWS 413 errors (Nginx 1MB default)
+- HEIC images not displaying in browser
 
 ---
 
@@ -589,321 +185,67 @@ All notable changes to the RS Systems windshield repair management platform.
 ### 🎨 MAJOR UI/UX REDESIGN
 
 #### Changed
-- **Customer Account Settings Complete Redesign**: Transformed from cluttered Bootstrap forms to professional Tailwind CSS interface
-  - **Card-based Layout**: Each section in visually separated cards with color-coded icon badges
-  - **Tooltip System**: All help text converted to hover tooltips, reducing clutter by ~60%
-  - **Tab Navigation**: Custom-styled tabs with smooth transitions and icons
-  - **Better Visual Hierarchy**: Icons, improved typography, consistent spacing throughout
-  - **Responsive Design**: Mobile-friendly grid layouts and touch-friendly spacing
-  - **Interactive Enhancements**: Smooth animations for show/hide sections, hover states, focus rings
-  - Location: `templates/customer_portal/account_settings.html`
+- **Customer Account Settings**: Complete redesign — card-based layout, tooltip system, tab navigation, Tailwind CSS
 
 #### Added
-- **Lot Walking Configuration UI**: Customer-facing settings for configuring lot walking service preferences
-  - **Scope**: Customer preferences and UI only - customers can configure when/how often they want lot walking
-  - **What's Included**: Enable/disable service, set frequency (weekly/bi-weekly/monthly/quarterly), choose preferred days, set preferred time
-  - **What's NOT Included**: Technician scheduling system that generates and manages lot walk schedules (planned for future release - see FUTURE_FEATURES.md)
-  - **Data Model**: `CustomerRepairPreference` model stores all settings in database
-  - **UI Location**: Customer portal → Account Settings → Repair Preferences tab → Lot Walking Schedule section
-  - **Current Limitation**: Preferences are saved but scheduling automation not yet implemented - contact support to arrange lot walks
-
-- **UI Design Guide**: Comprehensive documentation for maintaining consistent design across the system
-  - Complete design system (colors, typography, spacing)
-  - Reusable component library with code examples
-  - Form patterns and interactive elements
-  - Migration guide for updating existing pages
-  - Icon usage guidelines and best practices
-  - Location: `docs/development/UI_DESIGN_GUIDE.md`
-
-#### Technical Details
-- Replaced Bootstrap with Tailwind CSS for modern utility-first approach
-- Implemented custom tooltip component with hover interactions
-- Added conditional section animations with smooth transitions
-- Enhanced tab switching with visual feedback
-- Color-coded sections: Blue (personal), Yellow (approvals), Green (scheduling), Red (security)
-- Professional form styling with focus states and validation feedback
+- **Lot Walking Configuration UI**: Customer-facing settings for frequency, preferred days/time
+- **UI Design Guide** (`docs/development/UI_DESIGN_GUIDE.md`)
 
 ---
 
 ## [1.4.0] - October 21, 2025
 
-### 🚨 CRITICAL SECURITY FIXES
+### 🚨 CRITICAL SECURITY FIXES & WORKFLOW
 
 #### Security
-- **CRITICAL**: Fixed approval bypass vulnerability where technicians could set repair status to COMPLETED to bypass customer approval requirements
-  - Server-side enforcement of customer preferences regardless of status selected
-  - Prevents unauthorized work and potential fraud
-  - Location: `apps/technician_portal/views.py:313-333`
+- **CRITICAL**: Fixed approval bypass — technicians could set status to COMPLETED to skip customer approval
+- **HIGH**: Fixed IntegrityError when technicians updated their own repairs
 
-- **HIGH**: Fixed IntegrityError crash when technicians updated their own repairs
-  - Preserved existing technician assignment for non-admin users
-  - Location: `apps/technician_portal/views.py:381-386`
-
-### Added
-
-#### Manager Assignment System
-- Managers can now assign REQUESTED repairs to technicians on their team
-- Assignment automatically approves repair (customer already requested it)
-- Assigned technicians receive notifications with direct links to repairs
-- Team boundary enforcement (managers only assign to technicians they manage)
-- New template: `templates/technician_portal/assign_repair.html`
-
-#### Customer Approval Dashboard
-- Prominent yellow alert banner for repairs needing approval (cannot be missed)
-- Shows repair count, unit details, damage type, technician, cost estimate
-- Quick approve/deny buttons directly on dashboard
-- Confirmation dialog for deny action
-- Mobile-responsive design
-- Location: `templates/customer_portal/dashboard.html:200-268`
-
-#### Customer Repair Preferences
-- Three approval modes:
-  1. **AUTO_APPROVE**: All field repairs auto-approved
-  2. **REQUIRE_APPROVAL**: Customer approves every field repair
-  3. **UNIT_THRESHOLD**: Auto-approve up to X units per visit
-- Server-side enforcement for security
-- Admin interface for configuration
-- Model: `CustomerRepairPreference` in `apps/customer_portal/models.py`
-- Migration: `apps/customer_portal/migrations/0004_customerrepairpreference.py`
-
-#### Notification Enhancements
-- Added `repair` ForeignKey to `TechnicianNotification` model
-- Notifications now show "View Repair" button linking directly to assigned work
-- Works for both repair assignments and reward redemptions
-- Migration: `apps/technician_portal/migrations/0008_techniciannotification_repair.py`
-
-#### Repair Status Visibility Controls
-- **REQUESTED repairs**: Only visible to managers
-  - Non-managers attempting to view get error message
-  - Filtered out of non-manager dashboard and repair lists
-- **PENDING repairs**: Completely hidden from ALL technicians
-  - Only visible in customer portal
-  - Cannot be accessed via direct URL
-  - Shows error if technician attempts to view
-
-### Changed
-- **Repair creation workflow**: Now enforces customer preferences server-side
-- **Manager assignment**: Workflow separates customer-requested from field-discovered repairs
-- **Dashboard layouts**: Updated for prominent approval alerts and assignment actions
-- **Technician notifications**: Enhanced to include repair context and direct links
-
-### Fixed
-- Approval bypass vulnerability (technicians setting status to COMPLETED)
-- IntegrityError on repair updates (NULL technician_id constraint)
-- Missing notification links for assigned repairs
-- Manager permission display in admin (managed_technicians field)
-- Hidden field labels in repair form templates
-
-### Security
-- Server-side validation of customer approval preferences
-- Default-deny security model (requires approval if preferences not configured)
-- Role-based access control strictly enforced for repair visibility
-- Team boundary enforcement for manager assignments
-
-### Files Modified
-13 files changed, ~1,023 additions:
-- `apps/technician_portal/models.py` - Added repair field to TechnicianNotification
-- `apps/technician_portal/views.py` - Security fixes, assignment logic, visibility filters
-- `apps/customer_portal/models.py` - Added CustomerRepairPreference model
-- `apps/customer_portal/admin.py` - CustomerRepairPreference admin interface
-- `apps/customer_portal/views.py` - Approval workflow enhancements
-- `templates/customer_portal/dashboard.html` - PENDING repairs alert section
-- `templates/technician_portal/dashboard.html` - Notification repair links
-- `templates/technician_portal/repair_detail.html` - Assignment button, visibility fixes
-- `templates/technician_portal/repair_form.html` - Hide labels for hidden fields
-- `templates/technician_portal/assign_repair.html` - NEW: Assignment page
-- `apps/technician_portal/admin.py` - Fixed managed_technicians display
-- `apps/technician_portal/forms.py` - Form validation updates
-- `apps/technician_portal/urls.py` - Assignment URL route
+#### Added
+- Manager assignment system for REQUESTED repairs
+- Customer approval dashboard with yellow alert banner
+- Customer repair preferences (AUTO_APPROVE, REQUIRE_APPROVAL, UNIT_THRESHOLD)
+- Notification enhancement: repair ForeignKey + "View Repair" button
+- Repair visibility controls (REQUESTED=managers only, PENDING=hidden from techs)
 
 ---
 
 ## [1.3.0] - September 28, 2025
 
-### 🎯 SPRINT 1: Core Pricing & Roles Infrastructure
+### 🎯 SPRINT 1: Core Pricing & Roles
 
 #### Added
-
-##### Custom Pricing System
-- **CustomerPricing Model**: Customer-specific pricing overrides
-  - Custom pricing tiers for 1st-5th+ repairs per unit
-  - Volume discount configuration (threshold + percentage)
-  - Tracking fields (created_by, timestamps, notes)
-  - Model location: `apps/customer_portal/pricing_models.py`
-  - Migration: `apps/customer_portal/migrations/0003_customerpricing.py`
-  - Admin interface with organized fieldsets
-
-##### Pricing Service Layer
-- **Centralized Pricing Logic**: `apps/technician_portal/services/pricing_service.py`
-  - `calculate_repair_cost(customer, repair_count)`: Core pricing calculation
-  - `calculate_repair_cost_with_volume_discount()`: Applies volume discounts
-  - `get_expected_repair_cost(customer, unit_number)`: Preview pricing
-  - `can_manager_override_price(technician, amount)`: Permission validation
-  - `apply_pricing_to_repair(repair)`: Repair integration
-  - `get_pricing_info(customer)`: Comprehensive pricing data
-
-##### Manager Role System
-- **Enhanced Technician Model**: Manager capabilities added
-  - `is_manager`: Boolean flag for manager status
-  - `approval_limit`: Decimal field for override limit (e.g., $150)
-  - `can_assign_work`: Permission for work distribution
-  - `can_override_pricing`: Permission for pricing overrides
-  - `managed_technicians`: M2M for team management
-
-##### Performance Tracking
-- **Technician Metrics**:
-  - `repairs_completed`: Auto-incremented counter
-  - `average_repair_time`: Duration tracking (prepared for future)
-  - `customer_rating`: Decimal field for satisfaction scores
-  - `is_active`: Availability status
-  - `working_hours`: JSON field for schedule
-
-##### Manager Override UI
-- **Pricing Override Section**: Visible only to authorized managers
-  - Override price input with validation
-  - Required reason field for audit trail
-  - Displays expected cost and approval limit
-  - Form validation checks manager permission and approval limit
-  - Template: `templates/technician_portal/repair_form.html:140-170`
-
-##### Admin Enhancements
-- **Customer Pricing Admin**:
-  - List display with customer, status, created date
-  - Filters by use_custom_pricing and creation date
-  - Search by customer name and notes
-  - Organized fieldsets (Customer Settings, Repair Pricing, Volume Discounts, Tracking)
-  - Auto-population of created_by field
-
-- **Technician Admin**:
-  - List display shows manager status and active state
-  - Filters by expertise, is_manager, is_active, permissions
-  - Organized fieldsets (Basic, Manager Capabilities, Performance, Schedule)
-  - Horizontal filter for managed technicians M2M
-
-### Changed
-- **Repair Cost Calculation**: Now uses pricing service with customer-specific logic
-- **Repair.save() Method**: Integrated with pricing service (lines 197-243)
-- **Form Validation**: Multi-level validation (form, model, service)
-
-### Fixed
-- Template safety check bug (line 140 in repair_form.html)
-- Added existence checks for user.technician before attribute access
-
-### Testing
-- ✅ 9/9 automated tests passing (see `test_sprint1.py`)
-- ✅ Manual testing completed
-- ✅ Sprint 1 Audit Report: All features verified and functional
-- ✅ No regressions in existing functionality
-
-### Performance
-- OneToOne relationship prevents duplicate pricing records
-- Indexes on customer and repair count fields
-- `select_related` used in admin list views
-- `get_or_create` for UnitRepairCount tracking
-
-### Documentation
-- Added `FEATURE_REFERENCE_GUIDE.md` - Complete feature explanations
-- Added `ADMIN_DASHBOARD_GUIDE.md` - Step-by-step admin instructions
-- Added `FEATURE_TESTING_GUIDE.md` - Testing procedures
-- Added `SPRINT_1_AUDIT_REPORT.md` - Comprehensive testing results
-- Added `QUICK_REFERENCE.md` - Quick user guide
+- Custom pricing system (CustomerPricing model + PricingService)
+- Manager role system (is_manager, approval_limit, managed_technicians M2M)
+- Performance tracking fields (repairs_completed, average_repair_time, customer_rating)
+- Manager override UI with audit trail
 
 ---
 
 ## [1.2.0] - August 23, 2025
 
 ### Added
-- **Automated Backup System**: Daily backups to S3
-  - Database backups at 2:00 AM UTC
-  - Media file backups
-  - 30-day retention
-  - Storage: S3 bucket `rs-systems-backups-20250823`
-- **Backup Management Commands**: Manual backup triggers
-- **Recovery Procedures**: Documented full system recovery
-
-### Security
-- **Enhanced Login Attempt Tracking**: IP and user agent logging
-- **Security Audit Command**: `python manage.py security_audit`
-  - Checks for suspicious users
-  - Identifies attack patterns
-  - Optional cleanup of bot accounts
+- Automated backup system (daily S3 backups, 30-day retention)
+- Security audit command
 
 ---
 
 ## [1.1.0] - August 2025
 
 ### Added
-- **Photo Upload System**: Customer damage photo upload
-  - Mobile camera support
-  - AWS S3 integration for production
-  - Local media storage for development
-  - Photo validation (type, size, integrity)
-  - Before/after photo display in portals
-
-- **Security Enhancements**:
-  - Rate limiting on login (10 attempts/hour per IP)
-  - Registration rate limiting (5/hour per IP)
-  - Bot protection with honeypot fields
-  - Username validation (blocks suspicious patterns)
-  - Security headers (CSP, HSTS, X-Frame-Options)
-
-### Changed
-- **Forms**: Added `enctype="multipart/form-data"` for photo uploads
-- **Models**: Added photo fields to Repair model
-- **Settings**: AWS S3 configuration for production media storage
-
-### Fixed
-- Form validation error handling
-- Mobile responsiveness for photo uploads
-- File upload size limits
+- Photo upload system (S3 integration, before/after photos)
+- Security: rate limiting, bot protection, honeypot fields, security headers
 
 ---
 
 ## [1.0.0] - July 2025
 
 ### Added
-- **Customer Portal**: Self-service portal for fleet managers
-  - Repair request submission
-  - Status tracking
-  - Approval workflow
-  - Interactive analytics (D3.js visualizations)
-  - Repair history viewing
-
-- **Technician Portal**: Repair management interface
-  - Queue-based repair workflow (REQUESTED → PENDING → APPROVED → IN_PROGRESS → COMPLETED)
-  - Smart pricing based on unit repair frequency ($50 → $25 scale)
-  - Customer and unit management
-  - Photo documentation viewing
-  - Reward fulfillment
-
-- **Rewards & Referrals System**:
-  - Referral code generation
-  - Point-based rewards (500 points per referral)
-  - Flexible redemption options (percentage discounts, fixed amounts, free services)
-  - Automatic reward application to repairs
-
-- **Admin Interface**:
-  - User management
-  - Repair oversight
-  - Reward configuration
-  - System analytics
-
-- **Authentication**:
-  - Portal separation (customer/technician/admin)
-  - Role-based permissions
-  - Django group-based access control
-
-- **API**:
-  - RESTful API with Django REST Framework
-  - Token authentication
-  - Interactive Swagger documentation
-  - Comprehensive endpoints for repairs, customers, rewards
-
-### Infrastructure
-- **Database**: PostgreSQL (production), SQLite (development)
-- **Static Files**: WhiteNoise serving
-- **Deployment**: AWS Elastic Beanstalk support
-- **WSGI Server**: Gunicorn for production
+- Customer Portal (repair requests, status tracking, approval workflow, D3.js analytics)
+- Technician Portal (queue workflow, smart pricing, photo documentation, rewards)
+- Rewards & Referrals System (referral codes, points, flexible redemption)
+- Admin interface, authentication, RESTful API with Swagger docs
+- Infrastructure: PostgreSQL, WhiteNoise, AWS Elastic Beanstalk, Gunicorn
 
 ---
 
@@ -911,123 +253,23 @@ All notable changes to the RS Systems windshield repair management platform.
 
 | Version | Date | Focus | Status |
 |---------|------|-------|--------|
-| 1.6.1 | Oct 29, 2025 | Admin Lot Walking Configuration | ✅ Complete |
-| 1.6.0 | Oct 29, 2025 | Image Upload Enhancements | ✅ Complete |
-| 1.5.0 | Oct 25, 2025 | UI/UX Redesign & Lot Walking | ✅ Complete |
-| 1.4.0 | Oct 21, 2025 | Critical Security Fixes & Workflow | ✅ Deployed |
-| 1.3.0 | Sep 28, 2025 | Sprint 1: Pricing & Roles | ✅ Complete |
+| 2.2.0 | Feb 1, 2026 | Invoice Portals & Payments | ✅ Complete |
+| 2.1.0 | Jan 31, 2026 | Billing & Invoicing System | ✅ Complete |
+| 2.0.0 | Jan 30, 2026 | Unified Permissions & Templates | ✅ Complete |
+| 1.7.0 | Nov 18, 2025 | Manager Settings Portal | ✅ Complete |
+| 1.6.3 | Nov 3, 2025 | Storage & Data Management | ✅ Complete |
+| 1.6.2 | Oct 30, 2025 | Backup & Data Protection | ✅ Complete |
+| 1.6.1 | Oct 29, 2025 | Admin Lot Walking Config | ✅ Complete |
+| 1.6.0 | Oct 29, 2025 | Image Upload (HEIC) | ✅ Complete |
+| 1.5.0 | Oct 25, 2025 | UI/UX Redesign | ✅ Complete |
+| 1.4.0 | Oct 21, 2025 | Security Fixes & Workflow | ✅ Deployed |
+| 1.3.0 | Sep 28, 2025 | Pricing & Roles | ✅ Complete |
 | 1.2.0 | Aug 23, 2025 | Backup & Security | ✅ Complete |
 | 1.1.0 | Aug 2025 | Photos & Security | ✅ Complete |
 | 1.0.0 | Jul 2025 | Initial Release | ✅ Complete |
 
 ---
 
-## Upcoming Features
-
-### Sprint 2: Customer Management & Workflow (Planned)
-- Fleet management customer settings
-- Simplified single approval workflow
-- Lot walking implementation with auto-approval
-- Batch invoicing
-
-### Sprint 3: Notification System (Planned)
-- Email notifications for all repair events
-- SMS notifications (Twilio/AWS SNS)
-- Webhook system for integrations
-- Notification frequency settings
-
-### Sprint 4: Mobile & UX Features (Planned)
-- Progressive Web App (PWA) with offline mode
-- Mobile camera capture enhancements
-- GPS location tracking
-- Voice notes capability
-- Digital signature capture
-
----
-
-## Migration Guide
-
-### Upgrading to 1.4.0
-
-**Before Deployment:**
-```bash
-# 1. Backup database
-pg_dump -h $DB_HOST -U $DB_USER -d $DB_NAME > pre_upgrade_backup.sql
-
-# 2. Review changes
-git diff v1.3.0..v1.4.0
-
-# 3. Check for breaking changes
-# None - this is a backward-compatible update
-```
-
-**Deployment Steps:**
-```bash
-# 1. Deploy application
-eb deploy
-
-# 2. Run migrations
-eb ssh
-cd /var/app/current
-source /var/app/venv/*/bin/activate
-python manage.py migrate
-
-# 3. Verify critical fixes
-# Test customer approval workflow
-# Test manager assignment
-# Verify security enforcement
-```
-
-**Post-Deployment:**
-- Configure customer repair preferences via admin
-- Test approval workflows with real users
-- Monitor security audit logs
-- Verify notification links work
-
----
-
-## Breaking Changes
-
-### Version 1.4.0
-- **None**: Fully backward compatible
-
-### Version 1.3.0
-- **Repair Pricing**: Now uses pricing service; custom modifications to pricing logic may need updates
-- **Manager Permissions**: New permission checks; ensure managers have correct flags set
-
-### Version 1.1.0
-- **Media Files**: S3 configuration required for production photo uploads
-
----
-
-## Deprecation Notices
-
-### Current
-- No features currently deprecated
-
-### Future
-- **SQLite for Production**: Will be deprecated in future versions (PostgreSQL recommended)
-- **Legacy Login URLs** (`/accounts/login/`, `/login/`): Will redirect to portal selection indefinitely but may be removed in v2.0.0
-
----
-
-## Contributors
-
-- Development Team
-- Security Team
-- QA Testing Team
-
----
-
-## Resources
-
-- **Documentation**: `/docs` directory
-- **Issue Tracker**: GitHub Issues
-- **Security**: `docs/security/INCIDENT_RESPONSE.md`
-- **Deployment**: `docs/deployment/AWS_DEPLOYMENT.md`
-
----
-
-**Latest Version**: 1.6.1
-**Last Updated**: October 29, 2025
+**Latest Version**: 2.2.0
+**Last Updated**: February 1, 2026
 **Status**: Production Ready ✅

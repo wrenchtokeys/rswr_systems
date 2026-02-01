@@ -1,308 +1,114 @@
-# Future Features & Next Steps - RS Systems
+# Future Features — RS Systems
 
-**Last Updated**: October 21, 2025
-**Purpose**: Track planned features for future implementation
-
----
-
-## ✅ RECENTLY COMPLETED
-
-### Customer Settings UI & Repair Preferences ✅ COMPLETED October 25, 2025
-**What**: Improved account settings page with repair preference controls and lot walking configuration
-**Status**: ✅ Implemented and tested (Customer-facing preferences UI only)
-**Completed**: October 25, 2025
-**Note**: This is the customer-facing configuration UI where customers set their lot walking preferences. The technician-side scheduling system that USES these preferences is a separate future feature (see below).
-
-**What Was Delivered**:
-1. ✅ Redesigned `templates/customer_portal/account_settings.html` with modern tabbed interface:
-   - Tab 1: Personal Info (first name, last name, email)
-   - Tab 2: Repair Preferences (NEW - configure approval workflow + lot walking)
-   - Tab 3: Security (password change)
-
-2. ✅ Updated `apps/customer_portal/views.py` account_settings view:
-   - Implemented get_or_create pattern for CustomerRepairPreference
-   - Added RepairPreferenceForm handling
-   - Integrated form validation and saving
-
-3. ✅ Created `apps/customer_portal/forms.py`:
-   - RepairPreferenceForm with ModelForm pattern
-   - Custom handling for JSONField (lot walking days)
-   - Dynamic field visibility with JavaScript
-
-4. ✅ Extended `CustomerRepairPreference` model with lot walking fields:
-   - `lot_walking_enabled` - Enable/disable scheduled lot walking
-   - `lot_walking_frequency` - Weekly, Bi-weekly, Monthly, Quarterly
-   - `lot_walking_time` - Preferred time for lot walking
-   - `lot_walking_days` - Selected days of week (JSONField)
-
-**Repair Preference Features**:
-- AUTO_APPROVE: Auto-approve all field repairs
-- REQUIRE_APPROVAL: Customer approves each repair
-- UNIT_THRESHOLD: Auto-approve up to X units per visit (with configurable threshold)
-
-**Lot Walking Features**:
-- Enable/disable lot walking service
-- Set frequency (Weekly/Bi-weekly/Monthly/Quarterly)
-- Specify preferred time
-- Select preferred days of the week
-- All settings stored in CustomerRepairPreference model
-
-**Files Modified**:
-- `apps/customer_portal/models.py` - Added lot walking fields to CustomerRepairPreference
-- `apps/customer_portal/forms.py` - NEW: Created RepairPreferenceForm
-- `apps/customer_portal/views.py` - Updated account_settings view with form handling
-- `templates/customer_portal/account_settings.html` - Complete redesign with tabs
-
-**Migration**: `0005_customerrepairpreference_lot_walking_days_and_more`
+**Last Updated**: February 1, 2026
+**Purpose**: Track what's planned vs. what's done
 
 ---
 
-## 🎯 IMMEDIATE NEXT STEPS (Start Here Next Session)
+## ✅ Recently Completed (Oct 2025 – Feb 2026)
 
-### Lot Walking Scheduler Implementation (Technician-Side)
-**Effort**: 4-5 days
-**Priority**: HIGH - Customer UI is complete, need backend scheduling
-**Status**:
-- ✅ Customer preferences UI complete (customers can configure settings)
-- ❌ Scheduling system not implemented (preferences are stored but not used)
-- ❌ Technician interface not implemented
+### Billing & Payments (Jan 2026)
+- ✅ Invoice automation — PDF generation, auto-invoice on repair completion
+- ✅ Stripe integration — Payment Links, Checkout Sessions, webhooks
+- ✅ Customer portal invoice pages (list, detail, Pay Now)
+- ✅ Owner invoice dashboard with manual payment recording
+- ✅ Tech on-site payment collection from repair detail
+- ✅ Payment confirmation emails (customer receipt + owner notification)
+- ✅ BillingConfig (company address, payment terms, invoice defaults)
 
-**Current State**:
-- `apps/scheduling/` app exists but ALL files are empty (0 lines of code)
-- `CustomerRepairPreference` model stores: `lot_walking_enabled`, `lot_walking_frequency`, `lot_walking_time`, `lot_walking_days`
-- Data is saved to database but no code reads/uses these preferences yet
+### Architecture (Jan 2026)
+- ✅ Unified permission system (`common/auth.py`, `@requires()` decorator)
+- ✅ One base template (`base_app.html`) for all shop staff
+- ✅ Signup/onboarding fix (auto-Technician profile, simplified wizard)
+- ✅ Settings refactor (base/development/production package)
 
-**What Needs Implementation**:
+### SaaS Multi-Tenant (Jan 2026)
+- ✅ Tenants app (Tenant, TenantMembership, SubscriptionPlan models)
+- ✅ Signup flow + onboarding wizard
+- ✅ Owner portal with billing page
 
-**1. Scheduling App Models** (`apps/scheduling/models.py` - currently empty):
-```python
-class LotWalkSchedule(models.Model):
-    customer = models.ForeignKey(Customer)
-    technician = models.ForeignKey(Technician)
-    scheduled_date = models.DateField()
-    scheduled_time = models.TimeField()
-    frequency = models.CharField()  # Mirrors customer preference
-    status = models.CharField(choices=['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
-    created_from_preference = models.BooleanField(default=True)
-    notes = models.TextField()
+### Manager Settings (Nov 2025)
+- ✅ Viscosity rules management (CRUD, auto-priority, AJAX)
+- ✅ Team overview dashboard (per-tech stats, completion rates)
 
-class LotWalkRoute(models.Model):
-    schedule = models.ForeignKey(LotWalkSchedule)
-    customer_order = models.IntegerField()  # Route sequence
-    estimated_duration = models.DurationField()
-    actual_start_time = models.DateTimeField()
-    actual_end_time = models.DateTimeField()
-```
+### Notifications (Oct 2025)
+- ✅ Email + SMS notification system (SendGrid)
+- ✅ Repair status change notifications
+- ✅ Assignment and approval alerts
 
-**2. Schedule Generation Service** (`apps/scheduling/services.py` - currently empty):
-```python
-class LotWalkScheduler:
-    def generate_schedules_from_preferences():
-        # Read all CustomerRepairPreference with lot_walking_enabled=True
-        # For each preference:
-        #   - Calculate next schedule date based on frequency
-        #   - Match to available days (lot_walking_days)
-        #   - Create LotWalkSchedule records
-        #   - Assign to available technicians
+### Rewards & Referrals
+- ✅ Referral codes, point-based rewards, flexible redemption
 
-    def assign_technician_to_schedule():
-        # Smart assignment based on:
-        #   - Technician availability (working_hours)
-        #   - Geographic proximity
-        #   - Current workload
-        #   - Customer preferred_technicians
-```
-
-**3. Technician Calendar View** (new):
-- File: `templates/technician_portal/lot_walk_calendar.html`
-- View: `apps/scheduling/views.py` (currently empty)
-- Features:
-  - Calendar display (day/week/month views)
-  - Show scheduled lot walks with customer names
-  - Click to see lot walk details
-  - Mark as started/completed
-  - Add ad-hoc lot walks
-
-**4. Mobile Lot Walking Interface**:
-- Route list for technicians (ordered by location)
-- GPS integration for navigation
-- Quick repair creation during lot walk (auto-tags as lot walk repair)
-- Checklist of customers on route
-- Mark each customer inspection complete
-- Summary report generation
-
-**5. Notification System**:
-- Technician: "You have a lot walk scheduled for [Customer] tomorrow at [Time]"
-- Technician: Morning reminder on day of lot walk
-- Customer: "Technician [Name] is starting your lot walk"
-- Customer: "Lot walk complete - [X] repairs found" (with approval links if needed)
-
-**6. Management Commands** (for automation):
-```bash
-python manage.py generate_lot_walk_schedules  # Run daily via cron
-python manage.py send_lot_walk_reminders      # Run in morning
-```
-
-**7. Integration with Existing Repair Workflow**:
-- When technician creates repair during lot walk, tag with lot_walk_schedule_id
-- Apply customer's field_repair_approval_mode automatically
-- Group repairs from same lot walk visit for reporting
-- Link repairs to lot walk schedule for tracking
-
-**Files to Create/Modify**:
-- `apps/scheduling/models.py` (currently 0 lines) - Add Schedule models
-- `apps/scheduling/services.py` (currently 0 lines) - Add scheduler service
-- `apps/scheduling/views.py` (currently 0 lines) - Add calendar views
-- `apps/scheduling/urls.py` (currently 0 lines) - Add URL routes
-- `templates/technician_portal/lot_walk_calendar.html` - NEW
-- `templates/technician_portal/lot_walk_route.html` - NEW
-- `core/management/commands/generate_lot_walk_schedules.py` - NEW
-- `core/management/commands/send_lot_walk_reminders.py` - NEW
-
-**Testing Checklist**:
-- [ ] Customer preferences automatically generate schedules
-- [ ] Schedules respect customer's selected days/times
-- [ ] Technicians see schedules in calendar view
-- [ ] Technicians receive notifications before lot walks
-- [ ] Repairs created during lot walk are properly tagged
-- [ ] Lot walk completion updates schedule status
-- [ ] Route optimization works for multiple customers
-
-**Dependencies**:
-- ✅ CustomerRepairPreference model (complete)
-- ❌ Scheduling app buildout (empty)
-- ❌ Enhanced notification system
-- ❌ Mobile interface improvements
+### Customer Settings (Oct 2025)
+- ✅ Account settings redesign (Tailwind, card-based, tabbed)
+- ✅ Lot walking preference UI (frequency, days, time)
+- ✅ Repair preferences (auto-approve, require approval, threshold)
 
 ---
 
-## 🚀 READY TO IMPLEMENT (After Settings UI)
+## 🔜 Planned — Near-term
 
-### 1. Fleet Management Customer Settings
-**Effort**: 1-2 days
+### Sales Tax by Zip Code (Billing Phase 8)
+Auto-calculate Arkansas state + local tax at invoice creation. `tax_enabled` toggle (default off), per-customer `tax_exempt` flag. ~8-12 hours.
+→ See [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-8-sales-tax-by-zip-code)
 
-Add fields to Customer model (`core/models.py`):
-```python
-fleet_size = models.IntegerField(default=0)
-service_mode = models.CharField(choices=['SCHEDULED', 'ON_CALL', 'HYBRID'])
-payment_terms = models.CharField(choices=['NET_30', 'NET_60', 'PREPAID'])
-preferred_technicians = models.ManyToManyField('technician_portal.Technician')
-```
+### Batch Invoicing Automation (Phase 6)
+Weekly/monthly consolidated invoices for `batch` preference customers. Management command: `process_batch_invoices`. ~12 hours.
 
-### 2. Batch Operations for Repairs
-**Effort**: 3-4 days
+### Reminder System UI
+Owner clicks "Send Reminder" on overdue invoices. Auto-reminder schedule (7/14/30 days). Reminder count tracked per invoice.
 
-Features:
-- Multi-select checkboxes on repair lists
-- Bulk assign repairs to technician
-- Group status updates
-- Batch actions with confirmation dialogs
+### Tech Portal Payment Badge
+Show invoice status badge on repair list and repair detail for invoiced repairs.
 
-Files to create:
-- `apps/technician_portal/services/batch_service.py`
-- `static/js/batch_operations.js`
+### Aging Reports
+Accounts receivable aging: current, 30, 60, 90+ days. CSV export. Key business health metric.
 
-### 3. Advanced Repair Filtering
-**Effort**: 1-2 days
+### Statement of Account
+Per-customer statement showing all invoices and payments. Monthly or on-demand, emailable.
 
-Add filters to repair lists:
-- Date range picker
-- Status multi-select
-- Customer/technician filter
-- Unit number search
-- Cost range
-
-Consider using django-filter package.
+### QR Code on Invoice PDF
+Scan-to-pay: QR code linking to Stripe checkout, printed on PDF invoices.
 
 ---
 
-## 📧 EMAIL NOTIFICATION SYSTEM (Deferred)
+## 📋 Planned — Medium-term
 
-**Status**: No email infrastructure configured yet
-**Dependencies**: SendGrid or AWS SES account
-
-Features needed:
-- Email on repair status changes
-- Approval request notifications
-- Daily/weekly digest emails
-- User notification preferences
-
-Environment variables needed:
-```bash
-EMAIL_HOST=smtp.sendgrid.net
-EMAIL_HOST_USER=apikey
-EMAIL_HOST_PASSWORD=your_key
-```
-
----
-
-## 💰 INVOICING & BILLING (Deferred)
-
-**Status**: Not in current codebase
-**Priority**: High for business operations
-**Effort**: 3-4 weeks
-
-Features:
-- Auto-generate invoices on repair completion
-- Batch invoicing (multiple repairs → one invoice)
-- PDF download (use WeasyPrint or ReportLab)
-- Payment status tracking
-- Optional: Stripe/Square integration
-
-Models to create:
-- Invoice (invoice_number, customer, total, status, due_date)
-- InvoiceLineItem (invoice, repair, description, amount)
-
----
-
-## 📊 ANALYTICS DASHBOARD (Deferred)
-
-Features:
-- Technician performance metrics
-- Revenue analysis by customer/technician/month
-- Repair pattern trends
-- Export to CSV/Excel
-
----
-
-## 📱 MOBILE PWA FEATURES (Deferred)
-
-Features:
+### Mobile Optimization / PWA
 - Offline mode with service workers
-- Camera capture for repair photos
+- Touch-friendly repair logging for techs in the field
+- Camera capture enhancements
 - GPS location tracking
-- Voice notes
-- Digital signatures
 - Push notifications
 
----
+### Lot Walking Scheduler (Backend)
+The customer preference UI exists — scheduling backend doesn't. Needs:
+- `LotWalkSchedule` + `LotWalkRoute` models
+- Schedule generation from customer preferences
+- Technician calendar view
+- Route optimization
+- `generate_lot_walk_schedules` management command
 
-## 🔮 ADVANCED FEATURES (Long-term)
+### Owner-Native Pages
+Dedicated owner pages at `/customers/` and `/repairs/` extending `base_app.html` natively instead of wrapping tech portal views.
 
-- **Smart Assignment**: Auto-assign repairs based on workload, distance, skills
-- **Predictive Maintenance**: Analyze patterns, predict failures
-- **Quality Assurance**: Photo verification, customer surveys, warranty tracking
-- **API Integrations**: Webhooks, third-party system integrations
-
----
-
-## 📝 SUGGESTED PRIORITY ORDER
-
-1. Customer Settings UI (immediate next step)
-2. Batch Operations
-3. Advanced Filtering
-4. Fleet Management Settings
-5. Invoicing System
-6. Email Notifications
-7. Analytics Dashboard
-8. Mobile PWA
-9. Smart Assignment
-10. Predictive Maintenance
+### SaaS Subscription Billing
+Wire SubscriptionPlan to Stripe Products/Prices. Checkout flow, subscription webhooks, usage enforcement, trial expiration. See [Billing Roadmap Phase 7](/BILLING_ROADMAP.md#phase-7-saas-subscription-billing-glass-shops).
 
 ---
 
-## 📚 Related Documentation
+## 🔮 Planned — Long-term
 
-- `docs/development/WORKFLOW_IMPLEMENTATION.md` - Sprint tracking
-- `docs/development/CHANGELOG.md` - Version history
-- `docs/deployment/AWS_DEPLOYMENT.md` - Deployment guide
+- **AI/ML Damage Assessment**: "Can this be repaired?" classifier from customer photos
+- **QuickBooks Integration**: Export invoices to QBO (may not be needed if Stripe handles everything)
+- **Advanced Analytics**: Revenue analysis, repair trends, technician performance
+- **Smart Technician Assignment**: Auto-assign based on workload, distance, skills
+- **Voice Notes + Digital Signatures**: For field technicians
+- **Webhook System**: Third-party integrations
+
+---
+
+## 🔗 Related
+- [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) — Detailed billing phases
+- [`docs/development/CHANGELOG.md`](CHANGELOG.md) — Version history
+- [`docs/AMELIA_ROADMAP.md`](../AMELIA_ROADMAP.md) — High-level roadmap

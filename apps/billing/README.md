@@ -1,247 +1,150 @@
 # Billing App - RS Systems
 
-**Author:** Amelia (Clawdbot AI)  
-**Version:** 0.5.0  
-**Created:** January 27-28, 2026
+**Author:** Amelia (Clawdbot AI)
+**Version:** 2.2.0
+**Last Updated:** February 1, 2026
 
 ## Overview
 
-The billing app provides comprehensive invoice management, payment tracking, and business intelligence for RS Systems. It's designed to prevent double-billing, track payments (both online and manual), and provide actionable insights.
+The billing app provides invoice management, payment tracking, and business intelligence for RS Systems. Designed to prevent double-billing, track payments (online and manual), and provide actionable insights.
 
-### Key Architecture Decision
+### Architecture Decision
 
 **Our database is the single source of truth for invoices.**
 
-Stripe is a payment channel — NOT a second invoicing system. We use Stripe Payment Links and Checkout Sessions to accept online payments. We do NOT create Stripe Invoices (which would duplicate our data).
+Stripe is a payment channel — NOT a second invoicing system. We use Stripe Payment Links and Checkout Sessions. We do NOT create Stripe Invoices.
 
 ```
 Our Invoice (DB) ← Source of truth for ALL billing
     │
-    ├── Check payment    → manually recorded
-    ├── Cash payment     → manually recorded
-    ├── Wire payment     → manually recorded
+    ├── Check payment    → manually recorded (owner or tech)
+    ├── Cash payment     → manually recorded (owner or tech)
+    ├── Wire/ACH payment → manually recorded (owner)
     └── Stripe payment   → Payment Link → webhook → auto-recorded
-```
-
-This means customers who pay by check, cash, or wire are tracked in the same system as online payments. No data duplication.
-
-## Architecture
-
-```
-apps/billing/
-├── models.py                    # Invoice, InvoiceLineItem, Payment
-├── admin.py                     # Django admin interfaces
-├── signals.py                   # Auto-invoice on repair completion
-├── services/
-│   ├── invoice_service.py       # PDF generation (from clawdbot)
-│   ├── invoice_email_service.py # Email invoices with photos
-│   ├── auto_invoice_service.py  # Auto-generate on repair completion
-│   ├── invoice_tracking_service.py # Tracking, double-billing prevention
-│   ├── dashboard_service.py     # Business metrics and insights
-│   ├── report_service.py        # Daily/weekly reports
-│   ├── reminder_service.py      # Payment reminders
-│   └── stripe_service.py        # Stripe integration
-└── migrations/
 ```
 
 ## Models
 
 ### Invoice
-Tracks invoices with full lifecycle management.
+Full lifecycle: DRAFT → SENT → PAID/PARTIAL/OVERDUE/CANCELLED
 
-```python
-Invoice:
-  - invoice_number (unique)
-  - customer (FK to Customer)
-  - invoice_date, due_date
-  - subtotal, discount, total, amount_paid
-  - status: DRAFT → SENT → PAID/PARTIAL/OVERDUE/CANCELLED
-  - s3_key (PDF storage location)
-  - stripe_invoice_id, stripe_hosted_url, stripe_payment_intent_id
-  - sent_at, paid_at
-  - notes, internal_notes
-```
+Key fields: `invoice_number`, `customer`, `due_date`, `subtotal`, `discount`, `total`, `amount_paid`, `status`, `s3_key` (PDF), `stripe_hosted_url`, `payment_terms`
 
 ### InvoiceLineItem
-Links repairs to invoices - this is how we prevent double-billing.
-
-```python
-InvoiceLineItem:
-  - invoice (FK)
-  - repair (FK to Repair) ← THE KEY RELATIONSHIP
-  - description, quantity, unit_price, discount, amount
-  - repair_date, unit_number
-```
+Links repairs to invoices — prevents double-billing. Each repair can only appear on one active invoice.
 
 ### Payment
-Tracks all payments with multiple method support.
+Supports: STRIPE, CHECK, CASH, WIRE, ACH, OTHER. Tracks `reference_number`, `recorded_by`, `stripe_payment_id`.
 
-```python
-Payment:
-  - invoice (FK)
-  - amount, payment_date
-  - payment_method: STRIPE, CHECK, CASH, WIRE, ACH, OTHER
-  - reference_number, stripe_payment_id
-  - recorded_by (User FK)
-```
+### BillingConfig (Singleton)
+Company address, default payment terms, invoice prefix/footer. Managed via Admin > Billing > Billing Configuration.
+
+## Services
+
+| Service | Purpose |
+|---------|---------|
+| `invoice_service.py` | PDF generation with ReportLab |
+| `auto_invoice_service.py` | Auto-generate on repair completion (signal-driven) |
+| `stripe_service.py` | Payment Links, Checkout Sessions, webhook handling |
+| `invoice_email_service.py` | Email invoices with PDF + repair photos |
+| `invoice_tracking_service.py` | Double-billing prevention, status tracking |
+| `dashboard_service.py` | Business metrics and insights |
+| `report_service.py` | Daily/weekly reports |
+| `reminder_service.py` | Payment reminders (backend ready, UI pending) |
+
+## Endpoints
+
+### Billing API (`/api/billing/`)
+
+**Dashboard & Reports:**
+- `GET /dashboard/` — Full business dashboard
+- `GET /reports/daily/` — Daily report (`?date=2026-01-28`)
+- `GET /reports/weekly/` — Weekly report (`?week_start=2026-01-20`)
+
+**Invoice CRUD:**
+- `GET /invoices/` — List all (`?status=OVERDUE`, `?outstanding=true`)
+- `POST /invoices/create/<customer_id>/` — Create invoice
+- `GET /invoices/<id>/` — Invoice detail
+- `POST /invoices/<id>/payment/` — Record payment
+- `POST /invoices/<id>/cancel/` — Cancel invoice
+
+**Customer Data:**
+- `GET /customers/<id>/uninvoiced/` — Repairs ready to invoice
+- `GET /customers/<id>/balance/` — Customer balance
+- `GET /customers/<id>/preferences/` — Invoice preferences
+- `POST /customers/<id>/preferences/update/` — Update preferences
+
+**Stripe:**
+- `GET /stripe/status/` — Check Stripe configuration
+- `POST /stripe/checkout/<id>/` — Create Checkout Session
+- `GET /stripe/payment-link/<id>/` — Get Payment Link URL
+- `POST /stripe/webhook/` — Handle Stripe webhooks
+
+**Reminders:**
+- `GET /reminders/summary/` — Pending reminder counts
+- `POST /reminders/send/<id>/` — Send reminder for one invoice
+- `POST /reminders/process/` — Process all pending reminders
+
+### Portal Endpoints (not in this app but use billing data)
+
+**Customer Portal (`/app/`):**
+- `GET /app/invoices/` — Customer invoice list
+- `GET /app/invoices/<id>/` — Invoice detail with payment history
+- `POST /app/invoices/<id>/pay/` — Initiate Stripe checkout
+
+**Owner Portal (`/owner/`):**
+- `GET /owner/invoices/` — Invoice dashboard with summary cards
+- `GET /owner/invoices/<id>/` — Detail + manual payment form
+
+**Technician Portal (`/tech/`):**
+- `POST /tech/repairs/<id>/collect-payment/` — Record on-site payment
+
+**Stripe Landing Pages (root URLs):**
+- `/payment-complete` — Success page after Stripe payment
+- `/payment-cancelled` — Cancellation return page
 
 ## Key Features
 
-### Double-Billing Prevention
-
-When creating an invoice, we check if any repairs are already on active invoices:
-
-```python
-# In invoice_tracking_service.py
-for repair in repairs:
-    if repair.invoice_line_items.filter(
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
-    ).exists():
-        raise ValueError(f"Repair {repair.id} already invoiced")
-```
-
 ### Auto-Invoice on Completion
+Signal in `signals.py` fires when repair status → COMPLETED. For `per_ticket` preference customers, generates PDF, saves to S3, emails customer with Stripe pay link.
 
-When a repair is marked COMPLETED, a Django signal fires:
+### Double-Billing Prevention
+`invoice_tracking_service.py` checks if any repair is already on an active invoice before creating a new one.
 
-```python
-# In signals.py
-@receiver(post_save, sender='technician_portal.Repair')
-def handle_repair_completed(sender, instance, **kwargs):
-    if instance.queue_status == 'COMPLETED':
-        # Check customer preference
-        if prefs.invoice_preference == 'per_ticket':
-            auto_invoice_service.generate_and_save(instance)
-```
+### Payment Confirmation Emails
+On any payment (Stripe webhook or manual recording):
+- Customer: branded HTML receipt with amount, method, remaining balance
+- Owner: plain text notification with amount + customer + status
+- Partial payments include "Pay Remaining Balance" button with Stripe link
 
-### Customer Invoice Preferences
-
-Set per-customer in `CustomerRepairPreference`:
-
-| Preference | Behavior |
-|------------|----------|
-| `per_ticket` | Auto-generate invoice when each repair completes |
-| `batch` | Group repairs, manual invoice generation |
-| `manual` | Never auto-generate |
-
-## API Endpoints
-
-All endpoints are under `/clawdbot/`:
-
-### Dashboard & Reports
-```
-GET /dashboard/                 - Full business dashboard
-GET /reports/daily/             - Daily report
-GET /reports/daily/?date=2026-01-28
-GET /reports/weekly/            - Weekly report
-GET /reports/weekly/?week_start=2026-01-20
-```
-
-### Invoice Management
-```
-GET  /billing/invoices/                    - List all invoices
-GET  /billing/invoices/?status=OVERDUE     - Filter by status
-GET  /billing/invoices/?outstanding=true   - Only unpaid
-GET  /billing/invoices/{id}/               - Invoice detail
-POST /billing/invoices/{id}/payment/       - Record payment
-GET  /billing/uninvoiced/{customer_id}/    - Repairs ready to invoice
-GET  /billing/balance/{customer_id}/       - Customer balance
-```
-
-### Stripe Integration
-```
-GET  /stripe/status/                - Check if Stripe configured
-POST /stripe/invoice/{id}/          - Create Stripe invoice
-GET  /stripe/payment-link/{id}/     - Get payment link URL
-POST /stripe/webhook/               - Handle Stripe webhooks
-```
-
-### Reminders
-```
-GET  /reminders/summary/           - Pending reminder counts
-POST /reminders/send/{invoice_id}/ - Send reminder for one invoice
-POST /reminders/process/           - Process all pending reminders
-```
+### Customer Preferences
+Per-customer in `CustomerRepairPreference`:
+- `per_ticket` — Auto-generate invoice per completed repair
+- `batch` — Group repairs, manual generation (Phase 6: auto batch)
+- `manual` — Never auto-generate
 
 ## Configuration
 
-### Environment Variables
-
 ```bash
-# Required for S3 storage
+# Required for S3 (PDF storage)
 AWS_STORAGE_BUCKET_NAME=rs-systems-media-20251029
 
 # Required for Stripe
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# Required for email reminders
+# Required for emails
 SENDGRID_API_KEY=SG....
 ```
 
 ### Stripe Webhook Setup
+1. Stripe Dashboard → Webhooks → Add endpoint
+2. URL: `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
+3. Events: `checkout.session.completed`, `payment_intent.succeeded`
 
-1. In Stripe Dashboard → Webhooks → Add endpoint
-2. URL: `https://yourdomain.com/api/billing/stripe/webhook/`
-3. Events to listen for:
-   - `checkout.session.completed` (customer paid via checkout)
-   - `payment_intent.succeeded` (payment link completed)
-
-**Note:** We do NOT use `invoice.paid` because we don't create Stripe Invoices.
-Our DB is the source of truth — Stripe is just a payment channel.
-
-## Usage Examples
-
-### Record a manual payment
-```bash
-curl -X POST http://localhost:8001/clawdbot/billing/invoices/1/payment/ \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 150, "payment_method": "CHECK", "reference_number": "Check #1234"}'
-```
-
-### Get business dashboard
-```bash
-curl http://localhost:8001/clawdbot/dashboard/
-```
-
-### Create Stripe payment link
-```bash
-curl http://localhost:8001/clawdbot/stripe/payment-link/1/
-# Returns: {"payment_link": "https://buy.stripe.com/..."}
-```
-
-## Cron Jobs
-
-Add these to your crontab for automated processing:
-
-```cron
-# Update overdue invoice statuses daily at midnight
-0 0 * * * curl -X POST http://localhost:8001/clawdbot/reminders/process/
-
-# Alternative: Django management command (TODO: create)
-# 0 0 * * * cd /path/to/rswr_systems && python manage.py process_reminders
-```
-
-## Testing
-
-```bash
-# Run with test database
-LOCAL_DATABASE_URL="postgresql://..." python manage.py test apps.billing
-
-# Manual testing
-python manage.py shell
->>> from apps.billing.services.dashboard_service import DashboardService
->>> service = DashboardService()
->>> dashboard = service.get_full_dashboard()
->>> print(dashboard['revenue'])
-```
-
-## Future Enhancements
-
-- [ ] Invoice PDF templates (custom branding)
-- [ ] Recurring invoices
-- [ ] Credit notes / refunds
-- [ ] Multi-currency support
-- [ ] QuickBooks integration
-- [ ] Automated dunning (escalating reminders)
-- [ ] Customer portal for viewing/paying invoices
+## What's Next
+- Sales tax by zip code (Phase 8)
+- Batch invoicing automation (Phase 6)
+- Reminder UI for owners
+- Aging reports
+- See [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) for full details
