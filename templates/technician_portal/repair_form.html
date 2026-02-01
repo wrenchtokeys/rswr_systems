@@ -556,7 +556,7 @@
                                     required>
                                 <option value="">Select Technician</option>
                                 {% for tech in technicians %}
-                                <option value="{{ tech.id }}" {% if repair and repair.technician_id == tech.id %}selected{% endif %}>{{ tech.user.get_full_name }} ({{ tech.expertise }})</option>
+                                <option value="{{ tech.id }}" {% if repair and repair.technician_id == tech.id %}selected{% endif %}>{{ tech.user.get_full_name }}{% if tech.expertise %} ({{ tech.expertise }}){% endif %}</option>
                                 {% endfor %}
                             </select>
                             <p class="icon-field-helper">
