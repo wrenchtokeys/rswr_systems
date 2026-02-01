@@ -39,7 +39,7 @@ from .forms import (
     ReplacementForm,
 )
 
-from apps.billing.models import Invoice, Payment
+from apps.billing.models import Invoice, Payment, TaxRate, BillingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -1353,3 +1353,162 @@ def owner_record_payment(request, invoice_id):
         messages.error(request, 'An error occurred while recording the payment. Please try again.')
 
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+# ─── Tax Rate Management ─────────────────────────────────────────────
+@owner_or_manager_required
+def owner_tax_rates(request):
+    """GET /owner/tax-rates/ — list and manage tax rates."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    tax_rates = TaxRate.objects.filter(tenant=tenant).order_by('state', 'city')
+
+    # Get tax enabled status
+    try:
+        config = BillingConfig.get_instance()
+        tax_enabled = config.tax_enabled
+    except Exception:
+        tax_enabled = False
+
+    context = {
+        'tax_rates': tax_rates,
+        'tax_enabled': tax_enabled,
+    }
+    return render(request, 'saas/owner_tax_rates.html', context)
+
+
+@owner_or_manager_required
+def owner_add_tax_rate(request):
+    """POST /owner/tax-rates/add/ — add a new tax rate."""
+    if request.method != 'POST':
+        return redirect('owner_tax_rates')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    from decimal import Decimal, InvalidOperation
+
+    city = request.POST.get('city', '').strip()
+    county = request.POST.get('county', '').strip()
+    state = request.POST.get('state', 'AR').strip().upper()
+    zip_code = request.POST.get('zip_code', '').strip()
+
+    if not city:
+        messages.error(request, 'City is required.')
+        return redirect('owner_tax_rates')
+
+    if not state or len(state) != 2:
+        messages.error(request, 'Please enter a valid 2-letter state code.')
+        return redirect('owner_tax_rates')
+
+    try:
+        state_rate = Decimal(request.POST.get('state_rate', '0'))
+        county_rate = Decimal(request.POST.get('county_rate', '0'))
+        city_rate = Decimal(request.POST.get('city_rate', '0'))
+        special_rate = Decimal(request.POST.get('special_rate', '0'))
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Invalid rate value. Enter numbers only.')
+        return redirect('owner_tax_rates')
+
+    # Check for duplicates
+    if TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).exists():
+        messages.error(request, f'A tax rate for {city}, {state} already exists.')
+        return redirect('owner_tax_rates')
+
+    TaxRate.objects.create(
+        tenant=tenant,
+        city=city,
+        county=county,
+        state=state,
+        zip_code=zip_code,
+        state_rate=state_rate,
+        county_rate=county_rate,
+        city_rate=city_rate,
+        special_rate=special_rate,
+    )
+
+    total = state_rate + county_rate + city_rate + special_rate
+    messages.success(request, f'Tax rate added: {city}, {state} — {total}%')
+    return redirect('owner_tax_rates')
+
+
+@owner_or_manager_required
+def owner_edit_tax_rate(request, rate_id):
+    """POST /owner/tax-rates/<id>/edit/ — update a tax rate."""
+    if request.method != 'POST':
+        return redirect('owner_tax_rates')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('signup')
+
+    rate = get_object_or_404(TaxRate, id=rate_id, tenant=tenant)
+
+    from decimal import Decimal, InvalidOperation
+
+    city = request.POST.get('city', '').strip()
+    state = request.POST.get('state', '').strip().upper()
+
+    if city:
+        rate.city = city
+    if state and len(state) == 2:
+        rate.state = state
+    rate.county = request.POST.get('county', rate.county).strip()
+    rate.zip_code = request.POST.get('zip_code', rate.zip_code).strip()
+
+    try:
+        rate.state_rate = Decimal(request.POST.get('state_rate', rate.state_rate))
+        rate.county_rate = Decimal(request.POST.get('county_rate', rate.county_rate))
+        rate.city_rate = Decimal(request.POST.get('city_rate', rate.city_rate))
+        rate.special_rate = Decimal(request.POST.get('special_rate', rate.special_rate))
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Invalid rate value.')
+        return redirect('owner_tax_rates')
+
+    rate.save()  # total auto-calculates
+    messages.success(request, f'Tax rate updated: {rate.city}, {rate.state} — {rate.total_rate}%')
+    return redirect('owner_tax_rates')
+
+
+@owner_or_manager_required
+def owner_delete_tax_rate(request, rate_id):
+    """POST /owner/tax-rates/<id>/delete/ — remove a tax rate."""
+    if request.method != 'POST':
+        return redirect('owner_tax_rates')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('signup')
+
+    rate = get_object_or_404(TaxRate, id=rate_id, tenant=tenant)
+    city_state = f'{rate.city}, {rate.state}'
+    rate.delete()
+    messages.success(request, f'Tax rate removed: {city_state}')
+    return redirect('owner_tax_rates')
+
+
+@owner_or_manager_required
+def owner_toggle_tax(request):
+    """POST /owner/tax-rates/toggle/ — enable/disable tax globally."""
+    if request.method != 'POST':
+        return redirect('owner_tax_rates')
+
+    try:
+        config = BillingConfig.get_instance()
+        config.tax_enabled = not config.tax_enabled
+        config.save()
+        from django.core.cache import cache
+        cache.delete('billing_config_tax')
+        
+        status = 'enabled' if config.tax_enabled else 'disabled'
+        messages.success(request, f'Sales tax calculation {status}.')
+    except Exception as e:
+        logger.error(f"Error toggling tax: {e}")
+        messages.error(request, 'Could not update tax setting.')
+
+    return redirect('owner_tax_rates')

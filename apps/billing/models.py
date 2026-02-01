@@ -488,9 +488,20 @@ class Payment(models.Model):
 
 class TaxRate(models.Model):
     """
-    Sales tax rates by city/county in Arkansas.
-    Loaded from state-published rate files. Lookup by city+state or zip.
+    Sales tax rates by location. Shop owners add rates for areas they serve.
+    Lookup by city+state when calculating invoice tax.
+    
+    Total rate auto-calculates from component rates on save.
     """
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='tax_rates',
+        null=True,
+        blank=True,
+    )
+    
     city = models.CharField(max_length=100, db_index=True)
     county = models.CharField(max_length=100, blank=True, db_index=True)
     state = models.CharField(max_length=2, default='AR', db_index=True)
@@ -503,11 +514,15 @@ class TaxRate(models.Model):
     special_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
     total_rate = models.DecimalField(
         max_digits=5, decimal_places=3, db_index=True,
-        help_text="Combined total rate (state + county + city + special)"
+        default=Decimal('0.000'),
+        help_text="Auto-calculated: state + county + city + special"
     )
 
     effective_date = models.DateField(default=timezone.now)
     is_active = models.BooleanField(default=True)
+
+    # Tenant-aware manager
+    objects = TenantManager()
 
     class Meta:
         ordering = ['state', 'city']
@@ -518,3 +533,16 @@ class TaxRate(models.Model):
 
     def __str__(self):
         return f"{self.city}, {self.state} — {self.total_rate}%"
+
+    def save(self, *args, **kwargs):
+        # Auto-calculate total from components
+        self.total_rate = (
+            self.state_rate + self.county_rate + 
+            self.city_rate + self.special_rate
+        )
+        # Normalize city name for consistent lookups
+        if self.city:
+            self.city = self.city.strip()
+        if self.state:
+            self.state = self.state.strip().upper()
+        super().save(*args, **kwargs)

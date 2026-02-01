@@ -246,15 +246,16 @@ class TaxRateAdmin(admin.ModelAdmin):
     list_display = ['city', 'county', 'state', 'total_rate', 'is_active', 'effective_date']
     list_filter = ['state', 'is_active', 'county']
     search_fields = ['city', 'county', 'zip_code']
-    list_editable = ['total_rate', 'is_active']
+    list_editable = ['is_active']
     list_per_page = 50
     ordering = ['state', 'city']
+    readonly_fields = ['total_rate']
 
     fieldsets = (
         ('Location', {
             'fields': ('city', 'county', 'state', 'zip_code'),
         }),
-        ('Rates', {
+        ('Rates (total auto-calculates)', {
             'fields': ('state_rate', 'county_rate', 'city_rate', 'special_rate', 'total_rate'),
         }),
         ('Status', {

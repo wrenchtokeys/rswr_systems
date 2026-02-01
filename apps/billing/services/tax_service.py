@@ -4,14 +4,14 @@ Tax Service — Sales tax calculation for RS Systems invoices.
 Tax is calculated at invoice creation time and stored on the invoice.
 The same total applies whether they pay via Stripe, check, or cash.
 
+Shop owners add tax rates for the areas they serve (no pre-loaded data).
+Total rate auto-calculates from state + county + city + special on save.
+
 Lookup priority:
-1. City + State (case-insensitive)
-2. ZIP code
+1. City + State (case-insensitive, tenant-scoped)
+2. ZIP code (tenant-scoped)
 3. BillingConfig.default_tax_rate fallback
 4. Zero
-
-Performance: Uses Django cache for BillingConfig and rate lookups.
-The TaxRate table has ~700 rows — small enough to query inline.
 
 Author: Amelia (Clawdbot AI)
 """
@@ -64,25 +64,28 @@ class TaxService:
             return False
         return config.tax_enabled
 
-    def get_tax_rate(self, city=None, state='AR', zip_code=None):
+    def get_tax_rate(self, city=None, state='AR', zip_code=None, tenant=None):
         """
         Look up the tax rate. Returns Decimal percentage or 0 if not found.
 
         Lookup order:
-        1. City + State (case-insensitive, active only)
-        2. ZIP code (active only)
+        1. City + State (case-insensitive, tenant-scoped, active only)
+        2. ZIP code (tenant-scoped, active only)
         3. BillingConfig.default_tax_rate
         4. Decimal('0.000')
         """
         from apps.billing.models import TaxRate
 
+        base_qs = TaxRate.objects.filter(is_active=True)
+        if tenant:
+            base_qs = base_qs.filter(tenant=tenant)
+
         # Try city + state first (most accurate)
         if city and state:
             try:
-                rate = TaxRate.objects.filter(
+                rate = base_qs.filter(
                     city__iexact=city.strip(),
                     state__iexact=state.strip(),
-                    is_active=True,
                 ).values_list('total_rate', flat=True).first()
                 if rate is not None:
                     return rate
@@ -92,9 +95,8 @@ class TaxService:
         # Fall back to zip code
         if zip_code:
             try:
-                rate = TaxRate.objects.filter(
+                rate = base_qs.filter(
                     zip_code=zip_code.strip(),
-                    is_active=True,
                 ).values_list('total_rate', flat=True).first()
                 if rate is not None:
                     return rate
@@ -108,7 +110,7 @@ class TaxService:
 
         return Decimal('0.000')
 
-    def calculate_tax(self, subtotal, city=None, state='AR', zip_code=None, customer=None):
+    def calculate_tax(self, subtotal, city=None, state='AR', zip_code=None, customer=None, tenant=None):
         """
         Calculate tax for an amount.
 
@@ -156,7 +158,7 @@ class TaxService:
                 zip_code = customer.zip_code
 
         # Look up rate
-        rate = self.get_tax_rate(city=city, state=state, zip_code=zip_code)
+        rate = self.get_tax_rate(city=city, state=state, zip_code=zip_code, tenant=tenant)
         result['rate'] = rate
 
         if rate > 0 and subtotal > 0:
@@ -183,9 +185,11 @@ class TaxService:
         taxable = invoice.subtotal - invoice.discount
 
         # Calculate tax
+        tenant = getattr(invoice, 'tenant', None) or getattr(customer, 'tenant', None)
         tax_result = self.calculate_tax(
             subtotal=taxable,
             customer=customer,
+            tenant=tenant,
         )
 
         # Apply to invoice

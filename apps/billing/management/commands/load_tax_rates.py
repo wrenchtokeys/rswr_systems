@@ -1,153 +1,78 @@
 """
-Load Arkansas sales tax rates from built-in JSON or external CSV.
+Management command to load tax rates from a CSV file.
 
 Usage:
-    python manage.py load_tax_rates              # loads from built-in JSON
-    python manage.py load_tax_rates --file rates.csv  # loads from CSV
-    python manage.py load_tax_rates --clear       # clear existing and reload
+    python manage.py load_tax_rates --file rates.csv
+    python manage.py load_tax_rates --file rates.csv --clear   # clear existing first
+    python manage.py load_tax_rates --file rates.csv --tenant 1  # for a specific tenant
 
-CSV format (header row required):
-    city,county,state,total_rate
-    Little Rock,Pulaski,AR,9.000
+CSV format:
+    city,county,state,zip_code,state_rate,county_rate,city_rate,special_rate
+    Little Rock,,AR,72201,6.500,1.250,1.250,0.000
 
-Author: Amelia (Clawdbot AI)
+Note: total_rate auto-calculates from component rates. You don't need a total column.
 """
 
 import csv
-import json
-import os
 from decimal import Decimal, InvalidOperation
-
 from django.core.management.base import BaseCommand, CommandError
-from django.utils import timezone
-
 from apps.billing.models import TaxRate
 
 
-# Path to the built-in JSON data file
-DEFAULT_DATA_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    'data',
-    'arkansas_tax_rates.json',
-)
-
-AR_STATE_RATE = Decimal('6.500')
-
-
 class Command(BaseCommand):
-    help = 'Load sales tax rates from built-in JSON or external CSV file.'
+    help = 'Load tax rates from a CSV file'
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            '--file',
-            type=str,
-            default=None,
-            help='Path to a CSV file with tax rate data.',
-        )
-        parser.add_argument(
-            '--clear',
-            action='store_true',
-            help='Delete all existing tax rates before loading.',
-        )
+        parser.add_argument('--file', required=True, help='Path to CSV file')
+        parser.add_argument('--clear', action='store_true', help='Clear existing rates before loading')
+        parser.add_argument('--tenant', type=int, help='Tenant ID to associate rates with')
 
     def handle(self, *args, **options):
         file_path = options['file']
         clear = options['clear']
+        tenant_id = options.get('tenant')
 
-        # Clear existing rates if requested
-        if clear:
-            count = TaxRate.objects.all().delete()[0]
-            self.stdout.write(self.style.WARNING(f'Deleted {count} existing tax rate(s).'))
-
-        # Load data
-        if file_path:
-            rates = self._load_csv(file_path)
-        else:
-            rates = self._load_json()
-
-        if not rates:
-            raise CommandError('No tax rate data found to load.')
-
-        # Insert/update rates
-        created = 0
-        updated = 0
-
-        for entry in rates:
-            city = entry.get('city', '').strip()
-            county = entry.get('county', '').strip()
-            state = entry.get('state', 'AR').strip().upper()
-
+        tenant = None
+        if tenant_id:
+            from apps.tenants.models import Tenant
             try:
-                total_rate = Decimal(str(entry.get('total_rate', '0')))
-            except (InvalidOperation, ValueError):
-                self.stderr.write(
-                    self.style.ERROR(f'Invalid total_rate for {city}, {state}: {entry.get("total_rate")}')
-                )
-                continue
+                tenant = Tenant.objects.get(id=tenant_id)
+            except Tenant.DoesNotExist:
+                raise CommandError(f'Tenant {tenant_id} not found')
 
-            if not city:
-                self.stderr.write(self.style.ERROR(f'Skipping entry with empty city: {entry}'))
-                continue
+        if clear:
+            qs = TaxRate.objects.all()
+            if tenant:
+                qs = qs.filter(tenant=tenant)
+            count = qs.count()
+            qs.delete()
+            self.stdout.write(f'Cleared {count} existing rates')
 
-            # Calculate component rates
-            state_rate = Decimal(str(entry.get('state_rate', AR_STATE_RATE)))
-            local_rate = total_rate - state_rate
-            county_rate = Decimal(str(entry.get('county_rate', '0.000')))
-            city_rate = Decimal(str(entry.get('city_rate', '0.000')))
-            special_rate = Decimal(str(entry.get('special_rate', '0.000')))
+        try:
+            with open(file_path, 'r') as f:
+                reader = csv.DictReader(f)
+                created = 0
+                errors = 0
+                for row in reader:
+                    try:
+                        TaxRate.objects.create(
+                            tenant=tenant,
+                            city=row.get('city', '').strip(),
+                            county=row.get('county', '').strip(),
+                            state=row.get('state', 'AR').strip().upper(),
+                            zip_code=row.get('zip_code', '').strip(),
+                            state_rate=Decimal(row.get('state_rate', '0')),
+                            county_rate=Decimal(row.get('county_rate', '0')),
+                            city_rate=Decimal(row.get('city_rate', '0')),
+                            special_rate=Decimal(row.get('special_rate', '0')),
+                        )
+                        created += 1
+                    except (InvalidOperation, ValueError, KeyError) as e:
+                        errors += 1
+                        self.stderr.write(f'Error on row: {row} — {e}')
 
-            # If no component breakdown provided, put all local into county_rate
-            if county_rate == 0 and city_rate == 0 and special_rate == 0 and local_rate > 0:
-                county_rate = local_rate
-
-            zip_code = entry.get('zip_code', '').strip()
-
-            obj, was_created = TaxRate.objects.update_or_create(
-                city__iexact=city,
-                state=state,
-                defaults={
-                    'city': city,
-                    'county': county,
-                    'state': state,
-                    'zip_code': zip_code,
-                    'state_rate': state_rate,
-                    'county_rate': county_rate,
-                    'city_rate': city_rate,
-                    'special_rate': special_rate,
-                    'total_rate': total_rate,
-                    'effective_date': timezone.now().date(),
-                    'is_active': True,
-                },
-            )
-
-            if was_created:
-                created += 1
-            else:
-                updated += 1
-
-        self.stdout.write(self.style.SUCCESS(
-            f'Done! Created {created}, updated {updated} tax rate(s). '
-            f'Total active: {TaxRate.objects.filter(is_active=True).count()}'
-        ))
-
-    def _load_json(self):
-        """Load from the built-in JSON data file."""
-        if not os.path.exists(DEFAULT_DATA_FILE):
-            raise CommandError(f'Built-in data file not found: {DEFAULT_DATA_FILE}')
-
-        self.stdout.write(f'Loading from {DEFAULT_DATA_FILE}')
-        with open(DEFAULT_DATA_FILE, 'r') as f:
-            return json.load(f)
-
-    def _load_csv(self, path):
-        """Load from an external CSV file."""
-        if not os.path.exists(path):
-            raise CommandError(f'CSV file not found: {path}')
-
-        self.stdout.write(f'Loading from {path}')
-        rates = []
-        with open(path, 'r', newline='') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rates.append(row)
-        return rates
+                self.stdout.write(self.style.SUCCESS(
+                    f'Loaded {created} tax rates ({errors} errors)'
+                ))
+        except FileNotFoundError:
+            raise CommandError(f'File not found: {file_path}')

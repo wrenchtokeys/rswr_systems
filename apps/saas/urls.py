@@ -36,6 +36,13 @@ urlpatterns = [
     path('owner/invoices/<int:invoice_id>/', views.owner_invoice_detail, name='owner_invoice_detail'),
     path('owner/invoices/<int:invoice_id>/record-payment/', views.owner_record_payment, name='owner_record_payment'),
 
+    # Tax rate management
+    path('owner/tax-rates/', views.owner_tax_rates, name='owner_tax_rates'),
+    path('owner/tax-rates/add/', views.owner_add_tax_rate, name='owner_add_tax_rate'),
+    path('owner/tax-rates/<int:rate_id>/edit/', views.owner_edit_tax_rate, name='owner_edit_tax_rate'),
+    path('owner/tax-rates/<int:rate_id>/delete/', views.owner_delete_tax_rate, name='owner_delete_tax_rate'),
+    path('owner/tax-rates/toggle/', views.owner_toggle_tax, name='owner_toggle_tax'),
+
     # Replacement management
     path('tech/replacement/new/', views.replacement_create, name='replacement_create'),
     path('tech/replacement/<int:pk>/', views.replacement_detail, name='replacement_detail'),
