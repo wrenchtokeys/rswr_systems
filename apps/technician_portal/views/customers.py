@@ -41,7 +41,12 @@ def customer_list(request):
     """List all customers accessible to the current technician."""
     tenant = getattr(request, 'tenant', None)
 
-    if is_tenant_admin(request.user):
+    # Admins and working managers see all customers in their tenant
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = (hasattr(request.user, 'technician') and
+              request.user.technician.is_manager)
+
+    if is_admin or is_mgr:
         customers = Customer.objects.all()
         if tenant:
             customers = customers.filter(tenant=tenant)
@@ -79,7 +84,7 @@ def customer_list(request):
     return render(request, 'technician_portal/customer_list.html', {
         'customers': customers,
         'search_query': search_query,
-        'is_admin': is_tenant_admin(request.user)
+        'is_admin': is_admin or is_mgr,
     })
 
 
