@@ -167,6 +167,42 @@
 
 ---
 
+## Phase 8: Sales Tax by Zip Code
+
+**Goal**: Automatically calculate and apply correct sales tax per invoice based on service location.
+
+### Why it's complex
+- Texas state rate: 6.25%
+- Cities/counties/special districts add up to 2% more (combined max 8.25%)
+- Rate varies by zip code — some zips span multiple jurisdictions
+- Rates change periodically
+
+### Options (pick one)
+1. **Stripe Tax** — Enable `automatic_tax` on checkout sessions. Stripe calculates based on your address + customer location. ~$0.50/txn fee. Handles compliance/reporting. Easiest.
+2. **Tax API** (TaxJar, Avalara, etc.) — Dedicated tax calculation service. More accurate for edge cases. Monthly fee.
+3. **Local tax table** — Maintain a zip→rate lookup table ourselves. Free but we own the maintenance. Texas Comptroller publishes quarterly rate files.
+
+### Tasks (regardless of approach)
+- [ ] Add `tax_rate` and `tax_amount` fields to Invoice model
+- [ ] Show tax as separate line item on invoice PDF
+- [ ] Show tax breakdown in email templates
+- [ ] Apply tax in Stripe checkout session (either via Stripe Tax or as line item)
+- [ ] Determine service location per repair (customer address? job site zip?)
+- [ ] Handle tax-exempt customers (some fleets may have exemptions)
+- [ ] Tax reporting: monthly/quarterly totals for filing
+
+### Stripe Tax path (recommended)
+- [ ] Enable Stripe Tax in dashboard + set origin address
+- [ ] Add `automatic_tax={'enabled': True}` to checkout session creation
+- [ ] Add `tax_behavior='exclusive'` to price_data (tax added on top)
+- [ ] Store tax amount from Stripe webhook response on Invoice
+- [ ] Tax reports available in Stripe dashboard
+
+**Estimated effort**: ~8-12 hours depending on approach
+**Priority**: P1 — legal compliance
+
+---
+
 ## Phase 7: SaaS Subscription Billing (Glass Shops)
 
 Separate from customer billing — this is charging glass shops to use RS Systems.

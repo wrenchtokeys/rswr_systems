@@ -8,6 +8,9 @@ from django.views.decorators.csrf import csrf_exempt
 from apps.technician_portal.forms import TechnicianRegistrationForm
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
+import logging
+
+logger = logging.getLogger(__name__)
 from django.core.management import call_command
 from django.contrib.auth import get_user_model
 from django.db import connection, models
@@ -344,3 +347,16 @@ def setup_database(request):
     </body>
     </html>
     """)
+
+
+def payment_complete(request):
+    """Landing page after successful Stripe checkout."""
+    session_id = request.GET.get('session')
+    if session_id:
+        logger.info(f"Payment complete landing — Stripe session: {session_id}")
+    return render(request, 'billing/payment_complete.html')
+
+
+def payment_cancelled(request):
+    """Landing page when customer cancels Stripe checkout."""
+    return render(request, 'billing/payment_cancelled.html')

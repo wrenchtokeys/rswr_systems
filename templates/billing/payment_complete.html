@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Complete | Rockstar Windshield Repair</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center font-sans">
+    <div class="max-w-md w-full mx-4">
+        <div class="bg-white rounded-2xl shadow-lg p-8 text-center">
+            <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">Payment Received!</h1>
+            <p class="text-gray-600 mb-6">
+                Thank you for your payment. A confirmation email has been sent to you with the details.
+            </p>
+            <div class="bg-gray-50 rounded-lg p-4 mb-6">
+                <p class="text-sm text-gray-500">
+                    If you have any questions about your invoice, please contact us at
+                    <a href="mailto:info@rockstarwindshield.repair" class="text-blue-600 hover:underline">info@rockstarwindshield.repair</a>
+                </p>
+            </div>
+            <a href="/" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                Return Home
+            </a>
+        </div>
+        <p class="text-center text-gray-400 text-sm mt-6">Rockstar Windshield Repair</p>
+    </div>
+</body>
+</html>

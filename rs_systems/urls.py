@@ -26,6 +26,8 @@ from core.views import preview_email_template, test_notification, check_notifica
 urlpatterns = [
     path('', views.home, name='home'),
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
+    path('payment-complete', views.payment_complete, name='payment_complete'),
+    path('payment-cancelled', views.payment_cancelled, name='payment_cancelled'),
     path('setup-database/', views.setup_database, name='setup_database'),
 
     # Test/diagnostic endpoints (for debugging)
