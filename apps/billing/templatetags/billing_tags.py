@@ -39,6 +39,7 @@ def get_invoice_status(repair):
 
         invoice = line_item.invoice
         return {
+            'invoice_id': invoice.id,
             'status': invoice.status,
             'invoice_number': invoice.invoice_number,
             'total': invoice.total,

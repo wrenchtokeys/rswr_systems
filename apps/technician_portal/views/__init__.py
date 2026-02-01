@@ -26,6 +26,7 @@ from .repairs import (
     reassign_to_self,
     check_existing_repair,
     bulk_repair_action,
+    tech_collect_payment,
 )
 
 # Multi-break batch operations

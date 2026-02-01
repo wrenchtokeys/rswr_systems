@@ -851,3 +851,90 @@ def bulk_repair_action(request):
         )
 
     return redirect('repair_list')
+
+
+@technician_required
+def tech_collect_payment(request, repair_id):
+    """Record a payment collected by a technician on-site."""
+    if request.method != 'POST':
+        return redirect('repair_detail', repair_id=repair_id)
+
+    tenant = getattr(request, 'tenant', None)
+    qs = Repair.objects.select_related('customer')
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    repair = get_object_or_404(qs, id=repair_id)
+
+    # Find the invoice for this repair
+    try:
+        from apps.billing.models import InvoiceLineItem, Payment
+        line_item = InvoiceLineItem.objects.filter(
+            repair=repair,
+            invoice__status__in=['SENT', 'PARTIAL', 'OVERDUE'],
+        ).select_related('invoice').first()
+
+        if not line_item:
+            messages.error(request, "No unpaid invoice found for this repair.")
+            return redirect('repair_detail', repair_id=repair_id)
+
+        invoice = line_item.invoice
+
+        # Parse and validate amount
+        try:
+            amount = Decimal(request.POST.get('amount', '0'))
+        except (InvalidOperation, ValueError):
+            messages.error(request, "Invalid payment amount.")
+            return redirect('repair_detail', repair_id=repair_id)
+
+        if amount <= 0:
+            messages.error(request, "Payment amount must be greater than zero.")
+            return redirect('repair_detail', repair_id=repair_id)
+
+        if amount > invoice.amount_due:
+            messages.error(request, f"Amount exceeds balance due (${invoice.amount_due:.2f}).")
+            return redirect('repair_detail', repair_id=repair_id)
+
+        payment_method = request.POST.get('payment_method', 'CASH')
+        valid_methods = ['CASH', 'CHECK', 'CREDIT_CARD', 'OTHER']
+        if payment_method not in valid_methods:
+            payment_method = 'CASH'
+
+        reference_number = request.POST.get('reference_number', '').strip()
+        notes = request.POST.get('notes', '').strip()
+
+        # Get tech name for the note
+        tech_name = request.user.get_full_name() or request.user.username
+        if notes:
+            notes = f"Collected on-site by {tech_name}. {notes}"
+        else:
+            notes = f"Collected on-site by {tech_name}"
+
+        # Create the payment
+        payment = Payment.objects.create(
+            invoice=invoice,
+            amount=amount,
+            payment_method=payment_method,
+            reference_number=reference_number,
+            payment_date=timezone.now().date(),
+            notes=notes,
+            recorded_by=request.user,
+        )
+
+        # Send confirmation emails (best effort)
+        try:
+            from apps.billing.services.payment_notification_service import PaymentNotificationService
+            notification_svc = PaymentNotificationService()
+            notification_svc.send_payment_confirmation(payment)
+        except Exception as e:
+            logger.warning(f"Payment notification failed for payment {payment.id}: {e}")
+
+        messages.success(
+            request,
+            f"Payment of ${amount:.2f} ({payment.get_payment_method_display()}) recorded for invoice {invoice.invoice_number}."
+        )
+
+    except Exception as e:
+        logger.error(f"Error recording tech payment for repair {repair_id}: {e}", exc_info=True)
+        messages.error(request, "An error occurred recording the payment. Please try again.")
+
+    return redirect('repair_detail', repair_id=repair_id)

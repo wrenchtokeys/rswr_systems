@@ -21,6 +21,7 @@ urlpatterns = [
     path('repairs/<int:repair_id>/convert-to-batch/', views.convert_to_batch, name='convert_to_batch'),
     path('repairs/<int:repair_id>/update/', views.update_repair, name='update_repair'),
     path('repairs/<int:repair_id>/update-status/', views.update_queue_status, name='update_queue_status'),
+    path('repairs/<int:repair_id>/collect-payment/', views.tech_collect_payment, name='tech_collect_payment'),
     path('check-existing-repair/', views.check_existing_repair, name='check_existing_repair'),
     path('repairs/bulk-action/', views.bulk_repair_action, name='tech_bulk_repair_action'),
     path('api/batch-pricing/', views.get_batch_pricing_json, name='get_batch_pricing'),
