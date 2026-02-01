@@ -924,7 +924,7 @@ def tech_collect_payment(request, repair_id):
         try:
             from apps.billing.services.payment_notification_service import PaymentNotificationService
             notification_svc = PaymentNotificationService()
-            notification_svc.send_payment_confirmation(payment)
+            notification_svc.notify_payment(payment)
         except Exception as e:
             logger.warning(f"Payment notification failed for payment {payment.id}: {e}")
 
