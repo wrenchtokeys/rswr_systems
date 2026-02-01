@@ -406,28 +406,18 @@ class InvoiceService:
             address_parts.append(city_state_zip)
         
         # Calculate tax (if enabled)
-        tax_rate = Decimal('0.000')
-        state_tax_rate = Decimal('0.000')
-        county_tax_rate = Decimal('0.000')
-        city_tax_rate = Decimal('0.000')
-        special_tax_rate = Decimal('0.000')
-        tax_amount = Decimal('0.00')
-        try:
-            from apps.billing.services.tax_service import TaxService
-            tax_svc = TaxService()
-            tax_result = tax_svc.calculate_tax(
-                subtotal=total,  # tax on post-discount amount
-                customer=customer,
-            )
-            tax_rate = tax_result['rate']
-            state_tax_rate = tax_result['state_rate']
-            county_tax_rate = tax_result['county_rate']
-            city_tax_rate = tax_result['city_rate']
-            special_tax_rate = tax_result['special_rate']
-            tax_amount = tax_result['amount']
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Tax calculation error in build_invoice_data: {e}")
+        from apps.billing.services.tax_service import TaxService
+        tax_svc = TaxService()
+        tax_result = tax_svc.calculate_tax(
+            subtotal=total,  # tax on post-discount amount
+            customer=customer,
+        )
+        tax_rate = tax_result['rate']
+        state_tax_rate = tax_result['state_rate']
+        county_tax_rate = tax_result['county_rate']
+        city_tax_rate = tax_result['city_rate']
+        special_tax_rate = tax_result['special_rate']
+        tax_amount = tax_result['amount']
 
         total_with_tax = total + tax_amount
 
