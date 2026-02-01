@@ -112,11 +112,6 @@ class TaxService:
                 except Exception as e:
                     logger.warning(f"Tax rate lookup by zip failed: {e}")
 
-        # Fall back to BillingConfig.default_tax_rate
-        config = self._get_billing_config()
-        if config and config.default_tax_rate > 0:
-            return config.default_tax_rate
-
         return Decimal('0.000')
 
     def calculate_tax(self, subtotal, city=None, state=None, zip_code=None, customer=None, tenant=None):
@@ -165,9 +160,11 @@ class TaxService:
                 result['exempt'] = True
                 return result
 
+        # Get billing config for shop location and default rate
+        config = self._get_billing_config()
+
         # Use shop location from BillingConfig if not explicitly provided
         if not city or not state:
-            config = self._get_billing_config()
             if config:
                 if not city and config.company_city:
                     city = config.company_city
@@ -178,12 +175,21 @@ class TaxService:
             result['city'] = city or ''
             result['state'] = state or ''
 
+        # If a default tax rate is set, use it directly — simplest setup.
+        # City-specific TaxRate entries override this if they exist.
+        if config and config.default_tax_rate > 0:
+            rate = config.default_tax_rate
+        else:
+            rate = Decimal('0.000')
+
         # Derive tenant from customer if not provided
         if tenant is None and customer is not None:
             tenant = getattr(customer, 'tenant', None)
 
-        # Look up rate
-        rate = self.get_tax_rate(city=city, state=state, zip_code=zip_code, tenant=tenant)
+        # Try city-specific rate (overrides default if found)
+        city_rate = self.get_tax_rate(city=city, state=state, zip_code=zip_code, tenant=tenant)
+        if city_rate > 0:
+            rate = city_rate
         result['rate'] = rate
 
         if rate > 0 and subtotal > 0:

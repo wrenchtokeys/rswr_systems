@@ -412,86 +412,83 @@
 <!-- ======================= BILLING & TAX TAB ======================= -->
 <div id="panel-billing" class="tab-panel hidden">
 
-    <!-- Shop Location (for tax calculation) -->
+    <!-- Sales Tax Setup -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <i class="fas fa-map-marker-alt text-blue-600 text-sm"></i>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-percent text-blue-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Sales Tax</h3>
+                        <p class="text-sm text-gray-500">Set your shop location and tax rate</p>
+                    </div>
                 </div>
-                <div>
-                    <h3 class="text-lg font-semibold text-gray-900">Shop Location</h3>
-                    <p class="text-sm text-gray-500">Tax rate is calculated based on where your shop is located</p>
-                </div>
+                <form method="post" action="{% url 'owner_toggle_tax' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border transition-colors
+                        {% if tax_enabled %}bg-green-50 text-green-700 border-green-200 hover:bg-green-100
+                        {% else %}bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100{% endif %}">
+                        {% if tax_enabled %}
+                            <i class="fas fa-check-circle mr-2"></i> Enabled
+                        {% else %}
+                            <i class="fas fa-times-circle mr-2"></i> Disabled
+                        {% endif %}
+                    </button>
+                </form>
             </div>
         </div>
         <form method="post" action="{% url 'owner_settings' %}" class="p-6">
             {% csrf_token %}
             <input type="hidden" name="form_type" value="billing_location">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">City <span class="text-red-500">*</span></label>
-                    <input type="text" name="company_city" value="{{ billing_config.company_city|default:'' }}" required
-                        placeholder="e.g. Little Rock"
-                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">City</label>
+                    <input type="text" name="company_city" value="{{ billing_config.company_city|default:'' }}"
+                        placeholder="e.g. Hensley"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">State <span class="text-red-500">*</span></label>
-                    <input type="text" name="company_state" value="{{ billing_config.company_state|default:'' }}" required
+                    <label class="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <input type="text" name="company_state" value="{{ billing_config.company_state|default:'' }}"
                         maxlength="2" placeholder="e.g. AR"
-                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
                     <input type="text" name="company_zip" value="{{ billing_config.company_zip|default:'' }}"
-                        placeholder="e.g. 72201"
-                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        placeholder="e.g. 72103"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tax Rate %</label>
+                    <input type="number" name="default_tax_rate" value="{{ billing_config.default_tax_rate|default:'0.000' }}"
+                        step="0.001" min="0" max="20" placeholder="e.g. 9.750"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" class="w-full inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                        <i class="fas fa-save mr-2"></i>Save
+                    </button>
                 </div>
             </div>
-            {% if not billing_config.company_city or not billing_config.company_state %}
-            <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p class="text-sm text-red-700"><i class="fas fa-exclamation-triangle mr-1"></i> <strong>Set your shop location</strong> — tax cannot be calculated without a city and state.</p>
+            {% if tax_enabled and not billing_config.default_tax_rate or billing_config.default_tax_rate == 0 %}
+            <div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p class="text-sm text-amber-700"><i class="fas fa-exclamation-triangle mr-1"></i> Tax is enabled but rate is 0%. Enter your local tax rate above.</p>
+            </div>
+            {% elif tax_enabled and billing_config.default_tax_rate > 0 %}
+            <div class="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> All invoices will include {{ billing_config.default_tax_rate }}% sales tax.</p>
             </div>
             {% endif %}
-            <div class="mt-4 flex justify-end">
-                <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                    <i class="fas fa-save mr-2"></i>Save Location
-                </button>
+            {% if not tax_enabled %}
+            <div class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p class="text-sm text-gray-500"><i class="fas fa-info-circle mr-1"></i> Tax is disabled. Enable it above to add tax to invoices.</p>
             </div>
+            {% endif %}
         </form>
     </div>
-
-    <!-- Tax Toggle -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h3 class="text-lg font-semibold text-gray-900">Sales Tax</h3>
-            <p class="text-sm text-gray-500">Configure tax rates for the areas you serve</p>
-        </div>
-        <form method="post" action="{% url 'owner_toggle_tax' %}">
-            {% csrf_token %}
-            <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border transition-colors
-                {% if tax_enabled %}bg-green-50 text-green-700 border-green-200 hover:bg-green-100
-                {% else %}bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100{% endif %}">
-                {% if tax_enabled %}
-                    <i class="fas fa-check-circle mr-2"></i> Tax Enabled
-                {% else %}
-                    <i class="fas fa-times-circle mr-2"></i> Tax Disabled
-                {% endif %}
-            </button>
-        </form>
-    </div>
-
-    {% if not tax_enabled %}
-    <div class="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <div class="flex items-start">
-            <i class="fas fa-info-circle text-yellow-600 mt-0.5 mr-3"></i>
-            <div>
-                <p class="text-sm font-medium text-yellow-800">Tax calculation is currently disabled</p>
-                <p class="text-sm text-yellow-700 mt-1">Invoices will not include tax until you enable it. You can add your rates now and enable when ready.</p>
-            </div>
-        </div>
-    </div>
-    {% endif %}
 
     <!-- Add New Rate -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">

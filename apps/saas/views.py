@@ -662,19 +662,24 @@ def owner_settings_view(request):
             return redirect('owner_settings')
 
         if form_type == 'billing_location':
-            # Update shop location for tax calculation
+            # Update shop location + tax rate
             try:
+                from decimal import Decimal, InvalidOperation
                 config = BillingConfig.get_instance()
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
                 config.company_zip = request.POST.get('company_zip', '').strip()
+                try:
+                    config.default_tax_rate = Decimal(request.POST.get('default_tax_rate', '0'))
+                except (InvalidOperation, ValueError):
+                    pass
                 config.save()
                 from django.core.cache import cache
                 cache.delete('billing_config_tax')
-                messages.success(request, f'Shop location updated: {config.company_city}, {config.company_state}')
+                messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
             except Exception as e:
-                logger.error(f"Error updating billing location: {e}")
-                messages.error(request, 'Could not update shop location.')
+                logger.error(f"Error updating billing config: {e}")
+                messages.error(request, 'Could not update tax settings.')
             return redirect('/owner/settings/?tab=billing')
 
         # Default: business info update
