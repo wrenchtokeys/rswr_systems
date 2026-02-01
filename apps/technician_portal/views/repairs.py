@@ -272,9 +272,13 @@ def create_repair(request):
                     messages.success(request, f"Repair has been created and assigned to {repair.technician.user.get_full_name()}")
                 else:
                     messages.error(request, "As an admin, you must select a technician to assign the repair to.")
+                    tenant = getattr(request, 'tenant', None)
                     return render(request, 'technician_portal/repair_form.html', {
                         'form': form,
-                        'is_admin': True
+                        'is_admin': True,
+                        'technicians': Technician.objects.filter(
+                            tenant=tenant, can_repair=True, is_active=True
+                        ) if tenant else Technician.objects.filter(can_repair=True, is_active=True),
                     })
             else:
                 try:
@@ -324,12 +328,19 @@ def create_repair(request):
     if hasattr(form, 'instance') and form.instance.customer and form.instance.unit_number:
         expected_cost = form.instance.get_expected_price()
 
-    return render(request, 'technician_portal/repair_form.html', {
+    admin = is_tenant_admin(request.user)
+    tenant = getattr(request, 'tenant', None)
+    context = {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
-        'is_admin': is_tenant_admin(request.user),
-        'expected_cost': expected_cost
-    })
+        'is_admin': admin,
+        'expected_cost': expected_cost,
+    }
+    if admin:
+        context['technicians'] = Technician.objects.filter(
+            tenant=tenant, can_repair=True, is_active=True
+        ) if tenant else Technician.objects.filter(can_repair=True, is_active=True)
+    return render(request, 'technician_portal/repair_form.html', context)
 
 
 @technician_required
@@ -443,14 +454,20 @@ def update_repair(request, repair_id):
             repair_batch_id=repair.repair_batch_id
         ).order_by('break_number')
 
-    return render(request, 'technician_portal/repair_form.html', {
+    admin = is_tenant_admin(request.user)
+    update_context = {
         'form': form,
         'repair': repair,
-        'is_admin': is_tenant_admin(request.user),
+        'is_admin': admin,
         'expected_cost': expected_cost,
         'batch_id': batch_id,
         'batch_repairs': batch_repairs,
-    })
+    }
+    if admin:
+        update_context['technicians'] = Technician.objects.filter(
+            tenant=tenant, can_repair=True, is_active=True
+        ) if tenant else Technician.objects.filter(can_repair=True, is_active=True)
+    return render(request, 'technician_portal/repair_form.html', update_context)
 
 
 @technician_required
