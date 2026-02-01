@@ -69,39 +69,48 @@ class TaxService:
         Look up the tax rate. Returns Decimal percentage or 0 if not found.
 
         Lookup order:
-        1. City + State (case-insensitive, tenant-scoped, active only)
-        2. ZIP code (tenant-scoped, active only)
+        1. City + State — tenant-specific, then global (tenant=None)
+        2. ZIP code — tenant-specific, then global
         3. BillingConfig.default_tax_rate
         4. Decimal('0.000')
         """
         from apps.billing.models import TaxRate
 
-        base_qs = TaxRate.objects.filter(is_active=True)
+        active_qs = TaxRate.objects.filter(is_active=True)
+
+        # Build list of querysets: tenant-specific first, then global fallback
+        querysets = []
         if tenant:
-            base_qs = base_qs.filter(tenant=tenant)
+            querysets.append(active_qs.filter(tenant=tenant))
+        querysets.append(active_qs.filter(tenant__isnull=True))
 
         # Try city + state first (most accurate)
         if city and state:
-            try:
-                rate = base_qs.filter(
-                    city__iexact=city.strip(),
-                    state__iexact=state.strip(),
-                ).values_list('total_rate', flat=True).first()
-                if rate is not None:
-                    return rate
-            except Exception as e:
-                logger.warning(f"Tax rate lookup by city failed: {e}")
+            city_clean = city.strip()
+            state_clean = state.strip()
+            for qs in querysets:
+                try:
+                    rate = qs.filter(
+                        city__iexact=city_clean,
+                        state__iexact=state_clean,
+                    ).values_list('total_rate', flat=True).first()
+                    if rate is not None:
+                        return rate
+                except Exception as e:
+                    logger.warning(f"Tax rate lookup by city failed: {e}")
 
         # Fall back to zip code
         if zip_code:
-            try:
-                rate = base_qs.filter(
-                    zip_code=zip_code.strip(),
-                ).values_list('total_rate', flat=True).first()
-                if rate is not None:
-                    return rate
-            except Exception as e:
-                logger.warning(f"Tax rate lookup by zip failed: {e}")
+            zip_clean = zip_code.strip()
+            for qs in querysets:
+                try:
+                    rate = qs.filter(
+                        zip_code=zip_clean,
+                    ).values_list('total_rate', flat=True).first()
+                    if rate is not None:
+                        return rate
+                except Exception as e:
+                    logger.warning(f"Tax rate lookup by zip failed: {e}")
 
         # Fall back to BillingConfig.default_tax_rate
         config = self._get_billing_config()
@@ -156,6 +165,10 @@ class TaxService:
                 result['state'] = state
             if not zip_code and hasattr(customer, 'zip_code') and customer.zip_code:
                 zip_code = customer.zip_code
+
+        # Derive tenant from customer if not provided
+        if tenant is None and customer is not None:
+            tenant = getattr(customer, 'tenant', None)
 
         # Look up rate
         rate = self.get_tax_rate(city=city, state=state, zip_code=zip_code, tenant=tenant)
