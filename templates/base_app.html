@@ -70,7 +70,7 @@
                         {% endif %}
 
                         {% if user_can_invoices %}
-                        <a href="{% url 'billing_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'billing_settings' or 'billing' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Invoices</a>
+                        <a href="{% url 'owner_invoice_list' %}" class="text-sm font-medium {% if 'invoice' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Invoices</a>
                         {% endif %}
 
                         {% if user_can_settings %}
@@ -147,7 +147,7 @@
                 <a href="{% url 'technician_customers' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Customers</a>
                 {% endif %}
                 {% if user_can_invoices %}
-                <a href="{% url 'billing_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Invoices</a>
+                <a href="{% url 'owner_invoice_list' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Invoices</a>
                 {% endif %}
                 {% if user_can_settings %}
                 <a href="{% url 'owner_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Settings</a>
