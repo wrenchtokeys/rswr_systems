@@ -688,6 +688,10 @@ def owner_settings_view(request):
                     config.city_tax_rate + config.special_tax_rate
                 )
 
+                # Auto-enable tax when rates are set
+                if config.default_tax_rate > 0:
+                    config.tax_enabled = True
+
                 config.save()
                 from django.core.cache import cache
                 cache.delete('billing_config_tax')

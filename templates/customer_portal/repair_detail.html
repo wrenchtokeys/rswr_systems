@@ -87,6 +87,12 @@
                         <div class="col-md-8">${{ repair.cost }}</div>
                         {% endif %}
                         {% endwith %}
+                        {% if repair.tax_amount and repair.tax_amount > 0 %}
+                        <div class="col-md-4 fw-bold mt-2">Tax ({{ repair.tax_rate }}%):</div>
+                        <div class="col-md-8 mt-2">${{ repair.tax_amount }}</div>
+                        <div class="col-md-4 fw-bold mt-2">Total:</div>
+                        <div class="col-md-8 mt-2 fw-bold text-primary">${{ repair.total_with_tax }}</div>
+                        {% endif %}
                     </div>
                     {% endif %}
 

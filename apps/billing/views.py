@@ -166,7 +166,6 @@ def create_invoice(request, customer_id):
         return err
 
     from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-    from apps.billing.services.invoice_service import InvoiceService
 
     try:
         customer = Customer.objects.get(id=customer_id, tenant=tenant)
@@ -222,6 +221,7 @@ def create_invoice(request, customer_id):
 
     # Generate PDF and save to S3
     try:
+        from apps.billing.services.invoice_service import InvoiceService
         invoice_service = InvoiceService()
         repair_ids = [r.id for r in repairs]
         pdf_bytes, invoice_data = invoice_service.generate_invoice(

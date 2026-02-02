@@ -12,6 +12,16 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.2.1] - February 1, 2026
+
+### Fixed — Tax Calculation on Repair Tickets & Invoices
+- **Tax on repair tickets**: Added `tax_rate`, `tax_amount` fields to Repair model. Tax is now calculated automatically from `BillingConfig` rates every time a repair is saved. `total_with_tax` property shows cost + tax.
+- **Tax display**: Repair detail pages in both technician and customer portals now show tax breakdown and total with tax.
+- **Invoice creation fix**: Moved `InvoiceService` (reportlab) import into the PDF generation block so invoice record creation and tax calculation no longer fail if reportlab is unavailable.
+- **Auto-enable tax on rate save**: Saving non-zero tax rates in Owner Settings now automatically sets `tax_enabled = True`.
+
+---
+
 ## [2.2.0] - February 1, 2026
 
 ### 🧾 INVOICE PORTALS & PAYMENT MANAGEMENT
