@@ -112,3 +112,16 @@ Wire SubscriptionPlan to Stripe Products/Prices. Checkout flow, subscription web
 - [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) — Detailed billing phases
 - [`docs/development/CHANGELOG.md`](CHANGELOG.md) — Version history
 - [`docs/AMELIA_ROADMAP.md`](../AMELIA_ROADMAP.md) — High-level roadmap
+
+## Custom Contact Email on Payment Pages
+**Priority**: P1 (needs real email before production)
+**Status**: Waiting on Drake to set up appropriate email
+
+The payment-complete and payment-cancelled pages currently show `info@rockstarwindshield.repair` which is a send-only/no-reply address. Need to replace with a real reply-to email customers can actually reach.
+
+**Files to update:**
+- `templates/billing/payment_complete.html`
+- `templates/billing/payment_cancelled.html`
+- Possibly `templates/emails/` notification templates if they reference this address
+
+**Action needed:** Drake sets up an email (e.g. `support@rockstarwindshield.repair`), then update all templates.
