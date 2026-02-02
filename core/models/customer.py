@@ -91,6 +91,16 @@ class Customer(models.Model):
         help_text="Default technician assigned to this customer's repairs"
     )
 
+    # Tax exemption
+    tax_exempt = models.BooleanField(
+        default=False,
+        help_text="Customer is exempt from sales tax (government, reseller, etc.)"
+    )
+    tax_exempt_certificate = models.CharField(
+        max_length=100, blank=True,
+        help_text="Tax exemption certificate number"
+    )
+
     # Stripe integration
     stripe_customer_id = models.CharField(
         max_length=100,

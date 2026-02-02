@@ -132,7 +132,23 @@ class InvoiceTrackingService:
             # Update invoice totals
             invoice.subtotal = subtotal
             invoice.discount = total_discount
-            invoice.total = subtotal - total_discount
+            invoice.total = subtotal - total_discount  # default before tax
+
+            # Apply sales tax (if enabled)
+            try:
+                from apps.billing.services.tax_service import TaxService
+                tax_svc = TaxService()
+                tax_result = tax_svc.apply_tax_to_invoice(invoice)
+                logger.info(
+                    f"Tax for {invoice.invoice_number}: enabled={tax_result['enabled']}, "
+                    f"rate={tax_result['rate']}%, amount=${tax_result['amount']}, "
+                    f"exempt={tax_result['exempt']}"
+                )
+            except Exception as e:
+                import traceback
+                logger.error(f"TAX CALCULATION FAILED: {e}\n{traceback.format_exc()}")
+                # Continue with $0 tax rather than blocking invoice creation
+
             invoice.save()
             
             logger.info(

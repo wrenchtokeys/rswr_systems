@@ -15,7 +15,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import models, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from common.decorators import owner_or_manager_required
@@ -39,7 +39,7 @@ from .forms import (
     ReplacementForm,
 )
 
-from apps.billing.models import Invoice, Payment
+from apps.billing.models import Invoice, Payment, TaxRate, BillingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,8 @@ def onboarding_view(request):
                         tech_last = cd.get('tech_last_name', '')
 
                         if tech_email or tech_first:
-                            tech_username = tech_email[:150] if tech_email else f"tech_{tech_first.lower()}_{tenant.slug}"
+                            from apps.tenants.services.signup_service import generate_unique_username
+                            tech_username = generate_unique_username(tech_email or '', tech_first)
                             if not User.objects.filter(username=tech_username).exists():
                                 tech_user = User.objects.create_user(
                                     username=tech_username,
@@ -328,6 +329,21 @@ def _get_billing_context(tenant):
         ).aggregate(total=Sum('amount'))
         collected_this_month = payments_this_month.get('total') or Decimal('0.00')
 
+        # Revenue this month — sum of cost for completed repairs/replacements
+        repair_revenue = Repair.objects.filter(
+            tenant=tenant,
+            queue_status='COMPLETED',
+            service_date__gte=month_start,
+        ).aggregate(total=Sum('cost'))['total'] or Decimal('0.00')
+
+        replacement_revenue = Replacement.objects.filter(
+            tenant=tenant,
+            queue_status='COMPLETED',
+            service_date__gte=month_start,
+        ).aggregate(total=Sum('cost'))['total'] or Decimal('0.00')
+
+        total_revenue = repair_revenue + replacement_revenue
+
         return {
             'outstanding_invoices': outstanding[:10],
             'outstanding_count': outstanding.count(),
@@ -335,6 +351,9 @@ def _get_billing_context(tenant):
             'overdue_count': overdue_count,
             'recent_payments': recent_payments,
             'collected_this_month': collected_this_month,
+            'total_revenue': total_revenue,
+            'repair_revenue': repair_revenue,
+            'replacement_revenue': replacement_revenue,
         }
     except Exception:
         return {
@@ -344,6 +363,9 @@ def _get_billing_context(tenant):
             'overdue_count': 0,
             'recent_payments': [],
             'collected_this_month': Decimal('0.00'),
+            'total_revenue': Decimal('0.00'),
+            'repair_revenue': Decimal('0.00'),
+            'replacement_revenue': Decimal('0.00'),
         }
 
 
@@ -639,6 +661,46 @@ def owner_settings_view(request):
                 messages.error(request, 'Invalid assignment strategy selected.')
             return redirect('owner_settings')
 
+        if form_type == 'billing_location':
+            # Update shop location + tax rate breakdown
+            try:
+                from decimal import Decimal, InvalidOperation
+                config = BillingConfig.get_instance()
+                config.company_city = request.POST.get('company_city', '').strip()
+                config.company_state = request.POST.get('company_state', '').strip().upper()
+                config.company_zip = request.POST.get('company_zip', '').strip()
+
+                # Parse component rates
+                def _dec(field, default='0'):
+                    try:
+                        return Decimal(request.POST.get(field, default))
+                    except (InvalidOperation, ValueError):
+                        return Decimal(default)
+
+                config.state_tax_rate = _dec('state_tax_rate', '6.500')
+                config.county_tax_rate = _dec('county_tax_rate', '0')
+                config.city_tax_rate = _dec('city_tax_rate', '0')
+                config.special_tax_rate = _dec('special_tax_rate', '0')
+
+                # Total auto-calculates from components
+                config.default_tax_rate = (
+                    config.state_tax_rate + config.county_tax_rate +
+                    config.city_tax_rate + config.special_tax_rate
+                )
+
+                # Auto-enable tax when rates are set
+                if config.default_tax_rate > 0:
+                    config.tax_enabled = True
+
+                config.save()
+                from django.core.cache import cache
+                cache.delete('billing_config_tax')
+                messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
+            except Exception as e:
+                logger.error(f"Error updating billing config: {e}")
+                messages.error(request, 'Could not update tax settings.')
+            return redirect('/owner/settings/?tab=billing')
+
         # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
         tenant.business_phone = request.POST.get('business_phone', '').strip()
@@ -683,6 +745,20 @@ def owner_settings_view(request):
     for cust in customers:
         cust.portal_user = customer_users.get(cust.id)
 
+    # Tax rates for Billing tab
+    tax_rates = TaxRate.objects.filter(
+        models.Q(tenant=tenant) | models.Q(tenant__isnull=True)
+    ).order_by('state', 'city')
+    try:
+        billing_config = BillingConfig.get_instance()
+        tax_enabled = billing_config.tax_enabled
+    except Exception:
+        billing_config = None
+        tax_enabled = False
+
+    # Active tab from query string
+    active_tab = request.GET.get('tab', 'general')
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -690,6 +766,10 @@ def owner_settings_view(request):
         'shop_join_url': shop_join_url,
         'customers': customers,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
+        'tax_rates': tax_rates,
+        'tax_enabled': tax_enabled,
+        'billing_config': billing_config,
+        'active_tab': active_tab,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -730,10 +810,8 @@ def invite_member(request):
     # Check if user already exists
     user = User.objects.filter(email=email).first()
     if not user:
-        username = email[:150]
-        if User.objects.filter(username=username).exists():
-            messages.error(request, 'A user with this email already exists.')
-            return redirect('owner_settings')
+        from apps.tenants.services.signup_service import generate_unique_username
+        username = generate_unique_username(email, first_name)
 
         user = User.objects.create_user(
             username=username,
@@ -865,7 +943,7 @@ def shop_join_view(request, slug):
 
         # Check password strength
         if password:
-            temp_user = User(username=email[:150], email=email, first_name=first_name, last_name=last_name)
+            temp_user = User(username='temp', email=email, first_name=first_name, last_name=last_name)
             try:
                 validate_password(password, user=temp_user)
             except ValidationError as e:
@@ -892,8 +970,9 @@ def shop_join_view(request, slug):
         try:
             with transaction.atomic():
                 # 1. Create User
+                from apps.tenants.services.signup_service import generate_unique_username
                 user = User.objects.create_user(
-                    username=email[:150],
+                    username=generate_unique_username(email, first_name),
                     email=email,
                     password=password,
                     first_name=first_name,
@@ -1214,6 +1293,22 @@ def owner_invoice_list(request):
     # Customer list for filter dropdown
     customers = Customer.objects.filter(tenant=tenant).order_by('name')
 
+    # Uninvoiced completed repairs per customer
+    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+    tracking = InvoiceTrackingService(tenant=tenant)
+    uninvoiced_customers = []
+    for cust in customers:
+        uninvoiced = tracking.get_uninvoiced_repairs(cust)
+        count = uninvoiced.count() if hasattr(uninvoiced, 'count') else len(uninvoiced)
+        if count > 0:
+            # Sum up costs
+            total_cost = sum(r.cost or 0 for r in uninvoiced)
+            uninvoiced_customers.append({
+                'customer': cust,
+                'count': count,
+                'total': total_cost,
+            })
+
     context = {
         'tenant': tenant,
         'invoices': invoices,
@@ -1224,6 +1319,7 @@ def owner_invoice_list(request):
         'overdue_amount': overdue_amount,
         'payments_month_amount': payments_month_amount,
         'invoices_this_month': invoices_this_month,
+        'uninvoiced_customers': uninvoiced_customers,
     }
     return render(request, 'saas/owner_invoices.html', context)
 
@@ -1353,3 +1449,144 @@ def owner_record_payment(request, invoice_id):
         messages.error(request, 'An error occurred while recording the payment. Please try again.')
 
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+# ─── Tax Rate Management ─────────────────────────────────────────────
+@owner_or_manager_required
+def owner_tax_rates(request):
+    """GET /owner/tax-rates/ — redirect to settings billing tab."""
+    return redirect('/owner/settings/?tab=billing')
+
+
+@owner_or_manager_required
+def owner_add_tax_rate(request):
+    """POST /owner/tax-rates/add/ — add a new tax rate."""
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=billing')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    from decimal import Decimal, InvalidOperation
+
+    city = request.POST.get('city', '').strip()
+    county = request.POST.get('county', '').strip()
+    state = request.POST.get('state', 'AR').strip().upper()
+    zip_code = request.POST.get('zip_code', '').strip()
+
+    if not city:
+        messages.error(request, 'City is required.')
+        return redirect('/owner/settings/?tab=billing')
+
+    if not state or len(state) != 2:
+        messages.error(request, 'Please enter a valid 2-letter state code.')
+        return redirect('/owner/settings/?tab=billing')
+
+    try:
+        state_rate = Decimal(request.POST.get('state_rate', '0'))
+        county_rate = Decimal(request.POST.get('county_rate', '0'))
+        city_rate = Decimal(request.POST.get('city_rate', '0'))
+        special_rate = Decimal(request.POST.get('special_rate', '0'))
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Invalid rate value. Enter numbers only.')
+        return redirect('/owner/settings/?tab=billing')
+
+    # Check for duplicates
+    if TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).exists():
+        messages.error(request, f'A tax rate for {city}, {state} already exists.')
+        return redirect('/owner/settings/?tab=billing')
+
+    TaxRate.objects.create(
+        tenant=tenant,
+        city=city,
+        county=county,
+        state=state,
+        zip_code=zip_code,
+        state_rate=state_rate,
+        county_rate=county_rate,
+        city_rate=city_rate,
+        special_rate=special_rate,
+    )
+
+    total = state_rate + county_rate + city_rate + special_rate
+    messages.success(request, f'Tax rate added: {city}, {state} — {total}%')
+    return redirect('/owner/settings/?tab=billing')
+
+
+@owner_or_manager_required
+def owner_edit_tax_rate(request, rate_id):
+    """POST /owner/tax-rates/<id>/edit/ — update a tax rate."""
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=billing')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('signup')
+
+    rate = get_object_or_404(TaxRate, id=rate_id, tenant=tenant)
+
+    from decimal import Decimal, InvalidOperation
+
+    city = request.POST.get('city', '').strip()
+    state = request.POST.get('state', '').strip().upper()
+
+    if city:
+        rate.city = city
+    if state and len(state) == 2:
+        rate.state = state
+    rate.county = request.POST.get('county', rate.county).strip()
+    rate.zip_code = request.POST.get('zip_code', rate.zip_code).strip()
+
+    try:
+        rate.state_rate = Decimal(request.POST.get('state_rate', rate.state_rate))
+        rate.county_rate = Decimal(request.POST.get('county_rate', rate.county_rate))
+        rate.city_rate = Decimal(request.POST.get('city_rate', rate.city_rate))
+        rate.special_rate = Decimal(request.POST.get('special_rate', rate.special_rate))
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Invalid rate value.')
+        return redirect('/owner/settings/?tab=billing')
+
+    rate.save()  # total auto-calculates
+    messages.success(request, f'Tax rate updated: {rate.city}, {rate.state} — {rate.total_rate}%')
+    return redirect('/owner/settings/?tab=billing')
+
+
+@owner_or_manager_required
+def owner_delete_tax_rate(request, rate_id):
+    """POST /owner/tax-rates/<id>/delete/ — remove a tax rate."""
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=billing')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('signup')
+
+    rate = get_object_or_404(TaxRate, id=rate_id, tenant=tenant)
+    city_state = f'{rate.city}, {rate.state}'
+    rate.delete()
+    messages.success(request, f'Tax rate removed: {city_state}')
+    return redirect('/owner/settings/?tab=billing')
+
+
+@owner_or_manager_required
+def owner_toggle_tax(request):
+    """POST /owner/tax-rates/toggle/ — enable/disable tax globally."""
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=billing')
+
+    try:
+        config = BillingConfig.get_instance()
+        config.tax_enabled = not config.tax_enabled
+        config.save()
+        from django.core.cache import cache
+        cache.delete('billing_config_tax')
+        
+        status = 'enabled' if config.tax_enabled else 'disabled'
+        messages.success(request, f'Sales tax calculation {status}.')
+    except Exception as e:
+        logger.error(f"Error toggling tax: {e}")
+        messages.error(request, 'Could not update tax setting.')
+
+    return redirect('/owner/settings/?tab=billing')

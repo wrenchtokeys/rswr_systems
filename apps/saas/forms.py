@@ -69,8 +69,6 @@ class SignupForm(forms.Form):
         email = self.cleaned_data['email'].strip().lower()
         if User.objects.filter(email=email).exists():
             raise ValidationError('An account with this email already exists.')
-        if User.objects.filter(username=email[:150]).exists():
-            raise ValidationError('An account with this email already exists.')
         return email
 
     def clean(self):

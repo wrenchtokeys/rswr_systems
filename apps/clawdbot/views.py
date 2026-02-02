@@ -235,6 +235,12 @@ def invoice_preview(request, customer_id):
         'totals': {
             'subtotal': float(invoice_data.subtotal),
             'discount': float(invoice_data.total_discount),
+            'tax_rate': float(invoice_data.tax_rate),
+            'state_tax_rate': float(invoice_data.state_tax_rate),
+            'county_tax_rate': float(invoice_data.county_tax_rate),
+            'city_tax_rate': float(invoice_data.city_tax_rate),
+            'special_tax_rate': float(invoice_data.special_tax_rate),
+            'tax_amount': float(invoice_data.tax_amount),
             'total': float(invoice_data.total),
         },
     })

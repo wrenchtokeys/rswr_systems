@@ -214,7 +214,7 @@ The system uses Django's built-in group-based permission system to control acces
 
 ### Key Business Logic Patterns
 
-**Repair Workflow**: Central `Repair` model with status-based progression (REQUESTED → PENDING → APPROVED → IN_PROGRESS → COMPLETED). Cost calculation is automatic based on unit repair frequency using `UnitRepairCount` tracking.
+**Repair Workflow**: Central `Repair` model with status-based progression (REQUESTED → PENDING → APPROVED → IN_PROGRESS → COMPLETED). Cost calculation is automatic based on unit repair frequency using `UnitRepairCount` tracking. **Sales tax** (`tax_rate`, `tax_amount`) is calculated automatically on every save using `TaxService` and the rates configured in `BillingConfig`. The `total_with_tax` property returns cost + tax. Tax is also independently calculated at invoice creation time via `TaxService.apply_tax_to_invoice()`.
 
 **Multi-Break Batch Repairs** (New as of 11/8/2025): System supports creating multiple repairs for the same unit in one session. Each break is a separate `Repair` record linked via `repair_batch_id` (UUID). Progressive pricing: Break 1 priced as repair #N+1, Break 2 as #N+2, etc. Fully integrated with custom pricing tiers and volume discounts. All repairs in batch created atomically via `@transaction.atomic`. Customer portal supports batch approval (all-or-nothing). Access at `/tech/repairs/create-multi-break/`. See test suite at `tests/bug_fixes/test_multi_break_repair.py` for comprehensive examples.
 

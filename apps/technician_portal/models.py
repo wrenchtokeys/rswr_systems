@@ -447,6 +447,16 @@ class Repair(GlassService):
         help_text="True if customer indicated multiple breaks exist but didn't specify exact count"
     )
 
+    # Tax fields — calculated from BillingConfig rates when cost is set
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text="Tax rate applied to this repair (percentage, e.g. 6.500 = 6.5%)"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Tax amount in dollars"
+    )
+
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
     # The field was renamed to service_date in the abstract base class.
@@ -462,6 +472,13 @@ class Repair(GlassService):
     def repair_date(self, value):
         """Backward-compatible alias for service_date."""
         self.service_date = value
+
+    @property
+    def total_with_tax(self):
+        """Cost + tax amount."""
+        cost = self.cost or Decimal('0.00')
+        tax = self.tax_amount or Decimal('0.00')
+        return cost + tax
 
     def save(self, *args, **kwargs):
         # BATCH INTEGRITY VALIDATION: Ensure batch data is consistent
@@ -528,6 +545,18 @@ class Repair(GlassService):
                     from .services.pricing_service import calculate_repair_cost
                     next_repair_count = unit_repair_count.repair_count + 1
                     self.cost = calculate_repair_cost(self.customer, next_repair_count)
+
+            # Calculate tax from BillingConfig rates
+            if self.cost and self.cost > 0:
+                try:
+                    from apps.billing.services.tax_service import TaxService
+                    tax_result = TaxService().calculate_tax(
+                        subtotal=self.cost, customer=self.customer
+                    )
+                    self.tax_rate = tax_result['rate']
+                    self.tax_amount = tax_result['amount']
+                except Exception:
+                    pass  # Keep $0 tax if billing app unavailable
 
             # Save after the cost calculation
             super().save(*args, **kwargs)

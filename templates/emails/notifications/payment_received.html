@@ -107,6 +107,14 @@
                                     <span style="color: #666666;">${{ invoice.total }}</span>
                                 </td>
                             </tr>
+                            {% if invoice.tax_amount > 0 %}
+                            <tr>
+                                <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
+                                    <strong style="color: {{ branding.text_color }};">Tax ({{ invoice.tax_rate }}%):</strong>
+                                    <span style="color: #666666;">${{ invoice.tax_amount }}</span>
+                                </td>
+                            </tr>
+                            {% endif %}
                             <tr>
                                 <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
                                     <strong style="color: {{ branding.text_color }};">Total Paid:</strong>

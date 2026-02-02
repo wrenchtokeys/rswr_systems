@@ -37,8 +37,14 @@ def health_check(request):
         }, status=500)
 
 def home(request):
-    # The root page is now a marketing landing page
-    # No automatic redirects for authenticated users
+    # Authenticated users go to their portal, visitors see landing page
+    if request.user.is_authenticated:
+        dest = _route_authenticated_user(request, request.user)
+        if dest:
+            return dest
+        if request.user.is_staff:
+            return redirect('/admin/')
+        return redirect('owner_dashboard')
     return render(request, 'landing.html')
 
 def customer_login_view(request):
@@ -109,14 +115,15 @@ def login_router(request):
     """Unified login page — authenticates user and routes to appropriate portal."""
     from apps.tenants.models import TenantMembership
 
-    # Already authenticated? Route them.
+    # Already authenticated? Route them (never redirect back to login).
     if request.user.is_authenticated:
         dest = _route_authenticated_user(request, request.user)
         if dest:
             return dest
-        # Fallback for authenticated users with no clear destination
-        from common.auth import redirect_to_portal
-        return redirect_to_portal(request.user)
+        # Fallback: staff go to admin, everyone else to owner dashboard
+        if request.user.is_staff:
+            return redirect('/admin/')
+        return redirect('owner_dashboard')
 
     context = {
         'next': request.GET.get('next', ''),
@@ -128,28 +135,30 @@ def login_router(request):
             context['error'] = 'Too many login attempts. Please try again later.'
             return render(request, 'saas/login.html', context)
 
-        email = request.POST.get('email', '').strip().lower()
+        login_id = request.POST.get('email', '').strip()
         password = request.POST.get('password', '')
-        context['email'] = email
+        context['email'] = login_id
 
-        if not email or not password:
-            context['error'] = 'Please enter both email and password.'
+        if not login_id or not password:
+            context['error'] = 'Please enter your username or email and password.'
             return render(request, 'saas/login.html', context)
 
-        # Find user by email (username is email in our system)
+        # Find user by email or username
         User = get_user_model()
+        login_id_lower = login_id.lower()
         try:
-            user_obj = User.objects.get(email=email)
+            user_obj = User.objects.get(email=login_id_lower)
         except User.DoesNotExist:
             try:
-                user_obj = User.objects.get(username=email)
+                # Try username (case-insensitive)
+                user_obj = User.objects.get(username__iexact=login_id)
             except User.DoesNotExist:
                 user_obj = None
 
         if user_obj is None:
             # Log failed attempt
             from apps.security.models import LoginAttempt
-            LoginAttempt.log_attempt(request, email, False, 'unified', 'User not found')
+            LoginAttempt.log_attempt(request, login_id, False, 'unified', 'User not found')
             context['error'] = 'Invalid email or password.'
             return render(request, 'saas/login.html', context)
 
@@ -162,13 +171,13 @@ def login_router(request):
         user = authenticate(request, username=user_obj.username, password=password)
         if user is None:
             from apps.security.models import LoginAttempt
-            LoginAttempt.log_attempt(request, email, False, 'unified', 'Invalid credentials')
+            LoginAttempt.log_attempt(request, login_id, False, 'unified', 'Invalid credentials')
             context['error'] = 'Invalid email or password.'
             return render(request, 'saas/login.html', context)
 
         # Log successful login
         from apps.security.models import LoginAttempt
-        LoginAttempt.log_attempt(request, email, True, 'unified')
+        LoginAttempt.log_attempt(request, login_id, True, 'unified')
 
         login(request, user)
 
@@ -185,7 +194,7 @@ def login_router(request):
         # No membership and not a customer — show error
         logout(request)
         context['error'] = 'No shop account found. Please contact your shop owner or sign up for a new account.'
-        context['email'] = email
+        context['email'] = login_id
         return render(request, 'saas/login.html', context)
 
     return render(request, 'saas/login.html', context)

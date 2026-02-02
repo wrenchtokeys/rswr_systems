@@ -15,6 +15,10 @@ Single permission system (`common/auth.py`), one base template (`base_app.html`)
 Full invoicing lifecycle: auto-invoice on completion, PDF generation, Stripe payments, payment confirmation emails, customer invoice portal, owner invoice dashboard, tech on-site payment collection, manual payment recording.
 → Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) (Phases 1-5 complete)
 
+### Sales Tax (v2.2.1 — Feb 1, 2026)
+Tax rate breakdown (state/county/city/special) configured in Settings → Billing & Tax. Tax auto-calculated on every Repair save and at invoice creation. Displayed on repair detail pages (tech + customer portals) and invoices (PDF + portals). Per-customer `tax_exempt` flag supported. Auto-enables when rates are saved.
+→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-8-sales-tax-by-zip-code) (Phase 8 complete)
+
 ### SaaS Multi-Tenant Architecture
 Tenants app with `Tenant`, `TenantMembership`, `SubscriptionPlan` models. Signup flow, onboarding wizard, owner portal with billing page. Subscription plans defined (Trial/Starter/Pro/Enterprise) but not yet wired to Stripe checkout.
 
@@ -30,12 +34,6 @@ Referral codes, point-based rewards, flexible redemption options.
 ---
 
 ## 🔜 Next Up
-
-### Sales Tax (Billing Phase 8)
-Add `tax_rate`, `tax_amount` to invoices. Tax calculated at invoice creation (not Stripe checkout) so check/cash customers pay the same total. Arkansas has state + local rates varying by zip code.
-- Ships with `tax_enabled=False` by default — flip on when ready
-- Per-customer `tax_exempt` flag for government/exempt accounts
-→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-8-sales-tax-by-zip-code) (~8-12 hours)
 
 ### Billing Automation (Phase 6)
 - Batch invoicing for `batch` preference customers

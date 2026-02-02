@@ -32,7 +32,7 @@
 - ~~**No owner billing dashboard for customer invoices**~~ ✅ Done (Phase 5.2)
 - ~~**Customer portal has no invoice history/payment view**~~ ✅ Done (Phase 5.1)
 - **Tech portal has no payment visibility** (deferred)
-- **No sales tax calculation** — invoices have no tax (Phase 8)
+- ~~No sales tax calculation~~ — **Sales tax complete** (Phase 8, v2.2.1)
 - **No manual payment UI** ✅ Done — owner can record cash/check/wire/ACH (Phase 5.2)
 
 ---
@@ -174,46 +174,36 @@
 
 ---
 
-## Phase 8: Sales Tax by Zip Code
+## Phase 8: Sales Tax ✅ COMPLETE (Feb 1, 2026)
 
-**Goal**: Automatically calculate and apply correct sales tax per invoice based on service location.
+**Goal**: Automatically calculate and apply correct sales tax on repairs and invoices.
 
-### Why it's complex
-- Arkansas state rate: 6.5%
-- Cities/counties add local taxes on top (combined can reach 11.625%)
-- Rate varies by zip code — some zips span multiple jurisdictions
-- Rates change periodically
+### What was built
+- **BillingConfig rate fields**: `state_tax_rate`, `county_tax_rate`, `city_tax_rate`, `special_tax_rate` with auto-calculated `default_tax_rate` (total). Shop owners enter their rates in Settings → Billing & Tax.
+- **Tax on repairs**: `tax_rate` and `tax_amount` fields on Repair model. Tax auto-calculated on every `save()` via `TaxService`. `total_with_tax` property returns cost + tax. Displayed on tech and customer repair detail pages.
+- **Tax on invoices**: `tax_rate`, `state_tax_rate`, `county_tax_rate`, `city_tax_rate`, `special_tax_rate`, `tax_amount` fields on Invoice model. Tax calculated at invoice creation time via `TaxService.apply_tax_to_invoice()`. PDF shows full breakdown.
+- **Per-customer exemption**: `Customer.tax_exempt` flag → $0 tax regardless of global setting.
+- **Auto-enable**: Saving non-zero rates auto-sets `tax_enabled = True`.
+- **No-tax mode**: `BillingConfig.tax_enabled = False` → everything stays $0.
 
-### Key constraint: tax must be on the invoice, not at checkout
-If tax is only added at Stripe checkout, customers paying by check/cash would skip tax.
-Tax MUST be calculated at invoice creation time and shown on the PDF.
-Stripe checkout charges the tax-inclusive total — no additional tax added at payment.
+### Design decisions
+- **No tax table / API** — shop owner enters their local rates directly. Simple, no maintenance, no external deps.
+- **Tax on the invoice, not at checkout** — check/cash customers pay the same tax-inclusive total as Stripe customers.
+- **Tax calculated at creation time** — rate is frozen on the invoice/repair record so historical records stay accurate even if rates change later.
 
-### Options (pick one for rate lookup)
-1. **Stripe Tax Calculations API** — Use Stripe's tax calculation endpoint at invoice creation to get the rate, store it on our invoice. Checkout charges the pre-calculated total. ~$0.50/txn.
-2. **Tax API** (TaxJar, Avalara, etc.) — Dedicated tax calculation at invoice creation. Monthly fee.
-3. **Local tax table** — Maintain a zip→rate lookup table ourselves. Free but we own the maintenance. Arkansas Dept of Finance publishes rate files.
-
-### Tasks (regardless of approach)
-- [ ] Add `tax_rate`, `tax_amount` fields to Invoice model
-- [ ] Add `tax_enabled` toggle to BillingConfig (global on/off — **default: off**)
-- [ ] Add `tax_exempt` flag on Customer model (per-customer override)
-- [ ] Calculate tax at invoice creation time (not at checkout)
-- [ ] Invoice PDF shows: subtotal + tax + total (or just subtotal = total if no tax)
-- [ ] Email templates show tax breakdown (hide tax line when zero)
-- [ ] Stripe checkout charges the tax-inclusive `total` (no additional tax)
-- [ ] Check/cash payments are for the same tax-inclusive total
-- [ ] Determine service location per repair (customer address? job site zip?)
-- [ ] Tax reporting: monthly/quarterly totals for filing
-
-### No-tax mode
-- BillingConfig.tax_enabled = False → invoices skip tax entirely (subtotal = total)
-- Customer.tax_exempt = True → that customer always gets $0 tax regardless of global setting
-- This lets Drake run without tax initially and flip it on when ready
-- Tax-exempt useful for government accounts, resellers, or fleets with exemption certs
-
-**Estimated effort**: ~8-12 hours depending on approach
-**Priority**: P1 — legal compliance (but can launch with tax_enabled=False initially)
+### Completed tasks
+- [x] Add tax rate breakdown fields to BillingConfig
+- [x] Add `tax_rate`, `tax_amount` fields to Invoice model (with breakdown)
+- [x] Add `tax_rate`, `tax_amount` fields to Repair model
+- [x] Add `tax_enabled` toggle to BillingConfig (global on/off)
+- [x] Add `tax_exempt` flag on Customer model
+- [x] Tax auto-calculated on Repair.save()
+- [x] Tax applied at invoice creation via InvoiceTrackingService
+- [x] Invoice PDF shows tax breakdown (state/county/city/special)
+- [x] Email templates show tax breakdown
+- [x] Settings UI: 4 rate fields with live-updating total
+- [x] Tech portal repair detail shows tax
+- [x] Customer portal repair detail shows tax
 
 ---
 

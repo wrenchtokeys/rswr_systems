@@ -4,403 +4,532 @@
 
 {% block content %}
 
-<div class="mb-8">
+<div class="mb-6">
     <h1 class="text-3xl font-bold text-gray-900">Settings</h1>
-    <p class="text-gray-500 mt-1">Manage your business info, team, and customers</p>
+    <p class="text-gray-500 mt-1">Manage your shop configuration</p>
 </div>
 
-<!-- Business Information -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
-    <div class="px-6 py-4 border-b border-gray-200">
-        <h3 class="text-lg font-semibold text-gray-900">Business Information</h3>
-    </div>
-    <form method="post" enctype="multipart/form-data" class="p-6">
-        {% csrf_token %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <!-- Business Name -->
-            <div>
-                <label for="business_name" class="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
-                <input type="text" id="business_name" name="business_name" value="{{ tenant.name }}"
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition">
-            </div>
-
-            <!-- Business Email -->
-            <div>
-                <label for="business_email" class="block text-sm font-medium text-gray-700 mb-1">Business Email</label>
-                <input type="email" id="business_email" name="business_email" value="{{ tenant.business_email }}"
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
-                    placeholder="info@yourbusiness.com">
-            </div>
-
-            <!-- Phone -->
-            <div>
-                <label for="business_phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                <input type="tel" id="business_phone" name="business_phone" value="{{ tenant.business_phone }}"
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
-                    placeholder="(555) 123-4567">
-            </div>
-
-            <!-- Logo -->
-            <div>
-                <label for="logo" class="block text-sm font-medium text-gray-700 mb-1">Business Logo</label>
-                <div class="flex items-center gap-3">
-                    {% if tenant.logo %}
-                    <img src="{{ tenant.logo.url }}" alt="Logo" class="w-12 h-12 rounded-lg object-cover border border-gray-200">
-                    {% else %}
-                    <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center border border-gray-200">
-                        <i class="fas fa-image text-gray-400"></i>
-                    </div>
-                    {% endif %}
-                    <input type="file" id="logo" name="logo" accept="image/*"
-                        class="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-                </div>
-            </div>
-        </div>
-
-        <!-- Address -->
-        <div class="mt-6">
-            <label for="business_address" class="block text-sm font-medium text-gray-700 mb-1">Business Address</label>
-            <textarea id="business_address" name="business_address" rows="3"
-                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
-                placeholder="123 Main St, Suite 100, City, State">{{ tenant.business_address }}</textarea>
-        </div>
-
-        <!-- Save -->
-        <div class="mt-6 flex justify-end">
-            <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                <i class="fas fa-save mr-2"></i>
-                Save Changes
-            </button>
-        </div>
-    </form>
+<!-- Tabs -->
+<div class="border-b border-gray-200 mb-6">
+    <nav class="flex space-x-6 -mb-px" aria-label="Settings tabs">
+        <button onclick="switchTab('general')" id="tab-general"
+            class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
+            <i class="fas fa-store mr-1.5"></i>General
+        </button>
+        <button onclick="switchTab('team')" id="tab-team"
+            class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
+            <i class="fas fa-users mr-1.5"></i>Team
+        </button>
+        <button onclick="switchTab('customers')" id="tab-customers"
+            class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
+            <i class="fas fa-building mr-1.5"></i>Customers
+        </button>
+        <button onclick="switchTab('billing')" id="tab-billing"
+            class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
+            <i class="fas fa-file-invoice-dollar mr-1.5"></i>Billing & Tax
+        </button>
+    </nav>
 </div>
 
-<!-- Customer Portal Invite Link (Phase 4e) -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
-    <div class="px-6 py-4 border-b border-gray-200">
-        <div class="flex items-center gap-3">
-            <div class="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-link text-emerald-600 text-sm"></i>
-            </div>
-            <div>
-                <h3 class="text-lg font-semibold text-gray-900">Customer Portal</h3>
-                <p class="text-sm text-gray-500">Share this link with customers so they can create their own portal account</p>
-            </div>
-        </div>
-    </div>
-    <div class="p-6">
-        <div class="flex flex-col sm:flex-row gap-3">
-            <div class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700 font-mono break-all" id="joinLinkText">
-                {{ shop_join_url }}
-            </div>
-            <button onclick="copyJoinLink()" id="copyBtn"
-                class="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm whitespace-nowrap">
-                <i class="fas fa-copy mr-2" id="copyIcon"></i>
-                <span id="copyBtnText">Copy Link</span>
-            </button>
-        </div>
-        <p class="text-xs text-gray-500 mt-3">
-            <i class="fas fa-info-circle mr-1"></i>
-            Customers who visit this link can sign up for a portal account to track repairs, approve work orders, and view invoices.
-        </p>
-    </div>
-</div>
+<!-- ======================= GENERAL TAB ======================= -->
+<div id="panel-general" class="tab-panel">
 
-<!-- Repair Assignment Strategy -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
-    <div class="px-6 py-4 border-b border-gray-200">
-        <div class="flex items-center gap-3">
-            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-random text-blue-600 text-sm"></i>
-            </div>
-            <div>
-                <h3 class="text-lg font-semibold text-gray-900">Repair Assignment</h3>
-                <p class="text-sm text-gray-500">Choose how new repair requests are assigned to technicians</p>
-            </div>
+    <!-- Business Information -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Business Information</h3>
         </div>
-    </div>
-    <form method="post" action="{% url 'owner_settings' %}" class="p-6">
-        {% csrf_token %}
-        <input type="hidden" name="form_type" value="assignment_strategy">
-        <div class="space-y-4">
-            {% for value, label in assignment_strategy_choices %}
-            <label class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors
-                {% if tenant.assignment_strategy == value %}border-blue-500 bg-blue-50{% else %}border-gray-200{% endif %}">
-                <input type="radio" name="assignment_strategy" value="{{ value }}"
-                    {% if tenant.assignment_strategy == value %}checked{% endif %}
-                    class="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+        <form method="post" enctype="multipart/form-data" class="p-6">
+            {% csrf_token %}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
-                    <span class="text-sm font-medium text-gray-900">{{ label }}</span>
-                    {% if value == 'manual' %}
-                    <p class="text-xs text-gray-500 mt-0.5">A manager must manually assign every repair. Best for small teams with tight control.</p>
-                    {% elif value == 'primary_first' %}
-                    <p class="text-xs text-gray-500 mt-0.5">If a customer has a primary technician, auto-assign to them. Otherwise, queue for manual assignment.</p>
-                    {% elif value == 'auto' %}
-                    <p class="text-xs text-gray-500 mt-0.5">Primary tech first, then assigns to the tech with the fewest active jobs. Balances workload automatically.</p>
-                    {% elif value == 'round_robin' %}
-                    <p class="text-xs text-gray-500 mt-0.5">Rotates assignments evenly through all eligible technicians, regardless of workload.</p>
-                    {% endif %}
+                    <label for="business_name" class="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+                    <input type="text" id="business_name" name="business_name" value="{{ tenant.name }}"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition">
                 </div>
-            </label>
+                <div>
+                    <label for="business_email" class="block text-sm font-medium text-gray-700 mb-1">Business Email</label>
+                    <input type="email" id="business_email" name="business_email" value="{{ tenant.business_email }}"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
+                        placeholder="info@yourbusiness.com">
+                </div>
+                <div>
+                    <label for="business_phone" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                    <input type="tel" id="business_phone" name="business_phone" value="{{ tenant.business_phone }}"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
+                        placeholder="(555) 123-4567">
+                </div>
+                <div>
+                    <label for="logo" class="block text-sm font-medium text-gray-700 mb-1">Business Logo</label>
+                    <div class="flex items-center gap-3">
+                        {% if tenant.logo %}
+                        <img src="{{ tenant.logo.url }}" alt="Logo" class="w-12 h-12 rounded-lg object-cover border border-gray-200">
+                        {% else %}
+                        <div class="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center border border-gray-200">
+                            <i class="fas fa-image text-gray-400"></i>
+                        </div>
+                        {% endif %}
+                        <input type="file" id="logo" name="logo" accept="image/*"
+                            class="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    </div>
+                </div>
+            </div>
+            <div class="mt-6">
+                <label for="business_address" class="block text-sm font-medium text-gray-700 mb-1">Business Address</label>
+                <textarea id="business_address" name="business_address" rows="3"
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
+                    placeholder="123 Main St, Suite 100, City, State">{{ tenant.business_address }}</textarea>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                    <i class="fas fa-save mr-2"></i>Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Customer Portal -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-link text-emerald-600 text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Customer Portal</h3>
+                    <p class="text-sm text-gray-500">Share this link with customers so they can create their own portal account</p>
+                </div>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700 font-mono break-all" id="joinLinkText">
+                    {{ shop_join_url }}
+                </div>
+                <button onclick="copyJoinLink()" id="copyBtn"
+                    class="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm whitespace-nowrap">
+                    <i class="fas fa-copy mr-2" id="copyIcon"></i>
+                    <span id="copyBtnText">Copy Link</span>
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-3">
+                <i class="fas fa-info-circle mr-1"></i>
+                Customers who visit this link can sign up to track repairs, approve work orders, and view invoices.
+            </p>
+        </div>
+    </div>
+
+    <!-- Repair Assignment Strategy -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-random text-blue-600 text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Repair Assignment</h3>
+                    <p class="text-sm text-gray-500">Choose how new repair requests are assigned to technicians</p>
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'owner_settings' %}" class="p-6">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="assignment_strategy">
+            <div class="space-y-3">
+                {% for value, label in assignment_strategy_choices %}
+                <label class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors
+                    {% if tenant.assignment_strategy == value %}border-blue-500 bg-blue-50{% else %}border-gray-200{% endif %}">
+                    <input type="radio" name="assignment_strategy" value="{{ value }}"
+                        {% if tenant.assignment_strategy == value %}checked{% endif %}
+                        class="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">{{ label }}</span>
+                        {% if value == 'manual' %}
+                        <p class="text-xs text-gray-500 mt-0.5">A manager must manually assign every repair.</p>
+                        {% elif value == 'primary_first' %}
+                        <p class="text-xs text-gray-500 mt-0.5">Auto-assign to customer's primary tech, otherwise queue for manual assignment.</p>
+                        {% elif value == 'auto' %}
+                        <p class="text-xs text-gray-500 mt-0.5">Primary tech first, then assigns to the tech with fewest active jobs.</p>
+                        {% elif value == 'round_robin' %}
+                        <p class="text-xs text-gray-500 mt-0.5">Rotates assignments evenly through all eligible technicians.</p>
+                        {% endif %}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                    <i class="fas fa-save mr-2"></i>Save Strategy
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ======================= TEAM TAB ======================= -->
+<div id="panel-team" class="tab-panel hidden">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Team Members</h3>
+                <p class="text-sm text-gray-500 mt-0.5">{{ members|length }} member{{ members|length|pluralize }}</p>
+            </div>
+            {% if membership.role == 'owner' or membership.role == 'manager' %}
+            <button onclick="document.getElementById('inviteModal').classList.remove('hidden')"
+                class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <i class="fas fa-user-plus mr-2"></i>Invite Member
+            </button>
+            {% endif %}
+        </div>
+
+        {% if members %}
+        <div class="divide-y divide-gray-100">
+            {% for member in members %}
+            <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
+                            {% if member.role == 'owner' %}bg-purple-100
+                            {% elif member.role == 'manager' %}bg-blue-100
+                            {% elif member.role == 'technician' %}bg-green-100
+                            {% else %}bg-gray-100{% endif %}">
+                            <i class="fas fa-user
+                                {% if member.role == 'owner' %}text-purple-600
+                                {% elif member.role == 'manager' %}text-blue-600
+                                {% elif member.role == 'technician' %}text-green-600
+                                {% else %}text-gray-500{% endif %} text-sm"></i>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-900">
+                                {{ member.user.get_full_name|default:member.user.username }}
+                                {% if member.has_unusable_password %}
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 ml-1">Pending</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-xs text-gray-500">{{ member.user.email }}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 sm:ml-auto flex-wrap">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+                            {% if member.role == 'owner' %}bg-purple-100 text-purple-800
+                            {% elif member.role == 'manager' %}bg-blue-100 text-blue-800
+                            {% elif member.role == 'technician' %}bg-green-100 text-green-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ member.get_role_display }}
+                        </span>
+                        {% if member.technician_record %}
+                            {% if member.technician_record.can_repair %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                <i class="fas fa-tools mr-1 text-[10px]"></i>Repairs
+                            </span>
+                            {% endif %}
+                            {% if member.technician_record.can_replace %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                                <i class="fas fa-exchange-alt mr-1 text-[10px]"></i>Replacements
+                            </span>
+                            {% endif %}
+                        {% endif %}
+                        <span class="text-xs text-gray-400">Joined {{ member.joined_at|date:"M d, Y" }}</span>
+                    </div>
+                </div>
+
+                {% if member.user != request.user and membership.role == 'owner' %}
+                <div class="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                    <button onclick="toggleEditForm('edit-{{ member.id }}')"
+                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                        <i class="fas fa-edit mr-1.5"></i>Edit
+                    </button>
+                    {% if member.has_unusable_password %}
+                    <form method="post" action="{% url 'resend_invite' member.id %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors">
+                            <i class="fas fa-paper-plane mr-1.5"></i>Resend Invite
+                        </button>
+                    </form>
+                    {% endif %}
+                    <form method="post" action="{% url 'deactivate_team_member' member.id %}" class="inline"
+                        onsubmit="return confirm('Are you sure you want to deactivate {{ member.user.get_full_name|default:member.user.email }}?')">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">
+                            <i class="fas fa-user-slash mr-1.5"></i>Deactivate
+                        </button>
+                    </form>
+                </div>
+
+                <div id="edit-{{ member.id }}" class="hidden mt-3 pt-3 border-t border-gray-100">
+                    <form method="post" action="{% url 'update_team_member' member.id %}" class="space-y-3">
+                        {% csrf_token %}
+                        <div class="flex flex-wrap gap-4 items-end">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                                <select name="role" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                                    onchange="toggleMemberAbilities(this, 'abilities-{{ member.id }}')">
+                                    <option value="owner" {% if member.role == 'owner' %}selected{% endif %}>Owner</option>
+                                    <option value="manager" {% if member.role == 'manager' %}selected{% endif %}>Manager</option>
+                                    <option value="technician" {% if member.role == 'technician' %}selected{% endif %}>Technician</option>
+                                    <option value="viewer" {% if member.role == 'viewer' %}selected{% endif %}>Viewer</option>
+                                </select>
+                            </div>
+                            <div id="abilities-{{ member.id }}" class="{% if member.role != 'technician' and member.role != 'manager' %}hidden{% endif %}">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Abilities</label>
+                                <div class="flex gap-3">
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" name="can_repair"
+                                            {% if member.technician_record and member.technician_record.can_repair %}checked{% endif %}
+                                            class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                        <span class="text-xs text-gray-700">Repairs</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" name="can_replace"
+                                            {% if member.technician_record and member.technician_record.can_replace %}checked{% endif %}
+                                            class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                        <span class="text-xs text-gray-700">Replacements</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                                <i class="fas fa-save mr-1.5"></i>Save
+                            </button>
+                            <button type="button" onclick="toggleEditForm('edit-{{ member.id }}')"
+                                class="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                {% elif member.user != request.user and membership.role == 'manager' and member.role in 'technician,viewer' %}
+                <div class="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                    {% if member.has_unusable_password %}
+                    <form method="post" action="{% url 'resend_invite' member.id %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors">
+                            <i class="fas fa-paper-plane mr-1.5"></i>Resend Invite
+                        </button>
+                    </form>
+                    {% endif %}
+                    <form method="post" action="{% url 'deactivate_team_member' member.id %}" class="inline"
+                        onsubmit="return confirm('Are you sure you want to deactivate {{ member.user.get_full_name|default:member.user.email }}?')">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">
+                            <i class="fas fa-user-slash mr-1.5"></i>Deactivate
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
-        <div class="mt-6 flex justify-end">
-            <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                <i class="fas fa-save mr-2"></i>
-                Save Strategy
-            </button>
+        {% else %}
+        <div class="p-6 text-center">
+            <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-users text-gray-400 text-xl"></i>
+            </div>
+            <p class="text-gray-500">No team members yet. Invite your first team member to get started.</p>
         </div>
-    </form>
-</div>
-
-<!-- Team Management -->
-<div id="team" class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
-    <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-            <h3 class="text-lg font-semibold text-gray-900">Team Members</h3>
-            <p class="text-sm text-gray-500 mt-0.5">{{ members|length }} member{{ members|length|pluralize }}</p>
-        </div>
-        {% if membership.role == 'owner' or membership.role == 'manager' %}
-        <button onclick="document.getElementById('inviteModal').classList.remove('hidden')"
-            class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <i class="fas fa-user-plus mr-2"></i>
-            Invite Member
-        </button>
         {% endif %}
     </div>
+</div>
 
-    {% if members %}
-    <div class="divide-y divide-gray-100">
-        {% for member in members %}
-        <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+<!-- ======================= CUSTOMERS TAB ======================= -->
+<div id="panel-customers" class="tab-panel hidden">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Customers</h3>
+                <p class="text-sm text-gray-500 mt-0.5">{{ customers|length }} customer{{ customers|length|pluralize }}</p>
+            </div>
+        </div>
+
+        {% if customers %}
+        <div class="divide-y divide-gray-100">
+            {% for cust in customers %}
+            <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 transition-colors">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
-                        {% if member.role == 'owner' %}bg-purple-100
-                        {% elif member.role == 'manager' %}bg-blue-100
-                        {% elif member.role == 'technician' %}bg-green-100
+                        {% if cust.customer_type == 'FLEET' %}bg-indigo-100
+                        {% elif cust.customer_type == 'RETAIL' %}bg-sky-100
                         {% else %}bg-gray-100{% endif %}">
-                        <i class="fas fa-user
-                            {% if member.role == 'owner' %}text-purple-600
-                            {% elif member.role == 'manager' %}text-blue-600
-                            {% elif member.role == 'technician' %}text-green-600
+                        <i class="fas {% if cust.customer_type == 'FLEET' %}fa-truck{% elif cust.customer_type == 'RETAIL' %}fa-user{% else %}fa-walking{% endif %}
+                            {% if cust.customer_type == 'FLEET' %}text-indigo-600
+                            {% elif cust.customer_type == 'RETAIL' %}text-sky-600
                             {% else %}text-gray-500{% endif %} text-sm"></i>
                     </div>
                     <div>
-                        <div class="text-sm font-medium text-gray-900">
-                            {{ member.user.get_full_name|default:member.user.username }}
-                            {% if member.has_unusable_password %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 ml-1">
-                                Pending
-                            </span>
-                            {% endif %}
-                        </div>
-                        <div class="text-xs text-gray-500">{{ member.user.email }}</div>
+                        <div class="text-sm font-medium text-gray-900 capitalize">{{ cust.name }}</div>
+                        <div class="text-xs text-gray-500">{{ cust.email|default:"No email" }}</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-2 sm:ml-auto flex-wrap">
+                <div class="flex items-center gap-2 flex-wrap">
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
-                        {% if member.role == 'owner' %}bg-purple-100 text-purple-800
-                        {% elif member.role == 'manager' %}bg-blue-100 text-blue-800
-                        {% elif member.role == 'technician' %}bg-green-100 text-green-800
+                        {% if cust.customer_type == 'FLEET' %}bg-indigo-100 text-indigo-800
+                        {% elif cust.customer_type == 'RETAIL' %}bg-sky-100 text-sky-800
                         {% else %}bg-gray-100 text-gray-800{% endif %}">
-                        {{ member.get_role_display }}
+                        {{ cust.get_customer_type_display }}
                     </span>
-                    {% if member.technician_record %}
-                        {% if member.technician_record.can_repair %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                            <i class="fas fa-tools mr-1 text-[10px]"></i>Repairs
-                        </span>
-                        {% endif %}
-                        {% if member.technician_record.can_replace %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
-                            <i class="fas fa-exchange-alt mr-1 text-[10px]"></i>Replacements
-                        </span>
-                        {% endif %}
+                    {% if cust.primary_technician %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        <i class="fas fa-user-cog mr-1 text-[10px]"></i>{{ cust.primary_technician.user.get_full_name }}
+                    </span>
                     {% endif %}
-                    <span class="text-xs text-gray-400">Joined {{ member.joined_at|date:"M d, Y" }}</span>
+                    {% if cust.tax_exempt %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        <i class="fas fa-ban mr-1 text-[10px]"></i>Tax Exempt
+                    </span>
+                    {% endif %}
+                    {% if cust.portal_user %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <i class="fas fa-check-circle mr-1 text-[10px]"></i>Portal Access
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                        <i class="fas fa-times-circle mr-1 text-[10px]"></i>No Portal
+                    </span>
+                    {% endif %}
                 </div>
             </div>
-
-            <!-- Member Actions (Phase 6a) -->
-            {% if member.user != request.user and membership.role == 'owner' %}
-            <div class="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
-                <!-- Edit Role/Abilities -->
-                <button onclick="toggleEditForm('edit-{{ member.id }}')"
-                    class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
-                    <i class="fas fa-edit mr-1.5"></i>Edit
-                </button>
-
-                {% if member.has_unusable_password %}
-                <!-- Resend Invite -->
-                <form method="post" action="{% url 'resend_invite' member.id %}" class="inline">
-                    {% csrf_token %}
-                    <button type="submit"
-                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors">
-                        <i class="fas fa-paper-plane mr-1.5"></i>Resend Invite
-                    </button>
-                </form>
-                {% endif %}
-
-                <!-- Deactivate -->
-                <form method="post" action="{% url 'deactivate_team_member' member.id %}" class="inline"
-                    onsubmit="return confirm('Are you sure you want to deactivate {{ member.user.get_full_name|default:member.user.email }}?')">
-                    {% csrf_token %}
-                    <button type="submit"
-                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">
-                        <i class="fas fa-user-slash mr-1.5"></i>Deactivate
-                    </button>
-                </form>
-            </div>
-
-            <!-- Edit Form (hidden by default) -->
-            <div id="edit-{{ member.id }}" class="hidden mt-3 pt-3 border-t border-gray-100">
-                <form method="post" action="{% url 'update_team_member' member.id %}" class="space-y-3">
-                    {% csrf_token %}
-                    <div class="flex flex-wrap gap-4 items-end">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-600 mb-1">Role</label>
-                            <select name="role" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                                onchange="toggleMemberAbilities(this, 'abilities-{{ member.id }}')">
-                                <option value="owner" {% if member.role == 'owner' %}selected{% endif %}>Owner</option>
-                                <option value="manager" {% if member.role == 'manager' %}selected{% endif %}>Manager</option>
-                                <option value="technician" {% if member.role == 'technician' %}selected{% endif %}>Technician</option>
-                                <option value="viewer" {% if member.role == 'viewer' %}selected{% endif %}>Viewer</option>
-                            </select>
-                        </div>
-                        <div id="abilities-{{ member.id }}" class="{% if member.role != 'technician' and member.role != 'manager' %}hidden{% endif %}">
-                            <label class="block text-xs font-medium text-gray-600 mb-1">Abilities</label>
-                            <div class="flex gap-3">
-                                <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" name="can_repair"
-                                        {% if member.technician_record and member.technician_record.can_repair %}checked{% endif %}
-                                        class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                    <span class="text-xs text-gray-700">Repairs</span>
-                                </label>
-                                <label class="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" name="can_replace"
-                                        {% if member.technician_record and member.technician_record.can_replace %}checked{% endif %}
-                                        class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                    <span class="text-xs text-gray-700">Replacements</span>
-                                </label>
-                            </div>
-                        </div>
-                        <button type="submit"
-                            class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
-                            <i class="fas fa-save mr-1.5"></i>Save
-                        </button>
-                        <button type="button" onclick="toggleEditForm('edit-{{ member.id }}')"
-                            class="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors">
-                            Cancel
-                        </button>
-                    </div>
-                </form>
-            </div>
-            {% elif member.user != request.user and membership.role == 'manager' and member.role in 'technician,viewer' %}
-            <div class="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
-                {% if member.has_unusable_password %}
-                <form method="post" action="{% url 'resend_invite' member.id %}" class="inline">
-                    {% csrf_token %}
-                    <button type="submit"
-                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors">
-                        <i class="fas fa-paper-plane mr-1.5"></i>Resend Invite
-                    </button>
-                </form>
-                {% endif %}
-                <form method="post" action="{% url 'deactivate_team_member' member.id %}" class="inline"
-                    onsubmit="return confirm('Are you sure you want to deactivate {{ member.user.get_full_name|default:member.user.email }}?')">
-                    {% csrf_token %}
-                    <button type="submit"
-                        class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">
-                        <i class="fas fa-user-slash mr-1.5"></i>Deactivate
-                    </button>
-                </form>
-            </div>
-            {% endif %}
+            {% endfor %}
         </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="p-6 text-center">
-        <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <i class="fas fa-users text-gray-400 text-xl"></i>
+        {% else %}
+        <div class="p-6 text-center">
+            <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-building text-gray-400 text-xl"></i>
+            </div>
+            <p class="text-gray-500 mb-3">No customers yet.</p>
+            <p class="text-sm text-gray-400">Customers will appear here once they sign up through your portal link or are added by your team.</p>
         </div>
-        <p class="text-gray-500">No team members yet. Invite your first team member to get started.</p>
+        {% endif %}
+
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl">
+            <div class="flex items-center gap-2 text-sm text-gray-600">
+                <i class="fas fa-link text-emerald-500"></i>
+                <span>Share your portal link:</span>
+                <code class="text-xs bg-white px-2 py-1 rounded border border-gray-200 font-mono">{{ shop_join_url }}</code>
+            </div>
+        </div>
     </div>
-    {% endif %}
 </div>
 
-<!-- Customers Section (Phase 6d) -->
-<div id="customers" class="bg-white rounded-xl shadow-sm border border-gray-200">
-    <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-            <h3 class="text-lg font-semibold text-gray-900">Customers</h3>
-            <p class="text-sm text-gray-500 mt-0.5">{{ customers|length }} customer{{ customers|length|pluralize }}</p>
-        </div>
-    </div>
+<!-- ======================= BILLING & TAX TAB ======================= -->
+<div id="panel-billing" class="tab-panel hidden">
 
-    {% if customers %}
-    <div class="divide-y divide-gray-100">
-        {% for cust in customers %}
-        <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 transition-colors">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
-                    {% if cust.customer_type == 'FLEET' %}bg-indigo-100
-                    {% elif cust.customer_type == 'RETAIL' %}bg-sky-100
-                    {% else %}bg-gray-100{% endif %}">
-                    <i class="fas {% if cust.customer_type == 'FLEET' %}fa-truck{% elif cust.customer_type == 'RETAIL' %}fa-user{% else %}fa-walking{% endif %}
-                        {% if cust.customer_type == 'FLEET' %}text-indigo-600
-                        {% elif cust.customer_type == 'RETAIL' %}text-sky-600
-                        {% else %}text-gray-500{% endif %} text-sm"></i>
+    <!-- Sales Tax Setup -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-percent text-blue-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Sales Tax</h3>
+                        <p class="text-sm text-gray-500">Set your shop location and tax rate</p>
+                    </div>
+                </div>
+                <form method="post" action="{% url 'owner_toggle_tax' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border transition-colors
+                        {% if tax_enabled %}bg-green-50 text-green-700 border-green-200 hover:bg-green-100
+                        {% else %}bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100{% endif %}">
+                        {% if tax_enabled %}
+                            <i class="fas fa-check-circle mr-2"></i> Enabled
+                        {% else %}
+                            <i class="fas fa-times-circle mr-2"></i> Disabled
+                        {% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+        <form method="post" action="{% url 'owner_settings' %}" class="p-6">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="billing_location">
+
+            <!-- Shop Location -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">City</label>
+                    <input type="text" name="company_city" value="{{ billing_config.company_city|default:'' }}"
+                        placeholder="e.g. Hensley"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                 </div>
                 <div>
-                    <div class="text-sm font-medium text-gray-900 capitalize">{{ cust.name }}</div>
-                    <div class="text-xs text-gray-500">{{ cust.email|default:"No email" }}</div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <input type="text" name="company_state" value="{{ billing_config.company_state|default:'' }}"
+                        maxlength="2" placeholder="e.g. AR"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
+                    <input type="text" name="company_zip" value="{{ billing_config.company_zip|default:'' }}"
+                        placeholder="e.g. 72103"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                 </div>
             </div>
-            <div class="flex items-center gap-2 flex-wrap">
-                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
-                    {% if cust.customer_type == 'FLEET' %}bg-indigo-100 text-indigo-800
-                    {% elif cust.customer_type == 'RETAIL' %}bg-sky-100 text-sky-800
-                    {% else %}bg-gray-100 text-gray-800{% endif %}">
-                    {{ cust.get_customer_type_display }}
-                </span>
-                {% if cust.primary_technician %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                    <i class="fas fa-user-cog mr-1 text-[10px]"></i>{{ cust.primary_technician.user.get_full_name }}
-                </span>
-                {% endif %}
-                {% if cust.portal_user %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    <i class="fas fa-check-circle mr-1 text-[10px]"></i>Portal Access
-                </span>
-                {% else %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                    <i class="fas fa-times-circle mr-1 text-[10px]"></i>No Portal
-                </span>
-                {% endif %}
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="p-6 text-center">
-        <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <i class="fas fa-building text-gray-400 text-xl"></i>
-        </div>
-        <p class="text-gray-500 mb-3">No customers yet.</p>
-        <p class="text-sm text-gray-400">Customers will appear here once they sign up through your portal link or are added by your team.</p>
-    </div>
-    {% endif %}
 
-    <!-- Shop Join Link reminder -->
-    <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl">
-        <div class="flex items-center gap-2 text-sm text-gray-600">
-            <i class="fas fa-link text-emerald-500"></i>
-            <span>Share your portal link:</span>
-            <code class="text-xs bg-white px-2 py-1 rounded border border-gray-200 font-mono">{{ shop_join_url }}</code>
-        </div>
+            <!-- Tax Rate Breakdown -->
+            <div class="border border-gray-200 rounded-lg p-4 mb-4">
+                <p class="text-sm font-medium text-gray-700 mb-3">Tax Rate Breakdown</p>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">State %</label>
+                        <input type="number" name="state_tax_rate" id="state_tax_rate"
+                            value="{{ billing_config.state_tax_rate|default:'6.500' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">County %</label>
+                        <input type="number" name="county_tax_rate" id="county_tax_rate"
+                            value="{{ billing_config.county_tax_rate|default:'0.000' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">City %</label>
+                        <input type="number" name="city_tax_rate" id="city_tax_rate"
+                            value="{{ billing_config.city_tax_rate|default:'0.000' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Special %</label>
+                        <input type="number" name="special_tax_rate" id="special_tax_rate"
+                            value="{{ billing_config.special_tax_rate|default:'0.000' }}"
+                            step="0.001" min="0" max="20"
+                            oninput="updateTaxTotal()"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="text-sm text-gray-600">
+                        Total Rate: <span id="tax-total-display" class="font-bold text-lg text-gray-900">0.000%</span>
+                    </div>
+                    <input type="hidden" name="default_tax_rate" id="default_tax_rate" value="{{ billing_config.default_tax_rate|default:'0.000' }}">
+                    <button type="submit" class="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                        <i class="fas fa-save mr-2"></i>Save
+                    </button>
+                </div>
+            </div>
+
+            {% if tax_enabled and not billing_config.default_tax_rate or billing_config.default_tax_rate == 0 %}
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p class="text-sm text-amber-700"><i class="fas fa-exclamation-triangle mr-1"></i> Tax is enabled but rate is 0%. Enter your rates above.</p>
+            </div>
+            {% elif tax_enabled and billing_config.default_tax_rate > 0 %}
+            <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> All invoices will include {{ billing_config.default_tax_rate }}% sales tax.</p>
+            </div>
+            {% endif %}
+            {% if not tax_enabled %}
+            <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p class="text-sm text-gray-500"><i class="fas fa-info-circle mr-1"></i> Tax is disabled. Enable it above to add tax to invoices.</p>
+            </div>
+            {% endif %}
+        </form>
     </div>
+
 </div>
 
 <!-- Invite Member Modal -->
@@ -414,7 +543,6 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-
             <form method="post" action="{% url 'owner_invite_member' %}">
                 {% csrf_token %}
                 <div class="space-y-4">
@@ -430,13 +558,11 @@
                                 class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                         </div>
                     </div>
-
                     <div>
                         <label for="invite_email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
                         <input type="email" id="invite_email" name="email" required
                             class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
                     </div>
-
                     <div>
                         <label for="invite_role" class="block text-sm font-medium text-gray-700 mb-1">Role</label>
                         <select id="invite_role" name="role" onchange="toggleAbilities()"
@@ -445,44 +571,27 @@
                             <option value="manager">Manager</option>
                             <option value="viewer">Viewer</option>
                         </select>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Technicians manage repairs. Managers can also invite members. Viewers have read-only access.
-                        </p>
                     </div>
-
-                    <!-- Technician Abilities (shown for technician/manager roles) -->
                     <div id="abilityFields" class="bg-gray-50 p-4 rounded-lg border border-gray-200">
                         <p class="text-sm font-medium text-gray-700 mb-3">Technician Abilities</p>
                         <div class="space-y-2">
                             <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="can_repair" checked
-                                    class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-                                <span class="text-sm text-gray-700">
-                                    <i class="fas fa-tools text-amber-500 mr-1"></i>
-                                    Can do repairs (chip/crack)
-                                </span>
+                                <input type="checkbox" name="can_repair" checked class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700"><i class="fas fa-tools text-amber-500 mr-1"></i>Can do repairs</span>
                             </label>
                             <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="can_replace"
-                                    class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-                                <span class="text-sm text-gray-700">
-                                    <i class="fas fa-exchange-alt text-teal-500 mr-1"></i>
-                                    Can do replacements (full glass)
-                                </span>
+                                <input type="checkbox" name="can_replace" class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700"><i class="fas fa-exchange-alt text-teal-500 mr-1"></i>Can do replacements</span>
                             </label>
                         </div>
                     </div>
                 </div>
-
                 <div class="flex gap-3 mt-6">
                     <button type="button" onclick="document.getElementById('inviteModal').classList.add('hidden')"
-                        class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
-                        Cancel
-                    </button>
+                        class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">Cancel</button>
                     <button type="submit"
                         class="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors">
-                        <i class="fas fa-paper-plane mr-2"></i>
-                        Send Invite
+                        <i class="fas fa-paper-plane mr-2"></i>Send Invite
                     </button>
                 </div>
             </form>
@@ -494,19 +603,58 @@
 
 {% block extra_js %}
 <script>
-function toggleAbilities() {
-    const role = document.getElementById('invite_role').value;
-    const abilityFields = document.getElementById('abilityFields');
-    if (role === 'technician' || role === 'manager') {
-        abilityFields.style.display = '';
-    } else {
-        abilityFields.style.display = 'none';
+// ---- Tab switching ----
+function switchTab(name) {
+    // Hide all panels
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+    // Deactivate all tab buttons
+    document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('border-blue-600', 'text-blue-600');
+        b.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
+    });
+    // Show selected panel
+    const panel = document.getElementById('panel-' + name);
+    if (panel) panel.classList.remove('hidden');
+    // Activate selected tab
+    const tab = document.getElementById('tab-' + name);
+    if (tab) {
+        tab.classList.add('border-blue-600', 'text-blue-600');
+        tab.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
     }
+    // Update URL without reload
+    const url = new URL(window.location);
+    url.searchParams.set('tab', name);
+    history.replaceState(null, '', url);
 }
 
+// ---- Tax rate helpers ----
+function updateTaxTotal() {
+    const state = parseFloat(document.getElementById('state_tax_rate').value) || 0;
+    const county = parseFloat(document.getElementById('county_tax_rate').value) || 0;
+    const city = parseFloat(document.getElementById('city_tax_rate').value) || 0;
+    const special = parseFloat(document.getElementById('special_tax_rate').value) || 0;
+    const total = state + county + city + special;
+    document.getElementById('tax-total-display').textContent = total.toFixed(3) + '%';
+    document.getElementById('default_tax_rate').value = total.toFixed(3);
+}
+
+// Legacy helpers for old TaxRate forms (if any remain)
+function updateTotal(form) {
+    const inputs = form.querySelectorAll('.rate-input');
+    let total = 0;
+    inputs.forEach(input => { total += parseFloat(input.value) || 0; });
+    const display = form.querySelector('.total-display');
+    if (display) display.textContent = total.toFixed(3) + '%';
+}
+
+function toggleEdit(rateId) {
+    const editRow = document.getElementById('edit-row-' + rateId);
+    if (editRow) editRow.classList.toggle('hidden');
+}
+
+// ---- Team helpers ----
 function toggleEditForm(formId) {
-    const form = document.getElementById(formId);
-    form.classList.toggle('hidden');
+    document.getElementById(formId).classList.toggle('hidden');
 }
 
 function toggleMemberAbilities(selectEl, abilitiesId) {
@@ -519,26 +667,41 @@ function toggleMemberAbilities(selectEl, abilitiesId) {
     }
 }
 
+function toggleAbilities() {
+    const role = document.getElementById('invite_role').value;
+    document.getElementById('abilityFields').style.display =
+        (role === 'technician' || role === 'manager') ? '' : 'none';
+}
+
 function copyJoinLink() {
     const text = document.getElementById('joinLinkText').textContent.trim();
     navigator.clipboard.writeText(text).then(() => {
-        const btn = document.getElementById('copyBtn');
         const icon = document.getElementById('copyIcon');
         const btnText = document.getElementById('copyBtnText');
+        const btn = document.getElementById('copyBtn');
         icon.className = 'fas fa-check mr-2';
         btnText.textContent = 'Copied!';
-        btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
-        btn.classList.add('bg-green-600', 'hover:bg-green-700');
+        btn.classList.replace('bg-emerald-600', 'bg-green-600');
         setTimeout(() => {
             icon.className = 'fas fa-copy mr-2';
             btnText.textContent = 'Copy Link';
-            btn.classList.remove('bg-green-600', 'hover:bg-green-700');
-            btn.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+            btn.classList.replace('bg-green-600', 'bg-emerald-600');
         }, 2000);
     });
 }
 
-// Run on page load to set initial state
-document.addEventListener('DOMContentLoaded', toggleAbilities);
+// Initialize on load
+document.addEventListener('DOMContentLoaded', function() {
+    // Activate the right tab from URL or default
+    const activeTab = '{{ active_tab|default:"general" }}';
+    switchTab(activeTab);
+    toggleAbilities();
+    // Init tax total display
+    if (document.getElementById('state_tax_rate')) updateTaxTotal();
+    // Init legacy totals
+    document.querySelectorAll('form').forEach(form => {
+        if (form.querySelector('.rate-input')) updateTotal(form);
+    });
+});
 </script>
 {% endblock extra_js %}
