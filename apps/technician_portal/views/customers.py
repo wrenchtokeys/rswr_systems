@@ -92,17 +92,36 @@ def customer_list(request):
 def customer_details(request, customer_id):
     """View customer details with unit listing for current technician."""
     tenant = getattr(request, 'tenant', None)
-    technician = get_object_or_404(Technician, user=request.user)
+    
+    # Get technician if exists (owners/managers may not have one)
+    technician = None
+    if hasattr(request.user, 'technician'):
+        technician = request.user.technician
 
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     customer = get_object_or_404(qs, id=customer_id)
 
-    repairs = Repair.objects.filter(
-        technician=technician,
-        customer=customer
-    ).exclude(queue_status__in=['REQUESTED', 'PENDING'])
+    # Determine if user is admin/owner/manager (can see all repairs)
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = technician and technician.is_manager
+    
+    # Build repairs query
+    if is_admin or is_mgr:
+        # Admins/managers see all repairs for this customer
+        repairs = Repair.objects.filter(customer=customer)
+    elif technician:
+        # Regular techs see only their own repairs
+        repairs = Repair.objects.filter(
+            technician=technician,
+            customer=customer
+        )
+    else:
+        # No technician record and not admin - show empty
+        repairs = Repair.objects.none()
+    
+    repairs = repairs.exclude(queue_status__in=['REQUESTED', 'PENDING'])
     if tenant:
         repairs = repairs.filter(tenant=tenant)
 
@@ -113,7 +132,7 @@ def customer_details(request, customer_id):
     units = repairs.values_list('unit_number', flat=True).distinct()
 
     # Determine if user can edit primary technician (admin, owner, or manager)
-    can_edit_customer = is_tenant_admin(request.user) or technician.is_manager
+    can_edit_customer = is_admin or is_mgr
 
     # Provide available technicians for the primary tech dropdown
     available_technicians = Technician.objects.filter(is_active=True)
@@ -132,45 +151,119 @@ def customer_details(request, customer_id):
 
 @technician_required
 def unit_details(request, customer_id, unit_number):
-    """View all repairs for a specific unit."""
+    """View all repairs and replacements for a specific unit."""
     tenant = getattr(request, 'tenant', None)
-    technician = get_object_or_404(Technician, user=request.user)
+    
+    # Check if user is admin/manager (can see all)
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
 
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     customer = get_object_or_404(qs, id=customer_id)
 
-    repairs = Repair.objects.filter(
-        technician=technician,
-        customer=customer,
-        unit_number=unit_number
-    ).exclude(
+    # Get repairs for this unit
+    if is_admin or is_mgr:
+        repairs = Repair.objects.filter(customer=customer, unit_number=unit_number)
+    else:
+        technician = getattr(request.user, 'technician', None)
+        repairs = Repair.objects.filter(
+            technician=technician,
+            customer=customer,
+            unit_number=unit_number
+        )
+    
+    repairs = repairs.exclude(
         queue_status__in=['REQUESTED', 'PENDING']
     ).select_related('customer', 'technician__user')
     if tenant:
         repairs = repairs.filter(tenant=tenant)
+    
+    # Get replacements for this unit
+    from apps.technician_portal.models import Replacement
+    if is_admin or is_mgr:
+        replacements = Replacement.objects.filter(customer=customer, unit_number=unit_number)
+    else:
+        technician = getattr(request.user, 'technician', None)
+        replacements = Replacement.objects.filter(
+            technician=technician,
+            customer=customer,
+            unit_number=unit_number
+        )
+    
+    if tenant:
+        replacements = replacements.filter(tenant=tenant)
+    replacements = replacements.select_related('customer', 'technician__user')
 
     return render(request, 'technician_portal/unit_details.html', {
         'customer': customer,
         'unit_number': unit_number,
         'repairs': repairs,
+        'replacements': replacements,
     })
 
 
 @technician_required
+@require_POST
 def mark_unit_replaced(request, customer_id, unit_number):
-    """Mark a unit's windshield as replaced, resetting repair count."""
+    """Mark a unit's windshield as replaced, resetting repair count and creating a Replacement record."""
     tenant = getattr(request, 'tenant', None)
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     customer = get_object_or_404(qs, id=customer_id)
-    unit_repair_count = get_object_or_404(UnitRepairCount, customer=customer, unit_number=unit_number)
+    
+    # Get or create the unit repair count record
+    unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+        customer=customer,
+        unit_number=unit_number,
+        defaults={'repair_count': 0, 'tenant': tenant}
+    )
+    
+    # Get the technician (current user or fallback)
+    technician = None
+    if hasattr(request.user, 'technician'):
+        technician = request.user.technician
+    else:
+        # For admins without technician record, try to get customer's primary tech
+        technician = customer.primary_technician
+    
+    if not technician:
+        # Fallback: get any active technician
+        technician = Technician.objects.filter(tenant=tenant, is_active=True).first()
+    
+    if technician:
+        # Create a Replacement record to track this
+        from apps.technician_portal.models import Replacement
+        from django.utils import timezone
+        
+        replacement = Replacement.objects.create(
+            tenant=tenant,
+            customer=customer,
+            technician=technician,
+            unit_number=unit_number,
+            glass_position='WINDSHIELD',
+            queue_status='COMPLETED',
+            service_date=timezone.now(),
+            description=f"Windshield replacement for unit #{unit_number}",
+            cost=0,  # Can be updated later if needed
+        )
+        messages.success(
+            request, 
+            f"Unit #{unit_number} windshield replacement recorded. Repair count reset to 0."
+        )
+    else:
+        messages.warning(
+            request,
+            f"Unit #{unit_number} repair count reset, but no technician available to record replacement."
+        )
+    
+    # Reset the repair count
     unit_repair_count.repair_count = 0
     unit_repair_count.save()
-    messages.success(request, f"Unit #{unit_number} for {customer.name} has been marked as replaced. Repair count reset to 0.")
-    return redirect('customer_detail', customer_id=customer_id)
+    
+    return redirect('unit_details', customer_id=customer_id, unit_number=unit_number)
 
 
 @technician_required
@@ -201,3 +294,72 @@ def update_primary_technician(request, customer_id):
         messages.success(request, "Primary technician cleared.")
 
     return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+def edit_customer(request, customer_id):
+    """Edit customer details (manager/admin only)."""
+    tenant = getattr(request, 'tenant', None)
+    
+    # Check permissions
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers or admins can edit customers.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
+    
+    from apps.technician_portal.forms import CustomerEditForm
+    
+    if request.method == 'POST':
+        form = CustomerEditForm(request.POST, instance=customer, tenant=tenant)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Customer '{customer.name}' updated successfully.")
+            return redirect('customer_detail', customer_id=customer_id)
+    else:
+        form = CustomerEditForm(instance=customer, tenant=tenant)
+    
+    return render(request, 'technician_portal/customer_edit.html', {
+        'form': form,
+        'customer': customer,
+    })
+
+
+@technician_required
+@require_POST
+def delete_customer(request, customer_id):
+    """Delete a customer (admin only). Requires confirmation."""
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins can delete
+    if not is_tenant_admin(request.user):
+        messages.error(request, "Only shop owners can delete customers.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
+    
+    # Check for related repairs
+    repair_count = Repair.objects.filter(customer=customer).count()
+    
+    if repair_count > 0:
+        # Soft approach: don't delete, show error
+        messages.error(
+            request, 
+            f"Cannot delete '{customer.name}' — they have {repair_count} repair(s) on record. "
+            "Delete or reassign their repairs first."
+        )
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    customer_name = customer.name
+    customer.delete()
+    messages.success(request, f"Customer '{customer_name}' has been deleted.")
+    return redirect('technician_customers')

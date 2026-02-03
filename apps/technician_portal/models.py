@@ -280,7 +280,22 @@ class GlassService(models.Model):
         related_name='%(class)ss',  # 'repairs' for Repair, 'replacements' for Replacement
         help_text="Link to vehicle record (optional — unit_number still works for fleets)"
     )
-    unit_number = models.CharField(max_length=50)  # Kept for backward compat + fleet use
+    unit_number = models.CharField(max_length=50, blank=True)  # For fleet customers
+    
+    # Vehicle info for retail/walk-in customers (alternative to unit_number)
+    vehicle_year = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Vehicle year (e.g., 2019)"
+    )
+    vehicle_make = models.CharField(
+        max_length=50, blank=True,
+        help_text="Vehicle make (e.g., Ford, Toyota, Chevrolet)"
+    )
+    vehicle_model = models.CharField(
+        max_length=50, blank=True,
+        help_text="Vehicle model (e.g., F-150, Camry, Silverado)"
+    )
+    
     service_date = models.DateTimeField(default=timezone.now)
     description = models.TextField(blank=True, null=True)
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -522,29 +537,44 @@ class Repair(GlassService):
             )
 
             # --- REPAIR PRICING (progressive logic) ---
+            # Retail/Walk-in customers don't get sequential discounts (always first repair price)
+            # UNLESS it's a multi-break repair (same batch_id)
+            is_retail = self.customer and self.customer.customer_type in ('RETAIL', 'WALK_IN')
+            is_multi_break = self.repair_batch_id is not None
+            
             if self.queue_status == 'COMPLETED':
                 if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
-                    unit_repair_count.repair_count += 1
-                    unit_repair_count.save()
+                    # Only increment repair count for fleet customers
+                    if not is_retail:
+                        unit_repair_count.repair_count += 1
+                        unit_repair_count.save()
 
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
                     self.cost = self.cost_override
                 else:
-                    # Use the new pricing service for customer-specific pricing
                     from .services.pricing_service import calculate_repair_cost
-                    self.cost = calculate_repair_cost(self.customer, unit_repair_count.repair_count)
+                    if is_retail and not is_multi_break:
+                        # Retail customers always pay first repair price
+                        self.cost = calculate_repair_cost(self.customer, 1)
+                    else:
+                        # Fleet customers get progressive pricing
+                        self.cost = calculate_repair_cost(self.customer, unit_repair_count.repair_count)
             else:
                 # For non-completed repairs, show expected cost for preview
                 if self.cost_override is not None:
                     self.cost = self.cost_override
                 # BATCH REPAIR FIX: Preserve pre-calculated batch pricing
-                elif self.repair_batch_id is not None:
+                elif is_multi_break:
                     pass
                 else:
                     from .services.pricing_service import calculate_repair_cost
-                    next_repair_count = unit_repair_count.repair_count + 1
-                    self.cost = calculate_repair_cost(self.customer, next_repair_count)
+                    if is_retail:
+                        # Retail customers always pay first repair price
+                        self.cost = calculate_repair_cost(self.customer, 1)
+                    else:
+                        next_repair_count = unit_repair_count.repair_count + 1
+                        self.cost = calculate_repair_cost(self.customer, next_repair_count)
 
             # Calculate tax from BillingConfig rates
             if self.cost and self.cost > 0:
@@ -825,9 +855,15 @@ class Repair(GlassService):
         if self.cost_override is not None:
             return self.cost_override
 
-        # Otherwise calculate based on repair count using pricing service
+        # Otherwise calculate based on customer type and repair count
         if self.customer:
-            from .services.pricing_service import get_expected_repair_cost
+            from .services.pricing_service import get_expected_repair_cost, get_retail_repair_price
+            
+            # Retail/Walk-in: always first repair price (no sequential discounts)
+            if self.customer.customer_type in ('RETAIL', 'WALK_IN'):
+                return get_retail_repair_price(self.customer)
+            
+            # Fleet: progressive pricing based on unit repair count
             expected_cost, _ = get_expected_repair_cost(self.customer, self.unit_number)
             return expected_cost
         return 0

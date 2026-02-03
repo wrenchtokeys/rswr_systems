@@ -42,6 +42,8 @@ from .customers import (
     create_customer,
     customer_list,
     customer_details,
+    edit_customer,
+    delete_customer,
     unit_details,
     mark_unit_replaced,
     update_primary_technician,

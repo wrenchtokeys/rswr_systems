@@ -14,6 +14,7 @@ import logging
 
 from apps.technician_portal.models import Technician, Repair, TechnicianNotification
 from apps.customer_portal.models import RepairApproval, CustomerUser, CustomerRepairPreference
+from core.models import Customer
 from apps.technician_portal.forms import RepairForm
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from common.utils import convert_heic_to_jpeg
@@ -267,6 +268,12 @@ def create_repair(request):
                     repair = form.save(commit=False)
                     repair.technician = form.cleaned_data.get('technician')
                     repair.tenant = getattr(request, 'tenant', None)
+                    
+                    # Auto-approve for retail/walk-in customers
+                    if repair.customer and repair.customer.customer_type in ('RETAIL', 'WALK_IN'):
+                        repair.queue_status = 'APPROVED'
+                        messages.info(request, "Repair auto-approved (retail customer).")
+                    
                     repair.save()
                     form.save_m2m()
                     messages.success(request, f"Repair has been created and assigned to {repair.technician.user.get_full_name()}")
@@ -286,18 +293,24 @@ def create_repair(request):
                     repair.technician = request.user.technician
                     repair.tenant = getattr(request, 'tenant', None)
 
-                    # Check customer preferences for approval
-                    try:
-                        preferences = repair.customer.repair_preferences
-                        if preferences.should_auto_approve(repair.technician, repair.repair_date.date() if repair.repair_date else None):
-                            repair.queue_status = 'APPROVED'
-                            messages.info(request, "Repair auto-approved based on customer preferences.")
-                        else:
+                    # Check customer type and preferences for approval
+                    # Retail/Walk-in customers auto-approve (no fleet manager to approve)
+                    if repair.customer and repair.customer.customer_type in ('RETAIL', 'WALK_IN'):
+                        repair.queue_status = 'APPROVED'
+                        messages.info(request, "Repair auto-approved (retail customer).")
+                    else:
+                        # Fleet customers - check preferences
+                        try:
+                            preferences = repair.customer.repair_preferences
+                            if preferences.should_auto_approve(repair.technician, repair.repair_date.date() if repair.repair_date else None):
+                                repair.queue_status = 'APPROVED'
+                                messages.info(request, "Repair auto-approved based on customer preferences.")
+                            else:
+                                repair.queue_status = 'PENDING'
+                                messages.warning(request, "This customer requires approval for field repairs. Repair submitted for customer approval.")
+                        except CustomerRepairPreference.DoesNotExist:
                             repair.queue_status = 'PENDING'
-                            messages.warning(request, "This customer requires approval for field repairs. Repair submitted for customer approval.")
-                    except CustomerRepairPreference.DoesNotExist:
-                        repair.queue_status = 'PENDING'
-                        messages.warning(request, "Repair submitted for customer approval (customer preferences not configured).")
+                            messages.warning(request, "Repair submitted for customer approval (customer preferences not configured).")
 
                     repair.save()
                     form.save_m2m()
@@ -330,11 +343,20 @@ def create_repair(request):
 
     admin = is_tenant_admin(request.user)
     tenant = getattr(request, 'tenant', None)
+    
+    # Build customer types dict for JavaScript
+    import json
+    customers_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+    customer_types_json = json.dumps({
+        str(c.id): c.customer_type for c in customers_qs
+    })
+    
     context = {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
         'is_admin': admin,
         'expected_cost': expected_cost,
+        'customer_types_json': customer_types_json,
     }
     if admin:
         context['technicians'] = Technician.objects.filter(

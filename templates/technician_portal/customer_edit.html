@@ -1,0 +1,224 @@
+{% extends "base_app.html" %}
+
+{% block title %}Edit {{ customer.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <!-- Breadcrumb -->
+    <div class="mb-6 flex items-center space-x-2 text-sm">
+        <a href="{% url 'technician_customers' %}" class="text-blue-600 hover:text-blue-800 font-medium">
+            <i class="fas fa-arrow-left mr-1"></i>Customers
+        </a>
+        <span class="text-gray-400">/</span>
+        <a href="{% url 'customer_detail' customer.id %}" class="text-blue-600 hover:text-blue-800">{{ customer.name }}</a>
+        <span class="text-gray-400">/</span>
+        <span class="text-gray-600">Edit</span>
+    </div>
+
+    <!-- Edit Form Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+            <h1 class="text-xl font-bold text-purple-900">
+                <i class="fas fa-edit mr-2"></i>Edit Customer
+            </h1>
+            <p class="text-sm text-purple-700 mt-1">Update customer information</p>
+        </div>
+
+        <form method="post" class="p-6 space-y-6">
+            {% csrf_token %}
+
+            <!-- Basic Info -->
+            <div class="space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wider border-b pb-2">
+                    <i class="fas fa-user mr-1.5 text-gray-400"></i>Basic Information
+                </h3>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="id_name" class="block text-sm font-medium text-gray-700 mb-1">
+                            Customer Name <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" name="name" id="id_name" value="{{ form.name.value|default:'' }}" required
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">
+                        {% if form.name.errors %}<p class="mt-1 text-xs text-red-600">{{ form.name.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label for="id_customer_type" class="block text-sm font-medium text-gray-700 mb-1">
+                            Customer Type
+                        </label>
+                        <select name="customer_type" id="id_customer_type"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm bg-white">
+                            {% for value, label in form.fields.customer_type.choices %}
+                            <option value="{{ value }}" {% if form.customer_type.value == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact Info -->
+            <div class="space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wider border-b pb-2">
+                    <i class="fas fa-address-book mr-1.5 text-gray-400"></i>Contact Information
+                </h3>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="id_email" class="block text-sm font-medium text-gray-700 mb-1">
+                            Email Address
+                        </label>
+                        <input type="email" name="email" id="id_email" value="{{ form.email.value|default:'' }}"
+                            placeholder="billing@company.com"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">
+                        {% if form.email.errors %}<p class="mt-1 text-xs text-red-600">{{ form.email.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label for="id_phone" class="block text-sm font-medium text-gray-700 mb-1">
+                            Phone Number
+                        </label>
+                        <input type="tel" name="phone" id="id_phone" value="{{ form.phone.value|default:'' }}"
+                            placeholder="+1 (555) 123-4567"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">
+                        {% if form.phone.errors %}<p class="mt-1 text-xs text-red-600">{{ form.phone.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+
+                <div>
+                    <label for="id_address" class="block text-sm font-medium text-gray-700 mb-1">
+                        Street Address
+                    </label>
+                    <textarea name="address" id="id_address" rows="2"
+                        placeholder="123 Main St, Suite 100"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">{{ form.address.value|default:'' }}</textarea>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div class="col-span-2 sm:col-span-2">
+                        <label for="id_city" class="block text-sm font-medium text-gray-700 mb-1">City</label>
+                        <input type="text" name="city" id="id_city" value="{{ form.city.value|default:'' }}"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">
+                    </div>
+                    <div>
+                        <label for="id_state" class="block text-sm font-medium text-gray-700 mb-1">State</label>
+                        <input type="text" name="state" id="id_state" value="{{ form.state.value|default:'' }}" maxlength="2"
+                            placeholder="AR"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">
+                    </div>
+                    <div>
+                        <label for="id_zip_code" class="block text-sm font-medium text-gray-700 mb-1">ZIP</label>
+                        <input type="text" name="zip_code" id="id_zip_code" value="{{ form.zip_code.value|default:'' }}"
+                            placeholder="72103"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Assignment & Billing -->
+            <div class="space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wider border-b pb-2">
+                    <i class="fas fa-cog mr-1.5 text-gray-400"></i>Assignment & Billing
+                </h3>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="id_primary_technician" class="block text-sm font-medium text-gray-700 mb-1">
+                            Primary Technician
+                        </label>
+                        <select name="primary_technician" id="id_primary_technician"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm bg-white">
+                            <option value="">— None —</option>
+                            {% for tech in form.fields.primary_technician.queryset %}
+                            <option value="{{ tech.id }}" {% if form.primary_technician.value == tech.id|stringformat:"s" %}selected{% endif %}>
+                                {{ tech.user.get_full_name|default:tech.user.username }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Auto-assigned for new repairs from this customer</p>
+                    </div>
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                            <input type="checkbox" name="tax_exempt" id="id_tax_exempt"
+                                {% if form.tax_exempt.value %}checked{% endif %}
+                                class="h-4 w-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500">
+                            <div>
+                                <span class="text-sm font-medium text-gray-900">Tax Exempt</span>
+                                <p class="text-xs text-gray-500">No sales tax on invoices</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="tax_exempt_cert_field" class="{% if not form.tax_exempt.value %}hidden{% endif %}">
+                    <label for="id_tax_exempt_certificate" class="block text-sm font-medium text-gray-700 mb-1">
+                        Tax Exemption Certificate #
+                    </label>
+                    <input type="text" name="tax_exempt_certificate" id="id_tax_exempt_certificate" 
+                        value="{{ form.tax_exempt_certificate.value|default:'' }}"
+                        placeholder="Certificate number"
+                        class="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm">
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200">
+                <button type="submit" class="inline-flex items-center justify-center px-6 py-2.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition-colors shadow-sm">
+                    <i class="fas fa-save mr-2"></i>Save Changes
+                </button>
+                <a href="{% url 'customer_detail' customer.id %}" class="inline-flex items-center justify-center px-6 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                    Cancel
+                </a>
+                
+                <!-- Delete Button (far right) -->
+                <div class="sm:ml-auto">
+                    <button type="button" onclick="confirmDelete()"
+                        class="inline-flex items-center justify-center px-4 py-2.5 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 border border-red-200 transition-colors">
+                        <i class="fas fa-trash mr-2"></i>Delete Customer
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-black bg-opacity-50" onclick="closeDeleteModal()"></div>
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+            <div class="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+                <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+            </div>
+            <h3 class="text-lg font-bold text-gray-900 text-center mb-2">Delete Customer?</h3>
+            <p class="text-sm text-gray-600 text-center mb-6">
+                Are you sure you want to delete <strong>{{ customer.name }}</strong>? This action cannot be undone.
+            </p>
+            <div class="flex gap-3">
+                <button onclick="closeDeleteModal()" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                    Cancel
+                </button>
+                <form method="post" action="{% url 'delete_customer' customer.id %}" class="flex-1">
+                    {% csrf_token %}
+                    <button type="submit" class="w-full px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors">
+                        <i class="fas fa-trash mr-2"></i>Delete
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Toggle tax exempt certificate field
+document.getElementById('id_tax_exempt').addEventListener('change', function() {
+    document.getElementById('tax_exempt_cert_field').classList.toggle('hidden', !this.checked);
+});
+
+function confirmDelete() {
+    document.getElementById('deleteModal').classList.remove('hidden');
+}
+
+function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.add('hidden');
+}
+</script>
+{% endblock %}

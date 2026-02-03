@@ -1,60 +1,213 @@
 {% extends "base_app.html" %}
 
+{% block title %}{{ customer.name }} | RS Systems{% endblock %}
+
 {% block content %}
-<h1>{{ customer.name }}</h1>
-
-<!-- Primary Technician -->
-<div class="card mb-4" style="max-width: 500px;">
-    <div class="card-header"><strong>Primary Technician</strong></div>
-    <div class="card-body">
-        {% if customer.primary_technician %}
-            <p>{{ customer.primary_technician.user.get_full_name }}</p>
-        {% else %}
-            <p class="text-muted">No primary technician assigned</p>
-        {% endif %}
-
+<div class="max-w-5xl mx-auto">
+    <!-- Header -->
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-center space-x-2 text-sm">
+            <a href="{% url 'technician_customers' %}" class="text-blue-600 hover:text-blue-800 font-medium">
+                <i class="fas fa-arrow-left mr-1"></i>Customers
+            </a>
+            <span class="text-gray-400">/</span>
+            <span class="text-gray-600">{{ customer.name }}</span>
+        </div>
         {% if can_edit_customer %}
-        <form method="post" action="{% url 'update_primary_technician' customer.id %}" class="mt-2">
-            {% csrf_token %}
-            <div class="form-group">
-                <select name="primary_technician" class="form-control">
-                    <option value="">— None —</option>
-                    {% for tech in available_technicians %}
-                        <option value="{{ tech.id }}" {% if customer.primary_technician_id == tech.id %}selected{% endif %}>
-                            {{ tech.user.get_full_name }}
-                        </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <button type="submit" class="btn btn-sm btn-primary mt-2">Save</button>
-        </form>
+        <div class="flex items-center gap-2">
+            <a href="{% url 'edit_customer' customer.id %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-edit mr-2"></i>Edit Customer
+            </a>
+            <a href="{% url 'create_repair' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
+                <i class="fas fa-plus mr-2"></i>New Repair
+            </a>
+        </div>
         {% endif %}
     </div>
-</div>
 
-<div class="filter-form">
-    <form method="get" class="form-inline">
-        <div class="form-group">
-            <label for="unit_search">Search Unit:</label>
-            <input type="text" name="unit_search" id="unit_search" placeholder="Unit Number" value="{{ unit_search }}" class="form-control">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left Column: Customer Info -->
+        <div class="lg:col-span-1 space-y-6">
+            <!-- Customer Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-purple-100">
+                    <div class="flex items-center gap-3">
+                        <div class="w-12 h-12 rounded-full flex items-center justify-center
+                            {% if customer.customer_type == 'FLEET' %}bg-indigo-100
+                            {% elif customer.customer_type == 'RETAIL' %}bg-sky-100
+                            {% else %}bg-gray-100{% endif %}">
+                            <i class="fas {% if customer.customer_type == 'FLEET' %}fa-truck{% elif customer.customer_type == 'RETAIL' %}fa-user{% else %}fa-walking{% endif %}
+                                {% if customer.customer_type == 'FLEET' %}text-indigo-600
+                                {% elif customer.customer_type == 'RETAIL' %}text-sky-600
+                                {% else %}text-gray-600{% endif %} text-xl"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-900">{{ customer.name }}</h1>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                                {% if customer.customer_type == 'FLEET' %}bg-indigo-100 text-indigo-800
+                                {% elif customer.customer_type == 'RETAIL' %}bg-sky-100 text-sky-800
+                                {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                {{ customer.get_customer_type_display }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-6 space-y-4">
+                    <!-- Contact Info -->
+                    {% if customer.email %}
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-envelope text-gray-500 text-sm"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500 uppercase tracking-wide">Email</p>
+                            <a href="mailto:{{ customer.email }}" class="text-sm text-blue-600 hover:text-blue-800">{{ customer.email }}</a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if customer.phone %}
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-phone text-gray-500 text-sm"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500 uppercase tracking-wide">Phone</p>
+                            <a href="tel:{{ customer.phone }}" class="text-sm text-gray-900">{{ customer.phone }}</a>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if customer.address or customer.city %}
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-map-marker-alt text-gray-500 text-sm"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500 uppercase tracking-wide">Address</p>
+                            <p class="text-sm text-gray-900">
+                                {% if customer.address %}{{ customer.address }}<br>{% endif %}
+                                {% if customer.city %}{{ customer.city }}{% if customer.state %}, {{ customer.state }}{% endif %}{% endif %}
+                                {% if customer.zip_code %} {{ customer.zip_code }}{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if not customer.email and not customer.phone and not customer.address %}
+                    <p class="text-sm text-gray-500 italic">No contact information on file.</p>
+                    {% endif %}
+
+                    <!-- Tax Status -->
+                    {% if customer.tax_exempt %}
+                    <div class="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-ban text-orange-600"></i>
+                            <span class="text-sm font-medium text-orange-800">Tax Exempt</span>
+                        </div>
+                        {% if customer.tax_exempt_certificate %}
+                        <p class="text-xs text-orange-600 mt-1">Cert: {{ customer.tax_exempt_certificate }}</p>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Primary Technician Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                        <i class="fas fa-user-cog mr-1.5 text-gray-400"></i>Primary Technician
+                    </h3>
+                </div>
+                <div class="p-6">
+                    {% if customer.primary_technician %}
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-user text-green-600 text-sm"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">{{ customer.primary_technician.user.get_full_name }}</p>
+                            <p class="text-xs text-gray-500">Auto-assigned to new repairs</p>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500 italic">No primary technician assigned</p>
+                    {% endif %}
+
+                    {% if can_edit_customer %}
+                    <form method="post" action="{% url 'update_primary_technician' customer.id %}" class="mt-4 pt-4 border-t border-gray-100">
+                        <label class="block text-xs font-medium text-gray-700 mb-2">Change Primary Tech</label>
+                        <div class="flex gap-2">
+                            <select name="primary_technician" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">— None —</option>
+                                {% for tech in available_technicians %}
+                                <option value="{{ tech.id }}" {% if customer.primary_technician_id == tech.id %}selected{% endif %}>
+                                    {{ tech.user.get_full_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                                Save
+                            </button>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
         </div>
-        <button type="submit" class="btn btn-primary">Search</button>
-    </form>
-</div>
 
-<div class="unit-list">
-    {% for unit in units %}
-        <div class="unit-item">
-            <a href="{% url 'unit_details' customer.id unit %}">Unit #{{ unit }}</a>
+        <!-- Right Column: Units -->
+        <div class="lg:col-span-2">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">Units</h2>
+                        <p class="text-sm text-gray-500">{{ units|length }} unit{{ units|length|pluralize }} with repairs</p>
+                    </div>
+                    <form method="get" class="flex gap-2">
+                        <input type="text" name="unit_search" value="{{ unit_search }}" placeholder="Search units..."
+                            class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <button type="submit" class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </form>
+                </div>
+
+                {% if units %}
+                <div class="divide-y divide-gray-100">
+                    {% for unit in units %}
+                    <a href="{% url 'unit_details' customer.id unit %}" class="block px-6 py-4 hover:bg-gray-50 transition-colors">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-truck text-blue-600 text-sm"></i>
+                                </div>
+                                <div>
+                                    <span class="text-sm font-medium text-gray-900">Unit #{{ unit }}</span>
+                                </div>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-400 text-sm"></i>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="p-12 text-center">
+                    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-truck text-gray-400 text-2xl"></i>
+                    </div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-1">No units found</h3>
+                    <p class="text-sm text-gray-500 mb-4">
+                        {% if unit_search %}No units match "{{ unit_search }}"{% else %}No repairs recorded for this customer yet{% endif %}
+                    </p>
+                    <a href="{% url 'create_repair' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Create Repair
+                    </a>
+                </div>
+                {% endif %}
+            </div>
         </div>
-    {% empty %}
-        <p>No units found for this customer.</p>
-    {% endfor %}
+    </div>
 </div>
-
-<div class="action-buttons">
-    <a href="{% url 'create_repair' %}" class="btn btn-success">Create New Repair</a>
-    <a href="{% url 'repair_list' %}" class="btn btn-secondary">Back to All Customers</a>
-</div>
-
 {% endblock %}

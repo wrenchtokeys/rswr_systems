@@ -1,27 +1,216 @@
 {% extends "base_app.html" %}
 
-{% block content %}
-<h1>{{ customer.name }} - Unit #{{ unit_number }}</h1>
+{% block title %}Unit {{ unit_number }} | {{ customer.name }} | RS Systems{% endblock %}
 
-<div class="repair-list">
-    {% for repair in repairs %}
-        <div class="repair-item {% if repair.queue_status == 'REQUESTED' %}bg-warning{% endif %}">
-            <a href="{% url 'repair_detail' repair.id %}">
-                {{ repair.damage_type }} - {{ repair.get_queue_status_display }} - {{ repair.repair_date|date:"Y-m-d" }}
-                {% if repair.queue_status == 'REQUESTED' %}
-                <span class="badge bg-danger">Customer Requested</span>
-                {% endif %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Breadcrumb -->
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div class="flex items-center space-x-2 text-sm">
+            <a href="{% url 'technician_customers' %}" class="text-blue-600 hover:text-blue-800 font-medium">
+                <i class="fas fa-arrow-left mr-1"></i>Customers
+            </a>
+            <span class="text-gray-400">/</span>
+            <a href="{% url 'customer_detail' customer.id %}" class="text-blue-600 hover:text-blue-800">{{ customer.name }}</a>
+            <span class="text-gray-400">/</span>
+            <span class="text-gray-600">Unit {{ unit_number }}</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="{% url 'create_repair' %}?customer={{ customer.id }}&unit={{ unit_number }}" 
+               class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
+                <i class="fas fa-plus mr-2"></i>New Repair
             </a>
         </div>
-    {% empty %}
-        <p>No repairs found for this unit.</p>
-    {% endfor %}
+    </div>
+
+    <!-- Unit Header Card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-truck text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">Unit #{{ unit_number }}</h1>
+                        <p class="text-sm text-gray-600">{{ customer.name }}</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-3xl font-bold text-blue-600">{{ repairs|length }}</div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wide">Total Repairs</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+            <span class="text-sm text-gray-600">
+                <i class="fas fa-history mr-1.5 text-gray-400"></i>
+                Repair history for this unit
+            </span>
+            <button onclick="confirmReplace()" 
+                    class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors">
+                <i class="fas fa-sync-alt mr-1.5"></i>Mark Windshield Replaced
+            </button>
+        </div>
+    </div>
+
+    <!-- Replacements -->
+    {% if replacements %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div class="px-6 py-4 border-b border-gray-200 bg-amber-50">
+            <h2 class="text-lg font-semibold text-gray-900">
+                <i class="fas fa-sync-alt text-amber-600 mr-2"></i>Windshield Replacements
+            </h2>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for replacement in replacements %}
+            <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100">
+                            <i class="fas fa-exchange-alt text-amber-600"></i>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-900">
+                                {{ replacement.get_glass_position_display|default:"Windshield" }} Replacement
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                {{ replacement.service_date|date:"F d, Y" }}
+                                {% if replacement.technician %}
+                                <span class="mx-1">•</span>
+                                {{ replacement.technician.user.get_full_name }}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                            Replaced
+                        </span>
+                        {% if replacement.cost and replacement.cost > 0 %}
+                        <span class="text-sm font-semibold text-gray-900">${{ replacement.cost|floatformat:2 }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Repair History -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-lg font-semibold text-gray-900">Repair History</h2>
+        </div>
+
+        {% if repairs %}
+        <div class="divide-y divide-gray-100">
+            {% for repair in repairs %}
+            <a href="{% url 'repair_detail' repair.id %}" class="block px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0
+                            {% if repair.queue_status == 'COMPLETED' %}bg-green-100
+                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-orange-100
+                            {% elif repair.queue_status == 'APPROVED' %}bg-blue-100
+                            {% elif repair.queue_status == 'REQUESTED' %}bg-red-100
+                            {% elif repair.queue_status == 'PENDING' %}bg-yellow-100
+                            {% else %}bg-gray-100{% endif %}">
+                            <i class="fas fa-tools
+                                {% if repair.queue_status == 'COMPLETED' %}text-green-600
+                                {% elif repair.queue_status == 'IN_PROGRESS' %}text-orange-600
+                                {% elif repair.queue_status == 'APPROVED' %}text-blue-600
+                                {% elif repair.queue_status == 'REQUESTED' %}text-red-600
+                                {% elif repair.queue_status == 'PENDING' %}text-yellow-600
+                                {% else %}text-gray-600{% endif %}"></i>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-900">
+                                {% if repair.damage_type %}{{ repair.damage_type }}{% else %}Windshield Repair{% endif %}
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                {{ repair.repair_date|date:"F d, Y" }}
+                                {% if repair.technician %}
+                                <span class="mx-1">•</span>
+                                {{ repair.technician.user.get_full_name }}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+                            {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
+                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
+                            {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-800
+                            {% elif repair.queue_status == 'REQUESTED' %}bg-red-100 text-red-800
+                            {% elif repair.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
+                            {% elif repair.queue_status == 'DENIED' %}bg-gray-100 text-gray-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ repair.get_queue_status_display }}
+                        </span>
+                        {% if repair.cost %}
+                        <span class="text-sm font-semibold text-gray-900">${{ repair.cost|floatformat:2 }}</span>
+                        {% endif %}
+                        <i class="fas fa-chevron-right text-gray-400 text-sm"></i>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-12 text-center">
+            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-tools text-gray-400 text-2xl"></i>
+            </div>
+            <h3 class="text-sm font-medium text-gray-900 mb-1">No repairs found</h3>
+            <p class="text-sm text-gray-500 mb-4">No repair history for this unit yet.</p>
+            <a href="{% url 'create_repair' %}?customer={{ customer.id }}&unit={{ unit_number }}" 
+               class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                <i class="fas fa-plus mr-2"></i>Create First Repair
+            </a>
+        </div>
+        {% endif %}
+    </div>
 </div>
 
-<div class="action-buttons">
-    <a href="{% url 'create_repair' %}" class="btn btn-success">Create New Repair</a>
-    <a href="{% url 'customer_detail' customer.id %}" class="btn btn-secondary">Back to Customer Details</a>
-    <a href="{% url 'mark_unit_replaced' customer.id unit_number %}" class="btn btn-warning">Mark Unit as Replaced</a>
+<!-- Replace Confirmation Modal -->
+<div id="replaceModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-black bg-opacity-50" onclick="closeReplaceModal()"></div>
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+            <div class="flex items-center justify-center w-12 h-12 bg-amber-100 rounded-full mx-auto mb-4">
+                <i class="fas fa-sync-alt text-amber-600 text-xl"></i>
+            </div>
+            <h3 class="text-lg font-bold text-gray-900 text-center mb-2">Mark Windshield Replaced?</h3>
+            <p class="text-sm text-gray-600 text-center mb-6">
+                This will reset the repair count for <strong>Unit #{{ unit_number }}</strong>. 
+                Use this when the windshield has been fully replaced with a new one.
+            </p>
+            <div class="flex gap-3">
+                <button onclick="closeReplaceModal()" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                    Cancel
+                </button>
+                <form method="post" action="{% url 'mark_unit_replaced' customer.id unit_number %}" class="flex-1">
+                    {% csrf_token %}
+                    <button type="submit" class="w-full px-4 py-2.5 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 transition-colors">
+                        <i class="fas fa-check mr-2"></i>Confirm
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
 </div>
 
+<script>
+function confirmReplace() {
+    document.getElementById('replaceModal').classList.remove('hidden');
+}
+
+function closeReplaceModal() {
+    document.getElementById('replaceModal').classList.add('hidden');
+}
+</script>
 {% endblock %}
