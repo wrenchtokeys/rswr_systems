@@ -307,6 +307,9 @@ def send_invoice_email(request, invoice_id):
     if not invoice.customer.email:
         return JsonResponse({'error': f'No email address for {invoice.customer.name}'}, status=400)
 
+    if invoice.status == 'PAID':
+        return JsonResponse({'error': f'Invoice {invoice.invoice_number} is already paid'}, status=400)
+
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         email_svc = InvoiceEmailService()
@@ -347,6 +350,9 @@ def send_invoice_email_batch(request):
     for inv_id in invoice_ids:
         try:
             invoice = Invoice.objects.get(id=inv_id, tenant=tenant)
+            if invoice.status == 'PAID':
+                results.append({'id': inv_id, 'success': False, 'error': 'Already paid'})
+                continue
             if not invoice.customer.email:
                 results.append({'id': inv_id, 'success': False, 'error': 'No email'})
                 continue
