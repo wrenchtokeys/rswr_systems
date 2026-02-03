@@ -220,3 +220,72 @@ def update_primary_technician(request, customer_id):
         messages.success(request, "Primary technician cleared.")
 
     return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+def edit_customer(request, customer_id):
+    """Edit customer details (manager/admin only)."""
+    tenant = getattr(request, 'tenant', None)
+    
+    # Check permissions
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers or admins can edit customers.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
+    
+    from apps.technician_portal.forms import CustomerEditForm
+    
+    if request.method == 'POST':
+        form = CustomerEditForm(request.POST, instance=customer, tenant=tenant)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Customer '{customer.name}' updated successfully.")
+            return redirect('customer_detail', customer_id=customer_id)
+    else:
+        form = CustomerEditForm(instance=customer, tenant=tenant)
+    
+    return render(request, 'technician_portal/customer_edit.html', {
+        'form': form,
+        'customer': customer,
+    })
+
+
+@technician_required
+@require_POST
+def delete_customer(request, customer_id):
+    """Delete a customer (admin only). Requires confirmation."""
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins can delete
+    if not is_tenant_admin(request.user):
+        messages.error(request, "Only shop owners can delete customers.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
+    
+    # Check for related repairs
+    repair_count = Repair.objects.filter(customer=customer).count()
+    
+    if repair_count > 0:
+        # Soft approach: don't delete, show error
+        messages.error(
+            request, 
+            f"Cannot delete '{customer.name}' — they have {repair_count} repair(s) on record. "
+            "Delete or reassign their repairs first."
+        )
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    customer_name = customer.name
+    customer.delete()
+    messages.success(request, f"Customer '{customer_name}' has been deleted.")
+    return redirect('technician_customers')

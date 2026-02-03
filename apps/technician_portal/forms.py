@@ -133,6 +133,7 @@ class TechnicianRegistrationForm(UserCreationForm):
         return user
     
 class CustomerForm(forms.ModelForm):
+    """Basic form for creating customers."""
     class Meta:
         model = Customer
         fields = ['name', 'primary_technician']
@@ -147,6 +148,47 @@ class CustomerForm(forms.ModelForm):
             qs = qs.filter(tenant=self.tenant)
         self.fields['primary_technician'].queryset = qs.order_by('user__first_name')
         self.fields['primary_technician'].required = False
+
+
+class CustomerEditForm(forms.ModelForm):
+    """Full form for editing customer details."""
+    class Meta:
+        model = Customer
+        fields = [
+            'name', 'customer_type', 'email', 'phone',
+            'address', 'city', 'state', 'zip_code',
+            'primary_technician', 'tax_exempt', 'tax_exempt_certificate'
+        ]
+        widgets = {
+            'address': forms.Textarea(attrs={'rows': 2}),
+            'customer_type': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.tenant = kwargs.pop('tenant', None)
+        super().__init__(*args, **kwargs)
+        
+        # Scope primary_technician choices to tenant
+        from apps.technician_portal.models import Technician
+        qs = Technician.objects.filter(is_active=True)
+        if self.tenant:
+            qs = qs.filter(tenant=self.tenant)
+        self.fields['primary_technician'].queryset = qs.order_by('user__first_name')
+        self.fields['primary_technician'].required = False
+        
+        # Make fields optional where appropriate
+        self.fields['email'].required = False
+        self.fields['phone'].required = False
+        self.fields['address'].required = False
+        self.fields['city'].required = False
+        self.fields['state'].required = False
+        self.fields['zip_code'].required = False
+        self.fields['tax_exempt_certificate'].required = False
+        
+        # Add placeholders
+        self.fields['email'].widget.attrs['placeholder'] = 'billing@company.com'
+        self.fields['phone'].widget.attrs['placeholder'] = '+1 (555) 123-4567'
+        self.fields['tax_exempt_certificate'].widget.attrs['placeholder'] = 'Certificate number (if exempt)'
 
 class CustomDateTimeInput(DateTimeInput):
     input_type = 'datetime-local'
