@@ -28,6 +28,9 @@ urlpatterns = [
     path('invoices/<int:invoice_id>/payment/', views.record_payment, name='invoice_payment'),
     path('invoices/<int:invoice_id>/cancel/', views.cancel_invoice, name='invoice_cancel'),
     
+    path('invoices/<int:invoice_id>/send-email/', views.send_invoice_email, name='invoice_send_email'),
+    path('invoices/send-email-batch/', views.send_invoice_email_batch, name='invoice_send_email_batch'),
+
     # Customer billing
     path('customers/<int:customer_id>/uninvoiced/', views.get_uninvoiced_repairs, name='uninvoiced_repairs'),
     path('customers/<int:customer_id>/balance/', views.get_customer_balance, name='customer_balance'),

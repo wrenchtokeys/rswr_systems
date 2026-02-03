@@ -124,6 +124,21 @@
 </div>
 {% endif %}
 
+<!-- Batch Actions Bar (hidden until checkboxes selected) -->
+<div id="batch-bar" class="hidden sticky top-0 z-10 bg-blue-600 text-white rounded-xl shadow-lg p-3 mb-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <span class="text-sm font-medium"><span id="selected-count">0</span> invoice(s) selected</span>
+    </div>
+    <div class="flex items-center gap-2">
+        <button onclick="sendSelectedEmails()" class="inline-flex items-center px-4 py-1.5 bg-white text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors">
+            <i class="fas fa-envelope mr-1.5"></i>Send Email
+        </button>
+        <button onclick="clearSelection()" class="inline-flex items-center px-3 py-1.5 text-blue-200 text-sm hover:text-white transition-colors">
+            <i class="fas fa-times mr-1"></i>Clear
+        </button>
+    </div>
+</div>
+
 <!-- Invoice Table -->
 <div class="bg-white rounded-xl shadow-sm border border-gray-200">
     {% if invoices %}
@@ -131,6 +146,10 @@
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
+                    <th class="px-3 py-3 w-10">
+                        <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"
+                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    </th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Date</th>
@@ -143,7 +162,12 @@
             </thead>
             <tbody class="bg-white divide-y divide-gray-100">
                 {% for inv in invoices %}
-                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="if(!event.target.closest('.no-nav'))window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
+                    <td class="px-3 py-4 no-nav" onclick="event.stopPropagation()">
+                        <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
+                            onchange="updateBatchBar()"
+                            class="invoice-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="text-sm font-semibold text-blue-600 hover:text-blue-800">{{ inv.invoice_number }}</span>
                     </td>
@@ -212,6 +236,64 @@
 
 {% block extra_js %}
 <script>
+function toggleSelectAll(el) {
+    document.querySelectorAll('.invoice-checkbox').forEach(cb => { cb.checked = el.checked; });
+    updateBatchBar();
+}
+
+function updateBatchBar() {
+    const checked = document.querySelectorAll('.invoice-checkbox:checked');
+    const bar = document.getElementById('batch-bar');
+    const count = document.getElementById('selected-count');
+    if (checked.length > 0) {
+        bar.classList.remove('hidden');
+        count.textContent = checked.length;
+    } else {
+        bar.classList.add('hidden');
+    }
+    // Update select-all state
+    const all = document.querySelectorAll('.invoice-checkbox');
+    const selectAll = document.getElementById('select-all');
+    if (selectAll) {
+        selectAll.checked = all.length > 0 && checked.length === all.length;
+        selectAll.indeterminate = checked.length > 0 && checked.length < all.length;
+    }
+}
+
+function clearSelection() {
+    document.querySelectorAll('.invoice-checkbox').forEach(cb => { cb.checked = false; });
+    const selectAll = document.getElementById('select-all');
+    if (selectAll) selectAll.checked = false;
+    updateBatchBar();
+}
+
+function sendSelectedEmails() {
+    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (!ids.length) return;
+    if (!confirm(`Send invoice emails for ${ids.length} invoice(s)?`)) return;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+    fetch('/api/billing/invoices/send-email-batch/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ invoice_ids: ids }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const msg = `Sent: ${data.sent}` + (data.failed > 0 ? `, Failed: ${data.failed}` : '');
+            alert(msg);
+            clearSelection();
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to send emails');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
 function createInvoice(customerId, customerName) {
     if (!confirm(`Create invoice for all uninvoiced repairs for ${customerName}?`)) return;
 
@@ -224,7 +306,7 @@ function createInvoice(customerId, customerName) {
             'Content-Type': 'application/json',
             'X-CSRFToken': csrfToken,
         },
-        body: JSON.stringify({ all_uninvoiced: true }),
+        body: JSON.stringify({ all_uninvoiced: true, auto_email: true }),
     })
     .then(r => {
         if (!r.ok) {

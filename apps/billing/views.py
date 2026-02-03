@@ -292,6 +292,82 @@ def create_invoice(request, customer_id):
 
 
 @login_required
+@require_POST
+def send_invoice_email(request, invoice_id):
+    """Send (or resend) an invoice email to the customer."""
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    try:
+        invoice = Invoice.objects.get(id=invoice_id, tenant=tenant)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+
+    if not invoice.customer.email:
+        return JsonResponse({'error': f'No email address for {invoice.customer.name}'}, status=400)
+
+    try:
+        from apps.billing.services.invoice_email_service import InvoiceEmailService
+        email_svc = InvoiceEmailService()
+        repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
+        email_svc.send_invoice_email(
+            customer_id=invoice.customer_id,
+            recipient_email=invoice.customer.email,
+            repair_ids=repair_ids if repair_ids else None,
+        )
+        return JsonResponse({'success': True, 'sent_to': invoice.customer.email})
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(f"Email send failed for {invoice.invoice_number}")
+        return JsonResponse({'error': f'Email failed: {str(e)}'}, status=500)
+
+
+@login_required
+@require_POST
+def send_invoice_email_batch(request):
+    """Send invoice emails for multiple invoices at once."""
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    try:
+        data = json.loads(request.body)
+        invoice_ids = data.get('invoice_ids', [])
+    except (json.JSONDecodeError, AttributeError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    if not invoice_ids:
+        return JsonResponse({'error': 'No invoice IDs provided'}, status=400)
+
+    from apps.billing.services.invoice_email_service import InvoiceEmailService
+    email_svc = InvoiceEmailService()
+
+    results = []
+    for inv_id in invoice_ids:
+        try:
+            invoice = Invoice.objects.get(id=inv_id, tenant=tenant)
+            if not invoice.customer.email:
+                results.append({'id': inv_id, 'success': False, 'error': 'No email'})
+                continue
+            repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
+            email_svc.send_invoice_email(
+                customer_id=invoice.customer_id,
+                recipient_email=invoice.customer.email,
+                repair_ids=repair_ids if repair_ids else None,
+            )
+            results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
+        except Invoice.DoesNotExist:
+            results.append({'id': inv_id, 'success': False, 'error': 'Not found'})
+        except Exception as e:
+            results.append({'id': inv_id, 'success': False, 'error': str(e)})
+
+    sent = sum(1 for r in results if r['success'])
+    failed = len(results) - sent
+    return JsonResponse({'success': True, 'sent': sent, 'failed': failed, 'results': results})
+
+
+@login_required
 @require_GET
 def get_invoice(request, invoice_id):
     """Get detailed invoice with line items and payments."""
