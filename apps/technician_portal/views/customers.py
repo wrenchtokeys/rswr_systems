@@ -151,29 +151,56 @@ def customer_details(request, customer_id):
 
 @technician_required
 def unit_details(request, customer_id, unit_number):
-    """View all repairs for a specific unit."""
+    """View all repairs and replacements for a specific unit."""
     tenant = getattr(request, 'tenant', None)
-    technician = get_object_or_404(Technician, user=request.user)
+    
+    # Check if user is admin/manager (can see all)
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
 
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     customer = get_object_or_404(qs, id=customer_id)
 
-    repairs = Repair.objects.filter(
-        technician=technician,
-        customer=customer,
-        unit_number=unit_number
-    ).exclude(
+    # Get repairs for this unit
+    if is_admin or is_mgr:
+        repairs = Repair.objects.filter(customer=customer, unit_number=unit_number)
+    else:
+        technician = getattr(request.user, 'technician', None)
+        repairs = Repair.objects.filter(
+            technician=technician,
+            customer=customer,
+            unit_number=unit_number
+        )
+    
+    repairs = repairs.exclude(
         queue_status__in=['REQUESTED', 'PENDING']
     ).select_related('customer', 'technician__user')
     if tenant:
         repairs = repairs.filter(tenant=tenant)
+    
+    # Get replacements for this unit
+    from apps.technician_portal.models import Replacement
+    if is_admin or is_mgr:
+        replacements = Replacement.objects.filter(customer=customer, unit_number=unit_number)
+    else:
+        technician = getattr(request.user, 'technician', None)
+        replacements = Replacement.objects.filter(
+            technician=technician,
+            customer=customer,
+            unit_number=unit_number
+        )
+    
+    if tenant:
+        replacements = replacements.filter(tenant=tenant)
+    replacements = replacements.select_related('customer', 'technician__user')
 
     return render(request, 'technician_portal/unit_details.html', {
         'customer': customer,
         'unit_number': unit_number,
         'repairs': repairs,
+        'replacements': replacements,
     })
 
 

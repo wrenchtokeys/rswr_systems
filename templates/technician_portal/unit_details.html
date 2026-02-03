@@ -56,6 +56,50 @@
         </div>
     </div>
 
+    <!-- Replacements -->
+    {% if replacements %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div class="px-6 py-4 border-b border-gray-200 bg-amber-50">
+            <h2 class="text-lg font-semibold text-gray-900">
+                <i class="fas fa-sync-alt text-amber-600 mr-2"></i>Windshield Replacements
+            </h2>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for replacement in replacements %}
+            <div class="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100">
+                            <i class="fas fa-exchange-alt text-amber-600"></i>
+                        </div>
+                        <div>
+                            <div class="text-sm font-medium text-gray-900">
+                                {{ replacement.get_glass_position_display|default:"Windshield" }} Replacement
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                {{ replacement.service_date|date:"F d, Y" }}
+                                {% if replacement.technician %}
+                                <span class="mx-1">•</span>
+                                {{ replacement.technician.user.get_full_name }}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                            Replaced
+                        </span>
+                        {% if replacement.cost and replacement.cost > 0 %}
+                        <span class="text-sm font-semibold text-gray-900">${{ replacement.cost|floatformat:2 }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Repair History -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200">
         <div class="px-6 py-4 border-b border-gray-200">
