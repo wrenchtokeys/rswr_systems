@@ -310,7 +310,13 @@ def _get_billing_context(tenant):
         )
         outstanding_amount = (total_outstanding.get('total') or Decimal('0.00'))
 
-        overdue_count = outstanding.filter(status='OVERDUE').count()
+        # Count overdue: either status=OVERDUE or due_date passed and not paid
+        from django.utils import timezone
+        today = timezone.now().date()
+        overdue_count = outstanding.filter(
+            models.Q(status='OVERDUE') | 
+            models.Q(due_date__lt=today, status__in=['SENT', 'PARTIAL'])
+        ).count()
 
         # Recent payments (last 10)
         recent_payments = Payment.objects.filter(

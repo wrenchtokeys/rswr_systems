@@ -485,35 +485,42 @@ class InvoiceService:
         
         story = []
         
-        # Logo (if available)
-        logo = self._get_logo_for_pdf()
-        if logo:
-            story.append(logo)
-            story.append(Spacer(1, 10))
+        # Header: Logo + Company Name side by side
+        logo = self._get_logo_for_pdf(max_width=1.5*inch, max_height=1*inch)
         
-        # Header / Company Name (only if no logo, or as subtitle)
-        if not logo:
-            story.append(Paragraph(
-                f"<b>{self.COMPANY_NAME}</b>",
-                self.styles['InvoiceTitle']
-            ))
-        
-        # Company contact info
-        contact_parts = []
-        if self.COMPANY_PHONE:
-            contact_parts.append(self.COMPANY_PHONE)
-        if self.COMPANY_EMAIL:
-            contact_parts.append(self.COMPANY_EMAIL)
-        if self.COMPANY_WEBSITE:
-            contact_parts.append(self.COMPANY_WEBSITE)
+        # Build company info block (stacked vertically)
+        company_info_parts = [f"<b>{self.COMPANY_NAME}</b>"]
         if self.COMPANY_ADDRESS:
-            contact_parts.append(self.COMPANY_ADDRESS)
-            
-        if contact_parts:
-            story.append(Paragraph(
-                ' | '.join(contact_parts),
-                self.styles['CompanyInfo']
-            ))
+            # Split address into lines if it contains commas or newlines
+            addr = self.COMPANY_ADDRESS.replace('\n', '<br/>')
+            company_info_parts.append(addr)
+        if self.COMPANY_PHONE:
+            company_info_parts.append(self.COMPANY_PHONE)
+        if self.COMPANY_EMAIL:
+            company_info_parts.append(self.COMPANY_EMAIL)
+        if self.COMPANY_WEBSITE:
+            company_info_parts.append(self.COMPANY_WEBSITE)
+        
+        company_info_text = '<br/>'.join(company_info_parts)
+        company_info_para = Paragraph(company_info_text, self.styles['CompanyInfo'])
+        
+        if logo:
+            # Logo on left, company info on right
+            header_table = Table(
+                [[logo, company_info_para]],
+                colWidths=[1.8*inch, 5.2*inch]
+            )
+            header_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+                ('ALIGN', (1, 0), (1, 0), 'LEFT'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            story.append(header_table)
+        else:
+            # No logo - just company info
+            story.append(company_info_para)
         
         story.append(Spacer(1, 20))
         
