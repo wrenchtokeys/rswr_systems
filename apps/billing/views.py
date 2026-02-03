@@ -202,11 +202,12 @@ def create_invoice(request, customer_id):
     # Create the tracked invoice
     try:
         due_days = data.get('due_days', 30)
+        send_email = data.get('auto_email', False)
         invoice = tracking.create_invoice_from_repairs(
             customer=customer,
             repairs=repairs,
             due_days=due_days,
-            auto_send=True,
+            auto_send=send_email,  # SENT if emailing, DRAFT otherwise
         )
         # Ensure invoice is associated with the tenant
         if not invoice.tenant_id:
@@ -257,7 +258,7 @@ def create_invoice(request, customer_id):
         logging.getLogger(__name__).warning(f"Stripe link failed for {invoice.invoice_number}: {e}")
 
     # Optionally email
-    if data.get('auto_email', False) and customer.email:
+    if send_email and customer.email:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         try:
             email_svc = InvoiceEmailService()

@@ -113,7 +113,7 @@
             </div>
             <div class="flex items-center gap-4">
                 <span class="text-sm font-semibold text-gray-900">${{ item.total|floatformat:2 }}</span>
-                <button onclick="createInvoice({{ item.customer.id }}, '{{ item.customer.name|escapejs }}')"
+                <button onclick="openInvoiceModal({{ item.customer.id }}, '{{ item.customer.name|escapejs }}')"
                     class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
                     <i class="fas fa-file-invoice mr-1.5"></i>Create Invoice
                 </button>
@@ -232,10 +232,188 @@
     </div>
     {% endif %}
 </div>
+
+<!-- Create Invoice Modal -->
+<div id="invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4 py-6">
+        <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeInvoiceModal()"></div>
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Create Invoice</h3>
+                    <p class="text-sm text-gray-500" id="modal-customer-name"></p>
+                </div>
+                <button onclick="closeInvoiceModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Loading state -->
+            <div id="modal-loading" class="px-6 py-8 text-center">
+                <i class="fas fa-spinner fa-spin text-2xl text-gray-400"></i>
+                <p class="text-sm text-gray-500 mt-2">Loading repairs...</p>
+            </div>
+
+            <!-- Repairs list -->
+            <div id="modal-repairs" class="hidden">
+                <div class="px-6 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" id="modal-select-all" onchange="toggleModalSelectAll()"
+                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                        Select All
+                    </label>
+                    <span class="text-sm text-gray-500"><span id="modal-selected-count">0</span> selected</span>
+                </div>
+                <div id="modal-repairs-list" class="max-h-64 overflow-y-auto divide-y divide-gray-100">
+                    <!-- Repairs inserted here by JS -->
+                </div>
+                <div class="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+                    <span class="text-sm text-gray-600">Selected Total:</span>
+                    <span class="text-lg font-bold text-gray-900">$<span id="modal-total">0.00</span></span>
+                </div>
+            </div>
+
+            <!-- Empty state -->
+            <div id="modal-empty" class="hidden px-6 py-8 text-center">
+                <i class="fas fa-check-circle text-3xl text-green-400"></i>
+                <p class="text-sm text-gray-600 mt-2">No uninvoiced repairs for this customer.</p>
+            </div>
+
+            <!-- Footer -->
+            <div id="modal-footer" class="hidden px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row gap-2 sm:justify-end">
+                <button onclick="closeInvoiceModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                    Cancel
+                </button>
+                <button onclick="createInvoiceDraft()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-save mr-1.5"></i>Save Draft
+                </button>
+                <button onclick="createInvoiceAndSend()" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-paper-plane mr-1.5"></i>Create & Send
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+// === Create Invoice Modal ===
+let modalCustomerId = null;
+let modalRepairs = [];
+
+function openInvoiceModal(customerId, customerName) {
+    modalCustomerId = customerId;
+    modalRepairs = [];
+    document.getElementById('modal-customer-name').textContent = customerName;
+    document.getElementById('invoice-modal').classList.remove('hidden');
+    document.getElementById('modal-loading').classList.remove('hidden');
+    document.getElementById('modal-repairs').classList.add('hidden');
+    document.getElementById('modal-empty').classList.add('hidden');
+    document.getElementById('modal-footer').classList.add('hidden');
+
+    // Fetch uninvoiced repairs
+    fetch(`/api/billing/customers/${customerId}/uninvoiced/`)
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('modal-loading').classList.add('hidden');
+            modalRepairs = data.uninvoiced_repairs || [];
+            if (modalRepairs.length === 0) {
+                document.getElementById('modal-empty').classList.remove('hidden');
+            } else {
+                renderModalRepairs();
+                document.getElementById('modal-repairs').classList.remove('hidden');
+                document.getElementById('modal-footer').classList.remove('hidden');
+            }
+        })
+        .catch(err => {
+            document.getElementById('modal-loading').classList.add('hidden');
+            alert('Error loading repairs: ' + err.message);
+            closeInvoiceModal();
+        });
+}
+
+function closeInvoiceModal() {
+    document.getElementById('invoice-modal').classList.add('hidden');
+    modalCustomerId = null;
+    modalRepairs = [];
+}
+
+function renderModalRepairs() {
+    const list = document.getElementById('modal-repairs-list');
+    list.innerHTML = modalRepairs.map(r => `
+        <label class="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 cursor-pointer">
+            <input type="checkbox" class="modal-repair-cb rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                data-id="${r.id}" data-cost="${r.cost}" checked onchange="updateModalSelection()">
+            <div class="flex-1 min-w-0">
+                <div class="text-sm font-medium text-gray-900">${r.unit_number}</div>
+                <div class="text-xs text-gray-500">${r.damage_type} — ${new Date(r.service_date).toLocaleDateString()}</div>
+            </div>
+            <div class="text-sm font-semibold text-gray-700">$${r.cost.toFixed(2)}</div>
+        </label>
+    `).join('');
+    updateModalSelection();
+}
+
+function toggleModalSelectAll() {
+    const checked = document.getElementById('modal-select-all').checked;
+    document.querySelectorAll('.modal-repair-cb').forEach(cb => { cb.checked = checked; });
+    updateModalSelection();
+}
+
+function updateModalSelection() {
+    const cbs = document.querySelectorAll('.modal-repair-cb');
+    const checked = document.querySelectorAll('.modal-repair-cb:checked');
+    let total = 0;
+    checked.forEach(cb => { total += parseFloat(cb.dataset.cost) || 0; });
+    document.getElementById('modal-selected-count').textContent = checked.length;
+    document.getElementById('modal-total').textContent = total.toFixed(2);
+    // Update select-all state
+    const selectAll = document.getElementById('modal-select-all');
+    selectAll.checked = cbs.length > 0 && checked.length === cbs.length;
+    selectAll.indeterminate = checked.length > 0 && checked.length < cbs.length;
+}
+
+function getSelectedRepairIds() {
+    return Array.from(document.querySelectorAll('.modal-repair-cb:checked')).map(cb => parseInt(cb.dataset.id));
+}
+
+function createInvoiceDraft() {
+    const ids = getSelectedRepairIds();
+    if (!ids.length) { alert('Select at least one repair'); return; }
+    submitInvoice(ids, false);
+}
+
+function createInvoiceAndSend() {
+    const ids = getSelectedRepairIds();
+    if (!ids.length) { alert('Select at least one repair'); return; }
+    if (!confirm('Create invoice and send email to customer?')) return;
+    submitInvoice(ids, true);
+}
+
+function submitInvoice(repairIds, sendEmail) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+    fetch(`/api/billing/invoices/create/${modalCustomerId}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ repair_ids: repairIds, auto_email: sendEmail }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            closeInvoiceModal();
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to create invoice');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+// === Batch Actions (existing invoices table) ===
 function toggleSelectAll(el) {
     document.querySelectorAll('.invoice-checkbox').forEach(cb => { cb.checked = el.checked; });
     updateBatchBar();
@@ -294,49 +472,6 @@ function sendSelectedEmails() {
     .catch(err => alert('Error: ' + err.message));
 }
 
-function createInvoice(customerId, customerName) {
-    if (!confirm(`Create invoice for all uninvoiced repairs for ${customerName}?`)) return;
-
-    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
-        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
-
-    fetch(`/api/billing/invoices/create/${customerId}/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken,
-        },
-        body: JSON.stringify({ all_uninvoiced: true, auto_email: true }),
-    })
-    .then(r => {
-        if (!r.ok) {
-            return r.text().then(text => {
-                // Try to parse as JSON first
-                try {
-                    const data = JSON.parse(text);
-                    throw new Error(data.error || `Server error ${r.status}`);
-                } catch (e) {
-                    if (e.message.startsWith('Server error') || e.message !== 'Server error') {
-                        // Extract error from Django HTML debug page if possible
-                        const match = text.match(/<pre class="exception_value">(.*?)<\/pre>/s);
-                        throw new Error(match ? match[1].trim() : `Server error ${r.status}: check terminal for details`);
-                    }
-                    throw e;
-                }
-            });
-        }
-        return r.json();
-    })
-    .then(data => {
-        if (data.success) {
-            window.location.reload();
-        } else {
-            alert(data.error || 'Failed to create invoice');
-        }
-    })
-    .catch(err => {
-        alert('Error creating invoice: ' + err.message);
-    });
-}
+// Old createInvoice removed — replaced by modal flow (openInvoiceModal)
 </script>
 {% endblock %}
