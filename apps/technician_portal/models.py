@@ -537,29 +537,44 @@ class Repair(GlassService):
             )
 
             # --- REPAIR PRICING (progressive logic) ---
+            # Retail/Walk-in customers don't get sequential discounts (always first repair price)
+            # UNLESS it's a multi-break repair (same batch_id)
+            is_retail = self.customer and self.customer.customer_type in ('RETAIL', 'WALK_IN')
+            is_multi_break = self.repair_batch_id is not None
+            
             if self.queue_status == 'COMPLETED':
                 if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
-                    unit_repair_count.repair_count += 1
-                    unit_repair_count.save()
+                    # Only increment repair count for fleet customers
+                    if not is_retail:
+                        unit_repair_count.repair_count += 1
+                        unit_repair_count.save()
 
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
                     self.cost = self.cost_override
                 else:
-                    # Use the new pricing service for customer-specific pricing
                     from .services.pricing_service import calculate_repair_cost
-                    self.cost = calculate_repair_cost(self.customer, unit_repair_count.repair_count)
+                    if is_retail and not is_multi_break:
+                        # Retail customers always pay first repair price
+                        self.cost = calculate_repair_cost(self.customer, 1)
+                    else:
+                        # Fleet customers get progressive pricing
+                        self.cost = calculate_repair_cost(self.customer, unit_repair_count.repair_count)
             else:
                 # For non-completed repairs, show expected cost for preview
                 if self.cost_override is not None:
                     self.cost = self.cost_override
                 # BATCH REPAIR FIX: Preserve pre-calculated batch pricing
-                elif self.repair_batch_id is not None:
+                elif is_multi_break:
                     pass
                 else:
                     from .services.pricing_service import calculate_repair_cost
-                    next_repair_count = unit_repair_count.repair_count + 1
-                    self.cost = calculate_repair_cost(self.customer, next_repair_count)
+                    if is_retail:
+                        # Retail customers always pay first repair price
+                        self.cost = calculate_repair_cost(self.customer, 1)
+                    else:
+                        next_repair_count = unit_repair_count.repair_count + 1
+                        self.cost = calculate_repair_cost(self.customer, next_repair_count)
 
             # Calculate tax from BillingConfig rates
             if self.cost and self.cost > 0:
