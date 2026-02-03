@@ -14,6 +14,7 @@ import logging
 
 from apps.technician_portal.models import Technician, Repair, TechnicianNotification
 from apps.customer_portal.models import RepairApproval, CustomerUser, CustomerRepairPreference
+from core.models import Customer
 from apps.technician_portal.forms import RepairForm
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from common.utils import convert_heic_to_jpeg
@@ -330,11 +331,20 @@ def create_repair(request):
 
     admin = is_tenant_admin(request.user)
     tenant = getattr(request, 'tenant', None)
+    
+    # Build customer types dict for JavaScript
+    import json
+    customers_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+    customer_types_json = json.dumps({
+        str(c.id): c.customer_type for c in customers_qs
+    })
+    
     context = {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
         'is_admin': admin,
         'expected_cost': expected_cost,
+        'customer_types_json': customer_types_json,
     }
     if admin:
         context['technicians'] = Technician.objects.filter(

@@ -59,6 +59,12 @@ PLAN.md Step 6 — push the unified permissions/template/billing stack to produc
 - QR code on PDF invoices for scan-to-pay
 - Per-customer payment terms override
 
+### Retail Customer Enhancements
+- **Saved vehicles per customer** — Like units for fleets, but for retail customers who return
+- **Vehicle lookup by VIN** — Auto-populate year/make/model from VIN
+- **Retail rewards program** — Points/discounts for repeat retail customers
+- **Vehicle repair history** — Track all repairs per vehicle (year/make/model)
+
 ### Medium-term
 - Mobile optimization / PWA (offline mode, camera, GPS)
 - Lot walking scheduler (backend scheduling from customer preferences)
