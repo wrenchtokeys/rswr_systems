@@ -12,15 +12,34 @@
         <span class="text-gray-400">/</span>
         <span class="text-gray-600">{{ invoice.invoice_number }}</span>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-2 flex-wrap">
+        {% if invoice.status == 'DRAFT' %}
+        <!-- Draft Actions -->
+        <form method="post" action="{% url 'owner_send_invoice' invoice_id=invoice.id %}" class="inline">
+            {% csrf_token %}
+            <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                <i class="fas fa-paper-plane mr-2"></i>Send Invoice
+            </button>
+        </form>
+        {% else %}
+        <!-- Sent/Active Invoice Actions -->
         {% if pdf_url %}
         <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <i class="fas fa-download mr-2"></i>Download PDF
         </a>
         {% endif %}
+        <form method="post" action="{% url 'owner_email_invoice' invoice_id=invoice.id %}" class="inline">
+            {% csrf_token %}
+            <button type="submit" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-envelope mr-2"></i>Email Invoice
+            </button>
+        </form>
+        {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
         <button onclick="alert('Send Reminder — coming soon!')" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <i class="fas fa-bell mr-2"></i>Send Reminder
         </button>
+        {% endif %}
+        {% endif %}
     </div>
 </div>
 

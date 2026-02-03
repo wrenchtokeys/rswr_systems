@@ -1598,3 +1598,121 @@ def owner_toggle_tax(request):
         messages.error(request, 'Could not update tax setting.')
 
     return redirect('/owner/settings/?tab=billing')
+
+
+# ─── Invoice Actions (Send, Email) ───────────────────────────────────
+@owner_or_manager_required
+@require_POST
+def owner_send_invoice(request, invoice_id):
+    """POST /owner/invoices/<id>/send/ — finalize draft and send to customer."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+    
+    if invoice.status not in ('DRAFT',):
+        messages.error(request, 'Only draft invoices can be sent.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    try:
+        # Update status to SENT
+        invoice.status = 'SENT'
+        invoice.sent_at = timezone.now()
+        invoice.save(update_fields=['status', 'sent_at'])
+        
+        # Try to email the invoice
+        email_sent = False
+        try:
+            from apps.billing.services.invoice_email_service import InvoiceEmailService
+            email_service = InvoiceEmailService()
+            
+            # Get recipient email
+            recipient = None
+            try:
+                prefs = invoice.customer.repair_preferences
+                recipient = prefs.billing_email or invoice.customer.email
+            except Exception:
+                recipient = invoice.customer.email
+            
+            if recipient:
+                # Get repair IDs from line items
+                repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
+                
+                if repair_ids:
+                    success, msg = email_service.send_invoice_email(
+                        customer_id=invoice.customer.id,
+                        recipient_email=recipient,
+                        repair_ids=repair_ids,
+                    )
+                    email_sent = success
+                    if not success:
+                        logger.warning(f"Invoice email failed: {msg}")
+                else:
+                    logger.warning(f"No repair IDs found on invoice {invoice.invoice_number} for email")
+        except Exception as e:
+            logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
+        
+        if email_sent:
+            messages.success(request, f'Invoice {invoice.invoice_number} sent and emailed to customer.')
+        else:
+            messages.success(request, f'Invoice {invoice.invoice_number} marked as sent. (Email delivery may have failed - check customer email settings)')
+            
+    except Exception as e:
+        logger.error(f"Error sending invoice {invoice.invoice_number}: {e}")
+        messages.error(request, 'An error occurred while sending the invoice.')
+
+    return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_email_invoice(request, invoice_id):
+    """POST /owner/invoices/<id>/email/ — (re)send invoice email to customer."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+    
+    if invoice.status == 'DRAFT':
+        messages.error(request, 'Cannot email a draft invoice. Send it first.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    try:
+        from apps.billing.services.invoice_email_service import InvoiceEmailService
+        email_service = InvoiceEmailService()
+        
+        # Get recipient email (can be overridden from form)
+        recipient = request.POST.get('email', '').strip()
+        if not recipient:
+            try:
+                prefs = invoice.customer.repair_preferences
+                recipient = prefs.billing_email or invoice.customer.email
+            except Exception:
+                recipient = invoice.customer.email
+        
+        if not recipient:
+            messages.error(request, 'No email address found for this customer.')
+            return redirect('owner_invoice_detail', invoice_id=invoice.id)
+        
+        repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
+        
+        success, msg = email_service.send_invoice_email(
+            customer_id=invoice.customer.id,
+            recipient_email=recipient,
+            repair_ids=repair_ids if repair_ids else None,
+        )
+        
+        if success:
+            messages.success(request, f'Invoice emailed to {recipient}.')
+        else:
+            messages.error(request, f'Failed to email invoice: {msg}')
+            
+    except Exception as e:
+        logger.error(f"Error emailing invoice {invoice.invoice_number}: {e}")
+        messages.error(request, 'An error occurred while emailing the invoice.')
+
+    return redirect('owner_invoice_detail', invoice_id=invoice.id)
