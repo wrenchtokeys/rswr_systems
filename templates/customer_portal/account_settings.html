@@ -550,59 +550,6 @@
 
                 <!-- Billing & Invoicing Tab -->
                 <div class="tab-content p-6" id="billing-tab" style="display: none;">
-                    <!-- Invoice Preference Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-purple-100 text-purple-600 p-2 rounded-lg">
-                                    <i class="fas fa-file-invoice-dollar text-xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                        Invoice Generation Mode
-                                        <span class="tooltip-trigger">
-                                            <i class="fas fa-circle-question text-sm"></i>
-                                            <span class="tooltip-content">
-                                                Choose how and when invoices are generated for your repairs
-                                            </span>
-                                        </span>
-                                    </h3>
-                                    <p class="text-sm text-gray-600">Configure how invoices are created for completed repairs</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="radio-group">
-                            {% for radio in repair_form.invoice_preference %}
-                            <label class="radio-option">
-                                {{ radio.tag }}
-                                <div class="flex-1">
-                                    <div class="font-medium text-gray-900">
-                                        {% if radio.value == 'per_ticket' %}
-                                        Per Repair
-                                        {% elif radio.value == 'batch' %}
-                                        Batch Invoicing
-                                        {% elif radio.value == 'manual' %}
-                                        Manual Only
-                                        {% else %}
-                                        {{ radio.choice_label }}
-                                        {% endif %}
-                                    </div>
-                                    <div class="text-sm text-gray-600 mt-1">
-                                        {% if radio.value == 'per_ticket' %}
-                                        An invoice is automatically generated each time a repair is completed
-                                        {% elif radio.value == 'batch' %}
-                                        Repairs are grouped together and invoiced periodically (recommended for high-volume accounts)
-                                        {% elif radio.value == 'manual' %}
-                                        Invoices are only created when manually requested — no automatic generation
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </label>
-                            {% endfor %}
-                        </div>
-                    </div>
-
                     <!-- Email & Delivery Settings Card -->
                     <div class="bg-white border border-gray-200 rounded-lg p-6">
                         <div class="flex items-center justify-between mb-6">

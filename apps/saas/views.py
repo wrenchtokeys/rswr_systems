@@ -661,6 +661,14 @@ def owner_settings_view(request):
                 messages.error(request, 'Invalid assignment strategy selected.')
             return redirect('owner_settings')
 
+        if form_type == 'toggle_auto_invoice':
+            # Toggle auto-invoice generation at tenant level
+            tenant.auto_invoice_enabled = not tenant.auto_invoice_enabled
+            tenant.save(update_fields=['auto_invoice_enabled'])
+            status = 'enabled' if tenant.auto_invoice_enabled else 'disabled'
+            messages.success(request, f'Auto invoice generation {status}.')
+            return redirect('/owner/settings/?tab=billing')
+
         if form_type == 'billing_location':
             # Update shop location + tax rate breakdown
             try:

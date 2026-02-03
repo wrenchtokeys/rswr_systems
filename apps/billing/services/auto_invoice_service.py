@@ -43,6 +43,11 @@ class AutoInvoiceService:
         if repair.queue_status != 'COMPLETED':
             return False, "Repair is not completed"
         
+        # Check tenant-level setting first (management override)
+        tenant = getattr(repair, 'tenant', None)
+        if tenant and not getattr(tenant, 'auto_invoice_enabled', True):
+            return False, "Auto-invoicing disabled at tenant level"
+        
         # Check customer preferences
         try:
             prefs = repair.customer.repair_preferences

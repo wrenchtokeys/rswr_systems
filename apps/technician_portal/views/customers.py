@@ -92,17 +92,36 @@ def customer_list(request):
 def customer_details(request, customer_id):
     """View customer details with unit listing for current technician."""
     tenant = getattr(request, 'tenant', None)
-    technician = get_object_or_404(Technician, user=request.user)
+    
+    # Get technician if exists (owners/managers may not have one)
+    technician = None
+    if hasattr(request.user, 'technician'):
+        technician = request.user.technician
 
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     customer = get_object_or_404(qs, id=customer_id)
 
-    repairs = Repair.objects.filter(
-        technician=technician,
-        customer=customer
-    ).exclude(queue_status__in=['REQUESTED', 'PENDING'])
+    # Determine if user is admin/owner/manager (can see all repairs)
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = technician and technician.is_manager
+    
+    # Build repairs query
+    if is_admin or is_mgr:
+        # Admins/managers see all repairs for this customer
+        repairs = Repair.objects.filter(customer=customer)
+    elif technician:
+        # Regular techs see only their own repairs
+        repairs = Repair.objects.filter(
+            technician=technician,
+            customer=customer
+        )
+    else:
+        # No technician record and not admin - show empty
+        repairs = Repair.objects.none()
+    
+    repairs = repairs.exclude(queue_status__in=['REQUESTED', 'PENDING'])
     if tenant:
         repairs = repairs.filter(tenant=tenant)
 
@@ -113,7 +132,7 @@ def customer_details(request, customer_id):
     units = repairs.values_list('unit_number', flat=True).distinct()
 
     # Determine if user can edit primary technician (admin, owner, or manager)
-    can_edit_customer = is_tenant_admin(request.user) or technician.is_manager
+    can_edit_customer = is_admin or is_mgr
 
     # Provide available technicians for the primary tech dropdown
     available_technicians = Technician.objects.filter(is_active=True)

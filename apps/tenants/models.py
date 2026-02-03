@@ -151,6 +151,10 @@ class Tenant(models.Model):
 
     # Settings
     is_active = models.BooleanField(default=True)
+    auto_invoice_enabled = models.BooleanField(
+        default=True,
+        help_text="When enabled, invoices are auto-generated on repair completion (per customer preference). Disable for testing."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
