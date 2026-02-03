@@ -94,6 +94,23 @@ def calculate_repair_cost_with_volume_discount(customer: Customer, repair_count:
     return base_price, False, Decimal('0.00')
 
 
+def get_retail_repair_price(customer: Customer) -> Decimal:
+    """
+    Get the default repair price for retail/walk-in customers.
+    
+    Retail customers always pay the first repair price (no sequential discounts).
+    This can be overridden with customer-specific pricing if configured.
+    
+    Args:
+        customer: The Customer object
+        
+    Returns:
+        Decimal: The retail repair price
+    """
+    # Always use first repair price for retail (no sequential discounts)
+    return calculate_repair_cost(customer, 1)
+
+
 def get_expected_repair_cost(customer: Customer, unit_number: str) -> Tuple[Decimal, int]:
     """
     Get the expected cost for the next repair on a specific unit.
@@ -105,7 +122,11 @@ def get_expected_repair_cost(customer: Customer, unit_number: str) -> Tuple[Deci
     Returns:
         Tuple of (expected_cost, next_repair_count)
     """
-    # Get or create the repair count record
+    # Retail/Walk-in customers always pay first repair price (no sequential discounts)
+    if customer and customer.customer_type in ('RETAIL', 'WALK_IN'):
+        return get_retail_repair_price(customer), 1
+    
+    # Fleet customers get progressive pricing based on unit repair count
     unit_repair_count, created = UnitRepairCount.objects.get_or_create(
         customer=customer,
         unit_number=unit_number,

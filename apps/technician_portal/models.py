@@ -855,9 +855,15 @@ class Repair(GlassService):
         if self.cost_override is not None:
             return self.cost_override
 
-        # Otherwise calculate based on repair count using pricing service
+        # Otherwise calculate based on customer type and repair count
         if self.customer:
-            from .services.pricing_service import get_expected_repair_cost
+            from .services.pricing_service import get_expected_repair_cost, get_retail_repair_price
+            
+            # Retail/Walk-in: always first repair price (no sequential discounts)
+            if self.customer.customer_type in ('RETAIL', 'WALK_IN'):
+                return get_retail_repair_price(self.customer)
+            
+            # Fleet: progressive pricing based on unit repair count
             expected_cost, _ = get_expected_repair_cost(self.customer, self.unit_number)
             return expected_cost
         return 0
