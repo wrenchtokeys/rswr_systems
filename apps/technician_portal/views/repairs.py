@@ -268,6 +268,12 @@ def create_repair(request):
                     repair = form.save(commit=False)
                     repair.technician = form.cleaned_data.get('technician')
                     repair.tenant = getattr(request, 'tenant', None)
+                    
+                    # Auto-approve for retail/walk-in customers
+                    if repair.customer and repair.customer.customer_type in ('RETAIL', 'WALK_IN'):
+                        repair.queue_status = 'APPROVED'
+                        messages.info(request, "Repair auto-approved (retail customer).")
+                    
                     repair.save()
                     form.save_m2m()
                     messages.success(request, f"Repair has been created and assigned to {repair.technician.user.get_full_name()}")
