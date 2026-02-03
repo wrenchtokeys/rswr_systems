@@ -9,6 +9,7 @@ Sends invoice emails with:
 Author: Amelia (Clawdbot AI)
 Created: 2026-01-27
 """
+from __future__ import annotations
 
 import io
 import os
@@ -21,7 +22,6 @@ from django.conf import settings
 from django.core.mail import EmailMessage
 from django.utils import timezone
 
-from apps.billing.services.invoice_service import InvoiceService, InvoiceData
 from apps.technician_portal.models import Repair
 
 
@@ -47,6 +47,7 @@ class InvoiceEmailService:
     """
     
     def __init__(self):
+        from apps.billing.services.invoice_service import InvoiceService
         self.invoice_service = InvoiceService()
         self._setup_s3_client()
     
@@ -140,7 +141,7 @@ class InvoiceEmailService:
         
         return attachments
     
-    def _build_email_body(self, invoice_data: InvoiceData, include_photos: bool,
+    def _build_email_body(self, invoice_data, include_photos: bool,
                           payment_link: str = None) -> str:
         """Build the email body text"""
         lines = [

@@ -9,6 +9,7 @@ Saves generated invoices to S3 for:
 Author: Amelia (Clawdbot AI)
 Created: 2026-01-27
 """
+from __future__ import annotations
 
 import os
 import json
@@ -20,7 +21,7 @@ import boto3
 from botocore.exceptions import ClientError
 from django.utils import timezone
 
-from apps.billing.services.invoice_service import InvoiceData
+# InvoiceData imported lazily to avoid reportlab dependency at module load
 
 
 # S3 path structure: invoices/{customer_id}/{year}/{invoice_number}.pdf
