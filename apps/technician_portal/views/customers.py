@@ -178,18 +178,65 @@ def unit_details(request, customer_id, unit_number):
 
 
 @technician_required
+@require_POST
 def mark_unit_replaced(request, customer_id, unit_number):
-    """Mark a unit's windshield as replaced, resetting repair count."""
+    """Mark a unit's windshield as replaced, resetting repair count and creating a Replacement record."""
     tenant = getattr(request, 'tenant', None)
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     customer = get_object_or_404(qs, id=customer_id)
-    unit_repair_count = get_object_or_404(UnitRepairCount, customer=customer, unit_number=unit_number)
+    
+    # Get or create the unit repair count record
+    unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+        customer=customer,
+        unit_number=unit_number,
+        defaults={'repair_count': 0, 'tenant': tenant}
+    )
+    
+    # Get the technician (current user or fallback)
+    technician = None
+    if hasattr(request.user, 'technician'):
+        technician = request.user.technician
+    else:
+        # For admins without technician record, try to get customer's primary tech
+        technician = customer.primary_technician
+    
+    if not technician:
+        # Fallback: get any active technician
+        technician = Technician.objects.filter(tenant=tenant, is_active=True).first()
+    
+    if technician:
+        # Create a Replacement record to track this
+        from apps.technician_portal.models import Replacement
+        from django.utils import timezone
+        
+        replacement = Replacement.objects.create(
+            tenant=tenant,
+            customer=customer,
+            technician=technician,
+            unit_number=unit_number,
+            glass_position='WINDSHIELD',
+            queue_status='COMPLETED',
+            service_date=timezone.now(),
+            description=f"Windshield replacement for unit #{unit_number}",
+            cost=0,  # Can be updated later if needed
+        )
+        messages.success(
+            request, 
+            f"Unit #{unit_number} windshield replacement recorded. Repair count reset to 0."
+        )
+    else:
+        messages.warning(
+            request,
+            f"Unit #{unit_number} repair count reset, but no technician available to record replacement."
+        )
+    
+    # Reset the repair count
     unit_repair_count.repair_count = 0
     unit_repair_count.save()
-    messages.success(request, f"Unit #{unit_number} for {customer.name} has been marked as replaced. Repair count reset to 0.")
-    return redirect('customer_detail', customer_id=customer_id)
+    
+    return redirect('unit_details', customer_id=customer_id, unit_number=unit_number)
 
 
 @technician_required

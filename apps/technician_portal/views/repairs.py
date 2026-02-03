@@ -287,18 +287,24 @@ def create_repair(request):
                     repair.technician = request.user.technician
                     repair.tenant = getattr(request, 'tenant', None)
 
-                    # Check customer preferences for approval
-                    try:
-                        preferences = repair.customer.repair_preferences
-                        if preferences.should_auto_approve(repair.technician, repair.repair_date.date() if repair.repair_date else None):
-                            repair.queue_status = 'APPROVED'
-                            messages.info(request, "Repair auto-approved based on customer preferences.")
-                        else:
+                    # Check customer type and preferences for approval
+                    # Retail/Walk-in customers auto-approve (no fleet manager to approve)
+                    if repair.customer and repair.customer.customer_type in ('RETAIL', 'WALK_IN'):
+                        repair.queue_status = 'APPROVED'
+                        messages.info(request, "Repair auto-approved (retail customer).")
+                    else:
+                        # Fleet customers - check preferences
+                        try:
+                            preferences = repair.customer.repair_preferences
+                            if preferences.should_auto_approve(repair.technician, repair.repair_date.date() if repair.repair_date else None):
+                                repair.queue_status = 'APPROVED'
+                                messages.info(request, "Repair auto-approved based on customer preferences.")
+                            else:
+                                repair.queue_status = 'PENDING'
+                                messages.warning(request, "This customer requires approval for field repairs. Repair submitted for customer approval.")
+                        except CustomerRepairPreference.DoesNotExist:
                             repair.queue_status = 'PENDING'
-                            messages.warning(request, "This customer requires approval for field repairs. Repair submitted for customer approval.")
-                    except CustomerRepairPreference.DoesNotExist:
-                        repair.queue_status = 'PENDING'
-                        messages.warning(request, "Repair submitted for customer approval (customer preferences not configured).")
+                            messages.warning(request, "Repair submitted for customer approval (customer preferences not configured).")
 
                     repair.save()
                     form.save_m2m()
