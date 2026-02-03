@@ -280,7 +280,22 @@ class GlassService(models.Model):
         related_name='%(class)ss',  # 'repairs' for Repair, 'replacements' for Replacement
         help_text="Link to vehicle record (optional — unit_number still works for fleets)"
     )
-    unit_number = models.CharField(max_length=50)  # Kept for backward compat + fleet use
+    unit_number = models.CharField(max_length=50, blank=True)  # For fleet customers
+    
+    # Vehicle info for retail/walk-in customers (alternative to unit_number)
+    vehicle_year = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Vehicle year (e.g., 2019)"
+    )
+    vehicle_make = models.CharField(
+        max_length=50, blank=True,
+        help_text="Vehicle make (e.g., Ford, Toyota, Chevrolet)"
+    )
+    vehicle_model = models.CharField(
+        max_length=50, blank=True,
+        help_text="Vehicle model (e.g., F-150, Camry, Silverado)"
+    )
+    
     service_date = models.DateTimeField(default=timezone.now)
     description = models.TextField(blank=True, null=True)
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)

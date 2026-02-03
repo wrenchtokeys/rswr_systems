@@ -217,9 +217,28 @@ class RepairForm(forms.ModelForm):
     break_number = forms.IntegerField(required=False, widget=forms.HiddenInput())
     total_breaks_in_batch = forms.IntegerField(required=False, widget=forms.HiddenInput())
 
+    # Vehicle fields for retail/walk-in customers
+    vehicle_year = forms.IntegerField(
+        required=False,
+        min_value=1990,
+        max_value=2030,
+        widget=forms.NumberInput(attrs={'placeholder': '2019'})
+    )
+    vehicle_make = forms.CharField(
+        required=False,
+        max_length=50,
+        widget=forms.TextInput(attrs={'placeholder': 'Ford'})
+    )
+    vehicle_model = forms.CharField(
+        required=False,
+        max_length=50,
+        widget=forms.TextInput(attrs={'placeholder': 'F-150'})
+    )
+
     class Meta:
         model = Repair
-        fields = ['technician', 'customer', 'unit_number', 'queue_status', 'damage_type',
+        fields = ['technician', 'customer', 'unit_number', 'vehicle_year', 'vehicle_make', 'vehicle_model',
+                  'queue_status', 'damage_type',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
                   'cost_override', 'override_reason', 'repair_batch_id', 'break_number', 'total_breaks_in_batch']
@@ -278,11 +297,14 @@ class RepairForm(forms.ModelForm):
         if 'technician_notes' in self.fields:
             self.fields['technician_notes'].help_text = "Add your internal notes about the repair process"
 
-        # Add professional widget attributes for better UX
+        # Unit number is not always required (depends on customer type)
+        self.fields['unit_number'].required = False
         self.fields['unit_number'].widget.attrs.update({
             'placeholder': 'e.g., TRUCK-1045',
             'class': 'icon-field-input'
         })
+        
+        # Vehicle fields have placeholder attrs set in field definition
 
         self.fields['windshield_temperature'].widget.attrs.update({
             'placeholder': 'e.g., 72.5',
@@ -403,6 +425,28 @@ class RepairForm(forms.ModelForm):
                         ),
                         code='existing_repair'
                     )
+
+        # Customer type validation: require appropriate fields
+        if customer:
+            customer_type = customer.customer_type
+            vehicle_year = cleaned_data.get('vehicle_year')
+            vehicle_make = cleaned_data.get('vehicle_make')
+            vehicle_model = cleaned_data.get('vehicle_model')
+            
+            if customer_type == 'FLEET':
+                # Fleet customers require unit_number
+                if not unit_number:
+                    self.add_error('unit_number', 'Unit number is required for fleet customers.')
+            else:
+                # Retail/Walk-in customers require vehicle info
+                if not vehicle_year and not vehicle_make and not vehicle_model:
+                    # None provided - require at least make/model
+                    self.add_error('vehicle_make', 'Vehicle make is required for retail customers.')
+                    self.add_error('vehicle_model', 'Vehicle model is required for retail customers.')
+                elif not vehicle_make:
+                    self.add_error('vehicle_make', 'Vehicle make is required.')
+                elif not vehicle_model:
+                    self.add_error('vehicle_model', 'Vehicle model is required.')
 
         return cleaned_data
 

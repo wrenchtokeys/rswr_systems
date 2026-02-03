@@ -20,10 +20,6 @@
             class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
             <i class="fas fa-users mr-1.5"></i>Team
         </button>
-        <button onclick="switchTab('customers')" id="tab-customers"
-            class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
-            <i class="fas fa-building mr-1.5"></i>Customers
-        </button>
         <button onclick="switchTab('billing')" id="tab-billing"
             class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
             <i class="fas fa-file-invoice-dollar mr-1.5"></i>Billing & Tax
@@ -330,84 +326,7 @@
     </div>
 </div>
 
-<!-- ======================= CUSTOMERS TAB ======================= -->
-<div id="panel-customers" class="tab-panel hidden">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-                <h3 class="text-lg font-semibold text-gray-900">Customers</h3>
-                <p class="text-sm text-gray-500 mt-0.5">{{ customers|length }} customer{{ customers|length|pluralize }}</p>
-            </div>
-        </div>
-
-        {% if customers %}
-        <div class="divide-y divide-gray-100">
-            {% for cust in customers %}
-            <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 transition-colors">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
-                        {% if cust.customer_type == 'FLEET' %}bg-indigo-100
-                        {% elif cust.customer_type == 'RETAIL' %}bg-sky-100
-                        {% else %}bg-gray-100{% endif %}">
-                        <i class="fas {% if cust.customer_type == 'FLEET' %}fa-truck{% elif cust.customer_type == 'RETAIL' %}fa-user{% else %}fa-walking{% endif %}
-                            {% if cust.customer_type == 'FLEET' %}text-indigo-600
-                            {% elif cust.customer_type == 'RETAIL' %}text-sky-600
-                            {% else %}text-gray-500{% endif %} text-sm"></i>
-                    </div>
-                    <div>
-                        <div class="text-sm font-medium text-gray-900 capitalize">{{ cust.name }}</div>
-                        <div class="text-xs text-gray-500">{{ cust.email|default:"No email" }}</div>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
-                        {% if cust.customer_type == 'FLEET' %}bg-indigo-100 text-indigo-800
-                        {% elif cust.customer_type == 'RETAIL' %}bg-sky-100 text-sky-800
-                        {% else %}bg-gray-100 text-gray-800{% endif %}">
-                        {{ cust.get_customer_type_display }}
-                    </span>
-                    {% if cust.primary_technician %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                        <i class="fas fa-user-cog mr-1 text-[10px]"></i>{{ cust.primary_technician.user.get_full_name }}
-                    </span>
-                    {% endif %}
-                    {% if cust.tax_exempt %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                        <i class="fas fa-ban mr-1 text-[10px]"></i>Tax Exempt
-                    </span>
-                    {% endif %}
-                    {% if cust.portal_user %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        <i class="fas fa-check-circle mr-1 text-[10px]"></i>Portal Access
-                    </span>
-                    {% else %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                        <i class="fas fa-times-circle mr-1 text-[10px]"></i>No Portal
-                    </span>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="p-6 text-center">
-            <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <i class="fas fa-building text-gray-400 text-xl"></i>
-            </div>
-            <p class="text-gray-500 mb-3">No customers yet.</p>
-            <p class="text-sm text-gray-400">Customers will appear here once they sign up through your portal link or are added by your team.</p>
-        </div>
-        {% endif %}
-
-        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl">
-            <div class="flex items-center gap-2 text-sm text-gray-600">
-                <i class="fas fa-link text-emerald-500"></i>
-                <span>Share your portal link:</span>
-                <code class="text-xs bg-white px-2 py-1 rounded border border-gray-200 font-mono">{{ shop_join_url }}</code>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- Customers tab removed - use the main Customers page instead -->
 
 <!-- ======================= BILLING & TAX TAB ======================= -->
 <div id="panel-billing" class="tab-panel hidden">
