@@ -28,6 +28,10 @@ Tax rate breakdown (state/county/city/special) configured in Settings → Billin
   - Editable recipient email field
   - Multi-recipient support (comma-separated emails)
   - CC support for additional recipients
+- **Dismiss uninvoiced repairs** — For legacy repairs already paid outside the system:
+  - "Dismiss" button hides repairs from invoicing without deleting them
+  - Adds `skip_invoicing` flag to Repair model
+- **Dev email fix** — Console email backend in development (avoids SSL errors)
 → Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#52-owner-portal--invoice-dashboard-)
 
 ### SaaS Multi-Tenant Architecture

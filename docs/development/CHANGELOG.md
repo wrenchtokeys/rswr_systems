@@ -31,10 +31,23 @@ All notable changes to the RS Systems windshield repair management platform.
 - Backend `send_invoice_email` endpoint now accepts custom `recipient_email` and `cc_emails` parameters
 - Invoice status auto-updates DRAFT → SENT when email is sent
 
+#### Dismiss Uninvoiced Repairs
+- **"Dismiss" button** on uninvoiced work section — for legacy repairs already paid outside the system
+- Marks repairs with `skip_invoicing=True` flag — hides from invoicing without deleting
+- API endpoint: `POST /api/billing/customers/<id>/uninvoiced/dismiss/`
+- Accepts `{"all": true}` to dismiss all, or `{"repair_ids": [1,2,3]}` for specific repairs
+
+#### Dev Email Fix
+- Development settings now use **console email backend** by default
+- Emails print to terminal instead of sending (avoids SSL certificate errors)
+- Set `USE_REAL_EMAIL=True` in `.env` to send actual emails locally
+
 #### Technical Details
-- Templates: `saas/owner_invoices.html` (modal + clickable badge)
+- Templates: `saas/owner_invoices.html` (modal + clickable badge + dismiss button)
 - Views: `apps/saas/views.py` (added `overdue_count` to context)
-- API: `apps/billing/views.py` (`send_invoice_email` updated)
+- API: `apps/billing/views.py` (`send_invoice_email` updated, `dismiss_uninvoiced_repairs` added)
+- Model: `apps/technician_portal/models.py` (added `skip_invoicing` field to Repair)
+- Settings: `rs_systems/settings/development.py` (console email backend)
 
 ---
 

@@ -114,6 +114,10 @@
   - Editable recipient email
   - Multi-recipient support (comma-separated)
   - CC support for additional recipients
+- [x] **Dismiss uninvoiced repairs** — "Dismiss" button for legacy repairs already paid outside system (Feb 4, 2026):
+  - Marks repairs with `skip_invoicing=True`
+  - Hides them from uninvoiced section without deleting
+  - API: `POST /api/billing/customers/<id>/uninvoiced/dismiss/`
 
 ### 5.3 Technician Portal — Payment Badge
 - [ ] On repair detail: show invoice status badge if invoiced
