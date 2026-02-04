@@ -35,12 +35,9 @@
             </button>
         </form>
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' and invoice.status != 'DRAFT' %}
-        <form method="post" action="{% url 'owner_send_reminder' invoice_id=invoice.id %}" class="inline" onsubmit="return confirm('Send payment reminder to {{ invoice.customer.email }}?')">
-            {% csrf_token %}
-            <button type="submit" class="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
-                <i class="fas fa-bell mr-2"></i>Send Reminder
-            </button>
-        </form>
+        <button onclick="openReminderModal()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
+            <i class="fas fa-bell mr-2"></i>Send Reminder
+        </button>
         {% endif %}
         {% endif %}
     </div>
@@ -346,4 +343,162 @@
         {% endif %}
     </div>
 </div>
+
+<!-- Send Reminder Modal -->
+{% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' and invoice.status != 'DRAFT' %}
+<div id="reminder-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <!-- Background overlay -->
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeReminderModal()"></div>
+
+        <!-- Modal panel -->
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-b border-amber-100">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-bell text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900" id="modal-title">Send Payment Reminder</h3>
+                            <p class="text-sm text-gray-500">{{ invoice.invoice_number }}</p>
+                        </div>
+                    </div>
+                    <button onclick="closeReminderModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div class="px-6 py-5 space-y-5">
+                <!-- Invoice Summary -->
+                <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-500">Customer</span>
+                            <p class="font-semibold text-gray-900">{{ invoice.customer.name }}</p>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Amount Due</span>
+                            <p class="font-bold text-lg {% if invoice.status == 'OVERDUE' %}text-red-600{% else %}text-gray-900{% endif %}">${{ invoice.amount_due|floatformat:2 }}</p>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Due Date</span>
+                            <p class="font-medium {% if invoice.status == 'OVERDUE' %}text-red-600{% else %}text-gray-900{% endif %}">
+                                {{ invoice.due_date|date:"M d, Y" }}
+                                {% if invoice.status == 'OVERDUE' %}
+                                <span class="text-xs text-red-500 ml-1">(Overdue)</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Status</span>
+                            <p class="font-medium">
+                                {% if invoice.status == 'OVERDUE' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Overdue</span>
+                                {% elif invoice.status == 'PARTIAL' %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Partial</span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Sent</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Email Preview -->
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Email Preview</label>
+                    <div class="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                        <div class="px-4 py-3 bg-gray-50 border-b border-gray-100">
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-gray-500">To:</span>
+                                <span class="font-medium text-gray-900">{{ invoice.customer.email|default:"No email on file" }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm mt-1">
+                                <span class="text-gray-500">Subject:</span>
+                                <span class="font-medium text-gray-900">
+                                    {% if invoice.status == 'OVERDUE' %}
+                                    [RS Systems] Overdue Notice: {{ invoice.invoice_number }} - {{ invoice.customer.name }}
+                                    {% else %}
+                                    [RS Systems] Payment Reminder: {{ invoice.invoice_number }} - {{ invoice.customer.name }}
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="px-4 py-3 text-sm text-gray-600">
+                            <p class="mb-2">Dear {{ invoice.customer.name }},</p>
+                            {% if invoice.status == 'OVERDUE' %}
+                            <p class="text-red-700">This is a reminder that invoice {{ invoice.invoice_number }} was due on {{ invoice.due_date|date:"F d, Y" }} and remains unpaid.</p>
+                            {% else %}
+                            <p>This is a friendly reminder that invoice {{ invoice.invoice_number }} is due on {{ invoice.due_date|date:"F d, Y" }}.</p>
+                            {% endif %}
+                            <p class="mt-2 text-gray-400 text-xs">+ Invoice details, payment link, and PDF attachment</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- What's Included -->
+                <div class="flex items-start gap-3 text-sm text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <i class="fas fa-paperclip text-blue-500 mt-0.5"></i>
+                    <div>
+                        <span class="font-medium text-blue-900">Email includes:</span>
+                        <ul class="mt-1 space-y-0.5 text-blue-800">
+                            <li>• PDF invoice attached</li>
+                            <li>• Payment link (if Stripe enabled)</li>
+                            <li>• Full invoice details</li>
+                        </ul>
+                    </div>
+                </div>
+
+                {% if not invoice.customer.email %}
+                <div class="flex items-start gap-3 text-sm bg-red-50 rounded-lg p-3 border border-red-100">
+                    <i class="fas fa-exclamation-triangle text-red-500 mt-0.5"></i>
+                    <div class="text-red-800">
+                        <span class="font-medium">No email address on file.</span>
+                        <p class="mt-0.5">Add an email to this customer before sending a reminder.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Footer -->
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row gap-3 sm:justify-end">
+                <button onclick="closeReminderModal()" class="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    Cancel
+                </button>
+                <form method="post" action="{% url 'owner_send_reminder' invoice_id=invoice.id %}" class="w-full sm:w-auto">
+                    {% csrf_token %}
+                    <button type="submit" {% if not invoice.customer.email %}disabled{% endif %}
+                        class="w-full px-5 py-2.5 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        <i class="fas fa-paper-plane"></i>
+                        Send Reminder
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openReminderModal() {
+    document.getElementById('reminder-modal').classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+}
+
+function closeReminderModal() {
+    document.getElementById('reminder-modal').classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+}
+
+// Close on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeReminderModal();
+    }
+});
+</script>
+{% endif %}
 {% endblock %}

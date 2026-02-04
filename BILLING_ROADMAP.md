@@ -127,11 +127,19 @@
 - [x] Owner can click "Send Reminder" on any overdue/outstanding invoice
 - [x] Reminder button on invoice detail page (`/owner/invoices/<id>/`)
 - [x] Sends appropriate email (overdue vs due_soon) based on invoice status
+- [x] **PDF invoice attached** to reminder emails
+- [x] Subject format: `[RS Systems] Overdue Notice: Invoice X - Customer`
+- [x] "Do not reply" footer (no inbound email configured)
 - [x] Reminder logged in invoice internal_notes
 - [ ] Auto-reminders: configurable schedule (7 days, 14 days, 30 days overdue)
 - [ ] Reminder count tracked per invoice
 
 **Note**: 5.3 deferred. Auto-reminders for Phase 6.
+
+### Email Configuration
+- **From**: Uses `DEFAULT_FROM_EMAIL` env var (default: `notifications@rockstarwindshield.repair`)
+- **Replies**: Not supported — emails include "do not reply" notice
+- **Future**: Consider Google Workspace or SendGrid Inbound Parse for reply handling
 
 ---
 

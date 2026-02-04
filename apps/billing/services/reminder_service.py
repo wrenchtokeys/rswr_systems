@@ -33,9 +33,10 @@ class ReminderService:
     
     def __init__(self, tenant=None):
         self.tenant = tenant
+        # Use noreply email - replies won't be received
         self.from_email = getattr(
-            settings, 'INVOICE_FROM_EMAIL', 
-            'billing@rockstarwindshield.repair'
+            settings, 'REMINDER_FROM_EMAIL',
+            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@rockstarwindshield.repair')
         )
     
     def _filter(self, qs):
@@ -46,7 +47,7 @@ class ReminderService:
     
     def send_reminder(self, invoice, reminder_type='overdue'):
         """
-        Send a payment reminder for an invoice.
+        Send a payment reminder for an invoice with PDF attached.
         
         Args:
             invoice: Invoice model instance
@@ -61,13 +62,28 @@ class ReminderService:
         # Build email content
         subject, body = self._build_reminder_email(invoice, reminder_type)
         
+        # Generate PDF attachment
+        pdf_bytes = None
+        try:
+            from apps.billing.services.invoice_service import InvoiceService
+            invoice_service = InvoiceService()
+            repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
+            pdf_bytes, _ = invoice_service.generate_invoice(
+                customer_id=invoice.customer_id,
+                repair_ids=repair_ids if repair_ids else None,
+            )
+        except Exception as e:
+            logger.warning(f"Could not generate PDF for reminder: {e}")
+            # Continue without PDF - still send the reminder
+        
         # Send via SendGrid or Django's email backend
         try:
             success = self._send_email(
                 to_email=invoice.customer.email,
                 subject=subject,
                 body=body,
-                invoice=invoice
+                invoice=invoice,
+                pdf_attachment=pdf_bytes
             )
             
             if success:
@@ -216,16 +232,18 @@ Rockstar Windshield Repair
     def _build_reminder_email(self, invoice, reminder_type):
         """Build reminder email subject and body."""
         
+        customer_name = invoice.customer.name
+        
         if reminder_type.startswith('due_soon'):
             days = reminder_type.split('_')[-1]
-            subject = f"Payment Reminder - Invoice {invoice.invoice_number} Due Soon"
+            subject = f"[RS Systems] Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
             urgency = "friendly"
         elif reminder_type.startswith('overdue'):
             days = reminder_type.split('_')[-1]
-            subject = f"Overdue Notice - Invoice {invoice.invoice_number}"
+            subject = f"[RS Systems] Overdue Notice: Invoice {invoice.invoice_number} - {customer_name}"
             urgency = "urgent" if '30d' in reminder_type else "firm"
         else:
-            subject = f"Payment Reminder - Invoice {invoice.invoice_number}"
+            subject = f"[RS Systems] Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
             urgency = "friendly"
         
         # Build body
@@ -269,23 +287,55 @@ Or contact us to arrange alternative payment methods.
 Please contact us to arrange payment or if you have any questions.
 """
         
-        closing = """
-Thank you for your business.
-
-Best regards,
-Rockstar Windshield Repair
-Phone: (555) 123-4567
-Email: billing@rockstarwindshield.repair
-"""
+        # Get company info from BillingConfig
+        company_name = "Rockstar Windshield Repair"
+        company_phone = ""
+        company_website = ""
+        try:
+            from apps.billing.models import BillingConfig
+            config = BillingConfig.objects.first()
+            if config:
+                company_name = config.company_name or company_name
+                company_phone = config.company_phone or ""
+                company_website = config.company_website or ""
+        except Exception:
+            pass
+        
+        # Build closing with actual company info
+        closing_lines = [
+            "",
+            "Thank you for your business.",
+            "",
+            "Best regards,",
+            company_name,
+        ]
+        if company_phone:
+            closing_lines.append(f"Phone: {company_phone}")
+        if company_website:
+            closing_lines.append(company_website)
+        closing_lines.extend([
+            "",
+            "---",
+            "This is an automated message. Please do not reply to this email.",
+        ])
+        
+        closing = "\n".join(closing_lines)
         
         body = f"{greeting}\n{intro}\n{details}\n{payment_info}\n{closing}"
         
         return subject, body
     
-    def _send_email(self, to_email, subject, body, invoice=None):
+    def _send_email(self, to_email, subject, body, invoice=None, pdf_attachment=None):
         """
         Send email via SendGrid or Django's email backend.
         
+        Args:
+            to_email: Recipient email
+            subject: Email subject
+            body: Plain text body
+            invoice: Invoice object (for PDF filename)
+            pdf_attachment: PDF bytes to attach
+            
         Returns:
             bool: True if sent successfully
         """
@@ -295,7 +345,8 @@ Email: billing@rockstarwindshield.repair
         if sendgrid_key:
             try:
                 from sendgrid import SendGridAPIClient
-                from sendgrid.helpers.mail import Mail
+                from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+                import base64
                 
                 message = Mail(
                     from_email=self.from_email,
@@ -303,6 +354,17 @@ Email: billing@rockstarwindshield.repair
                     subject=subject,
                     plain_text_content=body
                 )
+                
+                # Attach PDF if provided
+                if pdf_attachment and invoice:
+                    encoded_pdf = base64.b64encode(pdf_attachment).decode()
+                    attachment = Attachment(
+                        FileContent(encoded_pdf),
+                        FileName(f"Invoice_{invoice.invoice_number}.pdf"),
+                        FileType('application/pdf'),
+                        Disposition('attachment')
+                    )
+                    message.attachment = attachment
                 
                 sg = SendGridAPIClient(sendgrid_key)
                 response = sg.send(message)
@@ -315,15 +377,20 @@ Email: billing@rockstarwindshield.repair
         
         # Fallback to Django's email backend
         try:
-            from django.core.mail import send_mail
+            from django.core.mail import EmailMessage
             
-            send_mail(
+            email = EmailMessage(
                 subject=subject,
-                message=body,
+                body=body,
                 from_email=self.from_email,
-                recipient_list=[to_email],
-                fail_silently=False,
+                to=[to_email],
             )
+            
+            # Attach PDF if provided
+            if pdf_attachment and invoice:
+                email.attach(f"Invoice_{invoice.invoice_number}.pdf", pdf_attachment, 'application/pdf')
+            
+            email.send(fail_silently=False)
             return True
             
         except Exception as e:
