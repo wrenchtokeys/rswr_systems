@@ -12,6 +12,32 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.2.2] - February 4, 2026
+
+### Added — Invoice UX Improvements
+
+#### Clickable Overdue Badge
+- **Overdue summary card** on `/owner/invoices/` is now clickable — filters to show only overdue invoices
+- **Count badge** shows number of overdue invoices when > 0
+- **Visual highlight** (ring) when overdue filter is active
+
+#### Send Confirmation Modal
+- **"Create & Send"** now opens a confirmation modal instead of sending immediately
+- Modal shows:
+  - Email subject preview
+  - Invoice summary (number, repair count, total amount)
+  - Editable recipient email field
+  - Support for multiple recipients (comma-separated)
+- Backend `send_invoice_email` endpoint now accepts custom `recipient_email` and `cc_emails` parameters
+- Invoice status auto-updates DRAFT → SENT when email is sent
+
+#### Technical Details
+- Templates: `saas/owner_invoices.html` (modal + clickable badge)
+- Views: `apps/saas/views.py` (added `overdue_count` to context)
+- API: `apps/billing/views.py` (`send_invoice_email` updated)
+
+---
+
 ## [2.2.1] - February 1, 2026
 
 ### Fixed — Tax Calculation on Repair Tickets & Invoices
