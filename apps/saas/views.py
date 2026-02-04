@@ -296,9 +296,19 @@ def _get_billing_context(tenant):
     """Build billing summary context for the owner dashboard."""
     from apps.billing.models import Invoice, Payment
     from django.db.models import Sum, Count, Q
+    from django.utils import timezone
     from decimal import Decimal
 
     try:
+        # Auto-update overdue status for invoices past due date
+        # This catches invoices that became overdue since last check
+        today = timezone.now().date()
+        Invoice.objects.filter(
+            tenant=tenant,
+            status__in=['SENT', 'PARTIAL', 'DRAFT'],
+            due_date__lt=today,
+        ).update(status='OVERDUE')
+
         # Outstanding invoices
         outstanding = Invoice.objects.filter(
             tenant=tenant,
@@ -1250,7 +1260,16 @@ def owner_invoice_list(request):
         return redirect('signup')
 
     from django.db.models import Sum, Q, Count
+    from django.utils import timezone
     from decimal import Decimal
+
+    # Auto-update overdue status for invoices past due date
+    # This catches invoices that became overdue since last check
+    Invoice.objects.filter(
+        customer__tenant=tenant,
+        status__in=['SENT', 'PARTIAL', 'DRAFT'],
+        due_date__lt=timezone.now().date(),
+    ).update(status='OVERDUE')
 
     # Base queryset — all invoices for this tenant
     invoices = Invoice.objects.filter(
