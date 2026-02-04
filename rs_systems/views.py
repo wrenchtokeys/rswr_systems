@@ -5,6 +5,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.views.decorators.http import require_POST
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
 from apps.technician_portal.forms import TechnicianRegistrationForm
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
@@ -47,10 +48,12 @@ def home(request):
         return redirect('owner_dashboard')
     return render(request, 'landing.html')
 
+@never_cache
 def customer_login_view(request):
     """Legacy customer login — redirects to unified login."""
     return redirect('login')
 
+@never_cache
 def technician_login_view(request):
     """Legacy technician login — redirects to unified login."""
     return redirect('login')
@@ -110,6 +113,7 @@ def _route_authenticated_user(request, user):
     return None
 
 
+@never_cache
 @ratelimit(key='ip', rate='30/h', method='POST')
 def login_router(request):
     """Unified login page — authenticates user and routes to appropriate portal."""
