@@ -25,15 +25,20 @@
         </div>
         <div class="text-xl sm:text-2xl font-bold text-gray-900">${{ outstanding_amount|floatformat:2 }}</div>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <a href="?status=overdue" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md hover:border-red-300 transition-all cursor-pointer {% if status_filter == 'overdue' %}ring-2 ring-red-400{% endif %}">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Overdue</span>
             <div class="w-8 h-8 {% if overdue_amount > 0 %}bg-red-100{% else %}bg-green-100{% endif %} rounded-lg flex items-center justify-center">
                 <i class="fas fa-exclamation-circle {% if overdue_amount > 0 %}text-red-600{% else %}text-green-600{% endif %} text-sm"></i>
             </div>
         </div>
-        <div class="text-xl sm:text-2xl font-bold {% if overdue_amount > 0 %}text-red-600{% else %}text-green-600{% endif %}">${{ overdue_amount|floatformat:2 }}</div>
-    </div>
+        <div class="flex items-center justify-between">
+            <div class="text-xl sm:text-2xl font-bold {% if overdue_amount > 0 %}text-red-600{% else %}text-green-600{% endif %}">${{ overdue_amount|floatformat:2 }}</div>
+            {% if overdue_count > 0 %}
+            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-600 text-white text-xs font-bold">{{ overdue_count }}</span>
+            {% endif %}
+        </div>
+    </a>
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Payments This Mo.</span>
@@ -233,8 +238,77 @@
     {% endif %}
 </div>
 
-<!-- Create Invoice Modal -->
-<div id="invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<!-- Send Email Confirmation Modal -->
+<div id="send-email-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4 py-6">
+        <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeSendEmailModal()"></div>
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Send Invoice Email</h3>
+                    <p class="text-sm text-gray-500" id="send-modal-customer-name"></p>
+                </div>
+                <button onclick="closeSendEmailModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Email Preview -->
+            <div class="px-6 py-4 space-y-4">
+                <!-- Subject Preview -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Subject</label>
+                    <div id="send-modal-subject" class="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200"></div>
+                </div>
+
+                <!-- Invoice Summary -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Invoice Summary</label>
+                    <div class="bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Invoice #:</span>
+                            <span id="send-modal-invoice-num" class="font-medium text-gray-900"></span>
+                        </div>
+                        <div class="flex justify-between text-sm mt-1">
+                            <span class="text-gray-600">Repairs:</span>
+                            <span id="send-modal-repair-count" class="font-medium text-gray-900"></span>
+                        </div>
+                        <div class="flex justify-between text-sm mt-1">
+                            <span class="text-gray-600">Total:</span>
+                            <span id="send-modal-total" class="font-bold text-gray-900"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recipient Email (editable) -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                        Send To <span class="text-gray-400 font-normal">(separate multiple emails with commas)</span>
+                    </label>
+                    <input type="text" id="send-modal-emails" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="email@example.com, another@example.com">
+                    <p class="text-xs text-gray-400 mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>Tip: Add multiple recipients by separating with commas
+                    </p>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row gap-2 sm:justify-end bg-gray-50 rounded-b-xl">
+                <button onclick="closeSendEmailModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    Cancel
+                </button>
+                <button onclick="confirmSendEmail()" id="send-modal-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Invoice Modal --><div id="invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeInvoiceModal()"></div>
         <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10">
@@ -388,8 +462,8 @@ function createInvoiceDraft() {
 function createInvoiceAndSend() {
     const ids = getSelectedRepairIds();
     if (!ids.length) { alert('Select at least one repair'); return; }
-    if (!confirm('Create invoice and send email to customer?')) return;
-    submitInvoice(ids, true);
+    // First create as draft, then show send confirmation modal
+    submitInvoiceForSend(ids);
 }
 
 function submitInvoice(repairIds, sendEmail) {
@@ -473,5 +547,147 @@ function sendSelectedEmails() {
 }
 
 // Old createInvoice removed — replaced by modal flow (openInvoiceModal)
+
+// === Send Email Confirmation Modal ===
+let sendModalInvoiceId = null;
+let sendModalCustomerEmail = null;
+
+function openSendEmailModal(invoiceId, customerName, customerEmail, invoiceNumber, repairCount, total) {
+    sendModalInvoiceId = invoiceId;
+    sendModalCustomerEmail = customerEmail || '';
+    
+    document.getElementById('send-modal-customer-name').textContent = customerName;
+    document.getElementById('send-modal-subject').textContent = `[RS Systems] Invoice ${invoiceNumber} - ${customerName}`;
+    document.getElementById('send-modal-invoice-num').textContent = invoiceNumber;
+    document.getElementById('send-modal-repair-count').textContent = repairCount;
+    document.getElementById('send-modal-total').textContent = `$${parseFloat(total).toFixed(2)}`;
+    document.getElementById('send-modal-emails').value = customerEmail || '';
+    
+    document.getElementById('send-email-modal').classList.remove('hidden');
+}
+
+function closeSendEmailModal() {
+    document.getElementById('send-email-modal').classList.add('hidden');
+    sendModalInvoiceId = null;
+}
+
+function confirmSendEmail() {
+    const emailsInput = document.getElementById('send-modal-emails').value.trim();
+    if (!emailsInput) {
+        alert('Please enter at least one email address');
+        return;
+    }
+    
+    // Parse and validate emails
+    const emails = emailsInput.split(',').map(e => e.trim()).filter(e => e);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emails.filter(e => !emailRegex.test(e));
+    
+    if (invalidEmails.length > 0) {
+        alert('Invalid email address(es): ' + invalidEmails.join(', '));
+        return;
+    }
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+    
+    // Disable button while sending
+    const btn = document.getElementById('send-modal-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Sending...';
+    btn.disabled = true;
+    
+    // Send to each email
+    const primaryEmail = emails[0];
+    const ccEmails = emails.slice(1);
+    
+    fetch(`/api/billing/invoices/${sendModalInvoiceId}/send-email/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ 
+            recipient_email: primaryEmail,
+            cc_emails: ccEmails
+        }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        
+        if (data.success) {
+            closeSendEmailModal();
+            alert(`Invoice sent to ${emails.join(', ')}`);
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to send email');
+        }
+    })
+    .catch(err => {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        alert('Error: ' + err.message);
+    });
+}
+
+// Modified: Create invoice then open send modal
+function submitInvoiceForSend(repairIds) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+    
+    // Show loading on button
+    const btnSend = document.querySelector('#modal-footer button:last-child');
+    const originalText = btnSend.innerHTML;
+    btnSend.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Creating...';
+    btnSend.disabled = true;
+
+    fetch(`/api/billing/invoices/create/${modalCustomerId}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ repair_ids: repairIds, auto_email: false }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btnSend.innerHTML = originalText;
+        btnSend.disabled = false;
+        
+        if (data.success) {
+            // Get customer email from the page context
+            const customerName = document.getElementById('modal-customer-name').textContent;
+            
+            // Fetch customer email
+            fetch(`/api/billing/customers/${modalCustomerId}/balance/`)
+                .then(r => r.json())
+                .then(custData => {
+                    closeInvoiceModal();
+                    openSendEmailModal(
+                        data.invoice.id,
+                        customerName,
+                        custData.customer?.email || '',
+                        data.invoice.invoice_number,
+                        data.invoice.line_items,
+                        data.invoice.total
+                    );
+                })
+                .catch(() => {
+                    closeInvoiceModal();
+                    openSendEmailModal(
+                        data.invoice.id,
+                        customerName,
+                        '',
+                        data.invoice.invoice_number,
+                        data.invoice.line_items,
+                        data.invoice.total
+                    );
+                });
+        } else {
+            alert(data.error || 'Failed to create invoice');
+        }
+    })
+    .catch(err => {
+        btnSend.innerHTML = originalText;
+        btnSend.disabled = false;
+        alert('Error: ' + err.message);
+    });
+}
 </script>
 {% endblock %}
