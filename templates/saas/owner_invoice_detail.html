@@ -34,10 +34,13 @@
                 <i class="fas fa-envelope mr-2"></i>Email Invoice
             </button>
         </form>
-        {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
-        <button onclick="alert('Send Reminder — coming soon!')" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <i class="fas fa-bell mr-2"></i>Send Reminder
-        </button>
+        {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' and invoice.status != 'DRAFT' %}
+        <form method="post" action="{% url 'owner_send_reminder' invoice_id=invoice.id %}" class="inline" onsubmit="return confirm('Send payment reminder to {{ invoice.customer.email }}?')">
+            {% csrf_token %}
+            <button type="submit" class="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
+                <i class="fas fa-bell mr-2"></i>Send Reminder
+            </button>
+        </form>
         {% endif %}
         {% endif %}
     </div>

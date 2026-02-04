@@ -123,12 +123,15 @@
 - [ ] On repair detail: show invoice status badge if invoiced
 - [ ] On repair list: optional column showing if repair has been invoiced/paid
 
-### 5.4 Reminder System
-- [ ] Owner can click "Send Reminder" on any overdue invoice
+### 5.4 Reminder System ✅ (Feb 4, 2026)
+- [x] Owner can click "Send Reminder" on any overdue/outstanding invoice
+- [x] Reminder button on invoice detail page (`/owner/invoices/<id>/`)
+- [x] Sends appropriate email (overdue vs due_soon) based on invoice status
+- [x] Reminder logged in invoice internal_notes
 - [ ] Auto-reminders: configurable schedule (7 days, 14 days, 30 days overdue)
 - [ ] Reminder count tracked per invoice
 
-**Note**: 5.3 and 5.4 deferred to Phase 6 (polish)
+**Note**: 5.3 deferred. Auto-reminders for Phase 6.
 
 ---
 

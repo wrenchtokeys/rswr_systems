@@ -37,6 +37,7 @@ urlpatterns = [
     path('owner/invoices/<int:invoice_id>/record-payment/', views.owner_record_payment, name='owner_record_payment'),
     path('owner/invoices/<int:invoice_id>/send/', views.owner_send_invoice, name='owner_send_invoice'),
     path('owner/invoices/<int:invoice_id>/email/', views.owner_email_invoice, name='owner_email_invoice'),
+    path('owner/invoices/<int:invoice_id>/reminder/', views.owner_send_reminder, name='owner_send_reminder'),
 
     # Tax rate management
     path('owner/tax-rates/', views.owner_tax_rates, name='owner_tax_rates'),
