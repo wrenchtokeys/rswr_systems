@@ -45,8 +45,9 @@ class PortalAccessMiddleware:
             if role not in ('superuser', 'owner', 'manager'):
                 try:
                     messages.error(request, "You don't have access to the owner dashboard.")
-                except Exception:
-                    pass
+                except (TypeError, AttributeError) as e:
+                    # Session might not be available in edge cases
+                    logger.debug(f"Could not add message for portal access denial: {e}")
                 return redirect_to_portal(request.user)
 
         # Customer portal: customer users + owners/managers for oversight
@@ -54,8 +55,8 @@ class PortalAccessMiddleware:
             if role not in ('viewer', 'customer', 'superuser', 'owner', 'manager'):
                 try:
                     messages.error(request, "You don't have access to the customer portal.")
-                except Exception:
-                    pass
+                except (TypeError, AttributeError) as e:
+                    logger.debug(f"Could not add message for portal access denial: {e}")
                 return redirect_to_portal(request.user)
 
         # Technician portal: anyone who can access repairs/customers
@@ -63,8 +64,8 @@ class PortalAccessMiddleware:
             if not can_access(request.user, 'repairs', tenant) and not can_access(request.user, 'customers', tenant):
                 try:
                     messages.error(request, "You don't have access to the technician portal.")
-                except Exception:
-                    pass
+                except (TypeError, AttributeError) as e:
+                    logger.debug(f"Could not add message for portal access denial: {e}")
                 return redirect_to_portal(request.user)
 
         return None

@@ -4,11 +4,15 @@ Custom decorators for technician portal views.
 These now delegate to common.auth for the single source of truth.
 Kept as thin wrappers for backward compatibility during transition.
 """
+import logging
 from functools import wraps
 from django.shortcuts import redirect
 from django.contrib import messages
+from django.core.exceptions import ObjectDoesNotExist
 
 from common.auth import can_access, get_user_role, redirect_to_portal
+
+logger = logging.getLogger(__name__)
 
 
 def is_tenant_admin(user):
@@ -37,7 +41,7 @@ def is_working_manager(user):
     try:
         technician = user.technician
         return technician is not None and technician.is_manager
-    except Exception:
+    except (AttributeError, ObjectDoesNotExist):
         return False
 
 
@@ -79,8 +83,13 @@ def manager_required(view_func):
             try:
                 if request.user.technician and request.user.technician.is_manager:
                     return view_func(request, *args, **kwargs)
-            except Exception:
+            except (AttributeError, ObjectDoesNotExist):
                 pass
+            except Exception as e:
+                # Log unexpected errors for debugging
+                logger.warning(
+                    f"Unexpected error checking manager status for user {request.user.id}: {e}"
+                )
 
         messages.warning(request, "This page requires manager privileges.")
         return redirect_to_portal(request.user)

@@ -18,6 +18,7 @@ from django.conf import settings
 from django.utils import timezone
 from core.models.notification import Notification
 from core.models.notification_delivery_log import NotificationDeliveryLog
+from core.utils.logging import mask_phone
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ class SMSService:
         # Validate phone number
         if not SMSService._validate_phone(recipient_phone):
             logger.error(
-                f"Invalid phone number format: {recipient_phone}. "
+                f"Invalid phone number format: {mask_phone(recipient_phone)}. "
                 f"Must be E.164 format (e.g., +15551234567)"
             )
             return False, None
@@ -118,7 +119,7 @@ class SMSService:
                 notification.save(update_fields=['sms_sent'])
 
             logger.info(
-                f"SMS sent successfully to {recipient_phone} "
+                f"SMS sent successfully to {mask_phone(recipient_phone)} "
                 f"(notification {notification_id}, message_id {message_id})"
             )
             return True, delivery_log
@@ -127,7 +128,7 @@ class SMSService:
             # Handle failure
             error_message = str(e)
             logger.error(
-                f"Failed to send SMS to {recipient_phone}: {error_message}"
+                f"Failed to send SMS to {mask_phone(recipient_phone)}: {error_message}"
             )
 
             # Update delivery log
@@ -153,7 +154,7 @@ class SMSService:
                 # Max retries exceeded
                 delivery_log.status = 'failed_permanent'
                 logger.error(
-                    f"SMS to {recipient_phone} failed after "
+                    f"SMS to {mask_phone(recipient_phone)} failed after "
                     f"{SMSService.MAX_RETRIES} attempts"
                 )
 

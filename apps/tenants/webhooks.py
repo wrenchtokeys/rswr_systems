@@ -39,10 +39,34 @@ def stripe_subscription_webhook(request):
     """
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
-    webhook_secret = settings.STRIPE_WEBHOOK_SECRET
-    
-    # Verify webhook signature
-    if webhook_secret:
+    webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', None)
+
+    # SECURITY: Require webhook secret in production
+    if not webhook_secret:
+        if not settings.DEBUG:
+            logger.error(
+                "Stripe webhook: STRIPE_WEBHOOK_SECRET is required in production. "
+                "Configure this environment variable to enable webhook verification."
+            )
+            return HttpResponse(
+                "Webhook secret not configured",
+                status=500
+            )
+        else:
+            # Development only: allow without verification (with warning)
+            try:
+                event = stripe.Event.construct_from(
+                    json.loads(payload), stripe.api_key
+                )
+            except (ValueError, json.JSONDecodeError):
+                logger.error("Stripe webhook: could not parse payload")
+                return HttpResponse("Invalid payload", status=400)
+            logger.warning(
+                "Stripe webhook: STRIPE_WEBHOOK_SECRET not set — "
+                "signature verification skipped (dev mode only)"
+            )
+    else:
+        # Verify webhook signature
         try:
             event = stripe.Webhook.construct_event(
                 payload, sig_header, webhook_secret
@@ -53,19 +77,6 @@ def stripe_subscription_webhook(request):
         except stripe.error.SignatureVerificationError:
             logger.error("Stripe webhook: invalid signature")
             return HttpResponse("Invalid signature", status=400)
-    else:
-        # No webhook secret configured — parse without verification (dev only)
-        try:
-            event = stripe.Event.construct_from(
-                json.loads(payload), stripe.api_key
-            )
-        except (ValueError, json.JSONDecodeError):
-            logger.error("Stripe webhook: could not parse payload")
-            return HttpResponse("Invalid payload", status=400)
-        logger.warning(
-            "Stripe webhook: STRIPE_WEBHOOK_SECRET not set — "
-            "signature verification skipped (dev mode only)"
-        )
     
     event_type = event['type']
     data_object = event['data']['object']
