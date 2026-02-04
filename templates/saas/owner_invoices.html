@@ -116,11 +116,16 @@
                     <span class="text-xs text-gray-500 ml-2">{{ item.count }} repair{{ item.count|pluralize }}</span>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 sm:gap-4">
                 <span class="text-sm font-semibold text-gray-900">${{ item.total|floatformat:2 }}</span>
                 <button onclick="openInvoiceModal({{ item.customer.id }}, '{{ item.customer.name|escapejs }}')"
                     class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors">
                     <i class="fas fa-file-invoice mr-1.5"></i>Create Invoice
+                </button>
+                <button onclick="dismissUninvoiced({{ item.customer.id }}, '{{ item.customer.name|escapejs }}')"
+                    class="inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors"
+                    title="Already paid outside system? Dismiss these repairs.">
+                    <i class="fas fa-times mr-1.5"></i>Dismiss
                 </button>
             </div>
         </div>
@@ -547,6 +552,32 @@ function sendSelectedEmails() {
 }
 
 // Old createInvoice removed — replaced by modal flow (openInvoiceModal)
+
+// === Dismiss Uninvoiced ===
+function dismissUninvoiced(customerId, customerName) {
+    if (!confirm(`Dismiss all uninvoiced repairs for ${customerName}?\n\nUse this if they were already paid outside the system. This won't delete the repairs, just hide them from invoicing.`)) {
+        return;
+    }
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+    fetch(`/api/billing/customers/${customerId}/uninvoiced/dismiss/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ all: true }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to dismiss repairs');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
 
 // === Send Email Confirmation Modal ===
 let sendModalInvoiceId = null;

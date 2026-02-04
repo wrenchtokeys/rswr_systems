@@ -615,6 +615,61 @@ def get_uninvoiced_repairs(request, customer_id):
 
 
 @login_required
+@require_POST
+def dismiss_uninvoiced_repairs(request, customer_id):
+    """
+    Dismiss (skip invoicing) for repairs that were already paid outside the system.
+    
+    POST body:
+    {
+        "repair_ids": [1, 2, 3],    // specific repairs to dismiss
+        "all": true                  // or dismiss all uninvoiced for this customer
+    }
+    """
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    from apps.technician_portal.models import Repair
+
+    try:
+        customer = Customer.objects.get(id=customer_id, tenant=tenant)
+    except Customer.DoesNotExist:
+        return JsonResponse({'error': 'Customer not found'}, status=404)
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    # Get uninvoiced repairs for this customer
+    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+    uninvoiced = InvoiceTrackingService(tenant=tenant).get_uninvoiced_repairs(customer)
+    uninvoiced_ids = list(uninvoiced.values_list('id', flat=True))
+
+    if data.get('all'):
+        # Dismiss all uninvoiced repairs for this customer
+        repair_ids = uninvoiced_ids
+    elif data.get('repair_ids'):
+        # Dismiss specific repairs (must be in uninvoiced list)
+        repair_ids = [rid for rid in data['repair_ids'] if rid in uninvoiced_ids]
+    else:
+        return JsonResponse({'error': 'Provide repair_ids or set all=true'}, status=400)
+
+    if not repair_ids:
+        return JsonResponse({'error': 'No valid repairs to dismiss'}, status=400)
+
+    # Mark repairs as skip_invoicing
+    updated = Repair.objects.filter(id__in=repair_ids, customer=customer).update(skip_invoicing=True)
+
+    return JsonResponse({
+        'success': True,
+        'dismissed_count': updated,
+        'message': f'Dismissed {updated} repair(s) from invoicing',
+    })
+
+
+@login_required
 @require_GET
 def get_customer_balance(request, customer_id):
     """Get outstanding balance for a customer."""

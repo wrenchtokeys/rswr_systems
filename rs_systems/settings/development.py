@@ -153,6 +153,18 @@ CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_CONCURRENCY', 4))
 # CELERY_TASK_EAGER_PROPAGATES = True
 
 # =========================================
+# EMAIL (Dev overrides)
+# =========================================
+
+# Use console email backend in dev to avoid SSL issues
+# Set USE_REAL_EMAIL=True to actually send emails
+USE_REAL_EMAIL = os.environ.get('USE_REAL_EMAIL', 'False').lower() == 'true'
+
+if not USE_REAL_EMAIL or not os.environ.get('SENDGRID_API_KEY'):
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+    # Emails will be printed to console instead of sent
+
+# =========================================
 # LOGGING
 # =========================================
 
