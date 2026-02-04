@@ -287,16 +287,39 @@ Or contact us to arrange alternative payment methods.
 Please contact us to arrange payment or if you have any questions.
 """
         
-        closing = """
-Thank you for your business.
-
-Best regards,
-Rockstar Windshield Repair
-
----
-This is an automated message. Please do not reply to this email.
-For questions, call us or visit our website.
-"""
+        # Get company info from BillingConfig
+        company_name = "Rockstar Windshield Repair"
+        company_phone = ""
+        company_website = ""
+        try:
+            from apps.billing.models import BillingConfig
+            config = BillingConfig.objects.first()
+            if config:
+                company_name = config.company_name or company_name
+                company_phone = config.company_phone or ""
+                company_website = config.company_website or ""
+        except Exception:
+            pass
+        
+        # Build closing with actual company info
+        closing_lines = [
+            "",
+            "Thank you for your business.",
+            "",
+            "Best regards,",
+            company_name,
+        ]
+        if company_phone:
+            closing_lines.append(f"Phone: {company_phone}")
+        if company_website:
+            closing_lines.append(company_website)
+        closing_lines.extend([
+            "",
+            "---",
+            "This is an automated message. Please do not reply to this email.",
+        ])
+        
+        closing = "\n".join(closing_lines)
         
         body = f"{greeting}\n{intro}\n{details}\n{payment_info}\n{closing}"
         
