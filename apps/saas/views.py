@@ -1290,6 +1290,7 @@ def owner_invoice_list(request):
         total=Sum('total') - Sum('amount_paid')
     )
     overdue_amount = overdue_agg.get('total') or Decimal('0.00')
+    overdue_count = overdue_qs.count()
 
     now = timezone.now()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -1331,6 +1332,7 @@ def owner_invoice_list(request):
         'customer_filter': customer_filter,
         'outstanding_amount': outstanding_amount,
         'overdue_amount': overdue_amount,
+        'overdue_count': overdue_count,
         'payments_month_amount': payments_month_amount,
         'invoices_this_month': invoices_this_month,
         'uninvoiced_customers': uninvoiced_customers,

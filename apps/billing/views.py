@@ -295,7 +295,15 @@ def create_invoice(request, customer_id):
 @login_required
 @require_POST
 def send_invoice_email(request, invoice_id):
-    """Send (or resend) an invoice email to the customer."""
+    """
+    Send (or resend) an invoice email to the customer.
+    
+    POST body (optional):
+    {
+        "recipient_email": "custom@email.com",   // override recipient
+        "cc_emails": ["cc1@example.com", ...]    // additional recipients
+    }
+    """
     tenant, err = _get_tenant_or_403(request)
     if err:
         return err
@@ -305,8 +313,18 @@ def send_invoice_email(request, invoice_id):
     except Invoice.DoesNotExist:
         return JsonResponse({'error': 'Invoice not found'}, status=404)
 
-    if not invoice.customer.email:
-        return JsonResponse({'error': f'No email address for {invoice.customer.name}'}, status=400)
+    # Parse request body for custom recipients
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        data = {}
+
+    # Use custom recipient or fall back to customer email
+    recipient_email = data.get('recipient_email') or invoice.customer.email
+    cc_emails = data.get('cc_emails', [])
+
+    if not recipient_email:
+        return JsonResponse({'error': f'No email address provided and no email on file for {invoice.customer.name}'}, status=400)
 
     if invoice.status == 'PAID':
         return JsonResponse({'error': f'Invoice {invoice.invoice_number} is already paid'}, status=400)
@@ -317,10 +335,19 @@ def send_invoice_email(request, invoice_id):
         repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
         email_svc.send_invoice_email(
             customer_id=invoice.customer_id,
-            recipient_email=invoice.customer.email,
+            recipient_email=recipient_email,
             repair_ids=repair_ids if repair_ids else None,
+            cc_emails=cc_emails if cc_emails else None,
         )
-        return JsonResponse({'success': True, 'sent_to': invoice.customer.email})
+        
+        # Update invoice status to SENT if it was DRAFT
+        if invoice.status == 'DRAFT':
+            invoice.status = 'SENT'
+            invoice.sent_at = timezone.now()
+            invoice.save(update_fields=['status', 'sent_at'])
+        
+        all_recipients = [recipient_email] + (cc_emails or [])
+        return JsonResponse({'success': True, 'sent_to': ', '.join(all_recipients)})
     except Exception as e:
         import logging
         logging.getLogger(__name__).exception(f"Email send failed for {invoice.invoice_number}")
@@ -588,6 +615,61 @@ def get_uninvoiced_repairs(request, customer_id):
 
 
 @login_required
+@require_POST
+def dismiss_uninvoiced_repairs(request, customer_id):
+    """
+    Dismiss (skip invoicing) for repairs that were already paid outside the system.
+    
+    POST body:
+    {
+        "repair_ids": [1, 2, 3],    // specific repairs to dismiss
+        "all": true                  // or dismiss all uninvoiced for this customer
+    }
+    """
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    from apps.technician_portal.models import Repair
+
+    try:
+        customer = Customer.objects.get(id=customer_id, tenant=tenant)
+    except Customer.DoesNotExist:
+        return JsonResponse({'error': 'Customer not found'}, status=404)
+
+    try:
+        data = json.loads(request.body) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    # Get uninvoiced repairs for this customer
+    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+    uninvoiced = InvoiceTrackingService(tenant=tenant).get_uninvoiced_repairs(customer)
+    uninvoiced_ids = list(uninvoiced.values_list('id', flat=True))
+
+    if data.get('all'):
+        # Dismiss all uninvoiced repairs for this customer
+        repair_ids = uninvoiced_ids
+    elif data.get('repair_ids'):
+        # Dismiss specific repairs (must be in uninvoiced list)
+        repair_ids = [rid for rid in data['repair_ids'] if rid in uninvoiced_ids]
+    else:
+        return JsonResponse({'error': 'Provide repair_ids or set all=true'}, status=400)
+
+    if not repair_ids:
+        return JsonResponse({'error': 'No valid repairs to dismiss'}, status=400)
+
+    # Mark repairs as skip_invoicing
+    updated = Repair.objects.filter(id__in=repair_ids, customer=customer).update(skip_invoicing=True)
+
+    return JsonResponse({
+        'success': True,
+        'dismissed_count': updated,
+        'message': f'Dismissed {updated} repair(s) from invoicing',
+    })
+
+
+@login_required
 @require_GET
 def get_customer_balance(request, customer_id):
     """Get outstanding balance for a customer."""
@@ -605,7 +687,7 @@ def get_customer_balance(request, customer_id):
     balance = InvoiceTrackingService(tenant=tenant).get_customer_balance(customer)
 
     return JsonResponse({
-        'customer': {'id': customer.id, 'name': customer.name},
+        'customer': {'id': customer.id, 'name': customer.name, 'email': customer.email},
         'balance': {
             'total_outstanding': float(balance['total_outstanding']),
             'invoice_count': balance['invoice_count'],

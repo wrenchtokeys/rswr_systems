@@ -472,6 +472,12 @@ class Repair(GlassService):
         help_text="Tax amount in dollars"
     )
 
+    # Invoice skip flag — for legacy repairs that were paid outside the system
+    skip_invoicing = models.BooleanField(
+        default=False,
+        help_text="Skip this repair when listing uninvoiced work (e.g., already paid outside system)"
+    )
+
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
     # The field was renamed to service_date in the abstract base class.

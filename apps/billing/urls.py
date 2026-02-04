@@ -33,6 +33,7 @@ urlpatterns = [
 
     # Customer billing
     path('customers/<int:customer_id>/uninvoiced/', views.get_uninvoiced_repairs, name='uninvoiced_repairs'),
+    path('customers/<int:customer_id>/uninvoiced/dismiss/', views.dismiss_uninvoiced_repairs, name='dismiss_uninvoiced'),
     path('customers/<int:customer_id>/balance/', views.get_customer_balance, name='customer_balance'),
     path('customers/<int:customer_id>/preferences/', views.get_invoice_preferences, name='preferences_get'),
     path('customers/<int:customer_id>/preferences/update/', views.update_invoice_preferences, name='preferences_update'),

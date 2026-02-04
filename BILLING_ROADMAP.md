@@ -106,6 +106,18 @@
 - [x] Actions: view PDF, record payment
 - [x] Summary cards: total outstanding, overdue amount, payments this month, invoices this month
 - [x] Owner dashboard linked to invoice list
+- [x] **Clickable overdue badge** — Click overdue card to filter all overdue invoices (Feb 4, 2026)
+- [x] **Overdue count badge** — Shows number of overdue invoices on the summary card
+- [x] **Send confirmation modal** — "Create & Send" shows preview before sending (Feb 4, 2026):
+  - Subject preview
+  - Invoice summary (number, repair count, total)
+  - Editable recipient email
+  - Multi-recipient support (comma-separated)
+  - CC support for additional recipients
+- [x] **Dismiss uninvoiced repairs** — "Dismiss" button for legacy repairs already paid outside system (Feb 4, 2026):
+  - Marks repairs with `skip_invoicing=True`
+  - Hides them from uninvoiced section without deleting
+  - API: `POST /api/billing/customers/<id>/uninvoiced/dismiss/`
 
 ### 5.3 Technician Portal — Payment Badge
 - [ ] On repair detail: show invoice status badge if invoiced

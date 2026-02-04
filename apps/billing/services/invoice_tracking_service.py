@@ -177,6 +177,9 @@ class InvoiceTrackingService:
         if completed_only:
             repairs = repairs.filter(queue_status='COMPLETED')
         
+        # Exclude repairs marked as "skip invoicing" (legacy paid work)
+        repairs = repairs.filter(skip_invoicing=False)
+        
         # Exclude repairs that are on active invoices
         # (DRAFT, SENT, PARTIAL, PAID - but not CANCELLED)
         invoiced_repair_ids = InvoiceLineItem.objects.filter(

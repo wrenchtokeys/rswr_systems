@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: February 1, 2026*
+*Last Updated: February 4, 2026*
 
 ---
 
@@ -18,6 +18,21 @@ Full invoicing lifecycle: auto-invoice on completion, PDF generation, Stripe pay
 ### Sales Tax (v2.2.1 — Feb 1, 2026)
 Tax rate breakdown (state/county/city/special) configured in Settings → Billing & Tax. Tax auto-calculated on every Repair save and at invoice creation. Displayed on repair detail pages (tech + customer portals) and invoices (PDF + portals). Per-customer `tax_exempt` flag supported. Auto-enables when rates are saved.
 → Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-8-sales-tax-by-zip-code) (Phase 8 complete)
+
+### Invoice UX Improvements (v2.2.2 — Feb 4, 2026)
+- **Clickable overdue badge** — Click the "Overdue" summary card to filter to all overdue invoices
+- **Overdue count badge** — Shows number of overdue invoices on summary card
+- **Send confirmation modal** — "Create & Send" now shows preview before sending:
+  - Email subject preview
+  - Invoice summary (number, repair count, total)
+  - Editable recipient email field
+  - Multi-recipient support (comma-separated emails)
+  - CC support for additional recipients
+- **Dismiss uninvoiced repairs** — For legacy repairs already paid outside the system:
+  - "Dismiss" button hides repairs from invoicing without deleting them
+  - Adds `skip_invoicing` flag to Repair model
+- **Dev email fix** — Console email backend in development (avoids SSL errors)
+→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#52-owner-portal--invoice-dashboard-)
 
 ### SaaS Multi-Tenant Architecture
 Tenants app with `Tenant`, `TenantMembership`, `SubscriptionPlan` models. Signup flow, onboarding wizard, owner portal with billing page. Subscription plans defined (Trial/Starter/Pro/Enterprise) but not yet wired to Stripe checkout.
