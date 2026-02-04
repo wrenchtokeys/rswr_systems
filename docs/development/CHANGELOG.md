@@ -12,6 +12,17 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.2.3] - February 4, 2026
+
+### Added — Send Reminder Button
+- **Send Reminder** button on invoice detail page now functional
+- Sends payment reminder email to customer (overdue or due_soon based on status)
+- Confirmation prompt before sending
+- Reminder logged in invoice internal_notes
+- URL: `POST /owner/invoices/<id>/reminder/`
+
+---
+
 ## [2.2.2] - February 4, 2026
 
 ### Added — Invoice UX Improvements

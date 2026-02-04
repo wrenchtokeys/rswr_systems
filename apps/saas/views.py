@@ -1743,3 +1743,45 @@ def owner_email_invoice(request, invoice_id):
         messages.error(request, 'An error occurred while emailing the invoice.')
 
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+@owner_or_manager_required
+def owner_send_reminder(request, invoice_id):
+    """POST /owner/invoices/<id>/reminder/ — send payment reminder to customer."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+    
+    if invoice.status in ['PAID', 'CANCELLED', 'DRAFT']:
+        messages.error(request, f'Cannot send reminder for {invoice.get_status_display().lower()} invoice.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    if not invoice.customer.email:
+        messages.error(request, 'No email address found for this customer.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    try:
+        from apps.billing.services.reminder_service import ReminderService
+        reminder_service = ReminderService(tenant=tenant)
+        
+        # Determine reminder type based on invoice status
+        if invoice.status == 'OVERDUE' or (invoice.due_date and invoice.due_date < timezone.now().date()):
+            reminder_type = 'overdue'
+        else:
+            reminder_type = 'due_soon'
+        
+        result = reminder_service.send_reminder(invoice, reminder_type)
+        
+        if result.get('success'):
+            messages.success(request, f'Payment reminder sent to {invoice.customer.email}.')
+        else:
+            messages.error(request, f'Failed to send reminder: {result.get("error", "Unknown error")}')
+            
+    except Exception as e:
+        logger.error(f"Error sending reminder for invoice {invoice.invoice_number}: {e}")
+        messages.error(request, 'An error occurred while sending the reminder.')
+
+    return redirect('owner_invoice_detail', invoice_id=invoice.id)
