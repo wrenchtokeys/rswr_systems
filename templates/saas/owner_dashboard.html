@@ -173,7 +173,7 @@
             <div class="text-2xl font-bold text-gray-900">${{ outstanding_amount|floatformat:2 }}</div>
             <p class="text-xs text-gray-500 mt-1">{{ outstanding_count }} invoice{{ outstanding_count|pluralize }}</p>
         </div>
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <a href="{% url 'owner_invoice_list' %}?status=overdue" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md hover:border-red-300 transition-all {% if overdue_count > 0 %}cursor-pointer{% endif %}">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-sm font-medium text-gray-500">Overdue</span>
                 <div class="w-8 h-8 {% if overdue_count > 0 %}bg-red-100{% else %}bg-green-100{% endif %} rounded-lg flex items-center justify-center">
@@ -182,7 +182,7 @@
             </div>
             <div class="text-2xl font-bold {% if overdue_count > 0 %}text-red-600{% else %}text-green-600{% endif %}">{{ overdue_count }}</div>
             <p class="text-xs text-gray-500 mt-1">{% if overdue_count > 0 %}Need attention{% else %}All current{% endif %}</p>
-        </div>
+        </a>
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-sm font-medium text-gray-500">Collected This Month</span>
