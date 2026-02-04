@@ -17,6 +17,9 @@ All notable changes to the RS Systems windshield repair management platform.
 ### Added — Send Reminder Button
 - **Send Reminder** button on invoice detail page now functional
 - Sends payment reminder email to customer (overdue or due_soon based on status)
+- **PDF invoice attached** to reminder emails
+- Subject format: `[RS Systems] Overdue Notice: Invoice X - Customer`
+- "Do not reply" footer added (no inbound email configured)
 - Confirmation prompt before sending
 - Reminder logged in invoice internal_notes
 - URL: `POST /owner/invoices/<id>/reminder/`
