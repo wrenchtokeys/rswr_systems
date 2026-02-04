@@ -562,7 +562,88 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 ---
 
-**Last Updated**: October 21, 2025
+---
+
+## Security Audit - February 2026
+
+### Vulnerabilities Remediated
+
+A comprehensive security audit identified and remediated **16 vulnerabilities** across authentication, input validation, and configuration.
+
+#### Critical Fixes (4)
+
+| Vulnerability | Location | Fix |
+|--------------|----------|-----|
+| Open Redirect | `rs_systems/views.py` | Added `url_has_allowed_host_and_scheme()` validation to `?next=` redirects |
+| Unprotected Setup Endpoint | `rs_systems/views.py`, `urls.py` | Requires staff auth, DEBUG mode only, URL excluded in production |
+| Hardcoded Default Password | `core/management/commands/createsu.py` | Removed `admin123` default, requires `DJANGO_ADMIN_PASSWORD` env var |
+| SQL Injection (migration) | Historical migration file | Documented only (migrations should not be modified) |
+
+#### High Priority Fixes (8)
+
+| Vulnerability | Location | Fix |
+|--------------|----------|-----|
+| No Rate Limiting on Invites | `accept_invite()` | Added `@ratelimit(key='ip', rate='10/h')` |
+| Weak Password Validation | `accept_invite()` | Using Django's `validate_password()` instead of length check |
+| Exception Swallowing | Decorators, middleware | Catching specific exceptions, logging unexpected errors |
+| Stripe Webhook Optional | `apps/tenants/webhooks.py` | Returns 500 if `STRIPE_WEBHOOK_SECRET` not set in production |
+| XSS via mark_safe() | `core/admin.py`, `forms.py` | Replaced with `format_html()` |
+| ALLOWED_HOSTS Too Broad | `settings/production.py` | Removed wildcards, using `EB_HOSTNAME` env var |
+| PII in Logs | Service files | Masked via `core/utils/logging.py` |
+| Portal Middleware Exceptions | `portal_middleware.py` | Specific exception handling with logging |
+
+#### Medium Priority Fixes (4)
+
+| Vulnerability | Location | Fix |
+|--------------|----------|-----|
+| PII Logged in Plaintext | `sms_service.py`, `email_service.py` | Added `mask_phone()`, `mask_email()` utilities |
+| Path Traversal Risk | `auto_invoice_service.py` | Using `os.path.basename()` for filenames |
+| File Type Validation | Email branding | Extension validation (MIME validation TODO) |
+| User Enumeration | Login errors | Already using generic messages |
+
+### Required Environment Variables
+
+Before deploying, ensure these are configured:
+
+```bash
+# Required for createsu command (minimum 12 characters)
+DJANGO_ADMIN_PASSWORD=your-strong-password-here
+
+# Required for Stripe webhooks in production
+STRIPE_WEBHOOK_SECRET=whsec_your-webhook-secret
+
+# Required for ALLOWED_HOSTS (your specific EB domain)
+EB_HOSTNAME=your-app.us-east-1.elasticbeanstalk.com
+
+# Optional: Additional internal hostname for health checks
+AWS_INTERNAL_HOSTNAME=internal-hostname.amazonaws.com
+```
+
+### Security Tests
+
+New security tests added in `tests/security/test_vulnerabilities.py`:
+- Open redirect protection
+- Setup endpoint access control
+- Password validation strength
+- PII masking utilities
+- Stripe webhook verification
+- XSS protection via format_html
+- Rate limiting verification
+- ALLOWED_HOSTS configuration
+
+Run tests: `python manage.py test tests.security`
+
+### Credential Rotation Reminder
+
+If `.env` file was ever exposed, rotate:
+- RDS database password
+- AWS IAM access keys
+- SendGrid API key
+- Stripe webhook secret
+
+---
+
+**Last Updated**: February 4, 2026
 **Security Team**: Development Team
-**Next Review**: January 2026
+**Next Review**: May 2026
 **Status**: Production Ready ✅
