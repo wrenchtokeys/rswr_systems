@@ -18,6 +18,8 @@ from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.utils import timezone
 
+from common.auth import requires_api
+
 from core.models import Customer
 
 
@@ -43,7 +45,7 @@ def _get_tenant_or_403(request):
 # DASHBOARD & REPORTS
 # =============================================================================
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def dashboard(request):
     """Full billing dashboard with metrics, alerts, and trends."""
@@ -55,7 +57,7 @@ def dashboard(request):
     return JsonResponse(DashboardService(tenant).get_full_dashboard())
 
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def daily_report(request):
     """Daily business report. ?date=YYYY-MM-DD (default: today)"""
@@ -77,7 +79,7 @@ def daily_report(request):
     return JsonResponse(ReportService(tenant).generate_daily_report(report_date))
 
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def weekly_report(request):
     """Weekly business report. ?week_start=YYYY-MM-DD (default: this week)"""
@@ -104,7 +106,7 @@ def weekly_report(request):
 # INVOICE MANAGEMENT
 # =============================================================================
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def list_invoices(request):
     """
@@ -146,7 +148,7 @@ def list_invoices(request):
     })
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def create_invoice(request, customer_id):
     """
@@ -292,7 +294,7 @@ def create_invoice(request, customer_id):
         return JsonResponse({'error': f'Invoice created but response failed: {str(e)}'}, status=500)
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def send_invoice_email(request, invoice_id):
     """
@@ -354,7 +356,7 @@ def send_invoice_email(request, invoice_id):
         return JsonResponse({'error': f'Email failed: {str(e)}'}, status=500)
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def send_invoice_email_batch(request):
     """Send invoice emails for multiple invoices at once."""
@@ -401,7 +403,7 @@ def send_invoice_email_batch(request):
     return JsonResponse({'success': True, 'sent': sent, 'failed': failed, 'results': results})
 
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def get_invoice(request, invoice_id):
     """Get detailed invoice with line items and payments."""
@@ -464,7 +466,7 @@ def get_invoice(request, invoice_id):
     })
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def record_payment(request, invoice_id):
     """
@@ -540,7 +542,7 @@ def record_payment(request, invoice_id):
         return JsonResponse({'error': str(e)}, status=400)
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def cancel_invoice(request, invoice_id):
     """Cancel an invoice. POST: {"reason": "Duplicate invoice"}"""
@@ -576,7 +578,7 @@ def cancel_invoice(request, invoice_id):
 # CUSTOMER BILLING
 # =============================================================================
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def get_uninvoiced_repairs(request, customer_id):
     """Get repairs that haven't been invoiced yet."""
@@ -614,7 +616,7 @@ def get_uninvoiced_repairs(request, customer_id):
     })
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def dismiss_uninvoiced_repairs(request, customer_id):
     """
@@ -669,7 +671,7 @@ def dismiss_uninvoiced_repairs(request, customer_id):
     })
 
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def get_customer_balance(request, customer_id):
     """Get outstanding balance for a customer."""
@@ -704,7 +706,7 @@ def get_customer_balance(request, customer_id):
     })
 
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def get_invoice_preferences(request, customer_id):
     """Get invoice preferences for a customer."""
@@ -734,7 +736,7 @@ def get_invoice_preferences(request, customer_id):
     })
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def update_invoice_preferences(request, customer_id):
     """Update invoice preferences for a customer."""
@@ -786,7 +788,7 @@ def update_invoice_preferences(request, customer_id):
 # STRIPE
 # =============================================================================
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def stripe_status(request):
     """Check Stripe integration status."""
@@ -802,7 +804,7 @@ def stripe_status(request):
     })
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def create_checkout_session(request, invoice_id):
     """
@@ -843,7 +845,7 @@ def create_checkout_session(request, invoice_id):
     return JsonResponse(result, status=200 if result['success'] else 400)
 
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def create_payment_link(request, invoice_id):
     """Get a Stripe payment link for an invoice."""
@@ -904,7 +906,7 @@ def stripe_webhook(request):
 # REMINDERS
 # =============================================================================
 
-@login_required
+@requires_api('invoices')
 @require_GET
 def reminder_summary(request):
     """Get count of invoices needing reminders."""
@@ -916,7 +918,7 @@ def reminder_summary(request):
     return JsonResponse(ReminderService(tenant).get_reminder_summary())
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def send_reminder(request, invoice_id):
     """Send payment reminder for an invoice."""
@@ -948,7 +950,7 @@ def send_reminder(request, invoice_id):
     return JsonResponse(result, status=400)
 
 
-@login_required
+@requires_api('invoices')
 @require_POST
 def process_all_reminders(request):
     """Process all pending reminders. For cron/scheduled tasks."""

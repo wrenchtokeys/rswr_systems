@@ -203,7 +203,6 @@ def send_daily_digests():
 
     # Process technician digests (optimized with select_related)
     tech_prefs = TechnicianNotificationPreference.objects.filter(
-        digest_enabled=True,
         receive_email_notifications=True
     ).select_related('technician', 'technician__user')
 
@@ -229,9 +228,8 @@ def send_daily_digests():
 
     # Process customer digests (optimized with select_related)
     customer_prefs = CustomerNotificationPreference.objects.filter(
-        digest_enabled=True,
         receive_email_notifications=True
-    ).select_related('customer', 'customer__user')
+    ).select_related('customer')
 
     for pref in customer_prefs:
         # Get unread notifications from past 24 hours

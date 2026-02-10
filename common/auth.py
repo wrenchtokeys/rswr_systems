@@ -11,6 +11,7 @@ Author: Amelia (Clawdbot AI)
 
 import logging
 from functools import wraps
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.contrib import messages
 
@@ -189,6 +190,40 @@ def requires(area):
                 "You don't have permission to access this page."
             )
             return redirect_to_portal(request.user)
+
+        return _wrapped_view
+    return decorator
+
+
+def requires_api(area):
+    """
+    Like requires(), but for JSON API views.
+
+    Returns 401/403 JSON responses instead of redirects.
+    Use on function-based views that return JsonResponse.
+
+    Usage:
+        @requires_api('invoices')
+        def list_invoices(request): ...
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                return JsonResponse(
+                    {'error': 'Authentication required.'},
+                    status=401,
+                )
+
+            tenant = getattr(request, 'tenant', None)
+
+            if can_access(request.user, area, tenant):
+                return view_func(request, *args, **kwargs)
+
+            return JsonResponse(
+                {'error': 'You do not have permission to access billing. Owner or admin role required.'},
+                status=403,
+            )
 
         return _wrapped_view
     return decorator

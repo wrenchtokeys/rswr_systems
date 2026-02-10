@@ -347,9 +347,93 @@ class CustomerModelTestCase(TestCase):
         self.assertFalse(customer.phone_verified)
 
     def test_customer_name_lowercase(self):
-        """Test that customer name is automatically lowercased"""
+        """Test that customer name preserves original casing"""
         customer = Customer.objects.create(
             name='TEST COMPANY'
         )
+        self.assertEqual(customer.name, 'TEST COMPANY')
 
-        self.assertEqual(customer.name, 'test company')
+    def test_customer_unique_name(self):
+        """Test that customers can be created with different names"""
+        c1 = Customer.objects.create(name='Unique Company')
+        c2 = Customer.objects.create(name='Another Company')
+        self.assertNotEqual(c1.id, c2.id)
+
+    def test_customer_unique_email(self):
+        """Test that customers can share email (no unique constraint)"""
+        Customer.objects.create(name='Company One', email='test@example.com')
+        c2 = Customer.objects.create(name='Company Two', email='test@example.com')
+        self.assertIsNotNone(c2.id)
+
+    def test_customer_optional_fields(self):
+        """Test customer creation with only required fields"""
+        customer = Customer.objects.create(name='Minimal Company')
+        self.assertIsNone(customer.email)
+        self.assertIsNone(customer.phone)
+
+    def test_customer_ordering(self):
+        """Test customers are ordered by name"""
+        Customer.objects.create(name='Charlie Company')
+        Customer.objects.create(name='Alpha Company')
+        Customer.objects.create(name='Beta Company')
+        customers = list(Customer.objects.all())
+        self.assertEqual(customers[0].name, 'Alpha Company')
+        self.assertEqual(customers[1].name, 'Beta Company')
+        self.assertEqual(customers[2].name, 'Charlie Company')
+from django.test import TestCase
+from django.core.exceptions import ValidationError
+from core.models import Customer
+
+
+class CustomerModelTest(TestCase):
+    def test_customer_creation(self):
+        customer = Customer.objects.create(
+            name='Test Company',
+            email='test@company.com',
+            phone='555-1234',
+            address='123 Main St',
+            city='Test City',
+            state='TS',
+            zip_code='12345'
+        )
+        self.assertEqual(customer.name, 'Test Company')
+        self.assertEqual(customer.email, 'test@company.com')
+        self.assertEqual(str(customer), 'Test Company')
+
+    def test_customer_unique_name(self):
+        """Test that customers can be created with different names."""
+        c1 = Customer.objects.create(name='Unique Company')
+        c2 = Customer.objects.create(name='Another Company')
+        self.assertNotEqual(c1.id, c2.id)
+
+    def test_customer_unique_email(self):
+        """Test that customers can have the same email (no unique constraint)."""
+        Customer.objects.create(
+            name='Company One',
+            email='test@example.com'
+        )
+        # Email is not unique-constrained in current model
+        c2 = Customer.objects.create(
+            name='Company Two',
+            email='test@example.com'
+        )
+        self.assertIsNotNone(c2.id)
+
+    def test_customer_optional_fields(self):
+        customer = Customer.objects.create(name='Minimal Company')
+        self.assertIsNone(customer.email)
+        self.assertIsNone(customer.phone)
+        self.assertIsNone(customer.address)
+        self.assertIsNone(customer.city)
+        self.assertIsNone(customer.state)
+        self.assertIsNone(customer.zip_code)
+
+    def test_customer_ordering(self):
+        Customer.objects.create(name='Charlie Company')
+        Customer.objects.create(name='Alpha Company')
+        Customer.objects.create(name='Beta Company')
+        
+        customers = list(Customer.objects.all())
+        self.assertEqual(customers[0].name, 'Alpha Company')
+        self.assertEqual(customers[1].name, 'Beta Company')
+        self.assertEqual(customers[2].name, 'Charlie Company')

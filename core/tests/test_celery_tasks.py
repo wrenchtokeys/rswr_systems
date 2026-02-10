@@ -201,10 +201,7 @@ class RetryFailedNotificationsTaskTest(TestCase):
         )
         self.technician = Technician.objects.create(
             user=self.user,
-            first_name='Test',
-            last_name='Technician',
-            phone='+15551234567',
-            hourly_rate=25.00
+            phone_number='+15551234567'
         )
 
         self.template = NotificationTemplate.objects.create(
@@ -370,8 +367,8 @@ class SendDailyDigestsTaskTest(TestCase):
 
     @patch('core.services.notification_service.NotificationBatchService.send_daily_digest')
     def test_digest_task_skips_digest_disabled(self, mock_send):
-        """Test that digest is not sent when digest is disabled."""
-        self.prefs.digest_enabled = False
+        """Test that digest is not sent when email notifications are disabled."""
+        self.prefs.receive_email_notifications = False
         self.prefs.save()
 
         # Create unread notification

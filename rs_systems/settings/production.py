@@ -105,9 +105,10 @@ USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-SECURE_SSL_REDIRECT = os.environ.get('USE_HTTPS', 'false').lower() == 'true'
-SESSION_COOKIE_SECURE = os.environ.get('USE_HTTPS', 'false').lower() == 'true'
-CSRF_COOKIE_SECURE = os.environ.get('USE_HTTPS', 'false').lower() == 'true'
+_USE_HTTPS = os.environ.get('USE_HTTPS', 'true').lower() != 'false'
+SECURE_SSL_REDIRECT = _USE_HTTPS
+SESSION_COOKIE_SECURE = _USE_HTTPS
+CSRF_COOKIE_SECURE = _USE_HTTPS
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

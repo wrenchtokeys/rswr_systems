@@ -28,15 +28,7 @@ urlpatterns = [
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
     path('payment-complete', views.payment_complete, name='payment_complete'),
     path('payment-cancelled', views.payment_cancelled, name='payment_cancelled'),
-]
-
-# Only include setup-database in DEBUG mode (never in production)
-if settings.DEBUG:
-    urlpatterns += [
-        path('setup-database/', views.setup_database, name='setup_database'),
-    ]
-
-urlpatterns += [
+    # setup-database/ removed — security risk (unauthenticated DB setup with hardcoded creds)
 
     # Test/diagnostic endpoints (for debugging)
     path('celery-status/', celery_status, name='celery_status'),
