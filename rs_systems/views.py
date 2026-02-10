@@ -2,13 +2,17 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_POST
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.cache import never_cache
+from django.utils.http import url_has_allowed_host_and_scheme
 from apps.technician_portal.forms import TechnicianRegistrationForm
 from django.contrib import messages
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseNotFound, JsonResponse
+from django.conf import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -185,9 +189,13 @@ def login_router(request):
 
         login(request, user)
 
-        # Check for ?next= redirect
+        # Check for ?next= redirect (validate to prevent open redirect attacks)
         next_url = request.POST.get('next', '') or request.GET.get('next', '')
-        if next_url:
+        if next_url and url_has_allowed_host_and_scheme(
+            next_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure()
+        ):
             return redirect(next_url)
 
         # Route based on role
@@ -208,6 +216,7 @@ def logout_view(request):
     logout(request)
     return redirect('login')
 
+@ratelimit(key='ip', rate='10/h', method='POST')
 def accept_invite(request, token):
     """Accept an invite token — set password and join the shop."""
     from apps.tenants.models import InviteToken, TenantMembership
@@ -230,15 +239,23 @@ def accept_invite(request, token):
     }
 
     if request.method == 'POST':
+        # Check rate limit
+        if getattr(request, 'limited', False):
+            context['error'] = 'Too many attempts. Please try again later.'
+            return render(request, 'saas/invite_accept.html', context)
+
         password = request.POST.get('password', '')
         password_confirm = request.POST.get('password_confirm', '')
 
-        if len(password) < 8:
-            context['error'] = 'Password must be at least 8 characters long.'
-            return render(request, 'saas/invite_accept.html', context)
-
         if password != password_confirm:
             context['error'] = 'Passwords do not match.'
+            return render(request, 'saas/invite_accept.html', context)
+
+        # Use Django's password validators instead of simple length check
+        try:
+            validate_password(password, user=invite.user)
+        except ValidationError as e:
+            context['error'] = ' '.join(e.messages)
             return render(request, 'saas/invite_accept.html', context)
 
         with transaction.atomic():
@@ -299,64 +316,86 @@ def register_technician(request):
         form = TechnicianRegistrationForm()
     return render(request, 'registration/register_technician.html', {'form': form})
 
-@csrf_exempt
+@staff_member_required
 def setup_database(request):
-    """Setup database with migrations and create superuser"""
+    """
+    Setup database with migrations and create superuser.
+
+    SECURITY: Only available in DEBUG mode and requires staff authentication.
+    This endpoint should never be exposed in production.
+    """
+    # Block in production - this endpoint should only be used in development
+    if not settings.DEBUG:
+        logger.warning(
+            f"setup_database accessed in production by {request.user.username} "
+            f"from {request.META.get('REMOTE_ADDR', 'unknown')}"
+        )
+        return HttpResponseNotFound("Not Found")
+
     if request.method != 'POST':
         return HttpResponse("""
         <html>
         <body>
-            <h1>Database Setup</h1>
+            <h1>Database Setup (Development Only)</h1>
             <p>Click the button below to set up the database:</p>
             <form method="post">
+                {% csrf_token %}
                 <button type="submit">Setup Database</button>
             </form>
         </body>
         </html>
         """)
-    
+
     # Capture output
     output = io.StringIO()
     old_stdout = sys.stdout
     sys.stdout = output
-    
+
     try:
         # Run migrations
         call_command('migrate', verbosity=1, interactive=False)
         print("Migrations completed successfully")
-        
-        # Create superuser if it doesn't exist
+
+        # Create superuser if it doesn't exist - use environment variables only
+        import os
         User = get_user_model()
-        if not User.objects.filter(username='admin').exists():
-            User.objects.create_superuser(
-                username='admin',
-                email='admin@example.com',
-                password='admin123'
-            )
-            print("Superuser 'admin' created successfully")
+        admin_username = os.environ.get('DJANGO_ADMIN_USERNAME', 'admin')
+        admin_email = os.environ.get('DJANGO_ADMIN_EMAIL', 'admin@example.com')
+        admin_password = os.environ.get('DJANGO_ADMIN_PASSWORD')
+
+        if admin_password:
+            if not User.objects.filter(username=admin_username).exists():
+                User.objects.create_superuser(
+                    username=admin_username,
+                    email=admin_email,
+                    password=admin_password
+                )
+                print(f"Superuser '{admin_username}' created successfully")
+            else:
+                print(f"Superuser '{admin_username}' already exists")
         else:
-            print("Superuser 'admin' already exists")
-        
+            print("DJANGO_ADMIN_PASSWORD not set - skipping superuser creation")
+
         # Collect static files
         call_command('collectstatic', verbosity=1, interactive=False)
         print("Static files collected successfully")
-        
+
         print("Database setup completed!")
-        
+
     except Exception as e:
         print(f"Error: {e}")
     finally:
         sys.stdout = old_stdout
-    
+
     result = output.getvalue()
-    
+
     return HttpResponse(f"""
     <html>
     <body>
         <h1>Database Setup Results</h1>
         <pre>{result}</pre>
         <p><a href="/">Return to Home</a></p>
-        <p><a href="/admin/">Go to Admin</a> (username: admin, password: admin123)</p>
+        <p><a href="/admin/">Go to Admin</a></p>
     </body>
     </html>
     """)

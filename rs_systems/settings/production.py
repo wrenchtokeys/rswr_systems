@@ -24,9 +24,19 @@ ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get
 ALLOWED_HOSTS.extend([
     'rockstarwindshield.repair',
     'www.rockstarwindshield.repair',
-    '.elasticbeanstalk.com',
-    '.amazonaws.com',
 ])
+
+# Add specific EB hostname from environment variable (instead of broad wildcard)
+# Set EB_HOSTNAME to your specific Elastic Beanstalk domain, e.g., "myapp.us-east-1.elasticbeanstalk.com"
+EB_HOSTNAME = os.environ.get('EB_HOSTNAME')
+if EB_HOSTNAME:
+    ALLOWED_HOSTS.append(EB_HOSTNAME)
+
+# Add specific internal AWS hostname if needed for health checks
+# Set AWS_INTERNAL_HOSTNAME for internal load balancer access if required
+AWS_INTERNAL_HOSTNAME = os.environ.get('AWS_INTERNAL_HOSTNAME')
+if AWS_INTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(AWS_INTERNAL_HOSTNAME)
 
 if DEBUG:
     ALLOWED_HOSTS.extend(['localhost', '127.0.0.1'])

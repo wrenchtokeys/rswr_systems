@@ -232,9 +232,13 @@ class AutoInvoiceService:
         
         # Local fallback (development mode)
         import os
-        local_dir = f"/home/ubuntu/invoices/{customer_id}"
+        # Sanitize filename to prevent path traversal attacks
+        safe_filename = os.path.basename(filename)
+        # Also sanitize customer_id to prevent path injection
+        safe_customer_id = str(int(customer_id))  # Ensure it's a valid integer
+        local_dir = f"/home/ubuntu/invoices/{safe_customer_id}"
         os.makedirs(local_dir, exist_ok=True)
-        local_path = os.path.join(local_dir, filename)
+        local_path = os.path.join(local_dir, safe_filename)
         
         try:
             with open(local_path, 'wb') as f:

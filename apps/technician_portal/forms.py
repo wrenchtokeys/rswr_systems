@@ -418,10 +418,13 @@ class RepairForm(forms.ModelForm):
             if existing_repairs.exists():
                 existing_repair = existing_repairs.first()
                 if queue_status in ['PENDING', 'APPROVED', 'IN_PROGRESS']:
+                    from django.utils.html import format_html
                     raise forms.ValidationError(
-                        mark_safe(
-                            f"There is already a {existing_repair.get_queue_status_display()} repair for this unit. "
-                            f"<a href='/tech/repairs/{existing_repair.id}/'>View existing repair</a>"
+                        format_html(
+                            "There is already a {} repair for this unit. "
+                            "<a href='/tech/repairs/{}/'>View existing repair</a>",
+                            existing_repair.get_queue_status_display(),
+                            existing_repair.id
                         ),
                         code='existing_repair'
                     )

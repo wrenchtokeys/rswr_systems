@@ -427,30 +427,38 @@ class EmailBrandingConfigAdmin(admin.ModelAdmin):
     def logo_preview(self, obj):
         """Small logo preview for list view"""
         if obj.logo:
-            return mark_safe(f'<img src="{obj.logo.url}" style="max-height: 30px; max-width: 100px;" />')
+            return format_html(
+                '<img src="{}" style="max-height: 30px; max-width: 100px;" />',
+                obj.logo.url
+            )
         return '—'
     logo_preview.short_description = 'Logo'
 
     def logo_preview_large(self, obj):
         """Large logo preview for edit page"""
         if obj.logo:
-            return mark_safe(
-                f'<div style="margin: 10px 0;">'
-                f'<img src="{obj.logo.url}" style="max-width: 400px; border: 1px solid #ddd; padding: 10px; background: white;" />'
-                f'<p style="color: #666; font-size: 12px; margin-top: 5px;">Current logo (will be displayed at {obj.logo_width}px width in emails)</p>'
-                f'</div>'
+            return format_html(
+                '<div style="margin: 10px 0;">'
+                '<img src="{}" style="max-width: 400px; border: 1px solid #ddd; padding: 10px; background: white;" />'
+                '<p style="color: #666; font-size: 12px; margin-top: 5px;">Current logo (will be displayed at {}px width in emails)</p>'
+                '</div>',
+                obj.logo.url,
+                obj.logo_width
             )
-        return mark_safe('<p style="color: #999;">No logo uploaded</p>')
+        return format_html('<p style="color: #999;">No logo uploaded</p>')
     logo_preview_large.short_description = 'Current Logo'
 
     def color_preview(self, obj):
         """Color swatches for list view"""
-        return mark_safe(
-            f'<div style="display: flex; gap: 3px;">'
-            f'<div style="width: 20px; height: 20px; background: {obj.primary_color}; border: 1px solid #ddd;" title="Primary"></div>'
-            f'<div style="width: 20px; height: 20px; background: {obj.secondary_color}; border: 1px solid #ddd;" title="Secondary"></div>'
-            f'<div style="width: 20px; height: 20px; background: {obj.success_color}; border: 1px solid #ddd;" title="Success"></div>'
-            f'</div>'
+        return format_html(
+            '<div style="display: flex; gap: 3px;">'
+            '<div style="width: 20px; height: 20px; background: {}; border: 1px solid #ddd;" title="Primary"></div>'
+            '<div style="width: 20px; height: 20px; background: {}; border: 1px solid #ddd;" title="Secondary"></div>'
+            '<div style="width: 20px; height: 20px; background: {}; border: 1px solid #ddd;" title="Success"></div>'
+            '</div>',
+            obj.primary_color,
+            obj.secondary_color,
+            obj.success_color
         )
     color_preview.short_description = 'Colors'
 
@@ -465,18 +473,24 @@ class EmailBrandingConfigAdmin(admin.ModelAdmin):
             ('Background', obj.background_color),
         ]
 
-        swatches_html = '<div style="display: flex; gap: 15px; flex-wrap: wrap; margin: 10px 0;">'
+        # Build swatches using format_html for each item
+        swatch_items = []
         for name, color in colors:
-            swatches_html += (
-                f'<div style="text-align: center;">'
-                f'<div style="width: 60px; height: 60px; background: {color}; border: 2px solid #ddd; border-radius: 4px; margin-bottom: 5px;"></div>'
-                f'<div style="font-size: 11px; color: #666;">{name}</div>'
-                f'<div style="font-size: 10px; font-family: monospace; color: #999;">{color}</div>'
-                f'</div>'
-            )
-        swatches_html += '</div>'
+            swatch_items.append(format_html(
+                '<div style="text-align: center;">'
+                '<div style="width: 60px; height: 60px; background: {}; border: 2px solid #ddd; border-radius: 4px; margin-bottom: 5px;"></div>'
+                '<div style="font-size: 11px; color: #666;">{}</div>'
+                '<div style="font-size: 10px; font-family: monospace; color: #999;">{}</div>'
+                '</div>',
+                color, name, color
+            ))
 
-        return mark_safe(swatches_html)
+        from django.utils.html import mark_safe
+        return mark_safe(
+            '<div style="display: flex; gap: 15px; flex-wrap: wrap; margin: 10px 0;">'
+            + ''.join(str(s) for s in swatch_items)
+            + '</div>'
+        )
     color_swatches.short_description = 'Current Color Scheme'
 
     def last_updated(self, obj):

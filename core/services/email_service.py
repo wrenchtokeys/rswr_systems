@@ -16,6 +16,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 from core.models.notification import Notification
 from core.models.notification_delivery_log import NotificationDeliveryLog
+from core.utils.logging import mask_email
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ class EmailService:
                     notification.save(update_fields=['email_sent'])
 
                 logger.info(
-                    f"Email sent successfully to {recipient_email} "
+                    f"Email sent successfully to {mask_email(recipient_email)} "
                     f"(notification {notification_id})"
                 )
                 return True, delivery_log
@@ -128,7 +129,7 @@ class EmailService:
             # Handle failure
             error_message = str(e)
             logger.error(
-                f"Failed to send email to {recipient_email}: {error_message}"
+                f"Failed to send email to {mask_email(recipient_email)}: {error_message}"
             )
 
             # Update delivery log
@@ -154,7 +155,7 @@ class EmailService:
                 # Max retries exceeded
                 delivery_log.status = 'failed_permanent'
                 logger.error(
-                    f"Email to {recipient_email} failed after "
+                    f"Email to {mask_email(recipient_email)} failed after "
                     f"{EmailService.MAX_RETRIES} attempts"
                 )
 
