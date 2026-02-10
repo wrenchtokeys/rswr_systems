@@ -130,7 +130,7 @@ class SMSServiceTest(TestCase):
         self.assertEqual(log.channel, 'sms')
         self.assertEqual(log.recipient_phone, '+15551234567')
         self.assertEqual(log.attempt_number, 1)
-        self.assertEqual(log.cost, SMS_COST_PER_MESSAGE)
+        self.assertEqual(log.estimated_cost, SMS_COST_PER_MESSAGE)
         self.assertEqual(log.provider_message_id, 'test-message-id-123')
         self.assertIsNotNone(log.delivered_at)
 
@@ -279,7 +279,7 @@ class SMSServiceTest(TestCase):
             message='Test'
         )
 
-        self.assertEqual(log.cost, Decimal('0.00645'))
+        self.assertEqual(log.estimated_cost, Decimal('0.00645'))
 
     @patch('boto3.client')
     def test_send_via_sns_success(self, mock_boto_client):

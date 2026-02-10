@@ -339,7 +339,7 @@ class NotificationServiceTest(TestCase):
         # Technician model uses phone_number field
         self.assertEqual(phone, '+15551234567')
 
-    @patch('core.tasks.send_notification_email.delay')
+    @patch('core.services.email_service.EmailService.send_notification_email')
     @patch('core.tasks.send_notification_sms.delay')
     def test_queue_delivery_urgent_priority(
         self,
@@ -375,7 +375,7 @@ class NotificationServiceTest(TestCase):
         self.assertTrue(mock_email.called)
         self.assertTrue(mock_sms.called)
 
-    @patch('core.tasks.send_notification_email.delay')
+    @patch('core.services.email_service.EmailService.send_notification_email')
     @patch('core.tasks.send_notification_sms.delay')
     def test_queue_delivery_medium_priority(
         self,
@@ -411,7 +411,7 @@ class NotificationServiceTest(TestCase):
         self.assertTrue(mock_email.called)
         self.assertFalse(mock_sms.called)
 
-    @patch('core.tasks.send_notification_email.delay')
+    @patch('core.services.email_service.EmailService.send_notification_email')
     @patch('core.tasks.send_notification_sms.delay')
     def test_queue_delivery_respects_email_preference(
         self,

@@ -98,7 +98,7 @@ class SMSService:
             recipient_phone=recipient_phone,
             status='pending',
             attempt_number=attempt_number,
-            cost=SMS_COST_PER_MESSAGE,
+            estimated_cost=SMS_COST_PER_MESSAGE,
             next_retry_at=None
         )
 

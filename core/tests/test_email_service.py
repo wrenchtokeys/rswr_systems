@@ -167,6 +167,7 @@ class EmailServiceTest(TestCase):
             mock_email_instance = MagicMock()
             mock_email_class.return_value = mock_email_instance
             mock_email_instance.send.return_value = 1
+            mock_email_instance.extra_headers = {'Message-ID': 'test-msg-id'}
 
             EmailService.send_notification_email(
                 notification_id=self.notification.id,

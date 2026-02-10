@@ -43,7 +43,9 @@ class NotificationDeliveryLog(models.Model):
     notification = models.ForeignKey(
         'Notification',
         on_delete=models.CASCADE,
-        related_name='delivery_logs'
+        related_name='delivery_logs',
+        null=True,
+        blank=True
     )
 
     # Delivery details
