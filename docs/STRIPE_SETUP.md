@@ -35,6 +35,7 @@ Create these products in Stripe Dashboard → Products:
 **URL:** `https://rockstarwindshield.repair/api/tenants/webhooks/stripe/`
 
 **Events to listen for:**
+- `checkout.session.completed` — customer finished Checkout, activate subscription
 - `invoice.paid` — payment successful, activate/renew subscription
 - `invoice.payment_failed` — payment failed, mark as past_due
 - `customer.subscription.updated` — plan changed, period renewed
