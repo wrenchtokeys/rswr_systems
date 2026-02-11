@@ -593,19 +593,18 @@ def billing_update_plan(request):
         if tenant.stripe_subscription_id:
             result = svc.update_subscription(tenant, new_plan_slug)
             messages.success(request, f'Plan updated to {result["new_plan"]}!')
+            return redirect('billing_settings')
         else:
             result = svc.create_subscription(tenant, new_plan_slug)
-            if result.get('client_secret'):
-                messages.info(
-                    request,
-                    'Subscription created. Please complete payment via the billing portal.'
-                )
+            # Redirect to Stripe Checkout for payment
+            if result.get('checkout_url'):
+                return redirect(result['checkout_url'])
             else:
                 messages.success(request, f'Subscribed to {result["plan"]}!')
+                return redirect('billing_settings')
     except SubscriptionError as e:
         messages.error(request, str(e))
-
-    return redirect('billing_settings')
+        return redirect('billing_settings')
 
 
 @owner_or_manager_required

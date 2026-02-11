@@ -94,50 +94,48 @@ class SubscriptionService:
                 tenant.stripe_customer_id = customer.id
                 logger.info(f"Created Stripe customer {customer.id} for tenant {tenant.slug}")
             
-            # Step 2: Create subscription
-            subscription = stripe.Subscription.create(
+            # Step 2: Create Stripe Checkout Session for subscription
+            # (Using Checkout instead of direct subscription creation due to 
+            # Stripe API change removing payment_intent from Invoice objects)
+            checkout_session = stripe.checkout.Session.create(
                 customer=customer.id,
-                items=[{'price': price_id}],
-                payment_behavior='default_incomplete',
-                expand=['latest_invoice.payment_intent'],
+                mode='subscription',
+                line_items=[{'price': price_id, 'quantity': 1}],
+                success_url=f"https://{settings.EB_HOSTNAME}/owner/billing/?success=true",
+                cancel_url=f"https://{settings.EB_HOSTNAME}/owner/billing/?canceled=true",
                 metadata={
                     'tenant_id': str(tenant.id),
                     'tenant_slug': tenant.slug,
                     'plan_slug': plan.slug,
                     'billing_period': billing_period,
                 },
+                subscription_data={
+                    'metadata': {
+                        'tenant_id': str(tenant.id),
+                        'tenant_slug': tenant.slug,
+                    }
+                },
             )
             
-            # Step 3: Update tenant
-            tenant.stripe_subscription_id = subscription.id
+            # Step 3: Update tenant with customer ID (subscription ID comes via webhook)
             tenant.plan = plan.slug
             tenant.subscription_plan = plan
-            tenant.subscription_status = subscription.status
             tenant.save(update_fields=[
-                'stripe_customer_id', 'stripe_subscription_id',
-                'plan', 'subscription_plan', 'subscription_status',
+                'stripe_customer_id', 'plan', 'subscription_plan',
             ])
             
             logger.info(
-                f"Created subscription {subscription.id} for tenant {tenant.slug} "
-                f"on plan {plan.name} ({billing_period})"
+                f"Created checkout session {checkout_session.id} for tenant {tenant.slug} "
+                f"to subscribe to {plan.name} ({billing_period})"
             )
             
-            # Return details the frontend needs to complete payment
-            result = {
-                'subscription_id': subscription.id,
-                'status': subscription.status,
+            # Return checkout URL for redirect
+            return {
+                'checkout_url': checkout_session.url,
+                'session_id': checkout_session.id,
                 'plan': plan.name,
                 'billing_period': billing_period,
             }
-            
-            # Include client_secret if payment needs confirmation
-            if subscription.status == 'incomplete':
-                invoice = subscription.latest_invoice
-                if invoice and invoice.payment_intent:
-                    result['client_secret'] = invoice.payment_intent.client_secret
-            
-            return result
             
         except stripe.error.CardError as e:
             logger.error(f"Card error creating subscription for {tenant.slug}: {e}")
