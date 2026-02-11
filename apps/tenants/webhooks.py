@@ -141,10 +141,11 @@ def _handle_checkout_completed(session):
     Handle checkout.session.completed — customer completed Stripe Checkout.
     
     This fires when a customer finishes the Checkout flow and payment succeeds.
-    We update the tenant with the subscription ID from the session.
+    We update the tenant with the subscription ID AND the plan (payment confirmed).
     """
     customer_id = session.get('customer')
     subscription_id = session.get('subscription')
+    metadata = session.get('metadata', {})
     
     if not subscription_id:
         # Not a subscription checkout (might be a one-time payment)
@@ -156,7 +157,6 @@ def _handle_checkout_completed(session):
     
     # Fallback: check metadata for tenant_id
     if not tenant:
-        metadata = session.get('metadata', {})
         tenant_id = metadata.get('tenant_id')
         if tenant_id:
             try:
@@ -171,15 +171,33 @@ def _handle_checkout_completed(session):
         )
         return
     
-    # Update tenant with subscription info
+    # Get plan from metadata
+    plan_slug = metadata.get('plan_slug')
+    plan = None
+    if plan_slug:
+        plan = SubscriptionPlan.objects.filter(slug=plan_slug).first()
+    
+    # Update tenant with subscription info AND plan (payment is now confirmed)
     tenant.stripe_subscription_id = subscription_id
     tenant.subscription_status = 'active'
-    tenant.save(update_fields=['stripe_subscription_id', 'subscription_status'])
     
-    logger.info(
-        f"checkout.session.completed: Tenant {tenant.slug} subscribed. "
-        f"Subscription: {subscription_id}"
-    )
+    update_fields = ['stripe_subscription_id', 'subscription_status']
+    
+    if plan:
+        tenant.plan = plan.slug
+        tenant.subscription_plan = plan
+        update_fields.extend(['plan', 'subscription_plan'])
+        logger.info(
+            f"checkout.session.completed: Tenant {tenant.slug} upgraded to {plan.name}. "
+            f"Subscription: {subscription_id}"
+        )
+    else:
+        logger.info(
+            f"checkout.session.completed: Tenant {tenant.slug} subscribed. "
+            f"Subscription: {subscription_id}"
+        )
+    
+    tenant.save(update_fields=update_fields)
 
 
 def _handle_invoice_paid(invoice):
