@@ -289,14 +289,21 @@
                 <!-- Recipient Email (editable) -->
                 <div>
                     <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
-                        Send To <span class="text-gray-400 font-normal">(separate multiple emails with commas)</span>
+                        Send To <span class="text-gray-400 font-normal">(primary recipient)</span>
                     </label>
                     <input type="text" id="send-modal-emails" 
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="email@example.com, another@example.com">
-                    <p class="text-xs text-gray-400 mt-1">
-                        <i class="fas fa-info-circle mr-1"></i>Tip: Add multiple recipients by separating with commas
-                    </p>
+                        placeholder="billing@customer.com">
+                </div>
+
+                <!-- CC Field -->
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">
+                        CC <span class="text-gray-400 font-normal">(optional, separate multiple with commas)</span>
+                    </label>
+                    <input type="text" id="send-modal-cc" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="manager@customer.com, accounting@customer.com">
                 </div>
             </div>
 
@@ -593,6 +600,7 @@ function openSendEmailModal(invoiceId, customerName, customerEmail, invoiceNumbe
     document.getElementById('send-modal-repair-count').textContent = repairCount;
     document.getElementById('send-modal-total').textContent = `$${parseFloat(total).toFixed(2)}`;
     document.getElementById('send-modal-emails').value = customerEmail || '';
+    document.getElementById('send-modal-cc').value = '';  // Clear CC field
     
     document.getElementById('send-email-modal').classList.remove('hidden');
 }
@@ -603,20 +611,34 @@ function closeSendEmailModal() {
 }
 
 function confirmSendEmail() {
-    const emailsInput = document.getElementById('send-modal-emails').value.trim();
-    if (!emailsInput) {
-        alert('Please enter at least one email address');
+    const toInput = document.getElementById('send-modal-emails').value.trim();
+    const ccInput = document.getElementById('send-modal-cc').value.trim();
+    
+    if (!toInput) {
+        alert('Please enter at least one recipient email address');
         return;
     }
     
     // Parse and validate emails
-    const emails = emailsInput.split(',').map(e => e.trim()).filter(e => e);
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalidEmails = emails.filter(e => !emailRegex.test(e));
     
-    if (invalidEmails.length > 0) {
-        alert('Invalid email address(es): ' + invalidEmails.join(', '));
+    // Parse To emails (can be comma-separated for multiple primary recipients)
+    const toEmails = toInput.split(',').map(e => e.trim()).filter(e => e);
+    const invalidTo = toEmails.filter(e => !emailRegex.test(e));
+    if (invalidTo.length > 0) {
+        alert('Invalid recipient email(s): ' + invalidTo.join(', '));
         return;
+    }
+    
+    // Parse CC emails
+    let ccEmails = [];
+    if (ccInput) {
+        ccEmails = ccInput.split(',').map(e => e.trim()).filter(e => e);
+        const invalidCc = ccEmails.filter(e => !emailRegex.test(e));
+        if (invalidCc.length > 0) {
+            alert('Invalid CC email(s): ' + invalidCc.join(', '));
+            return;
+        }
     }
     
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
@@ -628,16 +650,16 @@ function confirmSendEmail() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Sending...';
     btn.disabled = true;
     
-    // Send to each email
-    const primaryEmail = emails[0];
-    const ccEmails = emails.slice(1);
+    // Primary recipient is first To email, rest go to CC along with explicit CC
+    const primaryEmail = toEmails[0];
+    const allCcEmails = [...toEmails.slice(1), ...ccEmails];
     
     fetch(`/api/billing/invoices/${sendModalInvoiceId}/send-email/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
         body: JSON.stringify({ 
             recipient_email: primaryEmail,
-            cc_emails: ccEmails
+            cc_emails: allCcEmails.length > 0 ? allCcEmails : undefined
         }),
     })
     .then(r => r.json())
