@@ -468,8 +468,11 @@ def billing_view(request):
             if action == 'upgrade':
                 plan_slug = request.POST.get('plan')
                 if plan_slug:
-                    svc.create_subscription(tenant, plan_slug)
-                    messages.success(request, 'Subscription created! You may need to complete payment.')
+                    result = svc.create_subscription(tenant, plan_slug)
+                    # Redirect to Stripe Checkout for payment
+                    if result.get('checkout_url'):
+                        return redirect(result['checkout_url'])
+                    messages.success(request, 'Subscription created!')
             elif action == 'change_plan':
                 plan_slug = request.POST.get('plan')
                 if plan_slug:
