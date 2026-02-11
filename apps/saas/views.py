@@ -478,7 +478,11 @@ def billing_view(request):
                 if plan_slug:
                     result = svc.update_subscription(tenant, plan_slug)
                     if result.get('status') == 'pending':
-                        messages.info(request, result.get('message', 'Upgrade in progress...'))
+                        # Upgrade requires payment - redirect to Billing Portal
+                        messages.info(request, 'Complete payment in Stripe to activate your upgrade.')
+                        return_url = request.build_absolute_uri('/owner/billing/')
+                        portal_url = svc.create_billing_portal_session(tenant, return_url)
+                        return redirect(portal_url)
                     elif result.get('status') == 'scheduled':
                         messages.info(request, result.get('message', 'Plan change scheduled.'))
                     else:
@@ -601,7 +605,11 @@ def billing_update_plan(request):
         if tenant.stripe_subscription_id:
             result = svc.update_subscription(tenant, new_plan_slug)
             if result.get('status') == 'pending':
-                messages.info(request, result.get('message', 'Upgrade in progress - complete payment to activate.'))
+                # Upgrade requires payment - redirect to Billing Portal
+                messages.info(request, 'Complete payment in Stripe to activate your upgrade.')
+                return_url = request.build_absolute_uri('/owner/billing/')
+                portal_url = svc.create_billing_portal_session(tenant, return_url)
+                return redirect(portal_url)
             elif result.get('status') == 'scheduled':
                 messages.info(request, result.get('message', 'Plan change scheduled for end of billing period.'))
             else:
