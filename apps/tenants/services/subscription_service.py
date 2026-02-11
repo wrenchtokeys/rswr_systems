@@ -117,12 +117,9 @@ class SubscriptionService:
                 },
             )
             
-            # Step 3: Update tenant with customer ID (subscription ID comes via webhook)
-            tenant.plan = plan.slug
-            tenant.subscription_plan = plan
-            tenant.save(update_fields=[
-                'stripe_customer_id', 'plan', 'subscription_plan',
-            ])
+            # Step 3: Only save customer ID now — plan updates via webhook AFTER payment
+            # DO NOT update plan/subscription_plan here to prevent unpaid access
+            tenant.save(update_fields=['stripe_customer_id'])
             
             logger.info(
                 f"Created checkout session {checkout_session.id} for tenant {tenant.slug} "
