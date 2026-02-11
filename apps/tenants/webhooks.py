@@ -294,11 +294,24 @@ def _handle_subscription_updated(subscription):
         'past_due': 'past_due',
         'canceled': 'canceled',
         'trialing': 'trialing',
-        'incomplete': 'active',  # Payment in progress
+        'incomplete': 'incomplete',  # SECURITY: Don't treat as active until paid
         'incomplete_expired': 'expired',
         'unpaid': 'past_due',
     }
     new_status = status_map.get(stripe_status, tenant.subscription_status)
+    
+    # SECURITY: Only update plan if subscription is actually active (payment confirmed)
+    # 'incomplete' means checkout started but not paid — don't upgrade yet!
+    if stripe_status not in ('active', 'trialing'):
+        # Just update status, don't change plan
+        tenant.subscription_status = new_status
+        tenant.stripe_subscription_id = subscription_id
+        tenant.save(update_fields=['subscription_status', 'stripe_subscription_id'])
+        logger.info(
+            f"subscription.updated: Tenant {tenant.slug} status={new_status} "
+            f"(plan unchanged, waiting for payment)"
+        )
+        return
     
     # Check if plan changed (look at the price ID)
     items = subscription.get('items', {}).get('data', [])
