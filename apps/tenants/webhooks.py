@@ -5,6 +5,7 @@ Processes Stripe webhook events to keep tenant subscription state
 in sync with Stripe. Verifies webhook signatures for security.
 
 Events handled:
+- checkout.session.completed — customer completed Stripe Checkout
 - invoice.paid — subscription payment successful
 - invoice.payment_failed — payment failed (past_due)
 - customer.subscription.updated — plan changes, renewals
@@ -85,6 +86,7 @@ def stripe_subscription_webhook(request):
     
     # Route to handler
     handlers = {
+        'checkout.session.completed': _handle_checkout_completed,
         'invoice.paid': _handle_invoice_paid,
         'invoice.payment_failed': _handle_invoice_payment_failed,
         'customer.subscription.updated': _handle_subscription_updated,
@@ -133,6 +135,52 @@ def _find_tenant_by_subscription_id(subscription_id):
 # ------------------------------------------------------------------
 # Event Handlers
 # ------------------------------------------------------------------
+
+def _handle_checkout_completed(session):
+    """
+    Handle checkout.session.completed — customer completed Stripe Checkout.
+    
+    This fires when a customer finishes the Checkout flow and payment succeeds.
+    We update the tenant with the subscription ID from the session.
+    """
+    customer_id = session.get('customer')
+    subscription_id = session.get('subscription')
+    
+    if not subscription_id:
+        # Not a subscription checkout (might be a one-time payment)
+        logger.debug(f"checkout.session.completed without subscription: {session.get('id')}")
+        return
+    
+    # Try to find tenant by customer ID
+    tenant = _find_tenant_by_customer_id(customer_id)
+    
+    # Fallback: check metadata for tenant_id
+    if not tenant:
+        metadata = session.get('metadata', {})
+        tenant_id = metadata.get('tenant_id')
+        if tenant_id:
+            try:
+                tenant = Tenant.objects.get(id=tenant_id)
+            except Tenant.DoesNotExist:
+                pass
+    
+    if not tenant:
+        logger.warning(
+            f"checkout.session.completed: No tenant found for customer {customer_id} "
+            f"or metadata tenant_id"
+        )
+        return
+    
+    # Update tenant with subscription info
+    tenant.stripe_subscription_id = subscription_id
+    tenant.subscription_status = 'active'
+    tenant.save(update_fields=['stripe_subscription_id', 'subscription_status'])
+    
+    logger.info(
+        f"checkout.session.completed: Tenant {tenant.slug} subscribed. "
+        f"Subscription: {subscription_id}"
+    )
+
 
 def _handle_invoice_paid(invoice):
     """
