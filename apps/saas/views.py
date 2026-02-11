@@ -468,7 +468,8 @@ def billing_view(request):
             if action == 'upgrade':
                 plan_slug = request.POST.get('plan')
                 if plan_slug:
-                    result = svc.create_subscription(tenant, plan_slug)
+                    base_url = request.build_absolute_uri('/').rstrip('/')
+                    result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
                     # Redirect to Stripe Checkout for payment
                     if result.get('checkout_url'):
                         return redirect(result['checkout_url'])
@@ -493,7 +494,8 @@ def billing_view(request):
                     except SubscriptionError as e:
                         if 'canceled' in str(e).lower() or 'not completed' in str(e).lower() or 'no subscription' in str(e).lower():
                             # Auto-fallback to create new subscription
-                            result = svc.create_subscription(tenant, plan_slug)
+                            base_url = request.build_absolute_uri('/').rstrip('/')
+                            result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
                             if result.get('checkout_url'):
                                 return redirect(result['checkout_url'])
                         else:
@@ -636,7 +638,8 @@ def billing_update_plan(request):
                     raise
         
         # Create new subscription (for trial users or after canceled sub)
-        result = svc.create_subscription(tenant, new_plan_slug)
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        result = svc.create_subscription(tenant, new_plan_slug, base_url=base_url)
         if result.get('checkout_url'):
             return redirect(result['checkout_url'])
         else:

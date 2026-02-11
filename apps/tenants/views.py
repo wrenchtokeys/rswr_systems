@@ -419,7 +419,8 @@ def subscribe(request):
     
     svc = SubscriptionService()
     try:
-        result = svc.create_subscription(tenant, plan_slug, billing_period)
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        result = svc.create_subscription(tenant, plan_slug, billing_period, base_url=base_url)
         return Response(result, status=status.HTTP_201_CREATED)
     except SubscriptionError as e:
         return Response(
