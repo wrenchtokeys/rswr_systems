@@ -137,6 +137,44 @@ class BillingConfig(models.Model):
         help_text='Special district tax rate (percentage)',
     )
 
+    # === AUTOMATION: OVERDUE REMINDERS ===
+    overdue_reminder_enabled = models.BooleanField(
+        default=False,
+        help_text='Enable automatic reminder emails for overdue invoices',
+    )
+    overdue_reminder_days = models.CharField(
+        max_length=50,
+        default='7,14,30',
+        help_text='Days after due date to send reminders (comma-separated, e.g., "7,14,30")',
+    )
+    overdue_reminder_subject = models.CharField(
+        max_length=200,
+        default='Reminder: Invoice #{invoice_number} is overdue',
+        help_text='Email subject template. Use {invoice_number}, {customer_name}, {amount_due}, {days_overdue}',
+    )
+    
+    # === AUTOMATION: BATCH INVOICING ===
+    BATCH_FREQUENCY_CHOICES = [
+        ('disabled', 'Disabled'),
+        ('weekly', 'Weekly'),
+        ('biweekly', 'Bi-weekly'),
+        ('monthly', 'Monthly'),
+    ]
+    batch_invoice_frequency = models.CharField(
+        max_length=20,
+        choices=BATCH_FREQUENCY_CHOICES,
+        default='disabled',
+        help_text='How often to auto-generate batch invoices for fleet customers',
+    )
+    batch_invoice_day = models.PositiveSmallIntegerField(
+        default=1,
+        help_text='Day to run batch invoicing. For weekly: 0=Mon, 6=Sun. For monthly: 1-28.',
+    )
+    batch_invoice_auto_send = models.BooleanField(
+        default=False,
+        help_text='Automatically send batch invoices via email (otherwise creates as DRAFT)',
+    )
+
     # === METADATA ===
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
