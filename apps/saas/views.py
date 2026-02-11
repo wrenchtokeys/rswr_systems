@@ -476,17 +476,28 @@ def billing_view(request):
             elif action == 'change_plan':
                 plan_slug = request.POST.get('plan')
                 if plan_slug:
-                    result = svc.update_subscription(tenant, plan_slug)
-                    if result.get('status') == 'pending':
-                        # Upgrade requires payment - redirect to Billing Portal
-                        messages.info(request, 'Complete payment in Stripe to activate your upgrade.')
-                        return_url = request.build_absolute_uri('/owner/billing/')
-                        portal_url = svc.create_billing_portal_session(tenant, return_url)
-                        return redirect(portal_url)
-                    elif result.get('status') == 'scheduled':
-                        messages.info(request, result.get('message', 'Plan change scheduled.'))
-                    else:
-                        messages.success(request, f'Plan updated to {result.get("new_plan")}!')
+                    try:
+                        if tenant.stripe_subscription_id:
+                            result = svc.update_subscription(tenant, plan_slug)
+                            if result.get('status') == 'pending':
+                                messages.info(request, 'Complete payment in Stripe to activate your upgrade.')
+                                return_url = request.build_absolute_uri('/owner/billing/')
+                                portal_url = svc.create_billing_portal_session(tenant, return_url)
+                                return redirect(portal_url)
+                            elif result.get('status') == 'scheduled':
+                                messages.info(request, result.get('message', 'Plan change scheduled.'))
+                            else:
+                                messages.success(request, f'Plan updated to {result.get("new_plan")}!')
+                        else:
+                            raise SubscriptionError("No subscription")
+                    except SubscriptionError as e:
+                        if 'canceled' in str(e).lower() or 'not completed' in str(e).lower() or 'no subscription' in str(e).lower():
+                            # Auto-fallback to create new subscription
+                            result = svc.create_subscription(tenant, plan_slug)
+                            if result.get('checkout_url'):
+                                return redirect(result['checkout_url'])
+                        else:
+                            raise
             elif action == 'cancel':
                 svc.cancel_subscription(tenant)
                 messages.success(request, 'Subscription will cancel at end of billing period.')
@@ -603,26 +614,34 @@ def billing_update_plan(request):
     svc = SubscriptionService()
     try:
         if tenant.stripe_subscription_id:
-            result = svc.update_subscription(tenant, new_plan_slug)
-            if result.get('status') == 'pending':
-                # Upgrade requires payment - redirect to Billing Portal
-                messages.info(request, 'Complete payment in Stripe to activate your upgrade.')
-                return_url = request.build_absolute_uri('/owner/billing/')
-                portal_url = svc.create_billing_portal_session(tenant, return_url)
-                return redirect(portal_url)
-            elif result.get('status') == 'scheduled':
-                messages.info(request, result.get('message', 'Plan change scheduled for end of billing period.'))
-            else:
-                messages.success(request, f'Plan updated to {result["new_plan"]}!')
-            return redirect('billing_settings')
-        else:
-            result = svc.create_subscription(tenant, new_plan_slug)
-            # Redirect to Stripe Checkout for payment
-            if result.get('checkout_url'):
-                return redirect(result['checkout_url'])
-            else:
-                messages.success(request, f'Subscribed to {result["plan"]}!')
+            try:
+                result = svc.update_subscription(tenant, new_plan_slug)
+                if result.get('status') == 'pending':
+                    # Upgrade requires payment - redirect to Billing Portal
+                    messages.info(request, 'Complete payment in Stripe to activate your upgrade.')
+                    return_url = request.build_absolute_uri('/owner/billing/')
+                    portal_url = svc.create_billing_portal_session(tenant, return_url)
+                    return redirect(portal_url)
+                elif result.get('status') == 'scheduled':
+                    messages.info(request, result.get('message', 'Plan change scheduled for end of billing period.'))
+                else:
+                    messages.success(request, f'Plan updated to {result["new_plan"]}!')
                 return redirect('billing_settings')
+            except SubscriptionError as e:
+                # If subscription was canceled/incomplete, auto-fallback to create new
+                if 'canceled' in str(e).lower() or 'not completed' in str(e).lower():
+                    # Fall through to create_subscription below
+                    pass
+                else:
+                    raise
+        
+        # Create new subscription (for trial users or after canceled sub)
+        result = svc.create_subscription(tenant, new_plan_slug)
+        if result.get('checkout_url'):
+            return redirect(result['checkout_url'])
+        else:
+            messages.success(request, f'Subscribed to {result["plan"]}!')
+            return redirect('billing_settings')
     except SubscriptionError as e:
         messages.error(request, str(e))
         return redirect('billing_settings')

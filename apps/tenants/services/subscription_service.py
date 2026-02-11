@@ -78,6 +78,24 @@ class SubscriptionService:
             )
         
         try:
+            # Step 0: Void any incomplete subscriptions from previous attempts
+            # This prevents stale invoices piling up when users change their mind
+            if tenant.stripe_subscription_id:
+                try:
+                    old_sub = stripe.Subscription.retrieve(tenant.stripe_subscription_id)
+                    if old_sub.status in ('incomplete', 'incomplete_expired'):
+                        stripe.Subscription.delete(tenant.stripe_subscription_id)
+                        tenant.stripe_subscription_id = ''
+                        tenant.save(update_fields=['stripe_subscription_id'])
+                        logger.info(
+                            f"Voided incomplete subscription for tenant {tenant.slug} "
+                            f"before creating new checkout"
+                        )
+                except stripe.error.InvalidRequestError:
+                    # Subscription doesn't exist or already canceled
+                    tenant.stripe_subscription_id = ''
+                    tenant.save(update_fields=['stripe_subscription_id'])
+            
             # Step 1: Create or retrieve Stripe Customer
             if tenant.stripe_customer_id:
                 customer = stripe.Customer.retrieve(tenant.stripe_customer_id)
@@ -187,8 +205,24 @@ class SubscriptionService:
             subscription = stripe.Subscription.retrieve(tenant.stripe_subscription_id)
             
             if subscription.status in ('canceled', 'incomplete_expired'):
+                # Clear stale subscription ID and tell user to start fresh
+                tenant.stripe_subscription_id = ''
+                tenant.save(update_fields=['stripe_subscription_id'])
                 raise SubscriptionError(
-                    "Your subscription has been canceled. Please create a new subscription."
+                    "Previous subscription was canceled. Please select a plan to subscribe."
+                )
+            
+            # If subscription is incomplete (never paid), void it and start fresh
+            if subscription.status == 'incomplete':
+                stripe.Subscription.delete(tenant.stripe_subscription_id)
+                tenant.stripe_subscription_id = ''
+                tenant.save(update_fields=['stripe_subscription_id'])
+                logger.info(
+                    f"Voided incomplete subscription for tenant {tenant.slug} "
+                    f"during plan change"
+                )
+                raise SubscriptionError(
+                    "Previous subscription was not completed. Please start a new subscription."
                 )
             
             # Determine if this is an upgrade or downgrade BEFORE making changes
