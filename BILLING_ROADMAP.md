@@ -1,9 +1,11 @@
 # Billing & Payments Roadmap
 
 > Created: Jan 31, 2026 — Amelia
-> Last updated: Jan 31, 2026
-> Status: In Progress
+> Last updated: February 11, 2026
+> Status: ✅ Complete
 > Priority: High — core revenue feature
+
+📖 **For how billing works, see [BILLING_GUIDE.md](docs/BILLING_GUIDE.md)**
 
 ## Current State (What Exists)
 
@@ -143,30 +145,50 @@
 
 ---
 
-## Phase 6: Polish & Automation
+## Phase 6: Polish & Automation ✅ DONE (Feb 11, 2026)
 **Goal**: Production-ready billing that runs itself.
 
-### 5.1 Batch Invoicing
-- For customers with `batch` preference: generate weekly/monthly consolidated invoices
-- Management command or celery task: `process_batch_invoices`
-- Groups uninvoiced repairs by customer, generates one invoice per customer
+### 6.1 Batch Invoicing ✅
+- [x] Celery task: `billing.process_batch_invoices` runs daily at 6 AM
+- [x] Configurable frequency: weekly, bi-weekly, monthly, or disabled
+- [x] Configurable day: day of week (0-6) or day of month (1-28)
+- [x] Auto-send option: creates as DRAFT or sends immediately
+- [x] Groups uninvoiced repairs + replacements by customer
+- [x] Only processes customers with `invoice_preference='batch'`
 
-### 5.2 Overdue Auto-Processing
-- Celery beat task: daily check for overdue invoices
-- Auto-update status from SENT → OVERDUE when past due date
-- Trigger reminder emails per schedule
+### 6.2 Overdue Auto-Processing ✅
+- [x] Celery task: `billing.process_overdue_invoices` runs daily at 8 AM
+- [x] Auto-update status from SENT/PARTIAL → OVERDUE when past due date
+- [x] Configurable reminder schedule (e.g., "7,14,30" days after due)
+- [x] Customizable email subject template with variables
+- [x] Reminders logged in invoice internal_notes
+- [x] Enable/disable toggle in BillingConfig
 
-### 5.3 Aging Report
-- Owner dashboard: accounts receivable aging (current, 30, 60, 90+ days)
-- Export to CSV
-- Key metric for business health
+### 6.3 Aging Report ✅
+- [x] Celery task: `billing.generate_aging_report`
+- [x] Buckets: current, 1-30, 31-60, 61-90, 90+ days
+- [x] Returns count + total per bucket, plus invoice details
+- [x] Can run for single tenant or all tenants
+- [ ] UI dashboard widget (future)
+- [ ] Export to CSV (future)
 
-### 5.4 Statement of Account
-- Per-customer statement showing all invoices and payments
-- Monthly or on-demand generation
-- Email to customer
+### 6.4 Statement of Account
+- [ ] Per-customer statement showing all invoices and payments (future)
+- [ ] Monthly or on-demand generation (future)
 
-**Estimated effort**: ~12 hours
+### Configuration (BillingConfig)
+All automation settings are configurable in Settings → Billing:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `overdue_reminder_enabled` | Enable automatic reminder emails | Off |
+| `overdue_reminder_days` | Days to send reminders (comma-separated) | "7,14,30" |
+| `overdue_reminder_subject` | Email subject template | "Reminder: Invoice #{invoice_number} is overdue" |
+| `batch_invoice_frequency` | disabled / weekly / biweekly / monthly | disabled |
+| `batch_invoice_day` | Day to run (0-6 for weekly, 1-28 for monthly) | 1 |
+| `batch_invoice_auto_send` | Send immediately or create as DRAFT | Off |
+
+**Migration**: `0010_add_automation_config`
 
 ---
 
@@ -175,25 +197,25 @@
 | Priority | Phase | Description | Status | Hours |
 |----------|-------|-------------|--------|-------|
 | ✅ | 1 | Payment terms & BillingConfig | DONE | — |
-| ✅ | 2 | Stripe integration | DONE (needs webhook secret) | — |
+| ✅ | 2 | Stripe integration | DONE | — |
 | ✅ | 3 | Company address on invoices | DONE | — |
 | ✅ | 4 | Payment confirmation emails | DONE | — |
-| ✅ | 5 | Invoice portals & payment management | DONE (5.1 + 5.2) | — |
-| 🟢 P2 | 6 | Automation & reports | — | ~12 |
-| 🔴 P1 | 7 | SaaS subscription billing | — | TBD |
-| 🟡 P1 | 8 | Sales tax by zip code | — | ~8-12 |
+| ✅ | 5 | Invoice portals & payment management | DONE | — |
+| ✅ | 6 | Automation & reports | DONE (Feb 11, 2026) | — |
+| ✅ | 7 | SaaS subscription billing | DONE (Feb 11, 2026) | — |
+| ✅ | 8 | Sales tax by zip code | DONE (Feb 1, 2026) | — |
 
-**Remaining estimated**: ~31 hours
+**All phases complete!** 🎉
 
 ### Resolved Questions
 - **Stripe account**: ✅ Test keys configured in EB
 - **Default terms**: COD (Cash on Delivery) per Drake
 - **Company address**: Configurable via BillingConfig admin (Drake to fill in)
 
-### Open Questions
-- **Reminder frequency**: How aggressive? (e.g., 7 days, then weekly?)
-- **Batch invoicing**: For fleet customers, weekly or monthly consolidation?
-- **Per-customer payment terms**: Need override per customer, or global default enough for now?
+### Resolved Questions
+- **Reminder frequency**: Configurable via `overdue_reminder_days` (default: 7, 14, 30 days)
+- **Batch invoicing**: Configurable frequency (weekly/biweekly/monthly) + day
+- **Per-customer payment terms**: Global default for now (per-customer override in backlog)
 
 ---
 

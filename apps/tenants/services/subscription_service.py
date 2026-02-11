@@ -39,7 +39,7 @@ class SubscriptionService:
     # Create
     # ------------------------------------------------------------------
     
-    def create_subscription(self, tenant, plan_slug, billing_period='monthly'):
+    def create_subscription(self, tenant, plan_slug, billing_period='monthly', base_url=None):
         """
         Create a Stripe customer + subscription for a tenant.
         
@@ -115,12 +115,21 @@ class SubscriptionService:
             # Step 2: Create Stripe Checkout Session for subscription
             # (Using Checkout instead of direct subscription creation due to 
             # Stripe API change removing payment_intent from Invoice objects)
+            
+            # Determine base URL for success/cancel redirects
+            if base_url:
+                redirect_base = base_url.rstrip('/')
+            elif hasattr(settings, 'EB_HOSTNAME') and settings.EB_HOSTNAME:
+                redirect_base = f"https://{settings.EB_HOSTNAME}"
+            else:
+                redirect_base = "https://rockstarwindshield.repair"  # fallback
+            
             checkout_session = stripe.checkout.Session.create(
                 customer=customer.id,
                 mode='subscription',
                 line_items=[{'price': price_id, 'quantity': 1}],
-                success_url=f"https://{settings.EB_HOSTNAME}/owner/billing/?success=true",
-                cancel_url=f"https://{settings.EB_HOSTNAME}/owner/billing/?canceled=true",
+                success_url=f"{redirect_base}/owner/billing/?success=true",
+                cancel_url=f"{redirect_base}/owner/billing/?canceled=true",
                 metadata={
                     'tenant_id': str(tenant.id),
                     'tenant_slug': tenant.slug,

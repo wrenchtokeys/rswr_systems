@@ -468,7 +468,8 @@ def billing_view(request):
             if action == 'upgrade':
                 plan_slug = request.POST.get('plan')
                 if plan_slug:
-                    result = svc.create_subscription(tenant, plan_slug)
+                    base_url = request.build_absolute_uri('/').rstrip('/')
+                    result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
                     # Redirect to Stripe Checkout for payment
                     if result.get('checkout_url'):
                         return redirect(result['checkout_url'])
@@ -493,7 +494,8 @@ def billing_view(request):
                     except SubscriptionError as e:
                         if 'canceled' in str(e).lower() or 'not completed' in str(e).lower() or 'no subscription' in str(e).lower():
                             # Auto-fallback to create new subscription
-                            result = svc.create_subscription(tenant, plan_slug)
+                            base_url = request.build_absolute_uri('/').rstrip('/')
+                            result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
                             if result.get('checkout_url'):
                                 return redirect(result['checkout_url'])
                         else:
@@ -636,7 +638,8 @@ def billing_update_plan(request):
                     raise
         
         # Create new subscription (for trial users or after canceled sub)
-        result = svc.create_subscription(tenant, new_plan_slug)
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        result = svc.create_subscription(tenant, new_plan_slug, base_url=base_url)
         if result.get('checkout_url'):
             return redirect(result['checkout_url'])
         else:
@@ -762,6 +765,50 @@ def owner_settings_view(request):
             except Exception as e:
                 logger.error(f"Error updating billing config: {e}")
                 messages.error(request, 'Could not update tax settings.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'toggle_overdue_reminders':
+            # Toggle overdue reminder emails
+            try:
+                config = BillingConfig.get_instance()
+                config.overdue_reminder_enabled = not config.overdue_reminder_enabled
+                config.save(update_fields=['overdue_reminder_enabled'])
+                status = 'enabled' if config.overdue_reminder_enabled else 'disabled'
+                messages.success(request, f'Overdue reminders {status}.')
+            except Exception as e:
+                logger.error(f"Error toggling overdue reminders: {e}")
+                messages.error(request, 'Could not update reminder settings.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'overdue_reminder_settings':
+            # Update overdue reminder configuration
+            try:
+                config = BillingConfig.get_instance()
+                config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
+                config.overdue_reminder_subject = request.POST.get('overdue_reminder_subject', 'Reminder: Invoice #{invoice_number} is overdue').strip()
+                config.save(update_fields=['overdue_reminder_days', 'overdue_reminder_subject'])
+                messages.success(request, 'Overdue reminder settings saved.')
+            except Exception as e:
+                logger.error(f"Error updating overdue reminder settings: {e}")
+                messages.error(request, 'Could not update reminder settings.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'batch_invoice_settings':
+            # Update batch invoicing configuration
+            try:
+                config = BillingConfig.get_instance()
+                config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
+                config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
+                config.batch_invoice_auto_send = request.POST.get('batch_invoice_auto_send') == '1'
+                config.save(update_fields=['batch_invoice_frequency', 'batch_invoice_day', 'batch_invoice_auto_send'])
+                
+                if config.batch_invoice_frequency != 'disabled':
+                    messages.success(request, f'Batch invoicing enabled: {config.batch_invoice_frequency} on day {config.batch_invoice_day}.')
+                else:
+                    messages.success(request, 'Batch invoicing disabled.')
+            except Exception as e:
+                logger.error(f"Error updating batch invoice settings: {e}")
+                messages.error(request, 'Could not update batch invoice settings.')
             return redirect('/owner/settings/?tab=billing')
 
         # Default: business info update

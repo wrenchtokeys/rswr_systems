@@ -67,6 +67,22 @@ app.conf.beat_schedule = {
         'task': 'core.tasks.cleanup_old_delivery_logs',
         'schedule': crontab(hour=2, minute=0, day_of_week=0),  # 2 AM Sunday
     },
+    
+    # === BILLING AUTOMATION (Phase 6) ===
+    
+    # Process overdue invoices daily at 8 AM
+    # Updates SENT → OVERDUE status and sends reminder emails
+    'process-overdue-invoices': {
+        'task': 'billing.process_overdue_invoices',
+        'schedule': crontab(hour=8, minute=0),  # 8:00 AM daily
+    },
+    
+    # Process batch invoices daily at 6 AM
+    # Only creates invoices on configured days (checks internally)
+    'process-batch-invoices': {
+        'task': 'billing.process_batch_invoices',
+        'schedule': crontab(hour=6, minute=0),  # 6:00 AM daily
+    },
 }
 
 
