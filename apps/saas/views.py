@@ -476,8 +476,13 @@ def billing_view(request):
             elif action == 'change_plan':
                 plan_slug = request.POST.get('plan')
                 if plan_slug:
-                    svc.update_subscription(tenant, plan_slug)
-                    messages.success(request, 'Plan updated!')
+                    result = svc.update_subscription(tenant, plan_slug)
+                    if result.get('status') == 'pending':
+                        messages.info(request, result.get('message', 'Upgrade in progress...'))
+                    elif result.get('status') == 'scheduled':
+                        messages.info(request, result.get('message', 'Plan change scheduled.'))
+                    else:
+                        messages.success(request, f'Plan updated to {result.get("new_plan")}!')
             elif action == 'cancel':
                 svc.cancel_subscription(tenant)
                 messages.success(request, 'Subscription will cancel at end of billing period.')
@@ -595,7 +600,12 @@ def billing_update_plan(request):
     try:
         if tenant.stripe_subscription_id:
             result = svc.update_subscription(tenant, new_plan_slug)
-            messages.success(request, f'Plan updated to {result["new_plan"]}!')
+            if result.get('status') == 'pending':
+                messages.info(request, result.get('message', 'Upgrade in progress - complete payment to activate.'))
+            elif result.get('status') == 'scheduled':
+                messages.info(request, result.get('message', 'Plan change scheduled for end of billing period.'))
+            else:
+                messages.success(request, f'Plan updated to {result["new_plan"]}!')
             return redirect('billing_settings')
         else:
             result = svc.create_subscription(tenant, new_plan_slug)
