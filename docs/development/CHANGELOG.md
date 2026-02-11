@@ -341,3 +341,32 @@ Major architectural overhaul: one permission system, one base template, fixed si
 **Latest Version**: 2.2.0
 **Last Updated**: February 1, 2026
 **Status**: Production Ready ✅
+
+## [2.3.0] - February 10, 2026
+
+### Added — Phase 7: SaaS Subscription Billing Polish
+
+#### Usage Enforcement
+- **Repair creation limit** — blocks creating repairs when monthly limit reached
+- **Customer creation limit** — blocks adding customers when at plan limit
+- **Technician invite limit** — blocks inviting technicians when at seat limit
+- All limits show friendly message with upgrade CTA
+
+#### Subscription Status Banners
+- **Trial expiring soon** (≤7 days) — amber banner with upgrade CTA
+- **Trial expired** — red banner prompting upgrade
+- **Past due** — red banner prompting payment method update
+- **Canceled** — gray banner with reactivate option
+- Banners display for owners/managers across all pages
+
+#### Already Built (discovered during Phase 7)
+- Usage meters on owner dashboard (repairs/technicians/customers with progress bars)
+- Full subscription API (subscribe, update, cancel, reactivate, billing portal)
+- Stripe webhook handlers for subscription lifecycle
+- SubscriptionPlan model with limits and Stripe price IDs
+- UsageService for tracking usage vs limits
+
+### What's Needed to Go Live
+1. Create Stripe Products/Prices in Stripe Dashboard (Drake action)
+2. Copy `stripe_price_id` values into SubscriptionPlan records
+3. Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` env vars in production

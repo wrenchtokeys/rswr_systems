@@ -242,12 +242,14 @@ Separate from customer billing — this is charging glass shops to use RS System
 - Owner billing page at `/owner/billing/`
 - Tenant webhook handler
 
-**Still needed:**
+**Still needed (Drake action):**
 - [ ] Create Stripe Products + Prices in Stripe Dashboard
 - [ ] Copy `stripe_price_id` / `stripe_annual_price_id` into SubscriptionPlan records
-- [ ] Wire up subscription checkout flow (owner upgrades/downgrades plan)
-- [ ] Handle subscription webhooks (invoice.paid, customer.subscription.updated/deleted)
-- [ ] Dunning — handle failed subscription payments gracefully
-- [ ] Usage enforcement — block actions when plan limits hit (repairs, techs, storage)
-- [ ] Trial expiration → prompt to upgrade
-- [ ] Billing portal link (Stripe Customer Portal for managing payment method/invoices)
+
+**Completed (Feb 10, 2026):**
+- [x] Wire up subscription checkout flow (owner upgrades/downgrades plan)
+- [x] Handle subscription webhooks (invoice.paid, customer.subscription.updated/deleted)
+- [x] Dunning — handle failed subscription payments gracefully (past_due banner + email)
+- [x] Usage enforcement — block actions when plan limits hit (repairs, techs, customers)
+- [x] Trial expiration → prompt to upgrade (expired + expiring banners)
+- [x] Billing portal link (Stripe Customer Portal for managing payment method/invoices)

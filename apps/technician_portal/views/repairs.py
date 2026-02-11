@@ -254,6 +254,15 @@ def repair_detail(request, repair_id):
 @technician_required
 def create_repair(request):
     """Create a new single repair."""
+    # Usage limit check
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, limit_msg)
+            return redirect('technician_dashboard')
+
     if request.method == 'POST':
         # Convert HEIC images to JPEG
         if 'damage_photo_before' in request.FILES:
