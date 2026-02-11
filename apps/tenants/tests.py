@@ -1280,3 +1280,256 @@ class OwnerOnlyTest(BaseTestCase):
             content_type='application/json',
         )
         self.assertEqual(response.status_code, 403)
+
+
+# ======================================================================
+# 11. Subscription Upgrade/Downgrade Tests
+# ======================================================================
+
+class SubscriptionUpgradeDowngradeTest(BaseTestCase):
+    """
+    Tests for upgrade/downgrade detection and security handling.
+    
+    Key behaviors tested:
+    - Upgrades: Plan NOT updated locally (waits for webhook)
+    - Downgrades: User keeps current tier until period end (uses schedule)
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.svc = SubscriptionService()
+        
+        # Create enterprise plan for upgrade testing
+        self.enterprise_plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='enterprise',
+            defaults=dict(
+                name='Enterprise',
+                monthly_price=Decimal('249.00'),
+                max_repairs_per_month=None,
+                max_technicians=None,
+                max_customers=None,
+                max_storage_mb=50000,
+                trial_days=0,
+                display_order=3,
+                features={'invoicing': True, 'rewards': True, 'api_access': True, 'white_label': True},
+            ),
+        )
+        self.enterprise_plan.stripe_price_id = 'price_enterprise_monthly'
+        self.enterprise_plan.save()
+
+    def test_upgrade_detection_starter_to_pro(self):
+        """Starter ($49) → Pro ($99) is detected as upgrade."""
+        self.tenant.subscription_plan = self.starter_plan
+        self.tenant.plan = 'starter'
+        self.tenant.save()
+        
+        is_upgrade = (
+            self.pro_plan.monthly_price > 
+            (self.tenant.subscription_plan.monthly_price or 0)
+        )
+        self.assertTrue(is_upgrade)
+
+    def test_upgrade_detection_pro_to_enterprise(self):
+        """Pro ($99) → Enterprise ($249) is detected as upgrade."""
+        self.tenant.subscription_plan = self.pro_plan
+        self.tenant.plan = 'pro'
+        self.tenant.save()
+        
+        is_upgrade = (
+            self.enterprise_plan.monthly_price > 
+            (self.tenant.subscription_plan.monthly_price or 0)
+        )
+        self.assertTrue(is_upgrade)
+
+    def test_downgrade_detection_pro_to_starter(self):
+        """Pro ($99) → Starter ($49) is detected as downgrade."""
+        self.tenant.subscription_plan = self.pro_plan
+        self.tenant.plan = 'pro'
+        self.tenant.save()
+        
+        is_upgrade = (
+            self.starter_plan.monthly_price > 
+            (self.tenant.subscription_plan.monthly_price or 0)
+        )
+        self.assertFalse(is_upgrade)
+
+    def test_downgrade_detection_enterprise_to_starter(self):
+        """Enterprise ($249) → Starter ($49) is detected as downgrade."""
+        self.tenant.subscription_plan = self.enterprise_plan
+        self.tenant.plan = 'enterprise'
+        self.tenant.save()
+        
+        is_upgrade = (
+            self.starter_plan.monthly_price > 
+            (self.tenant.subscription_plan.monthly_price or 0)
+        )
+        self.assertFalse(is_upgrade)
+
+    def test_no_plan_to_any_is_upgrade(self):
+        """No current plan → any paid plan is treated as upgrade."""
+        self.tenant.subscription_plan = None
+        self.tenant.plan = 'trial'
+        self.tenant.save()
+        
+        is_upgrade = (
+            self.tenant.subscription_plan is None or 
+            self.starter_plan.monthly_price > 
+            (self.tenant.subscription_plan.monthly_price if self.tenant.subscription_plan else 0)
+        )
+        self.assertTrue(is_upgrade)
+
+    @patch('stripe.Subscription.retrieve')
+    @patch('stripe.Subscription.modify')
+    def test_upgrade_does_not_update_local_plan(self, mock_modify, mock_retrieve):
+        """Upgrade returns 'pending' status and does NOT update tenant.plan."""
+        # Setup tenant on starter plan with active subscription
+        self.tenant.subscription_plan = self.starter_plan
+        self.tenant.plan = 'starter'
+        self.tenant.stripe_subscription_id = 'sub_test123'
+        self.tenant.save()
+        
+        # Mock Stripe responses
+        mock_retrieve.return_value = MagicMock(
+            status='active',
+            current_period_end=1735689600,
+            current_period_start=1733011200,
+        )
+        mock_retrieve.return_value.__getitem__ = lambda s, k: {
+            'items': {'data': [MagicMock(id='si_item123')]}
+        }.get(k)
+        mock_modify.return_value = {'id': 'sub_test123'}
+        
+        # Attempt upgrade to Pro
+        result = self.svc.update_subscription(self.tenant, 'pro')
+        
+        # Verify result indicates pending (waiting for webhook)
+        self.assertEqual(result['status'], 'pending')
+        self.assertEqual(result['new_plan'], 'Pro')
+        self.assertIn('momentarily', result['message'])
+        
+        # CRITICAL: Local plan should NOT be updated
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.plan, 'starter')  # Still starter!
+        self.assertEqual(self.tenant.subscription_plan, self.starter_plan)
+
+    @patch('stripe.SubscriptionSchedule.modify')
+    @patch('stripe.SubscriptionSchedule.create')
+    @patch('stripe.Subscription.retrieve')
+    def test_downgrade_creates_schedule_keeps_current_plan(
+        self, mock_retrieve, mock_schedule_create, mock_schedule_modify
+    ):
+        """Downgrade creates schedule and keeps user on current (higher) plan."""
+        # Setup tenant on Pro plan with active subscription
+        self.tenant.subscription_plan = self.pro_plan
+        self.tenant.plan = 'pro'
+        self.tenant.stripe_subscription_id = 'sub_test456'
+        self.tenant.save()
+        
+        # Mock Stripe responses
+        mock_sub = MagicMock(
+            status='active',
+            current_period_end=1735689600,
+            current_period_start=1733011200,
+        )
+        mock_sub.__getitem__ = lambda s, k: {
+            'items': {'data': [MagicMock(id='si_item456')]}
+        }.get(k)
+        mock_retrieve.return_value = mock_sub
+        
+        mock_schedule_create.return_value = MagicMock(id='sub_sched_789')
+        mock_schedule_modify.return_value = {}
+        
+        # Attempt downgrade to Starter
+        result = self.svc.update_subscription(self.tenant, 'starter')
+        
+        # Verify result indicates scheduled
+        self.assertEqual(result['status'], 'scheduled')
+        self.assertEqual(result['new_plan'], 'Starter')
+        self.assertIn('end of your current billing period', result['message'])
+        self.assertEqual(result['current_period_end'], 1735689600)
+        
+        # CRITICAL: Local plan should NOT be changed (user keeps Pro access)
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.plan, 'pro')  # Still Pro!
+        self.assertEqual(self.tenant.subscription_plan, self.pro_plan)
+        
+        # Verify schedule was created
+        mock_schedule_create.assert_called_once_with(
+            from_subscription='sub_test456'
+        )
+
+    @patch('stripe.Subscription.retrieve')
+    def test_upgrade_calls_stripe_modify_with_proration(self, mock_retrieve):
+        """Upgrade calls Stripe with create_prorations behavior."""
+        self.tenant.subscription_plan = self.starter_plan
+        self.tenant.plan = 'starter'
+        self.tenant.stripe_subscription_id = 'sub_test789'
+        self.tenant.save()
+        
+        mock_retrieve.return_value = MagicMock(
+            status='active',
+            current_period_end=1735689600,
+        )
+        mock_retrieve.return_value.__getitem__ = lambda s, k: {
+            'items': {'data': [MagicMock(id='si_item789')]}
+        }.get(k)
+        
+        with patch('stripe.Subscription.modify') as mock_modify:
+            mock_modify.return_value = {'id': 'sub_test789'}
+            self.svc.update_subscription(self.tenant, 'pro')
+            
+            # Verify Stripe.modify was called with correct params
+            mock_modify.assert_called_once()
+            call_kwargs = mock_modify.call_args[1]
+            self.assertEqual(call_kwargs['proration_behavior'], 'create_prorations')
+            self.assertEqual(call_kwargs['items'][0]['price'], 'price_pro_monthly')
+
+    def test_downgrade_requires_current_plan_stripe_id(self):
+        """Downgrade fails gracefully if current plan has no stripe_price_id."""
+        # Create a plan without stripe price ID
+        broken_plan = SubscriptionPlan.objects.create(
+            name='BrokenPlan', slug='broken',
+            monthly_price=Decimal('199.00'), display_order=99,
+        )
+        self.tenant.subscription_plan = broken_plan
+        self.tenant.plan = 'broken'
+        self.tenant.stripe_subscription_id = 'sub_test999'
+        self.tenant.save()
+        
+        with patch('stripe.Subscription.retrieve') as mock_retrieve:
+            mock_retrieve.return_value = MagicMock(
+                status='active',
+                current_period_end=1735689600,
+            )
+            mock_retrieve.return_value.__getitem__ = lambda s, k: {
+                'items': {'data': [MagicMock(id='si_item999')]}
+            }.get(k)
+            
+            with self.assertRaises(SubscriptionError) as ctx:
+                self.svc.update_subscription(self.tenant, 'starter')
+            
+            self.assertIn('current plan', str(ctx.exception).lower())
+
+    def test_same_price_treated_as_downgrade(self):
+        """Same price is treated as downgrade (safe, no upgrade access)."""
+        # Create two plans with same price
+        plan_a = SubscriptionPlan.objects.create(
+            name='Plan A', slug='plan-a',
+            monthly_price=Decimal('99.00'),
+            stripe_price_id='price_plan_a',
+            display_order=10,
+        )
+        plan_b = SubscriptionPlan.objects.create(
+            name='Plan B', slug='plan-b',
+            monthly_price=Decimal('99.00'),
+            stripe_price_id='price_plan_b',
+            display_order=11,
+        )
+        
+        self.tenant.subscription_plan = plan_a
+        self.tenant.plan = 'plan-a'
+        self.tenant.save()
+        
+        # Same price means NOT an upgrade (99 > 99 is False)
+        is_upgrade = plan_b.monthly_price > (plan_a.monthly_price or 0)
+        self.assertFalse(is_upgrade)

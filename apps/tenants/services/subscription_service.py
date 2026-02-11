@@ -152,7 +152,8 @@ class SubscriptionService:
         """
         Change a tenant's subscription plan (upgrade or downgrade).
         
-        Stripe handles proration automatically.
+        - Upgrades: Immediate via Stripe, but plan access waits for webhook confirmation
+        - Downgrades: Scheduled for end of billing period (user keeps current access)
         
         Args:
             tenant: Tenant model instance
@@ -190,33 +191,92 @@ class SubscriptionService:
                     "Your subscription has been canceled. Please create a new subscription."
                 )
             
-            # Update the subscription item to the new price
-            stripe.Subscription.modify(
-                tenant.stripe_subscription_id,
-                items=[{
-                    'id': subscription['items']['data'][0].id,
-                    'price': new_plan.stripe_price_id,
-                }],
-                proration_behavior='create_prorations',
-                metadata={
-                    'plan_slug': new_plan.slug,
-                },
+            # Determine if this is an upgrade or downgrade BEFORE making changes
+            current_plan = tenant.subscription_plan
+            is_upgrade = (
+                current_plan is None or 
+                new_plan.monthly_price > (current_plan.monthly_price or 0)
             )
             
-            # Update tenant
-            tenant.plan = new_plan.slug
-            tenant.subscription_plan = new_plan
-            tenant.save(update_fields=['plan', 'subscription_plan'])
-            
-            logger.info(
-                f"Updated subscription for tenant {tenant.slug} to plan {new_plan.name}"
-            )
-            
-            return {
-                'subscription_id': tenant.stripe_subscription_id,
-                'new_plan': new_plan.name,
-                'status': 'updated',
-            }
+            if is_upgrade:
+                # UPGRADES: Apply immediately, but don't update local plan until
+                # webhook confirms. This prevents unpaid access to higher tier.
+                stripe.Subscription.modify(
+                    tenant.stripe_subscription_id,
+                    items=[{
+                        'id': subscription['items']['data'][0].id,
+                        'price': new_plan.stripe_price_id,
+                    }],
+                    proration_behavior='create_prorations',
+                    metadata={
+                        'plan_slug': new_plan.slug,
+                    },
+                )
+                
+                logger.info(
+                    f"Upgrade requested for tenant {tenant.slug} to plan {new_plan.name}. "
+                    f"Waiting for webhook confirmation."
+                )
+                
+                return {
+                    'subscription_id': tenant.stripe_subscription_id,
+                    'new_plan': new_plan.name,
+                    'status': 'pending',
+                    'message': (
+                        f'Upgrading to {new_plan.name}... '
+                        'Your new features will be available momentarily.'
+                    ),
+                }
+            else:
+                # DOWNGRADES: Schedule for end of billing period.
+                # User keeps current tier access since they paid for this period.
+                # Use Stripe Subscription Schedule to defer the change.
+                
+                if not current_plan or not current_plan.stripe_price_id:
+                    raise SubscriptionError(
+                        "Cannot determine current plan. Please contact support."
+                    )
+                
+                # Create a subscription schedule from the current subscription
+                schedule = stripe.SubscriptionSchedule.create(
+                    from_subscription=tenant.stripe_subscription_id,
+                )
+                
+                # Configure schedule: current plan now, new plan at period end
+                current_period_end = subscription.current_period_end
+                stripe.SubscriptionSchedule.modify(
+                    schedule.id,
+                    end_behavior='release',  # Release back to regular subscription after
+                    phases=[
+                        {
+                            # Current phase: keep current plan until period end
+                            'items': [{'price': current_plan.stripe_price_id}],
+                            'start_date': subscription.current_period_start,
+                            'end_date': current_period_end,
+                        },
+                        {
+                            # Next phase: switch to new (lower) plan
+                            'items': [{'price': new_plan.stripe_price_id}],
+                            'start_date': current_period_end,
+                        },
+                    ],
+                )
+                
+                logger.info(
+                    f"Downgrade scheduled for tenant {tenant.slug} to plan {new_plan.name}. "
+                    f"Access continues until period end ({current_period_end})."
+                )
+                
+                return {
+                    'subscription_id': tenant.stripe_subscription_id,
+                    'new_plan': new_plan.name,
+                    'status': 'scheduled',
+                    'current_period_end': current_period_end,
+                    'message': (
+                        f'Your plan will change to {new_plan.name} at the end of your '
+                        f'current billing period. You\'ll keep full access until then.'
+                    ),
+                }
             
         except stripe.error.InvalidRequestError as e:
             logger.error(f"Invalid request updating subscription for {tenant.slug}: {e}")

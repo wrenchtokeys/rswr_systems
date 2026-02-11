@@ -1,6 +1,16 @@
 # Stripe Setup Guide
 
-> Last updated: February 11, 2026
+> Last updated: February 11, 2026 (v2.3.1)
+
+## Security Note
+
+**Plan upgrades only happen AFTER payment is confirmed.** When a user clicks "Upgrade":
+1. They're redirected to Stripe Checkout (hosted by Stripe)
+2. They enter payment info and complete checkout
+3. Stripe sends `checkout.session.completed` webhook
+4. Our webhook handler upgrades the plan
+
+The plan is NEVER upgraded before payment. This prevents users from getting paid features without paying.
 
 RS Systems uses Stripe for two separate billing flows:
 1. **Customer invoices** — charging your customers for windshield repairs
