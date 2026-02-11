@@ -22,6 +22,14 @@ def create_customer(request):
     """Create a new customer."""
     tenant = getattr(request, 'tenant', None)
 
+    # Usage limit check
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_add_customer()
+        if not can_create:
+            messages.warning(request, limit_msg)
+            return redirect('technician_dashboard')
+
     if request.method == 'POST':
         form = CustomerForm(request.POST, tenant=tenant)
         if form.is_valid():

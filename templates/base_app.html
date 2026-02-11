@@ -174,6 +174,72 @@
     </div>
     {% endif %}
 
+    <!-- Subscription Status Banners (owners/managers only) -->
+    {% if is_owner_or_manager and tenant %}
+    {% if tenant.subscription_status == 'past_due' %}
+    <div class="bg-red-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <span class="font-medium">Payment failed.</span>
+                    <span class="ml-1">Please update your payment method to avoid service interruption.</span>
+                </div>
+                <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                    Update Payment
+                </a>
+            </div>
+        </div>
+    </div>
+    {% elif tenant.subscription_status == 'canceled' %}
+    <div class="bg-gray-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <span>Your subscription is set to cancel at the end of the billing period.</span>
+                </div>
+                <a href="{% url 'billing_settings' %}" class="bg-white text-gray-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                    Reactivate
+                </a>
+            </div>
+        </div>
+    </div>
+    {% elif tenant.plan == 'trial' %}
+        {% if tenant.is_trial_expired %}
+    <div class="bg-red-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-circle mr-2"></i>
+                    <span class="font-medium">Your free trial has expired.</span>
+                    <span class="ml-1">Upgrade now to continue using RS Systems.</span>
+                </div>
+                <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                    Upgrade Now
+                </a>
+            </div>
+        </div>
+    </div>
+        {% elif tenant.trial_days_remaining <= 7 %}
+    <div class="bg-amber-500 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center">
+                    <i class="fas fa-clock mr-2"></i>
+                    <span class="font-medium">Your free trial expires in {{ tenant.trial_days_remaining }} day{{ tenant.trial_days_remaining|pluralize }}.</span>
+                    <span class="ml-1">Upgrade now to keep your data.</span>
+                </div>
+                <a href="{% url 'billing_settings' %}" class="bg-white text-amber-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50 transition-colors">
+                    Upgrade Now
+                </a>
+            </div>
+        </div>
+    </div>
+        {% endif %}
+    {% endif %}
+    {% endif %}
+
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {% block content %}{% endblock %}
     </main>

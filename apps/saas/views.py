@@ -819,6 +819,14 @@ def invite_member(request):
     last_name = request.POST.get('last_name', '').strip()
     role = request.POST.get('role', 'viewer')
 
+    # Usage limit check for technicians
+    if role == 'technician' and tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_add, limit_msg = UsageService(tenant).can_add_technician()
+        if not can_add:
+            messages.warning(request, limit_msg)
+            return redirect('owner_settings')
+
     # Ability checkboxes for technicians/managers
     can_repair = request.POST.get('can_repair') == 'on'
     can_replace = request.POST.get('can_replace') == 'on'
