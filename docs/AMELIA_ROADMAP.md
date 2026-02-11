@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: February 4, 2026*
+*Last Updated: February 11, 2026
 
 ---
 
@@ -57,12 +57,17 @@ Referral codes, point-based rewards, flexible redemption options.
 - Statement of account per customer
 → Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-6-polish--automation) (~12 hours)
 
-### SaaS Subscription Billing (Phase 7)
-Wire up Stripe Products/Prices for subscription plans, checkout flow, subscription webhooks, usage enforcement, trial expiration.
+### SaaS Subscription Billing (Phase 7) ✅ DONE (Feb 11, 2026)
+- Stripe Checkout Sessions for new subscriptions
+- Usage enforcement (repairs/techs/customers limits)
+- Trial expiring/expired banners
+- Past due / canceled subscription banners
+- checkout.session.completed webhook handler
+- Security: plan only upgrades after payment confirmed
 → Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-7-saas-subscription-billing-glass-shops)
 
-### Deploy v2.x to AWS
-PLAN.md Step 6 — push the unified permissions/template/billing stack to production. Run migrations, verify Stripe webhook secret is set, fill in BillingConfig.
+### Deploy v2.x to AWS ✅ DONE
+Production running on AWS Elastic Beanstalk at rockstarwindshield.repair
 
 ---
 

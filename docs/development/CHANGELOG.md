@@ -370,3 +370,16 @@ Major architectural overhaul: one permission system, one base template, fixed si
 1. Create Stripe Products/Prices in Stripe Dashboard (Drake action)
 2. Copy `stripe_price_id` values into SubscriptionPlan records
 3. Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` env vars in production
+
+## [2.3.1] - February 11, 2026
+
+### Security
+- **CRITICAL: Plan upgrade now requires payment** — Fixed security hole where clicking "Upgrade" granted paid plan features before payment completed. Plan now only upgrades via `checkout.session.completed` webhook after Stripe confirms payment.
+
+### Fixed
+- **Stripe API breaking change** — Switched from direct subscription creation to Stripe Checkout Sessions (Stripe removed `payment_intent` from Invoice objects in March 2025)
+- **Added checkout.session.completed webhook handler** — Captures subscription ID and upgrades plan after successful payment
+
+### Changed
+- `create_subscription` now returns `checkout_url` for redirect instead of `client_secret`
+- Plan/subscription_plan fields only updated in webhook handlers, never before payment
