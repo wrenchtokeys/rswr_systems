@@ -1,9 +1,11 @@
 # Billing & Payments Roadmap
 
 > Created: Jan 31, 2026 — Amelia
-> Last updated: Jan 31, 2026
-> Status: In Progress
+> Last updated: February 11, 2026
+> Status: ✅ Complete
 > Priority: High — core revenue feature
+
+📖 **For how billing works, see [BILLING_GUIDE.md](docs/BILLING_GUIDE.md)**
 
 ## Current State (What Exists)
 
