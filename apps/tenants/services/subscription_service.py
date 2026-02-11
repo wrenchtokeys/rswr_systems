@@ -205,8 +205,11 @@ class SubscriptionService:
             subscription = stripe.Subscription.retrieve(tenant.stripe_subscription_id)
             
             if subscription.status in ('canceled', 'incomplete_expired'):
+                # Clear stale subscription ID and tell user to start fresh
+                tenant.stripe_subscription_id = ''
+                tenant.save(update_fields=['stripe_subscription_id'])
                 raise SubscriptionError(
-                    "Your subscription has been canceled. Please create a new subscription."
+                    "Previous subscription was canceled. Please select a plan to subscribe."
                 )
             
             # If subscription is incomplete (never paid), void it and start fresh
