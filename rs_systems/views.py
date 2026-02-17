@@ -24,11 +24,6 @@ from django_ratelimit.decorators import ratelimit
 import io
 import sys
 
-def logo_concepts(request):
-    """Temporary page to preview logo concepts"""
-    return render(request, 'logo_concepts.html')
-
-
 def health_check(request):
     """Health check endpoint for AWS load balancer - bypasses ALLOWED_HOSTS"""
     try:
