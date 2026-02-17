@@ -85,7 +85,13 @@
                     <div class="flex justify-between"><span class="text-gray-500">ADAS Calibration</span><span class="font-medium">${{ replacement.adas_calibration_cost|floatformat:2|default:"0.00" }}</span></div>
                     {% endif %}
                     <div class="border-t border-gray-200 pt-2 mt-2">
-                        <div class="flex justify-between text-lg"><span class="font-semibold text-gray-900">Total</span><span class="font-bold text-gray-900">${{ replacement.cost|floatformat:2 }}</span></div>
+                        <div class="flex justify-between"><span class="text-gray-500">Subtotal</span><span class="font-medium">${{ replacement.cost|floatformat:2 }}</span></div>
+                        {% if replacement.tax_amount and replacement.tax_amount > 0 %}
+                        <div class="flex justify-between"><span class="text-gray-500">Tax ({{ replacement.tax_rate|floatformat:2 }}%)</span><span class="font-medium">${{ replacement.tax_amount|floatformat:2 }}</span></div>
+                        {% endif %}
+                    </div>
+                    <div class="border-t border-gray-200 pt-2 mt-2">
+                        <div class="flex justify-between text-lg"><span class="font-semibold text-gray-900">Total</span><span class="font-bold text-gray-900">${{ replacement.total_with_tax|floatformat:2 }}</span></div>
                     </div>
                 </div>
             </div>
