@@ -547,8 +547,52 @@ def billing_view(request):
 
 
 # ------------------------------------------------------------------
-# 7. Replacement form
+# 7. Replacement management
 # ------------------------------------------------------------------
+
+@owner_or_manager_required
+def replacement_list(request):
+    """List all glass replacements for the tenant."""
+    from django.core.paginator import Paginator
+    
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+
+    # Filter by status if specified
+    status_filter = request.GET.get('status', '')
+    replacements = Replacement.objects.filter(tenant=tenant).select_related(
+        'customer', 'technician__user'
+    ).order_by('-service_date', '-created_at')
+
+    if status_filter:
+        replacements = replacements.filter(queue_status=status_filter)
+
+    # Pagination
+    paginator = Paginator(replacements, 25)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+
+    # Status choices for filter dropdown
+    status_choices = [
+        ('', 'All Statuses'),
+        ('REQUESTED', 'Customer Requested'),
+        ('PENDING', 'Approval Pending'),
+        ('APPROVED', 'Approved'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('COMPLETED', 'Completed'),
+        ('DENIED', 'Denied'),
+    ]
+
+    return render(request, 'saas/replacement_list.html', {
+        'page_obj': page_obj,
+        'tenant': tenant,
+        'status_filter': status_filter,
+        'status_choices': status_choices,
+    })
+
 
 @owner_or_manager_required
 def replacement_create(request):

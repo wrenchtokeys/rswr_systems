@@ -49,6 +49,7 @@ urlpatterns = [
     path('owner/tax-rates/toggle/', views.owner_toggle_tax, name='owner_toggle_tax'),
 
     # Replacement management
+    path('tech/replacements/', views.replacement_list, name='replacement_list'),
     path('tech/replacement/new/', views.replacement_create, name='replacement_create'),
     path('tech/replacement/<int:pk>/', views.replacement_detail, name='replacement_detail'),
     path('tech/replacement/<int:pk>/edit/', views.replacement_edit, name='replacement_edit'),
