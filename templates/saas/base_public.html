@@ -108,8 +108,12 @@
                     </div>
                     <span class="font-semibold text-gray-900">RS Systems</span>
                 </div>
-                <div class="text-sm text-gray-500">
-                    &copy; {% now "Y" %} RS Systems. Built for glass shops, by glass shops.
+                <div class="flex items-center space-x-6">
+                    <a href="{% url 'terms_of_service' %}" class="text-sm text-gray-500 hover:text-gray-700">Terms of Service</a>
+                    <a href="{% url 'privacy_policy' %}" class="text-sm text-gray-500 hover:text-gray-700">Privacy Policy</a>
+                    <span class="text-sm text-gray-500">
+                        &copy; {% now "Y" %} RS Systems
+                    </span>
                 </div>
             </div>
         </div>

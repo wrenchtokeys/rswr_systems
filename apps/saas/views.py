@@ -132,6 +132,20 @@ def signup_view(request):
 
 
 # ------------------------------------------------------------------
+# 2. Legal Pages
+# ------------------------------------------------------------------
+
+def terms_of_service(request):
+    """Terms of Service page."""
+    return render(request, 'saas/terms_of_service.html')
+
+
+def privacy_policy(request):
+    """Privacy Policy page."""
+    return render(request, 'saas/privacy_policy.html')
+
+
+# ------------------------------------------------------------------
 # 3. Onboarding wizard
 # ------------------------------------------------------------------
 
