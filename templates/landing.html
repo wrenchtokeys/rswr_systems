@@ -75,31 +75,72 @@
                 </p>
             </div>
 
-            <!-- Dashboard Preview -->
+            <!-- Dashboard Preview - matches actual owner dashboard -->
             <div class="mt-16 max-w-4xl mx-auto">
                 <div class="bg-white rounded-xl shadow-2xl shadow-gray-200/50 border border-gray-200 overflow-hidden">
                     <div class="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center space-x-2">
                         <div class="w-3 h-3 rounded-full bg-red-400"></div>
                         <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
                         <div class="w-3 h-3 rounded-full bg-green-400"></div>
-                        <span class="text-gray-400 text-xs ml-3">RS Systems Dashboard</span>
+                        <span class="text-gray-400 text-xs ml-3">RS Systems — Owner Dashboard</span>
                     </div>
-                    <div class="p-6">
+                    <div class="p-6 bg-gray-50">
+                        <!-- Revenue Banner -->
+                        <div class="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-5 text-white shadow-lg mb-5">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-blue-100 text-xs font-medium mb-1">Revenue This Month</div>
+                                    <div class="text-3xl font-bold">$8,420.00</div>
+                                    <div class="text-blue-200 text-xs mt-2">
+                                        <span class="mr-3"><i class="fas fa-tools mr-1"></i>Repairs: $6,280</span>
+                                        <span><i class="fas fa-car mr-1"></i>Replacements: $2,140</span>
+                                    </div>
+                                </div>
+                                <div class="w-12 h-12 rounded-full bg-white bg-opacity-20 flex items-center justify-center">
+                                    <i class="fas fa-dollar-sign text-xl text-white"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Stats Cards -->
                         <div class="grid grid-cols-3 gap-4">
-                            <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                                <div class="text-sm text-gray-500 mb-1">Today's Jobs</div>
-                                <div class="text-2xl font-bold text-gray-900">8</div>
-                                <div class="text-xs text-green-600 mt-1"><i class="fas fa-arrow-up mr-1"></i>2 more than yesterday</div>
+                            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-medium text-gray-500">Repairs This Month</span>
+                                    <div class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-tools text-green-600 text-xs"></i>
+                                    </div>
+                                </div>
+                                <div class="text-2xl font-bold text-gray-900">47</div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                    <div class="bg-green-500 h-1.5 rounded-full" style="width: 24%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">47 of 200 used</p>
                             </div>
-                            <div class="bg-green-50 rounded-lg p-4 border border-green-100">
-                                <div class="text-sm text-gray-500 mb-1">This Month</div>
-                                <div class="text-2xl font-bold text-gray-900">$12,450</div>
-                                <div class="text-xs text-green-600 mt-1"><i class="fas fa-arrow-up mr-1"></i>18% vs last month</div>
-                            </div>
-                            <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-100">
-                                <div class="text-sm text-gray-500 mb-1">Pending Approval</div>
+                            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-medium text-gray-500">Technicians</span>
+                                    <div class="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-users text-blue-600 text-xs"></i>
+                                    </div>
+                                </div>
                                 <div class="text-2xl font-bold text-gray-900">3</div>
-                                <div class="text-xs text-yellow-600 mt-1"><i class="fas fa-clock mr-1"></i>Waiting on customers</div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                    <div class="bg-blue-500 h-1.5 rounded-full" style="width: 60%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">3 of 5 seats</p>
+                            </div>
+                            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-medium text-gray-500">Customers</span>
+                                    <div class="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-building text-purple-600 text-xs"></i>
+                                    </div>
+                                </div>
+                                <div class="text-2xl font-bold text-gray-900">12</div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                    <div class="bg-purple-500 h-1.5 rounded-full" style="width: 24%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">12 of 50 accounts</p>
                             </div>
                         </div>
                     </div>
@@ -284,7 +325,7 @@
         </div>
     </section>
 
-    <!-- Pricing Section -->
+    <!-- Pricing Section - Dynamic from database -->
     <section id="pricing" class="py-16 md:py-24 px-6 bg-gray-50">
         <div class="max-w-6xl mx-auto">
             <div class="text-center mb-12">
@@ -293,30 +334,42 @@
             </div>
 
             <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-                <!-- Starter Plan -->
-                <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden hover:shadow-xl transition-shadow">
-                    <div class="p-6 text-center border-b border-gray-100">
-                        <h3 class="text-lg font-bold text-gray-900 mb-1">Starter</h3>
-                        <p class="text-sm text-gray-500 mb-4">For small shops getting started</p>
+                {% for plan in plans %}
+                <div class="bg-white rounded-2xl shadow-lg border{% if plan.slug == 'pro' %}-2 border-blue-500{% else %} border-gray-200{% endif %} overflow-hidden hover:shadow-xl transition-shadow relative">
+                    {% if plan.slug == 'pro' %}
+                    <div class="absolute top-0 left-0 right-0 bg-blue-500 text-white text-center text-xs font-semibold py-1">
+                        MOST POPULAR
+                    </div>
+                    {% endif %}
+                    <div class="p-6 text-center border-b border-gray-100 {% if plan.slug == 'pro' %}pt-8{% endif %}">
+                        <h3 class="text-lg font-bold text-gray-900 mb-1">{{ plan.name }}</h3>
+                        <p class="text-sm text-gray-500 mb-4">
+                            {% if plan.slug == 'starter' %}For small shops getting started
+                            {% elif plan.slug == 'pro' %}For growing shops
+                            {% elif plan.slug == 'enterprise' %}For large operations
+                            {% else %}{{ plan.name }} plan{% endif %}
+                        </p>
                         <div class="flex items-baseline justify-center">
-                            <span class="text-4xl font-extrabold text-gray-900">$49</span>
+                            <span class="text-4xl font-extrabold text-gray-900">${{ plan.monthly_price|floatformat:0 }}</span>
                             <span class="text-gray-500 ml-1">/month</span>
                         </div>
-                        <p class="text-xs text-gray-400 mt-1">or $470/year (save 20%)</p>
+                        {% if plan.annual_price %}
+                        <p class="text-xs text-gray-400 mt-1">or ${{ plan.annual_price|floatformat:0 }}/year (save ~20%)</p>
+                        {% endif %}
                     </div>
                     <div class="p-6">
                         <ul class="space-y-3 mb-6 text-sm">
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                Up to <strong>5 technicians</strong>
+                                {% if plan.max_technicians %}Up to <strong>{{ plan.max_technicians }} technicians</strong>{% else %}<strong>Unlimited</strong> technicians{% endif %}
                             </li>
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                200 repairs/month
+                                {% if plan.max_repairs_per_month %}{{ plan.max_repairs_per_month }} repairs/month{% else %}<strong>Unlimited</strong> repairs{% endif %}
                             </li>
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                50 customers
+                                {% if plan.max_customers %}{{ plan.max_customers }} customers{% else %}<strong>Unlimited</strong> customers{% endif %}
                             </li>
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
@@ -326,107 +379,42 @@
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
                                 Invoicing & payments
                             </li>
+                            {% if plan.features.rewards %}
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
                                 Rewards program
                             </li>
-                        </ul>
-                        <a href="/signup/" class="block w-full bg-gray-100 hover:bg-gray-200 text-gray-800 text-center py-3 rounded-lg font-semibold transition-colors text-sm">
-                            Start Free Trial
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Pro Plan - Featured -->
-                <div class="bg-white rounded-2xl shadow-xl border-2 border-blue-500 overflow-hidden relative">
-                    <div class="absolute top-0 left-0 right-0 bg-blue-500 text-white text-center text-xs font-semibold py-1">
-                        MOST POPULAR
-                    </div>
-                    <div class="p-6 text-center border-b border-gray-100 pt-8">
-                        <h3 class="text-lg font-bold text-gray-900 mb-1">Pro</h3>
-                        <p class="text-sm text-gray-500 mb-4">For growing shops</p>
-                        <div class="flex items-baseline justify-center">
-                            <span class="text-4xl font-extrabold text-gray-900">$99</span>
-                            <span class="text-gray-500 ml-1">/month</span>
-                        </div>
-                        <p class="text-xs text-gray-400 mt-1">or $950/year (save 20%)</p>
-                    </div>
-                    <div class="p-6">
-                        <ul class="space-y-3 mb-6 text-sm">
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                Up to <strong>15 technicians</strong>
-                            </li>
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                <strong>Unlimited</strong> repairs
-                            </li>
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                <strong>Unlimited</strong> customers
-                            </li>
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                Everything in Starter
-                            </li>
+                            {% endif %}
+                            {% if plan.features.custom_branding %}
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
                                 Custom branding
                             </li>
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                2GB storage
-                            </li>
-                        </ul>
-                        <a href="/signup/" class="block w-full bg-blue-600 hover:bg-blue-700 text-white text-center py-3 rounded-lg font-semibold transition-colors text-sm">
-                            Start Free Trial
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Enterprise Plan -->
-                <div class="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden hover:shadow-xl transition-shadow">
-                    <div class="p-6 text-center border-b border-gray-100">
-                        <h3 class="text-lg font-bold text-gray-900 mb-1">Enterprise</h3>
-                        <p class="text-sm text-gray-500 mb-4">For large operations</p>
-                        <div class="flex items-baseline justify-center">
-                            <span class="text-4xl font-extrabold text-gray-900">$249</span>
-                            <span class="text-gray-500 ml-1">/month</span>
-                        </div>
-                        <p class="text-xs text-gray-400 mt-1">or $2,390/year (save 20%)</p>
-                    </div>
-                    <div class="p-6">
-                        <ul class="space-y-3 mb-6 text-sm">
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                <strong>Unlimited</strong> technicians
-                            </li>
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                <strong>Unlimited</strong> everything
-                            </li>
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                Everything in Pro
-                            </li>
+                            {% endif %}
+                            {% if plan.features.api_access %}
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
                                 API access
                             </li>
+                            {% endif %}
+                            {% if plan.features.priority_support %}
                             <li class="flex items-center text-gray-700">
                                 <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
                                 Priority support
                             </li>
-                            <li class="flex items-center text-gray-700">
-                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
-                                10GB storage
-                            </li>
+                            {% endif %}
                         </ul>
-                        <a href="/signup/" class="block w-full bg-gray-100 hover:bg-gray-200 text-gray-800 text-center py-3 rounded-lg font-semibold transition-colors text-sm">
+                        <a href="/signup/" class="block w-full {% if plan.slug == 'pro' %}bg-blue-600 hover:bg-blue-700 text-white{% else %}bg-gray-100 hover:bg-gray-200 text-gray-800{% endif %} text-center py-3 rounded-lg font-semibold transition-colors text-sm">
                             Start Free Trial
                         </a>
                     </div>
                 </div>
+                {% empty %}
+                <!-- Fallback if no plans in database -->
+                <div class="col-span-3 text-center py-12 text-gray-500">
+                    <p>Pricing information coming soon. <a href="/signup/" class="text-blue-600 hover:underline">Start your free trial</a> today!</p>
+                </div>
+                {% endfor %}
             </div>
 
             <p class="text-center text-gray-500 text-sm mt-8">

@@ -50,7 +50,16 @@ def home(request):
         if request.user.is_staff:
             return redirect('/admin/')
         return redirect('owner_dashboard')
-    return render(request, 'landing.html')
+    
+    # Fetch subscription plans for landing page pricing section
+    from apps.tenants.models import SubscriptionPlan
+    plans = SubscriptionPlan.objects.filter(
+        is_active=True
+    ).exclude(
+        slug='trial'  # Don't show trial as a pricing option
+    ).order_by('display_order')
+    
+    return render(request, 'landing.html', {'plans': plans})
 
 @never_cache
 def customer_login_view(request):
