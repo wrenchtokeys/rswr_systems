@@ -5,7 +5,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.contrib.contenttypes.models import ContentType
 from core.models import Customer
-from apps.technician_portal.models import Repair, UnitRepairCount, TechnicianNotification, Technician
+from apps.technician_portal.models import Repair, Replacement, UnitRepairCount, TechnicianNotification, Technician
 from apps.rewards_referrals.models import ReferralCode, RewardOption, RewardRedemption, Referral
 from apps.rewards_referrals.services import ReferralService, RewardService
 from apps.billing.models import Invoice
@@ -787,6 +787,169 @@ def customer_batch_deny(request, batch_id):
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+# =============================================================================
+# REPLACEMENT VIEWS - Customer portal for glass replacements
+# =============================================================================
+
+@customer_required
+def customer_replacements(request):
+    """List all glass replacements for this customer."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        # Get filter parameters
+        status_filter = request.GET.get('status', '')
+
+        # Get all replacements for this customer
+        replacements = Replacement.objects.filter(customer=customer).select_related(
+            'technician__user'
+        ).order_by('-service_date', '-created_at')
+
+        # Apply status filter
+        if status_filter:
+            replacements = replacements.filter(queue_status=status_filter)
+
+        # Calculate stats
+        stats = {
+            'total': replacements.count(),
+            'pending': Replacement.objects.filter(customer=customer, queue_status='PENDING').count(),
+            'in_progress': Replacement.objects.filter(customer=customer, queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
+            'completed': Replacement.objects.filter(customer=customer, queue_status='COMPLETED').count(),
+        }
+
+        # Pagination
+        paginator = Paginator(replacements, 25)
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+
+        # Status choices for filter
+        status_choices = [
+            ('', 'All Statuses'),
+            ('REQUESTED', 'Customer Requested'),
+            ('PENDING', 'Approval Pending'),
+            ('APPROVED', 'Approved'),
+            ('IN_PROGRESS', 'In Progress'),
+            ('COMPLETED', 'Completed'),
+            ('DENIED', 'Denied'),
+        ]
+
+        return render(request, 'customer_portal/replacements.html', {
+            'page_obj': page_obj,
+            'customer': customer,
+            'stats': stats,
+            'status_filter': status_filter,
+            'status_choices': status_choices,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_detail(request, replacement_id):
+    """View details of a single replacement."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer)
+
+        return render(request, 'customer_portal/replacement_detail.html', {
+            'replacement': replacement,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_approve(request, replacement_id):
+    """Approve a pending replacement."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer)
+
+        # Only allow approval of pending replacements
+        if replacement.queue_status not in ['PENDING', 'REQUESTED']:
+            messages.warning(request, "This replacement cannot be approved - it's not pending.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        if request.method == 'POST':
+            notes = request.POST.get('notes', '')
+
+            # Update replacement status
+            replacement.queue_status = 'APPROVED'
+            replacement.save()
+
+            # Create notification for technician
+            if replacement.technician:
+                TechnicianNotification.objects.create(
+                    technician=replacement.technician,
+                    message=f"✅ Replacement #{replacement.id} APPROVED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}",
+                    read=False,
+                )
+
+            messages.success(request, "Replacement has been approved. The technician can now proceed.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        return render(request, 'customer_portal/replacement_approve.html', {
+            'replacement': replacement,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_deny(request, replacement_id):
+    """Deny a pending replacement."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer)
+
+        # Only allow denial of pending replacements
+        if replacement.queue_status not in ['PENDING', 'REQUESTED']:
+            messages.warning(request, "This replacement cannot be denied - it's not pending.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        if request.method == 'POST':
+            reason = request.POST.get('reason', '')
+
+            # Update replacement status
+            replacement.queue_status = 'DENIED'
+            replacement.save()
+
+            # Create notification for technician
+            if replacement.technician:
+                denial_message = f"❌ Replacement #{replacement.id} DENIED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}"
+                if reason:
+                    denial_message += f". Reason: {reason}"
+                TechnicianNotification.objects.create(
+                    technician=replacement.technician,
+                    message=denial_message,
+                    read=False,
+                )
+
+            messages.success(request, "Replacement has been denied.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        return render(request, 'customer_portal/replacement_deny.html', {
+            'replacement': replacement,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
 
 def is_suspicious_username(username):
     """Check if username looks like a bot/spam registration"""

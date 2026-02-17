@@ -1,0 +1,142 @@
+{% extends "customer_portal/base_customer.html" %}
+
+{% block title %}My Replacements | RS Systems{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Glass Replacements</h1>
+        <p class="text-gray-500 mt-1">Track your windshield and glass replacement jobs.</p>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div class="text-2xl font-bold text-gray-900">{{ stats.total }}</div>
+            <div class="text-sm text-gray-500">Total Replacements</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-yellow-200 p-4">
+            <div class="text-2xl font-bold text-yellow-600">{{ stats.pending }}</div>
+            <div class="text-sm text-gray-500">Awaiting Approval</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-blue-200 p-4">
+            <div class="text-2xl font-bold text-blue-600">{{ stats.in_progress }}</div>
+            <div class="text-sm text-gray-500">In Progress</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border border-green-200 p-4">
+            <div class="text-2xl font-bold text-green-600">{{ stats.completed }}</div>
+            <div class="text-sm text-gray-500">Completed</div>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+        <form method="get" class="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div class="flex-1">
+                <select name="status" onchange="this.form.submit()" 
+                        class="block w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg bg-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if status_filter %}
+            <a href="{% url 'customer_replacements' %}" class="text-sm text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times mr-1"></i> Clear filter
+            </a>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- Replacements List -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {% if page_obj.object_list %}
+        <div class="divide-y divide-gray-200">
+            {% for replacement in page_obj %}
+            <a href="{% url 'customer_replacement_detail' replacement_id=replacement.id %}" class="block hover:bg-gray-50 transition-colors">
+                <div class="p-4 sm:p-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-3">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                    {% if replacement.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
+                                    {% elif replacement.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
+                                    {% elif replacement.queue_status == 'APPROVED' %}bg-blue-100 text-blue-800
+                                    {% elif replacement.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
+                                    {% elif replacement.queue_status == 'DENIED' %}bg-red-100 text-red-800
+                                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {{ replacement.get_queue_status_display }}
+                                </span>
+                                <h3 class="text-lg font-semibold text-gray-900">
+                                    {{ replacement.get_glass_position_display|default:"Glass Replacement" }}
+                                </h3>
+                            </div>
+                            <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                                <span><i class="fas fa-truck mr-1"></i> Unit {{ replacement.unit_number }}</span>
+                                <span><i class="fas fa-calendar mr-1"></i> {{ replacement.service_date|date:"M d, Y" }}</span>
+                                {% if replacement.nags_number %}
+                                <span><i class="fas fa-hashtag mr-1"></i> NAGS: {{ replacement.nags_number }}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="text-right">
+                                <div class="text-lg font-bold text-gray-900">${{ replacement.total_with_tax|floatformat:2 }}</div>
+                                {% if replacement.tax_amount and replacement.tax_amount > 0 %}
+                                <div class="text-xs text-gray-500">includes ${{ replacement.tax_amount|floatformat:2 }} tax</div>
+                                {% endif %}
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-400"></i>
+                        </div>
+                    </div>
+
+                    {% if replacement.queue_status == 'PENDING' %}
+                    <div class="mt-4 flex items-center gap-3">
+                        <span class="text-sm text-yellow-700 bg-yellow-50 px-3 py-1 rounded-full">
+                            <i class="fas fa-clock mr-1"></i> Awaiting your approval
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <div class="bg-gray-50 px-6 py-3 flex items-center justify-between border-t border-gray-200">
+            <div class="text-sm text-gray-500">
+                Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+            </div>
+            <div class="flex items-center space-x-2">
+                {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+                   class="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50">
+                    <i class="fas fa-chevron-left"></i> Prev
+                </a>
+                {% endif %}
+                <span class="px-3 py-1 text-sm text-gray-700">
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </span>
+                {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}{% if status_filter %}&status={{ status_filter }}{% endif %}" 
+                   class="px-3 py-1 text-sm bg-white border border-gray-300 rounded hover:bg-gray-50">
+                    Next <i class="fas fa-chevron-right"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- Empty state -->
+        <div class="text-center py-12">
+            <i class="fas fa-window-restore text-4xl text-gray-300 mb-4"></i>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">No replacements yet</h3>
+            <p class="text-gray-500">Glass replacement jobs will appear here when scheduled.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -18,6 +18,12 @@ urlpatterns = [
     path('repairs/request/', views.request_repair, name='customer_request_repair'),
     path('repairs/bulk-action/', views.customer_bulk_action, name='customer_bulk_action'),
 
+    # Replacements management
+    path('replacements/', views.customer_replacements, name='customer_replacements'),
+    path('replacements/<int:replacement_id>/', views.customer_replacement_detail, name='customer_replacement_detail'),
+    path('replacements/<int:replacement_id>/approve/', views.customer_replacement_approve, name='customer_replacement_approve'),
+    path('replacements/<int:replacement_id>/deny/', views.customer_replacement_deny, name='customer_replacement_deny'),
+
     # Multi-break batch management
     path('batch/<uuid:batch_id>/', views.customer_batch_detail, name='customer_batch_detail'),
     path('batch/<uuid:batch_id>/approve/', views.customer_batch_approve, name='customer_batch_approve'),
