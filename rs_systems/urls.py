@@ -26,6 +26,7 @@ from core.views import preview_email_template, test_notification, check_notifica
 urlpatterns = [
     path('', views.home, name='home'),
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
+    path('logo-concepts/', views.logo_concepts, name='logo_concepts'),  # Temporary logo preview
     path('payment-complete', views.payment_complete, name='payment_complete'),
     path('payment-cancelled', views.payment_cancelled, name='payment_cancelled'),
     # setup-database/ removed — security risk (unauthenticated DB setup with hardcoded creds)
