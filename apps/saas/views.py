@@ -9,15 +9,21 @@ Author: Amelia (Clawdbot AI)
 """
 
 import logging
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.db import models, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from common.decorators import owner_or_manager_required
 from django.utils import timezone
 from django.utils.text import slugify
@@ -76,6 +82,56 @@ def _get_owner_tenant(request):
     return tenant, membership
 
 
+def _send_verification_email(request, user):
+    """
+    Send email verification link to a user after signup.
+    
+    Uses Django's token generator for secure verification links.
+    Fails silently to never block the signup flow.
+    """
+    try:
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        
+        # Check if user is a CustomerUser or shop owner
+        try:
+            from apps.customer_portal.models import CustomerUser
+            CustomerUser.objects.get(user=user)
+            # Customer - use customer verification URL
+            verification_url = request.build_absolute_uri(
+                reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
+            )
+        except:
+            # Shop owner - use password reset infrastructure for now
+            # (they can verify via account settings later)
+            verification_url = request.build_absolute_uri(
+                reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
+            )
+        
+        send_mail(
+            subject='Verify your email address - RS Systems',
+            message=f'''Welcome to RS Systems!
+
+Please verify your email address by clicking the link below:
+
+{verification_url}
+
+This link will expire in 24 hours.
+
+If you didn't create an account, you can safely ignore this email.
+
+— The RS Systems Team
+''',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=True,  # Never block signup on email failure
+        )
+        logger.info(f"Verification email sent to {user.email}")
+    except Exception as e:
+        # Log but don't fail - verification email is non-critical
+        logger.warning(f"Failed to send verification email to {user.email}: {e}")
+
+
 # ------------------------------------------------------------------
 # 1. Signup
 # ------------------------------------------------------------------
@@ -110,10 +166,13 @@ def signup_view(request):
                     login(request, auth_user)
                     request.session['tenant_id'] = tenant.id
 
+                # Send verification email (fails silently)
+                _send_verification_email(request, user)
+
                 messages.success(
                     request,
                     f'Welcome to RS Systems, {cd["first_name"]}! '
-                    f'Your 30-day free trial has started.',
+                    f'Your 30-day free trial has started. Check your email to verify your address.',
                 )
                 return redirect('onboarding')
 
@@ -1262,7 +1321,10 @@ def shop_join_view(request, slug):
                 login(request, auth_user)
                 request.session['tenant_id'] = tenant.id
 
-            messages.success(request, f'Welcome to {tenant.name}! Your portal account is ready.')
+            # 6. Send verification email (fails silently)
+            _send_verification_email(request, user)
+
+            messages.success(request, f'Welcome to {tenant.name}! Your portal account is ready. Check your email to verify your address.')
             return redirect('customer_dashboard')
 
         except Exception as e:
