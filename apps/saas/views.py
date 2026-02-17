@@ -604,10 +604,78 @@ def replacement_detail(request, pk):
         messages.error(request, 'Access denied.')
         return redirect('owner_dashboard')
 
+    # Build allowed status transitions for the UI
+    status_transitions = []
+    current = replacement.queue_status
+    if current == 'REQUESTED':
+        status_transitions = [('PENDING', 'Move to Pending')]
+    elif current == 'PENDING':
+        status_transitions = [('APPROVED', 'Approve'), ('DENIED', 'Deny')]
+    elif current == 'APPROVED':
+        status_transitions = [('IN_PROGRESS', 'Start Work'), ('DENIED', 'Deny')]
+    elif current == 'IN_PROGRESS':
+        status_transitions = [('COMPLETED', 'Mark Complete')]
+    # COMPLETED and DENIED are terminal states
+
     return render(request, 'saas/replacement_detail.html', {
         'replacement': replacement,
         'tenant': tenant,
+        'status_transitions': status_transitions,
     })
+
+
+@owner_or_manager_required
+def replacement_edit(request, pk):
+    """Edit an existing glass replacement."""
+    tenant = getattr(request, 'tenant', None)
+    replacement = get_object_or_404(Replacement, pk=pk)
+    
+    if not tenant or replacement.tenant_id != tenant.id:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_dashboard')
+
+    if request.method == 'POST':
+        form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Replacement updated successfully!')
+            return redirect('replacement_detail', pk=replacement.pk)
+    else:
+        form = ReplacementForm(instance=replacement, tenant=tenant)
+
+    return render(request, 'saas/replacement_edit.html', {
+        'form': form,
+        'replacement': replacement,
+        'tenant': tenant,
+    })
+
+
+@require_POST
+@owner_or_manager_required
+def replacement_update_status(request, pk):
+    """Update the status of a glass replacement."""
+    tenant = getattr(request, 'tenant', None)
+    replacement = get_object_or_404(Replacement, pk=pk)
+    
+    if not tenant or replacement.tenant_id != tenant.id:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_dashboard')
+
+    new_status = request.POST.get('status')
+    valid_statuses = ['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED']
+    
+    if new_status not in valid_statuses:
+        messages.error(request, 'Invalid status.')
+        return redirect('replacement_detail', pk=pk)
+
+    old_status = replacement.queue_status
+    replacement.queue_status = new_status
+    replacement.save()
+
+    status_display = replacement.get_queue_status_display()
+    messages.success(request, f'Status updated to {status_display}.')
+    
+    return redirect('replacement_detail', pk=pk)
 
 
 # ------------------------------------------------------------------

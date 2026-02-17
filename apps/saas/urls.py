@@ -51,4 +51,6 @@ urlpatterns = [
     # Replacement management
     path('tech/replacement/new/', views.replacement_create, name='replacement_create'),
     path('tech/replacement/<int:pk>/', views.replacement_detail, name='replacement_detail'),
+    path('tech/replacement/<int:pk>/edit/', views.replacement_edit, name='replacement_edit'),
+    path('tech/replacement/<int:pk>/update-status/', views.replacement_update_status, name='replacement_update_status'),
 ]

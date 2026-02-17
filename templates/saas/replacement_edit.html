@@ -1,0 +1,240 @@
+{% extends "saas/base_owner.html" %}
+
+{% block title %}Edit Replacement #{{ replacement.id }} | RS Systems{% endblock %}
+
+{% block extra_head %}
+<style>
+    .insurance-fields, .adas-cost-field {
+        display: none;
+    }
+    .insurance-fields.show, .adas-cost-field.show {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <a href="{% url 'replacement_detail' pk=replacement.pk %}" class="text-sm text-blue-600 hover:text-blue-800 mb-2 inline-block">
+                <i class="fas fa-arrow-left mr-1"></i> Back to Replacement
+            </a>
+            <h1 class="text-3xl font-bold text-gray-900">Edit Replacement #{{ replacement.id }}</h1>
+            <p class="text-gray-500 mt-1">Update replacement details.</p>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" class="space-y-6">
+            {% csrf_token %}
+
+            <!-- Customer & Technician -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-users mr-2 text-purple-500"></i>Assignment
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="id_customer" class="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
+                        {{ form.customer }}
+                        {% if form.customer.errors %}<p class="mt-1 text-sm text-red-600">{{ form.customer.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label for="id_technician" class="block text-sm font-medium text-gray-700 mb-1">Technician *</label>
+                        {{ form.technician }}
+                        {% if form.technician.errors %}<p class="mt-1 text-sm text-red-600">{{ form.technician.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Vehicle Info -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-car mr-2 text-blue-500"></i>Vehicle Info
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="id_unit_number" class="block text-sm font-medium text-gray-700 mb-1">Unit # / Vehicle ID *</label>
+                        {{ form.unit_number }}
+                        <p class="mt-1 text-xs text-gray-400">Fleet: unit number. Retail: year/make/model.</p>
+                        {% if form.unit_number.errors %}<p class="mt-1 text-sm text-red-600">{{ form.unit_number.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label for="id_glass_position" class="block text-sm font-medium text-gray-700 mb-1">Glass Position</label>
+                        {{ form.glass_position }}
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label for="id_glass_type" class="block text-sm font-medium text-gray-700 mb-1">Glass Type</label>
+                        {{ form.glass_type }}
+                    </div>
+                    <div>
+                        <label for="id_nags_number" class="block text-sm font-medium text-gray-700 mb-1">NAGS Number</label>
+                        {{ form.nags_number }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pricing -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-dollar-sign mr-2 text-green-500"></i>Pricing
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="id_parts_cost" class="block text-sm font-medium text-gray-700 mb-1">Parts Cost ($)</label>
+                        {{ form.parts_cost }}
+                    </div>
+                    <div>
+                        <label for="id_labor_cost" class="block text-sm font-medium text-gray-700 mb-1">Labor Cost ($)</label>
+                        {{ form.labor_cost }}
+                    </div>
+                </div>
+
+                <!-- ADAS -->
+                <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex items-center space-x-3 mb-3">
+                        {{ form.requires_adas_calibration }}
+                        <label for="adas-checkbox" class="text-sm font-medium text-gray-700 cursor-pointer">
+                            Requires ADAS Calibration
+                        </label>
+                    </div>
+                    <div class="adas-cost-field {% if replacement.requires_adas_calibration %}show{% endif %}" id="adas-cost-wrapper">
+                        <label for="adas-cost" class="block text-sm font-medium text-gray-700 mb-1">ADAS Calibration Cost ($)</label>
+                        {{ form.adas_calibration_cost }}
+                    </div>
+                </div>
+
+                <!-- Total (auto-calculated) -->
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-semibold text-blue-800">Estimated Total</span>
+                        <span class="text-2xl font-bold text-blue-900" id="total-cost">${{ replacement.cost|floatformat:2 }}</span>
+                    </div>
+                    <p class="text-xs text-blue-600 mt-1">Auto-calculated from parts + labor + ADAS</p>
+                </div>
+            </div>
+
+            <!-- Insurance -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-shield-alt mr-2 text-yellow-500"></i>Insurance
+                </h2>
+                <div class="flex items-center space-x-3 mb-4">
+                    {{ form.insurance_claim }}
+                    <label for="insurance-checkbox" class="text-sm font-medium text-gray-700 cursor-pointer">
+                        This is an insurance claim
+                    </label>
+                </div>
+                <div class="insurance-fields {% if replacement.insurance_claim %}show{% endif %}" id="insurance-fields">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label for="id_insurance_company" class="block text-sm font-medium text-gray-700 mb-1">Insurance Company</label>
+                            {{ form.insurance_company }}
+                        </div>
+                        <div>
+                            <label for="id_claim_number" class="block text-sm font-medium text-gray-700 mb-1">Claim #</label>
+                            {{ form.claim_number }}
+                        </div>
+                        <div>
+                            <label for="id_deductible" class="block text-sm font-medium text-gray-700 mb-1">Deductible ($)</label>
+                            {{ form.deductible }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Photos & Notes -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-camera mr-2 text-gray-500"></i>Photos & Notes
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Before Photo</label>
+                        {% if replacement.damage_photo_before %}
+                        <div class="mb-2">
+                            <img src="{{ replacement.damage_photo_before.url }}" alt="Current before photo" class="w-32 h-32 object-cover rounded-lg">
+                            <p class="text-xs text-gray-500 mt-1">Current photo</p>
+                        </div>
+                        {% endif %}
+                        {{ form.damage_photo_before }}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">After Photo</label>
+                        {% if replacement.damage_photo_after %}
+                        <div class="mb-2">
+                            <img src="{{ replacement.damage_photo_after.url }}" alt="Current after photo" class="w-32 h-32 object-cover rounded-lg">
+                            <p class="text-xs text-gray-500 mt-1">Current photo</p>
+                        </div>
+                        {% endif %}
+                        {{ form.damage_photo_after }}
+                    </div>
+                </div>
+                <div>
+                    <label for="id_description" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    {{ form.description }}
+                </div>
+            </div>
+
+            <!-- Non-field errors -->
+            {% if form.non_field_errors %}
+            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                {% for error in form.non_field_errors %}
+                <p class="text-sm text-red-700">{{ error }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Submit -->
+            <div class="flex items-center justify-between">
+                <a href="{% url 'replacement_detail' pk=replacement.pk %}" class="text-gray-500 hover:text-gray-700 text-sm font-medium">Cancel</a>
+                <button type="submit" class="inline-flex items-center px-8 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-lg">
+                    <i class="fas fa-save mr-2"></i>Save Changes
+                </button>
+            </div>
+        </form>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+    // Toggle insurance fields
+    const insuranceCheckbox = document.getElementById('insurance-checkbox');
+    const insuranceFields = document.getElementById('insurance-fields');
+    if (insuranceCheckbox) {
+        insuranceCheckbox.addEventListener('change', function() {
+            insuranceFields.classList.toggle('show', this.checked);
+        });
+    }
+
+    // Toggle ADAS cost field
+    const adasCheckbox = document.getElementById('adas-checkbox');
+    const adasWrapper = document.getElementById('adas-cost-wrapper');
+    if (adasCheckbox) {
+        adasCheckbox.addEventListener('change', function() {
+            adasWrapper.classList.toggle('show', this.checked);
+            calculateTotal();
+        });
+    }
+
+    // Auto-calculate total
+    function calculateTotal() {
+        const parts = parseFloat(document.getElementById('id_parts_cost')?.value) || 0;
+        const labor = parseFloat(document.getElementById('id_labor_cost')?.value) || 0;
+        const adasChecked = document.getElementById('adas-checkbox')?.checked;
+        const adas = adasChecked ? (parseFloat(document.getElementById('adas-cost')?.value) || 0) : 0;
+        const total = parts + labor + adas;
+        document.getElementById('total-cost').textContent = '$' + total.toFixed(2);
+    }
+
+    // Attach listeners
+    ['id_parts_cost', 'id_labor_cost', 'adas-cost'].forEach(function(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', calculateTotal);
+        }
+    });
+</script>
+{% endblock %}
