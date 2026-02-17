@@ -408,9 +408,12 @@ def owner_dashboard(request):
         .order_by('-service_date')[:5]
     )
 
-    # Merge and sort
+    # Merge and sort, annotate with item_type for template
+    all_items = list(recent_repairs) + list(recent_replacements)
+    for item in all_items:
+        item.item_type = 'Replacement' if isinstance(item, Replacement) else 'Repair'
     recent_activity = sorted(
-        list(recent_repairs) + list(recent_replacements),
+        all_items,
         key=lambda x: x.service_date,
         reverse=True,
     )[:5]
