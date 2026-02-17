@@ -3,383 +3,465 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rockstar Windshield Repair - Professional Fleet Windshield Services</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>RS Systems - Windshield Repair & Replacement Software</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root {
-            --primary-color: #0d6efd;
-            --secondary-color: #6c757d;
-            --success-color: #28a745;
-            --dark-color: #212529;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        }
-        
-        /* Hero Section */
-        .hero {
-            background: linear-gradient(135deg, var(--primary-color) 0%, #0056d3 100%);
-            color: white;
-            padding: 100px 0;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-            animation: float 20s ease-in-out infinite;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            50% { transform: translate(-30px, -30px) rotate(180deg); }
-        }
-        
-        .hero h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 1.5rem;
-        }
-        
-        .hero .lead {
-            font-size: 1.5rem;
-            margin-bottom: 2rem;
-            opacity: 0.95;
-        }
-        
-        /* Features Section */
-        .features {
-            padding: 80px 0;
-            background-color: #f8f9fa;
-        }
-        
-        .feature-card {
-            background: white;
-            border-radius: 10px;
-            padding: 2rem;
-            height: 100%;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-        
-        .feature-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
-        }
-        
-        .feature-icon {
-            width: 60px;
-            height: 60px;
-            background: var(--primary-color);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1.5rem;
-            font-size: 1.5rem;
-            color: white;
-        }
-        
-        /* CTA Section */
-        .cta-section {
-            padding: 80px 0;
-            background: var(--dark-color);
-            color: white;
-        }
-        
-        .portal-card {
-            background: rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 15px;
-            padding: 3rem;
-            text-align: center;
-            transition: all 0.3s;
-        }
-        
-        .portal-card:hover {
-            background: rgba(255,255,255,0.15);
-            transform: translateY(-5px);
-        }
-        
-        .portal-card h3 {
-            margin-bottom: 1.5rem;
-            font-size: 2rem;
-        }
-        
-        .portal-card .btn {
-            font-size: 1.1rem;
-            padding: 12px 30px;
-            border-radius: 50px;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        
-        /* Stats Section */
-        .stats {
-            padding: 60px 0;
-            background: white;
-        }
-        
-        .stat-item {
-            text-align: center;
-            padding: 2rem;
-        }
-        
-        .stat-number {
-            font-size: 3rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            margin-bottom: 0.5rem;
-        }
-        
-        /* Footer */
-        footer {
-            background: var(--dark-color);
-            color: white;
-            padding: 40px 0;
-        }
-        
-        footer a {
-            color: #adb5bd;
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        
-        footer a:hover {
-            color: white;
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 2.5rem;
-            }
-            .hero .lead {
-                font-size: 1.2rem;
-            }
-            .portal-card {
-                margin-bottom: 2rem;
-            }
-        }
+        body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
-<body>
+<body class="bg-white text-gray-900">
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm fixed-top">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="/">
-                <span style="color: var(--primary-color);">Rockstar</span> Windshield Repair
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="#features">Features</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#services">Services</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#contact">Contact</a>
-                    </li>
-                    <li class="nav-item ms-3">
-                        <a class="btn btn-primary btn-sm" href="/login/">Log In</a>
-                    </li>
-                    <li class="nav-item ms-2">
-                        <a class="btn btn-outline-primary btn-sm" href="/signup/">Start Free Trial</a>
-                    </li>
-                </ul>
+    <nav class="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 z-50">
+        <div class="max-w-6xl mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <a href="/" class="flex items-center space-x-2">
+                    <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <svg viewBox="0 0 40 40" class="w-6 h-6">
+                            <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">RS</text>
+                            <circle cx="32" cy="10" r="2" fill="white"/>
+                            <path d="M32 5 L32 7 M32 13 L32 15 M27 10 L29 10 M35 10 L37 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="text-xl font-bold text-gray-900">RS Systems</span>
+                </a>
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#features" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Features</a>
+                    <a href="#pricing" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Pricing</a>
+                    <a href="/login/" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Log In</a>
+                    <a href="/signup/" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                        Start Free Trial
+                    </a>
+                </div>
+                <button class="md:hidden text-gray-600" onclick="document.getElementById('mobile-menu').classList.toggle('hidden')">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+            </div>
+            <!-- Mobile menu -->
+            <div id="mobile-menu" class="hidden md:hidden pt-4 pb-2 space-y-2">
+                <a href="#features" class="block text-gray-600 hover:text-gray-900 py-2">Features</a>
+                <a href="#pricing" class="block text-gray-600 hover:text-gray-900 py-2">Pricing</a>
+                <a href="/login/" class="block text-gray-600 hover:text-gray-900 py-2">Log In</a>
+                <a href="/signup/" class="block bg-blue-600 text-white text-center py-2.5 rounded-lg font-semibold mt-2">Start Free Trial</a>
             </div>
         </div>
     </nav>
-    
+
     <!-- Hero Section -->
-    <section class="hero">
-        <div class="container position-relative">
-            <div class="row align-items-center">
-                <div class="col-lg-7">
-                    <h1>Professional Fleet Windshield Repair Services</h1>
-                    <p class="lead">Streamline your windshield repair operations with our comprehensive management platform. From repair requests to completion, we've got you covered.</p>
-                    <div class="d-flex gap-3 flex-wrap">
-                        <a href="/app/register/" class="btn btn-light btn-lg">Get Started as Customer</a>
-                        <a href="#features" class="btn btn-outline-light btn-lg">Learn More</a>
+    <section class="pt-28 pb-16 md:pt-36 md:pb-24 px-6 bg-gradient-to-b from-blue-50 to-white">
+        <div class="max-w-6xl mx-auto">
+            <div class="max-w-3xl mx-auto text-center">
+                <div class="inline-flex items-center space-x-2 bg-blue-100 text-blue-700 rounded-full px-4 py-1.5 text-sm font-medium mb-6">
+                    <i class="fas fa-tools"></i>
+                    <span>Built for auto glass professionals</span>
+                </div>
+                
+                <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-gray-900 leading-tight mb-6">
+                    Manage your glass shop<br>
+                    <span class="text-blue-600">without the headache</span>
+                </h1>
+                
+                <p class="text-lg md:text-xl text-gray-600 mb-8 max-w-2xl mx-auto leading-relaxed">
+                    Track jobs, manage customers, send invoices, and keep your techs organized — all from one simple dashboard. Built by a shop owner who gets it.
+                </p>
+                
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+                    <a href="/signup/" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl text-lg font-semibold transition-colors shadow-lg shadow-blue-600/20">
+                        Start Your Free 30-Day Trial
+                    </a>
+                </div>
+                
+                <p class="text-gray-500 text-sm">
+                    <i class="fas fa-check text-green-500 mr-1"></i> No credit card required
+                    <span class="mx-3">•</span>
+                    <i class="fas fa-check text-green-500 mr-1"></i> Cancel anytime
+                </p>
+            </div>
+
+            <!-- Dashboard Preview - matches actual owner dashboard -->
+            <div class="mt-16 max-w-4xl mx-auto">
+                <div class="bg-white rounded-xl shadow-2xl shadow-gray-200/50 border border-gray-200 overflow-hidden">
+                    <div class="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center space-x-2">
+                        <div class="w-3 h-3 rounded-full bg-red-400"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-400"></div>
+                        <span class="text-gray-400 text-xs ml-3">RS Systems — Owner Dashboard</span>
+                    </div>
+                    <div class="p-6 bg-gray-50">
+                        <!-- Revenue Banner -->
+                        <div class="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-5 text-white shadow-lg mb-5">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-blue-100 text-xs font-medium mb-1">Revenue This Month</div>
+                                    <div class="text-3xl font-bold">$8,420.00</div>
+                                    <div class="text-blue-200 text-xs mt-2">
+                                        <span class="mr-3"><i class="fas fa-tools mr-1"></i>Repairs: $6,280</span>
+                                        <span><i class="fas fa-car mr-1"></i>Replacements: $2,140</span>
+                                    </div>
+                                </div>
+                                <div class="w-12 h-12 rounded-full bg-white bg-opacity-20 flex items-center justify-center">
+                                    <i class="fas fa-dollar-sign text-xl text-white"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Stats Cards -->
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-medium text-gray-500">Repairs This Month</span>
+                                    <div class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-tools text-green-600 text-xs"></i>
+                                    </div>
+                                </div>
+                                <div class="text-2xl font-bold text-gray-900">47</div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                    <div class="bg-green-500 h-1.5 rounded-full" style="width: 24%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">47 of 200 used</p>
+                            </div>
+                            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-medium text-gray-500">Technicians</span>
+                                    <div class="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-users text-blue-600 text-xs"></i>
+                                    </div>
+                                </div>
+                                <div class="text-2xl font-bold text-gray-900">3</div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                    <div class="bg-blue-500 h-1.5 rounded-full" style="width: 60%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">3 of 5 seats</p>
+                            </div>
+                            <div class="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-medium text-gray-500">Customers</span>
+                                    <div class="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center">
+                                        <i class="fas fa-building text-purple-600 text-xs"></i>
+                                    </div>
+                                </div>
+                                <div class="text-2xl font-bold text-gray-900">12</div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                                    <div class="bg-purple-500 h-1.5 rounded-full" style="width: 24%"></div>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">12 of 50 accounts</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </section>
-    
-    <!-- Stats Section -->
-    <section class="stats">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-3 col-6">
-                    <div class="stat-item">
-                        <div class="stat-number">500+</div>
-                        <p class="text-muted mb-0">Fleet Partners</p>
-                    </div>
+
+    <!-- Trust Bar -->
+    <section class="py-10 border-y border-gray-100 bg-gray-50">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="flex flex-wrap justify-center items-center gap-x-12 gap-y-6 text-center">
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">500+</div>
+                    <div class="text-sm text-gray-500">Jobs Tracked</div>
                 </div>
-                <div class="col-md-3 col-6">
-                    <div class="stat-item">
-                        <div class="stat-number">10k+</div>
-                        <p class="text-muted mb-0">Repairs Completed</p>
-                    </div>
+                <div class="hidden sm:block w-px h-10 bg-gray-200"></div>
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">$50K+</div>
+                    <div class="text-sm text-gray-500">Invoiced</div>
                 </div>
-                <div class="col-md-3 col-6">
-                    <div class="stat-item">
-                        <div class="stat-number">98%</div>
-                        <p class="text-muted mb-0">Customer Satisfaction</p>
-                    </div>
+                <div class="hidden sm:block w-px h-10 bg-gray-200"></div>
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">100%</div>
+                    <div class="text-sm text-gray-500">Mobile Friendly</div>
                 </div>
-                <div class="col-md-3 col-6">
-                    <div class="stat-item">
-                        <div class="stat-number">24/7</div>
-                        <p class="text-muted mb-0">Support Available</p>
-                    </div>
+                <div class="hidden sm:block w-px h-10 bg-gray-200"></div>
+                <div>
+                    <div class="text-3xl font-bold text-gray-900">24/7</div>
+                    <div class="text-sm text-gray-500">Access Anywhere</div>
                 </div>
             </div>
         </div>
     </section>
-    
+
+    <!-- Problem/Solution Section -->
+    <section class="py-16 md:py-24 px-6">
+        <div class="max-w-6xl mx-auto">
+            <div class="max-w-3xl mx-auto text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+                    Sound familiar?
+                </h2>
+                <p class="text-lg text-gray-600">Running a glass shop means juggling a lot. We built RS Systems to fix that.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                <!-- Before - Softer gray styling -->
+                <div class="bg-gray-100 rounded-2xl p-8 border border-gray-200">
+                    <h3 class="font-bold text-gray-500 mb-4 flex items-center">
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        The old way
+                    </h3>
+                    <ul class="space-y-3 text-gray-600">
+                        <li class="flex items-start">
+                            <i class="fas fa-minus text-gray-400 mt-1 mr-3 text-sm"></i>
+                            <span>Job details scattered across texts, calls, and sticky notes</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-minus text-gray-400 mt-1 mr-3 text-sm"></i>
+                            <span>Chasing customers for approvals and payments</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-minus text-gray-400 mt-1 mr-3 text-sm"></i>
+                            <span>No idea if techs finished jobs until they tell you</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-minus text-gray-400 mt-1 mr-3 text-sm"></i>
+                            <span>Creating invoices manually in Word or Excel</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- After - Bright blue/green styling -->
+                <div class="bg-gradient-to-br from-blue-50 to-green-50 rounded-2xl p-8 border border-blue-200">
+                    <h3 class="font-bold text-blue-700 mb-4 flex items-center">
+                        <i class="fas fa-arrow-right mr-2"></i>
+                        With RS Systems
+                    </h3>
+                    <ul class="space-y-3 text-gray-700">
+                        <li class="flex items-start">
+                            <i class="fas fa-check text-green-500 mt-1 mr-3 text-sm"></i>
+                            <span>Every job tracked with photos, notes, and history</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-check text-green-500 mt-1 mr-3 text-sm"></i>
+                            <span>Customers approve and pay online through their portal</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-check text-green-500 mt-1 mr-3 text-sm"></i>
+                            <span>Real-time updates from techs in the field</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fas fa-check text-green-500 mt-1 mr-3 text-sm"></i>
+                            <span>Professional invoices generated in seconds</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Features Section -->
-    <section id="features" class="features">
-        <div class="container">
-            <div class="text-center mb-5">
-                <h2 class="display-5 fw-bold">Why Choose Rockstar Windshield Repair?</h2>
-                <p class="lead text-muted">Everything you need to manage windshield repairs efficiently</p>
+    <section id="features" class="py-16 md:py-24 px-6 bg-gray-50">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Everything you need, nothing you don't</h2>
+                <p class="text-lg text-gray-600 max-w-2xl mx-auto">Simple tools that actually help you run your business.</p>
             </div>
-            
-            <div class="row g-4">
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-speedometer2"></i>
-                        </div>
-                        <h4>Fast & Efficient</h4>
-                        <p class="text-muted">Streamlined repair process from request to completion. Track repairs in real-time and reduce downtime.</p>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Feature 1 -->
+                <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all">
+                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
+                        <i class="fas fa-clipboard-list text-blue-600 text-xl"></i>
                     </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Job Tracking</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">Track every repair and replacement from start to finish. Add photos, notes, and status updates.</p>
                 </div>
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-shield-check"></i>
-                        </div>
-                        <h4>Quality Guaranteed</h4>
-                        <p class="text-muted">Professional technicians, quality materials, and comprehensive documentation for every repair.</p>
+
+                <!-- Feature 2 -->
+                <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all">
+                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4">
+                        <i class="fas fa-user-circle text-green-600 text-xl"></i>
                     </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Customer Portal</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">Your customers get their own login to approve jobs, view history, and pay invoices online.</p>
                 </div>
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-graph-up"></i>
-                        </div>
-                        <h4>Cost Management</h4>
-                        <p class="text-muted">Transparent pricing, automatic cost calculations, and rewards program to help manage your fleet expenses.</p>
+
+                <!-- Feature 3 -->
+                <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all">
+                    <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
+                        <i class="fas fa-mobile-alt text-purple-600 text-xl"></i>
                     </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Mobile Friendly</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">Works on any phone or tablet. Your techs can update jobs from the field.</p>
                 </div>
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-phone"></i>
-                        </div>
-                        <h4>Mobile Ready</h4>
-                        <p class="text-muted">Access your dashboard, approve repairs, and track progress from any device, anywhere.</p>
+
+                <!-- Feature 4 -->
+                <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all">
+                    <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center mb-4">
+                        <i class="fas fa-file-invoice-dollar text-yellow-600 text-xl"></i>
                     </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Easy Invoicing</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">Generate professional invoices in seconds. Send by email or let customers pay with a card.</p>
                 </div>
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-people"></i>
-                        </div>
-                        <h4>Team Management</h4>
-                        <p class="text-muted">Multiple user accounts per company, role-based access, and comprehensive activity tracking.</p>
+
+                <!-- Feature 5 -->
+                <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all">
+                    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-4">
+                        <i class="fas fa-bell text-red-600 text-xl"></i>
                     </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Automatic Alerts</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">Email and text notifications keep everyone updated. No more phone tag.</p>
                 </div>
-                <div class="col-md-4">
-                    <div class="feature-card">
-                        <div class="feature-icon">
-                            <i class="bi bi-award"></i>
-                        </div>
-                        <h4>Rewards Program</h4>
-                        <p class="text-muted">Earn points, refer other fleets, and save on future repairs with our comprehensive rewards system.</p>
+
+                <!-- Feature 6 -->
+                <div class="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg hover:border-gray-300 transition-all">
+                    <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mb-4">
+                        <i class="fas fa-users text-indigo-600 text-xl"></i>
                     </div>
-                </div>
-            </div>
-        </div>
-    </section>
-    
-    <!-- CTA Section -->
-    <section class="cta-section">
-        <div class="container">
-            <div class="text-center mb-5">
-                <h2 class="display-5 fw-bold">Ready to Get Started?</h2>
-                <p class="lead">Choose your portal to access our services</p>
-            </div>
-            
-            <div class="row justify-content-center">
-                <div class="col-lg-5 mb-4">
-                    <div class="portal-card">
-                        <h3>Fleet Managers</h3>
-                        <p class="mb-4">Manage your fleet's windshield repairs, track costs, and approve work orders all in one place.</p>
-                        <a href="/app/" class="btn btn-light btn-lg w-100 mb-3">Access Customer Portal</a>
-                        <p class="mb-0"><small>New to Rockstar? <a href="/app/register/" class="text-white">Register your fleet</a></small></p>
-                    </div>
-                </div>
-                <div class="col-lg-5 mb-4">
-                    <div class="portal-card">
-                        <h3>Repair Technicians</h3>
-                        <p class="mb-4">Access work orders, document repairs, and communicate with customers through our technician app.</p>
-                        <a href="/tech/" class="btn btn-outline-light btn-lg w-100 mb-3">Access Technician Portal</a>
-                        <p class="mb-0"><small>Authorized technicians only</small></p>
-                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Team Management</h3>
+                    <p class="text-gray-600 text-sm leading-relaxed">Add your techs and staff. Everyone sees what they need, nothing they don't.</p>
                 </div>
             </div>
         </div>
     </section>
-    
+
+    <!-- Testimonial -->
+    <section class="py-16 md:py-24 px-6">
+        <div class="max-w-3xl mx-auto text-center">
+            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <span class="text-2xl font-bold text-blue-600">D</span>
+            </div>
+            <blockquote class="text-xl md:text-2xl text-gray-700 leading-relaxed mb-6">
+                "I built RS Systems because I was running my own glass shop on sticky notes and text messages. 
+                Now I actually know what's going on with every job, every customer, every day."
+            </blockquote>
+            <div>
+                <div class="font-semibold text-gray-900">Drake</div>
+                <div class="text-gray-500 text-sm">Founder, RS Systems • Glass shop owner since 2018</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pricing Section - Dynamic from database -->
+    <section id="pricing" class="py-16 md:py-24 px-6 bg-gray-50">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Simple, transparent pricing</h2>
+                <p class="text-lg text-gray-600">Start with a 30-day free trial. Upgrade when you're ready.</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                {% for plan in plans %}
+                <div class="bg-white rounded-2xl shadow-lg border{% if plan.slug == 'pro' %}-2 border-blue-500{% else %} border-gray-200{% endif %} overflow-hidden hover:shadow-xl transition-shadow relative">
+                    {% if plan.slug == 'pro' %}
+                    <div class="absolute top-0 left-0 right-0 bg-blue-500 text-white text-center text-xs font-semibold py-1">
+                        MOST POPULAR
+                    </div>
+                    {% endif %}
+                    <div class="p-6 text-center border-b border-gray-100 {% if plan.slug == 'pro' %}pt-8{% endif %}">
+                        <h3 class="text-lg font-bold text-gray-900 mb-1">{{ plan.name }}</h3>
+                        <p class="text-sm text-gray-500 mb-4">
+                            {% if plan.slug == 'starter' %}For small shops getting started
+                            {% elif plan.slug == 'pro' %}For growing shops
+                            {% elif plan.slug == 'enterprise' %}For large operations
+                            {% else %}{{ plan.name }} plan{% endif %}
+                        </p>
+                        <div class="flex items-baseline justify-center">
+                            <span class="text-4xl font-extrabold text-gray-900">${{ plan.monthly_price|floatformat:0 }}</span>
+                            <span class="text-gray-500 ml-1">/month</span>
+                        </div>
+                        {% if plan.annual_price %}
+                        <p class="text-xs text-gray-400 mt-1">or ${{ plan.annual_price|floatformat:0 }}/year (save ~20%)</p>
+                        {% endif %}
+                    </div>
+                    <div class="p-6">
+                        <ul class="space-y-3 mb-6 text-sm">
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                {% if plan.max_technicians %}Up to <strong>{{ plan.max_technicians }} technicians</strong>{% else %}<strong>Unlimited</strong> technicians{% endif %}
+                            </li>
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                {% if plan.max_repairs_per_month %}{{ plan.max_repairs_per_month }} repairs/month{% else %}<strong>Unlimited</strong> repairs{% endif %}
+                            </li>
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                {% if plan.max_customers %}{{ plan.max_customers }} customers{% else %}<strong>Unlimited</strong> customers{% endif %}
+                            </li>
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                Customer portal
+                            </li>
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                Invoicing & payments
+                            </li>
+                            {% if plan.features.rewards %}
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                Rewards program
+                            </li>
+                            {% endif %}
+                            {% if plan.features.custom_branding %}
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                Custom branding
+                            </li>
+                            {% endif %}
+                            {% if plan.features.api_access %}
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                API access
+                            </li>
+                            {% endif %}
+                            {% if plan.features.priority_support %}
+                            <li class="flex items-center text-gray-700">
+                                <i class="fas fa-check text-green-500 mr-2 text-xs"></i>
+                                Priority support
+                            </li>
+                            {% endif %}
+                        </ul>
+                        <a href="/signup/" class="block w-full {% if plan.slug == 'pro' %}bg-blue-600 hover:bg-blue-700 text-white{% else %}bg-gray-100 hover:bg-gray-200 text-gray-800{% endif %} text-center py-3 rounded-lg font-semibold transition-colors text-sm">
+                            Start Free Trial
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <!-- Fallback if no plans in database -->
+                <div class="col-span-3 text-center py-12 text-gray-500">
+                    <p>Pricing information coming soon. <a href="/signup/" class="text-blue-600 hover:underline">Start your free trial</a> today!</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <p class="text-center text-gray-500 text-sm mt-8">
+                All plans include a 30-day free trial. No credit card required.
+            </p>
+        </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="py-16 md:py-24 px-6 bg-blue-600">
+        <div class="max-w-3xl mx-auto text-center">
+            <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">Ready to get organized?</h2>
+            <p class="text-xl text-blue-100 mb-8">Try RS Systems free for 30 days. See why shop owners love it.</p>
+            <a href="/signup/" class="inline-block bg-white hover:bg-gray-100 text-blue-600 px-8 py-4 rounded-xl text-lg font-semibold transition-colors shadow-lg">
+                Start Your Free Trial
+            </a>
+        </div>
+    </section>
+
     <!-- Footer -->
-    <footer>
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h5>Rockstar Windshield Repair</h5>
-                    <p class="text-muted">Professional fleet windshield repair management platform.</p>
+    <footer class="bg-gray-900 text-gray-400 py-12 px-6">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="flex items-center space-x-2 mb-6 md:mb-0">
+                    <div class="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <svg viewBox="0 0 40 40" class="w-6 h-6">
+                            <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">RS</text>
+                            <circle cx="32" cy="10" r="2" fill="white"/>
+                            <path d="M32 5 L32 7 M32 13 L32 15 M27 10 L29 10 M35 10 L37 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="text-lg font-bold text-white">RS Systems</span>
                 </div>
-                <div class="col-md-3">
-                    <h6>Quick Links</h6>
-                    <ul class="list-unstyled">
-                        <li><a href="/app/">Customer Portal</a></li>
-                        <li><a href="/tech/">Technician Portal</a></li>
-                        <li><a href="#contact">Contact Us</a></li>
-                    </ul>
-                </div>
-                <div class="col-md-3">
-                    <h6>Support</h6>
-                    <ul class="list-unstyled">
-                        <li><a href="#">Help Center</a></li>
-                        <li><a href="#">Privacy Policy</a></li>
-                        <li><a href="#">Terms of Service</a></li>
-                    </ul>
+                <div class="flex flex-wrap justify-center gap-8 text-sm">
+                    <a href="/login/" class="hover:text-white transition-colors">Log In</a>
+                    <a href="/signup/" class="hover:text-white transition-colors">Sign Up</a>
+                    <a href="mailto:support@rs-systems.io" class="hover:text-white transition-colors">Contact</a>
                 </div>
             </div>
-            <hr class="my-4" style="border-color: #495057;">
-            <div class="text-center">
-                <p class="mb-0">&copy; 2025 Rockstar Windshield Repair. All rights reserved.</p>
+            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-sm">
+                <p>&copy; 2025 RS Systems. All rights reserved.</p>
             </div>
         </div>
     </footer>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 </body>
 </html>
