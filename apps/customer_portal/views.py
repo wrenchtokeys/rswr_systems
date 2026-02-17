@@ -829,6 +829,14 @@ def customer_register(request):
     if request.user.is_authenticated:
         return redirect('customer_dashboard')
 
+    # Helper to render with form data preserved
+    def render_with_form_data(error_message=None):
+        if error_message:
+            messages.error(request, error_message)
+        return render(request, 'customer_portal/register.html', {
+            'form_data': request.POST if request.method == 'POST' else {}
+        })
+
     # Check if rate limited
     if getattr(request, 'limited', False):
         messages.error(request, "Too many registration attempts. Please try again later.")
@@ -853,29 +861,23 @@ def customer_register(request):
 
         # Check for suspicious username patterns
         if is_suspicious_username(username):
-            messages.error(request, "This username is not allowed. Please choose a different username.")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("This username is not allowed. Please choose a different username.")
 
         # Validation
         if len(username) < 3:
-            messages.error(request, "Username must be at least 3 characters long")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Username must be at least 3 characters long")
 
         if password != confirm_password:
-            messages.error(request, "Passwords do not match")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Passwords do not match")
 
         if len(password) < 8:
-            messages.error(request, "Password must be at least 8 characters long")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Password must be at least 8 characters long")
 
         if User.objects.filter(username=username).exists():
-            messages.error(request, "Username already exists")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Username already exists")
 
         if User.objects.filter(email=email).exists():
-            messages.error(request, "Email already exists")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Email already exists")
 
         # Create user
         user = User.objects.create_user(
