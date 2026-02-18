@@ -543,15 +543,19 @@ class Repair(GlassService):
             )
 
             # --- REPAIR PRICING (progressive logic) ---
+            # Progressive pricing can be disabled per-customer via use_progressive_pricing flag
             # Retail/Walk-in customers don't get sequential discounts (always first repair price)
             # UNLESS it's a multi-break repair (same batch_id)
             is_retail = self.customer and self.customer.customer_type in ('RETAIL', 'WALK_IN')
             is_multi_break = self.repair_batch_id is not None
+            # Check if progressive pricing is enabled for this customer
+            use_progressive = getattr(self.customer, 'use_progressive_pricing', True)
+            skip_progressive = is_retail or not use_progressive
             
             if self.queue_status == 'COMPLETED':
                 if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
-                    # Only increment repair count for fleet customers
-                    if not is_retail:
+                    # Only increment repair count if using progressive pricing
+                    if not skip_progressive:
                         unit_repair_count.repair_count += 1
                         unit_repair_count.save()
 
@@ -560,11 +564,11 @@ class Repair(GlassService):
                     self.cost = self.cost_override
                 else:
                     from .services.pricing_service import calculate_repair_cost
-                    if is_retail and not is_multi_break:
-                        # Retail customers always pay first repair price
+                    if skip_progressive and not is_multi_break:
+                        # No progressive pricing - always first repair price
                         self.cost = calculate_repair_cost(self.customer, 1)
                     else:
-                        # Fleet customers get progressive pricing
+                        # Progressive pricing enabled
                         self.cost = calculate_repair_cost(self.customer, unit_repair_count.repair_count)
             else:
                 # For non-completed repairs, show expected cost for preview
@@ -575,8 +579,8 @@ class Repair(GlassService):
                     pass
                 else:
                     from .services.pricing_service import calculate_repair_cost
-                    if is_retail:
-                        # Retail customers always pay first repair price
+                    if skip_progressive:
+                        # No progressive pricing - always first repair price
                         self.cost = calculate_repair_cost(self.customer, 1)
                     else:
                         next_repair_count = unit_repair_count.repair_count + 1
