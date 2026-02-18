@@ -915,6 +915,16 @@ def owner_settings_view(request):
             messages.success(request, f'Auto invoice generation {status}.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'toggle_progressive_pricing':
+            # Toggle progressive pricing at tenant level
+            tenant.use_progressive_pricing = not tenant.use_progressive_pricing
+            tenant.save(update_fields=['use_progressive_pricing'])
+            if tenant.use_progressive_pricing:
+                messages.success(request, 'Progressive pricing enabled. Repair prices decrease with each subsequent repair on a unit.')
+            else:
+                messages.success(request, 'Progressive pricing disabled. Every repair uses first-repair pricing.')
+            return redirect('/owner/settings/?tab=billing')
+
         if form_type == 'billing_location':
             # Update shop location + tax rate breakdown
             try:
