@@ -925,6 +925,32 @@ def owner_settings_view(request):
                 messages.success(request, 'Progressive pricing disabled. Every repair uses first-repair pricing.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'update_pricing_tiers':
+            # Update pricing tier values
+            from decimal import Decimal, InvalidOperation
+            try:
+                def _parse_price(field, default):
+                    try:
+                        val = request.POST.get(field, '')
+                        return Decimal(val) if val else default
+                    except (InvalidOperation, ValueError):
+                        return default
+
+                tenant.repair_price_1 = _parse_price('repair_price_1', Decimal('50.00'))
+                tenant.repair_price_2 = _parse_price('repair_price_2', Decimal('40.00'))
+                tenant.repair_price_3 = _parse_price('repair_price_3', Decimal('35.00'))
+                tenant.repair_price_4 = _parse_price('repair_price_4', Decimal('30.00'))
+                tenant.repair_price_5_plus = _parse_price('repair_price_5_plus', Decimal('25.00'))
+                tenant.save(update_fields=[
+                    'repair_price_1', 'repair_price_2', 'repair_price_3',
+                    'repair_price_4', 'repair_price_5_plus'
+                ])
+                messages.success(request, 'Pricing tiers updated successfully.')
+            except Exception as e:
+                logger.error(f"Error updating pricing tiers: {e}")
+                messages.error(request, 'Could not update pricing tiers.')
+            return redirect('/owner/settings/?tab=billing')
+
         if form_type == 'billing_location':
             # Update shop location + tax rate breakdown
             try:
