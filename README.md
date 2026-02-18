@@ -6,7 +6,7 @@ A multi-tenant SaaS platform for auto glass shops. Manage repairs, replacements,
 
 A shop owner signs up, gets a 30-day free trial, and immediately has access to:
 
-- **Repairs** — Track chip/crack repairs with progressive pricing ($50→$40→$35→$30→$25 per unit)
+- **Repairs** — Track chip/crack repairs with configurable progressive pricing ($50→$40→$35→$30→$25 per unit, or flat rate)
 - **Replacements** — Full glass swaps with parts + labor + ADAS calibration pricing
 - **Auto-Assignment** — Smart repair assignment: primary tech, workload balancing, round-robin, or manual
 - **Customers** — Fleet accounts (trucking companies), retail individuals, and walk-ins with optional primary technician
@@ -352,6 +352,45 @@ Customer ──────── Portal access: view repairs, approve work, req
 | `/api/billing/` | Auth | Billing API |
 | `/api/tenants/` | Varies | Subscription API |
 | `/admin/` | Superuser | Django admin |
+
+---
+
+## Shop Configuration
+
+### Progressive Pricing
+
+RS Systems supports **progressive pricing** — repair prices decrease with each subsequent repair on a unit:
+
+| Repair # | Price |
+|----------|-------|
+| 1st | $50 |
+| 2nd | $40 |
+| 3rd | $35 |
+| 4th | $30 |
+| 5th+ | $25 |
+
+**Configuration levels:**
+
+1. **Shop-wide (Tenant):** Settings → Billing → "Progressive Pricing" toggle
+   - Enabled (default): All fleet customers get progressive discounts
+   - Disabled: Every repair uses first-repair pricing ($50)
+
+2. **Per-customer override:** Individual customers can have progressive pricing disabled even if the shop has it enabled. Useful for specific contract terms.
+
+**When a replacement is completed:**
+- The repair count for that unit resets to 0
+- Subsequent repairs on the new glass start at first-repair pricing
+
+**Retail/Walk-in customers** always pay first-repair pricing regardless of shop settings (unless it's a multi-break batch repair).
+
+### Other Shop Settings
+
+| Setting | Location | Description |
+|---------|----------|-------------|
+| Auto Invoice | Settings → Billing | Auto-generate invoices on repair completion |
+| Sales Tax | Settings → Billing | Configure state/county/city tax rates |
+| Assignment Strategy | Settings → General | How repairs are assigned to technicians |
+| Customer Portal Link | Settings → Customer Portal | Public signup link for customers |
 
 ---
 
