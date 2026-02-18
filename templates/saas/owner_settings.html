@@ -160,6 +160,31 @@
             </div>
         </form>
     </div>
+
+    <!-- Resin Viscosity Rules -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mt-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-droplet text-cyan-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Resin Viscosity Rules</h3>
+                        <p class="text-sm text-gray-500">Temperature-based resin recommendations for technicians</p>
+                    </div>
+                </div>
+                <a href="{% url 'manage_viscosity_rules' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-cog mr-2"></i> Configure
+                </a>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-lg">
+                <p class="text-sm text-cyan-700"><i class="fas fa-info-circle mr-1"></i> Set up rules that recommend which resin viscosity to use based on windshield temperature. Technicians see these recommendations when logging repairs.</p>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- ======================= TEAM TAB ======================= -->
@@ -464,31 +489,6 @@
                 <p class="text-sm text-gray-600"><i class="fas fa-info-circle mr-1"></i> Every repair uses first-repair pricing (${{ tenant.repair_price_1 }}). Simple and predictable for all customers.</p>
             </div>
             {% endif %}
-        </div>
-    </div>
-
-    <!-- Resin Viscosity Rules -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-droplet text-cyan-600 text-sm"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-lg font-semibold text-gray-900">Resin Viscosity Rules</h3>
-                        <p class="text-sm text-gray-500">Temperature-based resin recommendations for technicians</p>
-                    </div>
-                </div>
-                <a href="{% url 'manage_viscosity_rules' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 transition-colors">
-                    <i class="fas fa-cog mr-2"></i> Configure
-                </a>
-            </div>
-        </div>
-        <div class="p-6">
-            <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-lg">
-                <p class="text-sm text-cyan-700"><i class="fas fa-info-circle mr-1"></i> Set up rules that recommend which resin viscosity to use based on windshield temperature. Technicians see these recommendations when logging repairs.</p>
-            </div>
         </div>
     </div>
 
