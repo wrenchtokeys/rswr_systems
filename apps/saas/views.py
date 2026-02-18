@@ -624,7 +624,7 @@ def replacement_list(request):
     status_filter = request.GET.get('status', '')
     replacements = Replacement.objects.filter(tenant=tenant).select_related(
         'customer', 'technician__user'
-    ).order_by('-service_date', '-created_at')
+    ).order_by('-service_date', '-id')
 
     if status_filter:
         replacements = replacements.filter(queue_status=status_filter)

@@ -806,7 +806,7 @@ def customer_replacements(request):
         # Get all replacements for this customer
         replacements = Replacement.objects.filter(customer=customer).select_related(
             'technician__user'
-        ).order_by('-service_date', '-created_at')
+        ).order_by('-service_date', '-id')
 
         # Apply status filter
         if status_filter:
