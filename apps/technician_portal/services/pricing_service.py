@@ -143,22 +143,35 @@ def get_retail_repair_price(customer: Customer) -> Decimal:
     return calculate_repair_cost(customer, 1)
 
 
-def get_expected_repair_cost(customer: Customer, unit_number: str) -> Tuple[Decimal, int]:
+def get_expected_repair_cost(customer: Customer, unit_number: str, tenant=None) -> Tuple[Decimal, int]:
     """
     Get the expected cost for the next repair on a specific unit.
 
     Args:
         customer: The Customer object
         unit_number: The unit number
+        tenant: Optional Tenant object (defaults to customer.tenant)
 
     Returns:
         Tuple of (expected_cost, next_repair_count)
     """
-    # Retail/Walk-in customers always pay first repair price (no sequential discounts)
-    if customer and customer.customer_type in ('RETAIL', 'WALK_IN'):
-        return get_retail_repair_price(customer), 1
+    # Get tenant if not provided
+    if tenant is None and customer:
+        tenant = getattr(customer, 'tenant', None)
     
-    # Fleet customers get progressive pricing based on unit repair count
+    # Check if progressive pricing is enabled
+    tenant_allows_progressive = getattr(tenant, 'use_progressive_pricing', True) if tenant else True
+    customer_wants_progressive = getattr(customer, 'use_progressive_pricing', True) if customer else True
+    use_progressive = tenant_allows_progressive and customer_wants_progressive
+    
+    # Retail/Walk-in customers always pay first repair price (no sequential discounts)
+    is_retail = customer and customer.customer_type in ('RETAIL', 'WALK_IN')
+    
+    # If progressive pricing disabled OR retail customer, always first repair price
+    if is_retail or not use_progressive:
+        return calculate_repair_cost(customer, 1, tenant), 1
+    
+    # Fleet customers with progressive pricing enabled
     unit_repair_count, created = UnitRepairCount.objects.get_or_create(
         customer=customer,
         unit_number=unit_number,
@@ -166,7 +179,7 @@ def get_expected_repair_cost(customer: Customer, unit_number: str) -> Tuple[Deci
     )
 
     next_repair_count = unit_repair_count.repair_count + 1
-    expected_cost = calculate_repair_cost(customer, next_repair_count)
+    expected_cost = calculate_repair_cost(customer, next_repair_count, tenant)
 
     return expected_cost, next_repair_count
 
