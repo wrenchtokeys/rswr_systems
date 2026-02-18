@@ -1081,6 +1081,20 @@ class Replacement(GlassService):
                     self.tax_amount = tax_result['amount']
                 except Exception:
                     pass  # Keep $0 tax if billing app unavailable
+
+            # Reset repair count when replacement is completed
+            # A new windshield means fresh repair pricing for that unit
+            if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
+                try:
+                    unit_repair_count = UnitRepairCount.objects.filter(
+                        customer=self.customer,
+                        unit_number=self.unit_number
+                    ).first()
+                    if unit_repair_count:
+                        unit_repair_count.repair_count = 0
+                        unit_repair_count.save()
+                except Exception:
+                    pass  # Don't fail replacement save if reset fails
         
         super().save(*args, **kwargs)
         self.original_status = self.queue_status
