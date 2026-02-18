@@ -543,13 +543,15 @@ class Repair(GlassService):
             )
 
             # --- REPAIR PRICING (progressive logic) ---
-            # Progressive pricing can be disabled per-customer via use_progressive_pricing flag
+            # Progressive pricing can be disabled at tenant level or per-customer
             # Retail/Walk-in customers don't get sequential discounts (always first repair price)
             # UNLESS it's a multi-break repair (same batch_id)
             is_retail = self.customer and self.customer.customer_type in ('RETAIL', 'WALK_IN')
             is_multi_break = self.repair_batch_id is not None
-            # Check if progressive pricing is enabled for this customer
-            use_progressive = getattr(self.customer, 'use_progressive_pricing', True)
+            # Check tenant-level setting first, then customer-level
+            tenant_allows_progressive = getattr(self.tenant, 'use_progressive_pricing', True) if self.tenant else True
+            customer_wants_progressive = getattr(self.customer, 'use_progressive_pricing', True)
+            use_progressive = tenant_allows_progressive and customer_wants_progressive
             skip_progressive = is_retail or not use_progressive
             
             if self.queue_status == 'COMPLETED':

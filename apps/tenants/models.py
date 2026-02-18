@@ -155,6 +155,10 @@ class Tenant(models.Model):
         default=True,
         help_text="When enabled, invoices are auto-generated on repair completion (per customer preference). Disable for testing."
     )
+    use_progressive_pricing = models.BooleanField(
+        default=True,
+        help_text="When enabled, repair prices decrease with each subsequent repair on a unit. When disabled, every repair uses first-repair pricing."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
