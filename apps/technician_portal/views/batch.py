@@ -404,6 +404,7 @@ def convert_to_batch(request, repair_id):
             logger.info(f"Converted repair {repair_id} to batch {batch_id}, adding {additional_breaks} breaks")
 
             unit_count = UnitRepairCount.objects.get_or_create(
+                tenant=original_repair.tenant,
                 customer=original_repair.customer,
                 unit_number=original_repair.unit_number
             )[0]
@@ -449,6 +450,7 @@ def convert_to_batch(request, repair_id):
                         raise ValueError(f"Invalid override cost for break {break_number}: {str(e)}")
 
                 new_repair = Repair(
+                    tenant=original_repair.tenant,  # Copy tenant from original repair
                     customer=original_repair.customer,
                     unit_number=original_repair.unit_number,
                     technician=original_repair.technician,
