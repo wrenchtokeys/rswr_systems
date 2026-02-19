@@ -23,39 +23,39 @@ This document outlines the notification system strategy for scaling from a singl
 - Industry-proven for SaaS platforms
 
 **Cost Projection:**
-- 10 shops × 100 emails/day = 1,000 emails/day = ~$20/month
-- 50 shops × 100 emails/day = 5,000 emails/day = ~$80/month
-- 100 shops × 100 emails/day = 10,000 emails/day = ~$120/month
+- 10 shops � 100 emails/day = 1,000 emails/day = ~$20/month
+- 50 shops � 100 emails/day = 5,000 emails/day = ~$80/month
+- 100 shops � 100 emails/day = 10,000 emails/day = ~$120/month
 
 ---
 
-## Current State (December 2025) ✅ OPERATIONAL
+## Current State (December 2025)  OPERATIONAL
 
 ### What We Have Today
 
 **Infrastructure:**
-- ✅ AWS Elastic Beanstalk (application hosting)
-- ✅ AWS RDS PostgreSQL (database)
-- ✅ AWS ElastiCache Redis (task queue)
-- ✅ Celery workers (async task processing)
-- ✅ Django notification system (templates, preferences, delivery logs)
-- ✅ **SendGrid email delivery** (production-ready, no sandbox restrictions)
+-  AWS Elastic Beanstalk (application hosting)
+-  AWS RDS PostgreSQL (database)
+-  AWS ElastiCache Redis (task queue)
+-  Celery workers (async task processing)
+-  Django notification system (templates, preferences, delivery logs)
+-  **SendGrid email delivery** (production-ready, no sandbox restrictions)
 
 **Notification Features:**
-- ✅ 8 notification templates (repair status, approvals, assignments)
-- ✅ User notification preferences (opt-in/opt-out per category)
-- ✅ Email delivery tracking (pending, delivered, failed)
-- ✅ Quiet hours support
-- ✅ Priority-based delivery (urgent, high, medium, low)
-- ✅ Email branding system (logo, colors, custom footer)
+-  8 notification templates (repair status, approvals, assignments)
+-  User notification preferences (opt-in/opt-out per category)
+-  Email delivery tracking (pending, delivered, failed)
+-  Quiet hours support
+-  Priority-based delivery (urgent, high, medium, low)
+-  Email branding system (logo, colors, custom footer)
 
 **Resolved Blockers:**
-- ✅ Switched from AWS SES to SendGrid (SES rejected twice)
-- ✅ Domain authenticated with DKIM/SPF in SendGrid
-- ✅ Can send to any email address (no sandbox restrictions)
+-  Switched from AWS SES to SendGrid (SES rejected twice)
+-  Domain authenticated with DKIM/SPF in SendGrid
+-  Can send to any email address (no sandbox restrictions)
 
 **Remaining:**
-- ⏳ SMS not yet enabled (Twilio migration planned, see Phase 2)
+-  SMS not yet enabled (Twilio migration planned, see Phase 2)
 
 ---
 
@@ -107,16 +107,16 @@ Option 2: Custom Domains (White-Label)
 
 | Feature | SendGrid | AWS SES |
 |---------|----------|---------|
-| **Multi-tenant ready** | ✅ Built for it | ❌ Complex setup |
+| **Multi-tenant ready** |  Built for it |  Complex setup |
 | **Domain verification** | 1 domain for all tenants | Need verification per tenant |
 | **Sandbox mode** | No sandbox | Sandbox per domain |
 | **Custom FROM addresses** | Easy per-tenant setup | Requires domain verification |
-| **White-label support** | ✅ Native | ❌ Manual per domain |
+| **White-label support** |  Native |  Manual per domain |
 | **Approval process** | Instant | 24-48 hours (or rejected) |
 | **Free tier** | 100 emails/day forever | Same as SendGrid |
 | **Paid pricing** | $20/month for 40k emails | $0.10 per 1,000 emails |
 | **Deliverability** | Industry-leading | Excellent |
-| **API simplicity** | ✅ Very simple | ✅ Simple |
+| **API simplicity** |  Very simple |  Simple |
 | **Track record** | Used by Uber, Spotify | Used by Netflix, Airbnb |
 
 ### SendGrid Pricing Tiers
@@ -165,18 +165,18 @@ SMS has **4x higher open rates** than email:
 - SMS response time: <90 seconds average
 
 **Critical notifications for SMS:**
-- ⚠️ URGENT: Repair approved (tech can start immediately)
-- ⚠️ URGENT: Repair denied (don't drive to location)
-- 🔔 HIGH: New assignment
+-  URGENT: Repair approved (tech can start immediately)
+-  URGENT: Repair denied (don't drive to location)
+-  HIGH: New assignment
 
 ### Twilio for SMS (Industry Standard)
 
 **Why Twilio:**
-- ✅ Integrates with SendGrid
-- ✅ Built for SaaS/multi-tenant
-- ✅ Phone number per tenant (optional)
-- ✅ Two-way SMS support
-- ✅ International support (when expanding)
+-  Integrates with SendGrid
+-  Built for SaaS/multi-tenant
+-  Phone number per tenant (optional)
+-  Two-way SMS support
+-  International support (when expanding)
 
 **Pricing:**
 ```
@@ -216,12 +216,12 @@ Good for: Premium tier customers who want brand consistency
 **Goal:** Functional email notifications for single shop (current state)
 
 **Tasks:**
-1. ✅ Sign up for SendGrid account (15 min)
-2. ✅ Verify sending domain: rockstarwindshield.repair (30 min)
-3. ✅ Update Django settings to use SendGrid backend (30 min)
-4. ✅ Test notifications end-to-end (1 hour)
-5. ✅ Deploy to AWS production (30 min)
-6. ✅ Verify Celery workers processing tasks (30 min)
+1.  Sign up for SendGrid account (15 min)
+2.  Verify sending domain: rockstarwindshield.repair (30 min)
+3.  Update Django settings to use SendGrid backend (30 min)
+4.  Test notifications end-to-end (1 hour)
+5.  Deploy to AWS production (30 min)
+6.  Verify Celery workers processing tasks (30 min)
 
 **Deliverable:** Emails working for verified addresses
 
@@ -297,22 +297,22 @@ SendGrid supports "subusers" - isolated email accounts under one parent account.
 **Architecture:**
 ```
 Parent Account: Rockstar Windshield (main billing)
-  ├── Subuser: shop-glassproaustin
-  │     └── FROM: notifications@rockstarwindshield.repair
-  │     └── Reply-To: glassproaustin@gmail.com
-  │     └── Tracking: Separate stats
-  │
-  ├── Subuser: shop-quickfixglass
-  │     └── FROM: notifications@rockstarwindshield.repair
-  │     └── Reply-To: quickfixglass@gmail.com
-  │     └── Tracking: Separate stats
+   Subuser: shop-glassproaustin
+        FROM: notifications@rockstarwindshield.repair
+        Reply-To: glassproaustin@gmail.com
+        Tracking: Separate stats
+  
+   Subuser: shop-quickfixglass
+        FROM: notifications@rockstarwindshield.repair
+        Reply-To: quickfixglass@gmail.com
+        Tracking: Separate stats
 ```
 
 **Benefits:**
-- ✅ Per-shop email analytics
-- ✅ Isolate deliverability issues (one bad shop doesn't hurt others)
-- ✅ Per-shop API keys (security)
-- ✅ Per-shop unsubscribe management
+-  Per-shop email analytics
+-  Isolate deliverability issues (one bad shop doesn't hurt others)
+-  Per-shop API keys (security)
+-  Per-shop unsubscribe management
 
 **Implementation:**
 ```python
@@ -345,9 +345,9 @@ Shop B: notifications@quickfixglass.com
 **DNS Records to Add:**
 ```
 # CNAME records (shop's DNS)
-em123.glassproaustin.com  → u123456.wl.sendgrid.net
-s1._domainkey.glassproaustin.com → s1.domainkey.u123456.wl.sendgrid.net
-s2._domainkey.glassproaustin.com → s2.domainkey.u123456.wl.sendgrid.net
+em123.glassproaustin.com   u123456.wl.sendgrid.net
+s1._domainkey.glassproaustin.com  s1.domainkey.u123456.wl.sendgrid.net
+s2._domainkey.glassproaustin.com  s2.domainkey.u123456.wl.sendgrid.net
 ```
 
 **Pricing Tier:**
@@ -437,13 +437,13 @@ def sendgrid_webhook(request):
 **Dashboard UI:**
 ```
 Shop Dashboard > Notifications
-  ├── This Month: 234 emails sent, 187 delivered (80% open rate)
-  ├── This Month: 12 SMS sent, 12 delivered
-  ├── Top Notifications:
-  │     - Repair Approved: 89 sent
-  │     - Repair Pending: 67 sent
-  │     - Repair Completed: 45 sent
-  └── Failures: 3 bounced emails (invalid addresses)
+   This Month: 234 emails sent, 187 delivered (80% open rate)
+   This Month: 12 SMS sent, 12 delivered
+   Top Notifications:
+       - Repair Approved: 89 sent
+       - Repair Pending: 67 sent
+       - Repair Completed: 45 sent
+   Failures: 3 bounced emails (invalid addresses)
 ```
 
 ---
@@ -519,7 +519,7 @@ repairs = Repair.objects.for_shop(request.user.shop)
 
 ---
 
-## Migration Strategy: Single Tenant → Multi-Tenant
+## Migration Strategy: Single Tenant  Multi-Tenant
 
 ### Step 1: Add Shop Model (Non-Breaking)
 ```python
@@ -564,7 +564,7 @@ repairs = Repair.objects.for_shop(request.user.shop)
 
 If you charge **$99/month per shop**:
 ```
-100 shops × $99/month = $9,900/month revenue
+100 shops � $99/month = $9,900/month revenue
 Notification costs: $79/month
 Profit margin on notifications: 99.2%
 ```
@@ -635,45 +635,45 @@ Profit margin on notifications: 99.2%
 
 ## Recommendations
 
-### Phase 1: Email Working ✅ COMPLETED (December 6, 2025)
+### Phase 1: Email Working  COMPLETED (December 6, 2025)
 
-1. ✅ **Sign up for SendGrid** (Free tier - 100 emails/day)
-2. ✅ **Domain authentication** via Route 53 DNS records
+1.  **Sign up for SendGrid** (Free tier - 100 emails/day)
+2.  **Domain authentication** via Route 53 DNS records
    - DKIM keys: s1._domainkey, s2._domainkey
    - Sender identity: em3661.rockstarwindshield.repair
-3. ✅ **Update Django settings** to use SendGrid SMTP
-4. ✅ **Deploy to AWS Elastic Beanstalk**
-5. ✅ **Test email delivery** - confirmed working
+3.  **Update Django settings** to use SendGrid SMTP
+4.  **Deploy to AWS Elastic Beanstalk**
+5.  **Test email delivery** - confirmed working
 
 ### Phase 2: Next Steps (Ready to Start)
 
-1. ⏳ **Add SMS via Twilio** (see implementation notes below)
+1.  **Add SMS via Twilio** (see implementation notes below)
    - Sign up for Twilio account
    - Refactor `core/services/sms_service.py` from AWS SNS to Twilio
    - Enable SMS for URGENT priority notifications
 
-2. ⏳ **Test with real customers**
+2.  **Test with real customers**
    - Gather feedback on email content
    - Monitor SendGrid analytics for open rates
 
-3. ⏳ **Email branding refinement**
+3.  **Email branding refinement**
    - Custom logo upload working
    - Color customization working
    - Gather feedback and iterate
 
 ### Phase 3: Multi-Tenant SaaS (When Scaling)
 
-1. ⏳ Implement SendGrid subusers (per-shop isolation)
-2. ⏳ Custom domain support (premium tier)
-3. ⏳ Per-shop analytics dashboard
+1.  Implement SendGrid subusers (per-shop isolation)
+2.  Custom domain support (premium tier)
+3.  Per-shop analytics dashboard
 
 ### Phase 4: Long-Term (Year 1-2)
 
-1. ⏳ Scale to 100+ shops
-2. ⏳ A/B test notification content
-3. ⏳ Notification scheduling
-4. ⏳ International SMS support
-5. ⏳ Consider custom email infrastructure (if 10,000+ shops)
+1.  Scale to 100+ shops
+2.  A/B test notification content
+3.  Notification scheduling
+4.  International SMS support
+5.  Consider custom email infrastructure (if 10,000+ shops)
 
 ---
 
@@ -709,18 +709,18 @@ Profit margin on notifications: 99.2%
 **Recommendation:** Proceed with SendGrid as the primary email service provider.
 
 **Why:**
-1. ✅ **Immediate unblocking** - Works today, no AWS approval needed
-2. ✅ **SaaS-native** - Built for multi-tenant architecture
-3. ✅ **Scalable** - Proven at massive scale (Uber, Spotify)
-4. ✅ **Cost-effective** - Negligible cost relative to SaaS revenue
-5. ✅ **Future-proof** - Supports custom domains, white-label, etc.
+1.  **Immediate unblocking** - Works today, no AWS approval needed
+2.  **SaaS-native** - Built for multi-tenant architecture
+3.  **Scalable** - Proven at massive scale (Uber, Spotify)
+4.  **Cost-effective** - Negligible cost relative to SaaS revenue
+5.  **Future-proof** - Supports custom domains, white-label, etc.
 
 **AWS SES Strategy:**
 - Keep configured as backup
 - Revisit in 6-12 months with proven sending history
 - Use for internal notifications (not customer-facing)
 
-**Status:** ✅ SendGrid integration COMPLETE as of December 6, 2025.
+**Status:**  SendGrid integration COMPLETE as of December 6, 2025.
 
 **Next Steps:**
 1. Add SMS via Twilio for urgent notifications (optional, ~3 hours)
@@ -733,12 +733,12 @@ Profit margin on notifications: 99.2%
 
 | Provider | Pros | Cons | Verdict |
 |----------|------|------|---------|
-| **SendGrid** | SaaS-ready, proven, easy | Costs money at scale | ✅ **RECOMMENDED** |
-| **AWS SES** | Cheap, AWS-native | Rejected our account | ❌ Not viable now |
-| **Mailgun** | Good API, Rackspace-backed | More expensive than SendGrid | ⚠️ Backup option |
-| **Postmark** | Excellent deliverability | Expensive ($15/month minimum) | ⚠️ Premium option |
-| **SparkPost** | Good analytics | Complex setup | ❌ Not worth it |
-| **Twilio SendGrid** | Same as SendGrid | Same as SendGrid | ✅ (Same company) |
+| **SendGrid** | SaaS-ready, proven, easy | Costs money at scale |  **RECOMMENDED** |
+| **AWS SES** | Cheap, AWS-native | Rejected our account |  Not viable now |
+| **Mailgun** | Good API, Rackspace-backed | More expensive than SendGrid |  Backup option |
+| **Postmark** | Excellent deliverability | Expensive ($15/month minimum) |  Premium option |
+| **SparkPost** | Good analytics | Complex setup |  Not worth it |
+| **Twilio SendGrid** | Same as SendGrid | Same as SendGrid |  (Same company) |
 
 ---
 

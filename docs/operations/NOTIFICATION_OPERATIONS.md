@@ -44,18 +44,18 @@ aws cloudwatch get-metric-statistics \
 ```
 
 **Key Indicators**:
-- ✅ **NotificationCreated**: Should show steady daily volume (baseline: 50-200/day)
-- ✅ **NotificationDelivered**: Should be ≥95% of created notifications
-- ✅ **NotificationFailed**: Should be <5% of created notifications
-- ✅ **DeliveryLatency**: Average should be <5 seconds
-- ✅ **SMSCost**: Daily total should be <$50
-- ✅ **QueueDepth**: Should be <100 pending tasks
+-  **NotificationCreated**: Should show steady daily volume (baseline: 50-200/day)
+-  **NotificationDelivered**: Should be 95% of created notifications
+-  **NotificationFailed**: Should be <5% of created notifications
+-  **DeliveryLatency**: Average should be <5 seconds
+-  **SMSCost**: Daily total should be <$50
+-  **QueueDepth**: Should be <100 pending tasks
 
 **Red Flags**:
-- 🚨 NotificationFailed spike (>10% of total)
-- 🚨 SMSCost >$50 in 24 hours
-- 🚨 QueueDepth >500 for >10 minutes
-- 🚨 DeliveryLatency >30 seconds average
+-  NotificationFailed spike (>10% of total)
+-  SMSCost >$50 in 24 hours
+-  QueueDepth >500 for >10 minutes
+-  DeliveryLatency >30 seconds average
 
 ### 2. Review CloudWatch Alarms
 
@@ -80,9 +80,9 @@ aws cloudwatch describe-alarms \
 **Dashboard URL**: https://sentry.io/organizations/your-org/issues/
 
 **Review**:
-- ✅ **New Issues**: Should be 0-2 new issues per day
-- ✅ **Event Volume**: Check for unusual spikes
-- ✅ **Performance**: Review slow transactions (>5s)
+-  **New Issues**: Should be 0-2 new issues per day
+-  **Event Volume**: Check for unusual spikes
+-  **Performance**: Review slow transactions (>5s)
 
 **Action Items**:
 - Triage new issues (assign severity P1-P4)
@@ -119,9 +119,9 @@ celery@hostname:
 ```
 
 **Red Flags**:
-- 🚨 Service status: `inactive (dead)`
-- 🚨 No worker processes running
-- 🚨 Worker restarted recently (<1 hour ago)
+-  Service status: `inactive (dead)`
+-  No worker processes running
+-  Worker restarted recently (<1 hour ago)
 
 ### 5. Check Delivery Success Rates
 
@@ -167,8 +167,8 @@ print(f"SMS Delivery Rate (24h): {sms_rate:.1f}%")
 ```
 
 **Target Rates**:
-- ✅ Email: ≥95%
-- ✅ SMS: ≥98%
+-  Email: 95%
+-  SMS: 98%
 
 **If Below Target**:
 - Review failed delivery logs
@@ -189,7 +189,7 @@ sudo journalctl -u gunicorn --since "1 hour ago" | grep ERROR
 sudo journalctl -u celery-worker --since "24 hours ago" | grep ERROR | sort | uniq -c | sort -rn | head -10
 ```
 
-**No errors**: ✅ Proceed
+**No errors**:  Proceed
 **Errors found**: Investigate and create tickets as needed
 
 ---
@@ -247,10 +247,10 @@ print(f"Monthly Projection: ${weekly_total * 4.3:.2f}")
 ```
 
 **Action Items**:
-- ✅ Document weekly cost
-- ✅ Compare to previous week (trend analysis)
-- ✅ Flag if monthly projection >$1,500
-- ✅ Identify cost optimization opportunities
+-  Document weekly cost
+-  Compare to previous week (trend analysis)
+-  Flag if monthly projection >$1,500
+-  Identify cost optimization opportunities
 
 ### 2. Review Notification Volume Patterns
 
@@ -353,10 +353,10 @@ aws cloudwatch get-metric-statistics \
 **Sentry Triage**:
 1. Review all open issues in Sentry
 2. Categorize by severity:
-   - **Critical**: Affecting >10% of users → Fix immediately
-   - **High**: Affecting <10% users → Fix this sprint
-   - **Medium**: Edge cases → Schedule for next sprint
-   - **Low**: Enhancement/optimization → Backlog
+   - **Critical**: Affecting >10% of users  Fix immediately
+   - **High**: Affecting <10% users  Fix this sprint
+   - **Medium**: Edge cases  Schedule for next sprint
+   - **Low**: Enhancement/optimization  Backlog
 3. Resolve or snooze issues
 4. Update documentation for known issues
 
@@ -508,7 +508,7 @@ age_days = (timezone.now() - oldest.created_at).days
 print(f"Age: {age_days} days")
 
 if age_days > 95:
-    print("⚠️ WARNING: Cleanup task may not be running!")
+    print(" WARNING: Cleanup task may not be running!")
 ```
 
 **Manual Cleanup** (if needed):
@@ -533,10 +533,10 @@ print(f"Deleted {deleted_count} old delivery logs")
 ### 6. Documentation Updates
 
 **Review and Update**:
-- ✅ This operations guide (add new procedures learned)
-- ✅ Troubleshooting runbook (add new error patterns)
-- ✅ Deployment guide (incorporate lessons learned)
-- ✅ Performance baselines (update with current metrics)
+-  This operations guide (add new procedures learned)
+-  Troubleshooting runbook (add new error patterns)
+-  Deployment guide (incorporate lessons learned)
+-  Performance baselines (update with current metrics)
 
 ---
 

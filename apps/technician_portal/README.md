@@ -16,8 +16,8 @@ The Technician Portal is a Django web application that provides RSWR Systems rep
 - **Repair Queue**: View all assigned and available repairs in filterable list
 - **Status Updates**: Move repairs through the workflow with status tracking
 - **Filter System**: Sort repairs by status, customer, or other attributes
-- **Customer Requested Repairs**: ✨ **Enhanced** - All REQUESTED repairs visible to all technicians
-- **Load-Balanced Assignment**: ✨ **New** - Intelligent assignment based on technician workload
+- **Customer Requested Repairs**:  **Enhanced** - All REQUESTED repairs visible to all technicians
+- **Load-Balanced Assignment**:  **New** - Intelligent assignment based on technician workload
 - **Assignment Indicators**: Visual cues showing which repairs are assigned to current technician
 
 ### Technical Documentation
@@ -134,7 +134,7 @@ The technician portal manages repairs through six distinct stages:
 
 ## Recent Improvements (v1.2.0)
 
-### 🔧 Critical Repair Visibility Fix
+###  Critical Repair Visibility Fix
 
 **Issue Resolved**: Previously, technicians could only see repairs specifically assigned to them, causing customer repair requests to be invisible to most technicians.
 
@@ -143,7 +143,7 @@ The technician portal manages repairs through six distinct stages:
 - **Assignment Indicators**: Added `assigned_to_me` flag to distinguish personal assignments
 - **Improved Collaboration**: Technicians can now see system-wide repair queue
 
-### ⚖️ Load-Balanced Assignment
+###  Load-Balanced Assignment
 
 **New Feature**: Intelligent technician assignment based on current workload.
 
@@ -162,7 +162,7 @@ technicians = Technician.objects.annotate(
 - Prevents bottlenecks when specific technicians are busy
 - Improved system efficiency and resource utilization
 
-### 🧪 Testing Infrastructure
+###  Testing Infrastructure
 
 **New Testing Capabilities**:
 - **Automated System Testing**: `python manage.py test_system_flow`
@@ -177,7 +177,7 @@ The Technician Portal integrates with the Customer Portal in several ways:
 2. **Approval Workflow**: Customer approvals in the Customer Portal affect repair availability in the Technician Portal
 3. **Status Synchronization**: Status changes made by technicians are immediately visible to customers
 4. **Unit Tracking**: The UnitRepairCount model is updated when repairs are completed
-5. **Load-Balanced Assignment**: ✨ **New** - Customer requests automatically assigned using workload balancing
+5. **Load-Balanced Assignment**:  **New** - Customer requests automatically assigned using workload balancing
 
 ## API Features (Planned)
 

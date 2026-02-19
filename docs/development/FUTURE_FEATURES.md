@@ -1,56 +1,56 @@
-# Future Features — RS Systems
+# Future Features  RS Systems
 
 **Last Updated**: February 1, 2026
 **Purpose**: Track what's planned vs. what's done
 
 ---
 
-## ✅ Recently Completed (Oct 2025 – Feb 2026)
+##  Recently Completed (Oct 2025  Feb 2026)
 
 ### Billing & Payments (Jan 2026)
-- ✅ Invoice automation — PDF generation, auto-invoice on repair completion
-- ✅ Stripe integration — Payment Links, Checkout Sessions, webhooks
-- ✅ Customer portal invoice pages (list, detail, Pay Now)
-- ✅ Owner invoice dashboard with manual payment recording
-- ✅ Tech on-site payment collection from repair detail
-- ✅ Payment confirmation emails (customer receipt + owner notification)
-- ✅ BillingConfig (company address, payment terms, invoice defaults)
+-  Invoice automation  PDF generation, auto-invoice on repair completion
+-  Stripe integration  Payment Links, Checkout Sessions, webhooks
+-  Customer portal invoice pages (list, detail, Pay Now)
+-  Owner invoice dashboard with manual payment recording
+-  Tech on-site payment collection from repair detail
+-  Payment confirmation emails (customer receipt + owner notification)
+-  BillingConfig (company address, payment terms, invoice defaults)
 
 ### Architecture (Jan 2026)
-- ✅ Unified permission system (`common/auth.py`, `@requires()` decorator)
-- ✅ One base template (`base_app.html`) for all shop staff
-- ✅ Signup/onboarding fix (auto-Technician profile, simplified wizard)
-- ✅ Settings refactor (base/development/production package)
+-  Unified permission system (`common/auth.py`, `@requires()` decorator)
+-  One base template (`base_app.html`) for all shop staff
+-  Signup/onboarding fix (auto-Technician profile, simplified wizard)
+-  Settings refactor (base/development/production package)
 
 ### SaaS Multi-Tenant (Jan 2026)
-- ✅ Tenants app (Tenant, TenantMembership, SubscriptionPlan models)
-- ✅ Signup flow + onboarding wizard
-- ✅ Owner portal with billing page
+-  Tenants app (Tenant, TenantMembership, SubscriptionPlan models)
+-  Signup flow + onboarding wizard
+-  Owner portal with billing page
 
 ### Manager Settings (Nov 2025)
-- ✅ Viscosity rules management (CRUD, auto-priority, AJAX)
-- ✅ Team overview dashboard (per-tech stats, completion rates)
+-  Viscosity rules management (CRUD, auto-priority, AJAX)
+-  Team overview dashboard (per-tech stats, completion rates)
 
 ### Notifications (Oct 2025)
-- ✅ Email + SMS notification system (SendGrid)
-- ✅ Repair status change notifications
-- ✅ Assignment and approval alerts
+-  Email + SMS notification system (SendGrid)
+-  Repair status change notifications
+-  Assignment and approval alerts
 
 ### Rewards & Referrals
-- ✅ Referral codes, point-based rewards, flexible redemption
+-  Referral codes, point-based rewards, flexible redemption
 
 ### Customer Settings (Oct 2025)
-- ✅ Account settings redesign (Tailwind, card-based, tabbed)
-- ✅ Lot walking preference UI (frequency, days, time)
-- ✅ Repair preferences (auto-approve, require approval, threshold)
+-  Account settings redesign (Tailwind, card-based, tabbed)
+-  Lot walking preference UI (frequency, days, time)
+-  Repair preferences (auto-approve, require approval, threshold)
 
 ---
 
-## 🔜 Planned — Near-term
+##  Planned  Near-term
 
 ### Sales Tax by Zip Code (Billing Phase 8)
 Auto-calculate Arkansas state + local tax at invoice creation. `tax_enabled` toggle (default off), per-customer `tax_exempt` flag. ~8-12 hours.
-→ See [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-8-sales-tax-by-zip-code)
+ See [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-8-sales-tax-by-zip-code)
 
 ### Batch Invoicing Automation (Phase 6)
 Weekly/monthly consolidated invoices for `batch` preference customers. Management command: `process_batch_invoices`. ~12 hours.
@@ -72,7 +72,7 @@ Scan-to-pay: QR code linking to Stripe checkout, printed on PDF invoices.
 
 ---
 
-## 📋 Planned — Medium-term
+##  Planned  Medium-term
 
 ### Mobile Optimization / PWA
 - Offline mode with service workers
@@ -82,7 +82,7 @@ Scan-to-pay: QR code linking to Stripe checkout, printed on PDF invoices.
 - Push notifications
 
 ### Lot Walking Scheduler (Backend)
-The customer preference UI exists — scheduling backend doesn't. Needs:
+The customer preference UI exists  scheduling backend doesn't. Needs:
 - `LotWalkSchedule` + `LotWalkRoute` models
 - Schedule generation from customer preferences
 - Technician calendar view
@@ -97,7 +97,7 @@ Wire SubscriptionPlan to Stripe Products/Prices. Checkout flow, subscription web
 
 ---
 
-## 🔮 Planned — Long-term
+## � Planned  Long-term
 
 - **AI/ML Damage Assessment**: "Can this be repaired?" classifier from customer photos
 - **QuickBooks Integration**: Export invoices to QBO (may not be needed if Stripe handles everything)
@@ -108,10 +108,10 @@ Wire SubscriptionPlan to Stripe Products/Prices. Checkout flow, subscription web
 
 ---
 
-## 🔗 Related
-- [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) — Detailed billing phases
-- [`docs/development/CHANGELOG.md`](CHANGELOG.md) — Version history
-- [`docs/AMELIA_ROADMAP.md`](../AMELIA_ROADMAP.md) — High-level roadmap
+##  Related
+- [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md)  Detailed billing phases
+- [`docs/development/CHANGELOG.md`](CHANGELOG.md)  Version history
+- [`docs/AMELIA_ROADMAP.md`](../AMELIA_ROADMAP.md)  High-level roadmap
 
 ## Custom Contact Email on Payment Pages
 **Priority**: P1 (needs real email before production)

@@ -95,18 +95,18 @@ eb deploy
 
 ```
 1. User triggers repair event (create, approve, complete)
-   ↓
+   
 2. Signal handler fires (apps/technician_portal/signals.py)
-   ↓
+   
 3. NotificationService.create_notification() called
-   ↓
-4. Notification record created in PostgreSQL ✅
-   ↓
+   
+4. Notification record created in PostgreSQL 
+   
 5. NotificationService._queue_delivery() called
-   ↓
-6. EmailService.send_notification_email() sends directly via SendGrid ✅
-   ↓
-7. Email delivered to user ✅
+   
+6. EmailService.send_notification_email() sends directly via SendGrid 
+   
+7. Email delivered to user 
 ```
 
 **Key Change:** Step 6 now calls `EmailService` directly instead of queuing to Celery. Emails send immediately during the HTTP request.

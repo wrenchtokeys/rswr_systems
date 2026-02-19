@@ -1,15 +1,15 @@
 # Billing & Payments Roadmap
 
-> Created: Jan 31, 2026 — Amelia
+> Created: Jan 31, 2026  Amelia
 > Last updated: February 11, 2026
-> Status: ✅ Complete
-> Priority: High — core revenue feature
+> Status:  Complete
+> Priority: High  core revenue feature
 
-📖 **For how billing works, see [BILLING_GUIDE.md](docs/BILLING_GUIDE.md)**
+ **For how billing works, see [BILLING_GUIDE.md](docs/BILLING_GUIDE.md)**
 
 ## Current State (What Exists)
 
-### ✅ Working
+###  Working
 - **Auto-invoice on completion**: Per-ticket invoicing generates PDF, saves to S3, emails to customer
 - **Invoice model**: Full Invoice + LineItem + Payment models with status tracking
 - **BillingConfig**: Singleton with company address (street/city/state/zip), configurable via Admin > Billing > Billing Configuration
@@ -22,50 +22,50 @@
 - **Customer preferences**: `invoice_preference` (per_ticket/batch/manual), `billing_email`, `auto_email_invoices`
 - **Configurable invoice prefix, footer text** via BillingConfig
 
-### ⏳ Needs Drake Action
-- **Set `STRIPE_WEBHOOK_SECRET` in EB** — grab from Stripe Dashboard (starts with `whsec_`). Without this, webhooks reject all events and payments won't auto-record.
-- **Run migration on prod** — `python manage.py migrate billing` (for BillingConfig + payment_terms)
-- **Fill in BillingConfig** — Admin > Billing > Billing Configuration (company address)
+###  Needs Drake Action
+- **Set `STRIPE_WEBHOOK_SECRET` in EB**  grab from Stripe Dashboard (starts with `whsec_`). Without this, webhooks reject all events and payments won't auto-record.
+- **Run migration on prod**  `python manage.py migrate billing` (for BillingConfig + payment_terms)
+- **Fill in BillingConfig**  Admin > Billing > Billing Configuration (company address)
 
-### ❌ Not Yet Built
-- ~~**No payment confirmation emails**~~ ✅ Done (Phase 4)
-- ~~**No payment status in portals**~~ ✅ Done (Phase 5)
-- **No reminder UI** — reminder service exists but no portal buttons to trigger them
-- ~~**No owner billing dashboard for customer invoices**~~ ✅ Done (Phase 5.2)
-- ~~**Customer portal has no invoice history/payment view**~~ ✅ Done (Phase 5.1)
+###  Not Yet Built
+- ~~**No payment confirmation emails**~~  Done (Phase 4)
+- ~~**No payment status in portals**~~  Done (Phase 5)
+- **No reminder UI**  reminder service exists but no portal buttons to trigger them
+- ~~**No owner billing dashboard for customer invoices**~~  Done (Phase 5.2)
+- ~~**Customer portal has no invoice history/payment view**~~  Done (Phase 5.1)
 - **Tech portal has no payment visibility** (deferred)
-- ~~No sales tax calculation~~ — **Sales tax complete** (Phase 8, v2.2.1)
-- **No manual payment UI** ✅ Done — owner can record cash/check/wire/ACH (Phase 5.2)
+- ~~No sales tax calculation~~  **Sales tax complete** (Phase 8, v2.2.1)
+- **No manual payment UI**  Done  owner can record cash/check/wire/ACH (Phase 5.2)
 
 ---
 
-## ~~Phase 1: Payment Terms & Customer Preferences~~ ✅ DONE (PR #13)
+## ~~Phase 1: Payment Terms & Customer Preferences~~  DONE (PR #13)
 
 - [x] BillingConfig singleton: company address, default payment terms, invoice defaults
 - [x] Payment terms on Invoice model (COD default, NET15/30/45/60 options)
 - [x] Due date auto-calculated from terms (COD=today, NET30=+30 days)
 - [x] Payment terms displayed on invoice PDF
 - [x] Configurable via Admin > Billing > Billing Configuration
-- [ ] Per-customer payment terms override (future — currently uses global default)
+- [ ] Per-customer payment terms override (future  currently uses global default)
 - [ ] Customer portal: request payment terms (future)
 
 ---
 
-## ~~Phase 2: Stripe Integration (Pay Online)~~ ✅ DONE
+## ~~Phase 2: Stripe Integration (Pay Online)~~  DONE
 
 - [x] Stripe keys configured in EB (test mode)
 - [x] Webhook endpoint: `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
 - [x] Payment Links auto-generated on every invoice creation
 - [x] Checkout Sessions supported
 - [x] Webhook handles checkout.session.completed + payment_intent.succeeded
-- [x] Auto-records Payment → updates Invoice status to PAID
+- [x] Auto-records Payment  updates Invoice status to PAID
 - [x] Invoice emails include "Pay Online" link
 - [ ] **BLOCKED**: Set `STRIPE_WEBHOOK_SECRET` in EB (Drake)
 - [ ] QR code on PDF for scan-to-pay (future)
 
 ---
 
-## ~~Phase 3: Check Payment Support~~ ✅ DONE (PR #13)
+## ~~Phase 3: Check Payment Support~~  DONE (PR #13)
 
 - [x] BillingConfig: structured address fields (street, city, state, zip, phone, email)
 - [x] Company address shown on invoice PDF header
@@ -74,7 +74,7 @@
 
 ---
 
-## ~~Phase 4: Payment Confirmation Emails~~ ✅ DONE (PR #16)
+## ~~Phase 4: Payment Confirmation Emails~~  DONE (PR #16)
 
 - [x] Customer receipt email (branded HTML + plain text)
 - [x] Shows: amount, method, date, invoice summary, remaining balance
@@ -82,24 +82,24 @@
 - [x] Owner notification email (plain text, subject shows amount + customer + status)
 - [x] Wired into Stripe webhook (auto on online payment)
 - [x] Wired into manual payment API (auto on record_payment)
-- [x] Non-fatal — notification failures don't break payment recording
-- [ ] Stripe refund handling (charge.refunded webhook → future)
+- [x] Non-fatal  notification failures don't break payment recording
+- [ ] Stripe refund handling (charge.refunded webhook  future)
 
 ---
 
-## Phase 5: Invoice Portals & Payment Management ✅ DONE (PR #16)
+## Phase 5: Invoice Portals & Payment Management  DONE (PR #16)
 **Goal**: Customers can view/pay invoices. Owners can manage payments.
 
-### 5.1 Customer Portal — My Invoices ✅
+### 5.1 Customer Portal  My Invoices 
 - [x] Invoice list page: `/app/invoices/`
-- [x] Click invoice → detail view (receipt): line items, subtotal, discount, total, payment history
-- [x] Status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️, Cancelled)
-- [x] "Pay Now" button → Stripe checkout (creates session, redirects)
+- [x] Click invoice  detail view (receipt): line items, subtotal, discount, total, payment history
+- [x] Status badges (Paid , Overdue , Sent , Partial , Cancelled)
+- [x] "Pay Now" button  Stripe checkout (creates session, redirects)
 - [x] Download PDF link (S3)
 - [x] Payment history per invoice
 - [x] "Invoices" nav link added to customer portal
 
-### 5.2 Owner Portal — Invoice Dashboard ✅
+### 5.2 Owner Portal  Invoice Dashboard 
 - [x] Invoice list page: `/owner/invoices/` with summary cards
 - [x] Table: all invoices with status badges, filters by customer + status
 - [x] **Record Manual Payment form** (cash, check, wire, ACH, credit card, other)
@@ -108,24 +108,24 @@
 - [x] Actions: view PDF, record payment
 - [x] Summary cards: total outstanding, overdue amount, payments this month, invoices this month
 - [x] Owner dashboard linked to invoice list
-- [x] **Clickable overdue badge** — Click overdue card to filter all overdue invoices (Feb 4, 2026)
-- [x] **Overdue count badge** — Shows number of overdue invoices on the summary card
-- [x] **Send confirmation modal** — "Create & Send" shows preview before sending (Feb 4, 2026):
+- [x] **Clickable overdue badge**  Click overdue card to filter all overdue invoices (Feb 4, 2026)
+- [x] **Overdue count badge**  Shows number of overdue invoices on the summary card
+- [x] **Send confirmation modal**  "Create & Send" shows preview before sending (Feb 4, 2026):
   - Subject preview
   - Invoice summary (number, repair count, total)
   - Editable recipient email
   - Multi-recipient support (comma-separated)
   - CC support for additional recipients
-- [x] **Dismiss uninvoiced repairs** — "Dismiss" button for legacy repairs already paid outside system (Feb 4, 2026):
+- [x] **Dismiss uninvoiced repairs**  "Dismiss" button for legacy repairs already paid outside system (Feb 4, 2026):
   - Marks repairs with `skip_invoicing=True`
   - Hides them from uninvoiced section without deleting
   - API: `POST /api/billing/customers/<id>/uninvoiced/dismiss/`
 
-### 5.3 Technician Portal — Payment Badge
+### 5.3 Technician Portal  Payment Badge
 - [ ] On repair detail: show invoice status badge if invoiced
 - [ ] On repair list: optional column showing if repair has been invoiced/paid
 
-### 5.4 Reminder System ✅ (Feb 4, 2026)
+### 5.4 Reminder System  (Feb 4, 2026)
 - [x] Owner can click "Send Reminder" on any overdue/outstanding invoice
 - [x] Reminder button on invoice detail page (`/owner/invoices/<id>/`)
 - [x] Sends appropriate email (overdue vs due_soon) based on invoice status
@@ -140,15 +140,15 @@
 
 ### Email Configuration
 - **From**: Uses `DEFAULT_FROM_EMAIL` env var (default: `notifications@rockstarwindshield.repair`)
-- **Replies**: Not supported — emails include "do not reply" notice
+- **Replies**: Not supported  emails include "do not reply" notice
 - **Future**: Consider Google Workspace or SendGrid Inbound Parse for reply handling
 
 ---
 
-## Phase 6: Polish & Automation ✅ DONE (Feb 11, 2026)
+## Phase 6: Polish & Automation  DONE (Feb 11, 2026)
 **Goal**: Production-ready billing that runs itself.
 
-### 6.1 Batch Invoicing ✅
+### 6.1 Batch Invoicing 
 - [x] Celery task: `billing.process_batch_invoices` runs daily at 6 AM
 - [x] Configurable frequency: weekly, bi-weekly, monthly, or disabled
 - [x] Configurable day: day of week (0-6) or day of month (1-28)
@@ -156,15 +156,15 @@
 - [x] Groups uninvoiced repairs + replacements by customer
 - [x] Only processes customers with `invoice_preference='batch'`
 
-### 6.2 Overdue Auto-Processing ✅
+### 6.2 Overdue Auto-Processing 
 - [x] Celery task: `billing.process_overdue_invoices` runs daily at 8 AM
-- [x] Auto-update status from SENT/PARTIAL → OVERDUE when past due date
+- [x] Auto-update status from SENT/PARTIAL  OVERDUE when past due date
 - [x] Configurable reminder schedule (e.g., "7,14,30" days after due)
 - [x] Customizable email subject template with variables
 - [x] Reminders logged in invoice internal_notes
 - [x] Enable/disable toggle in BillingConfig
 
-### 6.3 Aging Report ✅
+### 6.3 Aging Report 
 - [x] Celery task: `billing.generate_aging_report`
 - [x] Buckets: current, 1-30, 31-60, 61-90, 90+ days
 - [x] Returns count + total per bucket, plus invoice details
@@ -177,7 +177,7 @@
 - [ ] Monthly or on-demand generation (future)
 
 ### Configuration (BillingConfig)
-All automation settings are configurable in Settings → Billing:
+All automation settings are configurable in Settings  Billing:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
@@ -196,19 +196,19 @@ All automation settings are configurable in Settings → Billing:
 
 | Priority | Phase | Description | Status | Hours |
 |----------|-------|-------------|--------|-------|
-| ✅ | 1 | Payment terms & BillingConfig | DONE | — |
-| ✅ | 2 | Stripe integration | DONE | — |
-| ✅ | 3 | Company address on invoices | DONE | — |
-| ✅ | 4 | Payment confirmation emails | DONE | — |
-| ✅ | 5 | Invoice portals & payment management | DONE | — |
-| ✅ | 6 | Automation & reports | DONE (Feb 11, 2026) | — |
-| ✅ | 7 | SaaS subscription billing | DONE (Feb 11, 2026) | — |
-| ✅ | 8 | Sales tax by zip code | DONE (Feb 1, 2026) | — |
+|  | 1 | Payment terms & BillingConfig | DONE |  |
+|  | 2 | Stripe integration | DONE |  |
+|  | 3 | Company address on invoices | DONE |  |
+|  | 4 | Payment confirmation emails | DONE |  |
+|  | 5 | Invoice portals & payment management | DONE |  |
+|  | 6 | Automation & reports | DONE (Feb 11, 2026) |  |
+|  | 7 | SaaS subscription billing | DONE (Feb 11, 2026) |  |
+|  | 8 | Sales tax by zip code | DONE (Feb 1, 2026) |  |
 
-**All phases complete!** 🎉
+**All phases complete!** 
 
 ### Resolved Questions
-- **Stripe account**: ✅ Test keys configured in EB
+- **Stripe account**:  Test keys configured in EB
 - **Default terms**: COD (Cash on Delivery) per Drake
 - **Company address**: Configurable via BillingConfig admin (Drake to fill in)
 
@@ -219,22 +219,22 @@ All automation settings are configurable in Settings → Billing:
 
 ---
 
-## Phase 8: Sales Tax ✅ COMPLETE (Feb 1, 2026)
+## Phase 8: Sales Tax  COMPLETE (Feb 1, 2026)
 
 **Goal**: Automatically calculate and apply correct sales tax on repairs and invoices.
 
 ### What was built
-- **BillingConfig rate fields**: `state_tax_rate`, `county_tax_rate`, `city_tax_rate`, `special_tax_rate` with auto-calculated `default_tax_rate` (total). Shop owners enter their rates in Settings → Billing & Tax.
+- **BillingConfig rate fields**: `state_tax_rate`, `county_tax_rate`, `city_tax_rate`, `special_tax_rate` with auto-calculated `default_tax_rate` (total). Shop owners enter their rates in Settings  Billing & Tax.
 - **Tax on repairs**: `tax_rate` and `tax_amount` fields on Repair model. Tax auto-calculated on every `save()` via `TaxService`. `total_with_tax` property returns cost + tax. Displayed on tech and customer repair detail pages.
 - **Tax on invoices**: `tax_rate`, `state_tax_rate`, `county_tax_rate`, `city_tax_rate`, `special_tax_rate`, `tax_amount` fields on Invoice model. Tax calculated at invoice creation time via `TaxService.apply_tax_to_invoice()`. PDF shows full breakdown.
-- **Per-customer exemption**: `Customer.tax_exempt` flag → $0 tax regardless of global setting.
+- **Per-customer exemption**: `Customer.tax_exempt` flag  $0 tax regardless of global setting.
 - **Auto-enable**: Saving non-zero rates auto-sets `tax_enabled = True`.
-- **No-tax mode**: `BillingConfig.tax_enabled = False` → everything stays $0.
+- **No-tax mode**: `BillingConfig.tax_enabled = False`  everything stays $0.
 
 ### Design decisions
-- **No tax table / API** — shop owner enters their local rates directly. Simple, no maintenance, no external deps.
-- **Tax on the invoice, not at checkout** — check/cash customers pay the same tax-inclusive total as Stripe customers.
-- **Tax calculated at creation time** — rate is frozen on the invoice/repair record so historical records stay accurate even if rates change later.
+- **No tax table / API**  shop owner enters their local rates directly. Simple, no maintenance, no external deps.
+- **Tax on the invoice, not at checkout**  check/cash customers pay the same tax-inclusive total as Stripe customers.
+- **Tax calculated at creation time**  rate is frozen on the invoice/repair record so historical records stay accurate even if rates change later.
 
 ### Completed tasks
 - [x] Add tax rate breakdown fields to BillingConfig
@@ -254,7 +254,7 @@ All automation settings are configurable in Settings → Billing:
 
 ## Phase 7: SaaS Subscription Billing (Glass Shops)
 
-Separate from customer billing — this is charging glass shops to use RS Systems.
+Separate from customer billing  this is charging glass shops to use RS Systems.
 
 **Already built:**
 - SubscriptionPlan model (Trial/Starter $49/Pro $99/Enterprise $249)
@@ -265,15 +265,15 @@ Separate from customer billing — this is charging glass shops to use RS System
 - Tenant webhook handler
 
 **Still needed (Drake action):**
-- [x] Create Stripe Products + Prices in Stripe Dashboard ✅ Done Feb 11
-- [x] Copy `stripe_price_id` into SubscriptionPlan records ✅ Done Feb 11
+- [x] Create Stripe Products + Prices in Stripe Dashboard  Done Feb 11
+- [x] Copy `stripe_price_id` into SubscriptionPlan records  Done Feb 11
 - [ ] Add `checkout.session.completed` event to Stripe webhook
 
 **Completed (Feb 10-11, 2026):**
 - [x] Wire up subscription checkout flow via Stripe Checkout Sessions
 - [x] Handle subscription webhooks (checkout.session.completed, invoice.paid/failed, subscription.updated/deleted)
-- [x] Dunning — handle failed subscription payments gracefully (past_due banner + email)
-- [x] Usage enforcement — block actions when plan limits hit (repairs, techs, customers)
-- [x] Trial expiration → prompt to upgrade (expired + expiring banners)
+- [x] Dunning  handle failed subscription payments gracefully (past_due banner + email)
+- [x] Usage enforcement  block actions when plan limits hit (repairs, techs, customers)
+- [x] Trial expiration  prompt to upgrade (expired + expiring banners)
 - [x] Billing portal link (Stripe Customer Portal for managing payment method/invoices)
 - [x] **Security fix**: Plan only upgrades AFTER payment confirmed (not before checkout)

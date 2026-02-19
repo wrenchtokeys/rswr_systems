@@ -23,7 +23,7 @@ The system provides intelligent, real-time resin viscosity recommendations to te
 
 Each rule consists of:
 - **Name**: Descriptive name (e.g., "Cold Weather", "Standard Conditions")
-- **Temperature Range**: Min/Max temperature thresholds in °F
+- **Temperature Range**: Min/Max temperature thresholds in �F
   - Leave `min_temperature` blank for "all temperatures below max"
   - Leave `max_temperature` blank for "all temperatures above min"
 - **Recommended Viscosity**: The viscosity level to suggest (e.g., "Low", "Medium", "High")
@@ -38,9 +38,9 @@ The system comes with 3 default rules:
 
 | Name | Temperature Range | Viscosity | Badge Color |
 |------|------------------|-----------|-------------|
-| Cold Weather | ≤ 59.9°F | Low | Blue |
-| Standard Conditions | 60.0°F - 84.9°F | Medium | Green |
-| Hot Weather | ≥ 85.0°F | High | Orange |
+| Cold Weather |  59.9�F | Low | Blue |
+| Standard Conditions | 60.0�F - 84.9�F | Medium | Green |
+| Hot Weather |  85.0�F | High | Orange |
 
 ## Using the Manager Settings Interface
 
@@ -60,8 +60,8 @@ The system comes with 3 default rules:
      - **Rule Name**: Give it a descriptive name (e.g., "Cold Weather")
      - **Priority**: Set display order (1 = highest priority)
    - **Temperature Range**:
-     - **Minimum Temperature**: Lower bound in °F (or leave blank for "all temps below max")
-     - **Maximum Temperature**: Upper bound in °F (or leave blank for "all temps above min")
+     - **Minimum Temperature**: Lower bound in �F (or leave blank for "all temps below max")
+     - **Maximum Temperature**: Upper bound in �F (or leave blank for "all temps above min")
    - **Recommendation**:
      - **Recommended Viscosity**: The viscosity level (e.g., "Low", "Medium", "High")
      - **Badge Color**: Choose visual color (blue, green, orange, red, yellow, purple)
@@ -111,10 +111,10 @@ The system comes with 3 default rules:
 ## Best Practices
 
 ### Temperature Boundaries
-- Avoid overlapping ranges (e.g., don't have one rule end at 60°F and another start at 60°F)
+- Avoid overlapping ranges (e.g., don't have one rule end at 60�F and another start at 60�F)
 - Use decimal precision for clean boundaries:
-  - Rule 1: max = 59.9°F
-  - Rule 2: min = 60.0°F
+  - Rule 1: max = 59.9�F
+  - Rule 2: min = 60.0�F
 
 ### Badge Colors
 - **Blue**: Cold conditions
@@ -126,8 +126,8 @@ The system comes with 3 default rules:
 
 ### Suggestion Text
 - Be specific and actionable
-- Example: "Low viscosity recommended for cold conditions" ✅
-- Avoid: "Use this one" ❌
+- Example: "Low viscosity recommended for cold conditions" 
+- Avoid: "Use this one" 
 
 ### Display Order
 - Lower numbers have higher priority
@@ -145,11 +145,11 @@ When a technician enters a windshield temperature in the repair form:
 
 ### Example Display
 ```
-Temperature: 72°F
-┌─────────────────────────────────────────┐
-│ 💧 Medium viscosity recommended for    │
-│    optimal conditions                   │
-└─────────────────────────────────────────┘
+Temperature: 72�F
+
+  Medium viscosity recommended for    
+    optimal conditions                   
+
 ```
 
 ## Troubleshooting
@@ -176,7 +176,7 @@ To reset rules to defaults:
 python manage.py setup_viscosity_rules --reset
 ```
 
-⚠️ **Warning**: This will delete all existing rules and recreate the 3 defaults.
+ **Warning**: This will delete all existing rules and recreate the 3 defaults.
 
 ## Technical Notes
 

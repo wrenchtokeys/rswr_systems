@@ -58,7 +58,7 @@ echo $AWS_SES_SMTP_PASSWORD
 # Test SES directly
 python manage.py test_ses admin@rockstarwindshield.repair
 
-# Expected: "✓ Email sent successfully!"
+# Expected: " Email sent successfully!"
 ```
 
 **Step 3: Check SES Sandbox Status**
@@ -94,7 +94,7 @@ for log in failed_emails:
 **For SES Sandbox Mode:**
 ```bash
 # Request production access (AWS Console method)
-# 1. Go to AWS Console → SES → Account dashboard
+# 1. Go to AWS Console  SES  Account dashboard
 # 2. Click "Request production access"
 # 3. Fill out form with use case
 # 4. Wait for approval (usually 24 hours)
@@ -320,10 +320,10 @@ redis-cli -h your-elasticache-endpoint llen celery
 sudo journalctl -u celery-worker -n 200 | grep ERROR
 
 # Common errors:
-# - "Consumer: Cannot connect to redis://..."  → Redis connectivity
-# - "KeyError: 'exchange'"  → Configuration issue
-# - "Killed"  → Out of memory
-# - "ImportError: ..."  → Code deployment issue
+# - "Consumer: Cannot connect to redis://..."   Redis connectivity
+# - "KeyError: 'exchange'"   Configuration issue
+# - "Killed"   Out of memory
+# - "ImportError: ..."   Code deployment issue
 ```
 
 ### Resolution Steps
@@ -473,7 +473,7 @@ sudo systemctl restart celery-worker
 
 ### Purge Old Tasks (Emergency Only)**
 ```bash
-# ⚠️ WARNING: Only use if backlog is from old/stale tasks
+#  WARNING: Only use if backlog is from old/stale tasks
 # This will delete ALL pending tasks!
 
 celery -A rs_systems purge

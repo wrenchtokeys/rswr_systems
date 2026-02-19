@@ -71,7 +71,7 @@ python manage.py test_system_flow --cleanup
 - Technician assignment with load balancing
 - Multi-technician visibility validation
 - Portal separation and authentication
-- Complete repair status progression (REQUESTED → COMPLETED)
+- Complete repair status progression (REQUESTED  COMPLETED)
 - Cost calculation verification
 - Reward application testing
 
@@ -80,18 +80,18 @@ python manage.py test_system_flow --cleanup
 **Successful Test Output:**
 ```
 === Testing Repair Request Flow ===
-✅ Customer login successful
-✅ Repair request submitted successfully
-✅ Repair created in database with ID [number]
-✅ Repair assigned to technician: [username]
-✅ Repair should be visible to technician [tech1]
-✅ Repair should be visible to technician [tech2]
-✅ Status updated to APPROVED
-✅ Status updated to IN_PROGRESS
-✅ Status updated to COMPLETED
-✅ Final cost calculated: $50.00
+ Customer login successful
+ Repair request submitted successfully
+ Repair created in database with ID [number]
+ Repair assigned to technician: [username]
+ Repair should be visible to technician [tech1]
+ Repair should be visible to technician [tech2]
+ Status updated to APPROVED
+ Status updated to IN_PROGRESS
+ Status updated to COMPLETED
+ Final cost calculated: $50.00
 
-🎉 All tests passed! The repair flow is working correctly.
+ All tests passed! The repair flow is working correctly.
 ```
 
 ## Manual Testing Workflows
@@ -137,7 +137,7 @@ This workflow tests the entire system from customer request through completion:
    - Click on the repair to view details
    - Update status to "Approved"
    - **Expected Result**: Customer notification, status change logged
-   - Progress through: `Approved` → `In Progress` → `Completed`
+   - Progress through: `Approved`  `In Progress`  `Completed`
 
 4. **Verify Cost Calculation**
    - When marked "Completed", cost should be automatically calculated
@@ -246,8 +246,8 @@ If you need to create test data manually:
 ### Critical Features to Test After Changes
 
 1. **Repair Assignment Logic**
-   - Customer creates repair → Assigned to technician with least load
-   - Multiple repairs → Distributed evenly among technicians
+   - Customer creates repair  Assigned to technician with least load
+   - Multiple repairs  Distributed evenly among technicians
 
 2. **Repair Visibility**
    - All REQUESTED repairs visible to all technicians
@@ -255,7 +255,7 @@ If you need to create test data manually:
    - Admins can see and modify all repairs
 
 3. **Status Progression**
-   - Customer request → Technician approval → Work completion
+   - Customer request  Technician approval  Work completion
    - Automatic cost calculation on completion
    - Reward application when applicable
 

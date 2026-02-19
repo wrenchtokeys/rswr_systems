@@ -12,18 +12,18 @@
 This document guides you through setting up AWS Simple Email Service (SES) and Simple Notification Service (SNS) for the RS Systems notification system. By the end, you'll be able to send professional emails and SMS from your application.
 
 ### What You're Setting Up:
-- ✅ **AWS SES** - Send emails FROM notifications@rockstarwindshield.repair
-- ✅ **Domain Verification** - Prove you own rockstarwindshield.repair
-- ✅ **DKIM/SPF** - Prevent emails going to spam (80-90% deliverability improvement)
-- ✅ **IAM Credentials** - Secure access keys for sending
-- ✅ **Local Testing** - Test before deploying to production
-- ✅ **Production Access** - Exit sandbox mode to send to all customers
-- ⚠️ **AWS SNS** - (Optional) SMS notifications
+-  **AWS SES** - Send emails FROM notifications@rockstarwindshield.repair
+-  **Domain Verification** - Prove you own rockstarwindshield.repair
+-  **DKIM/SPF** - Prevent emails going to spam (80-90% deliverability improvement)
+-  **IAM Credentials** - Secure access keys for sending
+-  **Local Testing** - Test before deploying to production
+-  **Production Access** - Exit sandbox mode to send to all customers
+-  **AWS SNS** - (Optional) SMS notifications
 
 ### Prerequisites:
 - AWS account with billing enabled
 - Access to AWS Console
-- Route 53 hosted zone for rockstarwindshield.repair (✅ You have this!)
+- Route 53 hosted zone for rockstarwindshield.repair ( You have this!)
 - Local development environment with notification system installed
 
 ---
@@ -78,7 +78,7 @@ Value: "v=spf1 include:amazonses.com ~all"
 2. Search for "Route 53" in the top search bar
 3. Click "Hosted zones" in the left sidebar
 4. Find: **rockstarwindshield.repair**
-5. Verify Hosted Zone ID matches: **Z00152269ZHHL7BWWEO5** ✅
+5. Verify Hosted Zone ID matches: **Z00152269ZHHL7BWWEO5** 
 6. Click on the domain name to view existing DNS records
 
 **What you should see:**
@@ -98,15 +98,15 @@ Value: "v=spf1 include:amazonses.com ~all"
 1. In SES Console, click **"Verified identities"** in left sidebar
 2. Click **"Create identity"** button (orange)
 3. Configure identity:
-   - **Identity type:** ☑️ Domain (not email address)
+   - **Identity type:**  Domain (not email address)
    - **Domain:** `rockstarwindshield.repair` (no https://, just domain)
    - **Assign a default configuration set:** Leave unchecked for now
    - **Use a custom MAIL FROM domain:** Leave unchecked for simplicity
    - **Advanced DKIM settings:**
-     - ☑️ **Enable DKIM signing** (CRITICAL - check this!)
+     -  **Enable DKIM signing** (CRITICAL - check this!)
      - DKIM signing key length: 2048-bit RSA (default)
      - DKIM identity: Use domain (default)
-   - **Publish DNS records to Route 53:** ☑️ **Check this!** (Auto-creates DNS records)
+   - **Publish DNS records to Route 53:**  **Check this!** (Auto-creates DNS records)
 4. Click **"Create identity"** button
 
 ### Step 1.4: Automatic DNS Record Creation
@@ -133,7 +133,7 @@ AWS doesn't auto-create SPF records, so we'll add it manually.
 
 ### Step 2.1: Check for Existing SPF Record
 
-1. Go back to Route 53 → Hosted zones → rockstarwindshield.repair
+1. Go back to Route 53  Hosted zones  rockstarwindshield.repair
 2. Look for a TXT record with name "rockstarwindshield.repair" (or blank/@ symbol)
 3. Check if value contains "v=spf1"
 
@@ -169,8 +169,8 @@ AWS doesn't auto-create SPF records, so we'll add it manually.
 
 ### Step 3.1: Create IAM Policy
 
-1. AWS Console → Search "IAM" → Click "IAM"
-2. Left sidebar → **"Policies"** → Click **"Create policy"**
+1. AWS Console  Search "IAM"  Click "IAM"
+2. Left sidebar  **"Policies"**  Click **"Create policy"**
 3. Click **"JSON"** tab (not Visual editor)
 4. Delete the placeholder JSON and paste:
 
@@ -199,7 +199,7 @@ AWS doesn't auto-create SPF records, so we'll add it manually.
 }
 ```
 
-5. Click **"Next: Tags"** → Skip tags → Click **"Next: Review"**
+5. Click **"Next: Tags"**  Skip tags  Click **"Next: Review"**
 6. Policy details:
    - **Name:** `RS-Systems-SES-Send-Policy`
    - **Description:** `Allows RS Systems notification system to send emails via SES`
@@ -207,20 +207,20 @@ AWS doesn't auto-create SPF records, so we'll add it manually.
 
 ### Step 3.2: Create IAM User
 
-1. IAM Console → **"Users"** → Click **"Add users"**
+1. IAM Console  **"Users"**  Click **"Add users"**
 2. User details:
    - **User name:** `rs-systems-ses-user`
-   - **Access type:** ☑️ **Access key - Programmatic access** (NOT console access)
+   - **Access type:**  **Access key - Programmatic access** (NOT console access)
 3. Click **"Next: Permissions"**
 4. Set permissions:
    - Select **"Attach existing policies directly"**
    - Search for: `RS-Systems-SES-Send-Policy`
-   - ☑️ Check the box next to your policy
-5. Click **"Next: Tags"** → Skip → **"Next: Review"** → **"Create user"**
+   -  Check the box next to your policy
+5. Click **"Next: Tags"**  Skip  **"Next: Review"**  **"Create user"**
 
 ### Step 3.3: Download Access Keys
 
-**⚠️ CRITICAL:** These credentials are shown ONLY ONCE!
+** CRITICAL:** These credentials are shown ONLY ONCE!
 
 1. After user creation, you'll see:
    - **Access key ID:** AKIA... (20 characters)
@@ -239,7 +239,7 @@ Secret Access Key: wJalrXUtnFEMI...
 SES supports both API credentials (above) and SMTP credentials. Let's create SMTP credentials for Django:
 
 1. Go back to SES Console
-2. Left sidebar → **"SMTP Settings"**
+2. Left sidebar  **"SMTP Settings"**
 3. Click **"Create SMTP Credentials"** button
 4. IAM User Name: `rs-systems-smtp-user` (pre-filled, keep it)
 5. Click **"Create"**
@@ -330,8 +330,8 @@ python manage.py runserver
 
 **Why:** In sandbox mode, you can only send TO verified email addresses.
 
-1. SES Console → **"Verified identities"** → **"Create identity"**
-2. **Identity type:** ☑️ Email address
+1. SES Console  **"Verified identities"**  **"Create identity"**
+2. **Identity type:**  Email address
 3. **Email address:** `poorboychips@gmail.com`
 4. Click **"Create identity"**
 5. Check your Gmail inbox for verification email from AWS
@@ -363,7 +363,7 @@ SMTP Host: email-smtp.us-east-1.amazonaws.com:587
 Sending test email...
 
 ======================================================================
-✅ Email sent successfully!
+ Email sent successfully!
 
 Message ID: <some-aws-message-id>
 Check the recipient inbox for the test email.
@@ -372,7 +372,7 @@ Check the recipient inbox for the test email.
 
 **Expected Output (Error - if domain not verified yet):**
 ```
-❌ Failed to send email
+ Failed to send email
 
 Error: Email address is not verified. The following identities failed the check
 in region US-EAST-1: notifications@rockstarwindshield.repair
@@ -393,11 +393,11 @@ Solution: Wait for domain verification to complete (check SES console)
 3. Subject: "AWS SES Test Email - RS Systems"
 
 **Check email headers (important for deliverability):**
-- Gmail: Click "..." menu → "Show original"
+- Gmail: Click "..." menu  "Show original"
 - Look for:
-  - `DKIM: PASS` ✅
-  - `SPF: PASS` ✅
-  - `DMARC: PASS` ✅ (if configured)
+  - `DKIM: PASS` 
+  - `SPF: PASS` 
+  - `DMARC: PASS`  (if configured)
 
 ### Step 5.4: Test with Actual Notification
 
@@ -482,24 +482,24 @@ tail -f celery_worker.log
 ## Phase 6: Request Production Access (5 mins to submit)
 
 **Current Status: Sandbox Mode**
-- ✅ Can send to verified email addresses only
-- ⚠️ Limited to 200 emails/day
-- ⚠️ 1 email per second max
+-  Can send to verified email addresses only
+-  Limited to 200 emails/day
+-  1 email per second max
 
 **Production Mode (After Approval):**
-- ✅ Send to ANY email address
-- ✅ 50,000+ emails/day
-- ✅ 14 emails/second
+-  Send to ANY email address
+-  50,000+ emails/day
+-  14 emails/second
 
 ### Step 6.1: Submit Production Access Request
 
-1. SES Console → Left sidebar → **"Account dashboard"**
+1. SES Console  Left sidebar  **"Account dashboard"**
 2. Look for banner: "Your account has sandbox access"
 3. Click **"Request production access"** button
 4. Fill out the form:
 
 **Mail type:**
-- ☑️ Transactional
+-  Transactional
 
 **Website URL:**
 - `https://rockstarwindshield.repair`
@@ -547,9 +547,9 @@ Technical implementation:
 ```
 
 **Compliance acknowledgments:**
-- ☑️ I will only send to recipients who have requested my emails
-- ☑️ I have a process to handle bounces and complaints
-- ☑️ I have a privacy policy
+-  I will only send to recipients who have requested my emails
+-  I have a process to handle bounces and complaints
+-  I have a privacy policy
 
 **Planned daily sending volume:**
 - `1000` (start conservative)
@@ -567,9 +567,9 @@ Technical implementation:
 - Rarely takes longer (if so, they'll ask for clarification)
 
 **You'll receive email notification when:**
-- ✅ Approved: "Your SES sending limit increase request has been granted"
-- ⚠️ More info needed: "We need additional information..."
-- ❌ Denied: Very rare for legitimate transactional use cases
+-  Approved: "Your SES sending limit increase request has been granted"
+-  More info needed: "We need additional information..."
+-  Denied: Very rare for legitimate transactional use cases
 
 **While waiting:**
 - Continue testing with verified emails
@@ -585,22 +585,22 @@ Technical implementation:
 
 ### Step 7.1: Enable SMS in SNS
 
-1. AWS Console → Search "SNS" → Simple Notification Service
+1. AWS Console  Search "SNS"  Simple Notification Service
 2. **Region:** us-east-1 (same as SES)
-3. Left sidebar → **"Text messaging (SMS)"**
+3. Left sidebar  **"Text messaging (SMS)"**
 
 ### Step 7.2: Configure SMS Settings
 
 1. Click **"Text messaging preferences"**
 2. Configure:
-   - **Default message type:** ☑️ Transactional (higher priority, better delivery)
+   - **Default message type:**  Transactional (higher priority, better delivery)
    - **Account spend limit:** `50.00` USD/month (adjust based on needs)
    - **Default sender ID:** `RS Systems` (Note: Not supported in US, works in other countries)
 3. Click **"Save changes"**
 
 ### Step 7.3: Create IAM User for SNS
 
-1. IAM Console → Policies → Create Policy → JSON:
+1. IAM Console  Policies  Create Policy  JSON:
 
 ```json
 {
@@ -666,7 +666,7 @@ Initializing AWS SNS client...
 Sending test SMS...
 
 ======================================================================
-✅ SMS sent successfully!
+ SMS sent successfully!
 
 Message ID: 12345678-1234-1234-1234-123456789012
 Cost: ~$0.00645 USD
@@ -699,9 +699,9 @@ eb setenv \
 ```
 
 **Option B: Via AWS Console**
-1. Elastic Beanstalk → Your environment
-2. Configuration → Software → Edit
-3. Environment properties → Add each variable
+1. Elastic Beanstalk  Your environment
+2. Configuration  Software  Edit
+3. Environment properties  Add each variable
 4. Save and apply
 
 ### Step 8.2: Configure Celery Workers
@@ -773,7 +773,7 @@ python manage.py test_sns +12025551234  # If SMS enabled
 
 ### Step 9.1: Create SNS Topic for Alarms
 
-1. AWS Console → SNS → Topics → Create topic
+1. AWS Console  SNS  Topics  Create topic
 2. Type: Standard
 3. Name: `RS-Systems-Notification-Alarms`
 4. Create topic
@@ -786,7 +786,7 @@ python manage.py test_sns +12025551234  # If SMS enabled
 
 **Alarm 1: Email Delivery Failure Rate**
 ```
-Metric: SES → Bounce Rate
+Metric: SES  Bounce Rate
 Threshold: > 5%
 Period: 5 minutes
 Actions: Send to RS-Systems-Notification-Alarms
@@ -794,7 +794,7 @@ Actions: Send to RS-Systems-Notification-Alarms
 
 **Alarm 2: SMS Monthly Spending**
 ```
-Metric: Custom → SMSCost (from your metrics service)
+Metric: Custom  SMSCost (from your metrics service)
 Threshold: > $50
 Period: 1 day
 Actions: Send alert
@@ -802,7 +802,7 @@ Actions: Send alert
 
 **Alarm 3: Celery Queue Depth**
 ```
-Metric: Custom → QueueDepth
+Metric: Custom  QueueDepth
 Threshold: > 100
 Period: 5 minutes
 Actions: Send alert
@@ -873,13 +873,13 @@ Redeploy to EB.
 
 ## Next Steps After Completion
 
-1. ✅ Monitor SES dashboard for bounce/complaint rates
-2. ✅ Set up inbound email forwarding (if needed)
-3. ✅ Configure notification preferences UI for users
-4. ✅ Add custom email templates with branding
-5. ✅ Implement daily digest emails
-6. ✅ Set up CloudWatch dashboards
-7. ✅ Document troubleshooting procedures for team
+1.  Monitor SES dashboard for bounce/complaint rates
+2.  Set up inbound email forwarding (if needed)
+3.  Configure notification preferences UI for users
+4.  Add custom email templates with branding
+5.  Implement daily digest emails
+6.  Set up CloudWatch dashboards
+7.  Document troubleshooting procedures for team
 
 ---
 

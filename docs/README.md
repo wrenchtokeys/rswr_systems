@@ -2,11 +2,11 @@
 
 Welcome to the comprehensive documentation for the RS Systems windshield repair management platform. This directory contains detailed guides, technical documentation, and troubleshooting resources to help you understand, develop, test, and deploy the system.
 
-## 📚 Documentation Overview
+##  Documentation Overview
 
 ### Essential Guides
 
-#### 🎨 [UI Design Guide](development/UI_DESIGN_GUIDE.md)
+####  [UI Design Guide](development/UI_DESIGN_GUIDE.md)
 **Design system and UI component library**
 - Complete design system (colors, typography, spacing)
 - Reusable UI components and patterns
@@ -14,7 +14,7 @@ Welcome to the comprehensive documentation for the RS Systems windshield repair 
 - Code examples and best practices
 - Migration guide for updating existing pages
 
-#### 🧪 [Testing Guide](TESTING.md)
+####  [Testing Guide](TESTING.md)
 **Complete testing procedures and automation**
 - Automated end-to-end testing with `test_system_flow`
 - Manual testing workflows and procedures
@@ -22,16 +22,16 @@ Welcome to the comprehensive documentation for the RS Systems windshield repair 
 - Regression testing for system reliability
 - Performance and security testing guidelines
 
-#### 🎯 [Viscosity Rules Auto-Priority System](development/VISCOSITY_RULES_AUTO_PRIORITY.md)
+####  [Viscosity Rules Auto-Priority System](development/VISCOSITY_RULES_AUTO_PRIORITY.md)
 **Deep dive into the auto-priority system for viscosity rules**
 - Priority calculation algorithm and examples
-- Visual badge system (🥇🥈🥉)
+- Visual badge system (�)
 - Rule evaluation order and matching logic
 - Implementation details and code locations
 - User experience flows and API reference
 - Troubleshooting and future enhancements
 
-#### 🌍 [Timezone Handling Guide](development/TIMEZONE_HANDLING.md)
+####  [Timezone Handling Guide](development/TIMEZONE_HANDLING.md)
 **Multi-timezone support for distributed teams**
 - Browser-based timezone detection for datetime inputs
 - Server-side timezone configuration (Django)
@@ -39,7 +39,7 @@ Welcome to the comprehensive documentation for the RS Systems windshield repair 
 - Testing procedures for timezone scenarios
 - Future enhancements for multi-location deployments
 
-#### 🛠️ [Developer Guide](DEVELOPER_GUIDE.md)
+####  [Developer Guide](DEVELOPER_GUIDE.md)
 **Technical implementation and system architecture**
 - System architecture deep dive
 - Code organization and standards
@@ -48,7 +48,7 @@ Welcome to the comprehensive documentation for the RS Systems windshield repair 
 - Frontend development patterns
 - Deployment and DevOps procedures
 
-#### 🔧 [Troubleshooting Guide](TROUBLESHOOTING.md)
+####  [Troubleshooting Guide](TROUBLESHOOTING.md)
 **Common issues and their solutions**
 - Repair flow troubleshooting
 - Authentication and authorization problems
@@ -56,7 +56,7 @@ Welcome to the comprehensive documentation for the RS Systems windshield repair 
 - Development environment setup
 - Production deployment problems
 
-#### 📋 [Changelog](development/CHANGELOG.md)
+####  [Changelog](development/CHANGELOG.md)
 **Version history and recent improvements**
 - Recent critical fixes (v1.2.0)
 - Repair visibility and assignment improvements
@@ -83,7 +83,7 @@ Welcome to the comprehensive documentation for the RS Systems windshield repair 
 3. Follow security guidelines and environment setup
 4. Use the [Troubleshooting Guide](TROUBLESHOOTING.md) for deployment issues
 
-## 🚀 Deployment Documentation
+##  Deployment Documentation
 
 ### Available Templates
 
@@ -109,28 +109,28 @@ Never commit files containing actual:
 
 Keep your populated deployment guides in a secure location outside of this repository.
 
-## 🔍 Finding Information
+##  Finding Information
 
 ### By Role
 
 #### **Developers**
-- **Getting Started**: Main README.md → [Developer Guide](DEVELOPER_GUIDE.md)
-- **UI Development**: [UI Design Guide](development/UI_DESIGN_GUIDE.md) → Components & Patterns
-- **Code Standards**: [Developer Guide](DEVELOPER_GUIDE.md) → Code Organization
-- **API Development**: [Developer Guide](DEVELOPER_GUIDE.md) → API Development
+- **Getting Started**: Main README.md  [Developer Guide](DEVELOPER_GUIDE.md)
+- **UI Development**: [UI Design Guide](development/UI_DESIGN_GUIDE.md)  Components & Patterns
+- **Code Standards**: [Developer Guide](DEVELOPER_GUIDE.md)  Code Organization
+- **API Development**: [Developer Guide](DEVELOPER_GUIDE.md)  API Development
 - **Debugging**: [Troubleshooting Guide](TROUBLESHOOTING.md)
 
 #### **QA Engineers**
 - **Testing Procedures**: [Testing Guide](TESTING.md)
-- **Test Automation**: [Testing Guide](TESTING.md) → Automated Testing
+- **Test Automation**: [Testing Guide](TESTING.md)  Automated Testing
 - **Issue Reporting**: [Troubleshooting Guide](TROUBLESHOOTING.md)
-- **Regression Testing**: [Testing Guide](TESTING.md) → Regression Testing
+- **Regression Testing**: [Testing Guide](TESTING.md)  Regression Testing
 
 #### **DevOps Engineers**
-- **Deployment**: [Developer Guide](DEVELOPER_GUIDE.md) → Deployment
+- **Deployment**: [Developer Guide](DEVELOPER_GUIDE.md)  Deployment
 - **Infrastructure**: Deployment templates
-- **Monitoring**: [Developer Guide](DEVELOPER_GUIDE.md) → Monitoring
-- **Performance**: [Troubleshooting Guide](TROUBLESHOOTING.md) → Performance
+- **Monitoring**: [Developer Guide](DEVELOPER_GUIDE.md)  Monitoring
+- **Performance**: [Troubleshooting Guide](TROUBLESHOOTING.md)  Performance
 
 #### **Project Managers**
 - **Feature Overview**: Main README.md
@@ -141,32 +141,32 @@ Keep your populated deployment guides in a secure location outside of this repos
 ### By Task
 
 #### **Setting Up Development Environment**
-1. Main README.md → Quick Start
-2. [Developer Guide](DEVELOPER_GUIDE.md) → Development Environment Setup
-3. [Testing Guide](TESTING.md) → Quick Testing Setup
-4. [Troubleshooting Guide](TROUBLESHOOTING.md) → Development Environment
+1. Main README.md  Quick Start
+2. [Developer Guide](DEVELOPER_GUIDE.md)  Development Environment Setup
+3. [Testing Guide](TESTING.md)  Quick Testing Setup
+4. [Troubleshooting Guide](TROUBLESHOOTING.md)  Development Environment
 
 #### **Understanding the System**
-1. Main README.md → System Architecture
-2. [Developer Guide](DEVELOPER_GUIDE.md) → System Architecture
-3. [Developer Guide](DEVELOPER_GUIDE.md) → Data Models and Business Logic
+1. Main README.md  System Architecture
+2. [Developer Guide](DEVELOPER_GUIDE.md)  System Architecture
+3. [Developer Guide](DEVELOPER_GUIDE.md)  Data Models and Business Logic
 
 #### **Testing the Application**
-1. [Testing Guide](TESTING.md) → Quick Testing
-2. [Testing Guide](TESTING.md) → Manual Testing Workflows
-3. [Testing Guide](TESTING.md) → Automated Testing
+1. [Testing Guide](TESTING.md)  Quick Testing
+2. [Testing Guide](TESTING.md)  Manual Testing Workflows
+3. [Testing Guide](TESTING.md)  Automated Testing
 
 #### **Deploying to Production**
-1. [Developer Guide](DEVELOPER_GUIDE.md) → Deployment and DevOps
+1. [Developer Guide](DEVELOPER_GUIDE.md)  Deployment and DevOps
 2. Deployment templates (AWS_DEPLOYMENT_TEMPLATE.md, DEPLOYMENT_TEMPLATE.md)
-3. [Troubleshooting Guide](TROUBLESHOOTING.md) → Deployment Issues
+3. [Troubleshooting Guide](TROUBLESHOOTING.md)  Deployment Issues
 
 #### **Fixing Issues**
-1. [Troubleshooting Guide](TROUBLESHOOTING.md) → Common Issues
-2. [Troubleshooting Guide](TROUBLESHOOTING.md) → Logging and Debugging
-3. [Developer Guide](DEVELOPER_GUIDE.md) → Testing and Quality Assurance
+1. [Troubleshooting Guide](TROUBLESHOOTING.md)  Common Issues
+2. [Troubleshooting Guide](TROUBLESHOOTING.md)  Logging and Debugging
+3. [Developer Guide](DEVELOPER_GUIDE.md)  Testing and Quality Assurance
 
-## 🆕 Recent Updates
+##  Recent Updates
 
 ### Version 1.2.0 Highlights
 - **Critical Fix**: Resolved repair visibility issue between customer and technician portals
@@ -180,7 +180,7 @@ Keep your populated deployment guides in a secure location outside of this repos
 - **Professional Troubleshooting**: Systematic issue resolution procedures
 - **Detailed Changelog**: Complete version history with technical details
 
-## 📞 Support and Contribution
+##  Support and Contribution
 
 ### Getting Help
 1. **Check Documentation**: Use the guides above for your specific needs

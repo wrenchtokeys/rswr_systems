@@ -6,15 +6,15 @@ Organized testing structure for the RS Systems windshield repair application.
 
 ```
 tests/
-├── README.md                          # This file
-├── bug_fixes/                         # Regression tests for specific bug fixes
-│   └── test_reward_discount_fix.py   # Tests for reward discount category bug
-├── integration/                       # Integration and system flow tests
-│   └── test_system_flow.py           # Comprehensive end-to-end system tests
-├── load/                              # Performance and load testing
-│   └── load_test_simple.py           # Simple load testing script
-└── scripts/                           # Test data generation and utilities
-    └── create_test_data.py           # Management command to create test data
+ README.md                          # This file
+ bug_fixes/                         # Regression tests for specific bug fixes
+    test_reward_discount_fix.py   # Tests for reward discount category bug
+ integration/                       # Integration and system flow tests
+    test_system_flow.py           # Comprehensive end-to-end system tests
+ load/                              # Performance and load testing
+    load_test_simple.py           # Simple load testing script
+ scripts/                           # Test data generation and utilities
+     create_test_data.py           # Management command to create test data
 ```
 
 ## Django App Tests (Not in this directory)
@@ -44,19 +44,19 @@ python manage.py test core.tests.CustomerModelTest  # Test specific test class
 - **Why keep it:** Prevents regression of critical billing bug
 - **How to run:** `python tests/bug_fixes/test_reward_discount_fix.py`
 - **Tests:**
-  - MERCHANDISE rewards (donuts, pizza) do NOT reduce repair costs ✓
-  - REPAIR_DISCOUNT (50% off) correctly reduces repair costs ✓
-  - FREE_SERVICE rewards make repairs free ✓
-  - No reward applied shows full cost ✓
+  - MERCHANDISE rewards (donuts, pizza) do NOT reduce repair costs 
+  - REPAIR_DISCOUNT (50% off) correctly reduces repair costs 
+  - FREE_SERVICE rewards make repairs free 
+  - No reward applied shows full cost 
 
-**Recommendation:** ✅ **KEEP** - Valuable regression test for financial logic
+**Recommendation:**  **KEEP** - Valuable regression test for financial logic
 
 ### Integration Tests (`integration/`)
 
 **Purpose:** End-to-end system flow testing
 
 **test_system_flow.py**
-- **What it tests:** Complete customer → technician → repair workflow
+- **What it tests:** Complete customer  technician  repair workflow
 - **Why keep it:** Validates critical business processes
 - **How to run:** `python manage.py test_system_flow [--cleanup] [--verbose]`
 - **Tests:**
@@ -66,7 +66,7 @@ python manage.py test core.tests.CustomerModelTest  # Test specific test class
   - Portal separation (customer vs technician)
   - Repair status progression
 
-**Recommendation:** ✅ **KEEP** - Essential for verifying system integrity after major changes
+**Recommendation:**  **KEEP** - Essential for verifying system integrity after major changes
 
 ### Load Tests (`load/`)
 
@@ -82,7 +82,7 @@ python manage.py test core.tests.CustomerModelTest  # Test specific test class
   - Success rate monitoring
   - Targets production URL: https://rockstarwindshield.repair
 
-**Recommendation:** ✅ **KEEP** - Useful for production health monitoring
+**Recommendation:**  **KEEP** - Useful for production health monitoring
 
 ### Scripts (`scripts/`)
 
@@ -93,7 +93,7 @@ python manage.py test core.tests.CustomerModelTest  # Test specific test class
 - **Why keep it:** Useful for development environment setup
 - **How to run:** `python manage.py create_test_data`
 
-**Recommendation:** ✅ **KEEP** - Helpful for dev/staging environments
+**Recommendation:**  **KEEP** - Helpful for dev/staging environments
 
 ### Security Note
 
@@ -101,7 +101,7 @@ Previously, there was a `test_database_persistence.py` file with hardcoded produ
 
 ## What to Keep vs Delete
 
-### ✅ KEEP (High Value)
+###  KEEP (High Value)
 
 1. **`bug_fixes/test_reward_discount_fix.py`**
    - Prevents critical billing bug regression
@@ -128,11 +128,11 @@ Previously, there was a `test_database_persistence.py` file with hardcoded produ
    - Unit tests for models/views/APIs
    - Part of CI/CD pipeline
 
-### 🗑️ Security & Cleanup
+###  Security & Cleanup
 
 All sensitive test files have been removed. No files with hardcoded credentials exist in this repository.
 
-### 📝 Consider Adding (Future)
+###  Consider Adding (Future)
 
 1. **API endpoint tests** - More comprehensive REST API testing
 2. **UI integration tests** - Selenium/Playwright for critical user flows

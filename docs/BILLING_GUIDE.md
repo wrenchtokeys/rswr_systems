@@ -7,7 +7,7 @@
 
 ## Customer Invoice Preferences
 
-Each customer has an **invoice preference** that controls when and how they receive invoices. Set this in Customer → Edit → Billing Preferences.
+Each customer has an **invoice preference** that controls when and how they receive invoices. Set this in Customer  Edit  Billing Preferences.
 
 | Preference | Behavior | Best For |
 |------------|----------|----------|
@@ -33,7 +33,7 @@ Each customer has an **invoice preference** that controls when and how they rece
 
 ## Auto Invoice Generation
 
-**Location**: Settings → Billing & Tax → Auto Invoice Generation
+**Location**: Settings  Billing & Tax  Auto Invoice Generation
 
 When **enabled**:
 - Repairs marked "Complete" trigger invoice creation
@@ -50,7 +50,7 @@ When **disabled**:
 
 ## Batch Invoicing
 
-**Location**: Settings → Billing & Tax → Batch Invoicing
+**Location**: Settings  Billing & Tax  Batch Invoicing
 
 ### Settings
 
@@ -74,10 +74,10 @@ When **disabled**:
 ### What Gets Included
 
 Only repairs/replacements that are:
-- ✅ Status = "Completed"
-- ✅ Not already on another invoice
-- ✅ Not marked `skip_invoicing = True`
-- ✅ Belong to a customer with `invoice_preference = 'batch'`
+-  Status = "Completed"
+-  Not already on another invoice
+-  Not marked `skip_invoicing = True`
+-  Belong to a customer with `invoice_preference = 'batch'`
 
 ### Example Schedule
 
@@ -97,7 +97,7 @@ Only repairs/replacements that are:
 
 ## Overdue Reminders
 
-**Location**: Settings → Billing & Tax → Overdue Reminders
+**Location**: Settings  Billing & Tax  Overdue Reminders
 
 ### Settings
 
@@ -110,22 +110,22 @@ Only repairs/replacements that are:
 ### How It Works
 
 1. **Celery task runs daily at 8 AM**
-2. Updates invoice status: SENT → OVERDUE if past due date
+2. Updates invoice status: SENT  OVERDUE if past due date
 3. For each overdue invoice:
    - Calculate days overdue
-   - If days matches one of the reminder days → send email
+   - If days matches one of the reminder days  send email
 4. Reminder is logged in invoice's internal notes
 
 ### Email Subject Variables
 
 Use these placeholders in the subject template:
-- `{invoice_number}` → "INV-001"
-- `{customer_name}` → "EOS Trucking"
-- `{amount_due}` → "$150.00"
-- `{days_overdue}` → "14"
+- `{invoice_number}`  "INV-001"
+- `{customer_name}`  "EOS Trucking"
+- `{amount_due}`  "$150.00"
+- `{days_overdue}`  "14"
 
 **Example**: `Reminder: Invoice #{invoice_number} is {days_overdue} days overdue`
-→ "Reminder: Invoice #INV-001 is 14 days overdue"
+ "Reminder: Invoice #INV-001 is 14 days overdue"
 
 ### Reminder Schedule Example
 
@@ -146,15 +146,15 @@ Use these placeholders in the subject template:
 ## Invoice Lifecycle
 
 ```
-┌─────────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│   DRAFT     │ ──▶ │   SENT   │ ──▶ │ OVERDUE  │ ──▶ │   PAID   │
-└─────────────┘     └──────────┘     └──────────┘     └──────────┘
-      │                   │                │
-      │                   │                │
-      ▼                   ▼                ▼
- ┌──────────┐       ┌──────────┐     ┌──────────┐
- │ CANCELLED│       │ PARTIAL  │     │ PARTIAL  │
- └──────────┘       └──────────┘     └──────────┘
+               
+   DRAFT          SENT      OVERDUE       PAID   
+               
+                                         
+                                         
+                                         
+             
+  CANCELLED        PARTIAL        PARTIAL  
+             
 ```
 
 | Status | Description |
@@ -170,7 +170,7 @@ Use these placeholders in the subject template:
 
 ## Sales Tax
 
-**Location**: Settings → Billing & Tax → Sales Tax
+**Location**: Settings  Billing & Tax  Sales Tax
 
 ### How It Works
 
@@ -182,7 +182,7 @@ Use these placeholders in the subject template:
 ### Per-Customer Exemption
 
 Some customers (government, resellers) may be tax-exempt:
-1. Go to Customer → Edit
+1. Go to Customer  Edit
 2. Check "Tax Exempt"
 3. All invoices for this customer will have $0 tax
 
@@ -201,7 +201,7 @@ RS Systems supports multiple payment methods:
 
 ### Recording Manual Payments
 
-1. Go to Invoices → Find invoice
+1. Go to Invoices  Find invoice
 2. Click "Record Payment"
 3. Enter amount, method, reference number
 4. Invoice status updates automatically

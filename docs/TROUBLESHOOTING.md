@@ -26,7 +26,7 @@
 This was a known issue that has been fixed. Previously, technicians could only see repairs specifically assigned to them.
 
 **Solution:**
-✅ **Fixed in recent update**: All technicians now see all REQUESTED repairs in their dashboard.
+ **Fixed in recent update**: All technicians now see all REQUESTED repairs in their dashboard.
 
 **Verification:**
 ```bash

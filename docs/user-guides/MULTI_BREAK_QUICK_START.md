@@ -8,13 +8,13 @@
 
 Use this feature when you discover **multiple breaks on the same unit** during a single inspection:
 
-✅ **Use Multi-Break For:**
+ **Use Multi-Break For:**
 - Unit 1001 has 3 chips in different locations
 - Single windshield with crack + star break + chip
 - Multiple damage points discovered during lot walking
 - Batch inspection where you find several breaks on one unit
 
-❌ **Don't Use Multi-Break For:**
+ **Don't Use Multi-Break For:**
 - Multiple different units (use regular repair entry for each)
 - Single break on a unit (use standard Create Repair form)
 
@@ -23,7 +23,7 @@ Use this feature when you discover **multiple breaks on the same unit** during a
 ## How to Access
 
 1. Log in to Technician Portal: `https://yourdomain.com/tech/login/`
-2. Navigate to: **Repairs → Multi-Break Entry**
+2. Navigate to: **Repairs  Multi-Break Entry**
 3. Or visit directly: `/tech/repairs/create-multi-break/`
 
 ---
@@ -40,7 +40,7 @@ All breaks share this information:
 | **Unit Number** | Enter the unit identifier (e.g., 1001, TRUCK-05) |
 | **Repair Date** | Auto-filled with current time (adjust if needed) |
 
-💡 **Tip**: The pricing preview will automatically appear after selecting customer and unit.
+ **Tip**: The pricing preview will automatically appear after selecting customer and unit.
 
 ---
 
@@ -60,8 +60,8 @@ Click the **"Add Break"** button to open the modal for each damage point:
 
 **Technical Conditions:**
 3. **Windshield Temperature** (Optional)
-   - Enter temperature in °F
-   - Optimal range: 60-80°F
+   - Enter temperature in �F
+   - Optimal range: 60-80�F
    - Example: "72.5"
 
 4. **Resin Viscosity** (Optional)
@@ -73,12 +73,12 @@ Click the **"Add Break"** button to open the modal for each damage point:
    - Click to upload or use camera
    - Mobile: Tap to take photo directly
    - Supported: JPEG, PNG, HEIC (auto-converted)
-   - 💡 **Tip**: Can be added now or later when editing the repair
+   -  **Tip**: Can be added now or later when editing the repair
 
 6. **Photo After** (Optional)
    - Upload repair completion photo
    - Recommended for quality assurance
-   - 💡 **Tip**: Often added after repair is completed
+   -  **Tip**: Often added after repair is completed
 
 **Notes:**
 7. **Notes** (Optional)
@@ -108,20 +108,20 @@ After saving, each break appears as a card showing:
 - Photo thumbnails
 - Notes
 - **Photo status warnings** (if missing):
-  - ⚠️ "Missing both photos" (orange badge)
-  - ⚠️ "Missing before photo" (orange badge)
-  - ⚠️ "Missing after photo" (orange badge)
+  -  "Missing both photos" (orange badge)
+  -  "Missing before photo" (orange badge)
+  -  "Missing after photo" (orange badge)
 - **Technical details** (if provided):
-  - ✓ Pre-drilled indicator
-  - 🌡️ Windshield temperature
-  - 💧 Resin viscosity
-  - 💲 Manager override (if applicable)
+  -  Pre-drilled indicator
+  -  Windshield temperature
+  -  Resin viscosity
+  -  Manager override (if applicable)
 
 You can:
-- ✏️ **Edit** any break (click Edit button) to add photos or update details
-- 🗑️ **Delete** a break if added by mistake
+-  **Edit** any break (click Edit button) to add photos or update details
+-  **Delete** a break if added by mistake
 
-💡 **Tip**: Orange warning badges are reminders, not blockers. You can still submit without photos and add them later.
+ **Tip**: Orange warning badges are reminders, not blockers. You can still submit without photos and add them later.
 
 ---
 
@@ -152,7 +152,7 @@ Total: $125.00
 
 Click **"Submit All Repairs (3)"** when ready.
 
-✅ **What Happens:**
+ **What Happens:**
 - All repairs created together (atomic transaction)
 - Each break becomes a separate repair record
 - All linked with same batch ID
@@ -203,7 +203,7 @@ Each break in your batch counts as a separate repair for pricing:
 
 - **LocalStorage autosave**: Your work is saved as you go
 - **If you accidentally close the browser**: On return, you'll be asked if you want to restore
-- ⚠️ **Limitation**: Photos cannot be restored (browser security), you'll need to re-upload
+-  **Limitation**: Photos cannot be restored (browser security), you'll need to re-upload
 
 ### Transaction Safety
 
@@ -280,13 +280,13 @@ Each break in your batch counts as a separate repair for pricing:
 
 ## Best Practices
 
-✅ **Do:**
+ **Do:**
 - Take clear, well-lit photos
 - Add descriptive notes for complex breaks
 - Review pricing before submitting
 - Use multi-break for efficiency
 
-❌ **Don't:**
+ **Don't:**
 - Mix different units in one batch (one unit per batch)
 - Skip photo documentation
 - Leave browser tab open for hours (submit promptly)

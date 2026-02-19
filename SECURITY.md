@@ -21,12 +21,12 @@ This project uses **environment variables** for all sensitive configuration:
 
 The following information has been replaced with placeholders in this repository:
 
-✅ AWS Account IDs → `YOUR_AWS_ACCOUNT_ID`
-✅ RDS Database Endpoints → `your-database-instance.region.rds.amazonaws.com`
-✅ SSL Certificate ARNs → `arn:aws:acm:REGION:YOUR_AWS_ACCOUNT_ID:certificate/YOUR_CERTIFICATE_ID`
-✅ Production Domain Names → `yourdomain.com`
-✅ Elastic Beanstalk URLs → `your-app-name.region.elasticbeanstalk.com`
-✅ Hardcoded Passwords → Environment variable references
+ AWS Account IDs  `YOUR_AWS_ACCOUNT_ID`
+ RDS Database Endpoints  `your-database-instance.region.rds.amazonaws.com`
+ SSL Certificate ARNs  `arn:aws:acm:REGION:YOUR_AWS_ACCOUNT_ID:certificate/YOUR_CERTIFICATE_ID`
+ Production Domain Names  `yourdomain.com`
+ Elastic Beanstalk URLs  `your-app-name.region.elasticbeanstalk.com`
+ Hardcoded Passwords  Environment variable references
 
 ### What's Safe in This Repository
 
@@ -74,16 +74,16 @@ If you discover a security vulnerability in this codebase, please report it resp
 
 This application includes enterprise-grade security features:
 
-- ✅ **Content Security Policy (CSP)** - XSS prevention
-- ✅ **HTTP Strict Transport Security (HSTS)** - Force HTTPS
-- ✅ **CSRF Protection** - Cross-site request forgery prevention
-- ✅ **SQL Injection Prevention** - Django ORM parameterized queries
-- ✅ **Session Security** - HTTPOnly and Secure cookies
-- ✅ **Rate Limiting** - Login attempt throttling (10/hour per IP)
-- ✅ **Bot Protection** - Honeypot fields and validation
-- ✅ **Password Security** - Django's PBKDF2 hashing
-- ✅ **Input Validation** - Server-side form validation
-- ✅ **Portal Isolation** - Middleware-enforced access control
+-  **Content Security Policy (CSP)** - XSS prevention
+-  **HTTP Strict Transport Security (HSTS)** - Force HTTPS
+-  **CSRF Protection** - Cross-site request forgery prevention
+-  **SQL Injection Prevention** - Django ORM parameterized queries
+-  **Session Security** - HTTPOnly and Secure cookies
+-  **Rate Limiting** - Login attempt throttling (10/hour per IP)
+-  **Bot Protection** - Honeypot fields and validation
+-  **Password Security** - Django's PBKDF2 hashing
+-  **Input Validation** - Server-side form validation
+-  **Portal Isolation** - Middleware-enforced access control
 
 ### Security Middleware
 
@@ -116,25 +116,25 @@ Before deploying to production, ensure:
 
 ### Database Security (RDS)
 
-- ✅ Encryption at rest enabled (AWS KMS)
-- ✅ No public access (security group restricts to EB instances only)
-- ✅ Automated backups with 30-day retention
-- ✅ Strong password requirements
-- ⚠️ Ensure security groups are properly configured in your deployment
+-  Encryption at rest enabled (AWS KMS)
+-  No public access (security group restricts to EB instances only)
+-  Automated backups with 30-day retention
+-  Strong password requirements
+-  Ensure security groups are properly configured in your deployment
 
 ### S3 Storage Security
 
-- ✅ Bucket versioning enabled for data recovery
-- ✅ Lifecycle policies to manage old versions
-- ✅ IAM roles for application access (no hardcoded keys)
-- ⚠️ Review bucket policies to prevent public access to sensitive files
+-  Bucket versioning enabled for data recovery
+-  Lifecycle policies to manage old versions
+-  IAM roles for application access (no hardcoded keys)
+-  Review bucket policies to prevent public access to sensitive files
 
 ### Elastic Beanstalk Security
 
-- ✅ HTTPS enforced for all production traffic
-- ✅ Security headers configured via middleware
-- ✅ Environment variables for secrets management
-- ⚠️ Regularly update platform versions
+-  HTTPS enforced for all production traffic
+-  Security headers configured via middleware
+-  Environment variables for secrets management
+-  Regularly update platform versions
 
 ## Dependency Management
 

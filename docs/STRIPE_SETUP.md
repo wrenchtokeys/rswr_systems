@@ -13,8 +13,8 @@
 The plan is NEVER upgraded before payment. This prevents users from getting paid features without paying.
 
 RS Systems uses Stripe for two separate billing flows:
-1. **Customer invoices** — charging your customers for windshield repairs
-2. **SaaS subscriptions** — charging glass shops for using RS Systems
+1. **Customer invoices**  charging your customers for windshield repairs
+2. **SaaS subscriptions**  charging glass shops for using RS Systems
 
 ---
 
@@ -30,7 +30,7 @@ RS Systems uses Stripe for two separate billing flows:
 
 ### 1. Products & Prices
 
-Create these products in Stripe Dashboard → Products:
+Create these products in Stripe Dashboard  Products:
 
 | Product Name | Monthly Price | What you get |
 |--------------|---------------|--------------|
@@ -38,18 +38,18 @@ Create these products in Stripe Dashboard → Products:
 | RS Systems Pro | $99/month | `price_xxxxx` |
 | RS Systems Enterprise | $249/month | `price_xxxxx` |
 
-**Where the price IDs go:** Django Admin → Subscription Plans → edit each plan → paste into "Stripe price id" field
+**Where the price IDs go:** Django Admin  Subscription Plans  edit each plan  paste into "Stripe price id" field
 
 ### 2. Webhook Endpoint
 
 **URL:** `https://rockstarwindshield.repair/api/tenants/webhooks/stripe/`
 
 **Events to listen for:**
-- `checkout.session.completed` — customer finished Checkout, activate subscription
-- `invoice.paid` — payment successful, activate/renew subscription
-- `invoice.payment_failed` — payment failed, mark as past_due
-- `customer.subscription.updated` — plan changed, period renewed
-- `customer.subscription.deleted` — subscription fully canceled
+- `checkout.session.completed`  customer finished Checkout, activate subscription
+- `invoice.paid`  payment successful, activate/renew subscription
+- `invoice.payment_failed`  payment failed, mark as past_due
+- `customer.subscription.updated`  plan changed, period renewed
+- `customer.subscription.deleted`  subscription fully canceled
 
 **Signing secret:** Copy the `whsec_xxxxx` value and set as `STRIPE_WEBHOOK_SECRET` env var in AWS EB
 
@@ -88,7 +88,7 @@ Same URL, same events, but in live mode:
 - Copy the new `whsec_xxxxx` signing secret
 
 ### 5. Update Environment Variables
-In AWS EB Configuration → Environment properties:
+In AWS EB Configuration  Environment properties:
 
 ```
 STRIPE_SECRET_KEY=sk_live_xxxxx        # Live secret key
@@ -98,16 +98,16 @@ STRIPE_WEBHOOK_SECRET=whsec_xxxxx      # Live webhook signing secret
 ### 6. Verify
 1. Deploy the EB environment to pick up new env vars
 2. Test a real subscription signup with a real card
-3. Check Stripe Dashboard → Webhooks for successful deliveries
+3. Check Stripe Dashboard  Webhooks for successful deliveries
 
 ---
 
 ## Webhook Security
 
 The webhook handler verifies signatures to prevent spoofed requests:
-- **With secret:** Validates `Stripe-Signature` header — secure ✅
-- **Without secret (DEBUG only):** Accepts unverified — INSECURE ⚠️
-- **Without secret (production):** Returns error — won't process events
+- **With secret:** Validates `Stripe-Signature` header  secure 
+- **Without secret (DEBUG only):** Accepts unverified  INSECURE 
+- **Without secret (production):** Returns error  won't process events
 
 Location: `apps/tenants/webhooks.py`
 
@@ -121,13 +121,13 @@ Location: `apps/tenants/webhooks.py`
 - Check server logs: `eb logs` or CloudWatch
 
 ### Subscription not updating
-- Verify webhook endpoint is receiving events (Stripe Dashboard → Webhooks → click endpoint → Recent events)
+- Verify webhook endpoint is receiving events (Stripe Dashboard  Webhooks  click endpoint  Recent events)
 - Check the event type is in our handled list
 - Check Django logs for errors
 
 ### "Plan has no Stripe Price ID"
 - The SubscriptionPlan record is missing `stripe_price_id`
-- Go to Django Admin → Subscription Plans → add the price ID
+- Go to Django Admin  Subscription Plans  add the price ID
 
 ---
 

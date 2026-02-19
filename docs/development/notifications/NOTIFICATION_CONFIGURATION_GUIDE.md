@@ -4,7 +4,7 @@
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 1. [Email Branding Configuration](#email-branding-configuration)
 2. [User Contact Information](#user-contact-information)
@@ -15,7 +15,7 @@
 
 ---
 
-## 🎨 Email Branding Configuration
+##  Email Branding Configuration
 
 ### Access Email Branding Settings:
 
@@ -60,7 +60,7 @@
 
 #### 6. **Footer Text**
 - Custom footer text for all emails
-- Default: "© 2025 RS Systems. All rights reserved."
+- Default: "� 2025 RS Systems. All rights reserved."
 
 ### How to Update:
 
@@ -72,7 +72,7 @@
 
 ---
 
-## 👤 User Contact Information
+##  User Contact Information
 
 ### Customer Contact Info
 
@@ -83,8 +83,8 @@
 - **Contact Name**: Primary contact person
 - **Email**: customer@example.com
 - **Phone Number**: +12025551234 (E.164 format: +[country code][number])
-- **Email Verified**: ✅ Check to enable email notifications
-- **Phone Verified**: ✅ Check to enable SMS notifications
+- **Email Verified**:  Check to enable email notifications
+- **Phone Verified**:  Check to enable SMS notifications
 
 **E.164 Phone Format Examples**:
 - US: `+12025551234`
@@ -98,15 +98,15 @@
 **Fields to Configure**:
 - **User**: Link to Django user account
 - **Phone Number**: +12025551234 (E.164 format)
-- **Email Verified**: ✅ Check to enable email notifications
-- **Phone Verified**: ✅ Check to enable SMS notifications
-- **Is Manager**: ✅ Check for manager permissions
+- **Email Verified**:  Check to enable email notifications
+- **Phone Verified**:  Check to enable SMS notifications
+- **Is Manager**:  Check for manager permissions
 
 **User Email**: Set in the linked User account (http://localhost:8000/admin/auth/user/)
 
 ---
 
-## 🔔 Notification Preferences
+##  Notification Preferences
 
 ### Technician Notification Preferences
 
@@ -117,26 +117,26 @@
 **What Technicians Can Configure**:
 
 #### 1. **Delivery Channels**
-- ✅ **Enable Email Notifications**
-- ✅ **Enable SMS Notifications**
-- ✅ **Enable In-App Notifications**
+-  **Enable Email Notifications**
+-  **Enable SMS Notifications**
+-  **Enable In-App Notifications**
 
 #### 2. **Category Preferences**
-- ✅ Repair Status Updates
-- ✅ New Assignments
-- ✅ Repair Approvals/Denials
-- ✅ Reassignments
-- ✅ Batch Operations
-- ✅ Reward Notifications
+-  Repair Status Updates
+-  New Assignments
+-  Repair Approvals/Denials
+-  Reassignments
+-  Batch Operations
+-  Reward Notifications
 
 #### 3. **Quiet Hours**
-- ✅ Enable Quiet Hours
+-  Enable Quiet Hours
 - **Start Time**: 22:00 (10:00 PM)
 - **End Time**: 06:00 (6:00 AM)
 - *Notifications during quiet hours are held until morning*
 
 #### 4. **Digest Mode**
-- ✅ Enable Daily Digest
+-  Enable Daily Digest
 - *Batches non-urgent notifications into one daily email at 9 AM*
 
 ### Customer Notification Preferences
@@ -147,7 +147,7 @@
 
 ---
 
-## 👁️ Email Templates Preview
+##  Email Templates Preview
 
 ### Preview All Email Templates:
 
@@ -173,7 +173,7 @@
 
 ---
 
-## ☁️ AWS Configuration (Production)
+##  AWS Configuration (Production)
 
 ### For Real Email/SMS Delivery
 
@@ -215,7 +215,7 @@
 
 ---
 
-## ⚙️ System Settings
+##  System Settings
 
 ### Environment Variables (.env file)
 
@@ -268,7 +268,7 @@ ENVIRONMENT=development  # or 'production'
 
 ---
 
-## 🧪 Testing Your Configuration
+##  Testing Your Configuration
 
 ### Test Email Branding
 
@@ -304,7 +304,7 @@ ENVIRONMENT=development  # or 'production'
 
 ---
 
-## 📊 Monitoring & Logs
+##  Monitoring & Logs
 
 ### View All Notifications
 
@@ -344,7 +344,7 @@ ENVIRONMENT=development  # or 'production'
 
 ---
 
-## 🎯 Common Configuration Scenarios
+##  Common Configuration Scenarios
 
 ### Scenario 1: Change Company Logo
 
@@ -404,7 +404,7 @@ ENVIRONMENT=development  # or 'production'
 
 ---
 
-## 📚 Related Documentation
+##  Related Documentation
 
 - **Main Documentation**: `docs/development/notifications/README.md`
 - **Setup & Testing**: `docs/development/notifications/SETUP_AND_TESTING_GUIDE.md`
@@ -415,7 +415,7 @@ ENVIRONMENT=development  # or 'production'
 
 ---
 
-## 🆘 Troubleshooting
+##  Troubleshooting
 
 ### Issue: Emails not sending
 
@@ -429,10 +429,10 @@ ENVIRONMENT=development  # or 'production'
 ### Issue: Phone number format error
 
 **Solution**: Use E.164 format
-- ✅ Correct: `+12025551234`
-- ❌ Wrong: `202-555-1234`
-- ❌ Wrong: `(202) 555-1234`
-- ❌ Wrong: `2025551234`
+-  Correct: `+12025551234`
+-  Wrong: `202-555-1234`
+-  Wrong: `(202) 555-1234`
+-  Wrong: `2025551234`
 
 ### Issue: Branding not updating
 
@@ -453,7 +453,7 @@ ENVIRONMENT=development  # or 'production'
 
 ---
 
-## ✅ Configuration Checklist
+##  Configuration Checklist
 
 Before going to production:
 

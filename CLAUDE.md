@@ -143,11 +143,11 @@ The notification system extends to the customer portal with company-level notifi
 
 **URLs**:
 ```
-/app/notifications/preferences/   → Notification settings (form-based)
-/app/notifications/history/        → Full notification history with pagination
-/app/notifications/<id>/mark-read/ → AJAX mark single as read
-/app/notifications/mark-all-read/  → AJAX bulk mark all as read
-/app/notifications/unread-count/   → AJAX polling endpoint (30s interval)
+/app/notifications/preferences/    Notification settings (form-based)
+/app/notifications/history/         Full notification history with pagination
+/app/notifications/<id>/mark-read/  AJAX mark single as read
+/app/notifications/mark-all-read/   AJAX bulk mark all as read
+/app/notifications/unread-count/    AJAX polling endpoint (30s interval)
 ```
 
 **Implementation Files**:
@@ -176,17 +176,17 @@ The application uses a clear portal separation strategy for better user experien
 
 ### Portal URLs and Access
 ```
-/ → Marketing landing page (public)
-/app/ → Customer dashboard (redirects to login if unauthenticated)
-/app/login/ → Customer-specific login page
-/app/register/ → Customer registration
-/tech/ → Technician dashboard (redirects to login if unauthenticated)
-/tech/login/ → Technician-specific login page
-/tech/settings/ → Manager settings dashboard (managers and staff only)
-/tech/settings/viscosity/ → Viscosity rules management
-/tech/settings/team/ → Team overview dashboard
-/accounts/login/ → Portal selection page (legacy support)
-/login/ → Portal selection page (legacy support)
+/  Marketing landing page (public)
+/app/  Customer dashboard (redirects to login if unauthenticated)
+/app/login/  Customer-specific login page
+/app/register/  Customer registration
+/tech/  Technician dashboard (redirects to login if unauthenticated)
+/tech/login/  Technician-specific login page
+/tech/settings/  Manager settings dashboard (managers and staff only)
+/tech/settings/viscosity/  Viscosity rules management
+/tech/settings/team/  Team overview dashboard
+/accounts/login/  Portal selection page (legacy support)
+/login/  Portal selection page (legacy support)
 ```
 
 ### Authentication & Access Control
@@ -214,7 +214,7 @@ The system uses Django's built-in group-based permission system to control acces
 
 ### Key Business Logic Patterns
 
-**Repair Workflow**: Central `Repair` model with status-based progression (REQUESTED → PENDING → APPROVED → IN_PROGRESS → COMPLETED). Cost calculation is automatic based on unit repair frequency using `UnitRepairCount` tracking. **Sales tax** (`tax_rate`, `tax_amount`) is calculated automatically on every save using `TaxService` and the rates configured in `BillingConfig`. The `total_with_tax` property returns cost + tax. Tax is also independently calculated at invoice creation time via `TaxService.apply_tax_to_invoice()`.
+**Repair Workflow**: Central `Repair` model with status-based progression (REQUESTED  PENDING  APPROVED  IN_PROGRESS  COMPLETED). Cost calculation is automatic based on unit repair frequency using `UnitRepairCount` tracking. **Sales tax** (`tax_rate`, `tax_amount`) is calculated automatically on every save using `TaxService` and the rates configured in `BillingConfig`. The `total_with_tax` property returns cost + tax. Tax is also independently calculated at invoice creation time via `TaxService.apply_tax_to_invoice()`.
 
 **Multi-Break Batch Repairs** (New as of 11/8/2025): System supports creating multiple repairs for the same unit in one session. Each break is a separate `Repair` record linked via `repair_batch_id` (UUID). Progressive pricing: Break 1 priced as repair #N+1, Break 2 as #N+2, etc. Fully integrated with custom pricing tiers and volume discounts. All repairs in batch created atomically via `@transaction.atomic`. Customer portal supports batch approval (all-or-nothing). Access at `/tech/repairs/create-multi-break/`. See test suite at `tests/bug_fixes/test_multi_break_repair.py` for comprehensive examples.
 
@@ -260,19 +260,19 @@ The system uses Django's built-in group-based permission system to control acces
 
 ### Configuration Management
 Settings use a `rs_systems/settings/` package with a shared base to prevent drift:
-- **Shared base**: `rs_systems/settings/base.py` — canonical INSTALLED_APPS, MIDDLEWARE, TEMPLATES, etc.
+- **Shared base**: `rs_systems/settings/base.py`  canonical INSTALLED_APPS, MIDDLEWARE, TEMPLATES, etc.
 - **Development**: `rs_systems/settings/development.py` (imports from base, used by `manage.py`)
 - **Production**: `rs_systems/settings/production.py` (imports from base, used by wsgi/Procfile/EB)
-- Adding a new app or middleware only requires editing `base.py` — both environments inherit it
+- Adding a new app or middleware only requires editing `base.py`  both environments inherit it
 - **Database Flexibility**: Supports PostgreSQL (production) and SQLite (development) via `dj_database_url`
 
-**IMPORTANT — Rules for settings changes:**
+**IMPORTANT  Rules for settings changes:**
 1. **New apps**: Add to `INSTALLED_APPS` in `base.py`, never in development.py or production.py individually
 2. **New middleware**: Add to `MIDDLEWARE` in `base.py` for the same reason
 3. **New context processors**: Add to `TEMPLATES` in `base.py`
 4. **Environment-specific overrides only** go in development.py or production.py (e.g., DEBUG, database config, caching backend, security hardening)
-5. **Never create a separate settings file** for a new environment — add it as a new file under `rs_systems/settings/` that imports from `base.py`
-6. The old `settings_aws.py` and top-level `settings.py` no longer exist — do not recreate them
+5. **Never create a separate settings file** for a new environment  add it as a new file under `rs_systems/settings/` that imports from `base.py`
+6. The old `settings_aws.py` and top-level `settings.py` no longer exist  do not recreate them
 
 ### API & Documentation
 - **REST Framework**: Full API with token authentication
@@ -301,7 +301,7 @@ Temperature-based resin viscosity recommendations with auto-priority system:
 **Auto-Priority System**:
 - New rules automatically assigned priority: `(max existing priority + 10)`
 - No manual priority input required - maximizes usability
-- Visual priority badges: 🥇 1st, 🥈 2nd, 🥉 3rd, "4th", "5th"...
+- Visual priority badges:  1st, � 2nd,  3rd, "4th", "5th"...
 - Rules evaluated in priority order (lowest display_order first)
 - When multiple rules match temperature, first matching rule wins
 
@@ -390,8 +390,8 @@ python manage.py runserver  # Back to local SQLite
 **Option 3: Create shell aliases (add to ~/.zshrc or ~/.bashrc)**
 ```bash
 # Add these to your shell configuration
-alias rs-local='export USE_AWS_DB=false && echo "🏠 Switched to LOCAL database"'
-alias rs-aws='export USE_AWS_DB=true && echo "☁️  Switched to AWS database"'
+alias rs-local='export USE_AWS_DB=false && echo " Switched to LOCAL database"'
+alias rs-aws='export USE_AWS_DB=true && echo "  Switched to AWS database"'
 
 # Then use:
 rs-local
@@ -487,33 +487,33 @@ For detailed troubleshooting, see the appropriate documentation:
 **Professional SaaS Documentation** (as of December 2025):
 ```
 /docs/
-├── README.md                           # Documentation index
-├── deployment/
-│   ├── AWS_DEPLOYMENT.md              # Complete AWS deployment guide
-│   ├── PRODUCTION_CHECKLIST.md        # Pre/post deployment verification
-│   └── NOTIFICATION_NEXT_STEPS.md     # Notification system deployment guide
-├── security/
-│   ├── SECURITY_OVERVIEW.md           # Security features and roadmap
-│   └── INCIDENT_RESPONSE.md           # Emergency response procedures
-├── development/
-│   ├── UI_DESIGN_GUIDE.md             # UI/UX design system and components
-│   ├── WORKFLOW_IMPLEMENTATION.md     # Sprint tracking and phases
-│   ├── TIMEZONE_HANDLING.md           # Multi-timezone support and datetime patterns
-│   ├── CHANGELOG.md                   # Version history
-│   └── TESTING.md                     # Testing procedures
-│   └── notifications/                 # Notification system documentation
-│       ├── README.md                  # Overview and architecture
-│       ├── NOTIFICATION_README.md     # Technical implementation details
-│       ├── NOTIFICATION_CONFIGURATION_GUIDE.md  # Configuration reference
-│       ├── SIMPLE_TESTING_GUIDE.md    # Testing procedures
-│       └── ADMIN_DASHBOARD_GUIDE.md   # Admin interface guide
-├── operations/
-│   ├── NOTIFICATION_OPERATIONS.md     # Daily operations guide
-│   └── NOTIFICATION_TROUBLESHOOTING.md # Common issues and solutions
-└── user-guides/
-    ├── ADMIN_GUIDE.md                 # Administrator interface guide
-    ├── TECHNICIAN_GUIDE.md            # Technician portal guide
-    └── CUSTOMER_GUIDE.md              # Customer portal guide
+ README.md                           # Documentation index
+ deployment/
+    AWS_DEPLOYMENT.md              # Complete AWS deployment guide
+    PRODUCTION_CHECKLIST.md        # Pre/post deployment verification
+    NOTIFICATION_NEXT_STEPS.md     # Notification system deployment guide
+ security/
+    SECURITY_OVERVIEW.md           # Security features and roadmap
+    INCIDENT_RESPONSE.md           # Emergency response procedures
+ development/
+    UI_DESIGN_GUIDE.md             # UI/UX design system and components
+    WORKFLOW_IMPLEMENTATION.md     # Sprint tracking and phases
+    TIMEZONE_HANDLING.md           # Multi-timezone support and datetime patterns
+    CHANGELOG.md                   # Version history
+    TESTING.md                     # Testing procedures
+    notifications/                 # Notification system documentation
+        README.md                  # Overview and architecture
+        NOTIFICATION_README.md     # Technical implementation details
+        NOTIFICATION_CONFIGURATION_GUIDE.md  # Configuration reference
+        SIMPLE_TESTING_GUIDE.md    # Testing procedures
+        ADMIN_DASHBOARD_GUIDE.md   # Admin interface guide
+ operations/
+    NOTIFICATION_OPERATIONS.md     # Daily operations guide
+    NOTIFICATION_TROUBLESHOOTING.md # Common issues and solutions
+ user-guides/
+     ADMIN_GUIDE.md                 # Administrator interface guide
+     TECHNICIAN_GUIDE.md            # Technician portal guide
+     CUSTOMER_GUIDE.md              # Customer portal guide
 ```
 
 **Quick Access**:
@@ -535,23 +535,23 @@ Refactored into a `rs_systems/settings/` package:
 
 | File | Role |
 |------|------|
-| `settings/__init__.py` | Empty — makes it a Python package |
+| `settings/__init__.py` | Empty  makes it a Python package |
 | `settings/base.py` | **Single source of truth** for INSTALLED_APPS, MIDDLEWARE, TEMPLATES, REST_FRAMEWORK, email, SMS, Stripe, Celery shared config |
 | `settings/development.py` | `from .base import *` + dev overrides: DEBUG=True, SECRET_KEY fallback, SQLite fallback, Redis-with-memory-fallback, TIME_ZONE America/Chicago, dotenv loading |
 | `settings/production.py` | `from .base import *` + prod overrides: SECRET_KEY required, DEBUG=False, PostgreSQL required, S3 STORAGES, hardened security, Redis-only, Sentry, CloudWatch, TIME_ZONE UTC |
 
 ### Files deleted
-- `rs_systems/settings.py` — replaced by `settings/` package
-- `rs_systems/settings_aws.py` — replaced by `settings/production.py`
+- `rs_systems/settings.py`  replaced by `settings/` package
+- `rs_systems/settings_aws.py`  replaced by `settings/production.py`
 
 ### References updated
 All files that pointed to `settings_aws` or bare `rs_systems.settings` were updated:
-- `wsgi.py`, `asgi.py` → `rs_systems.settings.production`
-- `Procfile`, `.ebextensions/01_wsgi.config` → `rs_systems.settings.production`
-- `celery.py` → defaults to `rs_systems.settings.development` (production overrides via Procfile/EB)
-- `manage.py` → `rs_systems.settings.development`
-- `deployment/celery-worker.service`, `celery-beat.service` → `rs_systems.settings.production`
-- Test files and scripts → `rs_systems.settings.development`
+- `wsgi.py`, `asgi.py`  `rs_systems.settings.production`
+- `Procfile`, `.ebextensions/01_wsgi.config`  `rs_systems.settings.production`
+- `celery.py`  defaults to `rs_systems.settings.development` (production overrides via Procfile/EB)
+- `manage.py`  `rs_systems.settings.development`
+- `deployment/celery-worker.service`, `celery-beat.service`  `rs_systems.settings.production`
+- Test files and scripts  `rs_systems.settings.development`
 
 ### Why this matters
 Adding a new Django app or middleware now requires exactly one edit to `base.py`. Both development and production inherit it. The class of bug that crashed the deploy is structurally impossible with this layout.
@@ -589,10 +589,10 @@ EB deploys from the **local `main` branch**. If you're working on a feature bran
 
 **Important:** `eb deploy` packages the **local working directory**, not what's on GitHub. Always pull latest `main` before deploying. Never deploy from a feature branch.
 
-**Never change `DJANGO_SETTINGS_MODULE`** in the EB console — it must stay as `rs_systems.settings.production`.
+**Never change `DJANGO_SETTINGS_MODULE`** in the EB console  it must stay as `rs_systems.settings.production`.
 
 ### Common deploy failure causes
-- **Missing EB env var**: `eb printenv` shows wrong `DJANGO_SETTINGS_MODULE` → fix with `eb setenv`
+- **Missing EB env var**: `eb printenv` shows wrong `DJANGO_SETTINGS_MODULE`  fix with `eb setenv`
 - **New app/middleware not in base.py**: Add to `rs_systems/settings/base.py`, not individual env files
 - **Missing Python package**: Add to `requirements.txt` before deploying
-- **collectstatic fails**: Usually a settings import error — check that production.py loads cleanly
+- **collectstatic fails**: Usually a settings import error  check that production.py loads cleanly

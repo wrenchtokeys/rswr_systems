@@ -4,7 +4,7 @@
 
 ---
 
-## 🚀 Starting the App (Simple Method)
+##  Starting the App (Simple Method)
 
 ### Just run Django (no background services):
 
@@ -21,7 +21,7 @@ Then open: **http://localhost:8000**
 
 ---
 
-## 🔔 To Test Notifications (Full System)
+##  To Test Notifications (Full System)
 
 Only when you want to test actual notification delivery, run these in **3 separate terminal windows**:
 
@@ -42,7 +42,7 @@ celery -A rs_systems beat --loglevel=info
 
 ---
 
-## 🛑 Stopping Services
+##  Stopping Services
 
 ### If services are in terminals:
 - Press `Ctrl+C` in each terminal window
@@ -55,7 +55,7 @@ pkill -f "manage.py runserver"
 
 ---
 
-## 📖 Available Documentation
+##  Available Documentation
 
 All docs are in: `docs/development/notifications/`
 
@@ -76,7 +76,7 @@ All docs are in: `docs/development/notifications/`
 
 ---
 
-## 🧪 Testing Workflow
+##  Testing Workflow
 
 ### Basic Testing (No Notifications):
 1. Run: `python manage.py runserver`
@@ -95,7 +95,7 @@ All docs are in: `docs/development/notifications/`
 
 ---
 
-## 📝 Common Tasks
+##  Common Tasks
 
 ### View Notifications in Admin:
 http://localhost:8000/admin/core/notification/
@@ -118,11 +118,11 @@ http://localhost:8000/admin/core/emailbrandingconfig/
 
 ---
 
-## 🔍 Checking Service Status
+##  Checking Service Status
 
 ```bash
 # Check if Django is running
-curl -s http://localhost:8000/ > /dev/null && echo "✅ Django running" || echo "❌ Django not running"
+curl -s http://localhost:8000/ > /dev/null && echo " Django running" || echo " Django not running"
 
 # Check if Redis is running
 redis-cli ping
@@ -133,7 +133,7 @@ ps aux | grep -E "(celery|manage.py runserver)" | grep -v grep
 
 ---
 
-## 💡 Pro Tips
+##  Pro Tips
 
 1. **For most development**: Just run `python manage.py runserver`
    - You don't need Celery unless testing notifications
@@ -152,7 +152,7 @@ ps aux | grep -E "(celery|manage.py runserver)" | grep -v grep
 
 ---
 
-## 🎯 Quick Test Scenario
+##  Quick Test Scenario
 
 1. Start Django: `python manage.py runserver`
 2. Login: http://localhost:8000/tech/ (`testtech` / `testpass123`)
@@ -163,7 +163,7 @@ ps aux | grep -E "(celery|manage.py runserver)" | grep -v grep
 
 ---
 
-## 📚 Need More Help?
+##  Need More Help?
 
 - **Full Setup Guide**: `docs/development/notifications/SETUP_AND_TESTING_GUIDE.md`
 - **Testing Checklist**: `docs/development/notifications/PHASE_6_TESTING_CHECKLIST.md`

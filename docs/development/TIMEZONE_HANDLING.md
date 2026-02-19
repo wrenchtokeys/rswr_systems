@@ -69,11 +69,11 @@ if (repairDateInput && !repairDateInput.value) {
 
 ### Forms with Timezone-Aware Initialization
 
-✅ **Repair Form** (`templates/technician_portal/repair_form.html` + `static/js/repair_form.js`)
+ **Repair Form** (`templates/technician_portal/repair_form.html` + `static/js/repair_form.js`)
 - Uses JavaScript initialization for `repair_date` field
 - Works correctly for technicians in any timezone
 
-✅ **Multi-Break Repair Form** (`static/js/multi_break.js`)
+ **Multi-Break Repair Form** (`static/js/multi_break.js`)
 - Already implemented with JavaScript initialization
 - Reference implementation for other forms
 
@@ -90,7 +90,7 @@ If adding new datetime fields to other forms, follow this pattern:
 ### Chrome DevTools Timezone Override
 
 1. Open Chrome DevTools (F12)
-2. Click 3-dot menu → More Tools → Sensors
+2. Click 3-dot menu  More Tools  Sensors
 3. Set Location to a different timezone (e.g., "Tokyo" for JST)
 4. Refresh the page
 5. Verify datetime fields show correct local time
@@ -154,12 +154,12 @@ The implementation maintains backward compatibility:
 
 ## Best Practices Summary
 
-1. ✅ **DO**: Use JavaScript to initialize `datetime-local` inputs with browser's local time
-2. ✅ **DO**: Store all datetimes in UTC in the database
-3. ✅ **DO**: Use Django's `timezone.localtime()` when displaying datetimes in templates
-4. ❌ **DON'T**: Set `widget.attrs['value']` with server timezone (assumes all users in same timezone)
-5. ❌ **DON'T**: Use naive (non-timezone-aware) datetime objects
-6. ✅ **DO**: Test with multiple timezones using browser DevTools
+1.  **DO**: Use JavaScript to initialize `datetime-local` inputs with browser's local time
+2.  **DO**: Store all datetimes in UTC in the database
+3.  **DO**: Use Django's `timezone.localtime()` when displaying datetimes in templates
+4.  **DON'T**: Set `widget.attrs['value']` with server timezone (assumes all users in same timezone)
+5.  **DON'T**: Use naive (non-timezone-aware) datetime objects
+6.  **DO**: Test with multiple timezones using browser DevTools
 
 ## References
 

@@ -1,12 +1,12 @@
-# 🔔 Notification System - Quick Start
+#  Notification System - Quick Start
 
-**Phases Completed:** 1-5 (Foundation → User Preferences)
-**Status:** ✅ Ready for Testing
+**Phases Completed:** 1-5 (Foundation  User Preferences)
+**Status:**  Ready for Testing
 **Last Updated:** November 30, 2025
 
 ---
 
-## 🚀 Quick Start (3 Steps)
+##  Quick Start (3 Steps)
 
 ### 1. Run Setup Script
 
@@ -86,7 +86,7 @@ celery -A rs_systems flower
 
 ---
 
-## 📚 Documentation
+##  Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -99,29 +99,29 @@ celery -A rs_systems flower
 
 ---
 
-## 🎯 What's Included
+##  What's Included
 
-### ✅ Phase 1: Foundation Models
+###  Phase 1: Foundation Models
 - Notification model
 - NotificationTemplate model
 - TechnicianNotificationPreference model
 - CustomerNotificationPreference model
 - NotificationDeliveryLog model
 
-### ✅ Phase 2: AWS Infrastructure
+###  Phase 2: AWS Infrastructure
 - Celery task queue
 - Redis message broker
 - AWS SES email configuration
 - AWS SNS SMS configuration
 - Management commands for testing
 
-### ✅ Phase 3: Email Templates
+###  Phase 3: Email Templates
 - EmailBrandingConfig model
 - 8 professional email templates (HTML + text)
 - Email preview system
 - Admin interface for branding
 
-### ✅ Phase 4: Service Layer
+###  Phase 4: Service Layer
 - NotificationService (creates & routes notifications)
 - EmailService (AWS SES integration)
 - SMSService (AWS SNS integration)
@@ -129,7 +129,7 @@ celery -A rs_systems flower
 - Signal handlers for automatic triggers
 - Retry logic with exponential backoff
 
-### ✅ Phase 5: User Preferences
+###  Phase 5: User Preferences
 - Notification preferences UI
 - Notification history with filters
 - Notification bell component
@@ -139,34 +139,34 @@ celery -A rs_systems flower
 
 ---
 
-## 🔧 Key Features
+##  Key Features
 
 ### For Technicians:
-- ✅ Control notification channels (email, SMS, in-app)
-- ✅ Choose which notification categories to receive
-- ✅ Set quiet hours (pause notifications during sleep)
-- ✅ Enable daily digest (one email per day)
-- ✅ Verify email and phone for notifications
-- ✅ View notification history with filters
-- ✅ Real-time notification bell with unread count
+-  Control notification channels (email, SMS, in-app)
+-  Choose which notification categories to receive
+-  Set quiet hours (pause notifications during sleep)
+-  Enable daily digest (one email per day)
+-  Verify email and phone for notifications
+-  View notification history with filters
+-  Real-time notification bell with unread count
 
 ### Automatic Notifications:
-- ✅ Customer creates repair → Technician notified
-- ✅ Customer approves repair → Technician notified (URGENT)
-- ✅ Customer denies repair → Technician notified (URGENT)
-- ✅ Technician assigned to repair → Notified
-- ✅ Repair status changes → Customer/Technician notified
-- ✅ Batch repairs approved → Technician notified
+-  Customer creates repair  Technician notified
+-  Customer approves repair  Technician notified (URGENT)
+-  Customer denies repair  Technician notified (URGENT)
+-  Technician assigned to repair  Notified
+-  Repair status changes  Customer/Technician notified
+-  Batch repairs approved  Technician notified
 
 ### Admin Features:
-- ✅ Customize email branding (logo, colors, company info)
-- ✅ Manage notification templates
-- ✅ View delivery logs and retry history
-- ✅ Monitor notification preferences
+-  Customize email branding (logo, colors, company info)
+-  Manage notification templates
+-  View delivery logs and retry history
+-  Monitor notification preferences
 
 ---
 
-## 🌐 URLs
+##  URLs
 
 ### User Interface
 - **Dashboard:** `/tech/`
@@ -191,7 +191,7 @@ celery -A rs_systems flower
 
 ---
 
-## 🧪 Testing Checklist
+##  Testing Checklist
 
 ### Local Testing
 - [ ] Redis running
@@ -222,7 +222,7 @@ celery -A rs_systems flower
 
 ---
 
-## 🛠️ Troubleshooting
+##  Troubleshooting
 
 ### Redis Not Running
 ```bash
@@ -264,7 +264,7 @@ for log in failed:
 
 ---
 
-## 📊 Monitoring
+##  Monitoring
 
 ### Celery Flower
 Access at: http://localhost:5555
@@ -286,7 +286,7 @@ Key Areas:
 
 ---
 
-## 🔐 Security Notes
+##  Security Notes
 
 ### Development Mode:
 - Emails print to console (no real sending)
@@ -302,7 +302,7 @@ Key Areas:
 
 ---
 
-## 💰 Cost Estimates (Production)
+##  Cost Estimates (Production)
 
 Based on 100 technicians, 50 customers:
 
@@ -317,7 +317,7 @@ See `docs/development/notifications/AWS_SETUP_GUIDE.md` for optimization tips.
 
 ---
 
-## 🎓 Learning Resources
+##  Learning Resources
 
 ### Django Signals
 - How signal handlers automatically trigger notifications
@@ -332,12 +332,12 @@ See `docs/development/notifications/AWS_SETUP_GUIDE.md` for optimization tips.
 - See: `core/services/notification_service.py`
 
 ### ContentType Framework
-- How polymorphic relationships work (Notification → any recipient)
+- How polymorphic relationships work (Notification  any recipient)
 - See: `core/models/notification.py`
 
 ---
 
-## 📞 Support
+##  Support
 
 For issues or questions:
 
@@ -348,7 +348,7 @@ For issues or questions:
 
 ---
 
-## 🚀 Next Steps
+##  Next Steps
 
 ### Immediate:
 1. Run `bash setup_notifications.sh`
@@ -374,6 +374,6 @@ For issues or questions:
 
 ---
 
-**You're all set!** 🎉
+**You're all set!** 
 
 Run the setup script, start the services, and begin testing. The notification system is fully functional and ready for use.

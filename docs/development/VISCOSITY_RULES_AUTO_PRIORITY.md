@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Viscosity Rules feature uses an **automatic priority assignment system** that eliminates user confusion and maximizes usability. Users never manually enter priority numbers; instead, they see visual position indicators (🥇 1st, 🥈 2nd, 🥉 3rd).
+The Viscosity Rules feature uses an **automatic priority assignment system** that eliminates user confusion and maximizes usability. Users never manually enter priority numbers; instead, they see visual position indicators ( 1st, � 2nd,  3rd).
 
 ## Table of Contents
 
@@ -36,10 +36,10 @@ When a manager creates a new viscosity rule, the system:
 - Manual priority input required understanding of the underlying system
 
 **Solution Benefits:**
-- ✅ **Zero cognitive load** - no number input required
-- ✅ **Self-documenting** - position you see = order evaluated
-- ✅ **Flexible** - adding 10 (not 1) leaves room for manual DB adjustments
-- ✅ **Visual** - emoji badges instantly communicate priority
+-  **Zero cognitive load** - no number input required
+-  **Self-documenting** - position you see = order evaluated
+-  **Flexible** - adding 10 (not 1) leaves room for manual DB adjustments
+-  **Visual** - emoji badges instantly communicate priority
 
 ---
 
@@ -77,7 +77,7 @@ next_order = (max_order or 0) + 10
 
 **Alternative Considered:**
 - Increment by 1: `1, 2, 3, 4` (no room for insertions)
-- ❌ Rejected: Too rigid for manual adjustments
+-  Rejected: Too rigid for manual adjustments
 
 ---
 
@@ -89,9 +89,9 @@ Users see visual position indicators instead of raw numbers:
 
 | Position | Badge | CSS Class | Style |
 |----------|-------|-----------|-------|
-| **1st** | 🥇 | `priority-1` | Gold gradient, 1.5rem font |
-| **2nd** | 🥈 | `priority-2` | Silver gradient, 1.5rem font |
-| **3rd** | 🥉 | `priority-3` | Bronze gradient, 1.5rem font |
+| **1st** |  | `priority-1` | Gold gradient, 1.5rem font |
+| **2nd** | � | `priority-2` | Silver gradient, 1.5rem font |
+| **3rd** |  | `priority-3` | Bronze gradient, 1.5rem font |
 | **4th+** | "4th", "5th"... | `priority-badge` | Gray gradient, 0.875rem font |
 
 ### Badge Generation Logic
@@ -117,7 +117,7 @@ rules_with_position = [
 def get_ordinal_suffix(n):
     """
     Returns the ordinal suffix for a number (st, nd, rd, th).
-    Examples: 1 → "st", 2 → "nd", 3 → "rd", 4 → "th", 11 → "th"
+    Examples: 1  "st", 2  "nd", 3  "rd", 4  "th", 11  "th"
     """
     if 10 <= n % 100 <= 20:
         return 'th'  # Special case: 11th, 12th, 13th
@@ -131,9 +131,9 @@ def get_ordinal_suffix(n):
 
 ```django
 <span class="priority-badge priority-{{ item.position }}">
-    {% if item.position == 1 %}🥇
-    {% elif item.position == 2 %}🥈
-    {% elif item.position == 3 %}🥉
+    {% if item.position == 1 %}
+    {% elif item.position == 2 %}�
+    {% elif item.position == 3 %}
     {% else %}{{ item.position }}{{ item.position_suffix }}
     {% endif %}
 </span>
@@ -175,25 +175,25 @@ def get_recommendation_for_temperature(cls, temperature_f):
 ### Example Scenarios
 
 **Setup:**
-- 🥇 1st (priority 10): "Below 32°F" → Low viscosity
-- 🥈 2nd (priority 20): "32-85°F" → Medium viscosity
-- 🥉 3rd (priority 30): "Above 85°F" → High viscosity
+-  1st (priority 10): "Below 32�F"  Low viscosity
+- � 2nd (priority 20): "32-85�F"  Medium viscosity
+-  3rd (priority 30): "Above 85�F"  High viscosity
 
-**Temperature: 25°F**
-1. Check 🥇 1st: "Below 32°F" → ✅ **MATCH** → Use Low viscosity
-2. ❌ Stop checking (2nd and 3rd never evaluated)
+**Temperature: 25�F**
+1. Check  1st: "Below 32�F"   **MATCH**  Use Low viscosity
+2.  Stop checking (2nd and 3rd never evaluated)
 
-**Temperature: 70°F**
-1. Check 🥇 1st: "Below 32°F" → ❌ No match
-2. Check 🥈 2nd: "32-85°F" → ✅ **MATCH** → Use Medium viscosity
-3. ❌ Stop checking (3rd never evaluated)
+**Temperature: 70�F**
+1. Check  1st: "Below 32�F"   No match
+2. Check � 2nd: "32-85�F"   **MATCH**  Use Medium viscosity
+3.  Stop checking (3rd never evaluated)
 
-**Temperature: 95°F**
-1. Check 🥇 1st: "Below 32°F" → ❌ No match
-2. Check 🥈 2nd: "32-85°F" → ❌ No match
-3. Check 🥉 3rd: "Above 85°F" → ✅ **MATCH** → Use High viscosity
+**Temperature: 95�F**
+1. Check  1st: "Below 32�F"   No match
+2. Check � 2nd: "32-85�F"   No match
+3. Check  3rd: "Above 85�F"   **MATCH**  Use High viscosity
 
-**Temperature: 120°F (overlapping rules)**
+**Temperature: 120�F (overlapping rules)**
 - If both 2nd and 3rd match, **2nd wins** (lower priority number)
 - This is why order matters!
 
@@ -413,7 +413,7 @@ const data = {
 7. **New rule appears** at bottom with next position badge
 
 **Example:**
-- Existing rules: 🥇 Cold, 🥈 Standard, 🥉 Hot
+- Existing rules:  Cold, � Standard,  Hot
 - Create "Extreme Cold"
 - Auto-assigned priority: 40 (after 10, 20, 30)
 - Displays as: **4th** (gray badge)
@@ -424,10 +424,10 @@ const data = {
 2. **See rules** in card grid, sorted by priority
 3. **Visual badges** show evaluation order:
    ```
-   🥇 Cold Weather        (Below 32°F)
-   🥈 Standard Conditions (32-85°F)
-   🥉 Hot Weather        (Above 85°F)
-   4th Extreme Heat      (Above 100°F)
+    Cold Weather        (Below 32�F)
+   � Standard Conditions (32-85�F)
+    Hot Weather        (Above 85�F)
+   4th Extreme Heat      (Above 100�F)
    ```
 
 ### Editing an Existing Rule
@@ -449,9 +449,9 @@ const data = {
 5. **Visual positions** update automatically
 
 **Example:**
-- Before: 🥇 (10), 🥈 (20), 🥉 (30), 4th (40)
-- Delete 🥈 (20)
-- After: 🥇 (10), 🥈 (30), 🥉 (40)
+- Before:  (10), � (20),  (30), 4th (40)
+- Delete � (20)
+- After:  (10), � (30),  (40)
 - Priorities unchanged, positions renumbered!
 
 ---
@@ -465,17 +465,17 @@ const data = {
 **Implementation Plan:**
 
 1. **Frontend Library:** Use SortableJS or HTML5 drag-and-drop API
-2. **Visual Feedback:** Show draggable handle icon (⋮⋮) on each card
+2. **Visual Feedback:** Show draggable handle icon (��) on each card
 3. **AJAX Endpoint:** `POST /tech/settings/api/viscosity/reorder/`
 4. **Payload:** Send new order as array: `[{id: 3, order: 10}, {id: 1, order: 20}, ...]`
 5. **Backend:** Batch update `display_order` values
 6. **UI Update:** Reload page or update badges via JavaScript
 
 **User Flow:**
-1. Manager drags 🥉 3rd rule to 1st position
+1. Manager drags  3rd rule to 1st position
 2. Card animates to new position
 3. AJAX call updates database
-4. Badges update: 🥉 becomes 🥇
+4. Badges update:  becomes 
 
 ### Phase 3: Priority Presets (Consideration)
 
@@ -488,9 +488,9 @@ const data = {
 - "Lowest Priority" - Add at end (current behavior)
 
 **Tradeoffs:**
-- ✅ More control for power users
-- ❌ Adds complexity back
-- ❌ May confuse casual users
+-  More control for power users
+-  Adds complexity back
+-  May confuse casual users
 - **Decision:** Not implementing unless user feedback requests it
 
 ### Phase 4: Priority Groups (Future Consideration)
@@ -543,7 +543,7 @@ SET display_order = (ROW_NUMBER() OVER (ORDER BY display_order)) * 10;
 
 #### Issue: Duplicate priorities after migration
 
-**Symptom:** Two rules both show as 🥇 1st
+**Symptom:** Two rules both show as  1st
 
 **Cause:** Legacy data with manually set priorities
 
@@ -609,7 +609,7 @@ for idx, rule in enumerate(rules):
   "rule": {
     "id": 6,
     "name": "Extreme Cold",
-    "temp_range": "≤ 32.0°F",
+    "temp_range": " 32.0�F",
     "recommended_viscosity": "Very Low",
     "suggestion_text": "Use very low viscosity",
     "badge_color": "blue",
@@ -679,13 +679,13 @@ class AutoPriorityTests(TestCase):
 
 ### Manual Testing Checklist
 
-- [ ] Create first rule → verify priority 10
-- [ ] Create second rule → verify priority 20
-- [ ] Create third rule → verify priority 30
-- [ ] Delete second rule → verify first=10, third=30 (not renumbered)
-- [ ] Create fourth rule → verify priority 40 (after gap)
-- [ ] Verify badges: 🥇 🥈 🥉 4th
-- [ ] Edit rule → verify priority unchanged
+- [ ] Create first rule  verify priority 10
+- [ ] Create second rule  verify priority 20
+- [ ] Create third rule  verify priority 30
+- [ ] Delete second rule  verify first=10, third=30 (not renumbered)
+- [ ] Create fourth rule  verify priority 40 (after gap)
+- [ ] Verify badges:  �  4th
+- [ ] Edit rule  verify priority unchanged
 - [ ] Verify evaluation order: lowest priority checked first
 
 ---
@@ -718,7 +718,7 @@ class AutoPriorityTests(TestCase):
 |------|---------|---------|
 | 2025-11-18 | 1.0.0 | Initial auto-priority implementation |
 | | | - Removed manual priority field |
-| | | - Added visual badges (🥇🥈🥉) |
+| | | - Added visual badges (�) |
 | | | - Implemented auto-assignment (+10 increments) |
 | | | - Updated all documentation |
 
@@ -726,4 +726,4 @@ class AutoPriorityTests(TestCase):
 
 **Last Updated:** November 18, 2025
 **Author:** RS Systems Development Team
-**Status:** ✅ Production Ready
+**Status:**  Production Ready

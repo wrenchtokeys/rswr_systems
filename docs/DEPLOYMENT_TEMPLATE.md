@@ -1,6 +1,6 @@
 # RS Systems - AWS Elastic Beanstalk Deployment Template
 
-## 🚀 Deployment Steps
+##  Deployment Steps
 
 ### Step 1: Verify Local Setup
 ```bash
@@ -56,7 +56,7 @@ eb deploy
 eb open
 ```
 
-## 🗄️ Database Setup Options
+##  Database Setup Options
 
 ### Option A: Use SQLite (Simple, for testing)
 - No additional setup required
@@ -67,7 +67,7 @@ eb open
 2. Set the environment variables as shown in Step 4
 3. The app will automatically use PostgreSQL when RDS variables are detected
 
-## 🔧 Troubleshooting
+##  Troubleshooting
 
 ### If deployment fails:
 1. Check logs: `eb logs`
@@ -98,40 +98,40 @@ eb open
    eb setenv KEY=VALUE  # Set missing variables
    ```
 
-## 📁 File Structure
+##  File Structure
 ```
 rs_systems_branch2/
-├── application.py              # ✅ Fixed WSGI entry point
-├── requirements.txt            # ✅ Updated with all dependencies
-├── .ebextensions/             # ✅ Cleaned up EB configuration
-│   ├── 01_packages.config     # System packages
-│   ├── 02_migrations.config   # Database migrations
-│   ├── 03_collectstatic.config # Static files
-│   └── 04_env_vars.config     # Environment variables
-└── rswr_systems/src/
-    ├── rs_systems/
-    │   └── settings_aws_fixed.py  # ✅ Fixed Django settings
-    ├── core/
-    │   └── apps.py            # ✅ Created Django app config
-    └── apps/
-        ├── technician_portal/
-        │   └── apps.py        # ✅ Created Django app config
-        ├── customer_portal/
-        │   └── apps.py        # ✅ Created Django app config
-        └── [other apps]/
-            └── apps.py        # ✅ Created Django app configs
+ application.py              #  Fixed WSGI entry point
+ requirements.txt            #  Updated with all dependencies
+ .ebextensions/             #  Cleaned up EB configuration
+    01_packages.config     # System packages
+    02_migrations.config   # Database migrations
+    03_collectstatic.config # Static files
+    04_env_vars.config     # Environment variables
+ rswr_systems/src/
+     rs_systems/
+        settings_aws_fixed.py  #  Fixed Django settings
+     core/
+        apps.py            #  Created Django app config
+     apps/
+         technician_portal/
+            apps.py        #  Created Django app config
+         customer_portal/
+            apps.py        #  Created Django app config
+         [other apps]/
+             apps.py        #  Created Django app configs
 ```
 
-## 🎉 Success Indicators
+##  Success Indicators
 
 When deployment is successful, you should see:
-- ✅ Django system check passes with no issues
-- ✅ All migrations apply successfully
-- ✅ Static files collect without errors
-- ✅ Application starts and responds to HTTP requests
-- ✅ All Django apps are properly loaded
+-  Django system check passes with no issues
+-  All migrations apply successfully
+-  Static files collect without errors
+-  Application starts and responds to HTTP requests
+-  All Django apps are properly loaded
 
-## 🔄 Next Steps After Deployment
+##  Next Steps After Deployment
 
 1. **Create a superuser**:
    ```bash
@@ -146,7 +146,7 @@ When deployment is successful, you should see:
 4. **Configure custom domain (if needed)**
 5. **Set up SSL certificate**
 
-## 🆘 Need Help?
+##  Need Help?
 
 If you encounter any issues:
 1. Check the logs: `eb logs`
@@ -165,4 +165,4 @@ Replace all placeholders in brackets with your actual values:
 - [YOUR_DB_USERNAME]: Your database username
 - [YOUR_DB_PASSWORD]: Your database password
 
-Your Django application is now properly configured for AWS Elastic Beanstalk deployment! 🚀
+Your Django application is now properly configured for AWS Elastic Beanstalk deployment! 
