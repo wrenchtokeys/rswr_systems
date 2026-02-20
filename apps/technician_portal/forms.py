@@ -268,7 +268,7 @@ class RepairForm(forms.ModelForm):
     class Meta:
         model = Repair
         fields = ['technician', 'customer', 'unit_number', 'vehicle_year', 'vehicle_make', 'vehicle_model',
-                  'queue_status', 'damage_type',
+                  'queue_status', 'damage_type', 'damage_location_x', 'damage_location_y',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
                   'cost_override', 'override_reason', 'repair_batch_id', 'break_number', 'total_breaks_in_batch']

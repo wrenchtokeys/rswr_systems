@@ -434,6 +434,14 @@ class Repair(GlassService):
     
     # Repair-specific fields
     damage_type = models.CharField(max_length=100, choices=DAMAGE_TYPE_CHOICES, default='')
+    damage_location_x = models.FloatField(
+        null=True, blank=True,
+        help_text="X coordinate of damage on windshield (0-100%)"
+    )
+    damage_location_y = models.FloatField(
+        null=True, blank=True,
+        help_text="Y coordinate of damage on windshield (0-100%)"
+    )
     drilled_before_repair = models.BooleanField(default=False)
     windshield_temperature = models.FloatField(null=True, blank=True)
     resin_viscosity = models.CharField(max_length=20, blank=True)
