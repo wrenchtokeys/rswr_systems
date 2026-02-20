@@ -166,6 +166,19 @@ def customer_dashboard(request):
         # Get reward points balance
         reward_points = RewardService.get_reward_balance(customer_user)
         
+        # Get outstanding invoices for the customer
+        outstanding_invoices = Invoice.objects.filter(
+            customer=customer,
+            status__in=['SENT', 'OVERDUE', 'PARTIAL']
+        ).order_by('due_date')[:5]
+        outstanding_total = outstanding_invoices.aggregate(
+            total=Sum('total')
+        )['total'] or 0
+        overdue_count = Invoice.objects.filter(
+            customer=customer,
+            status='OVERDUE'
+        ).count()
+        
         context = {
             'customer': customer,
             'stats': stats,
@@ -183,6 +196,10 @@ def customer_dashboard(request):
             'referral_code': referral_code_value,
             'referral_count': referral_count,
             'reward_points': reward_points,
+            # Invoice data
+            'outstanding_invoices': outstanding_invoices,
+            'outstanding_total': outstanding_total,
+            'overdue_count': overdue_count,
         }
 
         # Add notification context
