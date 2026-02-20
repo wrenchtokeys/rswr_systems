@@ -2536,7 +2536,7 @@ def accept_customer_invitation(request, token):
     """
     from .models import CustomerInvitation
     from .services.invitation_service import CustomerInvitationService
-    from common.utils import generate_unique_username
+    from apps.tenants.services.signup_service import generate_unique_username
     
     invitation = CustomerInvitationService.get_invitation_by_token(token)
     
