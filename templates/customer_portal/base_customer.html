@@ -84,6 +84,9 @@
                         <a href="{% url 'customer_rewards' %}" class="text-sm font-medium {% if 'reward' in request.resolver_match.url_name or 'referral' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
                             Rewards
                         </a>
+                        <a href="{% url 'customer_team' %}" class="text-sm font-medium {% if 'team' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
+                            Team
+                        </a>
                     </div>
                 </div>
 
@@ -137,6 +140,7 @@
                     <a href="{% url 'customer_request_repair' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Request Repair</a>
                     <a href="{% url 'customer_invoices' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Invoices</a>
                     <a href="{% url 'customer_rewards' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Rewards</a>
+                    <a href="{% url 'customer_team' %}" class="block px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg">Team</a>
                 </div>
             </div>
         </div>

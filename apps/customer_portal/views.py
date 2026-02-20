@@ -11,7 +11,7 @@ from apps.rewards_referrals.services import ReferralService, RewardService
 from apps.billing.models import Invoice
 from .forms import RepairPreferenceForm, CustomerNotificationPreferenceForm
 from .models import CustomerRepairPreference
-from .models import CustomerUser, RepairApproval
+from .models import CustomerUser, RepairApproval, CustomerInvitation
 from core.models.notification import Notification
 from core.models.notification_preferences import CustomerNotificationPreference
 from django.contrib import messages
@@ -2648,3 +2648,195 @@ def accept_customer_invitation(request, token):
         'last_name': invitation.last_name,
         'email': invitation.email,
     })
+
+
+# ============================================================================
+# TEAM MANAGEMENT (Customer Self-Service)
+# ============================================================================
+
+@customer_required
+def customer_team(request):
+    """
+    Team management page - list team members and pending invitations.
+    Allows customers to invite their own team members (dispatchers, managers).
+    """
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        # Get all team members (CustomerUser records for this customer)
+        team_members = CustomerUser.objects.filter(customer=customer).select_related('user')
+        
+        # Get pending invitations
+        pending_invitations = CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending'
+        ).order_by('-created_at')
+        
+        # Mark expired invitations
+        for inv in pending_invitations:
+            if not inv.is_valid:
+                inv.status = 'expired'
+                inv.save(update_fields=['status'])
+        
+        # Refresh to get updated statuses
+        pending_invitations = CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending'
+        ).order_by('-created_at')
+        
+        return render(request, 'customer_portal/team.html', {
+            'team_members': team_members,
+            'pending_invitations': pending_invitations,
+            'current_user': customer_user,
+        })
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+@ratelimit(key='user', rate='10/h', method='POST', block=True)
+def customer_invite_team_member(request):
+    """
+    Send an invitation to a new team member.
+    """
+    if request.method != 'POST':
+        return redirect('customer_team')
+    
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        email = request.POST.get('email', '').strip().lower()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        
+        # Validation
+        if not email:
+            messages.error(request, "Email address is required.")
+            return redirect('customer_team')
+        
+        # Basic email format check
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+            messages.error(request, "Please enter a valid email address.")
+            return redirect('customer_team')
+        
+        # Check if already a team member
+        existing_user = User.objects.filter(email__iexact=email).first()
+        if existing_user:
+            existing_customer_user = CustomerUser.objects.filter(
+                user=existing_user,
+                customer=customer
+            ).first()
+            if existing_customer_user:
+                messages.warning(request, f"{email} is already a team member.")
+                return redirect('customer_team')
+        
+        # Check for existing pending invitation
+        existing_invite = CustomerInvitation.objects.filter(
+            customer=customer,
+            email__iexact=email,
+            status='pending'
+        ).first()
+        
+        if existing_invite and existing_invite.is_valid:
+            messages.info(request, f"An invitation to {email} is already pending.")
+            return redirect('customer_team')
+        
+        # Create and send invitation
+        from .services.invitation_service import CustomerInvitationService
+        
+        invitation = CustomerInvitationService.create_invitation(
+            customer=customer,
+            email=email,
+            invited_by=request.user,
+            first_name=first_name,
+            last_name=last_name
+        )
+        
+        # Send the email
+        email_sent = CustomerInvitationService.send_invitation_email(invitation, request)
+        
+        if email_sent:
+            messages.success(request, f"Invitation sent to {email}!")
+        else:
+            messages.warning(request, f"Invitation created but email could not be sent. They can still use the invite link.")
+        
+        return redirect('customer_team')
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+    except Exception as e:
+        logger.error(f"Error sending team invitation: {e}")
+        messages.error(request, "An error occurred. Please try again.")
+        return redirect('customer_team')
+
+
+@customer_required
+def customer_cancel_invitation(request, invitation_id):
+    """
+    Cancel a pending invitation.
+    """
+    if request.method != 'POST':
+        return redirect('customer_team')
+    
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        invitation = get_object_or_404(
+            CustomerInvitation,
+            id=invitation_id,
+            customer=customer,
+            status='pending'
+        )
+        
+        from .services.invitation_service import CustomerInvitationService
+        CustomerInvitationService.cancel_invitation(invitation)
+        
+        messages.success(request, f"Invitation to {invitation.email} cancelled.")
+        return redirect('customer_team')
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_resend_invitation(request, invitation_id):
+    """
+    Resend a pending invitation (extends expiry).
+    """
+    if request.method != 'POST':
+        return redirect('customer_team')
+    
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        invitation = get_object_or_404(
+            CustomerInvitation,
+            id=invitation_id,
+            customer=customer
+        )
+        
+        if invitation.status == 'accepted':
+            messages.warning(request, "This invitation has already been accepted.")
+            return redirect('customer_team')
+        
+        from .services.invitation_service import CustomerInvitationService
+        success = CustomerInvitationService.resend_invitation(invitation, request)
+        
+        if success:
+            messages.success(request, f"Invitation resent to {invitation.email}!")
+        else:
+            messages.error(request, "Could not resend invitation.")
+        
+        return redirect('customer_team')
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')

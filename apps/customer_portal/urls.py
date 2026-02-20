@@ -41,6 +41,12 @@ urlpatterns = [
     path('company/edit/', views.edit_company, name='edit_company'),
     path('account/settings/', views.account_settings, name='customer_account_settings'),
     
+    # Team management (self-service)
+    path('team/', views.customer_team, name='customer_team'),
+    path('team/invite/', views.customer_invite_team_member, name='customer_invite_team_member'),
+    path('team/invitations/<int:invitation_id>/cancel/', views.customer_cancel_invitation, name='customer_cancel_invitation'),
+    path('team/invitations/<int:invitation_id>/resend/', views.customer_resend_invitation, name='customer_resend_invitation'),
+    
     # Rewards and referrals dashboard
     path('rewards/', views.customer_rewards_redirect, name='customer_rewards'),
     
