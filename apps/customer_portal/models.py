@@ -2,6 +2,9 @@ from django.db import models
 from django.contrib.auth.models import User
 from core.models import Customer
 from apps.technician_portal.models import Repair, Replacement
+import secrets
+from datetime import timedelta
+from django.utils import timezone
 
 class CustomerUser(models.Model):
     """Links a Django User account to a Customer (company) for portal access."""
@@ -183,3 +186,66 @@ class RepairApproval(models.Model):
     def __str__(self):
         status = "Approved" if self.approved else "Pending"
         return f"{status} - {self.repair}"
+
+
+class CustomerInvitation(models.Model):
+    """
+    Manages invitations for fleet managers to access the customer portal.
+    Owner creates customer -> sends invite -> fleet manager accepts -> account created
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('expired', 'Expired'),
+        ('cancelled', 'Cancelled'),
+    ]
+
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='invitations')
+    email = models.EmailField(help_text="Email address to send the invitation to")
+    first_name = models.CharField(max_length=100, blank=True)
+    last_name = models.CharField(max_length=100, blank=True)
+    token = models.CharField(max_length=64, unique=True, editable=False)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    
+    # Tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    sent_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    
+    # Who created/accepted
+    invited_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='customer_invites_sent')
+    accepted_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='customer_invite_accepted')
+
+    class Meta:
+        verbose_name = 'Customer Invitation'
+        verbose_name_plural = 'Customer Invitations'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Invite to {self.email} for {self.customer.name} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = secrets.token_urlsafe(32)
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(days=7)
+        super().save(*args, **kwargs)
+
+    @property
+    def is_valid(self):
+        """Check if invitation is still valid (pending and not expired)"""
+        if self.status != 'pending':
+            return False
+        if timezone.now() > self.expires_at:
+            self.status = 'expired'
+            self.save(update_fields=['status'])
+            return False
+        return True
+
+    def mark_accepted(self, user):
+        """Mark invitation as accepted and link to user"""
+        self.status = 'accepted'
+        self.accepted_at = timezone.now()
+        self.accepted_user = user
+        self.save(update_fields=['status', 'accepted_at', 'accepted_user'])

@@ -2,6 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Customer Invitation (must be before auth-required routes)
+    path('invite/<str:token>/', views.accept_customer_invitation, name='accept_customer_invitation'),
+    
     # Main customer portal entry points
     path('', views.customer_dashboard, name='customer_dashboard'),  # /app/ now goes directly to dashboard
     path('dashboard/', views.customer_dashboard, name='customer_dashboard_alt'),  # alternative URL

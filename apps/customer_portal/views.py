@@ -2506,3 +2506,128 @@ def customer_invoice_pay(request, invoice_id):
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+# ============================================================================
+# Customer Invitation Views
+# ============================================================================
+
+def accept_customer_invitation(request, token):
+    """
+    Accept a customer portal invitation.
+    Creates account and links to customer.
+    """
+    from .models import CustomerInvitation
+    from .services.invitation_service import CustomerInvitationService
+    from common.utils import generate_unique_username
+    
+    invitation = CustomerInvitationService.get_invitation_by_token(token)
+    
+    if not invitation:
+        return render(request, 'customer_portal/invitation_invalid.html')
+    
+    # If user is already logged in, link them directly
+    if request.user.is_authenticated:
+        # Check if they already have a CustomerUser record
+        existing = CustomerUser.objects.filter(user=request.user).first()
+        if existing:
+            if existing.customer == invitation.customer:
+                messages.info(request, f"You're already set up for {invitation.customer.name}.")
+            else:
+                messages.warning(
+                    request, 
+                    f"You're already linked to {existing.customer.name}. "
+                    f"Contact support if you need access to {invitation.customer.name}."
+                )
+            return redirect('customer_dashboard')
+        
+        # Link existing user to customer
+        CustomerUser.objects.create(
+            user=request.user,
+            customer=invitation.customer,
+            is_primary_contact=True
+        )
+        invitation.mark_accepted(request.user)
+        messages.success(request, f"Welcome! You now have access to {invitation.customer.name}.")
+        return redirect('customer_dashboard')
+    
+    # Handle form submission for new user creation
+    if request.method == 'POST':
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        email = request.POST.get('email', invitation.email).strip()
+        password = request.POST.get('password', '')
+        password_confirm = request.POST.get('password_confirm', '')
+        
+        errors = []
+        
+        # Validate
+        if not first_name:
+            errors.append("First name is required.")
+        if not password:
+            errors.append("Password is required.")
+        if len(password) < 8:
+            errors.append("Password must be at least 8 characters.")
+        if password != password_confirm:
+            errors.append("Passwords do not match.")
+        if User.objects.filter(email__iexact=email).exists():
+            errors.append("An account with this email already exists. Please log in instead.")
+        
+        if errors:
+            return render(request, 'customer_portal/invitation_accept.html', {
+                'invitation': invitation,
+                'errors': errors,
+                'first_name': first_name,
+                'last_name': last_name,
+                'email': email,
+            })
+        
+        try:
+            with transaction.atomic():
+                # Create the user
+                username = generate_unique_username(first_name or email.split('@')[0])
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+                
+                # Create CustomerUser link
+                CustomerUser.objects.create(
+                    user=user,
+                    customer=invitation.customer,
+                    is_primary_contact=True
+                )
+                
+                # Mark invitation as accepted
+                invitation.mark_accepted(user)
+                
+                # Log them in
+                login(request, user)
+                
+                messages.success(
+                    request, 
+                    f"Welcome to {invitation.customer.name}! Your account has been created."
+                )
+                return redirect('customer_dashboard')
+                
+        except Exception as e:
+            logger.error(f"Failed to create user from invitation: {e}")
+            errors.append("An error occurred creating your account. Please try again.")
+            return render(request, 'customer_portal/invitation_accept.html', {
+                'invitation': invitation,
+                'errors': errors,
+                'first_name': first_name,
+                'last_name': last_name,
+                'email': email,
+            })
+    
+    # GET request - show the form
+    return render(request, 'customer_portal/invitation_accept.html', {
+        'invitation': invitation,
+        'first_name': invitation.first_name,
+        'last_name': invitation.last_name,
+        'email': invitation.email,
+    })

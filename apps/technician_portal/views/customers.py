@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @technician_required
 def create_customer(request):
-    """Create a new customer."""
+    """Create a new customer with optional portal invitation."""
     tenant = getattr(request, 'tenant', None)
 
     # Usage limit check
@@ -37,7 +37,41 @@ def create_customer(request):
             if tenant:
                 customer.tenant = tenant
             customer.save()
-            messages.success(request, f"Customer '{customer.name}' has been created successfully.")
+            
+            # Handle portal invitation if requested
+            invite_email = form.cleaned_data.get('invite_email')
+            send_invitation = form.cleaned_data.get('send_invitation', False)
+            
+            if invite_email and send_invitation:
+                from apps.customer_portal.services.invitation_service import CustomerInvitationService
+                try:
+                    invitation = CustomerInvitationService.create_invitation(
+                        customer=customer,
+                        email=invite_email,
+                        invited_by=request.user,
+                        first_name=form.cleaned_data.get('invite_first_name', ''),
+                        last_name=form.cleaned_data.get('invite_last_name', '')
+                    )
+                    if CustomerInvitationService.send_invitation_email(invitation, request):
+                        messages.success(
+                            request, 
+                            f"Customer '{customer.name}' created and invitation sent to {invite_email}."
+                        )
+                    else:
+                        messages.warning(
+                            request,
+                            f"Customer '{customer.name}' created, but failed to send invitation email. "
+                            f"You can resend from the customer details page."
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to create/send invitation: {e}")
+                    messages.warning(
+                        request,
+                        f"Customer '{customer.name}' created, but invitation could not be sent."
+                    )
+            else:
+                messages.success(request, f"Customer '{customer.name}' has been created successfully.")
+            
             return redirect('technician_dashboard')
     else:
         form = CustomerForm(tenant=tenant)

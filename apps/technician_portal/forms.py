@@ -133,10 +133,37 @@ class TechnicianRegistrationForm(UserCreationForm):
         return user
     
 class CustomerForm(forms.ModelForm):
-    """Basic form for creating customers."""
+    """Form for creating customers with optional portal invitation."""
+    
+    # Invitation fields (optional)
+    invite_email = forms.EmailField(
+        required=False,
+        label="Contact Email",
+        help_text="Email address for the fleet manager who will access the portal"
+    )
+    invite_first_name = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Contact First Name"
+    )
+    invite_last_name = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Contact Last Name"
+    )
+    send_invitation = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Send portal invitation",
+        help_text="Send an email invitation to access the customer portal"
+    )
+
     class Meta:
         model = Customer
-        fields = ['name', 'primary_technician']
+        fields = ['name', 'customer_type', 'email', 'phone', 'primary_technician']
+        widgets = {
+            'customer_type': forms.Select(attrs={'class': 'form-select'}),
+        }
 
     def __init__(self, *args, **kwargs):
         self.tenant = kwargs.pop('tenant', None)
@@ -148,6 +175,9 @@ class CustomerForm(forms.ModelForm):
             qs = qs.filter(tenant=self.tenant)
         self.fields['primary_technician'].queryset = qs.order_by('user__first_name')
         self.fields['primary_technician'].required = False
+        self.fields['email'].required = False
+        self.fields['phone'].required = False
+        self.fields['customer_type'].required = False
 
 
 class CustomerEditForm(forms.ModelForm):

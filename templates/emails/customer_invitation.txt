@@ -1,0 +1,19 @@
+You're Invited!
+
+Hi {{ recipient_name }},
+
+{{ inviter_name }} has invited you to manage {{ customer_name }}'s windshield repairs on {{ shop_name }}.
+
+With your portal access, you can:
+- View and approve repair requests
+- Track repair status in real-time
+- Access invoices and payment history
+- Submit new repair requests
+
+Accept your invitation here:
+{{ invite_url }}
+
+This invitation will expire in 7 days. If you have any questions, please contact {{ shop_name }} directly.
+
+---
+Powered by RS Systems

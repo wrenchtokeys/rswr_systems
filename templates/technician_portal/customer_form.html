@@ -23,7 +23,7 @@
                 </div>
                 <div>
                     <h1 class="text-3xl font-bold text-gray-900">Create New Customer</h1>
-                    <p class="text-gray-600 mt-1">Add a new company to the system</p>
+                    <p class="text-gray-600 mt-1">Add a new company and invite their fleet manager</p>
                 </div>
             </div>
         </div>
@@ -46,23 +46,12 @@
         </div>
         {% endif %}
 
-        <!-- Info Callout -->
-        <div class="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div class="flex gap-3">
-                <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
-                <div class="text-sm text-blue-900">
-                    <p class="font-medium">Quick Customer Creation</p>
-                    <p class="mt-1 text-blue-800">This creates a basic customer profile. Additional details like address and contact information can be added later by the customer through their portal.</p>
-                </div>
-            </div>
-        </div>
-
         <!-- Main Form Card -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <form method="post">
                 {% csrf_token %}
 
-                <!-- Form Header -->
+                <!-- Section 1: Company Information -->
                 <div class="p-6 border-b border-gray-200 bg-green-50">
                     <div class="flex items-center gap-3">
                         <div class="bg-green-100 text-green-600 p-2 rounded-lg">
@@ -70,14 +59,14 @@
                         </div>
                         <div>
                             <h3 class="text-lg font-semibold text-gray-900">Company Information</h3>
-                            <p class="text-sm text-gray-600">Enter the basic company details</p>
+                            <p class="text-sm text-gray-600">Basic details about the company</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Form Fields -->
-                <div class="p-6">
-                    <div class="form-group">
+                <div class="p-6 space-y-4">
+                    <!-- Company Name -->
+                    <div>
                         <label for="{{ form.name.id_for_label }}" class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                             <i class="fas fa-briefcase text-gray-400"></i>
                             Company Name
@@ -89,15 +78,124 @@
                             id="{{ form.name.id_for_label }}"
                             name="{{ form.name.name }}"
                             value="{{ form.name.value|default:'' }}"
-                            placeholder="Enter company name"
+                            placeholder="e.g., EOS Trucking, Penske Logistics"
                             required>
                         {% if form.name.errors %}
                         <p class="text-xs text-red-600 mt-1">{{ form.name.errors.0 }}</p>
                         {% endif %}
+                    </div>
+
+                    <!-- Customer Type and Phone -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="{{ form.customer_type.id_for_label }}" class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-tag text-gray-400"></i>
+                                Customer Type
+                            </label>
+                            <select
+                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
+                                id="{{ form.customer_type.id_for_label }}"
+                                name="{{ form.customer_type.name }}">
+                                <option value="FLEET" {% if form.customer_type.value == 'FLEET' %}selected{% endif %}>Fleet</option>
+                                <option value="RETAIL" {% if form.customer_type.value == 'RETAIL' %}selected{% endif %}>Retail</option>
+                                <option value="WALK_IN" {% if form.customer_type.value == 'WALK_IN' %}selected{% endif %}>Walk-in</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="{{ form.phone.id_for_label }}" class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-phone text-gray-400"></i>
+                                Company Phone
+                            </label>
+                            <input
+                                type="tel"
+                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100"
+                                id="{{ form.phone.id_for_label }}"
+                                name="{{ form.phone.name }}"
+                                value="{{ form.phone.value|default:'' }}"
+                                placeholder="(555) 123-4567">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Portal Invitation -->
+                <div class="p-6 border-t border-b border-gray-200 bg-blue-50">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-blue-100 text-blue-600 p-2 rounded-lg">
+                            <i class="fas fa-envelope-open-text text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900">Portal Invitation</h3>
+                            <p class="text-sm text-gray-600">Invite their fleet manager to access the customer portal</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-6 space-y-4">
+                    <!-- Contact Name -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="{{ form.invite_first_name.id_for_label }}" class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-user text-gray-400"></i>
+                                Contact First Name
+                            </label>
+                            <input
+                                type="text"
+                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                id="{{ form.invite_first_name.id_for_label }}"
+                                name="{{ form.invite_first_name.name }}"
+                                value="{{ form.invite_first_name.value|default:'' }}"
+                                placeholder="John">
+                        </div>
+                        <div>
+                            <label for="{{ form.invite_last_name.id_for_label }}" class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-user text-gray-400"></i>
+                                Contact Last Name
+                            </label>
+                            <input
+                                type="text"
+                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                id="{{ form.invite_last_name.id_for_label }}"
+                                name="{{ form.invite_last_name.name }}"
+                                value="{{ form.invite_last_name.value|default:'' }}"
+                                placeholder="Smith">
+                        </div>
+                    </div>
+
+                    <!-- Contact Email -->
+                    <div>
+                        <label for="{{ form.invite_email.id_for_label }}" class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                            <i class="fas fa-envelope text-gray-400"></i>
+                            Contact Email
+                        </label>
+                        <input
+                            type="email"
+                            class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            id="{{ form.invite_email.id_for_label }}"
+                            name="{{ form.invite_email.name }}"
+                            value="{{ form.invite_email.value|default:'' }}"
+                            placeholder="fleet.manager@company.com">
                         <p class="text-xs text-gray-500 mt-2">
-                            <i class="fas fa-lightbulb mr-1"></i>
-                            Use the full legal name of the company for best results
+                            <i class="fas fa-info-circle mr-1"></i>
+                            This person will receive an invitation to manage their company's repairs
                         </p>
+                    </div>
+
+                    <!-- Send Invitation Checkbox -->
+                    <div class="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
+                        <input
+                            type="checkbox"
+                            class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            id="{{ form.send_invitation.id_for_label }}"
+                            name="{{ form.send_invitation.name }}"
+                            {% if form.send_invitation.value %}checked{% endif %}>
+                        <div>
+                            <label for="{{ form.send_invitation.id_for_label }}" class="text-sm font-medium text-gray-900">
+                                Send portal invitation now
+                            </label>
+                            <p class="text-xs text-gray-500 mt-1">
+                                Send an email invitation so they can create their account and start managing repairs
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -106,12 +204,12 @@
                     <div class="flex gap-3">
                         <i class="fas fa-list-check text-yellow-600 mt-0.5"></i>
                         <div class="text-sm text-yellow-900">
-                            <p class="font-medium">What happens after creation?</p>
+                            <p class="font-medium">What happens next?</p>
                             <ul class="mt-2 space-y-1 text-yellow-800 list-disc list-inside">
-                                <li>The customer will appear in your customer list</li>
-                                <li>You can start creating repairs for this customer</li>
-                                <li>Customer can register and link to this company profile</li>
-                                <li>Additional details can be added anytime</li>
+                                <li>Customer profile is created immediately</li>
+                                <li>You can start logging repairs for them right away</li>
+                                <li>If invited, they'll receive an email to set up their portal access</li>
+                                <li>Once they accept, they can view repairs, approve work, and pay invoices</li>
                             </ul>
                         </div>
                     </div>
@@ -135,17 +233,6 @@
                     </div>
                 </div>
             </form>
-        </div>
-
-        <!-- Additional Help -->
-        <div class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <div class="flex gap-3">
-                <i class="fas fa-question-circle text-gray-600 mt-0.5"></i>
-                <div class="text-sm text-gray-700">
-                    <p class="font-medium">Need to add more details?</p>
-                    <p class="mt-1 text-gray-600">After creating the customer, they can register through the customer portal to add complete address, contact information, and preferences.</p>
-                </div>
-            </div>
         </div>
     </div>
 </div>
