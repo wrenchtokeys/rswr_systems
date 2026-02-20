@@ -182,12 +182,25 @@ def customer_details(request, customer_id):
         available_technicians = available_technicians.filter(tenant=tenant)
     available_technicians = available_technicians.order_by('user__first_name')
 
+    # Portal access info (for admins/managers)
+    portal_users = []
+    pending_invitations = []
+    if can_edit_customer:
+        from apps.customer_portal.models import CustomerUser, CustomerInvitation
+        portal_users = CustomerUser.objects.filter(customer=customer).select_related('user')
+        pending_invitations = CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending'
+        ).order_by('-created_at')
+
     return render(request, 'technician_portal/customer_details.html', {
         'customer': customer,
         'units': units,
         'unit_search': unit_search,
         'can_edit_customer': can_edit_customer,
         'available_technicians': available_technicians,
+        'portal_users': portal_users,
+        'pending_invitations': pending_invitations,
     })
 
 
@@ -405,3 +418,118 @@ def delete_customer(request, customer_id):
     customer.delete()
     messages.success(request, f"Customer '{customer_name}' has been deleted.")
     return redirect('technician_customers')
+
+
+@technician_required
+@require_POST
+def send_customer_invitation(request, customer_id):
+    """Send or resend a customer portal invitation."""
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins/managers can send invitations
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can send customer invitations.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    customer = get_object_or_404(qs, id=customer_id)
+    
+    email = request.POST.get('email', '').strip()
+    first_name = request.POST.get('first_name', '').strip()
+    last_name = request.POST.get('last_name', '').strip()
+    
+    if not email:
+        messages.error(request, "Email address is required.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    from apps.customer_portal.services.invitation_service import CustomerInvitationService
+    
+    try:
+        invitation = CustomerInvitationService.create_invitation(
+            customer=customer,
+            email=email,
+            invited_by=request.user,
+            first_name=first_name,
+            last_name=last_name
+        )
+        
+        if CustomerInvitationService.send_invitation_email(invitation, request):
+            messages.success(request, f"Invitation sent to {email}")
+        else:
+            messages.warning(request, f"Invitation created but email failed to send. You can try again.")
+    except Exception as e:
+        logger.error(f"Failed to send customer invitation: {e}")
+        messages.error(request, "Failed to send invitation. Please try again.")
+    
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def resend_customer_invitation(request, invitation_id):
+    """Resend an existing customer invitation."""
+    from apps.customer_portal.models import CustomerInvitation
+    from apps.customer_portal.services.invitation_service import CustomerInvitationService
+    
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins/managers can resend invitations
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can resend invitations.")
+        return redirect('technician_dashboard')
+    
+    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
+    
+    # Verify customer belongs to tenant
+    if tenant and invitation.customer.tenant != tenant:
+        messages.error(request, "Invitation not found.")
+        return redirect('technician_dashboard')
+    
+    if CustomerInvitationService.resend_invitation(invitation, request):
+        messages.success(request, f"Invitation resent to {invitation.email}")
+    else:
+        messages.error(request, "Failed to resend invitation.")
+    
+    return redirect('customer_detail', customer_id=invitation.customer_id)
+
+
+@technician_required
+@require_POST
+def cancel_customer_invitation(request, invitation_id):
+    """Cancel a pending customer invitation."""
+    from apps.customer_portal.models import CustomerInvitation
+    from apps.customer_portal.services.invitation_service import CustomerInvitationService
+    
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins/managers can cancel invitations
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can cancel invitations.")
+        return redirect('technician_dashboard')
+    
+    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
+    
+    # Verify customer belongs to tenant
+    if tenant and invitation.customer.tenant != tenant:
+        messages.error(request, "Invitation not found.")
+        return redirect('technician_dashboard')
+    
+    customer_id = invitation.customer_id
+    
+    if CustomerInvitationService.cancel_invitation(invitation):
+        messages.success(request, f"Invitation to {invitation.email} cancelled.")
+    else:
+        messages.error(request, "Could not cancel this invitation.")
+    
+    return redirect('customer_detail', customer_id=customer_id)

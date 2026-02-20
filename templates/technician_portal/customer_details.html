@@ -155,6 +155,84 @@
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Portal Access Card -->
+            {% if can_edit_customer %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                        <i class="fas fa-user-shield mr-1.5 text-gray-400"></i>Portal Access
+                    </h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    <!-- Existing Portal Users -->
+                    {% if portal_users %}
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Active Users</p>
+                        {% for cu in portal_users %}
+                        <div class="flex items-center gap-3 py-2">
+                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-user-check text-green-600 text-xs"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900 truncate">{{ cu.user.get_full_name|default:cu.user.username }}</p>
+                                <p class="text-xs text-gray-500 truncate">{{ cu.user.email }}</p>
+                            </div>
+                            {% if cu.is_primary_contact %}
+                            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Primary</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Pending Invitations -->
+                    {% if pending_invitations %}
+                    <div class="{% if portal_users %}pt-4 border-t border-gray-100{% endif %}">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Pending Invitations</p>
+                        {% for inv in pending_invitations %}
+                        <div class="flex items-center gap-3 py-2">
+                            <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-envelope text-yellow-600 text-xs"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-900 truncate">{{ inv.email }}</p>
+                                <p class="text-xs text-gray-500">Sent {{ inv.sent_at|date:"M d" }}{% if inv.sent_at %} • Expires {{ inv.expires_at|date:"M d" }}{% endif %}</p>
+                            </div>
+                            <div class="flex gap-1">
+                                <form method="post" action="{% url 'resend_customer_invitation' inv.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded" title="Resend">
+                                        <i class="fas fa-paper-plane text-xs"></i>
+                                    </button>
+                                </form>
+                                <form method="post" action="{% url 'cancel_customer_invitation' inv.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="p-1.5 text-red-600 hover:bg-red-50 rounded" title="Cancel">
+                                        <i class="fas fa-times text-xs"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- No portal access yet -->
+                    {% if not portal_users and not pending_invitations %}
+                    <p class="text-sm text-gray-500 italic">No portal access set up.</p>
+                    {% endif %}
+
+                    <!-- Send New Invitation -->
+                    <div class="{% if portal_users or pending_invitations %}pt-4 border-t border-gray-100{% endif %}">
+                        <button onclick="document.getElementById('inviteModal').classList.remove('hidden')" 
+                                class="w-full inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                            <i class="fas fa-user-plus mr-2"></i>Invite to Portal
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <!-- Right Column: Units -->
@@ -210,4 +288,65 @@
         </div>
     </div>
 </div>
+
+<!-- Invite Modal -->
+{% if can_edit_customer %}
+<div id="inviteModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4 py-6">
+        <!-- Backdrop -->
+        <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="document.getElementById('inviteModal').classList.add('hidden')"></div>
+        
+        <!-- Modal Content -->
+        <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full mx-auto">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-900">Invite to Portal</h3>
+                    <button onclick="document.getElementById('inviteModal').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <p class="text-sm text-gray-500 mt-1">Send a portal invitation to {{ customer.name }}</p>
+            </div>
+            
+            <form method="post" action="{% url 'send_customer_invitation' customer.id %}">
+                {% csrf_token %}
+                <div class="p-6 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                            <input type="text" name="first_name" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="John">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                            <input type="text" name="last_name"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                   placeholder="Smith">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Email Address <span class="text-red-500">*</span></label>
+                        <input type="email" name="email" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="fleet.manager@company.com"
+                               value="{{ customer.email|default:'' }}">
+                    </div>
+                </div>
+                
+                <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 rounded-b-xl">
+                    <button type="button" onclick="document.getElementById('inviteModal').classList.add('hidden')"
+                            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                        <i class="fas fa-paper-plane mr-2"></i>Send Invitation
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
