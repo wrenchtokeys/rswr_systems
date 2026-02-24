@@ -36,7 +36,7 @@ class ReminderService:
         # Use noreply email - replies won't be received
         self.from_email = getattr(
             settings, 'REMINDER_FROM_EMAIL',
-            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@rockstarwindshield.repair')
+            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@rssystems.io')
         )
     
     def _filter(self, qs):

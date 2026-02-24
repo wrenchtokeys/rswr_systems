@@ -42,7 +42,7 @@ Create these products in Stripe Dashboard  Products:
 
 ### 2. Webhook Endpoint
 
-**URL:** `https://rockstarwindshield.repair/api/tenants/webhooks/stripe/`
+**URL:** `https://rssystems.io/api/tenants/webhooks/stripe/`
 
 **Events to listen for:**
 - `checkout.session.completed`  customer finished Checkout, activate subscription
@@ -83,7 +83,7 @@ In Django Admin, update each plan's "Stripe price id" with the LIVE price IDs
 
 ### 4. Create Live Webhook Endpoint
 Same URL, same events, but in live mode:
-- URL: `https://rockstarwindshield.repair/api/tenants/webhooks/stripe/`
+- URL: `https://rssystems.io/api/tenants/webhooks/stripe/`
 - Events: `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated`, `customer.subscription.deleted`
 - Copy the new `whsec_xxxxx` signing secret
 

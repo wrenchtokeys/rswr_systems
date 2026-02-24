@@ -1,9 +1,9 @@
 # AWS SES + SNS Setup Plan for RS Systems Notifications
 
-**Domain:** rockstarwindshield.repair
+**Domain:** rssystems.io
 **Route 53 Hosted Zone ID:** Z00152269ZHHL7BWWEO5
 **Primary Contact:** poorboychips@gmail.com
-**Target Sender Addresses:** notifications@rockstarwindshield.repair, info@rockstarwindshield.repair
+**Target Sender Addresses:** notifications@rssystems.io, info@rssystems.io
 
 ---
 
@@ -12,8 +12,8 @@
 This document guides you through setting up AWS Simple Email Service (SES) and Simple Notification Service (SNS) for the RS Systems notification system. By the end, you'll be able to send professional emails and SMS from your application.
 
 ### What You're Setting Up:
--  **AWS SES** - Send emails FROM notifications@rockstarwindshield.repair
--  **Domain Verification** - Prove you own rockstarwindshield.repair
+-  **AWS SES** - Send emails FROM notifications@rssystems.io
+-  **Domain Verification** - Prove you own rssystems.io
 -  **DKIM/SPF** - Prevent emails going to spam (80-90% deliverability improvement)
 -  **IAM Credentials** - Secure access keys for sending
 -  **Local Testing** - Test before deploying to production
@@ -23,7 +23,7 @@ This document guides you through setting up AWS Simple Email Service (SES) and S
 ### Prerequisites:
 - AWS account with billing enabled
 - Access to AWS Console
-- Route 53 hosted zone for rockstarwindshield.repair ( You have this!)
+- Route 53 hosted zone for rssystems.io ( You have this!)
 - Local development environment with notification system installed
 
 ---
@@ -38,7 +38,7 @@ When you verify a domain in SES, AWS requires 4 types of DNS records:
 **Format:**
 ```
 Type: TXT
-Name: _amazonses.rockstarwindshield.repair
+Name: _amazonses.rssystems.io
 Value: "SomeRandomStringFromAWS123456"
 ```
 
@@ -49,7 +49,7 @@ Value: "SomeRandomStringFromAWS123456"
 **Format:**
 ```
 Type: CNAME
-Name: abc123._domainkey.rockstarwindshield.repair
+Name: abc123._domainkey.rssystems.io
 Value: abc123.dkim.amazonses.com
 (Plus 2 more similar records with different prefixes)
 ```
@@ -60,7 +60,7 @@ Value: abc123.dkim.amazonses.com
 **Format:**
 ```
 Type: TXT
-Name: rockstarwindshield.repair
+Name: rssystems.io
 Value: "v=spf1 include:amazonses.com ~all"
 ```
 
@@ -77,7 +77,7 @@ Value: "v=spf1 include:amazonses.com ~all"
 1. Log into AWS Console: https://console.aws.amazon.com/
 2. Search for "Route 53" in the top search bar
 3. Click "Hosted zones" in the left sidebar
-4. Find: **rockstarwindshield.repair**
+4. Find: **rssystems.io**
 5. Verify Hosted Zone ID matches: **Z00152269ZHHL7BWWEO5** 
 6. Click on the domain name to view existing DNS records
 
@@ -99,7 +99,7 @@ Value: "v=spf1 include:amazonses.com ~all"
 2. Click **"Create identity"** button (orange)
 3. Configure identity:
    - **Identity type:**  Domain (not email address)
-   - **Domain:** `rockstarwindshield.repair` (no https://, just domain)
+   - **Domain:** `rssystems.io` (no https://, just domain)
    - **Assign a default configuration set:** Leave unchecked for now
    - **Use a custom MAIL FROM domain:** Leave unchecked for simplicity
    - **Advanced DKIM settings:**
@@ -133,8 +133,8 @@ AWS doesn't auto-create SPF records, so we'll add it manually.
 
 ### Step 2.1: Check for Existing SPF Record
 
-1. Go back to Route 53  Hosted zones  rockstarwindshield.repair
-2. Look for a TXT record with name "rockstarwindshield.repair" (or blank/@ symbol)
+1. Go back to Route 53  Hosted zones  rssystems.io
+2. Look for a TXT record with name "rssystems.io" (or blank/@ symbol)
 3. Check if value contains "v=spf1"
 
 **If SPF record exists:**
@@ -157,7 +157,7 @@ AWS doesn't auto-create SPF records, so we'll add it manually.
 3. Click **"Create records"**
 
 **What this does:**
-- Authorizes Amazon SES to send email on behalf of rockstarwindshield.repair
+- Authorizes Amazon SES to send email on behalf of rssystems.io
 - Tells recipient email servers to trust emails from SES
 - Reduces spam folder placement by ~30-40%
 
@@ -272,7 +272,7 @@ AWS_SES_SMTP_PASSWORD=BPej4... # From Step 3.4 - SMTP Password
 AWS_SES_REGION=us-east-1
 
 # Email sender configuration
-DEFAULT_FROM_EMAIL=notifications@rockstarwindshield.repair
+DEFAULT_FROM_EMAIL=notifications@rssystems.io
 DEFAULT_FROM_NAME=RS Systems Notifications
 
 # Email rate limiting (SES default: 14/sec in production, 1/sec in sandbox)
@@ -355,7 +355,7 @@ python manage.py test_ses poorboychips@gmail.com
 AWS SES Email Test
 ======================================================================
 Recipient: poorboychips@gmail.com
-From: notifications@rockstarwindshield.repair
+From: notifications@rssystems.io
 Email Backend: django.core.mail.backends.smtp.EmailBackend
 SMTP Host: email-smtp.us-east-1.amazonaws.com:587
 ======================================================================
@@ -375,7 +375,7 @@ Check the recipient inbox for the test email.
  Failed to send email
 
 Error: Email address is not verified. The following identities failed the check
-in region US-EAST-1: notifications@rockstarwindshield.repair
+in region US-EAST-1: notifications@rssystems.io
 
 Solution: Wait for domain verification to complete (check SES console)
 ```
@@ -389,7 +389,7 @@ Solution: Wait for domain verification to complete (check SES console)
 ### Step 5.3: Check Gmail Inbox
 
 1. Open Gmail (poorboychips@gmail.com)
-2. Look for email FROM: notifications@rockstarwindshield.repair
+2. Look for email FROM: notifications@rssystems.io
 3. Subject: "AWS SES Test Email - RS Systems"
 
 **Check email headers (important for deliverability):**
@@ -502,7 +502,7 @@ tail -f celery_worker.log
 -  Transactional
 
 **Website URL:**
-- `https://rockstarwindshield.repair`
+- `https://rssystems.io`
 
 **Use case description:** (Be specific and professional)
 ```
@@ -520,8 +520,8 @@ manage notification preferences and opt-out at any time via account settings.
 We have implemented bounce and complaint handling, and maintain a strict
 privacy policy.
 
-Privacy Policy: https://rockstarwindshield.repair/privacy
-Terms of Service: https://rockstarwindshield.repair/terms
+Privacy Policy: https://rssystems.io/privacy
+Terms of Service: https://rssystems.io/terms
 
 Expected daily volume: 1,000 emails
 Expected peak volume: 2,000 emails/day
@@ -690,7 +690,7 @@ eb setenv \
   AWS_SES_SMTP_USER=AKIA... \
   AWS_SES_SMTP_PASSWORD=BPej4... \
   AWS_SES_REGION=us-east-1 \
-  DEFAULT_FROM_EMAIL=notifications@rockstarwindshield.repair \
+  DEFAULT_FROM_EMAIL=notifications@rssystems.io \
   DEFAULT_FROM_NAME="RS Systems Notifications" \
   EMAIL_RATE_LIMIT=14 \
   SMS_ENABLED=true \
@@ -824,7 +824,7 @@ Redeploy to EB.
 ### Domain Not Verifying
 - Wait 24-72 hours for DNS propagation
 - Check DNS records in Route 53 (should see 4 new records)
-- Use `dig` to verify: `dig TXT _amazonses.rockstarwindshield.repair`
+- Use `dig` to verify: `dig TXT _amazonses.rssystems.io`
 
 ### Emails Going to Spam
 - Verify DKIM is enabled and verified (3 green checkmarks in SES)

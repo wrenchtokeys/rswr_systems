@@ -2502,7 +2502,7 @@ def customer_invoice_pay(request, invoice_id):
             messages.error(request, "Online payments are not currently available. Please contact us for payment options.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
-        base_url = getattr(settings, 'BASE_URL', 'https://rockstarwindshield.repair')
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         success_url = f"{base_url}/app/invoices/{invoice.id}/?payment=success"
         cancel_url = f"{base_url}/app/invoices/{invoice.id}/?payment=cancelled"
 

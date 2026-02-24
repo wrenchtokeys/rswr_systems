@@ -22,8 +22,8 @@ DEBUG = False
 # Production domains
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get('ALLOWED_HOSTS') else []
 ALLOWED_HOSTS.extend([
-    'rockstarwindshield.repair',
-    'www.rockstarwindshield.repair',
+    'rssystems.io',
+    'www.rssystems.io',
 ])
 
 # Add specific EB hostname from environment variable (instead of broad wildcard)
@@ -137,8 +137,8 @@ CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 CSRF_TRUSTED_ORIGINS = [
-    'https://rockstarwindshield.repair',
-    'https://www.rockstarwindshield.repair',
+    'https://rssystems.io',
+    'https://www.rssystems.io',
 ]
 
 # =========================================

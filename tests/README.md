@@ -80,7 +80,7 @@ python manage.py test core.tests.CustomerModelTest  # Test specific test class
   - Configurable request count and thread pool
   - Response time statistics (mean, median)
   - Success rate monitoring
-  - Targets production URL: https://rockstarwindshield.repair
+  - Targets production URL: https://rssystems.io
 
 **Recommendation:**  **KEEP** - Useful for production health monitoring
 

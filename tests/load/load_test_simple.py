@@ -11,7 +11,7 @@ from statistics import mean, median
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class SimpleLoadTester:
-    def __init__(self, base_url="https://rockstarwindshield.repair"):
+    def __init__(self, base_url="https://rssystems.io"):
         self.base_url = base_url.rstrip('/')
         self.results = []
         
@@ -124,7 +124,7 @@ class SimpleLoadTester:
             for error, count in error_types.items():
                 print(f"  {error}: {count} times")
 
-def quick_health_check(base_url="https://rockstarwindshield.repair"):
+def quick_health_check(base_url="https://rssystems.io"):
     """Quick health check function"""
     print("🏥 Quick Health Check")
     print(f"Target: {base_url}")

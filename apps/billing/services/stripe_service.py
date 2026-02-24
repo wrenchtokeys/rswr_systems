@@ -149,7 +149,7 @@ class StripeService:
                     'type': 'redirect',
                     'redirect': {
                         'url': getattr(settings, 'PAYMENT_SUCCESS_URL',
-                                       'https://rockstarwindshield.repair/payment-complete')
+                                       'https://rssystems.io/payment-complete')
                                + f'?invoice={invoice.invoice_number}'
                     },
                 },
@@ -188,7 +188,7 @@ class StripeService:
         try:
             stripe_customer_id = self.get_or_create_customer(invoice.customer)
             
-            base_url = getattr(settings, 'BASE_URL', 'https://rockstarwindshield.repair')
+            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
             
             session = stripe.checkout.Session.create(
                 customer=stripe_customer_id,

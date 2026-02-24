@@ -74,7 +74,7 @@ class CustomerInvitationService:
         if request:
             base_url = request.build_absolute_uri('/')[:-1]
         else:
-            base_url = getattr(settings, 'SITE_URL', 'https://rockstarwindshield.repair')
+            base_url = getattr(settings, 'SITE_URL', 'https://rssystems.io')
         
         invite_url = f"{base_url}/app/invite/{invitation.token}/"
 

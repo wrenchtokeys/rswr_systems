@@ -56,7 +56,7 @@ echo $AWS_SES_SMTP_USER
 echo $AWS_SES_SMTP_PASSWORD
 
 # Test SES directly
-python manage.py test_ses admin@rockstarwindshield.repair
+python manage.py test_ses admin@rssystems.io
 
 # Expected: " Email sent successfully!"
 ```

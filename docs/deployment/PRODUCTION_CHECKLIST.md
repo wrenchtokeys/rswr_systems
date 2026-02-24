@@ -141,7 +141,7 @@ Comprehensive pre-deployment, deployment, and post-deployment verification check
 ### Health & Status Checks
 - [ ] Application health check passing
   ```bash
-  curl https://rockstarwindshield.repair/health
+  curl https://rssystems.io/health
   ```
 - [ ] Expected response: `{"status": "healthy"}`
 - [ ] Environment health: **Green**
@@ -151,8 +151,8 @@ Comprehensive pre-deployment, deployment, and post-deployment verification check
 ### Core Functionality Tests
 
 #### Customer Portal
-- [ ] Landing page loads (`https://rockstarwindshield.repair`)
-- [ ] Customer login works (`https://rockstarwindshield.repair/app/login/`)
+- [ ] Landing page loads (`https://rssystems.io`)
+- [ ] Customer login works (`https://rssystems.io/app/login/`)
 - [ ] Customer registration works
 - [ ] Dashboard displays correctly
 - [ ] Repair request submission works
@@ -161,7 +161,7 @@ Comprehensive pre-deployment, deployment, and post-deployment verification check
 - [ ] Analytics charts render
 
 #### Technician Portal
-- [ ] Technician login works (`https://rockstarwindshield.repair/tech/login/`)
+- [ ] Technician login works (`https://rssystems.io/tech/login/`)
 - [ ] Dashboard displays correctly
 - [ ] Repair list loads
 - [ ] Repair detail page works
@@ -171,7 +171,7 @@ Comprehensive pre-deployment, deployment, and post-deployment verification check
 - [ ] Notifications display
 
 #### Admin Interface
-- [ ] Admin login works (`https://rockstarwindshield.repair/admin/`)
+- [ ] Admin login works (`https://rssystems.io/admin/`)
 - [ ] All models accessible
 - [ ] Customer pricing configuration works
 - [ ] Technician management works
@@ -201,7 +201,7 @@ Comprehensive pre-deployment, deployment, and post-deployment verification check
 - [ ] SSL certificate valid
 - [ ] Security headers present
   ```bash
-  curl -I https://rockstarwindshield.repair | grep -E "(Strict-Transport|Content-Security|X-Frame)"
+  curl -I https://rssystems.io | grep -E "(Strict-Transport|Content-Security|X-Frame)"
   ```
 - [ ] CSRF protection working
 - [ ] Rate limiting functional
@@ -281,7 +281,7 @@ eb restart
 eb health
 
 # Test critical functionality
-curl https://rockstarwindshield.repair/health
+curl https://rssystems.io/health
 ```
 
 #### 6. Communication

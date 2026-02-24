@@ -15,7 +15,7 @@
 - **BillingConfig**: Singleton with company address (street/city/state/zip), configurable via Admin > Billing > Billing Configuration
 - **Payment terms**: Default COD (Cash on Delivery). Options: COD, Due on Receipt, NET15/30/45/60. Shown on PDF.
 - **Stripe integration**: Payment Links auto-generated on invoice creation, Checkout Sessions, webhook handler
-- **Stripe keys**: Configured in EB prod (test mode). Webhook at `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
+- **Stripe keys**: Configured in EB prod (test mode). Webhook at `https://rssystems.io/api/billing/stripe/webhook/`
 - **Invoice emails**: Include PDF attachment, repair photos, payment terms, and Stripe pay link
 - **Reminder service**: Overdue/upcoming reminders (code exists, not wired to UI)
 - **Billing API**: 15+ endpoints at `/api/billing/` (dashboard, CRUD, Stripe, reminders)
@@ -54,7 +54,7 @@
 ## ~~Phase 2: Stripe Integration (Pay Online)~~  DONE
 
 - [x] Stripe keys configured in EB (test mode)
-- [x] Webhook endpoint: `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
+- [x] Webhook endpoint: `https://rssystems.io/api/billing/stripe/webhook/`
 - [x] Payment Links auto-generated on every invoice creation
 - [x] Checkout Sessions supported
 - [x] Webhook handles checkout.session.completed + payment_intent.succeeded
@@ -139,7 +139,7 @@
 **Note**: 5.3 deferred. Auto-reminders for Phase 6.
 
 ### Email Configuration
-- **From**: Uses `DEFAULT_FROM_EMAIL` env var (default: `notifications@rockstarwindshield.repair`)
+- **From**: Uses `DEFAULT_FROM_EMAIL` env var (default: `notifications@rssystems.io`)
 - **Replies**: Not supported  emails include "do not reply" notice
 - **Future**: Consider Google Workspace or SendGrid Inbound Parse for reply handling
 

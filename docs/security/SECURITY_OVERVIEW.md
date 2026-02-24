@@ -216,8 +216,8 @@ CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_HTTPONLY = True
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_TRUSTED_ORIGINS = [
-    'https://rockstarwindshield.repair',
-    'https://www.rockstarwindshield.repair'
+    'https://rssystems.io',
+    'https://www.rssystems.io'
 ]
 ```
 

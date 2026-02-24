@@ -117,11 +117,11 @@ Wire SubscriptionPlan to Stripe Products/Prices. Checkout flow, subscription web
 **Priority**: P1 (needs real email before production)
 **Status**: Waiting on Drake to set up appropriate email
 
-The payment-complete and payment-cancelled pages currently show `info@rockstarwindshield.repair` which is a send-only/no-reply address. Need to replace with a real reply-to email customers can actually reach.
+The payment-complete and payment-cancelled pages currently show `info@rssystems.io` which is a send-only/no-reply address. Need to replace with a real reply-to email customers can actually reach.
 
 **Files to update:**
 - `templates/billing/payment_complete.html`
 - `templates/billing/payment_cancelled.html`
 - Possibly `templates/emails/` notification templates if they reference this address
 
-**Action needed:** Drake sets up an email (e.g. `support@rockstarwindshield.repair`), then update all templates.
+**Action needed:** Drake sets up an email (e.g. `support@rssystems.io`), then update all templates.

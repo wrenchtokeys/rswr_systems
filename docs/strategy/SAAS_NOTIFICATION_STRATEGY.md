@@ -86,8 +86,8 @@ Each shop controls their own:
 Options for shop access:
 ```
 Option 1: Subdomains
-  - glassproaustin.rockstarwindshield.repair
-  - quickfixglass.rockstarwindshield.repair
+  - glassproaustin.rssystems.io
+  - quickfixglass.rssystems.io
 
 Option 2: Custom Domains (White-Label)
   - app.glassproaustin.com
@@ -217,7 +217,7 @@ Good for: Premium tier customers who want brand consistency
 
 **Tasks:**
 1.  Sign up for SendGrid account (15 min)
-2.  Verify sending domain: rockstarwindshield.repair (30 min)
+2.  Verify sending domain: rssystems.io (30 min)
 3.  Update Django settings to use SendGrid backend (30 min)
 4.  Test notifications end-to-end (1 hour)
 5.  Deploy to AWS production (30 min)
@@ -234,7 +234,7 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'apikey'
 EMAIL_HOST_PASSWORD = os.environ.get('SENDGRID_API_KEY')
-DEFAULT_FROM_EMAIL = 'notifications@rockstarwindshield.repair'
+DEFAULT_FROM_EMAIL = 'notifications@rssystems.io'
 ```
 
 **Environment Variables:**
@@ -254,7 +254,7 @@ class ShopBrandingConfig(models.Model):
     shop = models.OneToOneField('Shop', on_delete=models.CASCADE)
 
     # Email settings
-    from_email = models.EmailField(default='notifications@rockstarwindshield.repair')
+    from_email = models.EmailField(default='notifications@rssystems.io')
     from_name = models.CharField(max_length=100)  # "QuickFix Glass Notifications"
     reply_to_email = models.EmailField(blank=True)
 
@@ -298,12 +298,12 @@ SendGrid supports "subusers" - isolated email accounts under one parent account.
 ```
 Parent Account: Rockstar Windshield (main billing)
    Subuser: shop-glassproaustin
-        FROM: notifications@rockstarwindshield.repair
+        FROM: notifications@rssystems.io
         Reply-To: glassproaustin@gmail.com
         Tracking: Separate stats
   
    Subuser: shop-quickfixglass
-        FROM: notifications@rockstarwindshield.repair
+        FROM: notifications@rssystems.io
         Reply-To: quickfixglass@gmail.com
         Tracking: Separate stats
 ```
@@ -351,7 +351,7 @@ s2._domainkey.glassproaustin.com  s2.domainkey.u123456.wl.sendgrid.net
 ```
 
 **Pricing Tier:**
-- Basic tier: Uses rockstarwindshield.repair (free)
+- Basic tier: Uses rssystems.io (free)
 - Premium tier: Custom domain support (+$20/month)
 
 ---
@@ -467,7 +467,7 @@ class Shop(models.Model):
     phone = models.CharField(max_length=20)
 
     # Subdomain
-    subdomain = models.CharField(max_length=50, unique=True)  # quickfixglass.rockstarwindshield.repair
+    subdomain = models.CharField(max_length=50, unique=True)  # quickfixglass.rssystems.io
     custom_domain = models.CharField(max_length=100, blank=True)  # app.quickfixglass.com
 
     # Notification config
@@ -640,7 +640,7 @@ Profit margin on notifications: 99.2%
 1.  **Sign up for SendGrid** (Free tier - 100 emails/day)
 2.  **Domain authentication** via Route 53 DNS records
    - DKIM keys: s1._domainkey, s2._domainkey
-   - Sender identity: em3661.rockstarwindshield.repair
+   - Sender identity: em3661.rssystems.io
 3.  **Update Django settings** to use SendGrid SMTP
 4.  **Deploy to AWS Elastic Beanstalk**
 5.  **Test email delivery** - confirmed working
@@ -748,7 +748,7 @@ Profit margin on notifications: 99.2%
 - [ ] Verify email address
 - [ ] Create API key with "Mail Send" permissions
 - [ ] Add API key to AWS EB environment variables
-- [ ] Verify sending domain (rockstarwindshield.repair)
+- [ ] Verify sending domain (rssystems.io)
 - [ ] Add DNS records (SPF, DKIM, DMARC)
 - [ ] Wait 24-48 hours for DNS propagation
 - [ ] Send test email

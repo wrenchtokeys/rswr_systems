@@ -562,7 +562,7 @@ Adding a new Django app or middleware now requires exactly one edit to `base.py`
 ```bash
 eb deploy        # from /Users/drakeduncan/projects/rs_systems_branch2
 eb events | head -20   # check for success
-curl -I https://rockstarwindshield.repair/health/   # should return 200
+curl -I https://rssystems.io/health/   # should return 200
 ```
 
 ### Critical: EB environment variables override config files
@@ -585,7 +585,7 @@ EB deploys from the **local `main` branch**. If you're working on a feature bran
 3. `git checkout main && git pull origin main` to ensure local main is up to date
 4. Run `eb deploy` from the project root (deploys whatever is on the local `main` branch)
 5. Check `eb events | head -20` for success
-6. Verify with `curl -I https://rockstarwindshield.repair/health/` (expect 200)
+6. Verify with `curl -I https://rssystems.io/health/` (expect 200)
 
 **Important:** `eb deploy` packages the **local working directory**, not what's on GitHub. Always pull latest `main` before deploying. Never deploy from a feature branch.
 

@@ -129,7 +129,7 @@ Backend: django.core.mail.backends.smtp.EmailBackend
 Host: smtp.sendgrid.net
 Port: 587
 TLS: Enabled
-From: notifications@rockstarwindshield.repair
+From: notifications@rssystems.io
 ```
 
 ### What's Working

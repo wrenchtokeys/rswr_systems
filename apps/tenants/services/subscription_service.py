@@ -122,7 +122,7 @@ class SubscriptionService:
             elif hasattr(settings, 'EB_HOSTNAME') and settings.EB_HOSTNAME:
                 redirect_base = f"https://{settings.EB_HOSTNAME}"
             else:
-                redirect_base = "https://rockstarwindshield.repair"  # fallback
+                redirect_base = "https://rssystems.io"  # fallback
             
             checkout_session = stripe.checkout.Session.create(
                 customer=customer.id,

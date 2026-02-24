@@ -67,7 +67,7 @@ Referral codes, point-based rewards, flexible redemption options.
  Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md#phase-7-saas-subscription-billing-glass-shops)
 
 ### Deploy v2.x to AWS  DONE
-Production running on AWS Elastic Beanstalk at rockstarwindshield.repair
+Production running on AWS Elastic Beanstalk at rssystems.io
 
 ---
 
