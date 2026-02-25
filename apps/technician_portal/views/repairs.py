@@ -289,9 +289,10 @@ def create_repair(request):
                 else:
                     messages.error(request, "As an admin, you must select a technician to assign the repair to.")
                     tenant = getattr(request, 'tenant', None)
-                    return render(request, 'technician_portal/repair_form.html', {
+                    return render(request, 'technician_portal/repair_wizard.html', {
                         'form': form,
                         'is_admin': True,
+                        'customer_types_json': customer_types_json if 'customer_types_json' in dir() else '{}',
                         'technicians': Technician.objects.filter(
                             tenant=tenant, can_repair=True, is_active=True
                         ) if tenant else Technician.objects.filter(can_repair=True, is_active=True),
@@ -371,7 +372,7 @@ def create_repair(request):
         context['technicians'] = Technician.objects.filter(
             tenant=tenant, can_repair=True, is_active=True
         ) if tenant else Technician.objects.filter(can_repair=True, is_active=True)
-    return render(request, 'technician_portal/repair_form.html', context)
+    return render(request, 'technician_portal/repair_wizard.html', context)
 
 
 @technician_required
