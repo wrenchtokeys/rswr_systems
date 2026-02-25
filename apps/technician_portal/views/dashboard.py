@@ -158,6 +158,24 @@ def technician_dashboard(request):
             'completed_this_week': recent_completions.count(),
             'total_active_work': len(batch_repairs_in_progress) + len(individual_repairs_in_progress) + len(batch_repairs_approved) + len(individual_repairs_approved),
         }
+
+        # --- Today's Work Queue ---
+        # Priority-ordered list of this tech's actionable work
+        from django.db.models import Case, When, Value, IntegerField
+        queue_qs = Repair.objects.filter(
+            technician=technician,
+            queue_status__in=['IN_PROGRESS', 'APPROVED', 'PENDING'],
+        ).select_related('customer').annotate(
+            priority=Case(
+                When(queue_status='IN_PROGRESS', then=Value(0)),
+                When(queue_status='APPROVED', then=Value(1)),
+                When(queue_status='PENDING', then=Value(2)),
+                output_field=IntegerField(),
+            )
+        ).order_by('priority', 'service_date')
+        if tenant:
+            queue_qs = queue_qs.filter(tenant=tenant)
+        todays_queue = list(queue_qs[:20])
     else:
         # For admins without a technician profile
         qs = Repair.objects.filter(queue_status='REQUESTED')
@@ -184,6 +202,7 @@ def technician_dashboard(request):
             'completed_this_week': 0,
             'total_active_work': 0,
         }
+        todays_queue = []
 
     # Extra data for admin users
     is_admin = is_tenant_admin(request.user)
@@ -236,4 +255,5 @@ def technician_dashboard(request):
         'is_admin': is_admin,
         'admin_data': admin_data,
         'summary_stats': summary_stats,
+        'todays_queue': todays_queue,
     })
