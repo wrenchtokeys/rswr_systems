@@ -11,7 +11,7 @@ from apps.rewards_referrals.services import ReferralService, RewardService
 from apps.billing.models import Invoice
 from .forms import RepairPreferenceForm, CustomerNotificationPreferenceForm
 from .models import CustomerRepairPreference
-from .models import CustomerUser, RepairApproval, CustomerInvitation
+from .models import CustomerUser, RepairApproval, CustomerInvitation, ApprovalToken
 from core.models.notification import Notification
 from core.models.notification_preferences import CustomerNotificationPreference
 from django.contrib import messages
@@ -2840,3 +2840,147 @@ def customer_resend_invitation(request, invitation_id):
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+# =============================================================================
+# ONE-CLICK APPROVAL VIEWS (no login required — token-based)
+# =============================================================================
+
+def quick_approve_repair(request, token):
+    """One-click repair approval via tokenized email link."""
+    try:
+        approval_token = ApprovalToken.objects.select_related(
+            'repair', 'repair__customer', 'repair__technician', 'customer_user'
+        ).get(token=token, action='approve')
+    except ApprovalToken.DoesNotExist:
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': 'This approval link is invalid or has already been used.'
+        })
+
+    if not approval_token.is_valid():
+        reason = 'This approval link has already been used.' if approval_token.used_at else 'This approval link has expired.'
+        return render(request, 'customer_portal/quick_action_expired.html', {'reason': reason})
+
+    repair = approval_token.repair
+    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': f'This repair has already been {repair.get_queue_status_display().lower()}.'
+        })
+
+    if request.method == 'POST':
+        notes = request.POST.get('notes', '')
+        customer_user = approval_token.customer_user
+
+        # Create or update approval
+        approval, created = RepairApproval.objects.get_or_create(
+            repair=repair,
+            defaults={
+                'approved': True,
+                'approved_by': customer_user,
+                'approval_date': timezone.now(),
+                'notes': notes,
+            }
+        )
+        if not created:
+            approval.approved = True
+            approval.approved_by = customer_user
+            approval.approval_date = timezone.now()
+            approval.notes = notes
+            approval.save()
+
+        repair.queue_status = 'APPROVED'
+        repair.save()
+
+        # Notify technician
+        if repair.technician:
+            TechnicianNotification.objects.create(
+                technician=repair.technician,
+                message=f"✅ Repair #{repair.id} APPROVED by {repair.customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                read=False,
+                repair=repair,
+            )
+
+        approval_token.mark_used()
+
+        # Also invalidate the corresponding deny token
+        ApprovalToken.objects.filter(
+            repair=repair, customer_user=customer_user, action='deny', used_at__isnull=True
+        ).update(used_at=timezone.now())
+
+        return render(request, 'customer_portal/quick_approve_success.html', {'repair': repair})
+
+    return render(request, 'customer_portal/quick_approve_confirm.html', {
+        'repair': repair,
+        'token': token,
+    })
+
+
+def quick_deny_repair(request, token):
+    """One-click repair denial via tokenized email link."""
+    try:
+        approval_token = ApprovalToken.objects.select_related(
+            'repair', 'repair__customer', 'repair__technician', 'customer_user'
+        ).get(token=token, action='deny')
+    except ApprovalToken.DoesNotExist:
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': 'This denial link is invalid or has already been used.'
+        })
+
+    if not approval_token.is_valid():
+        reason = 'This link has already been used.' if approval_token.used_at else 'This link has expired.'
+        return render(request, 'customer_portal/quick_action_expired.html', {'reason': reason})
+
+    repair = approval_token.repair
+    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': f'This repair has already been {repair.get_queue_status_display().lower()}.'
+        })
+
+    if request.method == 'POST':
+        reason = request.POST.get('reason', '')
+        customer_user = approval_token.customer_user
+
+        approval, created = RepairApproval.objects.get_or_create(
+            repair=repair,
+            defaults={
+                'approved': False,
+                'approved_by': customer_user,
+                'approval_date': timezone.now(),
+                'notes': reason,
+            }
+        )
+        if not created:
+            approval.approved = False
+            approval.approved_by = customer_user
+            approval.approval_date = timezone.now()
+            approval.notes = reason
+            approval.save()
+
+        repair.queue_status = 'DENIED'
+        repair.save()
+
+        # Notify technician
+        if repair.technician:
+            denial_message = f"❌ Repair #{repair.id} DENIED by {repair.customer.name} - Unit {repair.unit_number}."
+            if reason:
+                denial_message += f" Reason: {reason}"
+            TechnicianNotification.objects.create(
+                technician=repair.technician,
+                message=denial_message,
+                read=False,
+                repair=repair,
+            )
+
+        approval_token.mark_used()
+
+        # Invalidate the corresponding approve token
+        ApprovalToken.objects.filter(
+            repair=repair, customer_user=customer_user, action='approve', used_at__isnull=True
+        ).update(used_at=timezone.now())
+
+        return render(request, 'customer_portal/quick_deny_success.html', {'repair': repair})
+
+    return render(request, 'customer_portal/quick_deny_confirm.html', {
+        'repair': repair,
+        'token': token,
+    })

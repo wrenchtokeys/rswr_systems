@@ -1,3 +1,4 @@
+import uuid
 from django.db import models
 from django.contrib.auth.models import User
 from core.models import Customer
@@ -249,3 +250,65 @@ class CustomerInvitation(models.Model):
         self.accepted_at = timezone.now()
         self.accepted_user = user
         self.save(update_fields=['status', 'accepted_at', 'accepted_user'])
+
+class ApprovalToken(models.Model):
+    """
+    Single-use tokenized links for one-click repair approval/denial from emails.
+    
+    Tokens are UUID4 (unguessable), expire after 72 hours, and are marked
+    as used after consumption. Each repair gets a pair (approve + deny).
+    """
+    ACTION_CHOICES = [
+        ('approve', 'Approve'),
+        ('deny', 'Deny'),
+    ]
+
+    token = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
+    repair = models.ForeignKey(Repair, on_delete=models.CASCADE, related_name='approval_tokens')
+    customer_user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE, related_name='approval_tokens')
+    action = models.CharField(max_length=10, choices=ACTION_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Approval Token'
+        verbose_name_plural = 'Approval Tokens'
+
+    def __str__(self):
+        return f"{self.action} token for Repair #{self.repair_id} ({'used' if self.used_at else 'active'})"
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(hours=72)
+        super().save(*args, **kwargs)
+
+    def is_valid(self):
+        """Token is valid if not used and not expired."""
+        return self.used_at is None and timezone.now() < self.expires_at
+
+    def mark_used(self):
+        self.used_at = timezone.now()
+        self.save(update_fields=['used_at'])
+
+    @classmethod
+    def create_pair(cls, repair, customer_user):
+        """
+        Create both approve and deny tokens for a repair.
+        Returns dict with token objects.
+        """
+        approve_token = cls.objects.create(
+            repair=repair,
+            customer_user=customer_user,
+            action='approve',
+        )
+        deny_token = cls.objects.create(
+            repair=repair,
+            customer_user=customer_user,
+            action='deny',
+        )
+        return {
+            'approve_token': approve_token,
+            'deny_token': deny_token,
+        }

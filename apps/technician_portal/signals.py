@@ -180,6 +180,17 @@ def _notify_customer_approval_needed(repair):
         'action_url': f'/app/repairs/{repair.pk}/',
     }
 
+    # Generate one-click approval tokens for email links
+    from apps.customer_portal.models import CustomerUser, ApprovalToken
+    try:
+        customer_user = CustomerUser.objects.filter(customer=repair.customer).first()
+        if customer_user:
+            tokens = ApprovalToken.create_pair(repair=repair, customer_user=customer_user)
+            context['quick_approve_token'] = str(tokens['approve_token'].token)
+            context['quick_deny_token'] = str(tokens['deny_token'].token)
+    except Exception as e:
+        logger.warning(f"Could not generate approval tokens for repair {repair.pk}: {e}")
+
     NotificationService.create_notification(
         recipient=repair.customer,
         template_name='repair_pending_approval',

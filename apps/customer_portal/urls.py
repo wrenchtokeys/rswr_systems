@@ -62,6 +62,10 @@ urlpatterns = [
     path('notifications/mark-all-read/', views.customer_mark_all_read, name='customer_mark_all_read'),
     path('notifications/unread-count/', views.customer_get_unread_count, name='customer_get_unread_count'),
 
+    # One-Click Approval (no login required — token-based)
+    path('quick-approve/<uuid:token>/', views.quick_approve_repair, name='quick_approve'),
+    path('quick-deny/<uuid:token>/', views.quick_deny_repair, name='quick_deny'),
+
     # Contact Verification
     path('verify-email/', views.customer_verify_email, name='customer_verify_email'),
     path('verify-phone/', views.customer_verify_phone, name='customer_verify_phone'),
