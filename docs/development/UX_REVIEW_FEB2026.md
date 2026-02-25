@@ -132,8 +132,35 @@ Both tech and customer portals have notification preferences pages, but they're 
 
 | Priority | Item | Impact |
 |----------|------|--------|
-| 1 | Mobile wizard for repair entry (#1) | Where techs live — daily usability |
-| 2 | One-click approval deep links (#17) | Removes biggest customer friction |
-| 3 | Daily work queue for techs (#2) | Makes app feel like a tool, not a database |
+| 1 | ✅ Mobile wizard for repair entry (#1) | Where techs live — daily usability |
+| 2 | ✅ One-click approval deep links (#17) | Removes biggest customer friction |
+| 3 | ✅ Daily work queue for techs (#2) | Makes app feel like a tool, not a database |
 | 4 | Batch invoicing (#9) | Blocker for scaling beyond a few customers |
 | 5 | Compiled Tailwind (#21) | Technical debt that worsens with every template |
+
+## Implementation Log
+
+### Feb 25, 2026 — First pass (Amelia)
+
+**✅ #2 — Today's Work Queue** (`feature/tech-work-queue`)
+- Added priority-ordered queue to tech dashboard (IN_PROGRESS → APPROVED → PENDING)
+- Color-coded status bars and action buttons (Continue / Start / View)
+- Collapsible overflow for 5+ items, empty state with coffee emoji
+- Files: `views/dashboard.py`, `templates/technician_portal/dashboard.html`
+
+**✅ #17 — One-Click Approval Links** (`feature/one-click-approvals`)
+- `ApprovalToken` model: UUID4, 72hr expiry, single-use, paired (approve+deny)
+- Token pair auto-generated in `_notify_pending_approval` signal
+- `/app/quick-approve/<token>/` and `/app/quick-deny/<token>/` — no login required
+- Confirmation pages show repair details before final POST action
+- Email template updated with big green Approve / red Deny buttons
+- Migration: `0010_add_approval_token`
+
+**✅ #1 — Mobile Repair Wizard** (`feature/repair-wizard`)
+- 6-step wizard: Customer → Vehicle → Damage → Photos → Pricing → Review
+- Progress bar with step dots, sticky Back/Next buttons
+- Camera capture with `capture="environment"` for direct phone camera
+- Photo preview thumbnails, draft auto-save to localStorage (24hr)
+- Viscosity auto-suggestion on temperature input
+- Review step with per-section Edit buttons
+- Old form preserved as `repair_form_legacy.html`
