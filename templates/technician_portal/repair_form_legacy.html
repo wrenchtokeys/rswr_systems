@@ -1,0 +1,783 @@
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block extra_css %}
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="{% static 'css/components/form-fields.css' %}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    green: {
+                        50: '#f0fdf4',
+                        100: '#dcfce7',
+                        200: '#bbf7d0',
+                        300: '#86efac',
+                        400: '#4ade80',
+                        500: '#22c55e',
+                        600: '#16a34a',
+                        700: '#15803d',
+                        800: '#166534',
+                        900: '#14532d',
+                    }
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-t-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-2xl font-bold">{% if repair %}Edit{% else %}Create New{% endif %} Repair</h1>
+                        <p class="text-green-100 text-sm mt-1">Document windshield repair with professional-grade tracking</p>
+                    </div>
+                    <div class="hidden md:block">
+                        <i class="fas fa-tools text-4xl text-green-200 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6">
+                <!-- Batch Context Banner -->
+                {% if repair.repair_batch_id %}
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg fade-in">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center flex-1">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-layer-group text-blue-500 text-xl"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-blue-900">
+                                    Editing Break {{ repair.break_number }} of {{ repair.total_breaks_in_batch }} for Unit {{ repair.unit_number }}
+                                </p>
+                                <p class="text-xs text-blue-700 mt-1">
+                                    <i class="fas fa-info-circle"></i> You are working on a repair that is part of a multi-break batch
+                                </p>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <a href="{% url 'technician_batch_detail' repair.repair_batch_id %}"
+                               class="inline-flex items-center px-4 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-lg text-blue-700 bg-white hover:bg-blue-50 transition-all">
+                                <i class="fas fa-th-list mr-2"></i>
+                                View All Breaks
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Warning Messages -->
+                {% if pending_repair_warning %}
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg fade-in">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-exclamation-triangle text-yellow-400 text-lg"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-yellow-700">{{ pending_repair_warning }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div id="warningDiv" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg hidden fade-in"></div>
+
+                <!-- Photo requirement warning -->
+                <div id="photoRequirementWarning" class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg hidden fade-in">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-camera text-blue-400 text-lg"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-blue-700 font-medium">Photo Requirements for Completed Repairs:</p>
+                            <ul class="mt-2 text-sm text-blue-700 space-y-1">
+                                <li><i class="fas fa-check-circle text-blue-500 mr-1"></i> <strong>After photo is REQUIRED</strong> to complete a repair{% if not user.is_staff and user.technician and not user.technician.is_manager %} (managers can override){% endif %}</li>
+                                <li><i class="fas fa-info-circle text-blue-500 mr-1"></i> <strong>Before photo is recommended</strong> for documentation purposes</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Errors -->
+                {% if form.errors %}
+                <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded-r-lg fade-in">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-times-circle text-red-400 text-lg"></i>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">Please correct the following errors:</h3>
+                            <div class="mt-2 text-sm text-red-700">
+                                <ul class="list-disc list-inside space-y-1">
+                                    {% for field, errors in form.errors.items %}
+                                        {% for error in errors %}
+                                            <li>
+                                                {% if field == '__all__' %}
+                                                    {{ error }}
+                                                {% else %}
+                                                    <strong>{{ field|title }}:</strong> {{ error }}
+                                                {% endif %}
+                                            </li>
+                                        {% endfor %}
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- MAIN FORM -->
+                <form method="post" enctype="multipart/form-data" id="repairForm" class="space-y-6">
+                    {% csrf_token %}
+
+                    <!-- Hidden fields for batch tracking -->
+                    {% if batch_id %}
+                    <input type="hidden" name="batch_id" value="{{ batch_id }}">
+                    {% endif %}
+
+                    {% for field in form %}
+                        {% if field.field.widget.input_type == 'hidden' %}
+                            {{ field }}
+                        {% endif %}
+                    {% endfor %}
+
+                    <!-- SECTION 1: Customer & Unit Information -->
+                    <div class="form-section fade-in">
+                        <div class="form-section-header">
+                            <div class="form-section-icon">
+                                <i class="fas fa-building"></i>
+                            </div>
+                            <div>
+                                <h2 class="form-section-title">Customer & Unit Information</h2>
+                                <p class="form-section-subtitle">Identify the customer and vehicle unit for this repair</p>
+                            </div>
+                        </div>
+                        <div class="field-grid field-grid-2">
+                            <!-- Customer -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-user-tie"></i>
+                                    Customer
+                                    <span class="field-required">*</span>
+                                </label>
+                                {{ form.customer }}
+                                {% if form.customer.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.customer.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Unit Number (for Fleet customers) -->
+                            <div class="field-group" id="unit-number-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-truck"></i>
+                                    Unit Number
+                                    <span class="field-required">*</span>
+                                </label>
+                                <input type="text"
+                                       name="unit_number"
+                                       id="id_unit_number"
+                                       value="{{ form.unit_number.value|default:'' }}"
+                                       class="icon-field-input"
+                                       placeholder="e.g., TRUCK-1045">
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Enter the fleet vehicle identification number
+                                </p>
+                                {% if form.unit_number.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.unit_number.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Vehicle Info (for Retail/Walk-in customers) -->
+                            <div class="field-group" id="vehicle-info-group" style="display: none;">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-car"></i>
+                                    Vehicle
+                                    <span class="field-required">*</span>
+                                </label>
+                                <div style="display: flex; gap: 8px;">
+                                    <input type="number"
+                                           name="vehicle_year"
+                                           id="id_vehicle_year"
+                                           value="{{ form.vehicle_year.value|default:'' }}"
+                                           class="icon-field-input"
+                                           style="width: 100px;"
+                                           placeholder="Year"
+                                           min="1990"
+                                           max="2030">
+                                    <input type="text"
+                                           name="vehicle_make"
+                                           id="id_vehicle_make"
+                                           value="{{ form.vehicle_make.value|default:'' }}"
+                                           class="icon-field-input"
+                                           style="flex: 1;"
+                                           placeholder="Make (e.g., Ford)">
+                                    <input type="text"
+                                           name="vehicle_model"
+                                           id="id_vehicle_model"
+                                           value="{{ form.vehicle_model.value|default:'' }}"
+                                           class="icon-field-input"
+                                           style="flex: 1;"
+                                           placeholder="Model (e.g., F-150)">
+                                </div>
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Enter the vehicle year, make, and model
+                                </p>
+                                {% if form.vehicle_make.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.vehicle_make.errors.0 }}
+                                    </div>
+                                {% endif %}
+                                {% if form.vehicle_model.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.vehicle_model.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 2: Damage Assessment -->
+                    <div class="form-section fade-in">
+                        <div class="form-section-header">
+                            <div class="form-section-icon">
+                                <i class="fas fa-car-crash"></i>
+                            </div>
+                            <div>
+                                <h2 class="form-section-title">Damage Assessment</h2>
+                                <p class="form-section-subtitle">Classify the type and location of windshield damage</p>
+                            </div>
+                        </div>
+                        <div class="field-grid field-grid-2">
+                            <!-- Damage Type -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-asterisk"></i>
+                                    Damage Type
+                                </label>
+                                {{ form.damage_type }}
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Select the primary type of damage observed
+                                </p>
+                                {% if form.damage_type.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.damage_type.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Drilled Before Repair -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-wrench"></i>
+                                    Drilled Before Repair
+                                </label>
+                                {{ form.drilled_before_repair }}
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Did you drill the break before starting the repair?
+                                </p>
+                                {% if form.drilled_before_repair.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.drilled_before_repair.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Damage Location Diagram -->
+                        <div class="mt-6">
+                            <label class="icon-field-label mb-3">
+                                <i class="fas fa-crosshairs"></i>
+                                Damage Location
+                                <span class="text-gray-400 font-normal ml-2">(tap to mark)</span>
+                            </label>
+                            <div class="windshield-diagram-container" style="max-width: 500px;">
+                                <div id="windshieldDiagram" class="windshield-diagram" 
+                                     style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 3px solid #0284c7; border-radius: 12px; cursor: crosshair; overflow: hidden;">
+                                    <!-- Windshield frame indicators -->
+                                    <div style="position: absolute; top: 8px; left: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">DRIVER</div>
+                                    <div style="position: absolute; top: 8px; right: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">PASSENGER</div>
+                                    <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #0369a1;">↑ HOOD</div>
+                                    <!-- Center line -->
+                                    <div style="position: absolute; top: 20%; bottom: 20%; left: 50%; width: 1px; background: rgba(2,132,199,0.3);"></div>
+                                    <!-- Damage marker -->
+                                    <div id="damageMarker" style="display: none; position: absolute; width: 20px; height: 20px; background: #dc2626; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none;">
+                                        <div style="position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%);"></div>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="damage_location_x" id="id_damage_location_x" value="{{ form.damage_location_x.value|default:'' }}">
+                                <input type="hidden" name="damage_location_y" id="id_damage_location_y" value="{{ form.damage_location_y.value|default:'' }}">
+                                <div class="flex justify-between items-center mt-2">
+                                    <p class="icon-field-helper mb-0">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span id="locationText">Tap on the windshield to mark damage location</span>
+                                    </p>
+                                    <button type="button" id="clearLocationBtn" class="text-sm text-red-600 hover:text-red-800" style="display: none;">
+                                        <i class="fas fa-times"></i> Clear
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 3: Technical Conditions -->
+                    <div class="form-section fade-in">
+                        <div class="form-section-header">
+                            <div class="form-section-icon">
+                                <i class="fas fa-flask"></i>
+                            </div>
+                            <div>
+                                <h2 class="form-section-title">Technical Conditions</h2>
+                                <p class="form-section-subtitle">Record environmental and material specifications</p>
+                            </div>
+                        </div>
+                        <div class="field-grid field-grid-2">
+                            <!-- Windshield Temperature -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-thermometer-half"></i>
+                                    Windshield Temperature (°F)
+                                </label>
+                                <input type="number"
+                                       name="windshield_temperature"
+                                       id="id_windshield_temperature"
+                                       value="{{ form.windshield_temperature.value|default:'' }}"
+                                       step="0.1"
+                                       class="icon-field-input"
+                                       placeholder="e.g., 72.5">
+                                <p class="icon-field-helper helper-warning">
+                                    <i class="fas fa-temperature-low"></i>
+                                    Optimal range: 60-80°F for best resin adhesion
+                                </p>
+                                {% if form.windshield_temperature.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.windshield_temperature.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Resin Viscosity -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-tint"></i>
+                                    Resin Viscosity
+                                </label>
+                                <input type="text"
+                                       name="resin_viscosity"
+                                       id="id_resin_viscosity"
+                                       value="{{ form.resin_viscosity.value|default:'' }}"
+                                       maxlength="50"
+                                       class="icon-field-input"
+                                       placeholder="e.g., Low(l), Medium(m), High(h)">
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Document resin viscosity for quality tracking
+                                </p>
+                                <!-- Viscosity Suggestion Container (populated by JavaScript) -->
+                                <div id="viscositySuggestion" class="hidden mt-2"></div>
+                                {% if form.resin_viscosity.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.resin_viscosity.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 4: Photo Documentation -->
+                    <div class="form-section fade-in">
+                        <div class="form-section-header">
+                            <div class="form-section-icon">
+                                <i class="fas fa-camera"></i>
+                            </div>
+                            <div>
+                                <h2 class="form-section-title">Photo Documentation</h2>
+                                <p class="form-section-subtitle">Capture visual evidence of damage and repair progress</p>
+                            </div>
+                        </div>
+
+                        <!-- Before Photo -->
+                        <div class="field-group mb-6">
+                            <label class="icon-field-label">
+                                <i class="fas fa-camera"></i>
+                                Damage Photo (Before Repair)
+                                <span class="field-badge field-badge-recommended">Recommended</span>
+                            </label>
+                            {% if form.instance.damage_photo_before %}
+                            <div class="existing-photo-container mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <p class="text-sm text-gray-600 mb-2 font-medium">
+                                    <i class="fas fa-check-circle text-green-500 mr-1"></i>
+                                    Current photo on file:
+                                </p>
+                                <img src="{{ form.instance.damage_photo_before.url }}"
+                                     alt="Current before photo"
+                                     class="max-h-40 rounded-lg shadow-sm cursor-pointer"
+                                     onclick="openImageModal('{{ form.instance.damage_photo_before.url }}', 'Before Photo')">
+                                <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
+                            </div>
+                            {% endif %}
+                            <div id="beforePhotoPreview"></div>
+                            <div class="photo-upload-area" id="beforeUploadArea">
+                                <i class="fas fa-camera photo-upload-icon"></i>
+                                <div class="photo-upload-text">
+                                    <span class="photo-upload-text-primary">Take Photo or Choose File</span>
+                                    <br>
+                                    <span>Mobile: Tap to use camera | Desktop: Click to browse</span>
+                                </div>
+                                <p class="photo-upload-hint">PNG, JPG, HEIC up to 5MB</p>
+                                <input type="file"
+                                       name="damage_photo_before"
+                                       id="id_damage_photo_before"
+                                       accept="image/*"
+                                       class="mobile-camera-input">
+                            </div>
+                            {% if form.damage_photo_before.errors %}
+                                <div class="field-error mt-2">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    {{ form.damage_photo_before.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- After Photo -->
+                        <div class="field-group mb-6">
+                            <label class="icon-field-label">
+                                <i class="fas fa-camera"></i>
+                                Damage Photo (After Repair)
+                                <span class="field-badge field-badge-required">Required for Completion</span>
+                            </label>
+                            {% if form.instance.damage_photo_after %}
+                            <div class="existing-photo-container mb-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                                <p class="text-sm text-gray-600 mb-2 font-medium">
+                                    <i class="fas fa-check-circle text-green-500 mr-1"></i>
+                                    Current photo on file:
+                                </p>
+                                <img src="{{ form.instance.damage_photo_after.url }}"
+                                     alt="Current after photo"
+                                     class="max-h-40 rounded-lg shadow-sm cursor-pointer"
+                                     onclick="openImageModal('{{ form.instance.damage_photo_after.url }}', 'After Photo')">
+                                <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
+                            </div>
+                            {% endif %}
+                            <div id="afterPhotoPreview"></div>
+                            <div class="photo-upload-area" id="afterUploadArea">
+                                <i class="fas fa-camera-retro photo-upload-icon"></i>
+                                <div class="photo-upload-text">
+                                    <span class="photo-upload-text-primary">Take Photo or Choose File</span>
+                                    <br>
+                                    <span>Mobile: Tap to use camera | Desktop: Click to browse</span>
+                                </div>
+                                <p class="photo-upload-hint">PNG, JPG, HEIC up to 5MB</p>
+                                <input type="file"
+                                       name="damage_photo_after"
+                                       id="id_damage_photo_after"
+                                       accept="image/*"
+                                       class="mobile-camera-input">
+                            </div>
+                            {% if form.damage_photo_after.errors %}
+                                <div class="field-error mt-2">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    {{ form.damage_photo_after.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Customer Submitted Photo (Read-only) -->
+                        {% if form.customer_submitted_photo.value %}
+                        <div class="field-group">
+                            <label class="icon-field-label">
+                                <i class="fas fa-user-circle"></i>
+                                Customer Submitted Photo
+                                <span class="field-badge field-badge-optional">Read-Only</span>
+                            </label>
+                            <div class="photo-preview-container">
+                                <img src="{{ form.customer_submitted_photo.value.url }}"
+                                     alt="Customer photo"
+                                     class="photo-preview-image">
+                                <div class="photo-preview-info">
+                                    <span class="photo-preview-name">
+                                        <i class="fas fa-file-image mr-1"></i>
+                                        Photo provided by customer
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- SECTION 5: Additional Details -->
+                    <div class="form-section fade-in">
+                        <div class="form-section-header">
+                            <div class="form-section-icon">
+                                <i class="fas fa-clipboard"></i>
+                            </div>
+                            <div>
+                                <h2 class="form-section-title">Additional Details</h2>
+                                <p class="form-section-subtitle">Notes, status, and scheduling information</p>
+                            </div>
+                        </div>
+
+                        <!-- Customer Notes (Read-only) -->
+                        {% if form.customer_notes.value %}
+                        <div class="field-group mb-6">
+                            <label class="icon-field-label">
+                                <i class="fas fa-comment-dots"></i>
+                                Customer Notes
+                                <span class="field-badge field-badge-optional">Read-Only</span>
+                            </label>
+                            {{ form.customer_notes }}
+                            {% if form.customer_notes.errors %}
+                                <div class="field-error">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    {{ form.customer_notes.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Technician Notes -->
+                        <div class="field-group mb-6">
+                            <label class="icon-field-label">
+                                <i class="fas fa-user-cog"></i>
+                                Technician Notes
+                            </label>
+                            <textarea name="technician_notes"
+                                      id="id_technician_notes"
+                                      rows="4"
+                                      class="icon-field-input"
+                                      placeholder="Add any internal notes about the repair process, challenges encountered, or follow-up needed...">{{ form.technician_notes.value|default:'' }}</textarea>
+                            <p class="icon-field-helper">
+                                <i class="fas fa-info-circle"></i>
+                                Internal notes for repair documentation and team communication
+                            </p>
+                            {% if form.technician_notes.errors %}
+                                <div class="field-error">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    {{ form.technician_notes.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Status & Date -->
+                        <div class="field-grid field-grid-2">
+                            <!-- Queue Status -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-tasks"></i>
+                                    Repair Status
+                                    <span class="field-required">*</span>
+                                </label>
+                                {{ form.queue_status }}
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Update the current stage of this repair
+                                </p>
+                                {% if form.queue_status.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.queue_status.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Repair Date -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    Repair Date & Time
+                                    <span class="field-required">*</span>
+                                </label>
+                                {{ form.repair_date }}
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-clock"></i>
+                                    Scheduled or completed repair timestamp
+                                </p>
+                                {% if form.repair_date.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.repair_date.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Admin: Assign Technician -->
+                        {% if is_admin and technicians %}
+                        <div class="field-group mt-6">
+                            <label class="icon-field-label">
+                                <i class="fas fa-user-hard-hat"></i>
+                                Assign Technician
+                                <span class="field-required">*</span>
+                            </label>
+                            <select name="technician"
+                                    id="id_technician"
+                                    class="icon-field-input"
+                                    required>
+                                <option value="">Select Technician</option>
+                                {% for tech in technicians %}
+                                <option value="{{ tech.id }}" {% if repair and repair.technician_id == tech.id %}selected{% endif %}>{{ tech.user.get_full_name }}{% if tech.expertise %} ({{ tech.expertise }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <p class="icon-field-helper">
+                                <i class="fas fa-user-shield"></i>
+                                Admin only: Assign this repair to a specific technician
+                            </p>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">
+                            <i class="fas fa-save mr-2"></i>
+                            {% if repair %}Update{% else %}Create{% endif %} Repair
+                        </button>
+
+                        {% if batch_id and repair.repair_batch_id %}
+                        <a href="{% url 'technician_batch_detail' batch_id %}" class="btn-secondary">
+                            <i class="fas fa-layer-group mr-2"></i>
+                            Return to Batch
+                        </a>
+                        {% else %}
+                        <a href="{% url 'repair_list' %}" class="btn-secondary">
+                            <i class="fas fa-list mr-2"></i>
+                            Back to Repairs
+                        </a>
+                        {% endif %}
+
+                        <a href="{% url 'technician_dashboard' %}" class="btn-secondary">
+                            <i class="fas fa-home mr-2"></i>
+                            Back to Dashboard
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="{% static 'js/form_autosave.js' %}"></script>
+<script src="{% static 'js/repair_form.js' %}"></script>
+
+<!-- Customer type field toggle -->
+<script>
+(function() {
+    // Customer type data from Django view
+    const customerTypes = {{ customer_types_json|safe }};
+    
+    const customerSelect = document.getElementById('id_customer');
+    const unitNumberGroup = document.getElementById('unit-number-group');
+    const vehicleInfoGroup = document.getElementById('vehicle-info-group');
+    
+    function updateFieldsForCustomerType() {
+        if (!customerSelect || !unitNumberGroup || !vehicleInfoGroup) return;
+        
+        const customerId = customerSelect.value;
+        const customerType = customerTypes[customerId] || 'FLEET';
+        
+        if (customerType === 'FLEET') {
+            // Show unit number, hide vehicle info
+            unitNumberGroup.style.display = '';
+            vehicleInfoGroup.style.display = 'none';
+        } else {
+            // Show vehicle info, hide unit number (RETAIL, WALK_IN)
+            unitNumberGroup.style.display = 'none';
+            vehicleInfoGroup.style.display = '';
+        }
+    }
+    
+    // Run on page load and when customer changes
+    if (customerSelect) {
+        updateFieldsForCustomerType();
+        customerSelect.addEventListener('change', updateFieldsForCustomerType);
+    }
+})();
+</script>
+
+<!-- Windshield damage location diagram -->
+<script>
+(function() {
+    const diagram = document.getElementById('windshieldDiagram');
+    const marker = document.getElementById('damageMarker');
+    const xInput = document.getElementById('id_damage_location_x');
+    const yInput = document.getElementById('id_damage_location_y');
+    const locationText = document.getElementById('locationText');
+    const clearBtn = document.getElementById('clearLocationBtn');
+    
+    if (!diagram || !marker) return;
+    
+    function placeMarker(xPercent, yPercent) {
+        marker.style.left = xPercent + '%';
+        marker.style.top = yPercent + '%';
+        marker.style.display = 'block';
+        xInput.value = xPercent.toFixed(1);
+        yInput.value = yPercent.toFixed(1);
+        
+        // Determine location description
+        const side = xPercent < 50 ? 'driver' : 'passenger';
+        const vertical = yPercent < 33 ? 'upper' : (yPercent > 66 ? 'lower' : 'middle');
+        locationText.textContent = 'Marked: ' + vertical + ' ' + side + ' side';
+        clearBtn.style.display = 'inline';
+    }
+    
+    function clearMarker() {
+        marker.style.display = 'none';
+        xInput.value = '';
+        yInput.value = '';
+        locationText.textContent = 'Tap on the windshield to mark damage location';
+        clearBtn.style.display = 'none';
+    }
+    
+    diagram.addEventListener('click', function(e) {
+        const rect = diagram.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        placeMarker(x, y);
+    });
+    
+    // Touch support for mobile
+    diagram.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        const rect = diagram.getBoundingClientRect();
+        const x = ((touch.clientX - rect.left) / rect.width) * 100;
+        const y = ((touch.clientY - rect.top) / rect.height) * 100;
+        placeMarker(x, y);
+    });
+    
+    clearBtn.addEventListener('click', clearMarker);
+    
+    // Restore existing location on page load
+    if (xInput.value && yInput.value) {
+        placeMarker(parseFloat(xInput.value), parseFloat(yInput.value));
+    }
+})();
+</script>
+
+{% endblock %}
