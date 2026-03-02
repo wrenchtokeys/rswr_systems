@@ -21,6 +21,8 @@ from common.utils import convert_heic_to_jpeg
 
 logger = logging.getLogger(__name__)
 
+REPAIR_WIZARD_STEPS = ['Customer', 'Vehicle', 'Damage', 'Photos', 'Pricing', 'Review']
+
 
 @technician_required
 def repair_list(request):
@@ -292,6 +294,7 @@ def create_repair(request):
                     return render(request, 'technician_portal/repair_wizard.html', {
                         'form': form,
                         'is_admin': True,
+                        'wizard_steps': REPAIR_WIZARD_STEPS,
                         'customer_types_json': customer_types_json if 'customer_types_json' in dir() else '{}',
                         'technicians': Technician.objects.filter(
                             tenant=tenant, can_repair=True, is_active=True
@@ -366,6 +369,7 @@ def create_repair(request):
         'pending_repair_warning': pending_repair_warning,
         'is_admin': admin,
         'expected_cost': expected_cost,
+        'wizard_steps': REPAIR_WIZARD_STEPS,
         'customer_types_json': customer_types_json,
     }
     if admin:
