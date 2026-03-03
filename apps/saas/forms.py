@@ -132,10 +132,15 @@ class OnboardingBusinessForm(forms.Form):
 
 
 class OnboardingTechnicianForm(forms.Form):
-    """Step 2: Add first technician."""
+    """Step 2: Add first technician.
+    
+    If 'add_self' is checked, name fields are optional (auto-filled from owner).
+    If adding someone else, first name is required.
+    """
 
     tech_first_name = forms.CharField(
         max_length=30,
+        required=False,  # Not required when add_self is checked
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': 'First name',
@@ -143,6 +148,7 @@ class OnboardingTechnicianForm(forms.Form):
     )
     tech_last_name = forms.CharField(
         max_length=30,
+        required=False,
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': 'Last name',
@@ -186,7 +192,7 @@ class OnboardingCustomerForm(forms.Form):
         max_length=100,
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
-            'placeholder': 'e.g. EOS Trucking',
+            'placeholder': 'e.g. Acme Trucking',
         }),
     )
     customer_type = forms.ChoiceField(

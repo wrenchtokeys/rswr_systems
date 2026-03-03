@@ -51,22 +51,26 @@ Below are all issues found, categorized by severity.
 
 ### BUG-005: Signup — adding self as tech still requires name fields
 - **Severity:** HIGH
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** When owner checks "add myself as technician" during signup, form still requires filling in technician name fields
 - **Expected:** Should auto-populate from the owner's name fields already entered, or skip the technician name section entirely
+- **Fix:** Made name fields optional in `OnboardingTechnicianForm`. When `add_self` is checked, view creates Technician using the owner's existing user (no new user/name needed). When unchecked, adds a separate technician as before.
 
 ### BUG-006: Signup — "Skip for now" button on add-first-customer step doesn't work
 - **Severity:** HIGH
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Cannot proceed past the "add first customer" step without entering a customer name
 - **Expected:** "Skip for now" should bypass this step and go to dashboard
+- **Root cause:** Browser HTML5 validation blocked submit because `customer_name` was required. Skip button is `type="submit"` so browser validated all required fields first.
+- **Fix:** Added `formnovalidate` attribute to all 3 skip buttons in `templates/saas/onboarding.html`.
 
 ### BUG-007: Change primary tech to owner returns 403 Forbidden
 - **Severity:** HIGH
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** On owner dashboard at `/tech/customers`, tried to change a customer's primary technician to the owner — got 403 error page
 - **Expected:** Owner should be able to assign any team member (including themselves) as primary tech
-- **Root cause:** Owner may not have a Technician record, or the view checks technician role specifically
+- **Root cause:** Missing `{% csrf_token %}` in the primary tech form in `customer_details.html`. Django's CSRF middleware rejects the POST → 403.
+- **Fix:** Added `{% csrf_token %}` to the form. Also added tenant filter on Technician lookup to prevent cross-tenant assignment.
 
 ### BUG-008: Password reset shows success for non-existent emails
 - **Severity:** HIGH (security concern — user enumeration protection vs. UX confusion)
@@ -121,10 +125,10 @@ Below are all issues found, categorized by severity.
 
 ### BUG-014: Customer company names shown as example placeholders
 - **Severity:** MEDIUM
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Real customer names (e.g., "EOS Trucking") used as placeholder/example text in form fields
 - **Expected:** Use generic examples like "Acme Trucking" or "Your Company Name"
-- **Where:** Likely in signup or customer creation form templates
+- **Fix:** Changed placeholders in `saas/forms.py` and `customer_form.html` from "EOS Trucking, Penske" to "Acme Trucking, ABC Logistics".
 
 ### BUG-015: All settings pages confusing / no self-documentation
 - **Severity:** MEDIUM

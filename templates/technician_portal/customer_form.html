@@ -78,7 +78,7 @@
                             id="{{ form.name.id_for_label }}"
                             name="{{ form.name.name }}"
                             value="{{ form.name.value|default:'' }}"
-                            placeholder="e.g., EOS Trucking, Penske Logistics"
+                            placeholder="e.g., Acme Trucking, ABC Logistics"
                             required>
                         {% if form.name.errors %}
                         <p class="text-xs text-red-600 mt-1">{{ form.name.errors.0 }}</p>

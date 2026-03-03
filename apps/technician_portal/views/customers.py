@@ -339,7 +339,11 @@ def update_primary_technician(request, customer_id):
 
     tech_id = request.POST.get('primary_technician')
     if tech_id:
-        tech = get_object_or_404(Technician, id=tech_id, is_active=True)
+        # Filter by tenant to prevent cross-tenant assignment
+        tech_qs = Technician.objects.filter(is_active=True)
+        if tenant:
+            tech_qs = tech_qs.filter(tenant=tenant)
+        tech = get_object_or_404(tech_qs, id=tech_id)
         customer.primary_technician = tech
         customer.save(update_fields=['primary_technician'])
         messages.success(request, f"Primary technician set to {tech.user.get_full_name()}.")

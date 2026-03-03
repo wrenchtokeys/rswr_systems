@@ -248,45 +248,63 @@ def onboarding_view(request):
                 return redirect('/onboarding/?step=2')
 
         elif step == '2':
-            # Step 2: Add ANOTHER technician (owner is already set up from signup)
+            # Step 2: Add technician — either yourself or someone else
             form = OnboardingTechnicianForm(request.POST)
             if form.is_valid():
                 cd = form.cleaned_data
                 try:
                     with transaction.atomic():
-                        # Create a new user + technician (not yourself — you're already set up)
-                        tech_email = cd.get('tech_email', '')
-                        tech_first = cd.get('tech_first_name', '')
-                        tech_last = cd.get('tech_last_name', '')
+                        add_self = cd.get('add_self', False)
 
-                        if tech_email or tech_first:
-                            from apps.tenants.services.signup_service import generate_unique_username
-                            tech_username = generate_unique_username(tech_email or '', tech_first)
-                            if not User.objects.filter(username=tech_username).exists():
-                                tech_user = User.objects.create_user(
-                                    username=tech_username,
-                                    email=tech_email or '',
-                                    first_name=tech_first,
-                                    last_name=tech_last,
-                                    password=secrets.token_urlsafe(16),
-                                )
+                        if add_self:
+                            # Add the owner as a technician (use their existing user)
+                            if not Technician.objects.filter(user=request.user, tenant=tenant).exists():
                                 Technician.objects.create(
                                     tenant=tenant,
-                                    user=tech_user,
-                                    phone_number=cd.get('tech_phone', ''),
+                                    user=request.user,
+                                    phone_number=cd.get('tech_phone', '') or tenant.business_phone,
                                     is_active=True,
-                                )
-                                TenantMembership.objects.create(
-                                    tenant=tenant, user=tech_user, role='technician',
                                 )
                                 from django.contrib.auth.models import Group
                                 tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                tech_user.groups.add(tech_group)
-                                messages.success(request, 'Technician added!')
+                                request.user.groups.add(tech_group)
+                                messages.success(request, 'You have been added as a technician!')
                             else:
-                                messages.info(request, 'A user with that email already exists.')
+                                messages.info(request, 'You are already set up as a technician.')
                         else:
-                            messages.info(request, 'No technician info provided.')
+                            # Add a different person as technician
+                            tech_email = cd.get('tech_email', '')
+                            tech_first = cd.get('tech_first_name', '')
+                            tech_last = cd.get('tech_last_name', '')
+
+                            if tech_email or tech_first:
+                                from apps.tenants.services.signup_service import generate_unique_username
+                                tech_username = generate_unique_username(tech_email or '', tech_first)
+                                if not User.objects.filter(username=tech_username).exists():
+                                    tech_user = User.objects.create_user(
+                                        username=tech_username,
+                                        email=tech_email or '',
+                                        first_name=tech_first,
+                                        last_name=tech_last,
+                                        password=secrets.token_urlsafe(16),
+                                    )
+                                    Technician.objects.create(
+                                        tenant=tenant,
+                                        user=tech_user,
+                                        phone_number=cd.get('tech_phone', ''),
+                                        is_active=True,
+                                    )
+                                    TenantMembership.objects.create(
+                                        tenant=tenant, user=tech_user, role='technician',
+                                    )
+                                    from django.contrib.auth.models import Group
+                                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                                    tech_user.groups.add(tech_group)
+                                    messages.success(request, 'Technician added!')
+                                else:
+                                    messages.info(request, 'A user with that email already exists.')
+                            else:
+                                messages.info(request, 'No technician info provided.')
 
                 except Exception as e:
                     logger.error(f"Onboarding tech error: {e}")
