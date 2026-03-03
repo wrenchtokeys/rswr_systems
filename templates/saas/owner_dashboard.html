@@ -272,6 +272,35 @@
 </div>
 {% endif %}
 
+<!-- Setup Checklist (only shown when there are incomplete steps) -->
+{% if setup_steps %}
+<div class="mb-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+            <i class="fas fa-clipboard-check text-blue-600"></i>
+        </div>
+        <div>
+            <h2 class="text-lg font-semibold text-gray-900">Finish setting up your shop</h2>
+            <p class="text-sm text-gray-600">Complete these steps to get the most out of RS Systems</p>
+        </div>
+    </div>
+    <div class="space-y-3">
+        {% for step in setup_steps %}
+        <a href="{{ step.url }}" class="flex items-center gap-4 p-3 bg-white rounded-lg border border-blue-100 hover:border-blue-300 hover:shadow-sm transition-all group">
+            <div class="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                <i class="{{ step.icon }} text-blue-500 text-sm"></i>
+            </div>
+            <div class="flex-1">
+                <p class="text-sm font-medium text-gray-900">{{ step.label }}</p>
+                <p class="text-xs text-gray-500">{{ step.desc }}</p>
+            </div>
+            <i class="fas fa-chevron-right text-gray-300 group-hover:text-blue-400 transition-colors"></i>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 <!-- Quick Actions -->
 <div class="mb-8">
     <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>

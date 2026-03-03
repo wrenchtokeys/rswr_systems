@@ -74,10 +74,10 @@ Below are all issues found, categorized by severity.
 
 ### BUG-008: Password reset shows success for non-existent emails
 - **Severity:** HIGH (security concern — user enumeration protection vs. UX confusion)
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Entering a bogus email on forgot-password page shows "email is on its way" message
 - **Note:** This is actually Django's default behavior BY DESIGN to prevent user enumeration attacks. However, it's confusing UX.
-- **Decision needed:** Keep as-is (security) or add a note like "If an account exists with this email, you'll receive reset instructions" (compromise)
+- **Fix:** Changed message to "If an account exists with that email, we've sent a password reset link." This is the standard compromise — prevents user enumeration while not being misleading.
 
 ---
 
@@ -85,17 +85,18 @@ Below are all issues found, categorized by severity.
 
 ### BUG-009: Progressive pricing assumed for all shops
 - **Severity:** MEDIUM
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Default pricing tiers ($50/$40/$35/$30/$25) applied automatically — not all shops use progressive pricing
 - **Expected:** New shops should either:
   - Be prompted to set their pricing during onboarding, OR
   - Have a clear "set pricing" step before creating repairs, OR
   - Allow entering price directly on the repair form if no pricing is configured
 - **Related:** No option to disable progressive pricing per-customer in the UI (model has `use_progressive_pricing` but no UI toggle)
+- **Fix:** Added pricing warning banner on repair form when shop is using default pricing (detects if all 5 prices match hardcoded defaults). Links to settings. Also covered by setup checklist (BUG-010).
 
 ### BUG-010: New user onboarding lacks setup guidance
 - **Severity:** MEDIUM
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** No tutorial, alerts, or guided setup for new users to configure critical settings (tax, pricing, company info)
 - **Expected:** After signup, show a setup checklist or wizard:
   1. Company info & address
@@ -104,6 +105,7 @@ Below are all issues found, categorized by severity.
   4. First customer
   5. First technician
 - **Impact:** Users start using the system with wrong defaults and don't know what to configure
+- **Fix:** Added dynamic setup checklist to owner dashboard. Shows incomplete steps: business info, pricing, tax, first customer, first technician. Each step links directly to the relevant settings page. Disappears once all steps are complete.
 
 ### BUG-011: Viscosity rank badges (1, 2) confusing
 - **Severity:** MEDIUM

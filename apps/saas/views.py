@@ -513,6 +513,59 @@ def owner_dashboard(request):
     # Billing summary
     billing_context = _get_billing_context(tenant)
 
+    # Setup checklist for new users
+    from decimal import Decimal as D
+    from apps.billing.models import TaxRate
+
+    setup_steps = []
+    pricing_is_default = (
+        tenant.repair_price_1 == D('50.00') and
+        tenant.repair_price_2 == D('40.00') and
+        tenant.repair_price_3 == D('35.00') and
+        tenant.repair_price_4 == D('30.00') and
+        tenant.repair_price_5_plus == D('25.00')
+    )
+    has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
+    has_customers = Customer.objects.filter(tenant=tenant).exists()
+    has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
+    has_business_info = bool(tenant.business_address or tenant.business_phone)
+
+    if not has_business_info:
+        setup_steps.append({
+            'label': 'Add your business info',
+            'desc': 'Address and phone number for invoices',
+            'url': '/owner/settings/?tab=general',
+            'icon': 'fas fa-building',
+        })
+    if pricing_is_default:
+        setup_steps.append({
+            'label': 'Set your repair pricing',
+            'desc': 'Default pricing is $50/$40/$35/$30/$25 — update to match your rates',
+            'url': '/owner/settings/?tab=billing',
+            'icon': 'fas fa-dollar-sign',
+        })
+    if not has_tax_rates:
+        setup_steps.append({
+            'label': 'Configure sales tax',
+            'desc': 'Tax is disabled until you add a tax rate for your area',
+            'url': '/owner/settings/?tab=billing',
+            'icon': 'fas fa-receipt',
+        })
+    if not has_customers:
+        setup_steps.append({
+            'label': 'Add your first customer',
+            'desc': 'Fleet accounts, retail, or walk-in',
+            'url': '/tech/customers/create/',
+            'icon': 'fas fa-users',
+        })
+    if not has_technicians:
+        setup_steps.append({
+            'label': 'Add a technician',
+            'desc': 'Add yourself or invite a team member',
+            'url': '/owner/settings/?tab=team',
+            'icon': 'fas fa-hard-hat',
+        })
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -521,6 +574,7 @@ def owner_dashboard(request):
         'trial_days_remaining': tenant.trial_days_remaining,
         'is_trial': tenant.plan == 'trial',
         'is_trial_expired': tenant.is_trial_expired,
+        'setup_steps': setup_steps,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
