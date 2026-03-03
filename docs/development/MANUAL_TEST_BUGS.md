@@ -109,21 +109,25 @@ Below are all issues found, categorized by severity.
 
 ### BUG-011: Viscosity rank badges (1, 2) confusing
 - **Severity:** MEDIUM
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Little award logos with numbers 1, 2 on viscosity rankings make no sense to users
 - **Expected:** Better visual indicator or remove the badge styling entirely. Explain what the rank means.
+- **Fix:** Replaced 🥇🥈🥉 medal emojis with simple `#1`, `#2`, `#3` numbering. Added title tooltip explaining "rules are checked top to bottom, first match wins."
 
 ### BUG-012: Viscosity settings page confusing
 - **Severity:** MEDIUM
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Settings don't explain themselves. New users have no idea what viscosity recommendations are or why they matter.
 - **Expected:** Add helper text, tooltips, or an intro paragraph explaining the feature
+- **Fix:** Added explanation box at top of viscosity rules page: "When a technician enters the windshield temperature on a repair form, the system automatically suggests which resin viscosity to use." With example of how rule matching works.
 
 ### BUG-013: Viscosity recommendation not showing on main repair form
 - **Severity:** MEDIUM
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Viscosity recommendation shows on EDIT repair form but NOT on the main CREATE repair form
 - **Expected:** Should appear on create form too (or not at all — be consistent)
+- **Root cause:** Actually reversed — the create wizard had the JS, the edit form (`repair_form.html`) was missing it entirely. The `viscositySuggestion` div existed but no JS to populate it.
+- **Fix:** Added viscosity suggestion fetch JS to `repair_form.html`. Now both create and edit forms auto-suggest viscosity when temperature is entered. Only auto-fills if viscosity field is empty (won't overwrite existing values on edit).
 
 ### BUG-014: Customer company names shown as example placeholders
 - **Severity:** MEDIUM
