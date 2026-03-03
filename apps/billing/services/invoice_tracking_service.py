@@ -137,7 +137,7 @@ class InvoiceTrackingService:
             # Apply sales tax (if enabled)
             try:
                 from apps.billing.services.tax_service import TaxService
-                tax_svc = TaxService()
+                tax_svc = TaxService(tenant=invoice.tenant)
                 tax_result = tax_svc.apply_tax_to_invoice(invoice)
                 logger.info(
                     f"Tax for {invoice.invoice_number}: enabled={tax_result['enabled']}, "

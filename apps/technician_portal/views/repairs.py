@@ -272,7 +272,7 @@ def create_repair(request):
         if 'damage_photo_after' in request.FILES:
             request.FILES['damage_photo_after'] = convert_heic_to_jpeg(request.FILES['damage_photo_after'])
 
-        form = RepairForm(request.POST, request.FILES, user=request.user)
+        form = RepairForm(request.POST, request.FILES, user=request.user, tenant=getattr(request, 'tenant', None))
         if form.is_valid():
             if is_tenant_admin(request.user):
                 if form.cleaned_data.get('technician'):
@@ -346,7 +346,7 @@ def create_repair(request):
                 for error in errors:
                     messages.error(request, f"{field}: {error}")
     else:
-        form = RepairForm(user=request.user)
+        form = RepairForm(user=request.user, tenant=getattr(request, 'tenant', None))
 
     pending_repair_warning = form.errors.get('__all__')
 
@@ -424,7 +424,7 @@ def update_repair(request, repair_id):
         original_technician_id = repair.technician_id
         logger.info(f"UPDATE_REPAIR: Saved original_technician_id={original_technician_id}")
 
-        form = RepairForm(request.POST, request.FILES, instance=repair, user=request.user)
+        form = RepairForm(request.POST, request.FILES, instance=repair, user=request.user, tenant=getattr(request, 'tenant', None))
         if form.is_valid():
             logger.info(f"UPDATE_REPAIR: Form is valid, calling save(commit=False)")
             updated_repair = form.save(commit=False)
@@ -473,7 +473,7 @@ def update_repair(request, repair_id):
                         else:
                             messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
     else:
-        form = RepairForm(instance=repair, user=request.user)
+        form = RepairForm(instance=repair, user=request.user, tenant=getattr(request, 'tenant', None))
 
         if repair.queue_status == 'COMPLETED':
             user_is_manager = (is_tenant_admin(request.user) or

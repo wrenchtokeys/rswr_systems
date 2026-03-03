@@ -9,6 +9,7 @@ Author: Amelia (Clawdbot AI)
 """
 
 import logging
+import secrets
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -267,7 +268,7 @@ def onboarding_view(request):
                                     email=tech_email or '',
                                     first_name=tech_first,
                                     last_name=tech_last,
-                                    password=User.objects.make_random_password(),
+                                    password=secrets.token_urlsafe(16),
                                 )
                                 Technician.objects.create(
                                     tenant=tenant,

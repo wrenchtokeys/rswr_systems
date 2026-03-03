@@ -600,7 +600,7 @@ class Repair(GlassService):
             if self.cost and self.cost > 0:
                 try:
                     from apps.billing.services.tax_service import TaxService
-                    tax_result = TaxService().calculate_tax(
+                    tax_result = TaxService(tenant=self.tenant).calculate_tax(
                         subtotal=self.cost, customer=self.customer
                     )
                     self.tax_rate = tax_result['rate']
@@ -1088,7 +1088,7 @@ class Replacement(GlassService):
             if self.cost and self.cost > 0:
                 try:
                     from apps.billing.services.tax_service import TaxService
-                    tax_result = TaxService().calculate_tax(
+                    tax_result = TaxService(tenant=self.tenant).calculate_tax(
                         subtotal=self.cost, customer=self.customer
                     )
                     self.tax_rate = tax_result['rate']

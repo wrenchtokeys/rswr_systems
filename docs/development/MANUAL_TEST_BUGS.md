@@ -11,29 +11,30 @@ Below are all issues found, categorized by severity.
 
 ### BUG-001: Cross-tenant customer data leak on repair form
 - **Severity:** CRITICAL
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Repair form dropdown shows OTHER glass shops' customers to a new owner
 - **Impact:** Full cross-tenant data leakage — can see and select another shop's customers
 - **Expected:** Repair form customer dropdown should ONLY show current tenant's customers
-- **Root cause:** Likely missing `.filter(tenant=request.tenant)` on customer queryset in repair form view
+- **Root cause:** `RepairForm.customer` used `Customer.objects.all()` (line 229 of forms.py). Technician queryset also unfiltered.
 - **Also:** Can add repairs under other shops' customers (data integrity violation)
+- **Fix:** RepairForm now accepts `tenant` kwarg, filters both customer and technician querysets. All 4 view callsites updated. Tests in `test_bug_fixes_march.py`.
 
 ### BUG-002: No enforcement of trial expiration / subscription cancellation
 - **Severity:** CRITICAL
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** App allows continuous use after trial expires and after subscription cancellation
 - **Impact:** No revenue enforcement — users can use the platform indefinitely without paying
 - **Expected:** After trial expiry or failed payment/cancellation, restrict access to read-only or lock out with upgrade prompt
-- **Needs:** Middleware or decorator that checks `tenant.is_trial_expired` and `subscription_status`
+- **Fix:** New `SubscriptionEnforcementMiddleware` in `apps/tenants/subscription_middleware.py`. Blocks expired trials, canceled, and expired subscriptions. Returns 402 for API, redirects to /pricing/ for HTML. Billing/auth paths exempt. Added to MIDDLEWARE after TenantMiddleware. Tests in `test_bug_fixes_march.py`.
 
 ### BUG-003: Tax auto-applied from other shop's settings
 - **Severity:** CRITICAL
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** New shop had tax auto-set to Drake's local tax rates instead of zero/unconfigured
 - **Impact:** Wrong tax charged to customers of other businesses; cross-tenant config leak
 - **Expected:** New tenants should default to `tax_enabled=False` with zero rates. BillingConfig is a singleton — this is likely the root cause (shared across tenants)
-- **Root cause:** BillingConfig is a global singleton, NOT tenant-scoped. All shops share the same billing config.
-- **Fix:** Either make BillingConfig tenant-scoped (FK to Tenant) or ensure tax rates come from tenant-specific TaxRate entries only
+- **Root cause:** BillingConfig is a global singleton, NOT tenant-scoped. TaxService read rates from it.
+- **Fix:** TaxService rewritten to be tenant-aware. Now accepts `tenant` param and reads from tenant-scoped `TaxRate` model. If tenant has no TaxRate entries → tax disabled (zero). All callers updated (models, invoice_service, invoice_tracking_service). BillingConfig singleton remains for legacy/company-info but tax rates are now per-tenant. Tests in `test_bug_fixes_march.py`.
 
 ---
 
@@ -41,11 +42,12 @@ Below are all issues found, categorized by severity.
 
 ### BUG-004: Signup crash — `make_random_password` AttributeError
 - **Severity:** HIGH
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** "Could not add technician" error during signup when adding self as tech
 - **Error:** `no attribute 'make_random_password'`
-- **Root cause:** Django 5.x removed `User.objects.make_random_password()`. Need to use `secrets.token_urlsafe()` or `get_random_string()` instead
-- **Where:** Likely in signup/onboarding view where technician is auto-created
+- **Root cause:** Django 5.x removed `User.objects.make_random_password()`.
+- **Where:** `apps/saas/views.py` line 270
+- **Fix:** Replaced with `secrets.token_urlsafe(16)`. Grep test in `test_bug_fixes_march.py` ensures it doesn't come back.
 
 ### BUG-005: Signup — adding self as tech still requires name fields
 - **Severity:** HIGH

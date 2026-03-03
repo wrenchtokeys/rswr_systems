@@ -48,6 +48,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'apps.tenants.middleware.TenantMiddleware',
+    'apps.tenants.subscription_middleware.SubscriptionEnforcementMiddleware',
     'common.portal_middleware.PortalAccessMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',

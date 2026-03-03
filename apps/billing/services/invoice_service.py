@@ -414,7 +414,7 @@ class InvoiceService:
         tax_amount = Decimal('0.00')
         try:
             from apps.billing.services.tax_service import TaxService
-            tax_svc = TaxService()
+            tax_svc = TaxService(tenant=getattr(customer, 'tenant', None))
             tax_result = tax_svc.calculate_tax(
                 subtotal=total,  # tax on post-discount amount
                 customer=customer,
