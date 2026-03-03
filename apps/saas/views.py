@@ -1218,6 +1218,11 @@ def invite_member(request):
         messages.error(request, 'Email is required.')
         return redirect('owner_settings')
 
+    # Prevent inviting yourself (owner)
+    if email == request.user.email.lower():
+        messages.warning(request, "That's your own email. To add yourself as a technician, go to Team settings and use the 'Add myself' option.")
+        return redirect('owner_settings')
+
     if role not in ('manager', 'technician', 'viewer'):
         messages.error(request, 'Invalid role selected.')
         return redirect('owner_settings')

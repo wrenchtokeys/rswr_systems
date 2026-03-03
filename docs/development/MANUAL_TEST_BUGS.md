@@ -138,9 +138,10 @@ Below are all issues found, categorized by severity.
 
 ### BUG-015: All settings pages confusing / no self-documentation
 - **Severity:** MEDIUM
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Settings pages across the app don't explain what each option does
 - **Expected:** Add help text, tooltips, or inline descriptions for every setting
+- **Fix:** Added description text to Business Information section, expanded Progressive Pricing description to explain what it does and when to disable it. Viscosity rules page already fixed in BUG-012.
 
 ---
 
@@ -154,9 +155,10 @@ Below are all issues found, categorized by severity.
 
 ### BUG-017: Repair form includes unnecessary tech fields for assignment
 - **Severity:** LOW
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** When assigning a repair, form asks for drill bit, temperature, location, etc. — these are tech-specific fields the assigner wouldn't know
 - **Expected:** Assignment should only need: customer, unit, break count, notes. Tech fills in their own fields when they start work.
+- **Fix:** Added info banner for admins on step 3 of repair wizard: "These fields are optional when assigning a repair. The assigned technician can fill them in later." Fields were already optional at the model level.
 
 ### BUG-018: Repair form slide architecture is bad
 - **Severity:** LOW (but Drake hates it)
@@ -167,9 +169,9 @@ Below are all issues found, categorized by severity.
 
 ### BUG-019: Email login for invited tech goes to owner dashboard
 - **Severity:** LOW (works as designed but confusing)
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** Invited a tech using the shop owner's email. Login via that email goes to owner dashboard.
-- **Note:** This is correct behavior (email maps to owner account), but the invite flow should probably prevent inviting an email that's already the owner's.
+- **Fix:** Added check in `invite_member` — if the email matches the logged-in owner's email, shows a warning message and suggests using "Add myself" option instead. Prevents the confusing scenario entirely.
 
 ---
 
