@@ -163,10 +163,15 @@ Below are all issues found, categorized by severity.
 
 ### BUG-018: Repair form slide architecture is bad
 - **Severity:** LOW (but Drake hates it)
-- **Status:** 🔴
+- **Status:** 🔴 — **Needs design discussion**
 - **Found:** Main repair form uses a multi-slide/wizard pattern that's frustrating
 - **Expected:** Consider a single-page form with sections, or a simpler 2-step flow
 - **Note:** Drake specifically said "main repair form sucks and i hate the architecture of slides"
+- **Options to discuss:**
+  1. **Single-page form** with collapsible sections (most common pattern for trade apps)
+  2. **Two-step flow**: Step 1 = Customer + Unit + Damage Type (required), Step 2 = Everything else (optional, expandable)
+  3. **Smart form**: Only show fields relevant to the user's role (admin sees assignment fields, tech sees repair fields)
+  4. **Keep wizard but reduce to 3 steps** instead of 6: (1) Who/What, (2) Details, (3) Photos
 
 ### BUG-019: Email login for invited tech goes to owner dashboard
 - **Severity:** LOW (works as designed but confusing)
