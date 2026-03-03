@@ -149,9 +149,10 @@ Below are all issues found, categorized by severity.
 
 ### BUG-016: No alert to assigner when assignee completes a job
 - **Severity:** LOW
-- **Status:** 🔴
+- **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** When a tech completes an assigned repair, the person who assigned it gets no notification
 - **Expected:** Send notification (in-app + optional email) to assigner when repair is completed
+- **Fix:** Added `_notify_owner_repair_completed()` in signals.py. Fires on COMPLETED status, notifies tenant owner via existing NotificationService. Skips notification if the completing tech IS the owner. Uses existing `repair_completed` template.
 
 ### BUG-017: Repair form includes unnecessary tech fields for assignment
 - **Severity:** LOW
