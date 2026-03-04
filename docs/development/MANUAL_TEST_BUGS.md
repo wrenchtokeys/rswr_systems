@@ -342,3 +342,65 @@ multi-tenant isolation in all query paths.
 - **Problem:** Payment link lookups via `InvoiceLineItem.objects.filter()` and `Invoice.objects.filter()` had no tenant scoping. The service didn't accept a tenant parameter at all.
 - **Fix:** Added `tenant` parameter to constructor; scoped all queries. Updated all callers in views.py, saas/views.py, and auto_invoice_service.py.
 - **Status:** ✅ FIXED
+
+---
+
+## Round 3 — Systematic Tenant Isolation Sweep (March 4, 2026)
+
+Comprehensive audit of every `.objects.` query across all Python files.
+
+### BUG-029: REST API ViewSets completely unscoped
+- **Severity:** CRITICAL — Full cross-tenant data leak via API
+- **Location:** `apps/technician_portal/api/views.py`
+- **Problem:** All 4 ViewSets (TechnicianViewSet, CustomerViewSet, RepairViewSet, ReplacementViewSet) used hardcoded `queryset = Model.objects.all()` with no tenant filtering. Any authenticated admin user could read/write ALL tenants' data via the REST API.
+- **Fix:** Added `TenantScopedViewSetMixin` that overrides `get_queryset()` to filter by `request.tenant`. Applied to all 4 ViewSets.
+- **Status:** ✅ FIXED
+
+### BUG-030: Dashboard admin_data shows cross-tenant Technician and RewardRedemption counts
+- **Severity:** MEDIUM — Cross-tenant data leak in dashboard stats
+- **Location:** `apps/technician_portal/views/dashboard.py`
+- **Problem:** `Technician.objects.count()` and `RewardRedemption.objects.filter(status='PENDING').count()` in admin_data block had no tenant filter, showing counts from all tenants.
+- **Fix:** Added tenant scoping to both queries using `.filter(tenant=tenant)` and `.filter(reward__customer_user__customer__tenant=tenant)`.
+- **Status:** ✅ FIXED
+
+### BUG-031: Dashboard pending RewardRedemption list unscoped for admin users
+- **Severity:** MEDIUM — Cross-tenant data leak
+- **Location:** `apps/technician_portal/views/dashboard.py`
+- **Problem:** `all_pending_redemptions` for non-technician admin users and technician users showed pending redemptions from all tenants.
+- **Fix:** Added tenant scoping via `reward__customer_user__customer__tenant` for both code paths.
+- **Status:** ✅ FIXED
+
+### BUG-032: RewardFulfillmentService assigns technicians from any tenant
+- **Severity:** HIGH — Cross-tenant technician assignment
+- **Location:** `apps/rewards_referrals/services.py` — `RewardFulfillmentService.assign_technician()`
+- **Problem:** `Technician.objects.all()` selected from all tenants when assigning a technician to fulfill a reward redemption. A tenant B technician could be assigned to fulfill a tenant A customer's reward.
+- **Fix:** Extracted tenant from `redemption.reward.customer_user.customer.tenant` and scoped technician query.
+- **Status:** ✅ FIXED
+
+### BUG-033: get_pending_redemptions() returns all tenants' redemptions
+- **Severity:** LOW — Service method, not directly exposed
+- **Location:** `apps/rewards_referrals/services.py` — `RewardFulfillmentService.get_pending_redemptions()`
+- **Problem:** No tenant parameter or filtering, returned all tenants' pending redemptions.
+- **Fix:** Added optional `tenant` parameter with tenant scoping via `reward__customer_user__customer__tenant`.
+- **Status:** ✅ FIXED
+
+### BUG-034: Referral leaderboard shows all tenants' referrers
+- **Severity:** MEDIUM — Cross-tenant data leak in leaderboard
+- **Location:** `apps/rewards_referrals/views.py` — `referral_leaderboard()`
+- **Problem:** `ReferralCode.objects.all()` iterated over all tenants' referral codes, showing a global leaderboard.
+- **Fix:** Added `request.tenant` scoping via `customer_user__customer__tenant`.
+- **Status:** ✅ FIXED
+
+### BUG-035: Customer portal profile creation falls back to all customers without tenant
+- **Severity:** MEDIUM — Cross-tenant data leak in dropdown
+- **Location:** `apps/customer_portal/views.py` — profile creation GET handler
+- **Problem:** When no tenant context, `Customer.objects.all()` returned all customers across all tenants in the dropdown.
+- **Fix:** Changed fallback from `.all()` to `.none()` — no tenant means no customers shown.
+- **Status:** ✅ FIXED
+
+### BUG-036: Multiple Customer.objects.all() fallbacks in profile creation POST
+- **Severity:** MEDIUM — Cross-tenant data leak in error paths
+- **Location:** `apps/customer_portal/views.py` — profile creation POST error handling
+- **Problem:** Three separate error-handling paths fell back to `Customer.objects.all()` when no tenant context.
+- **Fix:** Changed all three fallbacks from `.all()` to `.none()`.
+- **Status:** ✅ FIXED

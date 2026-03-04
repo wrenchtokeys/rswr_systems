@@ -1,6 +1,21 @@
 
 ## [Unreleased] - 2026-03-04
 
+### Fixed (Round 3 Systematic Tenant Isolation Sweep — BUG-029 through BUG-036)
+- **BUG-029:** REST API ViewSets (Technician, Customer, Repair, Replacement) now tenant-scoped via TenantScopedViewSetMixin
+- **BUG-030:** Dashboard admin stats (technician count, pending redemptions) now tenant-scoped
+- **BUG-031:** Dashboard pending RewardRedemption lists now tenant-scoped for all user types
+- **BUG-032:** RewardFulfillmentService.assign_technician() now only assigns same-tenant technicians
+- **BUG-033:** RewardFulfillmentService.get_pending_redemptions() now accepts optional tenant parameter
+- **BUG-034:** Referral leaderboard now scoped to current tenant
+- **BUG-035:** Customer portal profile creation dropdown no longer falls back to all customers (uses .none())
+- **BUG-036:** Customer portal profile creation POST error paths no longer fall back to all customers
+
+### Added
+- `TenantScopedViewSetMixin` for DRF ViewSets (`apps/technician_portal/api/views.py`)
+- Tenant isolation tests for Round 3 fixes (`tests/test_tenant_isolation_round3.py`)
+- Security audit document (`docs/security/TENANT_ISOLATION_AUDIT.md`)
+
 ### Fixed (Round 2 Code Audit — BUG-020 through BUG-027)
 - **BUG-020:** Fixed NameError crash in send_invoice_email/send_invoice_email_batch views (Invoice model not imported)
 - **BUG-021:** InvoiceTrackingService.get_outstanding_invoices() now tenant-scoped (was leaking cross-tenant data)

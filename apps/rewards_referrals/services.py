@@ -379,8 +379,18 @@ class RewardFulfillmentService:
         """
         from apps.technician_portal.models import Technician, Repair
         
-        # Get active technicians
+        # Get active technicians scoped to the redemption's tenant
+        tenant = getattr(
+            getattr(
+                getattr(redemption, 'reward', None),
+                'customer_user', None
+            ),
+            'customer', None
+        )
+        tenant = getattr(tenant, 'tenant', None) if tenant else None
         technicians = Technician.objects.all()
+        if tenant:
+            technicians = technicians.filter(tenant=tenant)
         
         if not technicians.exists():
             return None
@@ -466,14 +476,20 @@ class RewardFulfillmentService:
         return redemption
         
     @staticmethod
-    def get_pending_redemptions():
+    def get_pending_redemptions(tenant=None):
         """
         Get all pending redemptions that need to be fulfilled.
         
+        Args:
+            tenant: Optional tenant to scope results
+            
         Returns:
             QuerySet: All pending redemptions
         """
-        return RewardRedemption.objects.filter(status='PENDING').order_by('created_at')
+        qs = RewardRedemption.objects.filter(status='PENDING')
+        if tenant:
+            qs = qs.filter(reward__customer_user__customer__tenant=tenant)
+        return qs.order_by('created_at')
         
     @staticmethod
     def get_technician_redemptions(technician):

@@ -6,6 +6,17 @@ from core.models import Customer
 from .serializers import TechnicianSerializer, RepairSerializer, ReplacementSerializer, CustomerSerializer
 
 
+class TenantScopedViewSetMixin:
+    """Mixin that scopes querysets to the request's tenant."""
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        tenant = getattr(self.request, 'tenant', None)
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        return qs
+
+
 @extend_schema_view(
     list=extend_schema(
         summary="List all technicians",
@@ -32,7 +43,7 @@ from .serializers import TechnicianSerializer, RepairSerializer, ReplacementSeri
         description="Remove a technician from the system."
     ),
 )
-class TechnicianViewSet(viewsets.ModelViewSet):
+class TechnicianViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing technician profiles.
     
@@ -70,7 +81,7 @@ class TechnicianViewSet(viewsets.ModelViewSet):
         description="Remove a customer from the system."
     ),
 )
-class CustomerViewSet(viewsets.ModelViewSet):
+class CustomerViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing customer profiles.
     
@@ -108,7 +119,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
         description="Remove a repair record from the system."
     ),
 )
-class RepairViewSet(viewsets.ModelViewSet):
+class RepairViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing repair records.
     
@@ -153,7 +164,7 @@ class RepairViewSet(viewsets.ModelViewSet):
         description="Remove a replacement record from the system."
     ),
 )
-class ReplacementViewSet(viewsets.ModelViewSet):
+class ReplacementViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing glass replacement records.
     
@@ -169,4 +180,3 @@ class ReplacementViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Associate the replacement with the logged-in technician"""
         serializer.save(technician=self.request.user.technician)
-

@@ -255,10 +255,15 @@ def referral_leaderboard(request):
     Returns:
         HttpResponse: Rendered template with leaderboard data
     """
-    # Get referral counts for each user
+    # Get referral counts for each user (tenant-scoped)
     top_referrers = []
+    tenant = getattr(request, 'tenant', None)
     
-    for code in ReferralCode.objects.all():
+    code_qs = ReferralCode.objects.all()
+    if tenant:
+        code_qs = code_qs.filter(customer_user__customer__tenant=tenant)
+    
+    for code in code_qs:
         count = Referral.objects.filter(referral_code=code).count()
         if count > 0:
             top_referrers.append({

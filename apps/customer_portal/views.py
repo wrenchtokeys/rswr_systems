@@ -240,19 +240,19 @@ def profile_creation(request):
             except Exception as e:
                 messages.error(request, f"Error creating company: {str(e)}")
                 tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
                 return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
         else:
             # Use existing customer
             customer_id = request.POST.get('customer')
             try:
                 tenant = getattr(request, 'tenant', None)
-                customer_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+                customer_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
                 customer = customer_qs.get(id=customer_id)
             except Customer.DoesNotExist:
                 messages.error(request, "Selected company does not exist.")
                 tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
                 return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
         
         # Create CustomerUser record
@@ -292,12 +292,12 @@ def profile_creation(request):
         except Exception as e:
             messages.error(request, f"Error creating profile: {str(e)}")
     
-    # Get all customers for the dropdown — scoped to tenant if available
+    # Get all customers for the dropdown — scoped to tenant (required)
     tenant = getattr(request, 'tenant', None)
     if tenant:
         customers = Customer.objects.filter(tenant=tenant)
     else:
-        customers = Customer.objects.all()
+        customers = Customer.objects.none()
     return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
 
 @customer_required
