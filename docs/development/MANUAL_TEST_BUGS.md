@@ -152,7 +152,7 @@ Below are all issues found, categorized by severity.
 - **Status:** 🟢 FIXED (2026-03-03)
 - **Found:** When a tech completes an assigned repair, the person who assigned it gets no notification
 - **Expected:** Send notification (in-app + optional email) to assigner when repair is completed
-- **Fix:** Added `_notify_owner_repair_completed()` in signals.py. Fires on COMPLETED status, notifies tenant owner via existing NotificationService. Skips notification if the completing tech IS the owner. Uses existing `repair_completed` template.
+- **Fix:** `_notify_owner_repair_completed` already existed but only notified the owner. Now also notifies all active managers in the tenant (who may have assigned the repair). Skips the tech who completed it and the owner (already notified separately).
 
 ### BUG-017: Repair form includes unnecessary tech fields for assignment
 - **Severity:** LOW
@@ -163,7 +163,7 @@ Below are all issues found, categorized by severity.
 
 ### BUG-018: Repair form slide architecture is bad
 - **Severity:** LOW (but Drake hates it)
-- **Status:** 🔴 — **Needs design discussion**
+- **Status:** 🟡 DEFERRED — needs design discussion with Drake
 - **Found:** Main repair form uses a multi-slide/wizard pattern that's frustrating
 - **Expected:** Consider a single-page form with sections, or a simpler 2-step flow
 - **Note:** Drake specifically said "main repair form sucks and i hate the architecture of slides"

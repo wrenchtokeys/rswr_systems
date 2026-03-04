@@ -337,6 +337,7 @@ def _notify_owner_repair_completed(repair):
         'action_url': f'/tech/repairs/{repair.pk}/',
     }
 
+    # Notify the owner
     try:
         NotificationService.create_notification(
             recipient=owner,
@@ -347,6 +348,30 @@ def _notify_owner_repair_completed(repair):
         )
     except Exception as e:
         logger.warning(f"Could not notify owner of repair completion: {e}")
+
+    # Also notify managers (who may have assigned the repair)
+    try:
+        from apps.tenants.models import TenantMembership
+        manager_memberships = TenantMembership.objects.filter(
+            tenant=repair.tenant, role='manager', is_active=True,
+        ).exclude(user=owner).select_related('user')
+
+        for membership in manager_memberships:
+            # Don't notify the tech who completed it
+            if repair.technician and membership.user_id == repair.technician.user_id:
+                continue
+            try:
+                NotificationService.create_notification(
+                    recipient=membership.user,
+                    template_name='repair_completed',
+                    context=context,
+                    repair=repair,
+                    customer=repair.customer,
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify manager {membership.user_id} of repair completion: {e}")
+    except Exception as e:
+        logger.warning(f"Could not notify managers of repair completion: {e}")
 
 
 def _notify_technician_assigned(repair):
