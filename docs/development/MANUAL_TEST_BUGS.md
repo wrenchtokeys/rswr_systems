@@ -279,3 +279,66 @@ Stripe integration, and service-layer defense-in-depth.
 - **Issue:** InvoiceEmailService didn't accept tenant parameter; InvoiceLineItem and Invoice queries inside it had no tenant filter
 - **Fix:** Added `tenant=None` parameter; propagated to InvoiceService; added tenant filter to InvoiceLineItem and Invoice queries
 - **Status:** ✅ Fixed
+
+---
+
+## Round 2 — Code Audit Bugs (March 4, 2026)
+
+Audited by Amelia: billing services, invoice tracking, email, dashboard, Stripe webhook,
+multi-tenant isolation in all query paths.
+
+### BUG-020: NameError in send_invoice_email / send_invoice_email_batch views
+- **Severity:** HIGH — Runtime crash
+- **Location:** `apps/billing/views.py` — `send_invoice_email()` and `send_invoice_email_batch()`
+- **Problem:** `Invoice` model used without importing it first. Other functions in the same file import it locally, but these two were missed.
+- **Fix:** Added `from apps.billing.models import Invoice` inside both functions.
+- **Status:** ✅ FIXED
+
+### BUG-021: Cross-tenant leak in InvoiceTrackingService.get_outstanding_invoices()
+- **Severity:** HIGH — Multi-tenant data leak
+- **Location:** `apps/billing/services/invoice_tracking_service.py`
+- **Problem:** When `self.tenant` is None and no customer is passed, the query returned ALL tenants' invoices.
+- **Fix:** Falls back to `customer.tenant` when available, otherwise returns `Invoice.objects.none()`.
+- **Status:** ✅ FIXED
+
+### BUG-022: Cross-tenant mutation in InvoiceTrackingService.update_overdue_statuses()
+- **Severity:** CRITICAL — Updates ALL tenants' invoices
+- **Location:** `apps/billing/services/invoice_tracking_service.py`
+- **Problem:** Without tenant, `update_overdue_statuses()` fell back to `Invoice.objects.all()`, marking invoices across ALL tenants as overdue.
+- **Fix:** Returns 0 with warning log when called without tenant.
+- **Status:** ✅ FIXED
+
+### BUG-023: Cross-tenant collision in InvoiceTrackingService.get_uninvoiced_repairs()
+- **Severity:** MEDIUM — Multi-tenant isolation gap
+- **Location:** `apps/billing/services/invoice_tracking_service.py`
+- **Problem:** `InvoiceLineItem.objects.filter()` query for already-invoiced repairs had no tenant filter, potentially matching invoice line items from other tenants.
+- **Fix:** Added `invoice__tenant=tenant` filter.
+- **Status:** ✅ FIXED
+
+### BUG-024: No tenant context in Stripe webhook payment recording
+- **Severity:** LOW — Documented, not a data leak
+- **Location:** `apps/billing/services/stripe_service.py` — `_record_stripe_payment()`
+- **Problem:** `Invoice.objects.get(id=invoice_id)` uses no tenant filter. This is acceptable because invoice_id comes from our own Stripe metadata (not user input), but it should be documented.
+- **Fix:** Added audit logging of tenant_id when processing Stripe payments.
+- **Status:** ✅ DOCUMENTED
+
+### BUG-025: No tenant filter in InvoiceService.build_invoice_data()
+- **Severity:** HIGH — Multi-tenant data leak
+- **Location:** `apps/billing/services/invoice_service.py`
+- **Problem:** `Customer.objects.get(id=customer_id)` had no tenant filter, allowing a service with tenant A context to generate invoices for tenant B's customers.
+- **Fix:** Added tenant-scoped query when `self.tenant` is set.
+- **Status:** ✅ FIXED
+
+### BUG-026: Dashboard alerts query all tenants' batch customers
+- **Severity:** MEDIUM — Multi-tenant isolation gap
+- **Location:** `apps/billing/services/dashboard_service.py`
+- **Problem:** `CustomerRepairPreference.objects.filter(invoice_preference='batch')` queried all tenants, then filtered after. Without tenant, leaked all results.
+- **Fix:** Filter by tenant in initial query; return empty when no tenant.
+- **Status:** ✅ FIXED
+
+### BUG-027: InvoiceEmailService lacks tenant awareness
+- **Severity:** MEDIUM — Multi-tenant isolation gap
+- **Location:** `apps/billing/services/invoice_email_service.py`
+- **Problem:** Payment link lookups via `InvoiceLineItem.objects.filter()` and `Invoice.objects.filter()` had no tenant scoping. The service didn't accept a tenant parameter at all.
+- **Fix:** Added `tenant` parameter to constructor; scoped all queries. Updated all callers in views.py, saas/views.py, and auto_invoice_service.py.
+- **Status:** ✅ FIXED
