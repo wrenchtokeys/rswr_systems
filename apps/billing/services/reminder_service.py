@@ -293,7 +293,7 @@ Please contact us to arrange payment or if you have any questions.
         company_website = ""
         try:
             from apps.billing.models import BillingConfig
-            config = BillingConfig.objects.first()
+            config = BillingConfig.get_instance()
             if config:
                 company_name = config.company_name or company_name
                 company_phone = config.company_phone or ""

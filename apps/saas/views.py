@@ -2052,7 +2052,7 @@ def owner_send_invoice(request, invoice_id):
         email_sent = False
         try:
             from apps.billing.services.invoice_email_service import InvoiceEmailService
-            email_service = InvoiceEmailService()
+            email_service = InvoiceEmailService(tenant=tenant)
             
             # Get recipient email
             recipient = None
@@ -2109,7 +2109,7 @@ def owner_email_invoice(request, invoice_id):
 
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
-        email_service = InvoiceEmailService()
+        email_service = InvoiceEmailService(tenant=tenant)
         
         # Get recipient email (can be overridden from form)
         recipient = request.POST.get('email', '').strip()

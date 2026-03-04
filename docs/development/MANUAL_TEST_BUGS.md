@@ -209,3 +209,73 @@ Steps 12+ still need testing:
 8. **BUG-009** — Pricing defaults (WRONG CHARGES)
 9. **BUG-010** — Onboarding guidance (USER CONFUSION)
 10. Everything else
+
+---
+
+## Round 2 — Code Audit Bugs (March 4, 2026)
+
+Automated code audit of billing services, focusing on multi-tenant isolation,
+Stripe integration, and service-layer defense-in-depth.
+
+### BUG-020 — InvoiceTrackingService.get_outstanding_invoices() missing tenant filter
+- **Severity:** 🔴 Critical (SHIP BLOCKER)
+- **Location:** `apps/billing/services/invoice_tracking_service.py`
+- **Issue:** `Invoice.objects.filter(status__in=...)` returned ALL tenants' outstanding invoices
+- **Fix:** Use `Invoice.objects.for_tenant(self.tenant)` when tenant is set
+- **Status:** ✅ Fixed
+
+### BUG-021 — InvoiceTrackingService.update_overdue_statuses() missing tenant filter
+- **Severity:** 🔴 Critical (SHIP BLOCKER)
+- **Location:** `apps/billing/services/invoice_tracking_service.py`
+- **Issue:** Bulk update of overdue statuses affected ALL tenants' invoices
+- **Fix:** Scope queryset to tenant before updating
+- **Status:** ✅ Fixed
+
+### BUG-022 — InvoiceTrackingService.get_uninvoiced_repairs() missing tenant filter
+- **Severity:** 🟡 Medium
+- **Location:** `apps/billing/services/invoice_tracking_service.py`
+- **Issue:** `Repair.objects.filter(customer=customer)` didn't also filter by tenant (defense-in-depth)
+- **Fix:** Added `repairs = repairs.filter(tenant=self.tenant)` when tenant is set
+- **Status:** ✅ Fixed
+
+### BUG-023 — DashboardService.get_alerts() leaks cross-tenant data
+- **Severity:** 🔴 Critical (SHIP BLOCKER)
+- **Location:** `apps/billing/services/dashboard_service.py`
+- **Issue:** Two problems: (1) `CustomerRepairPreference.objects.filter(invoice_preference='batch')` had no tenant filter — returned all tenants' batch customers. (2) `InvoiceTrackingService()` was instantiated without tenant.
+- **Fix:** Filter CustomerRepairPreference by `customer__tenant=self.tenant`; pass `tenant=self.tenant` to InvoiceTrackingService
+- **Status:** ✅ Fixed
+
+### BUG-024 — StripeService._record_stripe_payment() missing tenant propagation
+- **Severity:** 🟡 Medium
+- **Location:** `apps/billing/services/stripe_service.py`
+- **Issue:** `InvoiceTrackingService()` instantiated without tenant after Stripe webhook payment
+- **Fix:** Pass `tenant=invoice.tenant` to InvoiceTrackingService
+- **Status:** ✅ Fixed
+
+### BUG-025 — ReminderService uses BillingConfig.objects.first() instead of get_instance()
+- **Severity:** 🟢 Low
+- **Location:** `apps/billing/services/reminder_service.py`
+- **Issue:** `.first()` returns None if no config exists; `get_instance()` creates default
+- **Fix:** Changed to `BillingConfig.get_instance()`
+- **Status:** ✅ Fixed
+
+### BUG-026 — InvoiceService missing tenant parameter
+- **Severity:** 🟡 Medium
+- **Location:** `apps/billing/services/invoice_service.py`
+- **Issue:** `InvoiceService.__init__()` didn't accept a tenant parameter; `get_completed_repairs()` queried Repair without tenant filter
+- **Fix:** Added `tenant=None` parameter; filter repairs by tenant when set
+- **Status:** ✅ Fixed
+
+### BUG-027 — send_invoice_email and send_invoice_email_batch views: NameError on Invoice
+- **Severity:** 🔴 Critical (CRASH)
+- **Location:** `apps/billing/views.py`, `send_invoice_email()` and `send_invoice_email_batch()`
+- **Issue:** `Invoice` model was used without importing it — would crash with `NameError` when any user tried to send/resend an invoice email
+- **Fix:** Added `from apps.billing.models import Invoice` inside each function
+- **Status:** ✅ Fixed
+
+### BUG-028 — InvoiceEmailService missing tenant isolation
+- **Severity:** 🟡 Medium
+- **Location:** `apps/billing/services/invoice_email_service.py`
+- **Issue:** InvoiceEmailService didn't accept tenant parameter; InvoiceLineItem and Invoice queries inside it had no tenant filter
+- **Fix:** Added `tenant=None` parameter; propagated to InvoiceService; added tenant filter to InvoiceLineItem and Invoice queries
+- **Status:** ✅ Fixed

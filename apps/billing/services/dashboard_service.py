@@ -298,13 +298,18 @@ class DashboardService:
             })
         
         # Uninvoiced completed repairs (batch customers)
-        tracking = InvoiceTrackingService()
+        tracking = InvoiceTrackingService(tenant=self.tenant)
         from core.models import Customer
         from apps.customer_portal.models import CustomerRepairPreference
         
-        batch_customers = CustomerRepairPreference.objects.filter(
-            invoice_preference='batch'
-        ).select_related('customer')
+        if self.tenant:
+            batch_prefs_qs = CustomerRepairPreference.objects.filter(
+                invoice_preference='batch',
+                customer__tenant=self.tenant,
+            ).select_related('customer')
+        else:
+            batch_prefs_qs = CustomerRepairPreference.objects.none()
+        batch_customers = batch_prefs_qs
         
         for pref in batch_customers:
             uninvoiced = tracking.get_uninvoiced_repairs(pref.customer)

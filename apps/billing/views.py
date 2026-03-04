@@ -263,7 +263,7 @@ def create_invoice(request, customer_id):
     if send_email and customer.email:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         try:
-            email_svc = InvoiceEmailService()
+            email_svc = InvoiceEmailService(tenant=tenant)
             email_svc.send_invoice_email(
                 customer_id=customer_id,
                 recipient_email=customer.email,
@@ -299,7 +299,7 @@ def create_invoice(request, customer_id):
 def send_invoice_email(request, invoice_id):
     """
     Send (or resend) an invoice email to the customer.
-    
+
     POST body (optional):
     {
         "recipient_email": "custom@email.com",   // override recipient
@@ -309,6 +309,8 @@ def send_invoice_email(request, invoice_id):
     tenant, err = _get_tenant_or_403(request)
     if err:
         return err
+
+    from apps.billing.models import Invoice
 
     try:
         invoice = Invoice.objects.get(id=invoice_id, tenant=tenant)
@@ -333,7 +335,7 @@ def send_invoice_email(request, invoice_id):
 
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
-        email_svc = InvoiceEmailService()
+        email_svc = InvoiceEmailService(tenant=tenant)
         repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
         email_svc.send_invoice_email(
             customer_id=invoice.customer_id,
@@ -373,8 +375,9 @@ def send_invoice_email_batch(request):
     if not invoice_ids:
         return JsonResponse({'error': 'No invoice IDs provided'}, status=400)
 
+    from apps.billing.models import Invoice
     from apps.billing.services.invoice_email_service import InvoiceEmailService
-    email_svc = InvoiceEmailService()
+    email_svc = InvoiceEmailService(tenant=tenant)
 
     results = []
     for inv_id in invoice_ids:
