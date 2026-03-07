@@ -82,6 +82,23 @@ class CustomerInvitationService:
         shop_name = invitation.customer.tenant.name if hasattr(invitation.customer, 'tenant') and invitation.customer.tenant else 'RS Systems'
         inviter_name = invitation.invited_by.get_full_name() if invitation.invited_by else shop_name
 
+        # Get email branding
+        try:
+            from core.models.email_branding import EmailBrandingConfig
+            branding = EmailBrandingConfig.get_instance().to_template_context()
+        except Exception:
+            branding = {
+                'company_name': shop_name,
+                'primary_color': '#2563eb',
+                'text_color': '#1f2937',
+                'background_color': '#f3f4f6',
+                'heading_font': 'Arial, Helvetica, sans-serif',
+                'body_font': 'Arial, Helvetica, sans-serif',
+            }
+        # Use shop name for branding if not configured
+        if not branding.get('company_name'):
+            branding['company_name'] = shop_name
+
         context = {
             'invitation': invitation,
             'invite_url': invite_url,
@@ -89,6 +106,7 @@ class CustomerInvitationService:
             'inviter_name': inviter_name,
             'customer_name': invitation.customer.name,
             'recipient_name': invitation.first_name or 'there',
+            'branding': branding,
         }
 
         # Render email templates
