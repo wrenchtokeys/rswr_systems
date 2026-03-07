@@ -404,3 +404,14 @@ Comprehensive audit of every `.objects.` query across all Python files.
 - **Problem:** Three separate error-handling paths fell back to `Customer.objects.all()` when no tenant context.
 - **Fix:** Changed all three fallbacks from `.all()` to `.none()`.
 - **Status:** ✅ FIXED
+
+---
+
+## BUG-037: Expired account upgrade button causes redirect loop (March 7, 2026)
+
+- **Severity:** HIGH — Blocks revenue
+- **Status:** ✅ FIXED
+- **Found:** Drake reported — expired trial user clicks "Upgrade Now" on dashboard, page just reloads
+- **Root cause:** Subscription middleware blocked `/owner/billing/` (the upgrade destination). Middleware redirected to `/pricing/`, but pricing page buttons link to `/owner/billing/` → infinite redirect loop.
+- **Fix:** Added `/owner/billing/` to `EXEMPT_PREFIXES` in `SubscriptionEnforcementMiddleware`. Users must be able to reach billing to pay.
+- **Location:** `apps/tenants/subscription_middleware.py`

@@ -315,6 +315,18 @@ Run through these quickly to catch obvious breakage:
 
 ---
 
+## 22. Expired Account Upgrade Flow (BUG-037)
+
+| # | Step | Expected |
+|---|------|----------|
+| 22.1 | Log in as user with expired trial | Redirected to `/pricing/` with error message |
+| 22.2 | Click any plan's upgrade/choose button | Reaches `/owner/billing/` (NOT a redirect loop) |
+| 22.3 | From billing page, select a plan | Stripe checkout flow initiates |
+| 22.4 | Verify other protected routes still blocked (`/owner/settings/`, `/tech/`) | Redirected to `/pricing/` |
+| 22.5 | After successful payment, access dashboard | Dashboard loads normally |
+
+---
+
 ## Known Issues to Address
 
 1. **Repair wizard missing windshield location grid** — wizard has raw X/Y number inputs; legacy/update form has the interactive diagram. Need to port the diagram into wizard Step 3 (Damage).
