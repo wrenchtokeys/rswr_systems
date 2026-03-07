@@ -2535,8 +2535,21 @@ def accept_customer_invitation(request, token):
     if not invitation:
         return render(request, 'customer_portal/invitation_invalid.html')
     
-    # If user is already logged in, link them directly
+    # If user is already logged in
     if request.user.is_authenticated:
+        from common.auth import get_user_role
+        role = get_user_role(request.user)
+        
+        # Owners/managers already have full access — don't create CustomerUser
+        if role in ('superuser', 'owner', 'manager'):
+            invitation.mark_accepted(request.user)
+            messages.info(
+                request,
+                f"Invitation accepted. You already have full access to "
+                f"{invitation.customer.name} as a shop {role}."
+            )
+            return redirect('owner_dashboard')
+        
         # Check if they already have a CustomerUser record
         existing = CustomerUser.objects.filter(user=request.user).first()
         if existing:
