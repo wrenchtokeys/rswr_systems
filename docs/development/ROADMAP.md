@@ -9,7 +9,7 @@
 
 ### Unified Permissions & Templates (v2.0.0  Jan 30, 2026)
 Single permission system (`common/auth.py`), one base template (`base_app.html`), fixed signup/onboarding. The foundation everything else is built on.
- Details: [`PLAN.md`](/PLAN.md)
+ Details: [Unified permissions plan (archived)
 
 ### Billing & Invoicing (v2.1.02.2.0  Jan 31  Feb 1, 2026)
 Full invoicing lifecycle: auto-invoice on completion, PDF generation, Stripe payments, payment confirmation emails, customer invoice portal, owner invoice dashboard, tech on-site payment collection, manual payment recording.
@@ -118,7 +118,7 @@ Content pillars: tradesman who codes, building in public, industry disruption, e
 ---
 
 ##  Related Docs
-- [`PLAN.md`](/PLAN.md)  Unified permissions/template plan (complete)
+- [Unified permissions plan (archived)  Unified permissions/template plan (complete)
 - [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md)  Detailed billing roadmap (Phases 1-5 done)
 - [`docs/development/CHANGELOG.md`](docs/development/CHANGELOG.md)  Version history
 - [`docs/development/FUTURE_FEATURES.md`](docs/development/FUTURE_FEATURES.md)  Feature backlog

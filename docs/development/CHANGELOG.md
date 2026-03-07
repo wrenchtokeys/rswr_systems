@@ -216,7 +216,7 @@ Major architectural overhaul: one permission system, one base template, fixed si
 - Authenticated users being redirected to landing page instead of their portal
 
 #### Details
-- Full plan and rationale: [`PLAN.md`](/PLAN.md)
+- Full plan and rationale: [Unified permissions plan (archived)
 - Steps 1-5 completed in one day. Step 6 (deploy to AWS) pending.
 
 ---
