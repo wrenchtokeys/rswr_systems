@@ -92,6 +92,9 @@ def customer_list(request):
         customers = Customer.objects.all()
         if tenant:
             customers = customers.filter(tenant=tenant)
+
+        else:
+            customers = customers.none()
         customers = customers.order_by('name')
     else:
         if hasattr(request.user, 'technician'):
@@ -99,10 +102,16 @@ def customer_list(request):
             repair_qs = Repair.objects.filter(technician=technician)
             if tenant:
                 repair_qs = repair_qs.filter(tenant=tenant)
+
+            else:
+                repair_qs = repair_qs.none()
             customer_ids = repair_qs.values_list('customer_id', flat=True).distinct()
             customers = Customer.objects.filter(id__in=customer_ids)
             if tenant:
                 customers = customers.filter(tenant=tenant)
+
+            else:
+                customers = customers.none()
             customers = customers.order_by('name')
         else:
             customers = Customer.objects.none()
@@ -143,6 +152,9 @@ def customer_details(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
     # Determine if user is admin/owner/manager (can see all repairs)
@@ -167,6 +179,9 @@ def customer_details(request, customer_id):
     if tenant:
         repairs = repairs.filter(tenant=tenant)
 
+    else:
+        repairs = repairs.none()
+
     unit_search = request.GET.get('unit_search', '')
     if unit_search:
         repairs = repairs.filter(unit_number__icontains=unit_search)
@@ -180,6 +195,9 @@ def customer_details(request, customer_id):
     available_technicians = Technician.objects.filter(is_active=True)
     if tenant:
         available_technicians = available_technicians.filter(tenant=tenant)
+
+    else:
+        available_technicians = available_technicians.none()
     available_technicians = available_technicians.order_by('user__first_name')
 
     # Portal access info (for admins/managers)
@@ -216,6 +234,9 @@ def unit_details(request, customer_id, unit_number):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
     # Get repairs for this unit
@@ -234,6 +255,9 @@ def unit_details(request, customer_id, unit_number):
     ).select_related('customer', 'technician__user')
     if tenant:
         repairs = repairs.filter(tenant=tenant)
+
+    else:
+        repairs = repairs.none()
     
     # Get replacements for this unit
     from apps.technician_portal.models import Replacement
@@ -249,6 +273,10 @@ def unit_details(request, customer_id, unit_number):
     
     if tenant:
         replacements = replacements.filter(tenant=tenant)
+
+    
+    else:
+        replacements = replacements.none()
     replacements = replacements.select_related('customer', 'technician__user')
 
     return render(request, 'technician_portal/unit_details.html', {
@@ -267,6 +295,9 @@ def mark_unit_replaced(request, customer_id, unit_number):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
     # Get or create the unit repair count record
@@ -335,6 +366,9 @@ def update_primary_technician(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
     tech_id = request.POST.get('primary_technician')
@@ -343,6 +377,9 @@ def update_primary_technician(request, customer_id):
         tech_qs = Technician.objects.filter(is_active=True)
         if tenant:
             tech_qs = tech_qs.filter(tenant=tenant)
+
+        else:
+            tech_qs = tech_qs.none()
         tech = get_object_or_404(tech_qs, id=tech_id)
         customer.primary_technician = tech
         customer.save(update_fields=['primary_technician'])
@@ -371,6 +408,9 @@ def edit_customer(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
     from apps.technician_portal.forms import CustomerEditForm
@@ -404,6 +444,9 @@ def delete_customer(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
     # Check for related repairs
@@ -441,6 +484,9 @@ def send_customer_invitation(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
     email = request.POST.get('email', '').strip()

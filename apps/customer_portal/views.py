@@ -1390,6 +1390,8 @@ def get_available_technician(tenant=None):
     technicians = Technician.objects.all()
     if tenant:
         technicians = technicians.filter(tenant=tenant)
+    else:
+        technicians = technicians.none()
     technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')

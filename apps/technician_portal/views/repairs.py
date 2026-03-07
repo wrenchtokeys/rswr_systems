@@ -53,6 +53,8 @@ def repair_list(request):
     # Tenant scoping
     if tenant:
         repairs = repairs.filter(tenant=tenant)
+    else:
+        repairs = repairs.none()
 
     # Optimize query with select_related
     repairs = repairs.select_related('customer', 'technician__user').order_by('-service_date')
@@ -167,6 +169,8 @@ def repair_detail(request, repair_id):
     qs = Repair.objects.select_related('customer', 'technician__user')
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     can_update_status = False
@@ -407,6 +411,8 @@ def update_repair(request, repair_id):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)
+        else:
+            qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
         logger.info(f"UPDATE_REPAIR: Got repair #{repair.id}, technician_id={repair.technician_id}")
 
@@ -426,6 +432,8 @@ def update_repair(request, repair_id):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)
+        else:
+            qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
 
     if request.method == 'POST':
@@ -528,6 +536,8 @@ def update_queue_status(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     if not is_tenant_admin(request.user):
@@ -637,6 +647,8 @@ def assign_repair(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     if repair.queue_status != 'REQUESTED':
@@ -723,6 +735,8 @@ def reassign_to_self(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     if not is_tenant_admin(request.user):
@@ -786,6 +800,8 @@ def check_existing_repair(request):
     )
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     existing_repair = qs.first()
 
     if existing_repair:
@@ -838,6 +854,8 @@ def bulk_repair_action(request):
 
         if tenant:
             repairs = repairs.filter(tenant=tenant)
+        else:
+            repairs = repairs.none()
 
         if not repairs.exists():
             messages.error(request, "No valid repairs found to process.")
@@ -931,6 +949,8 @@ def tech_collect_payment(request, repair_id):
     qs = Repair.objects.select_related('customer')
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     # Find the invoice for this repair

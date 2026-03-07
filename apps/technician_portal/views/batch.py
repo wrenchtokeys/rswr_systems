@@ -143,6 +143,9 @@ def create_multi_break_repair(request):
                 customer_qs = Customer.objects.all()
                 if tenant:
                     customer_qs = customer_qs.filter(tenant=tenant)
+
+                else:
+                    customer_qs = customer_qs.none()
                 customer = customer_qs.get(id=customer_id)
                 logger.info(f"[MULTI-BREAK] Customer found: {customer.name} (ID: {customer.id})")
             except Customer.DoesNotExist:
@@ -351,6 +354,9 @@ def create_multi_break_repair(request):
         customer_qs = Customer.objects.all()
         if tenant:
             customer_qs = customer_qs.filter(tenant=tenant)
+
+        else:
+            customer_qs = customer_qs.none()
         return render(request, 'technician_portal/multi_break_repair_form.html', {
             'is_admin': is_tenant_admin(request.user),
             'customers': customer_qs.order_by('name'),
@@ -366,6 +372,9 @@ def convert_to_batch(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     original_repair = get_object_or_404(qs, id=repair_id)
 
     if not is_tenant_admin(request.user):

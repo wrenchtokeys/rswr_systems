@@ -80,8 +80,8 @@ class APIViewSetTenantScopingTests(TestCase):
         self.assertEqual(qs.count(), 1)
         self.assertEqual(qs.first().user, self.user_a)
 
-    def test_viewset_no_tenant_returns_all(self):
-        """Without tenant context (superuser), returns all."""
+    def test_viewset_no_tenant_returns_empty(self):
+        """Without tenant context, returns empty queryset (defense in depth)."""
         from apps.technician_portal.api.views import CustomerViewSet
 
         request = self.factory.get('/api/customers/')
@@ -94,7 +94,7 @@ class APIViewSetTenantScopingTests(TestCase):
         viewset.format_kwarg = None
 
         qs = viewset.get_queryset()
-        self.assertEqual(qs.count(), 2)
+        self.assertEqual(qs.count(), 0)
 
 
 @override_settings(**TEST_OVERRIDES)

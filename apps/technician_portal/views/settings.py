@@ -49,6 +49,9 @@ def manager_settings_dashboard(request):
     viscosity_qs = ViscosityRecommendation.objects.filter(is_active=True)
     if tenant:
         viscosity_qs = viscosity_qs.filter(tenant=tenant)
+
+    else:
+        viscosity_qs = viscosity_qs.none()
     viscosity_rules_count = viscosity_qs.count()
 
     team_count = 0
@@ -76,6 +79,9 @@ def manage_viscosity_rules(request):
     rules = ViscosityRecommendation.objects.all()
     if tenant:
         rules = rules.filter(tenant=tenant)
+
+    else:
+        rules = rules.none()
     rules = rules.order_by('display_order', 'id')
     rules_with_position = [
         {
@@ -148,6 +154,9 @@ def create_viscosity_rule(request):
         order_qs = ViscosityRecommendation.objects.all()
         if tenant:
             order_qs = order_qs.filter(tenant=tenant)
+
+        else:
+            order_qs = order_qs.none()
         max_order = order_qs.aggregate(
             max_order=models.Max('display_order')
         )['max_order']
@@ -317,6 +326,9 @@ def team_overview(request):
         recent_qs = Repair.objects.filter(technician=tech)
         if tenant:
             recent_qs = recent_qs.filter(tenant=tenant)
+
+        else:
+            recent_qs = recent_qs.none()
 
         team_stats.append({
             'technician': tech,

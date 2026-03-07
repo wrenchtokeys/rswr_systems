@@ -320,6 +320,9 @@ def reward_history(request):
     reward_opts_qs = RewardOption.objects.all()
     if tenant:
         reward_opts_qs = reward_opts_qs.filter(tenant=tenant)
+
+    else:
+        reward_opts_qs = reward_opts_qs.none()
     reward_opts_qs = reward_opts_qs.order_by('points_required')
 
     context = {
@@ -463,6 +466,9 @@ def referral_rewards(request):
     reward_options_qs = RewardOption.objects.all()
     if tenant:
         reward_options_qs = reward_options_qs.filter(tenant=tenant)
+
+    else:
+        reward_options_qs = reward_options_qs.none()
     reward_options = reward_options_qs.order_by('points_required')[:6]
     
     # Get redemption history - limit to 5 recent for better display

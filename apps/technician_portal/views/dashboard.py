@@ -50,6 +50,9 @@ def technician_dashboard(request):
             qs = Repair.objects.filter(queue_status='REQUESTED')
             if tenant:
                 qs = qs.filter(tenant=tenant)
+
+            else:
+                qs = qs.none()
             customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-service_date')
         else:
             customer_requested_repairs = Repair.objects.none()
@@ -180,12 +183,18 @@ def technician_dashboard(request):
         ).order_by('priority', 'service_date')
         if tenant:
             queue_qs = queue_qs.filter(tenant=tenant)
+
+        else:
+            queue_qs = queue_qs.none()
         todays_queue = list(queue_qs[:20])
     else:
         # For admins without a technician profile
         qs = Repair.objects.filter(queue_status='REQUESTED')
         if tenant:
             qs = qs.filter(tenant=tenant)
+
+        else:
+            qs = qs.none()
         customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-service_date')
 
         assigned_redemptions = []
@@ -223,6 +232,9 @@ def technician_dashboard(request):
         redemption_qs = RewardRedemption.objects.filter(status='PENDING')
         if tenant:
             repair_qs = repair_qs.filter(tenant=tenant)
+
+        else:
+            repair_qs = repair_qs.none()
             customer_qs = customer_qs.filter(tenant=tenant)
             tech_qs = tech_qs.filter(tenant=tenant)
             redemption_qs = redemption_qs.filter(

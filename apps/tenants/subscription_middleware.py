@@ -75,14 +75,24 @@ class SubscriptionEnforcementMiddleware:
         if any(path.startswith(p) for p in EXEMPT_PREFIXES + STATIC_PREFIXES):
             return self.get_response(request)
 
-        # Skip if no tenant context (public pages, superadmin)
-        tenant = getattr(request, 'tenant', None)
-        if not tenant:
-            return self.get_response(request)
-
-        # Superusers bypass subscription checks
+        # Superusers bypass all checks
         if request.user.is_superuser:
             return self.get_response(request)
+
+        # If authenticated + non-exempt + no tenant → block access
+        # This prevents data leaks when tenant context is missing
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            logger.warning(
+                "Authenticated user %s has no tenant context on %s",
+                request.user, path
+            )
+            if request.path.startswith('/api/'):
+                return JsonResponse({
+                    'error': 'No tenant context. Contact support.',
+                }, status=403)
+            messages.error(request, "Unable to determine your shop. Please log in again.")
+            return redirect('/login/')
 
         # Check subscription status
         status = tenant.subscription_status
