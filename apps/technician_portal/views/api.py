@@ -66,7 +66,8 @@ def get_viscosity_suggestion(request):
 
     try:
         temp_value = float(temperature)
-        recommendation = ViscosityRecommendation.get_recommendation_for_temperature(temp_value)
+        tenant = getattr(request, 'tenant', None)
+        recommendation = ViscosityRecommendation.get_recommendation_for_temperature(temp_value, tenant=tenant)
 
         if recommendation:
             return JsonResponse({

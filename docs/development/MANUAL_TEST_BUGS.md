@@ -415,3 +415,28 @@ Comprehensive audit of every `.objects.` query across all Python files.
 - **Root cause:** Subscription middleware blocked `/owner/billing/` (the upgrade destination). Middleware redirected to `/pricing/`, but pricing page buttons link to `/owner/billing/` → infinite redirect loop.
 - **Fix:** Added `/owner/billing/` to `EXEMPT_PREFIXES` in `SubscriptionEnforcementMiddleware`. Users must be able to reach billing to pay.
 - **Location:** `apps/tenants/subscription_middleware.py`
+
+---
+
+## Round 4 — Retest Audit Findings (March 7, 2026)
+
+Found during comprehensive retest of all 37 bugs. Deep `.objects.all()` audit
+revealed 2 models that were never tenant-scoped.
+
+### BUG-038: ViscosityRecommendation has no tenant field — cross-tenant rule leakage
+- **Severity:** MEDIUM — Cross-tenant admin data leakage
+- **Status:** ✅ FIXED
+- **Found during retest:** `ViscosityRecommendation` model had NO `tenant` ForeignKey. All viscosity rules were globally shared across all tenants. One tenant's managers could see/edit another tenant's rules.
+- **Location:** `apps/technician_portal/models.py` (ViscosityRecommendation model), `apps/technician_portal/views/settings.py` (7 query locations), `apps/technician_portal/views/api.py` (viscosity suggestion endpoint)
+- **Root cause:** Model created before multi-tenant architecture was fully implemented
+- **Fix:** Added `tenant` ForeignKey to ViscosityRecommendation. Added tenant filtering to all 7 query locations in settings views, the create endpoint (assigns tenant on create), and the suggestion API endpoint. Data migration backfills existing rules to default tenant.
+- **Tests:** `tests/test_tenant_isolation_round4.py` — ViscosityRecommendationTenantTests (3 tests)
+
+### BUG-039: RewardOption has no tenant field — cross-tenant reward exposure
+- **Severity:** HIGH — Cross-tenant customer-facing data leak
+- **Status:** ✅ FIXED
+- **Found during retest:** `RewardOption` model had NO `tenant` ForeignKey. All reward options were globally shared across all tenants. Customers from one tenant could see another tenant's custom rewards.
+- **Location:** `apps/rewards_referrals/models.py` (RewardOption model), `apps/rewards_referrals/services.py:217` (get_reward_options), `apps/rewards_referrals/views.py:319,457` (reward catalog views)
+- **Root cause:** Model created before multi-tenant architecture was fully implemented
+- **Fix:** Added `tenant` ForeignKey to RewardOption. Updated `get_reward_options()` service to accept tenant param. Added tenant filtering to all 3 view locations. Data migration backfills existing options to default tenant.
+- **Tests:** `tests/test_tenant_isolation_round4.py` — RewardOptionTenantTests (3 tests)

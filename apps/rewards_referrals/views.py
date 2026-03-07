@@ -315,15 +315,19 @@ def reward_history(request):
     redemptions = RewardService.get_reward_redemptions(customer_user)
     points = RewardService.get_reward_balance(customer_user)
     
-    # Get reward options
-    reward_options = RewardOption.objects.all().order_by('points_required')
-    
+    # Get reward options scoped to tenant
+    tenant = getattr(request, 'tenant', None)
+    reward_opts_qs = RewardOption.objects.all()
+    if tenant:
+        reward_opts_qs = reward_opts_qs.filter(tenant=tenant)
+    reward_opts_qs = reward_opts_qs.order_by('points_required')
+
     context = {
         'redemptions': redemptions,
         'points': points,
-        'reward_options': reward_options
+        'reward_options': reward_opts_qs
     }
-    
+
     return render(request, 'customer_portal/referrals/rewards.html', context)
 
 @login_required
@@ -340,7 +344,8 @@ def reward_options(request):
     Returns:
         JsonResponse or HttpResponse: Available reward options
     """
-    options = RewardService.get_reward_options().order_by('points_required')
+    tenant = getattr(request, 'tenant', None)
+    options = RewardService.get_reward_options(tenant=tenant).order_by('points_required')
     
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         # Return JSON for API requests
@@ -453,8 +458,12 @@ def referral_rewards(request):
     else:
         referrals = []
     
-    # Get reward options - limit to 6 for better display on mobile
-    reward_options = RewardOption.objects.all().order_by('points_required')[:6]
+    # Get reward options scoped to tenant - limit to 6 for better display on mobile
+    tenant = getattr(request, 'tenant', None)
+    reward_options_qs = RewardOption.objects.all()
+    if tenant:
+        reward_options_qs = reward_options_qs.filter(tenant=tenant)
+    reward_options = reward_options_qs.order_by('points_required')[:6]
     
     # Get redemption history - limit to 5 recent for better display
     redemptions = RewardRedemption.objects.filter(

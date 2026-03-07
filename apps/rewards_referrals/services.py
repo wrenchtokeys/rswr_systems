@@ -202,19 +202,23 @@ class RewardService:
         return reward
 
     @staticmethod
-    def get_reward_options(active_only=True):
+    def get_reward_options(active_only=True, tenant=None):
         """
-        Get all available reward options.
-        
+        Get available reward options, scoped to tenant.
+
         Args:
             active_only (bool): Whether to return only active reward options
-            
+            tenant: Tenant instance to filter by
+
         Returns:
             QuerySet: Reward options
         """
+        qs = RewardOption.objects.all()
+        if tenant:
+            qs = qs.filter(tenant=tenant)
         if active_only:
-            return RewardOption.objects.filter(is_active=True)
-        return RewardOption.objects.all()
+            qs = qs.filter(is_active=True)
+        return qs
     
     @staticmethod
     def get_reward_redemptions(customer_user):

@@ -36,7 +36,11 @@ def manager_settings_dashboard(request):
     """Main manager settings dashboard with navigation tiles."""
     manager = request.user.technician if hasattr(request.user, 'technician') else None
 
-    viscosity_rules_count = ViscosityRecommendation.objects.filter(is_active=True).count()
+    tenant = getattr(request, 'tenant', None)
+    viscosity_qs = ViscosityRecommendation.objects.filter(is_active=True)
+    if tenant:
+        viscosity_qs = viscosity_qs.filter(tenant=tenant)
+    viscosity_rules_count = viscosity_qs.count()
 
     team_count = 0
     if manager:
@@ -59,7 +63,11 @@ def manage_viscosity_rules(request):
     """Manage viscosity recommendation rules with card-based interface."""
     manager = request.user.technician if hasattr(request.user, 'technician') else None
 
-    rules = ViscosityRecommendation.objects.all().order_by('display_order', 'id')
+    tenant = getattr(request, 'tenant', None)
+    rules = ViscosityRecommendation.objects.all()
+    if tenant:
+        rules = rules.filter(tenant=tenant)
+    rules = rules.order_by('display_order', 'id')
     rules_with_position = [
         {
             'rule': rule,
@@ -87,7 +95,11 @@ def get_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        tenant = getattr(request, 'tenant', None)
+        lookup = {'id': rule_id}
+        if tenant:
+            lookup['tenant'] = tenant
+        rule = get_object_or_404(ViscosityRecommendation, **lookup)
 
         return JsonResponse({
             'success': True,
@@ -127,12 +139,17 @@ def create_viscosity_rule(request):
                     'error': f'Missing required field: {field}'
                 }, status=400)
 
-        max_order = ViscosityRecommendation.objects.aggregate(
+        tenant = getattr(request, 'tenant', None)
+        order_qs = ViscosityRecommendation.objects.all()
+        if tenant:
+            order_qs = order_qs.filter(tenant=tenant)
+        max_order = order_qs.aggregate(
             max_order=models.Max('display_order')
         )['max_order']
         next_order = (max_order or 0) + 10
 
         rule = ViscosityRecommendation.objects.create(
+            tenant=tenant,
             name=data['name'],
             min_temperature=data.get('min_temperature') or None,
             max_temperature=data.get('max_temperature') or None,
@@ -173,7 +190,11 @@ def update_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        tenant = getattr(request, 'tenant', None)
+        lookup = {'id': rule_id}
+        if tenant:
+            lookup['tenant'] = tenant
+        rule = get_object_or_404(ViscosityRecommendation, **lookup)
         data = json.loads(request.body)
 
         if 'name' in data:
@@ -225,7 +246,11 @@ def delete_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        tenant = getattr(request, 'tenant', None)
+        lookup = {'id': rule_id}
+        if tenant:
+            lookup['tenant'] = tenant
+        rule = get_object_or_404(ViscosityRecommendation, **lookup)
         rule_name = rule.name
         rule.delete()
 
@@ -247,7 +272,11 @@ def toggle_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        tenant = getattr(request, 'tenant', None)
+        lookup = {'id': rule_id}
+        if tenant:
+            lookup['tenant'] = tenant
+        rule = get_object_or_404(ViscosityRecommendation, **lookup)
         rule.is_active = not rule.is_active
         rule.save()
 
