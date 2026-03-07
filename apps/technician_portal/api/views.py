@@ -40,7 +40,7 @@ class TechnicianViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     Provides CRUD operations for technician management.
     Only authenticated admin users can access these endpoints.
     """
-    require_tenant = False
+    require_tenant = True
     queryset = Technician.objects.select_related('user').all()
     serializer_class = TechnicianSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
@@ -79,7 +79,7 @@ class CustomerViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     Provides CRUD operations for customer management.
     Only authenticated admin users can access these endpoints.
     """
-    require_tenant = False
+    require_tenant = True
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
@@ -119,7 +119,7 @@ class RepairViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     When creating a repair, it will be automatically associated with the authenticated technician.
     Only authenticated admin users can access these endpoints.
     """
-    require_tenant = False
+    require_tenant = True
     queryset = Repair.objects.select_related(
         'technician__user', 'customer'
     ).prefetch_related('applied_rewards').all()
@@ -164,7 +164,7 @@ class ReplacementViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     Provides CRUD operations for replacement management.
     Only authenticated admin users can access these endpoints.
     """
-    require_tenant = False
+    require_tenant = True
     queryset = Replacement.objects.select_related(
         'technician__user', 'customer'
     ).all()

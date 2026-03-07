@@ -91,7 +91,10 @@ class SubscriptionEnforcementMiddleware:
                 return JsonResponse({
                     'error': 'No tenant context. Contact support.',
                 }, status=403)
-            messages.error(request, "Unable to determine your shop. Please log in again.")
+            try:
+                messages.error(request, "Unable to determine your shop. Please log in again.")
+            except Exception:
+                pass
             return redirect('/login/')
 
         # Check subscription status

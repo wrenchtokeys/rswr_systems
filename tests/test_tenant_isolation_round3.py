@@ -80,8 +80,9 @@ class APIViewSetTenantScopingTests(TestCase):
         self.assertEqual(qs.count(), 1)
         self.assertEqual(qs.first().user, self.user_a)
 
-    def test_viewset_no_tenant_returns_empty(self):
-        """Without tenant context, returns empty queryset (defense in depth)."""
+    def test_viewset_no_tenant_raises_permission_denied(self):
+        """Without tenant context, raises PermissionDenied."""
+        from django.core.exceptions import PermissionDenied
         from apps.technician_portal.api.views import CustomerViewSet
 
         request = self.factory.get('/api/customers/')
@@ -93,8 +94,8 @@ class APIViewSetTenantScopingTests(TestCase):
         viewset.kwargs = {}
         viewset.format_kwarg = None
 
-        qs = viewset.get_queryset()
-        self.assertEqual(qs.count(), 0)
+        with self.assertRaises(PermissionDenied):
+            viewset.get_queryset()
 
 
 @override_settings(**TEST_OVERRIDES)
