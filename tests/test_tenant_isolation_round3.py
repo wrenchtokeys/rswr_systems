@@ -7,8 +7,6 @@ and customer portal profile creation.
 Author: Amelia (Clawdbot AI)
 """
 
-from decimal import Decimal
-
 from django.contrib.auth.models import User, Group
 from django.test import TestCase, RequestFactory, override_settings
 
@@ -16,27 +14,12 @@ from apps.billing.models import Invoice, TaxRate
 from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from apps.technician_portal.models import Technician, Repair
 from core.models import Customer
+from tests.helpers import make_tenant as _make_tenant
 
 TEST_OVERRIDES = {
     'ALLOWED_HOSTS': ['*'],
     'CACHES': {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
 }
-
-
-def _make_tenant(name, username):
-    plan, _ = SubscriptionPlan.objects.get_or_create(
-        slug='trial',
-        defaults={'name': 'Trial', 'monthly_price': Decimal('0.00'),
-                  'trial_days': 30, 'display_order': 0},
-    )
-    user = User.objects.create_user(username, f'{username}@test.com', 'pass')
-    tenant = Tenant.objects.create(
-        name=name, slug=name.lower().replace(' ', '-'),
-        subdomain=name.lower().replace(' ', '-'),
-        owner=user, subscription_plan=plan,
-    )
-    TenantMembership.objects.create(tenant=tenant, user=user, role='owner')
-    return user, tenant
 
 
 @override_settings(**TEST_OVERRIDES)

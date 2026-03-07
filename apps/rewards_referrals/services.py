@@ -384,14 +384,10 @@ class RewardFulfillmentService:
         from apps.technician_portal.models import Technician, Repair
         
         # Get active technicians scoped to the redemption's tenant
-        tenant = getattr(
-            getattr(
-                getattr(redemption, 'reward', None),
-                'customer_user', None
-            ),
-            'customer', None
-        )
-        tenant = getattr(tenant, 'tenant', None) if tenant else None
+        try:
+            tenant = redemption.reward.customer_user.customer.tenant
+        except AttributeError:
+            tenant = None
         technicians = Technician.objects.all()
         if tenant:
             technicians = technicians.filter(tenant=tenant)

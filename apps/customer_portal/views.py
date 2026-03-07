@@ -215,21 +215,23 @@ def profile_creation(request):
     # Check if user already has a CustomerUser profile
     if CustomerUser.objects.filter(user=request.user).exists():
         return redirect('customer_dashboard')
-        
+
+    tenant = getattr(request, 'tenant', None)
+    tenant_customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
+
     if request.method == 'POST':
         # Process the form submission
         is_new_company = request.POST.get('is_new_company') == 'yes'
-        
+
         if is_new_company:
             # Create a new customer
             company_name = request.POST.get('company_name')
             company_email = request.POST.get('company_email')
             company_phone = request.POST.get('company_phone')
             company_address = request.POST.get('company_address')
-            
+
             try:
                 # Create new customer — associate with tenant
-                tenant = getattr(request, 'tenant', None)
                 customer = Customer.objects.create(
                     name=company_name,
                     email=company_email,
@@ -239,21 +241,15 @@ def profile_creation(request):
                 )
             except Exception as e:
                 messages.error(request, f"Error creating company: {str(e)}")
-                tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
-                return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+                return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
         else:
             # Use existing customer
             customer_id = request.POST.get('customer')
             try:
-                tenant = getattr(request, 'tenant', None)
-                customer_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
-                customer = customer_qs.get(id=customer_id)
+                customer = tenant_customers.get(id=customer_id)
             except Customer.DoesNotExist:
                 messages.error(request, "Selected company does not exist.")
-                tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
-                return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+                return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
         
         # Create CustomerUser record
         try:
@@ -292,13 +288,7 @@ def profile_creation(request):
         except Exception as e:
             messages.error(request, f"Error creating profile: {str(e)}")
     
-    # Get all customers for the dropdown — scoped to tenant (required)
-    tenant = getattr(request, 'tenant', None)
-    if tenant:
-        customers = Customer.objects.filter(tenant=tenant)
-    else:
-        customers = Customer.objects.none()
-    return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+    return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
 
 @customer_required
 def customer_repairs(request):

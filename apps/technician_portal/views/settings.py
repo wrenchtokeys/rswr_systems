@@ -18,6 +18,15 @@ from apps.technician_portal.decorators import technician_required, manager_requi
 logger = logging.getLogger(__name__)
 
 
+def _get_viscosity_rule_or_404(request, rule_id):
+    """Fetch a ViscosityRecommendation scoped to the request's tenant."""
+    tenant = getattr(request, 'tenant', None)
+    lookup = {'id': rule_id}
+    if tenant:
+        lookup['tenant'] = tenant
+    return get_object_or_404(ViscosityRecommendation, **lookup)
+
+
 def get_ordinal_suffix(n):
     """
     Return the ordinal suffix for a number (st, nd, rd, th).
@@ -95,11 +104,7 @@ def get_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        tenant = getattr(request, 'tenant', None)
-        lookup = {'id': rule_id}
-        if tenant:
-            lookup['tenant'] = tenant
-        rule = get_object_or_404(ViscosityRecommendation, **lookup)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
 
         return JsonResponse({
             'success': True,
@@ -190,11 +195,7 @@ def update_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        tenant = getattr(request, 'tenant', None)
-        lookup = {'id': rule_id}
-        if tenant:
-            lookup['tenant'] = tenant
-        rule = get_object_or_404(ViscosityRecommendation, **lookup)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
         data = json.loads(request.body)
 
         if 'name' in data:
@@ -246,11 +247,7 @@ def delete_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        tenant = getattr(request, 'tenant', None)
-        lookup = {'id': rule_id}
-        if tenant:
-            lookup['tenant'] = tenant
-        rule = get_object_or_404(ViscosityRecommendation, **lookup)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
         rule_name = rule.name
         rule.delete()
 
@@ -272,11 +269,7 @@ def toggle_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        tenant = getattr(request, 'tenant', None)
-        lookup = {'id': rule_id}
-        if tenant:
-            lookup['tenant'] = tenant
-        rule = get_object_or_404(ViscosityRecommendation, **lookup)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
         rule.is_active = not rule.is_active
         rule.save()
 

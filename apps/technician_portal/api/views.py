@@ -2,19 +2,9 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from apps.technician_portal.models import Technician, Repair, Replacement
+from apps.tenants.mixins import TenantQuerysetMixin
 from core.models import Customer
 from .serializers import TechnicianSerializer, RepairSerializer, ReplacementSerializer, CustomerSerializer
-
-
-class TenantScopedViewSetMixin:
-    """Mixin that scopes querysets to the request's tenant."""
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        tenant = getattr(self.request, 'tenant', None)
-        if tenant:
-            qs = qs.filter(tenant=tenant)
-        return qs
 
 
 @extend_schema_view(
@@ -43,13 +33,14 @@ class TenantScopedViewSetMixin:
         description="Remove a technician from the system."
     ),
 )
-class TechnicianViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+class TechnicianViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing technician profiles.
-    
+
     Provides CRUD operations for technician management.
     Only authenticated admin users can access these endpoints.
     """
+    require_tenant = False
     queryset = Technician.objects.select_related('user').all()
     serializer_class = TechnicianSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
@@ -81,13 +72,14 @@ class TechnicianViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         description="Remove a customer from the system."
     ),
 )
-class CustomerViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+class CustomerViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing customer profiles.
-    
+
     Provides CRUD operations for customer management.
     Only authenticated admin users can access these endpoints.
     """
+    require_tenant = False
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
@@ -119,14 +111,15 @@ class CustomerViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         description="Remove a repair record from the system."
     ),
 )
-class RepairViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+class RepairViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing repair records.
-    
+
     Provides CRUD operations for repair management.
     When creating a repair, it will be automatically associated with the authenticated technician.
     Only authenticated admin users can access these endpoints.
     """
+    require_tenant = False
     queryset = Repair.objects.select_related(
         'technician__user', 'customer'
     ).prefetch_related('applied_rewards').all()
@@ -164,13 +157,14 @@ class RepairViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         description="Remove a replacement record from the system."
     ),
 )
-class ReplacementViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
+class ReplacementViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing glass replacement records.
-    
+
     Provides CRUD operations for replacement management.
     Only authenticated admin users can access these endpoints.
     """
+    require_tenant = False
     queryset = Replacement.objects.select_related(
         'technician__user', 'customer'
     ).all()
