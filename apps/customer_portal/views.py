@@ -2564,10 +2564,14 @@ def accept_customer_invitation(request, token):
             return redirect('customer_dashboard')
         
         # Link existing user to customer
+        # Not primary — they're accepting an invite, primary already exists
+        has_primary = CustomerUser.objects.filter(
+            customer=invitation.customer, is_primary_contact=True
+        ).exists()
         CustomerUser.objects.create(
             user=request.user,
             customer=invitation.customer,
-            is_primary_contact=True
+            is_primary_contact=not has_primary
         )
         invitation.mark_accepted(request.user)
         messages.success(request, f"Welcome! You now have access to {invitation.customer.name}.")
@@ -2617,10 +2621,13 @@ def accept_customer_invitation(request, token):
                 )
                 
                 # Create CustomerUser link
+                has_primary = CustomerUser.objects.filter(
+                    customer=invitation.customer, is_primary_contact=True
+                ).exists()
                 CustomerUser.objects.create(
                     user=user,
                     customer=invitation.customer,
-                    is_primary_contact=True
+                    is_primary_contact=not has_primary
                 )
                 
                 # Mark invitation as accepted
