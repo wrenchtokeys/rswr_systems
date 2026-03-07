@@ -37,6 +37,7 @@ EXEMPT_PREFIXES = (
     '/payment-complete',
     '/payment-cancelled',
     '/owner/billing/',    # Must be accessible to upgrade/reactivate
+    '/app/invite/',       # Customer invitation acceptance (may be unauthenticated)
 )
 
 # Paths for static/media
