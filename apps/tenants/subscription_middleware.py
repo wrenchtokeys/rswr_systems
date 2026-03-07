@@ -36,6 +36,7 @@ EXEMPT_PREFIXES = (
     '/clawdbot/',
     '/payment-complete',
     '/payment-cancelled',
+    '/owner/billing/',    # Must be accessible to upgrade/reactivate
 )
 
 # Paths for static/media
