@@ -205,6 +205,7 @@ class CustomerInvitation(models.Model):
     email = models.EmailField(help_text="Email address to send the invitation to")
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
+    is_primary_contact = models.BooleanField(default=False, help_text="Set this user as the primary contact for the customer")
     token = models.CharField(max_length=64, unique=True, editable=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     

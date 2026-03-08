@@ -492,6 +492,7 @@ def send_customer_invitation(request, customer_id):
     email = request.POST.get('email', '').strip()
     first_name = request.POST.get('first_name', '').strip()
     last_name = request.POST.get('last_name', '').strip()
+    is_primary = request.POST.get('is_primary_contact') == '1'
     
     if not email:
         messages.error(request, "Email address is required.")
@@ -505,7 +506,8 @@ def send_customer_invitation(request, customer_id):
             email=email,
             invited_by=request.user,
             first_name=first_name,
-            last_name=last_name
+            last_name=last_name,
+            is_primary_contact=is_primary,
         )
         
         if CustomerInvitationService.send_invitation_email(invitation, request):
@@ -582,4 +584,41 @@ def cancel_customer_invitation(request, invitation_id):
     else:
         messages.error(request, "Could not cancel this invitation.")
     
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def set_primary_contact(request, customer_id, cu_id):
+    """Set a customer portal user as the primary contact."""
+    from apps.customer_portal.models import CustomerUser
+
+    tenant = getattr(request, 'tenant', None)
+
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can change the primary contact.")
+        return redirect('customer_detail', customer_id=customer_id)
+
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
+    customer = get_object_or_404(qs, id=customer_id)
+
+    cu = get_object_or_404(CustomerUser, id=cu_id, customer=customer)
+
+    # Demote all existing primaries for this customer
+    CustomerUser.objects.filter(
+        customer=customer, is_primary_contact=True
+    ).update(is_primary_contact=False)
+
+    # Promote the selected user
+    cu.is_primary_contact = True
+    cu.save(update_fields=['is_primary_contact'])
+
+    messages.success(request, f"{cu.user.get_full_name() or cu.user.username} is now the primary contact.")
     return redirect('customer_detail', customer_id=customer_id)
