@@ -86,9 +86,9 @@ class TechnicianAdmin(admin.ModelAdmin):
         return render(request, 'admin/register_technician.html', {})
 
 class RepairAdmin(admin.ModelAdmin):
-    list_display = ['id', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
-    list_filter = ['queue_status', 'service_date', 'technician']
-    search_fields = ['customer__name', 'unit_number', 'damage_type', 'technician__user__username']
+    list_display = ['id', 'tenant', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
+    list_filter = ['tenant', 'queue_status', 'service_date', 'technician']
+    search_fields = ['customer__name', 'unit_number', 'damage_type', 'technician__user__username', 'tenant__name']
     readonly_fields = ['service_date']
     date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user']
@@ -137,9 +137,9 @@ class RepairAdmin(admin.ModelAdmin):
 
 
 class ReplacementAdmin(admin.ModelAdmin):
-    list_display = ['id', 'customer', 'unit_number', 'glass_position', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
-    list_filter = ['queue_status', 'service_date', 'technician', 'glass_position', 'requires_adas_calibration']
-    search_fields = ['customer__name', 'unit_number', 'nags_number', 'technician__user__username']
+    list_display = ['id', 'tenant', 'customer', 'unit_number', 'glass_position', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
+    list_filter = ['tenant', 'queue_status', 'service_date', 'technician', 'glass_position', 'requires_adas_calibration']
+    search_fields = ['customer__name', 'unit_number', 'nags_number', 'technician__user__username', 'tenant__name']
     readonly_fields = ['service_date']
     date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user']
@@ -188,9 +188,9 @@ class ReplacementAdmin(admin.ModelAdmin):
 
 
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ['name', 'email', 'phone', 'address', 'tax_exempt', 'get_primary_contact']
-    search_fields = ['name', 'email', 'phone']
-    list_filter = ['customer_type', 'tax_exempt']
+    list_display = ['name', 'tenant', 'email', 'phone', 'address', 'tax_exempt', 'get_primary_contact']
+    search_fields = ['name', 'email', 'phone', 'tenant__name']
+    list_filter = ['tenant', 'customer_type', 'tax_exempt']
     
     def get_primary_contact(self, obj):
         from apps.customer_portal.models import CustomerUser

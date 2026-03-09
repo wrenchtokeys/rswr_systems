@@ -98,17 +98,18 @@ def customer_dashboard(request):
             rebuild_unit_repair_counts(customer)
         
         # Get statistics for the customer dashboard
-        active_repairs = Repair.objects.filter(customer=customer).exclude(queue_status='COMPLETED').exclude(queue_status='DENIED').count()
-        completed_repairs = Repair.objects.filter(customer=customer, queue_status='COMPLETED').count()
-        pending_approval = Repair.objects.filter(customer=customer, queue_status='PENDING').count()
+        # Filter by both customer AND tenant to prevent cross-tenant leakage
+        tenant = customer.tenant
+        base_qs = Repair.objects.filter(customer=customer, tenant=tenant)
+        active_repairs = base_qs.exclude(queue_status='COMPLETED').exclude(queue_status='DENIED').count()
+        completed_repairs = base_qs.filter(queue_status='COMPLETED').count()
+        pending_approval = base_qs.filter(queue_status='PENDING').count()
         
         # Get total spent on completed repairs
-        total_spent = Repair.objects.filter(customer=customer, queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
+        total_spent = base_qs.filter(queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
         
         # Get recent repairs (limited to 5) for the customer
-        recent_repairs = Repair.objects.filter(
-            customer=customer
-        ).select_related('technician__user').order_by('-service_date')[:5]
+        recent_repairs = base_qs.select_related('technician__user').order_by('-service_date')[:5]
         
         # Check which of the recent repairs were customer-initiated
         repair_ids = [repair.id for repair in recent_repairs]
@@ -122,8 +123,8 @@ def customer_dashboard(request):
             repair.customer_initiated = repair.id in customer_initiated_approvals
         
         # Get repairs that are awaiting customer approval
-        repairs_awaiting_approval = Repair.objects.filter(
-            customer=customer, queue_status='PENDING'
+        repairs_awaiting_approval = base_qs.filter(
+            queue_status='PENDING'
         ).select_related('technician__user').order_by('-service_date')
 
         # Group batched repairs and separate individual repairs
@@ -305,7 +306,11 @@ def customer_repairs(request):
         date_to = request.GET.get('date_to', '')
 
         # Get all repairs for this customer with optimization
-        repairs = Repair.objects.filter(customer=customer).select_related('technician__user')
+        # Also filter by tenant to prevent cross-tenant data leakage
+        repairs = Repair.objects.filter(
+            customer=customer,
+            tenant=customer.tenant,
+        ).select_related('technician__user')
 
         # Apply status filters
         if status_filter != 'all':
