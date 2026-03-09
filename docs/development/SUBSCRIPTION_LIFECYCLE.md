@@ -129,7 +129,6 @@ Once Stripe subscription billing is live (Phase 7), add:
 
 ## Related Docs
 - [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) — Phase 7: SaaS subscription billing
-- [`FUTURE_FEATURES.md`](FUTURE_FEATURES.md) — Feature backlog
-- [`MANUAL_TEST_BUGS.md`](MANUAL_TEST_BUGS.md) — BUG-002 (trial enforcement, now fixed)
+- [`ROADMAP.md`](ROADMAP.md) — Project roadmap and feature backlog
 - `apps/tenants/subscription_middleware.py` — Current enforcement logic
 - `apps/tenants/models.py` — Tenant.is_trial_expired, trial_days_remaining

@@ -12,7 +12,6 @@ Complete documentation for the RS Systems notification system implementation. Th
 
 ## Quick Navigation
 
-- ** [Quick Start Guide](NOTIFICATION_README.md)** - 3-step setup
 - ** [Configuration Guide](NOTIFICATION_CONFIGURATION_GUIDE.md)** - Branding, settings, phone numbers
 - ** [Setup & Testing Guide](SETUP_AND_TESTING_GUIDE.md)** - Comprehensive setup and testing
 - ** [Phase 6 Testing Checklist](PHASE_6_TESTING_CHECKLIST.md)** - Ready to begin testing
@@ -43,8 +42,7 @@ Complete documentation for the RS Systems notification system implementation. Th
 
 ```
 docs/development/notifications/
- README.md (this file)                    # Documentation index
- NOTIFICATION_README.md                   # Quick start guide
+ README.md (this file)                    # Documentation index + quick start
  NOTIFICATION_CONFIGURATION_GUIDE.md      # Configuration reference
  SIMPLE_TESTING_GUIDE.md                  # Simple developer guide
  SETUP_AND_TESTING_GUIDE.md              # Comprehensive setup & testing
@@ -199,6 +197,14 @@ celery -A rs_systems beat --loglevel=info            # Terminal 3
 celery -A rs_systems flower                          # Terminal 4 (optional)
 ```
 
+### Verify Setup
+
+1. **Login**: http://localhost:8000/tech/login/ (use `testtech` / `testpass123`)
+2. **Dashboard**: Check notification bell icon in header
+3. **Preferences**: http://localhost:8000/tech/notifications/preferences/
+4. **Create test repair** in Django shell to trigger a notification
+5. **Refresh dashboard** — bell icon should show unread count
+
 ### Testing
 
 ```bash
@@ -214,6 +220,30 @@ python manage.py check                               # System validation
 ```
 
 **Full Testing Guide**: See [PHASE_6_TESTING_CHECKLIST.md](PHASE_6_TESTING_CHECKLIST.md)
+
+### Technician Portal URLs
+
+| Path | Description |
+|------|-------------|
+| `/tech/` | Dashboard with notification bell |
+| `/tech/notifications/preferences/` | Notification preferences |
+| `/tech/notifications/history/` | Notification history |
+| `/tech/notifications/<id>/mark-read/` | Mark single as read (POST) |
+| `/tech/notifications/mark-all-read/` | Mark all as read (POST) |
+| `/tech/notifications/unread-count/` | Unread count (GET, AJAX) |
+| `/tech/verify-email/` | Send email verification |
+| `/tech/verify-phone/` | Send phone verification |
+
+### Monitoring
+
+**Celery Flower**: http://localhost:5555 — view active tasks, success/failure rates, worker status.
+
+**Django Admin**: http://localhost:8000/admin/ — view notifications, delivery logs, templates, preferences.
+
+### Security Notes
+
+- **Development**: Emails print to console, SMS shows code in message, DEBUG=True
+- **Production**: Real emails via AWS SES, real SMS via AWS SNS, CSRF protection, HTTPS required, rate limiting
 
 ---
 
@@ -367,7 +397,6 @@ When updating notification system:
 ## Documentation Index
 
 ### Quick Reference
-- [Quick Start Guide](NOTIFICATION_README.md)
 - [Configuration Guide](NOTIFICATION_CONFIGURATION_GUIDE.md)
 - [Simple Testing Guide](SIMPLE_TESTING_GUIDE.md)
 - [Setup & Testing Guide](SETUP_AND_TESTING_GUIDE.md)

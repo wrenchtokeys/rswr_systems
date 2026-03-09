@@ -61,7 +61,6 @@ All docs are in: `docs/development/notifications/`
 
 ### Quick Access:
 - **This Guide** (simple testing): `SIMPLE_TESTING_GUIDE.md` (this file)
-- **Quick Setup**: `NOTIFICATION_README.md` (in root directory)
 - **Full Setup & Testing**: `docs/development/notifications/SETUP_AND_TESTING_GUIDE.md`
 - **Testing Checklist**: `docs/development/notifications/PHASE_6_TESTING_CHECKLIST.md`
 - **Main Index**: `docs/development/notifications/README.md`

@@ -72,7 +72,7 @@ aws cloudwatch describe-alarms \
 **If ALARM State**:
 1. Click alarm name to see details
 2. Review graph to understand trigger
-3. Follow [Troubleshooting Runbook](./NOTIFICATION_TROUBLESHOOTING.md)
+3. Follow [Troubleshooting Runbook](#troubleshooting-runbook) below
 4. Document incident (see [Incident Response](#incident-response-procedures))
 
 ### 3. Check Sentry for Errors
@@ -748,16 +748,130 @@ What we learned and how we can improve
 
 ---
 
-## Related Documentation
+---
 
-- [Troubleshooting Runbook](./NOTIFICATION_TROUBLESHOOTING.md)
-- [Deployment Guide](../deployment/NOTIFICATION_DEPLOYMENT.md)
-- [CloudWatch Setup](../deployment/CLOUDWATCH_SETUP.md)
-- [Phase 6 Production Readiness](../development/notifications/PHASE_6_PRODUCTION_READINESS.md)
+## Troubleshooting Runbook
+
+Quick reference for diagnosing and resolving common notification system issues in production.
+
+### 1. Emails Not Sending
+
+**Symptoms**: Notifications created but emails not received, `email_sent=False`, delivery logs show `status='failed'`.
+
+**Common Causes**: AWS SES credentials invalid, SES in sandbox mode, Celery worker not running, rate limiting exceeded.
+
+**Investigation**:
+```bash
+# Check Celery worker
+sudo systemctl status celery-worker
+celery -A rs_systems inspect active
+
+# Test SES
+python manage.py test_ses admin@rssystems.io
+
+# Check SES sandbox status
+aws ses get-account-sending-enabled --region us-east-1
+
+# Check delivery logs
+python manage.py shell -c "
+from core.models import NotificationDeliveryLog
+for log in NotificationDeliveryLog.objects.filter(channel='email', status__in=['failed', 'failed_permanent']).order_by('-created_at')[:10]:
+    print(f'ID: {log.id}, Error: {log.error_message}')
+"
+```
+
+**Resolution**: Regenerate SES SMTP credentials, request production access, restart Celery workers, reduce rate limit.
+
+### 2. High SMS Costs
+
+**Symptoms**: CloudWatch alarm `RS-Notifications-HighSMSCost`, unexpected AWS bill.
+
+**Investigation**:
+```bash
+python manage.py shell -c "
+from core.models import NotificationDeliveryLog
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models import Count
+yesterday = timezone.now() - timedelta(days=1)
+sms_count = NotificationDeliveryLog.objects.filter(channel='sms', created_at__gte=yesterday).count()
+print(f'SMS sent in last 24 hours: {sms_count}')
+top = NotificationDeliveryLog.objects.filter(channel='sms', created_at__gte=yesterday).values('recipient_phone').annotate(count=Count('id')).order_by('-count')[:10]
+for r in top:
+    print(f'{r[\"recipient_phone\"]}: {r[\"count\"]} SMS')
+"
+```
+
+**Immediate action**: Disable SMS for affected users or globally reduce SMS priority threshold.
+
+### 3. Celery Workers Not Processing
+
+**Symptoms**: Queue depth increasing, notifications created but not delivered.
+
+**Investigation**:
+```bash
+sudo systemctl status celery-worker
+sudo systemctl status celery-beat
+ps aux | grep celery | grep -v grep
+redis-cli -h your-elasticache-endpoint ping
+sudo journalctl -u celery-worker -n 200 | grep ERROR
+```
+
+**Resolution**: Restart services (`sudo systemctl restart celery-worker celery-beat`), check Redis connectivity, reduce concurrency if OOM.
+
+### 4. Notification Queue Backlog
+
+**Symptoms**: CloudWatch alarm `RS-Notifications-QueueBacklog` (>1,000 pending), slow delivery.
+
+**Investigation**:
+```bash
+celery -A rs_systems inspect stats
+redis-cli -h your-elasticache-endpoint llen celery
+```
+
+**Resolution**: Increase worker concurrency, add worker instances, or purge old tasks (emergency: `celery -A rs_systems purge`).
+
+### 5. Failed Deliveries
+
+**Investigation**:
+```bash
+python manage.py shell -c "
+from core.models import NotificationDeliveryLog
+from django.db.models import Count
+errors = NotificationDeliveryLog.objects.filter(status__in=['failed', 'failed_permanent']).values('error_message').annotate(count=Count('id')).order_by('-count')[:10]
+for e in errors:
+    print(f'{e[\"count\"]:4d}  {e[\"error_message\"][:80]}')
+"
+```
+
+**Common errors**: `SMTPAuthenticationError` (regenerate SES creds), `Address not verified` (SES sandbox), `Throttling` (reduce rate limit), `InvalidParameter: Phone number` (validate E.164 format).
+
+### 6. Performance Degradation
+
+**Symptoms**: High latency (>30s), slow notification history pages.
+
+**Investigation**: Check database query counts, cache hit rate (`redis-cli info stats | grep hits`), CloudWatch latency metrics.
+
+**Resolution**: Verify indexes on `core_notification`, increase cache timeout, optimize queries with `select_related`.
+
+### Escalation Levels
+
+| Level | Definition | Response Time |
+|-------|-----------|---------------|
+| P1 Critical | >50% failure rate, workers down >10min, SMS costs >$100/hr | Immediate (15 min) |
+| P2 High | 10-50% failure, queue >5,000, latency >60s | 1 hour |
+| P3 Medium | <10% failures, queue 1,000-5,000 | 4 hours |
+| P4 Low | Optimization opportunities | 1 week |
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: November 30, 2025
-**Next Review**: December 31, 2025
+## Related Documentation
+
+- [Deployment Guide](../deployment/AWS_DEPLOYMENT.md)
+- [Notification System Docs](../development/notifications/README.md)
+
+---
+
+**Document Version**: 1.1
+**Last Updated**: March 2026
 **Maintained By**: DevOps Team + Backend Team

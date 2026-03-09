@@ -225,9 +225,74 @@ from apps.billing.tasks import process_overdue_invoices, process_batch_invoices
 # Run overdue processing now
 process_overdue_invoices.delay()
 
-# Run batch invoicing now  
+# Run batch invoicing now
 process_batch_invoices.delay()
 ```
+
+---
+
+## Stripe Setup
+
+RS Systems uses Stripe for two billing flows:
+1. **Customer invoices** — charging customers for windshield repairs
+2. **SaaS subscriptions** — charging glass shops for using RS Systems
+
+**Security**: Plan upgrades only happen AFTER payment is confirmed via `checkout.session.completed` webhook.
+
+### Test Mode Products & Prices
+
+Create in Stripe Dashboard > Products:
+
+| Product Name | Monthly Price | Price ID |
+|--------------|---------------|----------|
+| RS Systems Starter | $49/month | `price_xxxxx` |
+| RS Systems Pro | $99/month | `price_xxxxx` |
+| RS Systems Enterprise | $249/month | `price_xxxxx` |
+
+Paste price IDs into Django Admin > Subscription Plans > "Stripe price id" field.
+
+### Webhook Endpoint
+
+**URL**: `https://rssystems.io/api/tenants/webhooks/stripe/`
+
+**Events to listen for**:
+- `checkout.session.completed` — activate subscription
+- `invoice.paid` — payment successful
+- `invoice.payment_failed` — mark as past_due
+- `customer.subscription.updated` — plan changed
+- `customer.subscription.deleted` — subscription canceled
+
+Copy the `whsec_xxxxx` signing secret and set as `STRIPE_WEBHOOK_SECRET` env var.
+
+### Environment Variables
+
+```
+STRIPE_SECRET_KEY=sk_test_xxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxx
+```
+
+### Going Live Checklist
+
+1. Toggle Stripe Dashboard from Test to Live mode
+2. Recreate products in live mode (new price IDs)
+3. Update Django Admin SubscriptionPlan records with live price IDs
+4. Create live webhook endpoint (same URL, same events)
+5. Update EB env vars with live `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`
+6. Deploy and test a real subscription signup
+
+### Webhook Security
+
+- **With secret**: Validates `Stripe-Signature` header (secure)
+- **Without secret (DEBUG only)**: Accepts unverified (insecure)
+- **Without secret (production)**: Returns error
+
+Location: `apps/tenants/webhooks.py`
+
+### Stripe Troubleshooting
+
+- **Webhook returns 400/500**: Check `STRIPE_WEBHOOK_SECRET` matches the endpoint (test vs live)
+- **Subscription not updating**: Verify webhook endpoint receives events in Stripe Dashboard
+- **"Plan has no Stripe Price ID"**: Add `stripe_price_id` in Django Admin > Subscription Plans
 
 ---
 

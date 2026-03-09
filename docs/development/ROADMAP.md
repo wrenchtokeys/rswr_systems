@@ -78,6 +78,7 @@ Production running on AWS Elastic Beanstalk at rssystems.io
 - Reminder system UI (owner clicks "Send Reminder" on overdue invoices)
 - QR code on PDF invoices for scan-to-pay
 - Per-customer payment terms override
+- Custom contact email on payment pages (replace `info@rssystems.io` with real support email on payment-complete/cancelled templates)
 
 ### Retail Customer Enhancements
 - **Saved vehicles per customer**  Like units for fleets, but for retail customers who return
@@ -90,6 +91,7 @@ Production running on AWS Elastic Beanstalk at rssystems.io
 - Lot walking scheduler (backend scheduling from customer preferences)
 - Owner-native customer/repair pages (instead of wrapping tech portal)
 - Customer portal refresh (unified styling with `base_app.html`)
+- Subscription lifecycle emails (trial expiry alerts at 7d/3d/1d, soft landing page, data export option). See [`SUBSCRIPTION_LIFECYCLE.md`](SUBSCRIPTION_LIFECYCLE.md)
 
 ### Long-term
 - AI/ML damage assessment from customer photos
@@ -118,8 +120,6 @@ Content pillars: tradesman who codes, building in public, industry disruption, e
 ---
 
 ##  Related Docs
-- [Unified permissions plan (archived)  Unified permissions/template plan (complete)
 - [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md)  Detailed billing roadmap (Phases 1-5 done)
 - [`docs/development/CHANGELOG.md`](docs/development/CHANGELOG.md)  Version history
-- [`docs/development/FUTURE_FEATURES.md`](docs/development/FUTURE_FEATURES.md)  Feature backlog
 - [`apps/billing/README.md`](apps/billing/README.md)  Billing app technical docs

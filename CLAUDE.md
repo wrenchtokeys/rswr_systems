@@ -108,7 +108,7 @@ The system includes a comprehensive notification infrastructure for email and SM
 - S3: Inbound email storage
 - CloudWatch: 6 monitoring alarms for delivery health
 
-**Configuration**: See `docs/deployment/NOTIFICATION_NEXT_STEPS.md` for complete setup instructions
+**Configuration**: See `docs/development/notifications/README.md` for complete setup instructions
 
 ### Customer Portal Notifications (Added December 2025)
 
@@ -301,7 +301,7 @@ Temperature-based resin viscosity recommendations with auto-priority system:
 **Auto-Priority System**:
 - New rules automatically assigned priority: `(max existing priority + 10)`
 - No manual priority input required - maximizes usability
-- Visual priority badges:  1st, ˆ 2nd,  3rd, "4th", "5th"...
+- Visual priority badges:  1st, ï¿½ 2nd,  3rd, "4th", "5th"...
 - Rules evaluated in priority order (lowest display_order first)
 - When multiple rules match temperature, first matching rule wins
 
@@ -446,7 +446,7 @@ AWS_CLOUDWATCH_ENABLED=false  # Set to true to enable metrics
 ```
 
 **Production Setup**:
-- For initial setup: See `docs/deployment/NOTIFICATION_NEXT_STEPS.md`
+- For initial setup: See `docs/development/notifications/README.md`
 - Requires ElastiCache Redis cluster (production) or local Redis (development)
 - SendGrid domain authentication required (DKIM/SPF via DNS records)
 - SMS spend limit defaults to $1/month (~150 messages)
@@ -491,7 +491,6 @@ For detailed troubleshooting, see the appropriate documentation:
  deployment/
     AWS_DEPLOYMENT.md              # Complete AWS deployment guide
     PRODUCTION_CHECKLIST.md        # Pre/post deployment verification
-    NOTIFICATION_NEXT_STEPS.md     # Notification system deployment guide
  security/
     SECURITY_OVERVIEW.md           # Security features and roadmap
     INCIDENT_RESPONSE.md           # Emergency response procedures
@@ -502,14 +501,12 @@ For detailed troubleshooting, see the appropriate documentation:
     CHANGELOG.md                   # Version history
     TESTING.md                     # Testing procedures
     notifications/                 # Notification system documentation
-        README.md                  # Overview and architecture
-        NOTIFICATION_README.md     # Technical implementation details
+        README.md                  # Overview, architecture, and quick start
         NOTIFICATION_CONFIGURATION_GUIDE.md  # Configuration reference
         SIMPLE_TESTING_GUIDE.md    # Testing procedures
         ADMIN_DASHBOARD_GUIDE.md   # Admin interface guide
  operations/
-    NOTIFICATION_OPERATIONS.md     # Daily operations guide
-    NOTIFICATION_TROUBLESHOOTING.md # Common issues and solutions
+    NOTIFICATION_OPERATIONS.md     # Daily operations guide + troubleshooting
  user-guides/
      ADMIN_GUIDE.md                 # Administrator interface guide
      TECHNICIAN_GUIDE.md            # Technician portal guide
@@ -522,7 +519,7 @@ For detailed troubleshooting, see the appropriate documentation:
 - Timezone handling: `docs/development/TIMEZONE_HANDLING.md`
 - Current implementation: `docs/development/WORKFLOW_IMPLEMENTATION.md`
 - Version history: `docs/development/CHANGELOG.md`
-- Notification deployment: `docs/deployment/NOTIFICATION_NEXT_STEPS.md`
+- Notification deployment: `docs/development/notifications/README.md`
 - Notification operations: `docs/operations/NOTIFICATION_OPERATIONS.md`
 
 ## Settings Refactor (January 2026)
