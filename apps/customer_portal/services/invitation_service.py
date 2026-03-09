@@ -18,7 +18,7 @@ class CustomerInvitationService:
     """Service for managing customer portal invitations."""
 
     @staticmethod
-    def create_invitation(customer, email, invited_by, first_name='', last_name=''):
+    def create_invitation(customer, email, invited_by, first_name='', last_name='', is_primary_contact=False):
         """
         Create a new invitation for a customer portal user.
         
@@ -40,7 +40,10 @@ class CustomerInvitationService:
         ).first()
         
         if existing and existing.is_valid:
-            # Resend existing invitation
+            # Update primary flag if changed, then resend
+            if existing.is_primary_contact != is_primary_contact:
+                existing.is_primary_contact = is_primary_contact
+                existing.save(update_fields=['is_primary_contact'])
             return existing
         
         # Create new invitation
@@ -49,7 +52,8 @@ class CustomerInvitationService:
             email=email,
             first_name=first_name,
             last_name=last_name,
-            invited_by=invited_by
+            invited_by=invited_by,
+            is_primary_contact=is_primary_contact,
         )
         
         return invitation

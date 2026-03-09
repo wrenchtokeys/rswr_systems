@@ -181,6 +181,13 @@
                             </div>
                             {% if cu.is_primary_contact %}
                             <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Primary</span>
+                            {% else %}
+                            <form method="post" action="{% url 'set_primary_contact' customer.id cu.id %}" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="text-xs text-blue-600 hover:text-blue-800 hover:underline" title="Make this user the primary contact">
+                                    Make Primary
+                                </button>
+                            </form>
                             {% endif %}
                         </div>
                         {% endfor %}
@@ -332,6 +339,11 @@
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                placeholder="fleet.manager@company.com"
                                value="{{ customer.email|default:'' }}">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" name="is_primary_contact" id="invite_primary" value="1"
+                               class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label for="invite_primary" class="text-sm text-gray-700">Set as primary contact</label>
                     </div>
                 </div>
                 

@@ -2564,10 +2564,16 @@ def accept_customer_invitation(request, token):
             return redirect('customer_dashboard')
         
         # Link existing user to customer
+        # Primary status is set explicitly by the owner when sending the invite.
+        # No auto-promotion — the owner decides who is primary.
+        if invitation.is_primary_contact:
+            CustomerUser.objects.filter(
+                customer=invitation.customer, is_primary_contact=True
+            ).update(is_primary_contact=False)
         CustomerUser.objects.create(
             user=request.user,
             customer=invitation.customer,
-            is_primary_contact=True
+            is_primary_contact=invitation.is_primary_contact,
         )
         invitation.mark_accepted(request.user)
         messages.success(request, f"Welcome! You now have access to {invitation.customer.name}.")
@@ -2617,10 +2623,16 @@ def accept_customer_invitation(request, token):
                 )
                 
                 # Create CustomerUser link
+                # Primary status is set explicitly by the owner when sending the invite.
+                # No auto-promotion — the owner decides who is primary.
+                if invitation.is_primary_contact:
+                    CustomerUser.objects.filter(
+                        customer=invitation.customer, is_primary_contact=True
+                    ).update(is_primary_contact=False)
                 CustomerUser.objects.create(
                     user=user,
                     customer=invitation.customer,
-                    is_primary_contact=True
+                    is_primary_contact=invitation.is_primary_contact,
                 )
                 
                 # Mark invitation as accepted

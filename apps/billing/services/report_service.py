@@ -28,9 +28,17 @@ class ReportService:
     def __init__(self, tenant=None):
         self.tenant = tenant
     
-    def _filter(self, qs):
-        """Apply tenant filter to any queryset."""
+    def _filter(self, qs, via_invoice=False):
+        """Apply tenant filter to any queryset.
+        
+        Args:
+            qs: QuerySet to filter
+            via_invoice: If True, filter through invoice__tenant (for Payment model
+                         which has no direct tenant FK).
+        """
         if self.tenant:
+            if via_invoice:
+                return qs.filter(invoice__tenant=self.tenant)
             return qs.filter(tenant=self.tenant)
         return qs.none()
     
@@ -75,11 +83,11 @@ class ReportService:
         invoice_total = invoices_created.aggregate(Sum('total'))['total__sum'] or Decimal('0')
         
         # Payments received
-        payments = self._filter(Payment.objects).filter(payment_date=report_date)
+        payments = self._filter(Payment.objects, via_invoice=True).filter(payment_date=report_date)
         payment_count = payments.count()
         payment_total = payments.aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
         
-        prev_payments = self._filter(Payment.objects).filter(
+        prev_payments = self._filter(Payment.objects, via_invoice=True).filter(
             payment_date=prev_date
         ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
         
@@ -191,13 +199,13 @@ class ReportService:
         invoice_total = invoices.aggregate(Sum('total'))['total__sum'] or Decimal('0')
         
         # Payments
-        payments = self._filter(Payment.objects).filter(
+        payments = self._filter(Payment.objects, via_invoice=True).filter(
             payment_date__gte=week_start,
             payment_date__lte=week_end
         )
         payment_total = payments.aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
         
-        prev_payments = self._filter(Payment.objects).filter(
+        prev_payments = self._filter(Payment.objects, via_invoice=True).filter(
             payment_date__gte=prev_week_start,
             payment_date__lte=prev_week_end
         ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
