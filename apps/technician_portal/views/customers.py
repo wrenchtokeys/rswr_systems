@@ -450,7 +450,7 @@ def delete_customer(request, customer_id):
     customer = get_object_or_404(qs, id=customer_id)
     
     # Check for related repairs
-    repair_count = Repair.objects.filter(customer=customer).count()
+    repair_count = Repair.objects.filter(customer=customer, tenant=tenant).count()
     
     if repair_count > 0:
         # Soft approach: don't delete, show error
