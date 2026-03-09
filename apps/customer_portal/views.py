@@ -62,9 +62,10 @@ def rebuild_unit_repair_counts(customer):
     """Rebuild the UnitRepairCount data for a customer"""
     from apps.technician_portal.models import UnitRepairCount
     
-    # Get counts of completed repairs by unit
+    # Get counts of completed repairs by unit (scoped to tenant for isolation)
     repair_counts = Repair.objects.filter(
         customer=customer,
+        tenant=customer.tenant,
         queue_status='COMPLETED'
     ).values('unit_number').annotate(
         count=Count('id')
@@ -148,12 +149,12 @@ def customer_dashboard(request):
             'pending_approval': pending_approval,
             'total_spent': total_spent,
             # Detailed repair status counts for the visualization
-            'repairs_requested': Repair.objects.filter(customer=customer, queue_status='REQUESTED').count(),
+            'repairs_requested': base_qs.filter(queue_status='REQUESTED').count(),
             'repairs_pending': pending_approval,
-            'repairs_approved': Repair.objects.filter(customer=customer, queue_status='APPROVED').count(),
-            'repairs_in_progress': Repair.objects.filter(customer=customer, queue_status='IN_PROGRESS').count(),
+            'repairs_approved': base_qs.filter(queue_status='APPROVED').count(),
+            'repairs_in_progress': base_qs.filter(queue_status='IN_PROGRESS').count(),
             'repairs_completed': completed_repairs,
-            'repairs_denied': Repair.objects.filter(customer=customer, queue_status='DENIED').count(),
+            'repairs_denied': base_qs.filter(queue_status='DENIED').count(),
         }
         
         # Get referral and reward information
@@ -477,8 +478,8 @@ def customer_repair_detail(request, repair_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get the repair and ensure it belongs to this customer
-        repair = get_object_or_404(Repair, id=repair_id, customer=customer)
+        # Get the repair and ensure it belongs to this customer (tenant-scoped)
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
         
         # Get approval record if it exists
         try:
@@ -506,8 +507,8 @@ def customer_repair_approve(request, repair_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get the repair and ensure it belongs to this customer
-        repair = get_object_or_404(Repair, id=repair_id, customer=customer)
+        # Get the repair and ensure it belongs to this customer (tenant-scoped)
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
         
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
@@ -569,8 +570,8 @@ def customer_repair_deny(request, repair_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get the repair and ensure it belongs to this customer
-        repair = get_object_or_404(Repair, id=repair_id, customer=customer)
+        # Get the repair and ensure it belongs to this customer (tenant-scoped)
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
         
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
@@ -815,8 +816,8 @@ def customer_replacements(request):
         # Get filter parameters
         status_filter = request.GET.get('status', '')
 
-        # Get all replacements for this customer
-        replacements = Replacement.objects.filter(customer=customer).select_related(
+        # Get all replacements for this customer (tenant-scoped)
+        replacements = Replacement.objects.filter(customer=customer, tenant=customer.tenant).select_related(
             'technician__user'
         ).order_by('-service_date', '-id')
 
@@ -827,9 +828,9 @@ def customer_replacements(request):
         # Calculate stats
         stats = {
             'total': replacements.count(),
-            'pending': Replacement.objects.filter(customer=customer, queue_status='PENDING').count(),
-            'in_progress': Replacement.objects.filter(customer=customer, queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
-            'completed': Replacement.objects.filter(customer=customer, queue_status='COMPLETED').count(),
+            'pending': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='PENDING').count(),
+            'in_progress': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
+            'completed': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='COMPLETED').count(),
         }
 
         # Pagination
@@ -867,7 +868,7 @@ def customer_replacement_detail(request, replacement_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer)
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
 
         return render(request, 'customer_portal/replacement_detail.html', {
             'replacement': replacement,
@@ -885,7 +886,7 @@ def customer_replacement_approve(request, replacement_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer)
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
 
         # Only allow approval of pending replacements
         if replacement.queue_status not in ['PENDING', 'REQUESTED']:
@@ -926,7 +927,7 @@ def customer_replacement_deny(request, replacement_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer)
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
 
         # Only allow denial of pending replacements
         if replacement.queue_status not in ['PENDING', 'REQUESTED']:
@@ -1682,9 +1683,10 @@ def unit_repair_data_api(request):
         
         # If no unit repair counts exist, create them from repairs data
         if not unit_repairs.exists():
-            # Get counts directly from Repair model
+            # Get counts directly from Repair model (tenant-scoped)
             repair_counts = Repair.objects.filter(
                 customer=customer,
+                tenant=customer.tenant,
                 queue_status='COMPLETED'  # Only count completed repairs
             ).values('unit_number').annotate(
                 count=Count('id')
@@ -1726,9 +1728,10 @@ def repair_cost_data_api(request):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get all repairs for this customer
+        # Get all repairs for this customer (tenant-scoped)
         repairs = Repair.objects.filter(
-            customer=customer
+            customer=customer,
+            tenant=customer.tenant,
         ).order_by('service_date')
         
         # Group repairs by month and count them
@@ -1847,10 +1850,11 @@ def customer_bulk_action(request):
 
         # Validate and process repairs with transaction safety
         with transaction.atomic():
-            # Get all repairs and ensure they belong to this customer
+            # Get all repairs and ensure they belong to this customer (tenant-scoped)
             repairs = Repair.objects.filter(
                 id__in=repair_ids,
                 customer=customer,
+                tenant=customer.tenant,
                 queue_status='PENDING'
             ).select_related('technician')
 

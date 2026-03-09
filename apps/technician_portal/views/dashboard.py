@@ -232,14 +232,16 @@ def technician_dashboard(request):
         redemption_qs = RewardRedemption.objects.filter(status='PENDING')
         if tenant:
             repair_qs = repair_qs.filter(tenant=tenant)
-
-        else:
-            repair_qs = repair_qs.none()
             customer_qs = customer_qs.filter(tenant=tenant)
             tech_qs = tech_qs.filter(tenant=tenant)
             redemption_qs = redemption_qs.filter(
                 reward__customer_user__customer__tenant=tenant
             )
+        else:
+            repair_qs = repair_qs.none()
+            customer_qs = customer_qs.none()
+            tech_qs = tech_qs.none()
+            redemption_qs = redemption_qs.none()
         admin_data = {
             'total_repairs': repair_qs.count(),
             'pending_repairs': repair_qs.filter(queue_status='PENDING').count(),

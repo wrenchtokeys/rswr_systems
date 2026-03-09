@@ -708,7 +708,12 @@ def assign_repair(request, repair_id):
 
     # GET request
     if is_tenant_admin(request.user):
-        available_technicians = Technician.objects.filter(is_active=True).order_by('user__first_name')
+        tech_qs = Technician.objects.filter(is_active=True)
+        if tenant:
+            tech_qs = tech_qs.filter(tenant=tenant)
+        else:
+            tech_qs = tech_qs.none()
+        available_technicians = tech_qs.order_by('user__first_name')
     else:
         manager = request.user.technician
         managed_techs = manager.managed_technicians.filter(is_active=True)
