@@ -321,8 +321,10 @@ class CustomerInviteFlowTests(TestCase):
         cu = CustomerUser.objects.get(user=other_user)
         self.assertFalse(cu.is_primary_contact)
 
-    def test_invited_user_is_primary_when_none_exists(self):
-        """First invited user should be primary if no primary exists."""
+    def test_invited_user_is_not_primary_when_invite_flag_is_false(self):
+        """Primary status is owner-controlled via the invite flag, not auto-assigned.
+        Even if no primary exists, an invite without is_primary_contact=True should
+        create a non-primary CustomerUser."""
         # Remove existing primary
         self.primary_cu.delete()
 
@@ -343,12 +345,14 @@ class CustomerInviteFlowTests(TestCase):
             invited_by=self.owner,
             status='pending',
             expires_at=timezone.now() + timedelta(days=7),
+            is_primary_contact=False,  # Owner did not check the box
         )
 
         r = c.get(f'/app/invite/{invite.token}/')
         self.assertEqual(r.status_code, 302)
         cu = CustomerUser.objects.get(user=other_user)
-        self.assertTrue(cu.is_primary_contact)
+        # Owner didn't mark as primary — should remain non-primary
+        self.assertFalse(cu.is_primary_contact)
 
 
 @override_settings(**TEST_SETTINGS)

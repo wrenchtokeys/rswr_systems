@@ -2564,7 +2564,8 @@ def accept_customer_invitation(request, token):
             return redirect('customer_dashboard')
         
         # Link existing user to customer
-        # If marked as primary, demote existing primary first
+        # Primary status is set explicitly by the owner when sending the invite.
+        # No auto-promotion — the owner decides who is primary.
         if invitation.is_primary_contact:
             CustomerUser.objects.filter(
                 customer=invitation.customer, is_primary_contact=True
@@ -2622,7 +2623,8 @@ def accept_customer_invitation(request, token):
                 )
                 
                 # Create CustomerUser link
-                # If marked as primary, demote existing primary first
+                # Primary status is set explicitly by the owner when sending the invite.
+                # No auto-promotion — the owner decides who is primary.
                 if invitation.is_primary_contact:
                     CustomerUser.objects.filter(
                         customer=invitation.customer, is_primary_contact=True
