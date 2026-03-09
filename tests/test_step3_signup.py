@@ -92,7 +92,9 @@ class OnboardingStepProgressionTests(TestCase):
         )
         self.user = result['user']
         self.tenant = result['tenant']
-        self.client.login(username='onboard@test.com', password='testpass123!')
+        # Use force_login — create_tenant_with_owner uses first_name as username,
+        # not email, so client.login(username=email) would fail.
+        self.client.force_login(self.user)
         # Set tenant in session
         session = self.client.session
         session['tenant_id'] = self.tenant.id

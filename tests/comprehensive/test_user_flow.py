@@ -11,6 +11,7 @@ from core.models import Customer
 from apps.customer_portal.models import CustomerUser
 from apps.technician_portal.models import Technician, Repair
 from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
+from apps.billing.models import TaxRate
 
 
 class TestDataFactory:
@@ -309,6 +310,16 @@ class RepairLifecycleTests(TestCase):
             self.tenant, username='tech4', email='tech4@test.com')
         self.cust_user, self.customer, self.cu = TestDataFactory.create_customer_with_user(
             self.tenant, name='Lifecycle Fleet', username='cust4', email='cust4@test.com')
+
+        # Create a 6.5% tax rate so Repair.save() TaxService picks it up correctly.
+        # Without this, TaxService finds no TaxRate for the tenant and zeroes out tax_rate.
+        TaxRate.objects.create(
+            tenant=self.tenant,
+            city='Little Rock',
+            state='AR',
+            state_rate=Decimal('6.500'),
+            is_active=True,
+        )
 
     def test_repair_status_progression(self):
         """Repair should progress through statuses correctly."""

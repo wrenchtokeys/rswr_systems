@@ -70,22 +70,27 @@ class RewardsTestMixin:
             is_active=True
         )
 
-        # Reward options
+        # Reward options — scoped to tenant so the API view (which filters by
+        # request.tenant) returns them correctly.
         self.opt_50off = RewardOption.objects.create(
             name='50% Off Next Repair', description='Half price on your next repair',
-            points_required=500, reward_type=self.rt_repair, is_active=True
+            points_required=500, reward_type=self.rt_repair, is_active=True,
+            tenant=self.tenant,
         )
         self.opt_free = RewardOption.objects.create(
             name='Free Windshield Repair', description='One free repair',
-            points_required=1000, reward_type=self.rt_free, is_active=True
+            points_required=1000, reward_type=self.rt_free, is_active=True,
+            tenant=self.tenant,
         )
         self.opt_donuts = RewardOption.objects.create(
             name='Donuts for Office', description='5 dozen donuts',
-            points_required=300, reward_type=self.rt_merch, is_active=True
+            points_required=300, reward_type=self.rt_merch, is_active=True,
+            tenant=self.tenant,
         )
         self.opt_inactive = RewardOption.objects.create(
             name='Inactive Reward', description='Should not be redeemable',
-            points_required=100, reward_type=self.rt_merch, is_active=False
+            points_required=100, reward_type=self.rt_merch, is_active=False,
+            tenant=self.tenant,
         )
 
 
