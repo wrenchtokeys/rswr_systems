@@ -1,6 +1,6 @@
-# Future Features  RS Systems
+# Future Features — RS Systems
 
-**Last Updated**: February 1, 2026
+**Last Updated**: March 3, 2026
 **Purpose**: Track what's planned vs. what's done
 
 ---
@@ -17,15 +17,23 @@
 -  BillingConfig (company address, payment terms, invoice defaults)
 
 ### Architecture (Jan 2026)
--  Unified permission system (`common/auth.py`, `@requires()` decorator)
--  One base template (`base_app.html`) for all shop staff
--  Signup/onboarding fix (auto-Technician profile, simplified wizard)
--  Settings refactor (base/development/production package)
+- ✅ Unified permission system (`common/auth.py`, `@requires()` decorator)
+- ✅ One base template (`base_app.html`) for all shop staff
+- ✅ Signup/onboarding fix (auto-Technician profile, simplified wizard)
+- ✅ Settings refactor (base/development/production package)
 
 ### SaaS Multi-Tenant (Jan 2026)
--  Tenants app (Tenant, TenantMembership, SubscriptionPlan models)
--  Signup flow + onboarding wizard
--  Owner portal with billing page
+- ✅ Tenants app (Tenant, TenantMembership, SubscriptionPlan models)
+- ✅ Signup flow + onboarding wizard
+- ✅ Owner portal with billing page
+
+### Security & Tenant Isolation (March 2026)
+- ✅ Cross-tenant data leak fix — RepairForm customer/technician dropdowns now tenant-filtered
+- ✅ Tax service tenant isolation — TaxService reads from tenant-scoped TaxRate, not global BillingConfig
+- ✅ Subscription enforcement middleware — blocks expired trials and canceled subscriptions
+- ✅ CSRF fix on primary technician form
+- ✅ Django 5.x compatibility fix (make_random_password removed)
+- ✅ 109 automated tests covering billing, auth, tenant isolation, models, URL routing
 
 ### Manager Settings (Nov 2025)
 -  Viscosity rules management (CRUD, auto-priority, AJAX)
@@ -92,12 +100,20 @@ The customer preference UI exists  scheduling backend doesn't. Needs:
 ### Owner-Native Pages
 Dedicated owner pages at `/customers/` and `/repairs/` extending `base_app.html` natively instead of wrapping tech portal views.
 
-### SaaS Subscription Billing
-Wire SubscriptionPlan to Stripe Products/Prices. Checkout flow, subscription webhooks, usage enforcement, trial expiration. See [Billing Roadmap Phase 7](/BILLING_ROADMAP.md#phase-7-saas-subscription-billing-glass-shops).
+### Subscription Lifecycle & Trial Emails
+Trial enforcement middleware is live, but needs:
+- Email alerts before/after trial expiry (7d, 3d, 1d, expired, win-back)
+- Soft landing page showing data stats + upgrade CTA (instead of hard redirect to /pricing/)
+- Data export option for departing users
+- **Data retention: keep all data indefinitely** (decided March 2026)
+- See [`SUBSCRIPTION_LIFECYCLE.md`](SUBSCRIPTION_LIFECYCLE.md) for full plan
+
+### SaaS Subscription Billing (Phase 7)
+Wire SubscriptionPlan to Stripe Products/Prices. Checkout flow, subscription webhooks, usage enforcement. See [Billing Roadmap Phase 7](/BILLING_ROADMAP.md#phase-7-saas-subscription-billing-glass-shops).
 
 ---
 
-## � Planned  Long-term
+## � Planned  Long-term
 
 - **AI/ML Damage Assessment**: "Can this be repaired?" classifier from customer photos
 - **QuickBooks Integration**: Export invoices to QBO (may not be needed if Stripe handles everything)

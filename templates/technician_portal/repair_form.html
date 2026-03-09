@@ -720,6 +720,35 @@
 })();
 </script>
 
+<!-- Viscosity suggestion on temperature change -->
+<script>
+(function() {
+    const tempInput = document.getElementById('id_windshield_temperature');
+    if (tempInput) {
+        tempInput.addEventListener('change', function() {
+            if (this.value) {
+                fetch('/tech/api/viscosity-suggestion/?temperature=' + this.value)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.suggestion) {
+                            const viscInput = document.getElementById('id_resin_viscosity');
+                            if (viscInput && !viscInput.value) {
+                                viscInput.value = data.suggestion;
+                            }
+                            const el = document.getElementById('viscositySuggestion');
+                            if (el) {
+                                el.innerHTML = '<div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">💡 Suggested: ' + data.suggestion + (data.reason ? ' — ' + data.reason : '') + '</div>';
+                                el.classList.remove('hidden');
+                            }
+                        }
+                    })
+                    .catch(() => {});
+            }
+        });
+    }
+})();
+</script>
+
 <!-- Windshield damage location diagram -->
 <script>
 (function() {

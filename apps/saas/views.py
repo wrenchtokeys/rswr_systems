@@ -9,6 +9,7 @@ Author: Amelia (Clawdbot AI)
 """
 
 import logging
+import secrets
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -247,45 +248,63 @@ def onboarding_view(request):
                 return redirect('/onboarding/?step=2')
 
         elif step == '2':
-            # Step 2: Add ANOTHER technician (owner is already set up from signup)
+            # Step 2: Add technician — either yourself or someone else
             form = OnboardingTechnicianForm(request.POST)
             if form.is_valid():
                 cd = form.cleaned_data
                 try:
                     with transaction.atomic():
-                        # Create a new user + technician (not yourself — you're already set up)
-                        tech_email = cd.get('tech_email', '')
-                        tech_first = cd.get('tech_first_name', '')
-                        tech_last = cd.get('tech_last_name', '')
+                        add_self = cd.get('add_self', False)
 
-                        if tech_email or tech_first:
-                            from apps.tenants.services.signup_service import generate_unique_username
-                            tech_username = generate_unique_username(tech_email or '', tech_first)
-                            if not User.objects.filter(username=tech_username).exists():
-                                tech_user = User.objects.create_user(
-                                    username=tech_username,
-                                    email=tech_email or '',
-                                    first_name=tech_first,
-                                    last_name=tech_last,
-                                    password=User.objects.make_random_password(),
-                                )
+                        if add_self:
+                            # Add the owner as a technician (use their existing user)
+                            if not Technician.objects.filter(user=request.user, tenant=tenant).exists():
                                 Technician.objects.create(
                                     tenant=tenant,
-                                    user=tech_user,
-                                    phone_number=cd.get('tech_phone', ''),
+                                    user=request.user,
+                                    phone_number=cd.get('tech_phone', '') or tenant.business_phone,
                                     is_active=True,
-                                )
-                                TenantMembership.objects.create(
-                                    tenant=tenant, user=tech_user, role='technician',
                                 )
                                 from django.contrib.auth.models import Group
                                 tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                tech_user.groups.add(tech_group)
-                                messages.success(request, 'Technician added!')
+                                request.user.groups.add(tech_group)
+                                messages.success(request, 'You have been added as a technician!')
                             else:
-                                messages.info(request, 'A user with that email already exists.')
+                                messages.info(request, 'You are already set up as a technician.')
                         else:
-                            messages.info(request, 'No technician info provided.')
+                            # Add a different person as technician
+                            tech_email = cd.get('tech_email', '')
+                            tech_first = cd.get('tech_first_name', '')
+                            tech_last = cd.get('tech_last_name', '')
+
+                            if tech_email or tech_first:
+                                from apps.tenants.services.signup_service import generate_unique_username
+                                tech_username = generate_unique_username(tech_email or '', tech_first)
+                                if not User.objects.filter(username=tech_username).exists():
+                                    tech_user = User.objects.create_user(
+                                        username=tech_username,
+                                        email=tech_email or '',
+                                        first_name=tech_first,
+                                        last_name=tech_last,
+                                        password=secrets.token_urlsafe(16),
+                                    )
+                                    Technician.objects.create(
+                                        tenant=tenant,
+                                        user=tech_user,
+                                        phone_number=cd.get('tech_phone', ''),
+                                        is_active=True,
+                                    )
+                                    TenantMembership.objects.create(
+                                        tenant=tenant, user=tech_user, role='technician',
+                                    )
+                                    from django.contrib.auth.models import Group
+                                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                                    tech_user.groups.add(tech_group)
+                                    messages.success(request, 'Technician added!')
+                                else:
+                                    messages.info(request, 'A user with that email already exists.')
+                            else:
+                                messages.info(request, 'No technician info provided.')
 
                 except Exception as e:
                     logger.error(f"Onboarding tech error: {e}")
@@ -494,6 +513,59 @@ def owner_dashboard(request):
     # Billing summary
     billing_context = _get_billing_context(tenant)
 
+    # Setup checklist for new users
+    from decimal import Decimal as D
+    from apps.billing.models import TaxRate
+
+    setup_steps = []
+    pricing_is_default = (
+        tenant.repair_price_1 == D('50.00') and
+        tenant.repair_price_2 == D('40.00') and
+        tenant.repair_price_3 == D('35.00') and
+        tenant.repair_price_4 == D('30.00') and
+        tenant.repair_price_5_plus == D('25.00')
+    )
+    has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
+    has_customers = Customer.objects.filter(tenant=tenant).exists()
+    has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
+    has_business_info = bool(tenant.business_address or tenant.business_phone)
+
+    if not has_business_info:
+        setup_steps.append({
+            'label': 'Add your business info',
+            'desc': 'Address and phone number for invoices',
+            'url': '/owner/settings/?tab=general',
+            'icon': 'fas fa-building',
+        })
+    if pricing_is_default:
+        setup_steps.append({
+            'label': 'Set your repair pricing',
+            'desc': 'Default pricing is $50/$40/$35/$30/$25 — update to match your rates',
+            'url': '/owner/settings/?tab=billing',
+            'icon': 'fas fa-dollar-sign',
+        })
+    if not has_tax_rates:
+        setup_steps.append({
+            'label': 'Configure sales tax',
+            'desc': 'Tax is disabled until you add a tax rate for your area',
+            'url': '/owner/settings/?tab=billing',
+            'icon': 'fas fa-receipt',
+        })
+    if not has_customers:
+        setup_steps.append({
+            'label': 'Add your first customer',
+            'desc': 'Fleet accounts, retail, or walk-in',
+            'url': '/tech/customers/create/',
+            'icon': 'fas fa-users',
+        })
+    if not has_technicians:
+        setup_steps.append({
+            'label': 'Add a technician',
+            'desc': 'Add yourself or invite a team member',
+            'url': '/owner/settings/?tab=team',
+            'icon': 'fas fa-hard-hat',
+        })
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -502,6 +574,7 @@ def owner_dashboard(request):
         'trial_days_remaining': tenant.trial_days_remaining,
         'is_trial': tenant.plan == 'trial',
         'is_trial_expired': tenant.is_trial_expired,
+        'setup_steps': setup_steps,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
@@ -1143,6 +1216,11 @@ def invite_member(request):
 
     if not email:
         messages.error(request, 'Email is required.')
+        return redirect('owner_settings')
+
+    # Prevent inviting yourself (owner)
+    if email == request.user.email.lower():
+        messages.warning(request, "That's your own email. To add yourself as a technician, go to Team settings and use the 'Add myself' option.")
         return redirect('owner_settings')
 
     if role not in ('manager', 'technician', 'viewer'):
@@ -1974,7 +2052,7 @@ def owner_send_invoice(request, invoice_id):
         email_sent = False
         try:
             from apps.billing.services.invoice_email_service import InvoiceEmailService
-            email_service = InvoiceEmailService()
+            email_service = InvoiceEmailService(tenant=tenant)
             
             # Get recipient email
             recipient = None
@@ -2031,7 +2109,7 @@ def owner_email_invoice(request, invoice_id):
 
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
-        email_service = InvoiceEmailService()
+        email_service = InvoiceEmailService(tenant=tenant)
         
         # Get recipient email (can be overridden from form)
         recipient = request.POST.get('email', '').strip()

@@ -58,7 +58,13 @@ class TenantMiddleware(MiddlewareMixin):
         tenant = self._get_default_tenant(request.user)
         if tenant:
             request.tenant = tenant
-            # Store in session for subsequent requests
+            request.session['tenant_id'] = tenant.id
+            return None
+        
+        # 4. Fallback: customer portal users (have CustomerUser, not TenantMembership)
+        tenant = self._get_customer_tenant(request.user)
+        if tenant:
+            request.tenant = tenant
             request.session['tenant_id'] = tenant.id
         
         return None
@@ -95,6 +101,20 @@ class TenantMiddleware(MiddlewareMixin):
             pass
         return None
     
+    def _get_customer_tenant(self, user):
+        """Get tenant from CustomerUser record (for customer portal users)."""
+        try:
+            from apps.customer_portal.models import CustomerUser
+            cu = CustomerUser.objects.select_related('customer__tenant').filter(
+                user=user,
+                customer__tenant__is_active=True,
+            ).first()
+            if cu and cu.customer and cu.customer.tenant:
+                return cu.customer.tenant
+        except Exception:
+            pass
+        return None
+
     def _get_default_tenant(self, user):
         """Get the user's first active tenant membership."""
         from apps.tenants.models import TenantMembership

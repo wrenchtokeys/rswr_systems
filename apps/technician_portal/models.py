@@ -600,7 +600,7 @@ class Repair(GlassService):
             if self.cost and self.cost > 0:
                 try:
                     from apps.billing.services.tax_service import TaxService
-                    tax_result = TaxService().calculate_tax(
+                    tax_result = TaxService(tenant=self.tenant).calculate_tax(
                         subtotal=self.cost, customer=self.customer
                     )
                     self.tax_rate = tax_result['rate']
@@ -1088,7 +1088,7 @@ class Replacement(GlassService):
             if self.cost and self.cost > 0:
                 try:
                     from apps.billing.services.tax_service import TaxService
-                    tax_result = TaxService().calculate_tax(
+                    tax_result = TaxService(tenant=self.tenant).calculate_tax(
                         subtotal=self.cost, customer=self.customer
                     )
                     self.tax_rate = tax_result['rate']
@@ -1176,6 +1176,15 @@ class ViscosityRecommendation(models.Model):
     Configurable temperature-based resin viscosity recommendations.
     Managers can configure these rules through the settings UI.
     """
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='viscosity_recommendations',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
+
     BADGE_COLOR_CHOICES = [
         ('blue', 'Blue'),
         ('green', 'Green'),
@@ -1281,12 +1290,13 @@ class ViscosityRecommendation(models.Model):
         return True
 
     @classmethod
-    def get_recommendation_for_temperature(cls, temperature):
+    def get_recommendation_for_temperature(cls, temperature, tenant=None):
         """
         Get the appropriate viscosity recommendation for a given temperature.
 
         Args:
             temperature (Decimal or float): Temperature in Fahrenheit
+            tenant: Tenant instance to scope rules to (required for multi-tenant)
 
         Returns:
             dict or None: Dictionary with recommendation details, or None if no match
@@ -1294,8 +1304,11 @@ class ViscosityRecommendation(models.Model):
         if temperature is None:
             return None
 
-        # Query active rules ordered by display_order
-        active_rules = cls.objects.filter(is_active=True).order_by('display_order', 'id')
+        # Query active rules ordered by display_order, scoped to tenant
+        active_rules = cls.objects.filter(is_active=True)
+        if tenant:
+            active_rules = active_rules.filter(tenant=tenant)
+        active_rules = active_rules.order_by('display_order', 'id')
 
         # Find first matching rule
         for rule in active_rules:

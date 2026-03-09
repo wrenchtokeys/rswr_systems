@@ -33,7 +33,7 @@ class PortalAccessMiddleware:
         skip_paths = [
             '/admin/', '/api/', '/setup-database/', '/logout/', '/referrals/',
             '/signup/', '/pricing/', '/onboarding/', '/login/', '/invite/',
-            '/join/', '/health/', '/clawdbot/',
+            '/join/', '/health/', '/clawdbot/', '/app/invite/',
         ]
         if any(request.path.startswith(path) for path in skip_paths):
             return None

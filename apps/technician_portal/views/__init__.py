@@ -50,6 +50,7 @@ from .customers import (
     send_customer_invitation,
     resend_customer_invitation,
     cancel_customer_invitation,
+    set_primary_contact,
 )
 
 # Reward management

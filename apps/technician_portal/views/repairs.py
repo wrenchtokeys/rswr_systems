@@ -53,6 +53,8 @@ def repair_list(request):
     # Tenant scoping
     if tenant:
         repairs = repairs.filter(tenant=tenant)
+    else:
+        repairs = repairs.none()
 
     # Optimize query with select_related
     repairs = repairs.select_related('customer', 'technician__user').order_by('-service_date')
@@ -167,6 +169,8 @@ def repair_detail(request, repair_id):
     qs = Repair.objects.select_related('customer', 'technician__user')
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     can_update_status = False
@@ -272,7 +276,7 @@ def create_repair(request):
         if 'damage_photo_after' in request.FILES:
             request.FILES['damage_photo_after'] = convert_heic_to_jpeg(request.FILES['damage_photo_after'])
 
-        form = RepairForm(request.POST, request.FILES, user=request.user)
+        form = RepairForm(request.POST, request.FILES, user=request.user, tenant=getattr(request, 'tenant', None))
         if form.is_valid():
             if is_tenant_admin(request.user):
                 if form.cleaned_data.get('technician'):
@@ -346,7 +350,7 @@ def create_repair(request):
                 for error in errors:
                     messages.error(request, f"{field}: {error}")
     else:
-        form = RepairForm(user=request.user)
+        form = RepairForm(user=request.user, tenant=getattr(request, 'tenant', None))
 
     pending_repair_warning = form.errors.get('__all__')
 
@@ -364,6 +368,20 @@ def create_repair(request):
         str(c.id): c.customer_type for c in customers_qs
     })
     
+    # Check if pricing has been explicitly configured (detect defaults)
+    pricing_warning = False
+    if tenant:
+        from decimal import Decimal as D
+        pricing_is_default = (
+            tenant.repair_price_1 == D('50.00') and
+            tenant.repair_price_2 == D('40.00') and
+            tenant.repair_price_3 == D('35.00') and
+            tenant.repair_price_4 == D('30.00') and
+            tenant.repair_price_5_plus == D('25.00')
+        )
+        if pricing_is_default and admin:
+            pricing_warning = True
+
     context = {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
@@ -371,6 +389,7 @@ def create_repair(request):
         'expected_cost': expected_cost,
         'wizard_steps': REPAIR_WIZARD_STEPS,
         'customer_types_json': customer_types_json,
+        'pricing_warning': pricing_warning,
     }
     if admin:
         context['technicians'] = Technician.objects.filter(
@@ -392,6 +411,8 @@ def update_repair(request, repair_id):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)
+        else:
+            qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
         logger.info(f"UPDATE_REPAIR: Got repair #{repair.id}, technician_id={repair.technician_id}")
 
@@ -411,6 +432,8 @@ def update_repair(request, repair_id):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)
+        else:
+            qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
 
     if request.method == 'POST':
@@ -424,7 +447,7 @@ def update_repair(request, repair_id):
         original_technician_id = repair.technician_id
         logger.info(f"UPDATE_REPAIR: Saved original_technician_id={original_technician_id}")
 
-        form = RepairForm(request.POST, request.FILES, instance=repair, user=request.user)
+        form = RepairForm(request.POST, request.FILES, instance=repair, user=request.user, tenant=getattr(request, 'tenant', None))
         if form.is_valid():
             logger.info(f"UPDATE_REPAIR: Form is valid, calling save(commit=False)")
             updated_repair = form.save(commit=False)
@@ -473,7 +496,7 @@ def update_repair(request, repair_id):
                         else:
                             messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
     else:
-        form = RepairForm(instance=repair, user=request.user)
+        form = RepairForm(instance=repair, user=request.user, tenant=getattr(request, 'tenant', None))
 
         if repair.queue_status == 'COMPLETED':
             user_is_manager = (is_tenant_admin(request.user) or
@@ -513,6 +536,8 @@ def update_queue_status(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     if not is_tenant_admin(request.user):
@@ -622,6 +647,8 @@ def assign_repair(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     if repair.queue_status != 'REQUESTED':
@@ -708,6 +735,8 @@ def reassign_to_self(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     if not is_tenant_admin(request.user):
@@ -771,6 +800,8 @@ def check_existing_repair(request):
     )
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     existing_repair = qs.first()
 
     if existing_repair:
@@ -823,6 +854,8 @@ def bulk_repair_action(request):
 
         if tenant:
             repairs = repairs.filter(tenant=tenant)
+        else:
+            repairs = repairs.none()
 
         if not repairs.exists():
             messages.error(request, "No valid repairs found to process.")
@@ -916,6 +949,8 @@ def tech_collect_payment(request, repair_id):
     qs = Repair.objects.select_related('customer')
     if tenant:
         qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
     # Find the invoice for this repair

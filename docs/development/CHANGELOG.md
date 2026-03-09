@@ -12,6 +12,29 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.3.1] - March 3, 2026
+
+### Security
+- **CRITICAL: Cross-tenant customer data leak** — RepairForm showed ALL customers from ALL shops. Now tenant-filtered. (BUG-001)
+- **CRITICAL: Cross-tenant tax leak** — TaxService read from global BillingConfig singleton. Now reads from tenant-scoped TaxRate entries. New tenants default to zero tax. (BUG-003)
+- **CRITICAL: No subscription enforcement** — Users could use app indefinitely after trial expired. New `SubscriptionEnforcementMiddleware` blocks expired/canceled tenants. (BUG-002)
+- **Missing CSRF token** on primary technician change form — caused 403 on save. (BUG-007)
+- **Technician queryset unfiltered** — RepairForm technician dropdown now tenant-scoped. (BUG-001)
+- **Technician lookup on primary tech update** — now filtered by tenant to prevent cross-tenant assignment.
+
+### Fixed
+- **Signup crash on Django 5.x** — `User.objects.make_random_password()` removed in Django 5. Replaced with `secrets.token_urlsafe()`. (BUG-004)
+- **"Add myself as technician" required name fields** — Now uses owner's existing user when `add_self` is checked. (BUG-005)
+- **Skip buttons on onboarding broken** — Browser HTML5 validation blocked submit. Added `formnovalidate`. (BUG-006)
+- **Real customer names in placeholder text** — Changed "EOS Trucking, Penske" to generic examples. (BUG-014)
+
+### Added
+- **Subscription lifecycle documentation** — `docs/development/SUBSCRIPTION_LIFECYCLE.md` with data retention policy, trial email alert plan, and soft landing page spec.
+- **Automated test suite** — 109 tests covering billing models, auth/permissions, tenant isolation, core models, URL routing, and bug fix regressions.
+- **Data retention policy** — All tenant data preserved indefinitely after trial/subscription expiration.
+
+---
+
 ## [2.3.0] - February 19, 2026
 
 ### Added - Progressive Pricing & Replacements
@@ -193,7 +216,7 @@ Major architectural overhaul: one permission system, one base template, fixed si
 - Authenticated users being redirected to landing page instead of their portal
 
 #### Details
-- Full plan and rationale: [`PLAN.md`](/PLAN.md)
+- Full plan and rationale: [Unified permissions plan (archived)
 - Steps 1-5 completed in one day. Step 6 (deploy to AWS) pending.
 
 ---

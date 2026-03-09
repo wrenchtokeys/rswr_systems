@@ -215,21 +215,23 @@ def profile_creation(request):
     # Check if user already has a CustomerUser profile
     if CustomerUser.objects.filter(user=request.user).exists():
         return redirect('customer_dashboard')
-        
+
+    tenant = getattr(request, 'tenant', None)
+    tenant_customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
+
     if request.method == 'POST':
         # Process the form submission
         is_new_company = request.POST.get('is_new_company') == 'yes'
-        
+
         if is_new_company:
             # Create a new customer
             company_name = request.POST.get('company_name')
             company_email = request.POST.get('company_email')
             company_phone = request.POST.get('company_phone')
             company_address = request.POST.get('company_address')
-            
+
             try:
                 # Create new customer — associate with tenant
-                tenant = getattr(request, 'tenant', None)
                 customer = Customer.objects.create(
                     name=company_name,
                     email=company_email,
@@ -239,21 +241,15 @@ def profile_creation(request):
                 )
             except Exception as e:
                 messages.error(request, f"Error creating company: {str(e)}")
-                tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
-                return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+                return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
         else:
             # Use existing customer
             customer_id = request.POST.get('customer')
             try:
-                tenant = getattr(request, 'tenant', None)
-                customer_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
-                customer = customer_qs.get(id=customer_id)
+                customer = tenant_customers.get(id=customer_id)
             except Customer.DoesNotExist:
                 messages.error(request, "Selected company does not exist.")
-                tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
-                return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+                return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
         
         # Create CustomerUser record
         try:
@@ -292,13 +288,7 @@ def profile_creation(request):
         except Exception as e:
             messages.error(request, f"Error creating profile: {str(e)}")
     
-    # Get all customers for the dropdown — scoped to tenant if available
-    tenant = getattr(request, 'tenant', None)
-    if tenant:
-        customers = Customer.objects.filter(tenant=tenant)
-    else:
-        customers = Customer.objects.all()
-    return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+    return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
 
 @customer_required
 def customer_repairs(request):
@@ -1400,6 +1390,8 @@ def get_available_technician(tenant=None):
     technicians = Technician.objects.all()
     if tenant:
         technicians = technicians.filter(tenant=tenant)
+    else:
+        technicians = technicians.none()
     technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')
@@ -2543,8 +2535,21 @@ def accept_customer_invitation(request, token):
     if not invitation:
         return render(request, 'customer_portal/invitation_invalid.html')
     
-    # If user is already logged in, link them directly
+    # If user is already logged in
     if request.user.is_authenticated:
+        from common.auth import get_user_role
+        role = get_user_role(request.user)
+        
+        # Owners/managers already have full access — don't create CustomerUser
+        if role in ('superuser', 'owner', 'manager'):
+            invitation.mark_accepted(request.user)
+            messages.info(
+                request,
+                f"Invitation accepted. You already have full access to "
+                f"{invitation.customer.name} as a shop {role}."
+            )
+            return redirect('owner_dashboard')
+        
         # Check if they already have a CustomerUser record
         existing = CustomerUser.objects.filter(user=request.user).first()
         if existing:
@@ -2559,10 +2564,16 @@ def accept_customer_invitation(request, token):
             return redirect('customer_dashboard')
         
         # Link existing user to customer
+        # Primary status is set explicitly by the owner when sending the invite.
+        # No auto-promotion — the owner decides who is primary.
+        if invitation.is_primary_contact:
+            CustomerUser.objects.filter(
+                customer=invitation.customer, is_primary_contact=True
+            ).update(is_primary_contact=False)
         CustomerUser.objects.create(
             user=request.user,
             customer=invitation.customer,
-            is_primary_contact=True
+            is_primary_contact=invitation.is_primary_contact,
         )
         invitation.mark_accepted(request.user)
         messages.success(request, f"Welcome! You now have access to {invitation.customer.name}.")
@@ -2612,10 +2623,16 @@ def accept_customer_invitation(request, token):
                 )
                 
                 # Create CustomerUser link
+                # Primary status is set explicitly by the owner when sending the invite.
+                # No auto-promotion — the owner decides who is primary.
+                if invitation.is_primary_contact:
+                    CustomerUser.objects.filter(
+                        customer=invitation.customer, is_primary_contact=True
+                    ).update(is_primary_contact=False)
                 CustomerUser.objects.create(
                     user=user,
                     customer=invitation.customer,
-                    is_primary_contact=True
+                    is_primary_contact=invitation.is_primary_contact,
                 )
                 
                 # Mark invitation as accepted

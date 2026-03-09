@@ -17,7 +17,7 @@
             </div>
             <div>
                 <h1 class="settings-title">Viscosity Rules</h1>
-                <p class="settings-subtitle">Configure temperature-based resin viscosity recommendations</p>
+                <p class="settings-subtitle">Auto-suggest the right resin viscosity based on windshield temperature</p>
             </div>
         </div>
         <button class="btn-primary" id="addRuleBtn">
@@ -26,15 +26,21 @@
         </button>
     </div>
 
+    <!-- Explanation -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <p class="text-sm text-blue-800 mb-2"><strong>How it works:</strong> When a technician enters the windshield temperature on a repair form, the system automatically suggests which resin viscosity to use.</p>
+        <p class="text-sm text-blue-700">Rules are checked in order (#1 first). The first rule whose temperature range matches is used. For example: below 60°F → low viscosity, 60-85°F → medium, above 85°F → high.</p>
+    </div>
+
     <!-- Rules Grid -->
     <div id="rulesGrid" class="rules-grid">
         {% for item in rules_with_position %}
         <div class="rule-card {% if not item.rule.is_active %}inactive{% endif %}" data-rule-id="{{ item.rule.id }}">
             <div class="rule-card-header">
                 <div class="rule-name-with-priority">
-                    <!-- Priority Badge -->
-                    <span class="priority-badge priority-{{ item.position }}">
-                        {% if item.position == 1 %}🥇{% elif item.position == 2 %}🥈{% elif item.position == 3 %}🥉{% else %}{{ item.position }}{{ item.position_suffix }}{% endif %}
+                    <!-- Priority Order -->
+                    <span class="priority-badge priority-{{ item.position }}" title="Check order: rules are checked top to bottom, first match wins">
+                        #{{ item.position }}
                     </span>
                     <div class="rule-name">
                         <i class="fas fa-thermometer-half"></i>

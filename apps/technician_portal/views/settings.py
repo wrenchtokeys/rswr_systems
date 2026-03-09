@@ -18,6 +18,15 @@ from apps.technician_portal.decorators import technician_required, manager_requi
 logger = logging.getLogger(__name__)
 
 
+def _get_viscosity_rule_or_404(request, rule_id):
+    """Fetch a ViscosityRecommendation scoped to the request's tenant."""
+    tenant = getattr(request, 'tenant', None)
+    lookup = {'id': rule_id}
+    if tenant:
+        lookup['tenant'] = tenant
+    return get_object_or_404(ViscosityRecommendation, **lookup)
+
+
 def get_ordinal_suffix(n):
     """
     Return the ordinal suffix for a number (st, nd, rd, th).
@@ -36,7 +45,14 @@ def manager_settings_dashboard(request):
     """Main manager settings dashboard with navigation tiles."""
     manager = request.user.technician if hasattr(request.user, 'technician') else None
 
-    viscosity_rules_count = ViscosityRecommendation.objects.filter(is_active=True).count()
+    tenant = getattr(request, 'tenant', None)
+    viscosity_qs = ViscosityRecommendation.objects.filter(is_active=True)
+    if tenant:
+        viscosity_qs = viscosity_qs.filter(tenant=tenant)
+
+    else:
+        viscosity_qs = viscosity_qs.none()
+    viscosity_rules_count = viscosity_qs.count()
 
     team_count = 0
     if manager:
@@ -59,7 +75,14 @@ def manage_viscosity_rules(request):
     """Manage viscosity recommendation rules with card-based interface."""
     manager = request.user.technician if hasattr(request.user, 'technician') else None
 
-    rules = ViscosityRecommendation.objects.all().order_by('display_order', 'id')
+    tenant = getattr(request, 'tenant', None)
+    rules = ViscosityRecommendation.objects.all()
+    if tenant:
+        rules = rules.filter(tenant=tenant)
+
+    else:
+        rules = rules.none()
+    rules = rules.order_by('display_order', 'id')
     rules_with_position = [
         {
             'rule': rule,
@@ -87,7 +110,7 @@ def get_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
 
         return JsonResponse({
             'success': True,
@@ -127,12 +150,20 @@ def create_viscosity_rule(request):
                     'error': f'Missing required field: {field}'
                 }, status=400)
 
-        max_order = ViscosityRecommendation.objects.aggregate(
+        tenant = getattr(request, 'tenant', None)
+        order_qs = ViscosityRecommendation.objects.all()
+        if tenant:
+            order_qs = order_qs.filter(tenant=tenant)
+
+        else:
+            order_qs = order_qs.none()
+        max_order = order_qs.aggregate(
             max_order=models.Max('display_order')
         )['max_order']
         next_order = (max_order or 0) + 10
 
         rule = ViscosityRecommendation.objects.create(
+            tenant=tenant,
             name=data['name'],
             min_temperature=data.get('min_temperature') or None,
             max_temperature=data.get('max_temperature') or None,
@@ -173,7 +204,7 @@ def update_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
         data = json.loads(request.body)
 
         if 'name' in data:
@@ -225,7 +256,7 @@ def delete_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
         rule_name = rule.name
         rule.delete()
 
@@ -247,7 +278,7 @@ def toggle_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
     try:
-        rule = get_object_or_404(ViscosityRecommendation, id=rule_id)
+        rule = _get_viscosity_rule_or_404(request, rule_id)
         rule.is_active = not rule.is_active
         rule.save()
 
@@ -295,6 +326,9 @@ def team_overview(request):
         recent_qs = Repair.objects.filter(technician=tech)
         if tenant:
             recent_qs = recent_qs.filter(tenant=tenant)
+
+        else:
+            recent_qs = recent_qs.none()
 
         team_stats.append({
             'technician': tech,

@@ -34,6 +34,7 @@
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-semibold text-gray-900">Business Information</h3>
+            <p class="text-sm text-gray-500 mt-1">Your business name, logo, and contact info. This appears on invoices and customer-facing pages.</p>
         </div>
         <form method="post" enctype="multipart/form-data" class="p-6">
             {% csrf_token %}
@@ -407,7 +408,7 @@
                     </div>
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900">Progressive Pricing</h3>
-                        <p class="text-sm text-gray-500">Discount repairs based on unit repair history</p>
+                        <p class="text-sm text-gray-500">Automatically lower the price for each additional repair on the same unit (e.g., 1st=$50, 2nd=$40, etc.). Disable this if you charge a flat rate for all repairs.</p>
                     </div>
                 </div>
                 <form method="post" action="{% url 'owner_settings' %}">

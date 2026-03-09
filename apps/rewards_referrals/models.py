@@ -98,11 +98,20 @@ class Reward(models.Model):
 class RewardOption(models.Model):
     """
     Defines available redemption options for customers.
-    
+
     Each option represents something a customer can redeem their points for,
     such as a discount on a repair, free merchandise, etc. Each option has
     a point cost and is associated with a reward type.
     """
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='reward_options',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
+
     name = models.CharField(max_length=100)
     description = models.TextField()
     points_required = models.PositiveIntegerField()

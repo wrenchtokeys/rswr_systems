@@ -232,9 +232,10 @@ All automation settings are configurable in Settings  Billing:
 - **No-tax mode**: `BillingConfig.tax_enabled = False`  everything stays $0.
 
 ### Design decisions
-- **No tax table / API**  shop owner enters their local rates directly. Simple, no maintenance, no external deps.
-- **Tax on the invoice, not at checkout**  check/cash customers pay the same tax-inclusive total as Stripe customers.
-- **Tax calculated at creation time**  rate is frozen on the invoice/repair record so historical records stay accurate even if rates change later.
+- **No tax table / API** — shop owner enters their local rates directly. Simple, no maintenance, no external deps.
+- **Tax on the invoice, not at checkout** — check/cash customers pay the same tax-inclusive total as Stripe customers.
+- **Tax calculated at creation time** — rate is frozen on the invoice/repair record so historical records stay accurate even if rates change later.
+- **Tenant-scoped tax rates (March 2026 fix)** — TaxService now reads from tenant-specific `TaxRate` entries, not the global `BillingConfig` singleton. New tenants with no `TaxRate` entries default to zero tax. This prevents cross-tenant tax leakage in multi-tenant SaaS.
 
 ### Completed tasks
 - [x] Add tax rate breakdown fields to BillingConfig
@@ -277,3 +278,10 @@ Separate from customer billing  this is charging glass shops to use RS Systems.
 - [x] Trial expiration  prompt to upgrade (expired + expiring banners)
 - [x] Billing portal link (Stripe Customer Portal for managing payment method/invoices)
 - [x] **Security fix**: Plan only upgrades AFTER payment confirmed (not before checkout)
+
+**Added March 2026:**
+- [x] Subscription enforcement middleware — blocks access on expired trial/canceled/expired subscription
+- [ ] Trial expiration email alerts (7d, 3d, 1d before + day-of + win-back at 7d and 30d after)
+- [ ] Soft landing page for expired trials (show data stats, upgrade CTA, export option)
+- **Data retention policy**: Keep all tenant data indefinitely after expiration. No automated cleanup.
+- See [`docs/development/SUBSCRIPTION_LIFECYCLE.md`](docs/development/SUBSCRIPTION_LIFECYCLE.md) for full lifecycle plan

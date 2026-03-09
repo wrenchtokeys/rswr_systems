@@ -226,9 +226,9 @@ class CustomDateTimeInput(DateTimeInput):
         super().__init__(attrs={'step': '60', **(attrs or {})}, format='%Y-%m-%dT%H:%M')
 
 class RepairForm(forms.ModelForm):
-    customer = forms.ModelChoiceField(queryset=Customer.objects.all().order_by('name'))
+    customer = forms.ModelChoiceField(queryset=Customer.objects.none())  # Filtered by tenant in __init__
     technician = forms.ModelChoiceField(
-        queryset=Technician.objects.all(),
+        queryset=Technician.objects.none(),  # Filtered by tenant in __init__
         required=False,  # Not required because it might be set automatically for non-admin users
         help_text="Only required for admin users. Regular technicians will be automatically assigned."
     )
@@ -275,15 +275,27 @@ class RepairForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user', None)
+        self.tenant = kwargs.pop('tenant', None)
         super(RepairForm, self).__init__(*args, **kwargs)
         
         # Set the damage type choices
         self.fields['damage_type'].choices = Repair.DAMAGE_TYPE_CHOICES
 
-        # Filter technician dropdown to only show techs who can do repairs
-        self.fields['technician'].queryset = Technician.objects.filter(
-            can_repair=True, is_active=True
-        )
+        # CRITICAL: Filter customer and technician dropdowns by tenant
+        # Without this, users see ALL customers/techs across all shops
+        if self.tenant:
+            self.fields['customer'].queryset = Customer.objects.filter(
+                tenant=self.tenant
+            ).order_by('name')
+            self.fields['technician'].queryset = Technician.objects.filter(
+                tenant=self.tenant, can_repair=True, is_active=True
+            )
+        else:
+            # Fallback for superusers / admin — still filter by active
+            self.fields['customer'].queryset = Customer.objects.all().order_by('name')
+            self.fields['technician'].queryset = Technician.objects.filter(
+                can_repair=True, is_active=True
+            )
         
         # Hide technician field for non-admin users
         if self.user and not self.user.is_staff:
