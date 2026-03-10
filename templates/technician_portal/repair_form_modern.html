@@ -205,53 +205,55 @@
                             </div>
 
                             <!-- Vehicle Info (for Retail/Walk-in customers) -->
-                            <div class="field-group" id="vehicle-info-group" style="display: none;">
-                                <label class="icon-field-label">
-                                    <i class="fas fa-car"></i>
-                                    Vehicle
-                                    <span class="field-required">*</span>
-                                </label>
-                                <div style="display: flex; gap: 8px;">
-                                    <input type="number"
-                                           name="vehicle_year"
-                                           id="id_vehicle_year"
-                                           value="{{ form.vehicle_year.value|default:'' }}"
-                                           class="icon-field-input"
-                                           style="width: 100px;"
-                                           placeholder="Year"
-                                           min="1990"
-                                           max="2030">
-                                    <input type="text"
-                                           name="vehicle_make"
-                                           id="id_vehicle_make"
-                                           value="{{ form.vehicle_make.value|default:'' }}"
-                                           class="icon-field-input"
-                                           style="flex: 1;"
-                                           placeholder="Make (e.g., Ford)">
-                                    <input type="text"
-                                           name="vehicle_model"
-                                           id="id_vehicle_model"
-                                           value="{{ form.vehicle_model.value|default:'' }}"
-                                           class="icon-field-input"
-                                           style="flex: 1;"
-                                           placeholder="Model (e.g., F-150)">
+                            <div id="vehicle-info-group" style="display: none;">
+                                <div class="field-group">
+                                    <label class="icon-field-label">
+                                        <i class="fas fa-car"></i>
+                                        Vehicle
+                                        <span class="field-required">*</span>
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <input type="number"
+                                               name="vehicle_year"
+                                               id="id_vehicle_year"
+                                               value="{{ form.vehicle_year.value|default:'' }}"
+                                               class="icon-field-input"
+                                               style="width: 100px;"
+                                               placeholder="Year"
+                                               min="1990"
+                                               max="2030">
+                                        <input type="text"
+                                               name="vehicle_make"
+                                               id="id_vehicle_make"
+                                               value="{{ form.vehicle_make.value|default:'' }}"
+                                               class="icon-field-input"
+                                               style="flex: 1;"
+                                               placeholder="Make (e.g., Ford)">
+                                        <input type="text"
+                                               name="vehicle_model"
+                                               id="id_vehicle_model"
+                                               value="{{ form.vehicle_model.value|default:'' }}"
+                                               class="icon-field-input"
+                                               style="flex: 1;"
+                                               placeholder="Model (e.g., F-150)">
+                                    </div>
+                                    <p class="icon-field-helper">
+                                        <i class="fas fa-info-circle"></i>
+                                        Enter the vehicle year, make, and model
+                                    </p>
+                                    {% if form.vehicle_make.errors %}
+                                        <div class="field-error">
+                                            <i class="fas fa-exclamation-circle"></i>
+                                            {{ form.vehicle_make.errors.0 }}
+                                        </div>
+                                    {% endif %}
+                                    {% if form.vehicle_model.errors %}
+                                        <div class="field-error">
+                                            <i class="fas fa-exclamation-circle"></i>
+                                            {{ form.vehicle_model.errors.0 }}
+                                        </div>
+                                    {% endif %}
                                 </div>
-                                <p class="icon-field-helper">
-                                    <i class="fas fa-info-circle"></i>
-                                    Enter the vehicle year, make, and model
-                                </p>
-                                {% if form.vehicle_make.errors %}
-                                    <div class="field-error">
-                                        <i class="fas fa-exclamation-circle"></i>
-                                        {{ form.vehicle_make.errors.0 }}
-                                    </div>
-                                {% endif %}
-                                {% if form.vehicle_model.errors %}
-                                    <div class="field-error">
-                                        <i class="fas fa-exclamation-circle"></i>
-                                        {{ form.vehicle_model.errors.0 }}
-                                    </div>
-                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -296,7 +298,7 @@
                                 {{ form.drilled_before_repair }}
                                 <p class="icon-field-helper">
                                     <i class="fas fa-info-circle"></i>
-                                    Did you drill the break before starting the repair?
+                                    Indicate if hole was drilled before applying resin
                                 </p>
                                 {% if form.drilled_before_repair.errors %}
                                     <div class="field-error">
@@ -360,10 +362,8 @@
                                        placeholder="e.g., Low(l), Medium(m), High(h)">
                                 <p class="icon-field-helper">
                                     <i class="fas fa-info-circle"></i>
-                                    Document resin viscosity for quality tracking
+                                    Document resin consistency for quality tracking
                                 </p>
-                                <!-- Viscosity Suggestion Container (populated by JavaScript) -->
-                                <div id="viscositySuggestion" class="hidden mt-2"></div>
                                 {% if form.resin_viscosity.errors %}
                                     <div class="field-error">
                                         <i class="fas fa-exclamation-circle"></i>
@@ -393,19 +393,6 @@
                                 Damage Photo (Before Repair)
                                 <span class="field-badge field-badge-recommended">Recommended</span>
                             </label>
-                            {% if form.instance.damage_photo_before %}
-                            <div class="existing-photo-container mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                <p class="text-sm text-gray-600 mb-2 font-medium">
-                                    <i class="fas fa-check-circle text-green-500 mr-1"></i>
-                                    Current photo on file:
-                                </p>
-                                <img src="{{ form.instance.damage_photo_before.url }}"
-                                     alt="Current before photo"
-                                     class="max-h-40 rounded-lg shadow-sm cursor-pointer"
-                                     onclick="openImageModal('{{ form.instance.damage_photo_before.url }}', 'Before Photo')">
-                                <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
-                            </div>
-                            {% endif %}
                             <div id="beforePhotoPreview"></div>
                             <div class="photo-upload-area" id="beforeUploadArea">
                                 <i class="fas fa-camera photo-upload-icon"></i>
@@ -436,19 +423,6 @@
                                 Damage Photo (After Repair)
                                 <span class="field-badge field-badge-required">Required for Completion</span>
                             </label>
-                            {% if form.instance.damage_photo_after %}
-                            <div class="existing-photo-container mb-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                                <p class="text-sm text-gray-600 mb-2 font-medium">
-                                    <i class="fas fa-check-circle text-green-500 mr-1"></i>
-                                    Current photo on file:
-                                </p>
-                                <img src="{{ form.instance.damage_photo_after.url }}"
-                                     alt="Current after photo"
-                                     class="max-h-40 rounded-lg shadow-sm cursor-pointer"
-                                     onclick="openImageModal('{{ form.instance.damage_photo_after.url }}', 'After Photo')">
-                                <p class="text-xs text-gray-500 mt-2">Upload a new photo below to replace, or leave empty to keep this one</p>
-                            </div>
-                            {% endif %}
                             <div id="afterPhotoPreview"></div>
                             <div class="photo-upload-area" id="afterUploadArea">
                                 <i class="fas fa-camera-retro photo-upload-icon"></i>
@@ -599,13 +573,13 @@
                                 Assign Technician
                                 <span class="field-required">*</span>
                             </label>
-                            <select name="technician"
-                                    id="id_technician"
+                            <select name="technician_id"
+                                    id="technician_id"
                                     class="icon-field-input"
                                     required>
                                 <option value="">Select Technician</option>
                                 {% for tech in technicians %}
-                                <option value="{{ tech.id }}" {% if repair and repair.technician_id == tech.id %}selected{% endif %}>{{ tech.user.get_full_name }}{% if tech.expertise %} ({{ tech.expertise }}){% endif %}</option>
+                                <option value="{{ tech.id }}">{{ tech.user.get_full_name }} ({{ tech.expertise }})</option>
                                 {% endfor %}
                             </select>
                             <p class="icon-field-helper">
@@ -653,16 +627,22 @@
 <!-- Customer type field toggle -->
 <script>
 (function() {
-    // Customer type data from Django view
-    const customerTypes = {{ customer_types_json|safe }};
+    // Customer type data from Django
+    const customerTypes = {
+        {% for customer in form.customer.field.queryset %}
+        '{{ customer.id }}': '{{ customer.customer_type }}',
+        {% endfor %}
+    };
     
     const customerSelect = document.getElementById('id_customer');
     const unitNumberGroup = document.getElementById('unit-number-group');
     const vehicleInfoGroup = document.getElementById('vehicle-info-group');
+    const unitNumberInput = document.getElementById('id_unit_number');
+    const vehicleYearInput = document.getElementById('id_vehicle_year');
+    const vehicleMakeInput = document.getElementById('id_vehicle_make');
+    const vehicleModelInput = document.getElementById('id_vehicle_model');
     
     function updateFieldsForCustomerType() {
-        if (!customerSelect || !unitNumberGroup || !vehicleInfoGroup) return;
-        
         const customerId = customerSelect.value;
         const customerType = customerTypes[customerId] || 'FLEET';
         
@@ -670,14 +650,16 @@
             // Show unit number, hide vehicle info
             unitNumberGroup.style.display = '';
             vehicleInfoGroup.style.display = 'none';
+            // Update required indicators
+            unitNumberGroup.querySelector('.field-required').style.display = '';
         } else {
-            // Show vehicle info, hide unit number (RETAIL, WALK_IN)
+            // Show vehicle info, hide unit number
             unitNumberGroup.style.display = 'none';
             vehicleInfoGroup.style.display = '';
         }
     }
     
-    // Run on page load and when customer changes
+    // Initial state
     if (customerSelect) {
         updateFieldsForCustomerType();
         customerSelect.addEventListener('change', updateFieldsForCustomerType);

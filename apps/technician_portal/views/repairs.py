@@ -21,8 +21,6 @@ from common.utils import convert_heic_to_jpeg
 
 logger = logging.getLogger(__name__)
 
-REPAIR_WIZARD_STEPS = ['Customer', 'Vehicle', 'Damage', 'Photos', 'Pricing', 'Review']
-
 
 @technician_required
 def repair_list(request):
@@ -322,11 +320,9 @@ def create_repair(request):
                 else:
                     messages.error(request, "As an admin, you must select a technician to assign the repair to.")
                     tenant = getattr(request, 'tenant', None)
-                    return render(request, 'technician_portal/repair_wizard.html', {
+                    return render(request, 'technician_portal/repair_form.html', {
                         'form': form,
                         'is_admin': True,
-                        'wizard_steps': REPAIR_WIZARD_STEPS,
-                        'customer_types_json': customer_types_json if 'customer_types_json' in dir() else '{}',
                         'technicians': Technician.objects.filter(
                             tenant=tenant, can_repair=True, is_active=True
                         ) if tenant else Technician.objects.filter(can_repair=True, is_active=True),
@@ -394,35 +390,18 @@ def create_repair(request):
     customer_types_json = json.dumps({
         str(c.id): c.customer_type for c in customers_qs
     })
-    
-    # Check if pricing has been explicitly configured (detect defaults)
-    pricing_warning = False
-    if tenant:
-        from decimal import Decimal as D
-        pricing_is_default = (
-            tenant.repair_price_1 == D('50.00') and
-            tenant.repair_price_2 == D('40.00') and
-            tenant.repair_price_3 == D('35.00') and
-            tenant.repair_price_4 == D('30.00') and
-            tenant.repair_price_5_plus == D('25.00')
-        )
-        if pricing_is_default and admin:
-            pricing_warning = True
-
     context = {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
         'is_admin': admin,
         'expected_cost': expected_cost,
-        'wizard_steps': REPAIR_WIZARD_STEPS,
         'customer_types_json': customer_types_json,
-        'pricing_warning': pricing_warning,
     }
     if admin:
         context['technicians'] = Technician.objects.filter(
             tenant=tenant, can_repair=True, is_active=True
         ) if tenant else Technician.objects.filter(can_repair=True, is_active=True)
-    return render(request, 'technician_portal/repair_wizard.html', context)
+    return render(request, 'technician_portal/repair_form.html', context)
 
 
 @technician_required
