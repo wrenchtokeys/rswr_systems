@@ -269,6 +269,33 @@ def create_repair(request):
             messages.warning(request, limit_msg)
             return redirect('technician_dashboard')
 
+    # Guard: admin/owner with no technicians yet — show friendly error instead of
+    # broken empty-dropdown form (BUG-001).
+    if is_tenant_admin(request.user):
+        has_active_technicians = Technician.objects.filter(
+            tenant=tenant, is_active=True
+        ).exists() if tenant else Technician.objects.filter(is_active=True).exists()
+        if not has_active_technicians:
+            messages.warning(
+                request,
+                "No active technicians found. Please add at least one technician "
+                "before creating repairs."
+            )
+            return redirect('technician_dashboard')
+
+    # Guard: non-admin user without a technician profile — redirect gracefully
+    # instead of crashing on POST with an AttributeError (BUG-001).
+    else:
+        try:
+            _tech_check = request.user.technician  # noqa: F841
+        except Exception:
+            messages.error(
+                request,
+                "You don't have a technician profile yet. "
+                "Please contact an administrator to set up your account."
+            )
+            return redirect('technician_dashboard')
+
     if request.method == 'POST':
         # Convert HEIC images to JPEG
         if 'damage_photo_before' in request.FILES:

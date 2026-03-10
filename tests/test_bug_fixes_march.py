@@ -1,7 +1,7 @@
 """
 Bug Fix Tests — March 2026 Manual Testing Bugs
 
-Tests for BUG-001 (cross-tenant customer leak), BUG-002 (trial enforcement),
+Tests for BUG-001 (cross-tenant customer leak + no-technician guard), BUG-002 (trial enforcement),
 BUG-003 (tax isolation), BUG-004 (make_random_password).
 
 Author: Amelia (Clawdbot AI)
@@ -232,6 +232,110 @@ class TaxServiceTenantIsolationTests(TestCase):
         svc_b = TaxService(tenant=self.tenant_b)
         self.assertTrue(svc_a.is_tax_enabled())
         self.assertFalse(svc_b.is_tax_enabled())
+
+
+# =============================================================================
+# BUG-001 (part 2): create_repair view guard — no-technician scenarios
+# =============================================================================
+
+@override_settings(**TEST_OVERRIDES)
+class CreateRepairNoTechnicianGuardTests(TestCase):
+    """
+    BUG-001 regression: create_repair view must NOT return 500 when:
+    - Admin/owner has no technicians in the system
+    - Non-admin user has no Technician profile
+    Both should redirect to dashboard with a helpful message instead.
+    """
+
+    def setUp(self):
+        self.owner, self.tenant = _make_tenant('Guard Test Shop', 'guard_owner_ux')
+        self.client = Client()
+
+    def _login_owner(self):
+        self.client.force_login(self.owner)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+    def test_owner_with_no_technicians_redirects_not_500(self):
+        """Owner with zero technicians should be redirected, not shown a 500."""
+        self._login_owner()
+        # Ensure no technicians exist
+        Technician.objects.filter(tenant=self.tenant).delete()
+
+        with override_settings(ALLOWED_HOSTS=['*']):
+            response = self.client.get(
+                '/tech/repairs/create/',
+                HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+            )
+
+        # Should redirect (302) to dashboard, not 500
+        self.assertIn(response.status_code, [200, 302],
+                      f"Expected redirect/200, got {response.status_code}")
+        if response.status_code == 302:
+            # technician_dashboard resolves to /tech/
+            self.assertIn('/tech', response['Location'])
+
+    def test_owner_with_no_technicians_shows_warning(self):
+        """Owner with zero technicians gets a warning message when redirected."""
+        self._login_owner()
+        Technician.objects.filter(tenant=self.tenant).delete()
+
+        with override_settings(ALLOWED_HOSTS=['*']):
+            response = self.client.get(
+                '/tech/repairs/create/',
+                follow=True,
+                HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+            )
+
+        # After following redirects, the response should contain a warning
+        self.assertEqual(response.status_code, 200)
+        messages_list = list(response.context['messages']) if response.context and 'messages' in response.context else []
+        warning_texts = [str(m) for m in messages_list]
+        self.assertTrue(
+            any('technician' in t.lower() for t in warning_texts),
+            f"Expected 'technician' in messages, got: {warning_texts}"
+        )
+
+    def test_owner_with_active_technician_can_access_create_repair(self):
+        """Owner with at least one active technician should see the form (200)."""
+        self._login_owner()
+        # Create a technician for the tenant
+        tech_user = User.objects.create_user(
+            username='test_tech_guard', password='test123',
+            first_name='Test', last_name='Tech',
+        )
+        Technician.objects.create(
+            tenant=self.tenant, user=tech_user,
+            is_active=True, can_repair=True,
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=tech_user, role='technician',
+        )
+
+        with override_settings(ALLOWED_HOSTS=['*']):
+            response = self.client.get(
+                '/tech/repairs/create/',
+                HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_post_create_repair_no_technician_no_500(self):
+        """POST to create_repair with no technicians must not return 500."""
+        self._login_owner()
+        Technician.objects.filter(tenant=self.tenant).delete()
+
+        with override_settings(ALLOWED_HOSTS=['*']):
+            response = self.client.post(
+                '/tech/repairs/create/',
+                data={},
+                HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+            )
+
+        self.assertNotEqual(response.status_code, 500,
+                            "500 Server Error on create_repair with no technicians")
+        self.assertIn(response.status_code, [200, 302])
 
 
 # =============================================================================
