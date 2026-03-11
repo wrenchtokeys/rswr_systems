@@ -53,6 +53,7 @@ class NotificationAdmin(admin.ModelAdmin):
     ]
 
     actions = ['mark_as_read', 'mark_as_unread', 'retry_delivery']
+    list_per_page = 25
 
     def title_truncated(self, obj):
         return obj.title[:50] + '...' if len(obj.title) > 50 else obj.title

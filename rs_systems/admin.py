@@ -7,6 +7,7 @@ from django.contrib import messages
 from apps.customer_portal.models import CustomerUser
 from apps.technician_portal.models import Technician
 from core.models import Customer
+from rs_systems.admin_dashboard import get_dashboard_context
 
 # Extend the User admin
 class UserAdmin(BaseUserAdmin):
@@ -208,4 +209,25 @@ admin.site.register(User, UserAdmin)
 # Customize admin site
 admin.site.site_header = 'RSWR Systems Administration'
 admin.site.site_title = 'RSWR Admin Portal'
-admin.site.index_title = 'Administration Dashboard' 
+admin.site.index_title = 'Administration Dashboard'
+
+# ── Phase 2: Custom Dashboard ─────────────────────────────────────────────────
+# Wire up custom index template and inject dashboard metrics.
+
+# Point admin to our custom index template
+admin.site.index_template = 'admin/index.html'
+
+# Monkey-patch the index view to inject dashboard context
+_original_index = admin.AdminSite.index
+
+
+def _dashboard_index(self, request, extra_context=None):
+    extra_context = extra_context or {}
+    try:
+        extra_context.update(get_dashboard_context())
+    except Exception:
+        pass  # Never let dashboard errors break the admin
+    return _original_index(self, request, extra_context)
+
+
+admin.AdminSite.index = _dashboard_index

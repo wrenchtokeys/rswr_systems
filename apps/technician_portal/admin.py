@@ -1,46 +1,40 @@
+import csv
+
 from django.contrib import admin
 from django.contrib.admin.widgets import FilteredSelectMultiple
+from django.http import HttpResponse
 from django.urls import path
-from django.shortcuts import render, redirect
+from django.shortcuts import render
 from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django import forms
 from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation
 
+
+@admin.register(Technician)
 class TechnicianAdmin(admin.ModelAdmin):
     list_display = ['user', 'get_email', 'get_full_name', 'phone_number', 'expertise', 'is_manager', 'is_active', 'repairs_completed']
     list_filter = ['expertise', 'is_manager', 'is_active', 'can_assign_work', 'can_override_pricing']
     search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name', 'phone_number']
     list_select_related = ['user']
     filter_horizontal = ['managed_technicians']
+    list_per_page = 25
 
     def get_form(self, request, obj=None, **kwargs):
-        """Customize form based on manager status"""
         form = super().get_form(request, obj, **kwargs)
-
-        # If editing an existing non-manager, hide managed_technicians field
         if obj and not obj.is_manager:
             if 'managed_technicians' in form.base_fields:
                 form.base_fields['managed_technicians'].widget = forms.HiddenInput()
-
-        # For managers, show only active technicians (exclude self)
         if 'managed_technicians' in form.base_fields:
             queryset = Technician.objects.filter(is_active=True).order_by('user__first_name')
             if obj:
-                # Exclude self from managed_technicians options
                 queryset = queryset.exclude(id=obj.id)
             form.base_fields['managed_technicians'].queryset = queryset
-            # Use FilteredSelectMultiple for better UX with many technicians
             form.base_fields['managed_technicians'].widget = FilteredSelectMultiple('Managed Technicians', False)
-
         return form
 
     def save_model(self, request, obj, form, change):
-        """Validate and save technician, clearing managed_technicians for non-managers"""
-        # Save first to ensure object has a pk for M2M access
         super().save_model(request, obj, form, change)
-
-        # Clear managed technicians for non-managers (must happen after save)
         if not obj.is_manager:
             obj.managed_technicians.clear()
 
@@ -73,26 +67,29 @@ class TechnicianAdmin(admin.ModelAdmin):
             'description': 'Working hours in JSON format: {"monday": ["9:00", "17:00"], ...}'
         }),
     )
-    
+
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
             path('register-technician/', self.register_technician_view, name='register-technician'),
         ]
         return custom_urls + urls
-    
+
     def register_technician_view(self, request):
-        # This is a placeholder for your registration view
         return render(request, 'admin/register_technician.html', {})
 
+
+@admin.register(Repair)
 class RepairAdmin(admin.ModelAdmin):
     list_display = ['id', 'tenant', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
     list_filter = ['tenant', 'queue_status', 'service_date', 'technician']
     search_fields = ['customer__name', 'unit_number', 'damage_type', 'technician__user__username', 'tenant__name']
     readonly_fields = ['service_date']
     date_hierarchy = 'service_date'
-    list_select_related = ['customer', 'technician', 'technician__user']
-    
+    list_select_related = ['customer', 'technician', 'technician__user', 'tenant']
+    list_per_page = 25
+    actions = ['export_csv']
+
     def get_status_badge(self, obj):
         status_colors = {
             'REQUESTED': 'bg-secondary',
@@ -117,7 +114,7 @@ class RepairAdmin(admin.ModelAdmin):
         return f"${obj.cost:.2f}"
     get_price_display.short_description = 'Price'
     get_price_display.admin_order_field = 'cost'
-    
+
     fieldsets = (
         ('Basic Information', {
             'fields': ('technician', 'customer', 'unit_number', 'service_date')
@@ -135,15 +132,40 @@ class RepairAdmin(admin.ModelAdmin):
         }),
     )
 
+    @admin.action(description='📥 Export selected repairs as CSV')
+    def export_csv(self, request, queryset):
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="repairs.csv"'
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Tenant', 'Customer', 'Unit #', 'Technician',
+            'Status', 'Damage Type', 'Cost', 'Service Date',
+        ])
+        for repair in queryset.select_related('customer', 'technician__user', 'tenant'):
+            writer.writerow([
+                repair.id,
+                repair.tenant.name if repair.tenant else '',
+                repair.customer.name if repair.customer else '',
+                repair.unit_number,
+                repair.technician.user.get_full_name() if repair.technician else '',
+                repair.get_queue_status_display(),
+                repair.damage_type,
+                repair.cost,
+                repair.service_date,
+            ])
+        return response
 
+
+@admin.register(Replacement)
 class ReplacementAdmin(admin.ModelAdmin):
     list_display = ['id', 'tenant', 'customer', 'unit_number', 'glass_position', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
     list_filter = ['tenant', 'queue_status', 'service_date', 'technician', 'glass_position', 'requires_adas_calibration']
     search_fields = ['customer__name', 'unit_number', 'nags_number', 'technician__user__username', 'tenant__name']
     readonly_fields = ['service_date']
     date_hierarchy = 'service_date'
-    list_select_related = ['customer', 'technician', 'technician__user']
-    
+    list_select_related = ['customer', 'technician', 'technician__user', 'tenant']
+    list_per_page = 25
+
     def get_status_badge(self, obj):
         status_colors = {
             'REQUESTED': 'bg-secondary',
@@ -168,7 +190,7 @@ class ReplacementAdmin(admin.ModelAdmin):
         return f"${obj.cost:.2f}"
     get_price_display.short_description = 'Price'
     get_price_display.admin_order_field = 'cost'
-    
+
     fieldsets = (
         ('Basic Information', {
             'fields': ('technician', 'customer', 'unit_number', 'service_date')
@@ -187,11 +209,15 @@ class ReplacementAdmin(admin.ModelAdmin):
     )
 
 
+@admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ['name', 'tenant', 'email', 'phone', 'address', 'tax_exempt', 'get_primary_contact']
     search_fields = ['name', 'email', 'phone', 'tenant__name']
     list_filter = ['tenant', 'customer_type', 'tax_exempt']
-    
+    list_select_related = ['tenant']
+    list_per_page = 25
+    actions = ['export_csv']
+
     def get_primary_contact(self, obj):
         from apps.customer_portal.models import CustomerUser
         try:
@@ -199,21 +225,49 @@ class CustomerAdmin(admin.ModelAdmin):
             if primary:
                 return f"{primary.user.get_full_name()} ({primary.user.email})"
             return "No primary contact"
-        except:
+        except Exception:
             return "Error retrieving contact"
     get_primary_contact.short_description = 'Primary Contact'
 
+    @admin.action(description='📥 Export selected customers as CSV')
+    def export_csv(self, request, queryset):
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="customers.csv"'
+        writer = csv.writer(response)
+        writer.writerow([
+            'ID', 'Name', 'Tenant', 'Email', 'Phone', 'Address',
+            'Customer Type', 'Tax Exempt',
+        ])
+        for customer in queryset.select_related('tenant'):
+            writer.writerow([
+                customer.id,
+                customer.name,
+                customer.tenant.name if customer.tenant else '',
+                customer.email,
+                customer.phone,
+                customer.address,
+                getattr(customer, 'customer_type', ''),
+                customer.tax_exempt,
+            ])
+        return response
+
+
+@admin.register(UnitRepairCount)
 class UnitRepairCountAdmin(admin.ModelAdmin):
     list_display = ['customer', 'unit_number', 'repair_count']
     list_filter = ['customer']
     search_fields = ['customer__name', 'unit_number']
+    list_per_page = 25
 
+
+@admin.register(ViscosityRecommendation)
 class ViscosityRecommendationAdmin(admin.ModelAdmin):
     list_display = ['name', 'get_temp_range_display', 'recommended_viscosity', 'get_badge_preview', 'display_order', 'is_active']
     list_filter = ['badge_color', 'is_active']
     search_fields = ['name', 'recommended_viscosity', 'suggestion_text']
     list_editable = ['display_order', 'is_active']
     ordering = ['display_order', 'id']
+    list_per_page = 25
 
     fieldsets = (
         ('Basic Information', {
@@ -222,7 +276,7 @@ class ViscosityRecommendationAdmin(admin.ModelAdmin):
         }),
         ('Temperature Range', {
             'fields': ('min_temperature', 'max_temperature'),
-            'description': 'Set the temperature range in °F. Leave blank for no limit (e.g., blank min = applies to all temps below max)'
+            'description': 'Set the temperature range in °F. Leave blank for no limit.'
         }),
         ('Recommendation', {
             'fields': ('recommended_viscosity', 'suggestion_text', 'badge_color'),
@@ -231,31 +285,20 @@ class ViscosityRecommendationAdmin(admin.ModelAdmin):
     )
 
     def get_temp_range_display(self, obj):
-        """Display temperature range in a readable format"""
         return obj._get_temp_range_display()
     get_temp_range_display.short_description = 'Temperature Range'
 
     def get_badge_preview(self, obj):
-        """Show a preview of the badge color"""
         color_map = {
-            'blue': '#1e40af',
-            'green': '#065f46',
-            'orange': '#9a3412',
-            'red': '#991b1b',
-            'yellow': '#92400e',
-            'purple': '#6b21a8',
+            'blue': '#1e40af', 'green': '#065f46', 'orange': '#9a3412',
+            'red': '#991b1b', 'yellow': '#92400e', 'purple': '#6b21a8',
         }
         bg_color_map = {
-            'blue': '#dbeafe',
-            'green': '#d1fae5',
-            'orange': '#fed7aa',
-            'red': '#fee2e2',
-            'yellow': '#fef3c7',
-            'purple': '#e9d5ff',
+            'blue': '#dbeafe', 'green': '#d1fae5', 'orange': '#fed7aa',
+            'red': '#fee2e2', 'yellow': '#fef3c7', 'purple': '#e9d5ff',
         }
         color = color_map.get(obj.badge_color, '#4b5563')
         bg = bg_color_map.get(obj.badge_color, '#f3f4f6')
-
         return format_html(
             '<span style="display: inline-block; padding: 4px 12px; background-color: {}; color: {}; border-radius: 4px; font-size: 12px; font-weight: 500;">{}</span>',
             bg, color, obj.recommended_viscosity
@@ -263,15 +306,6 @@ class ViscosityRecommendationAdmin(admin.ModelAdmin):
     get_badge_preview.short_description = 'Badge Preview'
 
     def save_model(self, request, obj, form, change):
-        """Add helpful validation messages"""
         super().save_model(request, obj, form, change)
-        if not change:  # New object
+        if not change:
             self.message_user(request, f'Created viscosity rule: {obj.name}', level='success')
-
-# Register the models
-admin.site.register(Technician, TechnicianAdmin)
-admin.site.register(Repair, RepairAdmin)
-admin.site.register(Replacement, ReplacementAdmin)
-admin.site.register(UnitRepairCount, UnitRepairCountAdmin)
-admin.site.register(Customer, CustomerAdmin)
-admin.site.register(ViscosityRecommendation, ViscosityRecommendationAdmin)

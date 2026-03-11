@@ -10,7 +10,10 @@ Provides admin interfaces for:
 Author: Amelia (Clawdbot AI)
 """
 
+import csv
+
 from django.contrib import admin
+from django.http import HttpResponse
 from django.utils.html import format_html
 from django.urls import reverse
 from decimal import Decimal
@@ -116,6 +119,8 @@ class InvoiceAdmin(admin.ModelAdmin):
     list_filter = ['status', 'invoice_date', 'due_date']
     search_fields = ['invoice_number', 'customer__name']
     date_hierarchy = 'invoice_date'
+    list_select_related = ['customer']
+    list_per_page = 25
     readonly_fields = [
         'invoice_number', 'created_at', 'updated_at', 'amount_paid', 
         'sent_at', 'paid_at'
@@ -192,8 +197,34 @@ class InvoiceAdmin(admin.ModelAdmin):
         return obj.line_items.count()
     line_item_count.short_description = 'Items'
     
-    actions = ['mark_as_sent', 'mark_as_overdue']
-    
+    actions = ['mark_as_sent', 'mark_as_overdue', 'export_csv']
+
+    @admin.action(description='📥 Export selected invoices as CSV')
+    def export_csv(self, request, queryset):
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="invoices.csv"'
+        writer = csv.writer(response)
+        writer.writerow([
+            'Invoice #', 'Customer', 'Invoice Date', 'Due Date',
+            'Payment Terms', 'Status', 'Subtotal', 'Tax', 'Total',
+            'Amount Paid', 'Amount Due',
+        ])
+        for inv in queryset.select_related('customer'):
+            writer.writerow([
+                inv.invoice_number,
+                inv.customer.name if inv.customer else '',
+                inv.invoice_date,
+                inv.due_date,
+                inv.payment_terms,
+                inv.status,
+                inv.subtotal,
+                inv.tax_amount,
+                inv.total,
+                inv.amount_paid,
+                inv.amount_due,
+            ])
+        return response
+
     @admin.action(description='Mark selected invoices as Sent')
     def mark_as_sent(self, request, queryset):
         updated = 0
@@ -222,6 +253,8 @@ class PaymentAdmin(admin.ModelAdmin):
     search_fields = ['invoice__invoice_number', 'reference_number', 'notes']
     date_hierarchy = 'payment_date'
     readonly_fields = ['created_at']
+    list_select_related = ['invoice']
+    list_per_page = 25
     
     def invoice_link(self, obj):
         url = reverse('admin:billing_invoice_change', args=[obj.invoice.id])

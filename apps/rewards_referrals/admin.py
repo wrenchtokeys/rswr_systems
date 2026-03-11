@@ -26,9 +26,12 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
         'reward_option__name',
         'notes'
     ]
-    raw_id_fields = ['reward', 'reward_option', 'processed_by', 'assigned_technician', 'applied_to_repair']
+    # autocomplete_fields where target admins have search_fields defined
+    autocomplete_fields = ['reward_option', 'processed_by', 'assigned_technician', 'applied_to_repair']
+    raw_id_fields = ['reward']  # Reward admin has search_fields but reward__customer_user chain is complex
     date_hierarchy = 'created_at'
     readonly_fields = ['created_at', 'processed_at', 'fulfilled_at']
+    list_per_page = 25
     
     fieldsets = [
         ('Redemption Information', {
@@ -115,6 +118,7 @@ class RewardOptionAdmin(admin.ModelAdmin):
     list_editable = ['points_required', 'is_active']
     date_hierarchy = 'created_at'
     readonly_fields = ['created_at', 'updated_at']
+    list_per_page = 25
     
     fieldsets = [
         ('Basic Information', {
@@ -154,6 +158,7 @@ class RewardAdmin(admin.ModelAdmin):
     list_filter = ['created_at']
     readonly_fields = ['created_at', 'updated_at']
     date_hierarchy = 'created_at'
+    list_per_page = 25
     
     fieldsets = [
         ('Customer Information', {
@@ -194,6 +199,7 @@ class ReferralCodeAdmin(admin.ModelAdmin):
     list_filter = ['created_at']
     readonly_fields = ['created_at', 'updated_at']
     date_hierarchy = 'created_at'
+    list_per_page = 25
     
     fieldsets = [
         ('Referral Code', {
@@ -245,6 +251,7 @@ class ReferralAdmin(admin.ModelAdmin):
     list_filter = ['created_at']
     readonly_fields = ['created_at']
     date_hierarchy = 'created_at'
+    list_per_page = 25
     
     fieldsets = [
         ('Referral Details', {
@@ -296,6 +303,7 @@ class RewardTypeAdmin(admin.ModelAdmin):
     list_filter = ['category', 'discount_type', 'is_active']
     search_fields = ['name', 'description']
     list_editable = ['discount_value', 'is_active']
+    list_per_page = 25
     
     fieldsets = [
         ('Basic Information', {
