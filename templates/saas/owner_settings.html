@@ -654,9 +654,8 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Email Subject</label>
-                    <input type="text" name="overdue_reminder_subject" 
-                        value="{{ billing_config.overdue_reminder_subject|default:'Reminder: Invoice #{invoice_number} is overdue' }}"
-                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+                    <textarea name="overdue_reminder_subject" rows="2"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none">{{ billing_config.overdue_reminder_subject|default:'Reminder: Invoice #{invoice_number} is overdue' }}</textarea>
                     <p class="text-xs text-gray-500 mt-1">Use {invoice_number}, {customer_name}, {amount_due}, {days_overdue}</p>
                 </div>
             </div>
@@ -697,7 +696,7 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
-                    <select name="batch_invoice_frequency" 
+                    <select id="batch-frequency-select" name="batch_invoice_frequency" 
                         class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
                         <option value="disabled" {% if billing_config.batch_invoice_frequency == 'disabled' %}selected{% endif %}>Disabled</option>
                         <option value="weekly" {% if billing_config.batch_invoice_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
@@ -705,13 +704,13 @@
                         <option value="monthly" {% if billing_config.batch_invoice_frequency == 'monthly' %}selected{% endif %}>Monthly</option>
                     </select>
                 </div>
-                <div>
+                <div id="batch-day-field">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Day</label>
-                    <input type="number" name="batch_invoice_day" 
+                    <input type="number" id="batch-day-input" name="batch_invoice_day" 
                         value="{{ billing_config.batch_invoice_day|default:'1' }}"
                         min="0" max="28"
                         class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
-                    <p class="text-xs text-gray-500 mt-1">Weekly: 0=Mon, 6=Sun. Monthly: 1-28</p>
+                    <p id="batch-day-hint" class="text-xs text-gray-500 mt-1">Weekly: 0=Mon, 6=Sun. Monthly: 1-28</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Auto-Send</label>
@@ -907,6 +906,34 @@ function copyJoinLink() {
     });
 }
 
+// Batch invoicing: hide/update Day field based on Frequency selection
+function updateBatchDayField() {
+    const freqSelect = document.getElementById('batch-frequency-select');
+    const dayField = document.getElementById('batch-day-field');
+    const dayInput = document.getElementById('batch-day-input');
+    const dayHint = document.getElementById('batch-day-hint');
+    if (!freqSelect || !dayField) return;
+
+    const freq = freqSelect.value;
+    if (freq === 'disabled') {
+        dayField.style.display = 'none';
+        if (dayInput) dayInput.disabled = true;
+    } else {
+        dayField.style.display = '';
+        if (dayInput) dayInput.disabled = false;
+        if (dayHint) {
+            if (freq === 'monthly') {
+                dayHint.textContent = 'Day of month to run batch (1–28)';
+                if (dayInput) { dayInput.min = 1; dayInput.max = 28; dayInput.placeholder = '1'; }
+            } else {
+                // weekly / biweekly
+                dayHint.textContent = 'Day of week: 0 = Monday … 6 = Sunday';
+                if (dayInput) { dayInput.min = 0; dayInput.max = 6; dayInput.placeholder = '0'; }
+            }
+        }
+    }
+}
+
 // Initialize on load
 document.addEventListener('DOMContentLoaded', function() {
     // Activate the right tab from URL or default
@@ -919,6 +946,10 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('form').forEach(form => {
         if (form.querySelector('.rate-input')) updateTotal(form);
     });
+    // Init batch day field visibility
+    updateBatchDayField();
+    const freqSelect = document.getElementById('batch-frequency-select');
+    if (freqSelect) freqSelect.addEventListener('change', updateBatchDayField);
 });
 </script>
 {% endblock extra_js %}
