@@ -145,6 +145,14 @@
                         <p class="text-xs text-gray-500 mt-0.5">A manager must manually assign every repair.</p>
                         {% elif value == 'primary_first' %}
                         <p class="text-xs text-gray-500 mt-0.5">Auto-assign to customer's primary tech, otherwise queue for manual assignment.</p>
+                        {% if tenant.assignment_strategy == 'primary_first' and not any_customer_has_primary_tech %}
+                        <div class="mt-2 flex items-start gap-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                            <i class="fas fa-triangle-exclamation text-yellow-600 text-xs mt-0.5 flex-shrink-0"></i>
+                            <p class="text-xs text-yellow-800">You haven't set a primary tech for any customers yet — repairs will queue for manual assignment until you do. <a href="{% url 'technician_customers' %}" class="underline font-medium hover:text-yellow-900">Go to Customers →</a></p>
+                        </div>
+                        {% elif tenant.assignment_strategy != 'primary_first' %}
+                        <p class="text-xs text-gray-400 mt-1 italic">Requires a primary tech to be set on each customer.</p>
+                        {% endif %}
                         {% elif value == 'auto' %}
                         <p class="text-xs text-gray-500 mt-0.5">Primary tech first, then assigns to the tech with fewest active jobs.</p>
                         {% elif value == 'round_robin' %}

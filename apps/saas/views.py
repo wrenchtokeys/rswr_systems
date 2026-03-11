@@ -1166,6 +1166,11 @@ def owner_settings_view(request):
     # Active tab from query string
     active_tab = request.GET.get('tab', 'general')
 
+    # UX-006: flag whether any customer has a primary tech set
+    any_customer_has_primary_tech = Customer.objects.filter(
+        tenant=tenant, primary_technician__isnull=False
+    ).exists()
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1177,6 +1182,7 @@ def owner_settings_view(request):
         'tax_enabled': tax_enabled,
         'billing_config': billing_config,
         'active_tab': active_tab,
+        'any_customer_has_primary_tech': any_customer_has_primary_tech,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -2184,3 +2190,45 @@ def owner_send_reminder(request, invoice_id):
         messages.error(request, 'An error occurred while sending the reminder.')
 
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+# ---------------------------------------------------------------------------
+# Subscription Blocked View (role-aware)
+# ---------------------------------------------------------------------------
+
+@login_required
+def subscription_blocked_view(request):
+    """
+    /subscription-blocked/
+
+    Role-aware page shown when a tenant's subscription has expired and the
+    grace period has ended. Content varies by user role:
+    - Owners/Managers: upgrade prompt with link to billing
+    - Technicians: contact owner message
+    - Customers: contact shop message
+    """
+    from common.auth import get_user_role
+    from apps.tenants.models import TenantMembership
+
+    tenant = getattr(request, 'tenant', None)
+    user_role = get_user_role(request.user, tenant)
+
+    context = {
+        'tenant': tenant,
+        'user_role': user_role,
+    }
+
+    if tenant:
+        if user_role in ('owner', 'manager'):
+            # Show owner name/email and billing link
+            context['owner'] = tenant.owner
+        elif user_role == 'technician':
+            # Show owner contact info
+            context['owner'] = tenant.owner
+        else:
+            # Customer — show shop contact info
+            context['shop_name'] = tenant.name
+            context['shop_phone'] = tenant.business_phone
+            context['shop_email'] = tenant.business_email
+
+    return render(request, 'saas/subscription_blocked.html', context)
