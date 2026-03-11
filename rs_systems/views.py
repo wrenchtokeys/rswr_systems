@@ -421,3 +421,14 @@ def payment_complete(request):
 def payment_cancelled(request):
     """Landing page when customer cancels Stripe checkout."""
     return render(request, 'billing/payment_cancelled.html')
+
+
+
+def custom_404(request, exception=None):
+    """Custom 404 handler — branded page instead of bare Django 404 (BUG-004)."""
+    return render(request, '404.html', status=404)
+
+
+def custom_500(request):
+    """Custom 500 handler — branded page instead of bare Django 500 (BUG-004)."""
+    return render(request, '500.html', status=500)
