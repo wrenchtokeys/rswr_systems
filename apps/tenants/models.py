@@ -226,6 +226,18 @@ class Tenant(models.Model):
         default='trialing',
         help_text="Current subscription lifecycle status"
     )
+
+    # Grace period tracking
+    grace_period_end = models.DateTimeField(
+        null=True, blank=True,
+        help_text="End of the 30-day read-only grace period after subscription expiry"
+    )
+
+    # Subscription alert tracking (avoids duplicate emails)
+    subscription_alerts_sent = models.JSONField(
+        default=dict, blank=True,
+        help_text="Tracks which subscription alert emails have been sent, keyed by alert type"
+    )
     
     class Meta:
         ordering = ['name']
@@ -246,28 +258,72 @@ class Tenant(models.Model):
         """Return S3 path prefix for tenant-scoped uploads."""
         return f"tenants/{self.slug}"
     
+    def _get_trial_days(self):
+        """Return number of trial days for this tenant's plan."""
+        if self.subscription_plan and self.subscription_plan.trial_days:
+            return self.subscription_plan.trial_days
+        return 30
+
+    @property
+    def trial_expiry(self):
+        """Datetime when the trial expires (or None if not on trial)."""
+        if self.plan != 'trial' or not self.trial_started_at:
+            return None
+        return self.trial_started_at + timezone.timedelta(days=self._get_trial_days())
+
     @property
     def is_trial_expired(self):
         """Check if the free trial period has ended."""
-        if self.plan != 'trial' or not self.trial_started_at:
+        expiry = self.trial_expiry
+        if expiry is None:
             return False
-        trial_days = 30
-        if self.subscription_plan and self.subscription_plan.trial_days:
-            trial_days = self.subscription_plan.trial_days
-        expiry = self.trial_started_at + timezone.timedelta(days=trial_days)
         return timezone.now() > expiry
-    
+
     @property
     def trial_days_remaining(self):
         """Days left in the trial period (0 if expired or not on trial)."""
-        if self.plan != 'trial' or not self.trial_started_at:
+        expiry = self.trial_expiry
+        if expiry is None:
             return 0
-        trial_days = 30
-        if self.subscription_plan and self.subscription_plan.trial_days:
-            trial_days = self.subscription_plan.trial_days
-        expiry = self.trial_started_at + timezone.timedelta(days=trial_days)
         remaining = (expiry - timezone.now()).days
         return max(0, remaining)
+
+    @property
+    def effective_grace_period_end(self):
+        """
+        The actual end of the grace period after subscription expiry.
+
+        Grace period applies only when explicitly set (via _handle_subscription_deleted
+        webhook) for paid subscriptions. Free trials do NOT get a dynamic grace period
+        because their trial duration already serves that purpose.
+
+        Returns the grace_period_end datetime, or None if no grace period applies.
+        """
+        if self.grace_period_end:
+            return self.grace_period_end
+        return None
+
+    @property
+    def is_in_grace_period(self):
+        """True if we're in the 30-day read-only grace period after expiry."""
+        grace_end = self.effective_grace_period_end
+        if grace_end is None:
+            return False
+        return timezone.now() <= grace_end
+
+    @property
+    def grace_days_remaining(self):
+        """Days remaining in grace period (0 if ended or not in grace period)."""
+        grace_end = self.effective_grace_period_end
+        if grace_end is None:
+            return 0
+        remaining = (grace_end - timezone.now()).days
+        return max(0, remaining)
+
+    @property
+    def had_paid_subscription(self):
+        """True if this tenant ever had a paid Stripe subscription."""
+        return bool(self.stripe_subscription_id)
 
 
 class TenantMembership(models.Model):

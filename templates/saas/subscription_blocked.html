@@ -1,0 +1,91 @@
+{% extends "base_app.html" %}
+
+{% block title %}Subscription Expired | RS Systems{% endblock %}
+
+{% block content %}
+<div class="min-h-[60vh] flex items-center justify-center">
+    <div class="max-w-lg w-full text-center">
+
+        {% if user_role == 'owner' or user_role == 'manager' %}
+        <!-- Owner / Manager: upgrade prompt -->
+        <div class="bg-white rounded-2xl shadow-sm border border-red-100 p-10">
+            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-credit-card text-red-600 text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-3">Your Subscription Has Expired</h1>
+            <p class="text-gray-600 mb-6">
+                Your RS Systems subscription is no longer active.
+                Upgrade now to restore full access to your shop's data, repairs, and customer portal.
+            </p>
+            <a href="/owner/billing/"
+               class="inline-block bg-blue-600 text-white px-8 py-3 rounded-xl font-semibold hover:bg-blue-700 transition-colors">
+                <i class="fas fa-arrow-up mr-2"></i>Upgrade Now
+            </a>
+            <p class="mt-4 text-sm text-gray-500">
+                Questions? Email us at
+                <a href="mailto:support@rockstarwindshield.repair" class="text-blue-600 hover:underline">
+                    support@rockstarwindshield.repair
+                </a>
+            </p>
+        </div>
+
+        {% elif user_role == 'technician' %}
+        <!-- Technician: contact owner -->
+        <div class="bg-white rounded-2xl shadow-sm border border-amber-100 p-10">
+            <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-pause-circle text-amber-600 text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-3">Shop Subscription Expired</h1>
+            <p class="text-gray-600 mb-6">
+                Your shop's RS Systems subscription has expired. You won't be able to access the
+                system until the subscription is reactivated.
+            </p>
+            {% if owner %}
+            <div class="bg-amber-50 rounded-xl p-4 text-sm text-amber-800 mb-6">
+                <p class="font-medium mb-1">Contact your shop owner to reactivate:</p>
+                <p>
+                    <strong>{{ owner.get_full_name|default:owner.username }}</strong>
+                    {% if owner.email %}
+                    — <a href="mailto:{{ owner.email }}" class="underline hover:text-amber-900">{{ owner.email }}</a>
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+            <p class="text-sm text-gray-500">
+                Once the subscription is renewed, you'll regain access automatically.
+            </p>
+        </div>
+
+        {% else %}
+        <!-- Customer (or unknown role): shop temporarily unavailable -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-10">
+            <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-store-slash text-gray-500 text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-3">Portal Temporarily Unavailable</h1>
+            <p class="text-gray-600 mb-6">
+                {% if shop_name %}{{ shop_name }}'s{% else %}This shop's{% endif %}
+                customer portal is temporarily unavailable.
+                Please contact the shop directly for assistance with your repairs or account.
+            </p>
+            {% if shop_name or shop_phone or shop_email %}
+            <div class="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 mb-6">
+                {% if shop_name %}<p class="font-medium">{{ shop_name }}</p>{% endif %}
+                {% if shop_phone %}<p><i class="fas fa-phone mr-2 text-gray-400"></i>{{ shop_phone }}</p>{% endif %}
+                {% if shop_email %}
+                <p>
+                    <i class="fas fa-envelope mr-2 text-gray-400"></i>
+                    <a href="mailto:{{ shop_email }}" class="text-blue-600 hover:underline">{{ shop_email }}</a>
+                </p>
+                {% endif %}
+            </div>
+            {% endif %}
+            <p class="text-sm text-gray-500">
+                We apologize for the inconvenience. The shop owner is working to restore access.
+            </p>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}

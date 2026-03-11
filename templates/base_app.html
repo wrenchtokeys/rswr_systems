@@ -180,9 +180,37 @@
     </div>
     {% endif %}
 
-    <!-- Subscription Status Banners (owners/managers only) -->
-    {% if is_owner_or_manager and tenant %}
-    {% if tenant.subscription_status == 'past_due' %}
+    <!-- Subscription Status Banners (all authenticated users) -->
+    {% if tenant and request.user.is_authenticated %}
+
+    {% if subscription_grace_period %}
+    <!-- Grace period banner — read-only mode -->
+    <div class="bg-orange-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center">
+                    <i class="fas fa-eye mr-2"></i>
+                    <span class="font-medium">Read-only mode.</span>
+                    <span class="ml-1">
+                        Your shop's subscription has expired. You have {{ grace_days_remaining }} day{{ grace_days_remaining|pluralize }} of read-only access remaining.
+                    </span>
+                </div>
+                {% if is_owner_or_manager %}
+                <a href="{% url 'billing_settings' %}" class="bg-white text-orange-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-50 transition-colors">
+                    Upgrade Now
+                </a>
+                {% elif user_role == 'technician' %}
+                <span class="text-orange-200 text-sm">Contact your shop owner to reactivate.</span>
+                {% else %}
+                <span class="text-orange-200 text-sm">Contact {{ tenant.name }} for assistance.</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% elif tenant.subscription_status == 'past_due' %}
+    <!-- Past due banner — owners/managers only (action required) -->
+    {% if is_owner_or_manager %}
     <div class="bg-red-600 text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div class="flex items-center justify-between flex-wrap gap-2">
@@ -197,7 +225,20 @@
             </div>
         </div>
     </div>
+    {% elif user_role == 'technician' %}
+    <div class="bg-amber-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <span>Your shop has a payment issue. Contact the shop owner if this persists.</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {% elif tenant.subscription_status == 'canceled' %}
+    <!-- Canceled subscription banner -->
+    {% if is_owner_or_manager %}
     <div class="bg-gray-600 text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div class="flex items-center justify-between flex-wrap gap-2">
@@ -211,14 +252,30 @@
             </div>
         </div>
     </div>
-    {% elif tenant.plan == 'trial' %}
-        {% if tenant.is_trial_expired %}
+    {% elif user_role == 'technician' %}
+    <div class="bg-amber-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center">
+                <i class="fas fa-info-circle mr-2"></i>
+                <span>Your shop's subscription has been canceled. Contact your shop owner for details.</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% elif tenant.subscription_status == 'expired' %}
+    <!-- Expired subscription — distinguish trial vs paid cancellation -->
+    {% if is_owner_or_manager %}
     <div class="bg-red-600 text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div class="flex items-center justify-between flex-wrap gap-2">
                 <div class="flex items-center">
                     <i class="fas fa-exclamation-circle mr-2"></i>
+                    {% if tenant.stripe_subscription_id %}
+                    <span class="font-medium">Your subscription has ended.</span>
+                    {% else %}
                     <span class="font-medium">Your free trial has expired.</span>
+                    {% endif %}
                     <span class="ml-1">Upgrade now to continue using RS Systems.</span>
                 </div>
                 <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
@@ -227,22 +284,89 @@
             </div>
         </div>
     </div>
-        {% elif tenant.trial_days_remaining <= 7 %}
-    <div class="bg-amber-500 text-white">
+    {% elif user_role == 'technician' %}
+    <div class="bg-red-600 text-white">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
-            <div class="flex items-center justify-between flex-wrap gap-2">
-                <div class="flex items-center">
-                    <i class="fas fa-clock mr-2"></i>
-                    <span class="font-medium">Your free trial expires in {{ tenant.trial_days_remaining }} day{{ tenant.trial_days_remaining|pluralize }}.</span>
-                    <span class="ml-1">Upgrade now to keep your data.</span>
-                </div>
-                <a href="{% url 'billing_settings' %}" class="bg-white text-amber-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50 transition-colors">
-                    Upgrade Now
-                </a>
+            <div class="flex items-center">
+                <i class="fas fa-exclamation-circle mr-2"></i>
+                <span>Your shop's subscription has expired. Contact your shop owner to reactivate.</span>
             </div>
         </div>
     </div>
+    {% endif %}
+
+    {% elif tenant.plan == 'trial' %}
+    <!-- Trial banners -->
+        {% if tenant.is_trial_expired %}
+        <!-- Trial expired — should be in grace period, but show banner anyway -->
+        {% if is_owner_or_manager %}
+        <div class="bg-red-600 text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-circle mr-2"></i>
+                        <span class="font-medium">Your free trial has expired.</span>
+                        <span class="ml-1">Upgrade now to continue using RS Systems.</span>
+                    </div>
+                    <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                        Upgrade Now
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% elif user_role == 'technician' %}
+        <div class="bg-red-600 text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-circle mr-2"></i>
+                    <span>Your shop's free trial has expired. Contact your shop owner to upgrade.</span>
+                </div>
+            </div>
+        </div>
         {% endif %}
+
+        {% elif tenant.trial_days_remaining <= 7 %}
+        <!-- Trial expiring soon -->
+        {% if is_owner_or_manager %}
+        <div class="bg-amber-500 text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center">
+                        <i class="fas fa-clock mr-2"></i>
+                        <span class="font-medium">Your free trial expires in {{ tenant.trial_days_remaining }} day{{ tenant.trial_days_remaining|pluralize }}.</span>
+                        <span class="ml-1">Upgrade now to keep your data.</span>
+                    </div>
+                    <a href="{% url 'billing_settings' %}" class="bg-white text-amber-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50 transition-colors">
+                        Upgrade Now
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% elif user_role == 'technician' %}
+        <div class="bg-amber-500 text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                <div class="flex items-center">
+                    <i class="fas fa-clock mr-2"></i>
+                    <span>Your shop is on a free trial — {{ tenant.trial_days_remaining }} day{{ tenant.trial_days_remaining|pluralize }} remaining.</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- Trial active — show info banner for technicians -->
+        {% if user_role == 'technician' %}
+        <div class="bg-blue-600 text-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                <div class="flex items-center">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <span>Your shop is on a free trial — {{ tenant.trial_days_remaining }} day{{ tenant.trial_days_remaining|pluralize }} remaining.</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+
     {% endif %}
     {% endif %}
 

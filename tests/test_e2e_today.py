@@ -77,32 +77,32 @@ class ExpiredAccountUpgradeTests(TestCase):
         self.client.force_login(self.user)
 
     def test_expired_user_redirected_from_dashboard(self):
-        """Expired trial user on /owner/ should be redirected to /pricing/."""
+        """Expired trial user on /owner/ should be redirected to /subscription-blocked/."""
         r = self.client.get('/owner/')
         self.assertEqual(r.status_code, 302)
-        self.assertIn('/pricing/', r.url)
+        self.assertIn('/subscription-blocked/', r.url)
 
     def test_expired_user_can_reach_billing(self):
         """Expired trial user should be able to access /owner/billing/ to upgrade."""
         r = self.client.get('/owner/billing/')
-        # Should NOT redirect to /pricing/ (no loop)
-        self.assertNotEqual(r.url if r.status_code == 302 else '', '/pricing/')
+        # Should NOT redirect to blocked page (no loop)
+        self.assertNotEqual(r.url if r.status_code == 302 else '', '/subscription-blocked/')
         # Should either load (200) or redirect within billing
         self.assertIn(r.status_code, [200, 302])
         if r.status_code == 302:
-            self.assertNotIn('/pricing/', r.url)
+            self.assertNotIn('/subscription-blocked/', r.url)
 
     def test_expired_user_blocked_from_tech_portal(self):
         """Expired trial user should NOT access tech portal."""
         r = self.client.get('/tech/repairs/')
         self.assertEqual(r.status_code, 302)
-        self.assertIn('/pricing/', r.url)
+        self.assertIn('/subscription-blocked/', r.url)
 
     def test_expired_user_blocked_from_settings(self):
         """Expired trial user should NOT access owner settings."""
         r = self.client.get('/owner/settings/')
         self.assertEqual(r.status_code, 302)
-        self.assertIn('/pricing/', r.url)
+        self.assertIn('/subscription-blocked/', r.url)
 
 
 @override_settings(**TEST_SETTINGS)
