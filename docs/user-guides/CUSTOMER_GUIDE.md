@@ -46,7 +46,7 @@ Your dashboard shows:
 
 **Yellow Alert Banner**:
 ```
-⚠ 2 Repairs Awaiting Your Approval
+ 2 Repairs Awaiting Your Approval
 
 Technicians found damage during inspection.
 Review and approve/deny repairs below.
@@ -130,7 +130,7 @@ When technician finds damage during inspection:
 
 **Yellow Alert Banner Appears**:
 ```
-⚠ Repairs Awaiting Your Approval
+ Repairs Awaiting Your Approval
 
 Unit: TRUCK-203
 Damage: CHIP
@@ -152,7 +152,7 @@ Notes: "Small chip found during scheduled lot walk,
    - Is cost acceptable?
    - Is repair necessary?
 3. Click "Approve" button
-4. Repair status → APPROVED
+4. Repair status  APPROVED
 5. Technician gets notification
 6. Work can proceed
 ```
@@ -219,7 +219,7 @@ Good for:
 
 ### Changing Your Settings
 
-✅ **Now Available**: Self-service settings in Account Settings → Repair Preferences tab
+ **Now Available**: Self-service settings in Account Settings  Repair Preferences tab
 
 ```
 1. Go to Account Settings
@@ -262,7 +262,7 @@ Lot walking is a proactive inspection service where technicians visit your locat
 
 **Enable Service**:
 ```
-☑ Enable Lot Walking Service
+ Enable Lot Walking Service
 ```
 Check this box to enable scheduled lot walking for your fleet.
 
@@ -276,9 +276,9 @@ Choose how often you want technicians to inspect your lot:
 **Choose Preferred Days**:
 Select which days work best for your operation:
 ```
-☑ Monday
-☑ Wednesday
-☑ Friday
+ Monday
+ Wednesday
+ Friday
 ```
 You can select multiple days. The system will use these preferences when scheduling.
 
@@ -302,7 +302,7 @@ Choose the time that works best for your operation (e.g., early morning before f
 ```
 
 **Current Implementation Status**:
-> ⚠️ **Note**: The automatic scheduling system is in development. Your preferences are saved, but you'll need to contact support to arrange lot walks based on your saved settings. The automated scheduler that uses these preferences will be implemented in a future release.
+>  **Note**: The automatic scheduling system is in development. Your preferences are saved, but you'll need to contact support to arrange lot walks based on your saved settings. The automated scheduler that uses these preferences will be implemented in a future release.
 
 ### Lot Walking + Approval Settings
 
@@ -311,42 +311,42 @@ Lot walking works together with your field repair approval mode:
 **If You Have "Auto-Approve All"**:
 ```
 Technician walks your lot
-    ↓
+    
 Finds damage on 5 units
-    ↓
+    
 Creates repairs (auto-approved)
-    ↓
+    
 Completes all 5 repairs immediately
-    ↓
+    
 You get summary: "5 repairs completed during lot walk"
 ```
 
 **If You Have "Require Approval"**:
 ```
 Technician walks your lot
-    ↓
+    
 Finds damage on 5 units
-    ↓
+    
 Creates repair requests (PENDING)
-    ↓
+    
 You see yellow alerts on dashboard
-    ↓
+    
 You review and approve each one
-    ↓
+    
 Technician completes approved repairs
 ```
 
 **If You Have "Unit Threshold" (e.g., 3 units)**:
 ```
 Technician walks your lot
-    ↓
+    
 Finds damage on 5 units
-    ↓
+    
 First 3 units: Auto-approved & repaired
 Next 2 units: Require your approval
-    ↓
+    
 You approve the additional 2 units
-    ↓
+    
 Technician completes all repairs
 ```
 
@@ -354,7 +354,7 @@ Technician completes all repairs
 
 **Large Fleet (100+ vehicles)**:
 ```
-Enable Lot Walking: ☑ Yes
+Enable Lot Walking:  Yes
 Frequency: Weekly
 Days: Monday, Wednesday, Friday
 Time: 6:00 AM (before fleet departs)
@@ -367,7 +367,7 @@ Result: Tech inspects lot 3x/week at 6 AM,
 
 **Small Fleet (20-30 vehicles)**:
 ```
-Enable Lot Walking: ☑ Yes
+Enable Lot Walking:  Yes
 Frequency: Monthly
 Days: First Monday of month
 Time: 9:00 AM
@@ -380,7 +380,7 @@ Result: Tech inspects once per month,
 
 **Budget-Conscious Operation**:
 ```
-Enable Lot Walking: ☑ Yes
+Enable Lot Walking:  Yes
 Frequency: Quarterly
 Days: Tuesday
 Time: 10:00 AM
@@ -411,22 +411,22 @@ You can change your lot walking preferences anytime:
 
 ### Best Practices
 
-✓ **Choose frequency based on your fleet size and environment**
+ **Choose frequency based on your fleet size and environment**
   - High-damage areas (construction zones): Weekly
   - Normal operations: Bi-weekly or Monthly
   - Low-risk fleets: Quarterly
 
-✓ **Coordinate time with your operations**
+ **Coordinate time with your operations**
   - Before fleet departs: Early morning (6-7 AM)
   - During normal hours: Mid-morning (9-10 AM)
   - Avoid peak operational times
 
-✓ **Match approval mode to your needs**
+ **Match approval mode to your needs**
   - Trust your tech: Auto-Approve All
   - Need cost control: Require Approval
   - Want balance: Unit Threshold
 
-✓ **Review lot walk reports**
+ **Review lot walk reports**
   - Track damage patterns
   - Identify high-risk units
   - Adjust frequency if needed
@@ -540,7 +540,7 @@ Example:
 Next repair:
 - Base price: $35 (3rd repair for this unit)
 - Volume discount: 15% off
-- Final price: $35 × 0.85 = $29.75
+- Final price: $35 � 0.85 = $29.75
 ```
 
 ---
@@ -603,13 +603,13 @@ Next repair:
 
 ```
 You know unit needs repair
-      ↓
+      
 Submit repair request
-      ↓
+      
 Manager assigns technician
-      ↓
+      
 Technician completes work
-      ↓
+      
 You receive invoice
 ```
 
@@ -617,13 +617,13 @@ You receive invoice
 
 ```
 Technician finds damage
-      ↓
+      
 Creates repair
-      ↓
+      
 Auto-approved (your setting)
-      ↓
+      
 Technician completes work
-      ↓
+      
 You receive invoice
 ```
 
@@ -631,17 +631,17 @@ You receive invoice
 
 ```
 Technician finds damage
-      ↓
+      
 Creates repair
-      ↓
+      
 Yellow alert on your dashboard
-      ↓
+      
 You review and approve
-      ↓
+      
 Technician gets notification
-      ↓
+      
 Technician completes work
-      ↓
+      
 You receive invoice
 ```
 
@@ -701,28 +701,28 @@ You receive invoice
 ## Best Practices
 
 ### Submitting Requests
-- ✓ Clear damage descriptions
-- ✓ Include photos when possible
-- ✓ Accurate unit numbers
-- ✓ Submit promptly when damage found
+-  Clear damage descriptions
+-  Include photos when possible
+-  Accurate unit numbers
+-  Submit promptly when damage found
 
 ### Reviewing Approvals
-- ✓ Review promptly (technician waiting)
-- ✓ Check damage description matches photos
-- ✓ Verify cost is acceptable
-- ✓ Contact support with questions before denying
+-  Review promptly (technician waiting)
+-  Check damage description matches photos
+-  Verify cost is acceptable
+-  Contact support with questions before denying
 
 ### Managing Costs
-- ✓ Review approval settings quarterly
-- ✓ Monitor repair patterns
-- ✓ Address units with frequent damage
-- ✓ Use analytics to identify trends
+-  Review approval settings quarterly
+-  Monitor repair patterns
+-  Address units with frequent damage
+-  Use analytics to identify trends
 
 ### Communication
-- ✓ Keep contact info updated
-- ✓ Respond to notifications
-- ✓ Provide feedback on service
-- ✓ Report issues promptly
+-  Keep contact info updated
+-  Respond to notifications
+-  Provide feedback on service
+-  Report issues promptly
 
 ---
 
@@ -743,12 +743,12 @@ You receive invoice
 
 | Task | How To |
 |------|--------|
-| Submit request | Dashboard → "Submit Request" |
-| Approve repair | Dashboard → Yellow alert → "Approve" |
-| Deny repair | Dashboard → Yellow alert → "Deny" |
+| Submit request | Dashboard  "Submit Request" |
+| Approve repair | Dashboard  Yellow alert  "Approve" |
+| Deny repair | Dashboard  Yellow alert  "Deny" |
 | View history | "View All Repairs" |
-| Check unit | "View Units" → Click unit number |
-| Upload photo | Request form → "Choose file" |
+| Check unit | "View Units"  Click unit number |
+| Upload photo | Request form  "Choose file" |
 
 ---
 

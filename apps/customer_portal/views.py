@@ -5,13 +5,13 @@ from django.conf import settings
 from django.core.cache import cache
 from django.contrib.contenttypes.models import ContentType
 from core.models import Customer
-from apps.technician_portal.models import Repair, UnitRepairCount, TechnicianNotification, Technician
+from apps.technician_portal.models import Repair, Replacement, UnitRepairCount, TechnicianNotification, Technician
 from apps.rewards_referrals.models import ReferralCode, RewardOption, RewardRedemption, Referral
 from apps.rewards_referrals.services import ReferralService, RewardService
 from apps.billing.models import Invoice
 from .forms import RepairPreferenceForm, CustomerNotificationPreferenceForm
 from .models import CustomerRepairPreference
-from .models import CustomerUser, RepairApproval
+from .models import CustomerUser, RepairApproval, CustomerInvitation, ApprovalToken
 from core.models.notification import Notification
 from core.models.notification_preferences import CustomerNotificationPreference
 from django.contrib import messages
@@ -62,9 +62,10 @@ def rebuild_unit_repair_counts(customer):
     """Rebuild the UnitRepairCount data for a customer"""
     from apps.technician_portal.models import UnitRepairCount
     
-    # Get counts of completed repairs by unit
+    # Get counts of completed repairs by unit (scoped to tenant for isolation)
     repair_counts = Repair.objects.filter(
         customer=customer,
+        tenant=customer.tenant,
         queue_status='COMPLETED'
     ).values('unit_number').annotate(
         count=Count('id')
@@ -98,17 +99,18 @@ def customer_dashboard(request):
             rebuild_unit_repair_counts(customer)
         
         # Get statistics for the customer dashboard
-        active_repairs = Repair.objects.filter(customer=customer).exclude(queue_status='COMPLETED').exclude(queue_status='DENIED').count()
-        completed_repairs = Repair.objects.filter(customer=customer, queue_status='COMPLETED').count()
-        pending_approval = Repair.objects.filter(customer=customer, queue_status='PENDING').count()
+        # Filter by both customer AND tenant to prevent cross-tenant leakage
+        tenant = customer.tenant
+        base_qs = Repair.objects.filter(customer=customer, tenant=tenant)
+        active_repairs = base_qs.exclude(queue_status='COMPLETED').exclude(queue_status='DENIED').count()
+        completed_repairs = base_qs.filter(queue_status='COMPLETED').count()
+        pending_approval = base_qs.filter(queue_status='PENDING').count()
         
         # Get total spent on completed repairs
-        total_spent = Repair.objects.filter(customer=customer, queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
+        total_spent = base_qs.filter(queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
         
         # Get recent repairs (limited to 5) for the customer
-        recent_repairs = Repair.objects.filter(
-            customer=customer
-        ).select_related('technician__user').order_by('-service_date')[:5]
+        recent_repairs = base_qs.select_related('technician__user').order_by('-service_date')[:5]
         
         # Check which of the recent repairs were customer-initiated
         repair_ids = [repair.id for repair in recent_repairs]
@@ -122,8 +124,8 @@ def customer_dashboard(request):
             repair.customer_initiated = repair.id in customer_initiated_approvals
         
         # Get repairs that are awaiting customer approval
-        repairs_awaiting_approval = Repair.objects.filter(
-            customer=customer, queue_status='PENDING'
+        repairs_awaiting_approval = base_qs.filter(
+            queue_status='PENDING'
         ).select_related('technician__user').order_by('-service_date')
 
         # Group batched repairs and separate individual repairs
@@ -147,12 +149,12 @@ def customer_dashboard(request):
             'pending_approval': pending_approval,
             'total_spent': total_spent,
             # Detailed repair status counts for the visualization
-            'repairs_requested': Repair.objects.filter(customer=customer, queue_status='REQUESTED').count(),
+            'repairs_requested': base_qs.filter(queue_status='REQUESTED').count(),
             'repairs_pending': pending_approval,
-            'repairs_approved': Repair.objects.filter(customer=customer, queue_status='APPROVED').count(),
-            'repairs_in_progress': Repair.objects.filter(customer=customer, queue_status='IN_PROGRESS').count(),
+            'repairs_approved': base_qs.filter(queue_status='APPROVED').count(),
+            'repairs_in_progress': base_qs.filter(queue_status='IN_PROGRESS').count(),
             'repairs_completed': completed_repairs,
-            'repairs_denied': Repair.objects.filter(customer=customer, queue_status='DENIED').count(),
+            'repairs_denied': base_qs.filter(queue_status='DENIED').count(),
         }
         
         # Get referral and reward information
@@ -165,6 +167,19 @@ def customer_dashboard(request):
         
         # Get reward points balance
         reward_points = RewardService.get_reward_balance(customer_user)
+        
+        # Get outstanding invoices for the customer
+        outstanding_invoices = Invoice.objects.filter(
+            customer=customer,
+            status__in=['SENT', 'OVERDUE', 'PARTIAL']
+        ).order_by('due_date')[:5]
+        outstanding_total = outstanding_invoices.aggregate(
+            total=Sum('total')
+        )['total'] or 0
+        overdue_count = Invoice.objects.filter(
+            customer=customer,
+            status='OVERDUE'
+        ).count()
         
         context = {
             'customer': customer,
@@ -183,6 +198,10 @@ def customer_dashboard(request):
             'referral_code': referral_code_value,
             'referral_count': referral_count,
             'reward_points': reward_points,
+            # Invoice data
+            'outstanding_invoices': outstanding_invoices,
+            'outstanding_total': outstanding_total,
+            'overdue_count': overdue_count,
         }
 
         # Add notification context
@@ -198,21 +217,23 @@ def profile_creation(request):
     # Check if user already has a CustomerUser profile
     if CustomerUser.objects.filter(user=request.user).exists():
         return redirect('customer_dashboard')
-        
+
+    tenant = getattr(request, 'tenant', None)
+    tenant_customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
+
     if request.method == 'POST':
         # Process the form submission
         is_new_company = request.POST.get('is_new_company') == 'yes'
-        
+
         if is_new_company:
             # Create a new customer
             company_name = request.POST.get('company_name')
             company_email = request.POST.get('company_email')
             company_phone = request.POST.get('company_phone')
             company_address = request.POST.get('company_address')
-            
+
             try:
                 # Create new customer — associate with tenant
-                tenant = getattr(request, 'tenant', None)
                 customer = Customer.objects.create(
                     name=company_name,
                     email=company_email,
@@ -222,21 +243,15 @@ def profile_creation(request):
                 )
             except Exception as e:
                 messages.error(request, f"Error creating company: {str(e)}")
-                tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
-                return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+                return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
         else:
             # Use existing customer
             customer_id = request.POST.get('customer')
             try:
-                tenant = getattr(request, 'tenant', None)
-                customer_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
-                customer = customer_qs.get(id=customer_id)
+                customer = tenant_customers.get(id=customer_id)
             except Customer.DoesNotExist:
                 messages.error(request, "Selected company does not exist.")
-                tenant = getattr(request, 'tenant', None)
-                customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
-                return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+                return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
         
         # Create CustomerUser record
         try:
@@ -275,13 +290,7 @@ def profile_creation(request):
         except Exception as e:
             messages.error(request, f"Error creating profile: {str(e)}")
     
-    # Get all customers for the dropdown — scoped to tenant if available
-    tenant = getattr(request, 'tenant', None)
-    if tenant:
-        customers = Customer.objects.filter(tenant=tenant)
-    else:
-        customers = Customer.objects.all()
-    return render(request, 'customer_portal/profile_creation.html', {'customers': customers})
+    return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
 
 @customer_required
 def customer_repairs(request):
@@ -298,7 +307,11 @@ def customer_repairs(request):
         date_to = request.GET.get('date_to', '')
 
         # Get all repairs for this customer with optimization
-        repairs = Repair.objects.filter(customer=customer).select_related('technician__user')
+        # Also filter by tenant to prevent cross-tenant data leakage
+        repairs = Repair.objects.filter(
+            customer=customer,
+            tenant=customer.tenant,
+        ).select_related('technician__user')
 
         # Apply status filters
         if status_filter != 'all':
@@ -465,8 +478,8 @@ def customer_repair_detail(request, repair_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get the repair and ensure it belongs to this customer
-        repair = get_object_or_404(Repair, id=repair_id, customer=customer)
+        # Get the repair and ensure it belongs to this customer (tenant-scoped)
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
         
         # Get approval record if it exists
         try:
@@ -494,8 +507,8 @@ def customer_repair_approve(request, repair_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get the repair and ensure it belongs to this customer
-        repair = get_object_or_404(Repair, id=repair_id, customer=customer)
+        # Get the repair and ensure it belongs to this customer (tenant-scoped)
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
         
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
@@ -557,8 +570,8 @@ def customer_repair_deny(request, repair_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get the repair and ensure it belongs to this customer
-        repair = get_object_or_404(Repair, id=repair_id, customer=customer)
+        # Get the repair and ensure it belongs to this customer (tenant-scoped)
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
         
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
@@ -788,6 +801,169 @@ def customer_batch_deny(request, batch_id):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
+
+# =============================================================================
+# REPLACEMENT VIEWS - Customer portal for glass replacements
+# =============================================================================
+
+@customer_required
+def customer_replacements(request):
+    """List all glass replacements for this customer."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        # Get filter parameters
+        status_filter = request.GET.get('status', '')
+
+        # Get all replacements for this customer (tenant-scoped)
+        replacements = Replacement.objects.filter(customer=customer, tenant=customer.tenant).select_related(
+            'technician__user'
+        ).order_by('-service_date', '-id')
+
+        # Apply status filter
+        if status_filter:
+            replacements = replacements.filter(queue_status=status_filter)
+
+        # Calculate stats
+        stats = {
+            'total': replacements.count(),
+            'pending': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='PENDING').count(),
+            'in_progress': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
+            'completed': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='COMPLETED').count(),
+        }
+
+        # Pagination
+        paginator = Paginator(replacements, 25)
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+
+        # Status choices for filter
+        status_choices = [
+            ('', 'All Statuses'),
+            ('REQUESTED', 'Customer Requested'),
+            ('PENDING', 'Approval Pending'),
+            ('APPROVED', 'Approved'),
+            ('IN_PROGRESS', 'In Progress'),
+            ('COMPLETED', 'Completed'),
+            ('DENIED', 'Denied'),
+        ]
+
+        return render(request, 'customer_portal/replacements.html', {
+            'page_obj': page_obj,
+            'customer': customer,
+            'stats': stats,
+            'status_filter': status_filter,
+            'status_choices': status_choices,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_detail(request, replacement_id):
+    """View details of a single replacement."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
+
+        return render(request, 'customer_portal/replacement_detail.html', {
+            'replacement': replacement,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_approve(request, replacement_id):
+    """Approve a pending replacement."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
+
+        # Only allow approval of pending replacements
+        if replacement.queue_status not in ['PENDING', 'REQUESTED']:
+            messages.warning(request, "This replacement cannot be approved - it's not pending.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        if request.method == 'POST':
+            notes = request.POST.get('notes', '')
+
+            # Update replacement status
+            replacement.queue_status = 'APPROVED'
+            replacement.save()
+
+            # Create notification for technician
+            if replacement.technician:
+                TechnicianNotification.objects.create(
+                    technician=replacement.technician,
+                    message=f"✅ Replacement #{replacement.id} APPROVED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}",
+                    read=False,
+                )
+
+            messages.success(request, "Replacement has been approved. The technician can now proceed.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        return render(request, 'customer_portal/replacement_approve.html', {
+            'replacement': replacement,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_replacement_deny(request, replacement_id):
+    """Deny a pending replacement."""
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+
+        replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
+
+        # Only allow denial of pending replacements
+        if replacement.queue_status not in ['PENDING', 'REQUESTED']:
+            messages.warning(request, "This replacement cannot be denied - it's not pending.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        if request.method == 'POST':
+            reason = request.POST.get('reason', '')
+
+            # Update replacement status
+            replacement.queue_status = 'DENIED'
+            replacement.save()
+
+            # Create notification for technician
+            if replacement.technician:
+                denial_message = f"❌ Replacement #{replacement.id} DENIED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}"
+                if reason:
+                    denial_message += f". Reason: {reason}"
+                TechnicianNotification.objects.create(
+                    technician=replacement.technician,
+                    message=denial_message,
+                    read=False,
+                )
+
+            messages.success(request, "Replacement has been denied.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+        return render(request, 'customer_portal/replacement_deny.html', {
+            'replacement': replacement,
+            'customer': customer,
+        })
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
 def is_suspicious_username(username):
     """Check if username looks like a bot/spam registration"""
     # Check for random character patterns like 'ygzwnplsgv'
@@ -829,6 +1005,14 @@ def customer_register(request):
     if request.user.is_authenticated:
         return redirect('customer_dashboard')
 
+    # Helper to render with form data preserved
+    def render_with_form_data(error_message=None):
+        if error_message:
+            messages.error(request, error_message)
+        return render(request, 'customer_portal/register.html', {
+            'form_data': request.POST if request.method == 'POST' else {}
+        })
+
     # Check if rate limited
     if getattr(request, 'limited', False):
         messages.error(request, "Too many registration attempts. Please try again later.")
@@ -853,29 +1037,23 @@ def customer_register(request):
 
         # Check for suspicious username patterns
         if is_suspicious_username(username):
-            messages.error(request, "This username is not allowed. Please choose a different username.")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("This username is not allowed. Please choose a different username.")
 
         # Validation
         if len(username) < 3:
-            messages.error(request, "Username must be at least 3 characters long")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Username must be at least 3 characters long")
 
         if password != confirm_password:
-            messages.error(request, "Passwords do not match")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Passwords do not match")
 
         if len(password) < 8:
-            messages.error(request, "Password must be at least 8 characters long")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Password must be at least 8 characters long")
 
         if User.objects.filter(username=username).exists():
-            messages.error(request, "Username already exists")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Username already exists")
 
         if User.objects.filter(email=email).exists():
-            messages.error(request, "Email already exists")
-            return render(request, 'customer_portal/register.html')
+            return render_with_form_data("Email already exists")
 
         # Create user
         user = User.objects.create_user(
@@ -1218,6 +1396,8 @@ def get_available_technician(tenant=None):
     technicians = Technician.objects.all()
     if tenant:
         technicians = technicians.filter(tenant=tenant)
+    else:
+        technicians = technicians.none()
     technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')
@@ -1503,9 +1683,10 @@ def unit_repair_data_api(request):
         
         # If no unit repair counts exist, create them from repairs data
         if not unit_repairs.exists():
-            # Get counts directly from Repair model
+            # Get counts directly from Repair model (tenant-scoped)
             repair_counts = Repair.objects.filter(
                 customer=customer,
+                tenant=customer.tenant,
                 queue_status='COMPLETED'  # Only count completed repairs
             ).values('unit_number').annotate(
                 count=Count('id')
@@ -1547,9 +1728,10 @@ def repair_cost_data_api(request):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get all repairs for this customer
+        # Get all repairs for this customer (tenant-scoped)
         repairs = Repair.objects.filter(
-            customer=customer
+            customer=customer,
+            tenant=customer.tenant,
         ).order_by('service_date')
         
         # Group repairs by month and count them
@@ -1668,10 +1850,11 @@ def customer_bulk_action(request):
 
         # Validate and process repairs with transaction safety
         with transaction.atomic():
-            # Get all repairs and ensure they belong to this customer
+            # Get all repairs and ensure they belong to this customer (tenant-scoped)
             repairs = Repair.objects.filter(
                 id__in=repair_ids,
                 customer=customer,
+                tenant=customer.tenant,
                 queue_status='PENDING'
             ).select_related('technician')
 
@@ -2320,7 +2503,7 @@ def customer_invoice_pay(request, invoice_id):
             messages.error(request, "Online payments are not currently available. Please contact us for payment options.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
-        base_url = getattr(settings, 'BASE_URL', 'https://rockstarwindshield.repair')
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         success_url = f"{base_url}/app/invoices/{invoice.id}/?payment=success"
         cancel_url = f"{base_url}/app/invoices/{invoice.id}/?payment=cancelled"
 
@@ -2341,3 +2524,489 @@ def customer_invoice_pay(request, invoice_id):
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+# ============================================================================
+# Customer Invitation Views
+# ============================================================================
+
+def accept_customer_invitation(request, token):
+    """
+    Accept a customer portal invitation.
+    Creates account and links to customer.
+    """
+    from .models import CustomerInvitation
+    from .services.invitation_service import CustomerInvitationService
+    from apps.tenants.services.signup_service import generate_unique_username
+    
+    invitation = CustomerInvitationService.get_invitation_by_token(token)
+    
+    if not invitation:
+        return render(request, 'customer_portal/invitation_invalid.html')
+    
+    # If user is already logged in
+    if request.user.is_authenticated:
+        from common.auth import get_user_role
+        role = get_user_role(request.user)
+        
+        # Owners/managers already have full access — don't create CustomerUser
+        if role in ('superuser', 'owner', 'manager'):
+            invitation.mark_accepted(request.user)
+            messages.info(
+                request,
+                f"Invitation accepted. You already have full access to "
+                f"{invitation.customer.name} as a shop {role}."
+            )
+            return redirect('owner_dashboard')
+        
+        # Check if they already have a CustomerUser record
+        existing = CustomerUser.objects.filter(user=request.user).first()
+        if existing:
+            if existing.customer == invitation.customer:
+                messages.info(request, f"You're already set up for {invitation.customer.name}.")
+            else:
+                messages.warning(
+                    request, 
+                    f"You're already linked to {existing.customer.name}. "
+                    f"Contact support if you need access to {invitation.customer.name}."
+                )
+            return redirect('customer_dashboard')
+        
+        # Link existing user to customer
+        # Primary status is set explicitly by the owner when sending the invite.
+        # No auto-promotion — the owner decides who is primary.
+        if invitation.is_primary_contact:
+            CustomerUser.objects.filter(
+                customer=invitation.customer, is_primary_contact=True
+            ).update(is_primary_contact=False)
+        CustomerUser.objects.create(
+            user=request.user,
+            customer=invitation.customer,
+            is_primary_contact=invitation.is_primary_contact,
+        )
+        invitation.mark_accepted(request.user)
+        messages.success(request, f"Welcome! You now have access to {invitation.customer.name}.")
+        return redirect('customer_dashboard')
+    
+    # Handle form submission for new user creation
+    if request.method == 'POST':
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        email = request.POST.get('email', invitation.email).strip()
+        password = request.POST.get('password', '')
+        password_confirm = request.POST.get('password_confirm', '')
+        
+        errors = []
+        
+        # Validate
+        if not first_name:
+            errors.append("First name is required.")
+        if not password:
+            errors.append("Password is required.")
+        if len(password) < 8:
+            errors.append("Password must be at least 8 characters.")
+        if password != password_confirm:
+            errors.append("Passwords do not match.")
+        if User.objects.filter(email__iexact=email).exists():
+            errors.append("An account with this email already exists. Please log in instead.")
+        
+        if errors:
+            return render(request, 'customer_portal/invitation_accept.html', {
+                'invitation': invitation,
+                'errors': errors,
+                'first_name': first_name,
+                'last_name': last_name,
+                'email': email,
+            })
+        
+        try:
+            with transaction.atomic():
+                # Create the user
+                username = generate_unique_username(first_name or email.split('@')[0])
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+                
+                # Create CustomerUser link
+                # Primary status is set explicitly by the owner when sending the invite.
+                # No auto-promotion — the owner decides who is primary.
+                if invitation.is_primary_contact:
+                    CustomerUser.objects.filter(
+                        customer=invitation.customer, is_primary_contact=True
+                    ).update(is_primary_contact=False)
+                CustomerUser.objects.create(
+                    user=user,
+                    customer=invitation.customer,
+                    is_primary_contact=invitation.is_primary_contact,
+                )
+                
+                # Mark invitation as accepted
+                invitation.mark_accepted(user)
+                
+                # Log them in
+                login(request, user)
+                
+                messages.success(
+                    request, 
+                    f"Welcome to {invitation.customer.name}! Your account has been created."
+                )
+                return redirect('customer_dashboard')
+                
+        except Exception as e:
+            logger.error(f"Failed to create user from invitation: {e}")
+            errors.append("An error occurred creating your account. Please try again.")
+            return render(request, 'customer_portal/invitation_accept.html', {
+                'invitation': invitation,
+                'errors': errors,
+                'first_name': first_name,
+                'last_name': last_name,
+                'email': email,
+            })
+    
+    # GET request - show the form
+    return render(request, 'customer_portal/invitation_accept.html', {
+        'invitation': invitation,
+        'first_name': invitation.first_name,
+        'last_name': invitation.last_name,
+        'email': invitation.email,
+    })
+
+
+# ============================================================================
+# TEAM MANAGEMENT (Customer Self-Service)
+# ============================================================================
+
+@customer_required
+def customer_team(request):
+    """
+    Team management page - list team members and pending invitations.
+    Allows customers to invite their own team members (dispatchers, managers).
+    """
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        # Get all team members (CustomerUser records for this customer)
+        team_members = CustomerUser.objects.filter(customer=customer).select_related('user')
+        
+        # Get pending invitations
+        pending_invitations = CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending'
+        ).order_by('-created_at')
+        
+        # Mark expired invitations
+        for inv in pending_invitations:
+            if not inv.is_valid:
+                inv.status = 'expired'
+                inv.save(update_fields=['status'])
+        
+        # Refresh to get updated statuses
+        pending_invitations = CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending'
+        ).order_by('-created_at')
+        
+        return render(request, 'customer_portal/team.html', {
+            'team_members': team_members,
+            'pending_invitations': pending_invitations,
+            'current_user': customer_user,
+        })
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+@ratelimit(key='user', rate='10/h', method='POST', block=True)
+def customer_invite_team_member(request):
+    """
+    Send an invitation to a new team member.
+    """
+    if request.method != 'POST':
+        return redirect('customer_team')
+    
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        email = request.POST.get('email', '').strip().lower()
+        first_name = request.POST.get('first_name', '').strip()
+        last_name = request.POST.get('last_name', '').strip()
+        
+        # Validation
+        if not email:
+            messages.error(request, "Email address is required.")
+            return redirect('customer_team')
+        
+        # Basic email format check
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+            messages.error(request, "Please enter a valid email address.")
+            return redirect('customer_team')
+        
+        # Check if already a team member
+        existing_user = User.objects.filter(email__iexact=email).first()
+        if existing_user:
+            existing_customer_user = CustomerUser.objects.filter(
+                user=existing_user,
+                customer=customer
+            ).first()
+            if existing_customer_user:
+                messages.warning(request, f"{email} is already a team member.")
+                return redirect('customer_team')
+        
+        # Check for existing pending invitation
+        existing_invite = CustomerInvitation.objects.filter(
+            customer=customer,
+            email__iexact=email,
+            status='pending'
+        ).first()
+        
+        if existing_invite and existing_invite.is_valid:
+            messages.info(request, f"An invitation to {email} is already pending.")
+            return redirect('customer_team')
+        
+        # Create and send invitation
+        from .services.invitation_service import CustomerInvitationService
+        
+        invitation = CustomerInvitationService.create_invitation(
+            customer=customer,
+            email=email,
+            invited_by=request.user,
+            first_name=first_name,
+            last_name=last_name
+        )
+        
+        # Send the email
+        email_sent = CustomerInvitationService.send_invitation_email(invitation, request)
+        
+        if email_sent:
+            messages.success(request, f"Invitation sent to {email}!")
+        else:
+            messages.warning(request, f"Invitation created but email could not be sent. They can still use the invite link.")
+        
+        return redirect('customer_team')
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+    except Exception as e:
+        logger.error(f"Error sending team invitation: {e}")
+        messages.error(request, "An error occurred. Please try again.")
+        return redirect('customer_team')
+
+
+@customer_required
+def customer_cancel_invitation(request, invitation_id):
+    """
+    Cancel a pending invitation.
+    """
+    if request.method != 'POST':
+        return redirect('customer_team')
+    
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        invitation = get_object_or_404(
+            CustomerInvitation,
+            id=invitation_id,
+            customer=customer,
+            status='pending'
+        )
+        
+        from .services.invitation_service import CustomerInvitationService
+        CustomerInvitationService.cancel_invitation(invitation)
+        
+        messages.success(request, f"Invitation to {invitation.email} cancelled.")
+        return redirect('customer_team')
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_resend_invitation(request, invitation_id):
+    """
+    Resend a pending invitation (extends expiry).
+    """
+    if request.method != 'POST':
+        return redirect('customer_team')
+    
+    try:
+        customer_user = CustomerUser.objects.get(user=request.user)
+        customer = customer_user.customer
+        
+        invitation = get_object_or_404(
+            CustomerInvitation,
+            id=invitation_id,
+            customer=customer
+        )
+        
+        if invitation.status == 'accepted':
+            messages.warning(request, "This invitation has already been accepted.")
+            return redirect('customer_team')
+        
+        from .services.invitation_service import CustomerInvitationService
+        success = CustomerInvitationService.resend_invitation(invitation, request)
+        
+        if success:
+            messages.success(request, f"Invitation resent to {invitation.email}!")
+        else:
+            messages.error(request, "Could not resend invitation.")
+        
+        return redirect('customer_team')
+        
+    except CustomerUser.DoesNotExist:
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+# =============================================================================
+# ONE-CLICK APPROVAL VIEWS (no login required — token-based)
+# =============================================================================
+
+def quick_approve_repair(request, token):
+    """One-click repair approval via tokenized email link."""
+    try:
+        approval_token = ApprovalToken.objects.select_related(
+            'repair', 'repair__customer', 'repair__technician', 'customer_user'
+        ).get(token=token, action='approve')
+    except ApprovalToken.DoesNotExist:
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': 'This approval link is invalid or has already been used.'
+        })
+
+    if not approval_token.is_valid():
+        reason = 'This approval link has already been used.' if approval_token.used_at else 'This approval link has expired.'
+        return render(request, 'customer_portal/quick_action_expired.html', {'reason': reason})
+
+    repair = approval_token.repair
+    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': f'This repair has already been {repair.get_queue_status_display().lower()}.'
+        })
+
+    if request.method == 'POST':
+        notes = request.POST.get('notes', '')
+        customer_user = approval_token.customer_user
+
+        # Create or update approval
+        approval, created = RepairApproval.objects.get_or_create(
+            repair=repair,
+            defaults={
+                'approved': True,
+                'approved_by': customer_user,
+                'approval_date': timezone.now(),
+                'notes': notes,
+            }
+        )
+        if not created:
+            approval.approved = True
+            approval.approved_by = customer_user
+            approval.approval_date = timezone.now()
+            approval.notes = notes
+            approval.save()
+
+        repair.queue_status = 'APPROVED'
+        repair.save()
+
+        # Notify technician
+        if repair.technician:
+            TechnicianNotification.objects.create(
+                technician=repair.technician,
+                message=f"✅ Repair #{repair.id} APPROVED by {repair.customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                read=False,
+                repair=repair,
+            )
+
+        approval_token.mark_used()
+
+        # Also invalidate the corresponding deny token
+        ApprovalToken.objects.filter(
+            repair=repair, customer_user=customer_user, action='deny', used_at__isnull=True
+        ).update(used_at=timezone.now())
+
+        return render(request, 'customer_portal/quick_approve_success.html', {'repair': repair})
+
+    return render(request, 'customer_portal/quick_approve_confirm.html', {
+        'repair': repair,
+        'token': token,
+    })
+
+
+def quick_deny_repair(request, token):
+    """One-click repair denial via tokenized email link."""
+    try:
+        approval_token = ApprovalToken.objects.select_related(
+            'repair', 'repair__customer', 'repair__technician', 'customer_user'
+        ).get(token=token, action='deny')
+    except ApprovalToken.DoesNotExist:
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': 'This denial link is invalid or has already been used.'
+        })
+
+    if not approval_token.is_valid():
+        reason = 'This link has already been used.' if approval_token.used_at else 'This link has expired.'
+        return render(request, 'customer_portal/quick_action_expired.html', {'reason': reason})
+
+    repair = approval_token.repair
+    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+        return render(request, 'customer_portal/quick_action_expired.html', {
+            'reason': f'This repair has already been {repair.get_queue_status_display().lower()}.'
+        })
+
+    if request.method == 'POST':
+        reason = request.POST.get('reason', '')
+        customer_user = approval_token.customer_user
+
+        approval, created = RepairApproval.objects.get_or_create(
+            repair=repair,
+            defaults={
+                'approved': False,
+                'approved_by': customer_user,
+                'approval_date': timezone.now(),
+                'notes': reason,
+            }
+        )
+        if not created:
+            approval.approved = False
+            approval.approved_by = customer_user
+            approval.approval_date = timezone.now()
+            approval.notes = reason
+            approval.save()
+
+        repair.queue_status = 'DENIED'
+        repair.save()
+
+        # Notify technician
+        if repair.technician:
+            denial_message = f"❌ Repair #{repair.id} DENIED by {repair.customer.name} - Unit {repair.unit_number}."
+            if reason:
+                denial_message += f" Reason: {reason}"
+            TechnicianNotification.objects.create(
+                technician=repair.technician,
+                message=denial_message,
+                read=False,
+                repair=repair,
+            )
+
+        approval_token.mark_used()
+
+        # Invalidate the corresponding approve token
+        ApprovalToken.objects.filter(
+            repair=repair, customer_user=customer_user, action='approve', used_at__isnull=True
+        ).update(used_at=timezone.now())
+
+        return render(request, 'customer_portal/quick_deny_success.html', {'repair': repair})
+
+    return render(request, 'customer_portal/quick_deny_confirm.html', {
+        'repair': repair,
+        'token': token,
+    })

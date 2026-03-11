@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from .models import CustomerUser, CustomerPreference, RepairApproval, CustomerRepairPreference
+from .models import CustomerUser, CustomerPreference, RepairApproval, CustomerRepairPreference, CustomerInvitation
 from .pricing_models import CustomerPricing
 
 # Custom admin class for CustomerUser model
@@ -292,9 +292,33 @@ class CustomerRepairPreferenceAdmin(admin.ModelAdmin):
         }),
     )
 
+# CustomerInvitation Admin
+class CustomerInvitationAdmin(admin.ModelAdmin):
+    list_display = ['email', 'customer', 'status', 'created_at', 'expires_at', 'sent_at']
+    list_filter = ['status', 'created_at']
+    search_fields = ['email', 'customer__name', 'first_name', 'last_name']
+    readonly_fields = ['token', 'created_at', 'sent_at', 'accepted_at', 'accepted_user']
+    raw_id_fields = ['customer', 'invited_by', 'accepted_user']
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        ('Invitation Details', {
+            'fields': ('customer', 'email', 'first_name', 'last_name', 'status')
+        }),
+        ('Token & Expiry', {
+            'fields': ('token', 'expires_at'),
+        }),
+        ('Tracking', {
+            'fields': ('invited_by', 'created_at', 'sent_at', 'accepted_at', 'accepted_user'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
 # Register the models with their custom admin classes
 admin.site.register(CustomerUser, CustomerUserAdmin)
 admin.site.register(CustomerPreference, CustomerPreferenceAdmin)
 admin.site.register(RepairApproval, RepairApprovalAdmin)
 admin.site.register(CustomerPricing, CustomerPricingAdmin)
-admin.site.register(CustomerRepairPreference, CustomerRepairPreferenceAdmin) 
+admin.site.register(CustomerRepairPreference, CustomerRepairPreferenceAdmin)
+admin.site.register(CustomerInvitation, CustomerInvitationAdmin) 

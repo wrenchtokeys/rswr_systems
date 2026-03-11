@@ -105,7 +105,8 @@ class InvoiceService:
         )
     """
     
-    def __init__(self):
+    def __init__(self, tenant=None):
+        self.tenant = tenant
         # Load company info from EmailBrandingConfig
         self._load_branding_config()
         self.styles = getSampleStyleSheet()
@@ -307,7 +308,10 @@ class InvoiceService:
         queryset = Repair.objects.filter(
             customer_id=customer_id,
             queue_status='COMPLETED'
-        ).select_related('customer', 'technician', 'technician__user')
+        )
+        if self.tenant:
+            queryset = queryset.filter(tenant=self.tenant)
+        queryset = queryset.select_related('customer', 'technician', 'technician__user')
         
         if repair_ids:
             queryset = queryset.filter(id__in=repair_ids)
@@ -374,8 +378,11 @@ class InvoiceService:
         Returns:
             InvoiceData object ready for PDF generation
         """
-        # Get customer
-        customer = Customer.objects.get(id=customer_id)
+        # Get customer (tenant-scoped when available)
+        if self.tenant:
+            customer = Customer.objects.filter(tenant=self.tenant).get(id=customer_id)
+        else:
+            customer = Customer.objects.get(id=customer_id)
         
         # Get repairs
         repairs = self.get_completed_repairs(
@@ -414,7 +421,7 @@ class InvoiceService:
         tax_amount = Decimal('0.00')
         try:
             from apps.billing.services.tax_service import TaxService
-            tax_svc = TaxService()
+            tax_svc = TaxService(tenant=getattr(customer, 'tenant', None))
             tax_result = tax_svc.calculate_tax(
                 subtotal=total,  # tax on post-discount amount
                 customer=customer,

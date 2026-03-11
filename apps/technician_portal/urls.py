@@ -40,6 +40,10 @@ urlpatterns = [
     path('customers/<int:customer_id>/primary-tech/', views.update_primary_technician, name='update_primary_technician'),
     path('customers/<int:customer_id>/units/<str:unit_number>/', views.unit_details, name='unit_details'),
     path('customers/<int:customer_id>/units/<str:unit_number>/replace/', views.mark_unit_replaced, name='mark_unit_replaced'),
+    path('customers/<int:customer_id>/invite/', views.send_customer_invitation, name='send_customer_invitation'),
+    path('invitations/<int:invitation_id>/resend/', views.resend_customer_invitation, name='resend_customer_invitation'),
+    path('invitations/<int:invitation_id>/cancel/', views.cancel_customer_invitation, name='cancel_customer_invitation'),
+    path('customers/<int:customer_id>/portal-users/<int:cu_id>/set-primary/', views.set_primary_contact, name='set_primary_contact'),
     
     # Rewards and notifications
     path('reward-fulfillment/<int:redemption_id>/', views.reward_fulfillment_detail, name='reward_fulfillment_detail'),

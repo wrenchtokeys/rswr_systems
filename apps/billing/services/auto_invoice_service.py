@@ -272,7 +272,7 @@ class AutoInvoiceService:
             return False
         
         try:
-            email_service = InvoiceEmailService()
+            email_service = InvoiceEmailService(tenant=getattr(repair, 'tenant', None))
             success, message = email_service.send_invoice_email(
                 customer_id=repair.customer.id,
                 recipient_email=recipient,

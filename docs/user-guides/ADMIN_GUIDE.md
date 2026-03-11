@@ -35,14 +35,14 @@ CORE
 
 CUSTOMER_PORTAL
 - Customer preferences
-- Customer pricing          ← Pricing configuration
+- Customer pricing           Pricing configuration
 - Customer users
 - Repair approvals
-- Customer repair preferences  ← NEW: Approval settings
+- Customer repair preferences   NEW: Approval settings
 
 TECHNICIAN_PORTAL
 - Repairs
-- Technicians              ← Manager setup
+- Technicians               Manager setup
 - Unit repair counts
 - Technician notifications
 ```
@@ -53,7 +53,7 @@ TECHNICIAN_PORTAL
 
 ### Viewing Customers
 
-**Navigation**: Admin → Core → Customers
+**Navigation**: Admin  Core  Customers
 
 **List View Shows**:
 - Company name
@@ -79,11 +79,11 @@ TECHNICIAN_PORTAL
 
 | Field | Description | Required |
 |-------|-------------|----------|
-| Name | Company name | ✓ |
-| Contact_name | Primary contact person | ✓ |
-| Email | Contact email | ✓ |
-| Phone | Contact phone | ✓ |
-| Address | Company address | ✓ |
+| Name | Company name |  |
+| Contact_name | Primary contact person |  |
+| Email | Contact email |  |
+| Phone | Contact phone |  |
+| Address | Company address |  |
 
 ---
 
@@ -91,7 +91,7 @@ TECHNICIAN_PORTAL
 
 ### Viewing Technicians
 
-**Navigation**: Admin → Technician Portal → Technicians
+**Navigation**: Admin  Technician Portal  Technicians
 
 **List Shows**:
 - User (linked Django account)
@@ -99,8 +99,8 @@ TECHNICIAN_PORTAL
 - Full Name
 - Phone
 - Expertise
-- Manager (✓ if manager)
-- Active (✓ if active)
+- Manager ( if manager)
+- Active ( if active)
 - Repairs (completed count)
 
 ### Creating Technician Profile
@@ -108,13 +108,13 @@ TECHNICIAN_PORTAL
 **Prerequisites**: User account must exist first
 
 ```
-1. Admin → Technician Portal → Technicians
+1. Admin  Technician Portal  Technicians
 2. Click "Add technician"
 3. Select user from dropdown
 4. Fill basic info:
    - Phone number
    - Expertise (e.g., "Senior Technician")
-   - Is active: ✓
+   - Is active: 
 5. Save
 ```
 
@@ -124,10 +124,10 @@ TECHNICIAN_PORTAL
 1. Click technician name to edit
 2. Scroll to "Manager Capabilities" section
 3. Configure:
-   ☑ Is manager
-   Approval limit: 150.00        ← Max override amount
-   ☑ Can assign work
-   ☑ Can override pricing
+    Is manager
+   Approval limit: 150.00         Max override amount
+    Can assign work
+    Can override pricing
    Managed technicians: [Select team members]
 4. Save
 ```
@@ -180,7 +180,7 @@ Example:
 
 ### Customer Pricing
 
-**Navigation**: Admin → Customer Portal → Customer Pricing
+**Navigation**: Admin  Customer Portal  Customer Pricing
 
 ### Creating Custom Pricing
 
@@ -188,7 +188,7 @@ Example:
 1. Click "Add customer pricing"
 2. Customer & Settings:
    - Customer: [Select from dropdown]
-   ☑ Use custom pricing
+    Use custom pricing
    - Notes: "VIP customer - 10% discount on all repairs"
 
 3. Custom Repair Pricing:
@@ -210,7 +210,7 @@ Example:
 #### Scenario 1: Flat Discount (10% off everything)
 ```
 Customer: ABC Logistics
-Use custom pricing: ✓
+Use custom pricing: 
 Repair 1: 45.00   (10% off $50)
 Repair 2: 36.00   (10% off $40)
 Repair 3: 31.50   (10% off $35)
@@ -221,7 +221,7 @@ Repair 5+: 22.50  (10% off $25)
 #### Scenario 2: Volume Discount Only
 ```
 Customer: City Delivery Co
-Use custom pricing: ✓
+Use custom pricing: 
 (Leave all repair prices blank - uses defaults)
 Volume threshold: 15
 Volume percentage: 20.00
@@ -230,7 +230,7 @@ Volume percentage: 20.00
 #### Scenario 3: Contract Pricing + Volume Bonus
 ```
 Customer: Enterprise Fleet
-Use custom pricing: ✓
+Use custom pricing: 
 Repair 1: 40.00
 Repair 2: 40.00   (Same rate for first 2)
 (Leave 3-5 blank - defaults apply)
@@ -256,7 +256,7 @@ Total customer repairs: 12 (exceeds threshold of 10)
 Calculation:
 - Base price (3rd repair): $31.50 (custom tier)
 - Volume discount: 15%
-- Final price: $31.50 × 0.85 = $26.78
+- Final price: $31.50 � 0.85 = $26.78
 ```
 
 ---
@@ -265,7 +265,7 @@ Calculation:
 
 ### Customer Repair Preferences
 
-**Navigation**: Admin → Customer Portal → Customer Repair Preferences
+**Navigation**: Admin  Customer Portal  Customer Repair Preferences
 
 ### Approval Modes
 
@@ -289,9 +289,9 @@ Calculation:
 1. Click "Add customer repair preference"
 2. Select customer
 3. Choose approval mode:
-   ● Auto-approve all field repairs
-   ○ Require approval for all
-   ○ Unit threshold per visit
+    Auto-approve all field repairs
+    Require approval for all
+    Unit threshold per visit
 
    If "Unit threshold" selected:
    - Units per visit threshold: 3
@@ -301,7 +301,7 @@ Calculation:
 
 ### Lot Walking Service Configuration
 
-**Same Interface**: Admin → Customer Portal → Customer Repair Preferences
+**Same Interface**: Admin  Customer Portal  Customer Repair Preferences
 
 Configure scheduled lot walking service for customers:
 
@@ -309,7 +309,7 @@ Configure scheduled lot walking service for customers:
 1. Edit existing preference or create new
 2. Scroll to "Lot Walking Service Settings" section
 3. Configure service:
-   ☑ Enable lot walking service
+    Enable lot walking service
 
    Frequency: [Dropdown]
    - Weekly
@@ -320,13 +320,13 @@ Configure scheduled lot walking service for customers:
    Preferred time: 09:00 AM    (Time picker)
 
    Preferred Days for Lot Walking:
-   ☑ Monday
-   ☑ Wednesday
-   ☑ Friday
-   ☐ Tuesday
-   ☐ Thursday
-   ☐ Saturday
-   ☐ Sunday
+    Monday
+    Wednesday
+    Friday
+    Tuesday
+    Thursday
+    Saturday
+    Sunday
 
 4. Save
 ```
@@ -340,7 +340,7 @@ Configure scheduled lot walking service for customers:
 **List View Shows**:
 - Customer name
 - Approval mode
-- Lot walking enabled (✓/✗)
+- Lot walking enabled (/)
 - Lot walking frequency
 - Last updated
 
@@ -413,7 +413,7 @@ Result:
 ### Creating Users
 
 ```
-1. Admin → Authentication and Authorization → Users
+1. Admin  Authentication and Authorization  Users
 2. Click "Add user"
 3. Enter:
    - Username
@@ -473,10 +473,10 @@ python manage.py setup_groups
 ### Task 1: Set Up New Customer with Special Pricing
 
 ```
-1. Create customer (Core → Customers)
-2. Create customer pricing (Customer Portal → Customer Pricing)
+1. Create customer (Core  Customers)
+2. Create customer pricing (Customer Portal  Customer Pricing)
    - Configure tiers and/or volume discount
-3. Create repair preference (Customer Portal → Customer Repair Preferences)
+3. Create repair preference (Customer Portal  Customer Repair Preferences)
    - Choose appropriate approval mode
 4. Test with sample repair
 ```
@@ -484,13 +484,13 @@ python manage.py setup_groups
 ### Task 2: Promote Technician to Manager
 
 ```
-1. Technician Portal → Technicians
+1. Technician Portal  Technicians
 2. Click technician name
 3. Manager Capabilities section:
-   ☑ Is manager
+    Is manager
    Approval limit: 150.00
-   ☑ Can assign work
-   ☑ Can override pricing
+    Can assign work
+    Can override pricing
    Select managed technicians
 4. Save
 5. Verify manager can see override section in repair forms
@@ -499,18 +499,18 @@ python manage.py setup_groups
 ### Task 3: Give Customer Auto-Approval
 
 ```
-1. Customer Portal → Customer Repair Preferences
+1. Customer Portal  Customer Repair Preferences
 2. Add or edit preference
 3. Select customer
 4. Mode: AUTO_APPROVE
 5. Save
-6. Test: Tech creates field repair → should be APPROVED immediately
+6. Test: Tech creates field repair  should be APPROVED immediately
 ```
 
 ### Task 4: Audit Manager Overrides
 
 ```
-1. Technician Portal → Repairs
+1. Technician Portal  Repairs
 2. Add filter: "Cost override is not null"
 3. Review overrides:
    - Check override amounts
@@ -522,7 +522,7 @@ python manage.py setup_groups
 ### Task 5: Deactivate Technician Temporarily
 
 ```
-1. Technician Portal → Technicians
+1. Technician Portal  Technicians
 2. Click technician name
 3. Uncheck "Is active"
 4. Save
@@ -536,14 +536,14 @@ Result:
 ### Task 6: Configure Lot Walking Service for Customer
 
 ```
-1. Customer Portal → Customer Repair Preferences
+1. Customer Portal  Customer Repair Preferences
 2. Find or create preference for customer
 3. Scroll to "Lot Walking Service Settings"
 4. Enable and configure:
-   ☑ Enable lot walking service
+    Enable lot walking service
    Frequency: Weekly
    Preferred time: 09:00
-   Days: ☑ Monday ☑ Wednesday ☑ Friday
+   Days:  Monday  Wednesday  Friday
 5. Save
 
 Result:
@@ -708,23 +708,23 @@ Audit complete!
 ### Safety & Best Practices
 
 **Before Deleting**:
-1. ✅ Run audit without `--delete` first
-2. ✅ Review the list of files to be deleted
-3. ✅ Check modification dates (recent files need review)
-4. ✅ Ensure you have database backups
-5. ✅ Consider taking S3 snapshot if deleting many files
+1.  Run audit without `--delete` first
+2.  Review the list of files to be deleted
+3.  Check modification dates (recent files need review)
+4.  Ensure you have database backups
+5.  Consider taking S3 snapshot if deleting many files
 
 **When to Delete**:
-- ✅ Files are older than 30 days
-- ✅ Audit shows reasonable file count (<100 files)
-- ✅ You've verified against recent repair deletions
-- ✅ Storage costs justify cleanup effort
+-  Files are older than 30 days
+-  Audit shows reasonable file count (<100 files)
+-  You've verified against recent repair deletions
+-  Storage costs justify cleanup effort
 
 **When NOT to Delete**:
-- ❌ Files modified in last 7 days (might be active uploads)
-- ❌ Large number of files (>500) without investigation
-- ❌ Missing files reported (indicates bigger problem)
-- ❌ During active repair operations
+-  Files modified in last 7 days (might be active uploads)
+-  Large number of files (>500) without investigation
+-  Missing files reported (indicates bigger problem)
+-  During active repair operations
 
 ### Task: Monthly Storage Audit
 
@@ -778,17 +778,17 @@ grep -A 20 "INSTALLED_APPS" rs_systems/settings.py | grep django_cleanup
 ### Issue: Manager Can't See Override Section
 
 **Check**:
-1. User has technician profile ✓
-2. Technician marked as manager ✓
-3. "Can override pricing" checked ✓
-4. User logging into /tech/ portal (not /admin/) ✓
+1. User has technician profile 
+2. Technician marked as manager 
+3. "Can override pricing" checked 
+4. User logging into /tech/ portal (not /admin/) 
 
 ### Issue: Custom Pricing Not Applying
 
 **Check**:
-1. CustomerPricing record exists ✓
-2. "Use custom pricing" checked ✓
-3. Tier prices set (blank = default) ✓
+1. CustomerPricing record exists 
+2. "Use custom pricing" checked 
+3. Tier prices set (blank = default) 
 4. Test with shell command:
    ```bash
    python manage.py shell -c "
@@ -802,10 +802,10 @@ grep -A 20 "INSTALLED_APPS" rs_systems/settings.py | grep django_cleanup
 ### Issue: Approval Preference Not Working
 
 **Check**:
-1. CustomerRepairPreference exists ✓
-2. Correct approval mode selected ✓
-3. Unit threshold set (if using UNIT_THRESHOLD mode) ✓
-4. Test with new repair creation ✓
+1. CustomerRepairPreference exists 
+2. Correct approval mode selected 
+3. Unit threshold set (if using UNIT_THRESHOLD mode) 
+4. Test with new repair creation 
 
 ---
 

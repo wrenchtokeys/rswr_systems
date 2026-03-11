@@ -47,9 +47,10 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'apps.tenants.middleware.TenantMiddleware',
-    'common.portal_middleware.PortalAccessMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'apps.tenants.middleware.TenantMiddleware',
+    'apps.tenants.subscription_middleware.SubscriptionEnforcementMiddleware',
+    'common.portal_middleware.PortalAccessMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
@@ -166,7 +167,7 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'apikey'
 EMAIL_HOST_PASSWORD = os.environ.get('SENDGRID_API_KEY')
 
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rockstarwindshield.repair')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
 DEFAULT_FROM_NAME = os.environ.get('DEFAULT_FROM_NAME', 'RS Systems')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
@@ -191,7 +192,7 @@ STRIPE_TEST_MODE = STRIPE_SECRET_KEY.startswith('sk_test_') if STRIPE_SECRET_KEY
 # =========================================
 
 INVOICE_DEFAULT_DUE_DAYS = 30
-INVOICE_FROM_EMAIL = os.environ.get('INVOICE_FROM_EMAIL', 'billing@rockstarwindshield.repair')
+INVOICE_FROM_EMAIL = os.environ.get('INVOICE_FROM_EMAIL', 'billing@rssystems.io')
 
 # =========================================
 # CELERY CONFIGURATION (Shared)

@@ -54,8 +54,8 @@ Click any repair to see:
 
 **Status Flow**:
 ```
-REQUESTED → (Manager assigns) → APPROVED
-APPROVED → IN_PROGRESS → COMPLETED → CLOSED
+REQUESTED  (Manager assigns)  APPROVED
+APPROVED  IN_PROGRESS  COMPLETED  CLOSED
 ```
 
 **Actions**:
@@ -148,17 +148,17 @@ This flexibility allows you to balance management duties with hands-on repair wo
 1. Dashboard shows "Customer Requested Repairs"
 2. Click on REQUESTED repair
 3. Click "Accept Repair" button
-4. Repair assigns to you, status → APPROVED
+4. Repair assigns to you, status  APPROVED
 5. Page refreshes showing "Start Repair" button
-6. Click "Start Repair" → Status: IN_PROGRESS
+6. Click "Start Repair"  Status: IN_PROGRESS
 7. Complete work as normal
-8. Click "Mark as Completed" → Status: COMPLETED
+8. Click "Mark as Completed"  Status: COMPLETED
 ```
 
 **Result**:
 - Repair assigned to YOU
-- Status: APPROVED → ready to start
-- Natural workflow: Accept → Start → Complete
+- Status: APPROVED  ready to start
+- Natural workflow: Accept  Start  Complete
 
 ### Option 2: Assigning to Team Members
 
@@ -172,7 +172,7 @@ This flexibility allows you to balance management duties with hands-on repair wo
 ```
 
 **What Happens**:
-- Repair status → APPROVED
+- Repair status  APPROVED
 - Assigned tech gets notification
 - Notification includes direct link to repair
 - You can only assign to technicians on your team
@@ -266,7 +266,7 @@ As a manager, you have access to a dedicated settings portal for configuring sys
 2. Click "Add New Rule" (green button)
 3. Fill in modal form:
    - Rule name: "Cold Weather"
-   - Temperature range: Min 32°F, Max 59.9°F
+   - Temperature range: Min 32�F, Max 59.9�F
    - Recommended viscosity: "Low"
    - Badge color: Blue
    - Suggestion text: "Low viscosity recommended for cold conditions"
@@ -296,11 +296,11 @@ As a manager, you have access to a dedicated settings portal for configuring sys
 
 **Example Display for Technicians**:
 ```
-Temperature: 72°F
-┌─────────────────────────────────────────┐
-│ 💧 Medium viscosity recommended for    │
-│    optimal conditions                   │
-└─────────────────────────────────────────┘
+Temperature: 72�F
+
+  Medium viscosity recommended for    
+    optimal conditions                   
+
 ```
 
 #### Team Overview Features
@@ -422,7 +422,7 @@ See `docs/development/MANAGER_SETTINGS_ROADMAP.md` for detailed feature roadmap 
    Tech gets notification
 
 4. Tech completes work
-   Status: IN_PROGRESS → COMPLETED
+   Status: IN_PROGRESS  COMPLETED
 
 5. Closed after invoicing
    Status: CLOSED
@@ -439,7 +439,7 @@ See `docs/development/MANAGER_SETTINGS_ROADMAP.md` for detailed feature roadmap 
    Status: APPROVED immediately
 
 3. Complete repair
-   Status: IN_PROGRESS → COMPLETED
+   Status: IN_PROGRESS  COMPLETED
 
 4. Invoice customer
    Status: CLOSED
@@ -463,7 +463,7 @@ See `docs/development/MANAGER_SETTINGS_ROADMAP.md` for detailed feature roadmap 
    Status: APPROVED
 
 5. Complete repair
-   Status: IN_PROGRESS → COMPLETED
+   Status: IN_PROGRESS  COMPLETED
 
 6. Invoice customer
    Status: CLOSED
@@ -476,17 +476,17 @@ See `docs/development/MANAGER_SETTINGS_ROADMAP.md` for detailed feature roadmap 
 ### What You Can See
 
 **Regular Technicians**:
-- ✓ APPROVED repairs assigned to you
-- ✓ IN_PROGRESS repairs you're working on
-- ✓ COMPLETED repairs you finished
-- ✗ REQUESTED repairs (managers only)
-- ✗ PENDING repairs (customer approval)
+-  APPROVED repairs assigned to you
+-  IN_PROGRESS repairs you're working on
+-  COMPLETED repairs you finished
+-  REQUESTED repairs (managers only)
+-  PENDING repairs (customer approval)
 
 **Managers**:
-- ✓ REQUESTED repairs (for assignment)
-- ✓ All APPROVED repairs
-- ✓ Team members' repairs
-- ✗ PENDING repairs (customer approval)
+-  REQUESTED repairs (for assignment)
+-  All APPROVED repairs
+-  Team members' repairs
+-  PENDING repairs (customer approval)
 
 **Why You Can't See PENDING**:
 - These need customer approval
@@ -570,28 +570,28 @@ This helps you know what to expect before finalizing.
 ## Best Practices
 
 ### Documentation
-- ✓ Add clear technician notes
-- ✓ Upload before/after photos
-- ✓ Describe damage accurately
-- ✓ Note any complications
+-  Add clear technician notes
+-  Upload before/after photos
+-  Describe damage accurately
+-  Note any complications
 
 ### Communication
-- ✓ Update status promptly
-- ✓ Add notes about delays
-- ✓ Contact manager for issues
-- ✓ Explain override reasons clearly
+-  Update status promptly
+-  Add notes about delays
+-  Contact manager for issues
+-  Explain override reasons clearly
 
 ### Professionalism
-- ✓ Complete work thoroughly
-- ✓ Keep customers informed
-- ✓ Follow approval processes
-- ✓ Maintain quality standards
+-  Complete work thoroughly
+-  Keep customers informed
+-  Follow approval processes
+-  Maintain quality standards
 
 ### Efficiency
-- ✓ Batch similar repairs
-- ✓ Take photos during inspection
-- ✓ Update status in real-time
-- ✓ Use quick actions when available
+-  Batch similar repairs
+-  Take photos during inspection
+-  Update status in real-time
+-  Use quick actions when available
 
 ---
 
@@ -609,9 +609,9 @@ This helps you know what to expect before finalizing.
 ### "Override section not showing"
 
 **Check**:
-- Are you a manager? ✓
-- Do you have override permission? ✓
-- Are you in /tech/ portal (not /admin/)? ✓
+- Are you a manager? 
+- Do you have override permission? 
+- Are you in /tech/ portal (not /admin/)? 
 
 **Solution**: Contact admin to grant manager permissions
 
@@ -627,9 +627,9 @@ This helps you know what to expect before finalizing.
 ### "Can't update repair status"
 
 **Check**:
-- Is repair assigned to you? ✓
-- Are you following proper status flow? ✓
-- Is form showing validation errors? ✓
+- Is repair assigned to you? 
+- Are you following proper status flow? 
+- Is form showing validation errors? 
 
 **Solution**: Review error messages, contact support if persists
 
@@ -676,12 +676,12 @@ This helps you know what to expect before finalizing.
 
 | Task | Steps |
 |------|-------|
-| View repairs | Dashboard → Click repair |
-| Create repair | "Create New Repair" → Fill form → Save |
-| Update status | Edit repair → Change status → Save |
-| Add photos | Edit repair → Upload files → Save |
-| Override price | Edit → Override section → Enter price + reason |
-| Assign repair | Repair detail → "Assign" → Select tech |
+| View repairs | Dashboard  Click repair |
+| Create repair | "Create New Repair"  Fill form  Save |
+| Update status | Edit repair  Change status  Save |
+| Add photos | Edit repair  Upload files  Save |
+| Override price | Edit  Override section  Enter price + reason |
+| Assign repair | Repair detail  "Assign"  Select tech |
 
 ---
 
@@ -694,16 +694,16 @@ This helps you know what to expect before finalizing.
 ## Recent Updates
 
 ### November 18, 2025 - Manager Settings Portal
-- ✅ New Manager Settings dashboard at `/tech/settings/`
-- ✅ Viscosity Rules Management - configure temperature-based recommendations
-- ✅ Team Overview dashboard with performance metrics
-- ✅ Card-based UI with modal editing for modern UX
-- ✅ Real-time updates without page refresh
-- 🔜 Coming soon: Pricing configuration and audit logging
+-  New Manager Settings dashboard at `/tech/settings/`
+-  Viscosity Rules Management - configure temperature-based recommendations
+-  Team Overview dashboard with performance metrics
+-  Card-based UI with modal editing for modern UX
+-  Real-time updates without page refresh
+-  Coming soon: Pricing configuration and audit logging
 
 ### October 28, 2025 - Working Manager Feature
-- ✅ Managers can now complete repairs themselves
-- ✅ Two clear options: "Accept Repair" or "Assign to Technician"
-- ✅ Reassign team repairs to yourself when needed
-- ✅ Simplified workflow with fewer clicks
-- ✅ Natural progression: Accept → Start → Complete
+-  Managers can now complete repairs themselves
+-  Two clear options: "Accept Repair" or "Assign to Technician"
+-  Reassign team repairs to yourself when needed
+-  Simplified workflow with fewer clicks
+-  Natural progression: Accept  Start  Complete

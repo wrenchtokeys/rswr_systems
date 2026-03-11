@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @technician_required
 def create_customer(request):
-    """Create a new customer."""
+    """Create a new customer with optional portal invitation."""
     tenant = getattr(request, 'tenant', None)
 
     # Usage limit check
@@ -37,7 +37,41 @@ def create_customer(request):
             if tenant:
                 customer.tenant = tenant
             customer.save()
-            messages.success(request, f"Customer '{customer.name}' has been created successfully.")
+            
+            # Handle portal invitation if requested
+            invite_email = form.cleaned_data.get('invite_email')
+            send_invitation = form.cleaned_data.get('send_invitation', False)
+            
+            if invite_email and send_invitation:
+                from apps.customer_portal.services.invitation_service import CustomerInvitationService
+                try:
+                    invitation = CustomerInvitationService.create_invitation(
+                        customer=customer,
+                        email=invite_email,
+                        invited_by=request.user,
+                        first_name=form.cleaned_data.get('invite_first_name', ''),
+                        last_name=form.cleaned_data.get('invite_last_name', '')
+                    )
+                    if CustomerInvitationService.send_invitation_email(invitation, request):
+                        messages.success(
+                            request, 
+                            f"Customer '{customer.name}' created and invitation sent to {invite_email}."
+                        )
+                    else:
+                        messages.warning(
+                            request,
+                            f"Customer '{customer.name}' created, but failed to send invitation email. "
+                            f"You can resend from the customer details page."
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to create/send invitation: {e}")
+                    messages.warning(
+                        request,
+                        f"Customer '{customer.name}' created, but invitation could not be sent."
+                    )
+            else:
+                messages.success(request, f"Customer '{customer.name}' has been created successfully.")
+            
             return redirect('technician_dashboard')
     else:
         form = CustomerForm(tenant=tenant)
@@ -58,6 +92,9 @@ def customer_list(request):
         customers = Customer.objects.all()
         if tenant:
             customers = customers.filter(tenant=tenant)
+
+        else:
+            customers = customers.none()
         customers = customers.order_by('name')
     else:
         if hasattr(request.user, 'technician'):
@@ -65,10 +102,16 @@ def customer_list(request):
             repair_qs = Repair.objects.filter(technician=technician)
             if tenant:
                 repair_qs = repair_qs.filter(tenant=tenant)
+
+            else:
+                repair_qs = repair_qs.none()
             customer_ids = repair_qs.values_list('customer_id', flat=True).distinct()
             customers = Customer.objects.filter(id__in=customer_ids)
             if tenant:
                 customers = customers.filter(tenant=tenant)
+
+            else:
+                customers = customers.none()
             customers = customers.order_by('name')
         else:
             customers = Customer.objects.none()
@@ -109,6 +152,9 @@ def customer_details(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
     # Determine if user is admin/owner/manager (can see all repairs)
@@ -133,6 +179,9 @@ def customer_details(request, customer_id):
     if tenant:
         repairs = repairs.filter(tenant=tenant)
 
+    else:
+        repairs = repairs.none()
+
     unit_search = request.GET.get('unit_search', '')
     if unit_search:
         repairs = repairs.filter(unit_number__icontains=unit_search)
@@ -146,7 +195,21 @@ def customer_details(request, customer_id):
     available_technicians = Technician.objects.filter(is_active=True)
     if tenant:
         available_technicians = available_technicians.filter(tenant=tenant)
+
+    else:
+        available_technicians = available_technicians.none()
     available_technicians = available_technicians.order_by('user__first_name')
+
+    # Portal access info (for admins/managers)
+    portal_users = []
+    pending_invitations = []
+    if can_edit_customer:
+        from apps.customer_portal.models import CustomerUser, CustomerInvitation
+        portal_users = CustomerUser.objects.filter(customer=customer).select_related('user')
+        pending_invitations = CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending'
+        ).order_by('-created_at')
 
     return render(request, 'technician_portal/customer_details.html', {
         'customer': customer,
@@ -154,6 +217,8 @@ def customer_details(request, customer_id):
         'unit_search': unit_search,
         'can_edit_customer': can_edit_customer,
         'available_technicians': available_technicians,
+        'portal_users': portal_users,
+        'pending_invitations': pending_invitations,
     })
 
 
@@ -169,6 +234,9 @@ def unit_details(request, customer_id, unit_number):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
     # Get repairs for this unit
@@ -187,6 +255,9 @@ def unit_details(request, customer_id, unit_number):
     ).select_related('customer', 'technician__user')
     if tenant:
         repairs = repairs.filter(tenant=tenant)
+
+    else:
+        repairs = repairs.none()
     
     # Get replacements for this unit
     from apps.technician_portal.models import Replacement
@@ -202,6 +273,10 @@ def unit_details(request, customer_id, unit_number):
     
     if tenant:
         replacements = replacements.filter(tenant=tenant)
+
+    
+    else:
+        replacements = replacements.none()
     replacements = replacements.select_related('customer', 'technician__user')
 
     return render(request, 'technician_portal/unit_details.html', {
@@ -220,6 +295,9 @@ def mark_unit_replaced(request, customer_id, unit_number):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
     # Get or create the unit repair count record
@@ -288,11 +366,21 @@ def update_primary_technician(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
     tech_id = request.POST.get('primary_technician')
     if tech_id:
-        tech = get_object_or_404(Technician, id=tech_id, is_active=True)
+        # Filter by tenant to prevent cross-tenant assignment
+        tech_qs = Technician.objects.filter(is_active=True)
+        if tenant:
+            tech_qs = tech_qs.filter(tenant=tenant)
+
+        else:
+            tech_qs = tech_qs.none()
+        tech = get_object_or_404(tech_qs, id=tech_id)
         customer.primary_technician = tech
         customer.save(update_fields=['primary_technician'])
         messages.success(request, f"Primary technician set to {tech.user.get_full_name()}.")
@@ -320,6 +408,9 @@ def edit_customer(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
     from apps.technician_portal.forms import CustomerEditForm
@@ -353,10 +444,13 @@ def delete_customer(request, customer_id):
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
     # Check for related repairs
-    repair_count = Repair.objects.filter(customer=customer).count()
+    repair_count = Repair.objects.filter(customer=customer, tenant=tenant).count()
     
     if repair_count > 0:
         # Soft approach: don't delete, show error
@@ -371,3 +465,160 @@ def delete_customer(request, customer_id):
     customer.delete()
     messages.success(request, f"Customer '{customer_name}' has been deleted.")
     return redirect('technician_customers')
+
+
+@technician_required
+@require_POST
+def send_customer_invitation(request, customer_id):
+    """Send or resend a customer portal invitation."""
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins/managers can send invitations
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can send customer invitations.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
+    customer = get_object_or_404(qs, id=customer_id)
+    
+    email = request.POST.get('email', '').strip()
+    first_name = request.POST.get('first_name', '').strip()
+    last_name = request.POST.get('last_name', '').strip()
+    is_primary = request.POST.get('is_primary_contact') == '1'
+    
+    if not email:
+        messages.error(request, "Email address is required.")
+        return redirect('customer_detail', customer_id=customer_id)
+    
+    from apps.customer_portal.services.invitation_service import CustomerInvitationService
+    
+    try:
+        invitation = CustomerInvitationService.create_invitation(
+            customer=customer,
+            email=email,
+            invited_by=request.user,
+            first_name=first_name,
+            last_name=last_name,
+            is_primary_contact=is_primary,
+        )
+        
+        if CustomerInvitationService.send_invitation_email(invitation, request):
+            messages.success(request, f"Invitation sent to {email}")
+        else:
+            messages.warning(request, f"Invitation created but email failed to send. You can try again.")
+    except Exception as e:
+        logger.error(f"Failed to send customer invitation: {e}")
+        messages.error(request, "Failed to send invitation. Please try again.")
+    
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def resend_customer_invitation(request, invitation_id):
+    """Resend an existing customer invitation."""
+    from apps.customer_portal.models import CustomerInvitation
+    from apps.customer_portal.services.invitation_service import CustomerInvitationService
+    
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins/managers can resend invitations
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can resend invitations.")
+        return redirect('technician_dashboard')
+    
+    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
+    
+    # Verify customer belongs to tenant
+    if tenant and invitation.customer.tenant != tenant:
+        messages.error(request, "Invitation not found.")
+        return redirect('technician_dashboard')
+    
+    if CustomerInvitationService.resend_invitation(invitation, request):
+        messages.success(request, f"Invitation resent to {invitation.email}")
+    else:
+        messages.error(request, "Failed to resend invitation.")
+    
+    return redirect('customer_detail', customer_id=invitation.customer_id)
+
+
+@technician_required
+@require_POST
+def cancel_customer_invitation(request, invitation_id):
+    """Cancel a pending customer invitation."""
+    from apps.customer_portal.models import CustomerInvitation
+    from apps.customer_portal.services.invitation_service import CustomerInvitationService
+    
+    tenant = getattr(request, 'tenant', None)
+    
+    # Only admins/managers can cancel invitations
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can cancel invitations.")
+        return redirect('technician_dashboard')
+    
+    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
+    
+    # Verify customer belongs to tenant
+    if tenant and invitation.customer.tenant != tenant:
+        messages.error(request, "Invitation not found.")
+        return redirect('technician_dashboard')
+    
+    customer_id = invitation.customer_id
+    
+    if CustomerInvitationService.cancel_invitation(invitation):
+        messages.success(request, f"Invitation to {invitation.email} cancelled.")
+    else:
+        messages.error(request, "Could not cancel this invitation.")
+    
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def set_primary_contact(request, customer_id, cu_id):
+    """Set a customer portal user as the primary contact."""
+    from apps.customer_portal.models import CustomerUser
+
+    tenant = getattr(request, 'tenant', None)
+
+    is_admin = is_tenant_admin(request.user)
+    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can change the primary contact.")
+        return redirect('customer_detail', customer_id=customer_id)
+
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
+    customer = get_object_or_404(qs, id=customer_id)
+
+    cu = get_object_or_404(CustomerUser, id=cu_id, customer=customer)
+
+    # Demote all existing primaries for this customer
+    CustomerUser.objects.filter(
+        customer=customer, is_primary_contact=True
+    ).update(is_primary_contact=False)
+
+    # Promote the selected user
+    cu.is_primary_contact = True
+    cu.save(update_fields=['is_primary_contact'])
+
+    messages.success(request, f"{cu.user.get_full_name() or cu.user.username} is now the primary contact.")
+    return redirect('customer_detail', customer_id=customer_id)

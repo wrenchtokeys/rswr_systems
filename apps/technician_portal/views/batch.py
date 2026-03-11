@@ -143,6 +143,9 @@ def create_multi_break_repair(request):
                 customer_qs = Customer.objects.all()
                 if tenant:
                     customer_qs = customer_qs.filter(tenant=tenant)
+
+                else:
+                    customer_qs = customer_qs.none()
                 customer = customer_qs.get(id=customer_id)
                 logger.info(f"[MULTI-BREAK] Customer found: {customer.name} (ID: {customer.id})")
             except Customer.DoesNotExist:
@@ -351,6 +354,9 @@ def create_multi_break_repair(request):
         customer_qs = Customer.objects.all()
         if tenant:
             customer_qs = customer_qs.filter(tenant=tenant)
+
+        else:
+            customer_qs = customer_qs.none()
         return render(request, 'technician_portal/multi_break_repair_form.html', {
             'is_admin': is_tenant_admin(request.user),
             'customers': customer_qs.order_by('name'),
@@ -366,6 +372,9 @@ def convert_to_batch(request, repair_id):
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
+
+    else:
+        qs = qs.none()
     original_repair = get_object_or_404(qs, id=repair_id)
 
     if not is_tenant_admin(request.user):
@@ -404,6 +413,7 @@ def convert_to_batch(request, repair_id):
             logger.info(f"Converted repair {repair_id} to batch {batch_id}, adding {additional_breaks} breaks")
 
             unit_count = UnitRepairCount.objects.get_or_create(
+                tenant=original_repair.tenant,
                 customer=original_repair.customer,
                 unit_number=original_repair.unit_number
             )[0]
@@ -449,6 +459,7 @@ def convert_to_batch(request, repair_id):
                         raise ValueError(f"Invalid override cost for break {break_number}: {str(e)}")
 
                 new_repair = Repair(
+                    tenant=original_repair.tenant,  # Copy tenant from original repair
                     customer=original_repair.customer,
                     unit_number=original_repair.unit_number,
                     technician=original_repair.technician,

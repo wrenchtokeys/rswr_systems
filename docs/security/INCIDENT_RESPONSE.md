@@ -306,7 +306,7 @@ for repair in suspicious:
 **Verify CSP Headers:**
 ```bash
 # Test CSP is active
-curl -I https://rockstarwindshield.repair | grep Content-Security-Policy
+curl -I https://rssystems.io | grep Content-Security-Policy
 
 # Should see:
 # Content-Security-Policy: default-src 'self'; ...

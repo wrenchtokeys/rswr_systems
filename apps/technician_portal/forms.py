@@ -133,10 +133,37 @@ class TechnicianRegistrationForm(UserCreationForm):
         return user
     
 class CustomerForm(forms.ModelForm):
-    """Basic form for creating customers."""
+    """Form for creating customers with optional portal invitation."""
+    
+    # Invitation fields (optional)
+    invite_email = forms.EmailField(
+        required=False,
+        label="Contact Email",
+        help_text="Email address for the fleet manager who will access the portal"
+    )
+    invite_first_name = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Contact First Name"
+    )
+    invite_last_name = forms.CharField(
+        max_length=100,
+        required=False,
+        label="Contact Last Name"
+    )
+    send_invitation = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Send portal invitation",
+        help_text="Send an email invitation to access the customer portal"
+    )
+
     class Meta:
         model = Customer
-        fields = ['name', 'primary_technician']
+        fields = ['name', 'customer_type', 'email', 'phone', 'primary_technician']
+        widgets = {
+            'customer_type': forms.Select(attrs={'class': 'form-select'}),
+        }
 
     def __init__(self, *args, **kwargs):
         self.tenant = kwargs.pop('tenant', None)
@@ -148,6 +175,9 @@ class CustomerForm(forms.ModelForm):
             qs = qs.filter(tenant=self.tenant)
         self.fields['primary_technician'].queryset = qs.order_by('user__first_name')
         self.fields['primary_technician'].required = False
+        self.fields['email'].required = False
+        self.fields['phone'].required = False
+        self.fields['customer_type'].required = False
 
 
 class CustomerEditForm(forms.ModelForm):
@@ -196,9 +226,9 @@ class CustomDateTimeInput(DateTimeInput):
         super().__init__(attrs={'step': '60', **(attrs or {})}, format='%Y-%m-%dT%H:%M')
 
 class RepairForm(forms.ModelForm):
-    customer = forms.ModelChoiceField(queryset=Customer.objects.all().order_by('name'))
+    customer = forms.ModelChoiceField(queryset=Customer.objects.none())  # Filtered by tenant in __init__
     technician = forms.ModelChoiceField(
-        queryset=Technician.objects.all(),
+        queryset=Technician.objects.none(),  # Filtered by tenant in __init__
         required=False,  # Not required because it might be set automatically for non-admin users
         help_text="Only required for admin users. Regular technicians will be automatically assigned."
     )
@@ -238,22 +268,34 @@ class RepairForm(forms.ModelForm):
     class Meta:
         model = Repair
         fields = ['technician', 'customer', 'unit_number', 'vehicle_year', 'vehicle_make', 'vehicle_model',
-                  'queue_status', 'damage_type',
+                  'queue_status', 'damage_type', 'damage_location_x', 'damage_location_y',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
                   'cost_override', 'override_reason', 'repair_batch_id', 'break_number', 'total_breaks_in_batch']
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user', None)
+        self.tenant = kwargs.pop('tenant', None)
         super(RepairForm, self).__init__(*args, **kwargs)
         
         # Set the damage type choices
         self.fields['damage_type'].choices = Repair.DAMAGE_TYPE_CHOICES
 
-        # Filter technician dropdown to only show techs who can do repairs
-        self.fields['technician'].queryset = Technician.objects.filter(
-            can_repair=True, is_active=True
-        )
+        # CRITICAL: Filter customer and technician dropdowns by tenant
+        # Without this, users see ALL customers/techs across all shops
+        if self.tenant:
+            self.fields['customer'].queryset = Customer.objects.filter(
+                tenant=self.tenant
+            ).order_by('name')
+            self.fields['technician'].queryset = Technician.objects.filter(
+                tenant=self.tenant, can_repair=True, is_active=True
+            )
+        else:
+            # Fallback for superusers / admin — still filter by active
+            self.fields['customer'].queryset = Customer.objects.all().order_by('name')
+            self.fields['technician'].queryset = Technician.objects.filter(
+                can_repair=True, is_active=True
+            )
         
         # Hide technician field for non-admin users
         if self.user and not self.user.is_staff:

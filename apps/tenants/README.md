@@ -1,4 +1,4 @@
-# Tenants App — Multi-Tenant SaaS Architecture
+# Tenants App  Multi-Tenant SaaS Architecture
 
 *RS Systems Multi-Tenant Subscription Platform*
 
@@ -6,7 +6,7 @@
 
 ## Overview
 
-The `apps/tenants` app provides full multi-tenant data isolation and SaaS subscription management for RS Systems. Every glass shop that signs up gets its own **Tenant** — a walled-off business context with its own customers, repairs, invoices, technicians, and billing.
+The `apps/tenants` app provides full multi-tenant data isolation and SaaS subscription management for RS Systems. Every glass shop that signs up gets its own **Tenant**  a walled-off business context with its own customers, repairs, invoices, technicians, and billing.
 
 ### Key Concepts
 
@@ -24,17 +24,17 @@ The `apps/tenants` app provides full multi-tenant data isolation and SaaS subscr
 
 The `TenantMiddleware` sets `request.tenant` on every authenticated request using this priority:
 
-1. **`X-Tenant-Slug` header** — API clients send `X-Tenant-Slug: quick-fix-auto-glass`
-2. **Session `tenant_id`** — Stored from a previous request in the same browser session
-3. **First active membership** — Fallback: picks the user's first tenant
+1. **`X-Tenant-Slug` header**  API clients send `X-Tenant-Slug: quick-fix-auto-glass`
+2. **Session `tenant_id`**  Stored from a previous request in the same browser session
+3. **First active membership**  Fallback: picks the user's first tenant
 
 If no tenant can be resolved, `request.tenant = None`. Views that require a tenant check for this and return 403.
 
 ```
-Request → AuthMiddleware → TenantMiddleware → View
-                              ↓
+Request  AuthMiddleware  TenantMiddleware  View
+                              
                     request.tenant = <Tenant>
-                              ↓
+                              
               All queries filtered by tenant FK
 ```
 
@@ -44,7 +44,7 @@ Request → AuthMiddleware → TenantMiddleware → View
 
 All endpoints are under `/api/tenants/`.
 
-### POST `/api/tenants/signup/` — Register a new shop
+### POST `/api/tenants/signup/`  Register a new shop
 **Auth:** None (public)  
 **Throttle:** 5 requests/hour per IP
 
@@ -69,7 +69,7 @@ All endpoints are under `/api/tenants/`.
 }
 ```
 
-### GET `/api/tenants/plans/` — List all plans
+### GET `/api/tenants/plans/`  List all plans
 **Auth:** None (public)
 
 ```json
@@ -92,7 +92,7 @@ All endpoints are under `/api/tenants/`.
 }
 ```
 
-### GET `/api/tenants/status/` — Dashboard status
+### GET `/api/tenants/status/`  Dashboard status
 **Auth:** Token (any member)
 
 ```json
@@ -112,7 +112,7 @@ All endpoints are under `/api/tenants/`.
 }
 ```
 
-### POST `/api/tenants/subscribe/` — Start a paid subscription
+### POST `/api/tenants/subscribe/`  Start a paid subscription
 **Auth:** Token (owner only)
 
 ```json
@@ -129,7 +129,7 @@ All endpoints are under `/api/tenants/`.
 }
 ```
 
-### POST `/api/tenants/subscription/update/` — Change plan
+### POST `/api/tenants/subscription/update/`  Change plan
 **Auth:** Token (owner only)
 
 ```json
@@ -140,7 +140,7 @@ All endpoints are under `/api/tenants/`.
 {"subscription_id": "sub_xxx", "new_plan": "Pro", "status": "updated"}
 ```
 
-### POST `/api/tenants/subscription/cancel/` — Cancel at period end
+### POST `/api/tenants/subscription/cancel/`  Cancel at period end
 **Auth:** Token (owner only)
 
 ```json
@@ -153,7 +153,7 @@ All endpoints are under `/api/tenants/`.
 }
 ```
 
-### POST `/api/tenants/subscription/reactivate/` — Un-cancel
+### POST `/api/tenants/subscription/reactivate/`  Un-cancel
 **Auth:** Token (owner only)
 
 ```json
@@ -161,7 +161,7 @@ All endpoints are under `/api/tenants/`.
 {"subscription_id": "sub_xxx", "status": "active", "message": "Your subscription has been reactivated."}
 ```
 
-### GET `/api/tenants/usage/` — Current usage vs limits
+### GET `/api/tenants/usage/`  Current usage vs limits
 **Auth:** Token (any member)
 
 ```json
@@ -177,7 +177,7 @@ All endpoints are under `/api/tenants/`.
 }
 ```
 
-### GET `/api/tenants/billing-portal/` — Stripe billing portal
+### GET `/api/tenants/billing-portal/`  Stripe billing portal
 **Auth:** Token (owner only)
 
 ```json
@@ -185,7 +185,7 @@ All endpoints are under `/api/tenants/`.
 {"url": "https://billing.stripe.com/session/xxx"}
 ```
 
-### POST `/api/tenants/webhooks/stripe/` — Stripe webhook
+### POST `/api/tenants/webhooks/stripe/`  Stripe webhook
 **Auth:** Stripe signature verification (internal)
 
 Handles: `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.payment_failed`
@@ -195,29 +195,29 @@ Handles: `customer.subscription.updated`, `customer.subscription.deleted`, `invo
 ## Subscription Lifecycle
 
 ```
-  ┌──────────┐     subscribe()     ┌──────────┐
-  │  SIGNUP  │ ──────────────────→ │  ACTIVE  │
-  │ (trial)  │                     │  (paid)  │
-  │ 30 days  │                     └────┬─────┘
-  └────┬─────┘                          │
-       │                          cancel()  │ update()
-       │ trial expires                 │    │
-       ↓                               ↓    ↓
-  ┌──────────┐                    ┌──────────┐
-  │ EXPIRED  │                    │ CANCELED │
-  │ (locked) │                    │(end of   │
-  └──────────┘                    │ period)  │
-                                  └────┬─────┘
-                                       │
+       subscribe()     
+    SIGNUP      ACTIVE  
+   (trial)                         (paid)  
+   30 days                       
+                            
+                                 cancel()   update()
+        trial expires                     
+                                          
+                      
+   EXPIRED                       CANCELED 
+   (locked)                     (end of   
+                       period)  
+                                  
+                                       
                                  reactivate()
-                                       │
-                                       ↓
-                                  ┌──────────┐
-                                  │  ACTIVE  │
-                                  └──────────┘
+                                       
+                                       
+                                  
+                                    ACTIVE  
+                                  
 ```
 
-**Statuses:** `trialing` → `active` → `canceled` → `expired` (also: `past_due`)
+**Statuses:** `trialing`  `active`  `canceled`  `expired` (also: `past_due`)
 
 ---
 
@@ -267,10 +267,10 @@ SubscriptionPlan.objects.create(
 
 | Role | Can view data | Can edit data | Can manage billing | Can manage team |
 |------|:---:|:---:|:---:|:---:|
-| **Owner** | ✅ | ✅ | ✅ | ✅ |
-| **Manager** | ✅ | ✅ | ❌ | ✅ |
-| **Technician** | ✅ | ✅ (own) | ❌ | ❌ |
-| **Viewer** | ✅ | ❌ | ❌ | ❌ |
+| **Owner** |  |  |  |  |
+| **Manager** |  |  |  |  |
+| **Technician** |  |  (own) |  |  |
+| **Viewer** |  |  |  |  |
 
 ### Owner-Only Billing
 
@@ -298,25 +298,25 @@ Every business model has a `tenant` ForeignKey. Queries are always filtered by `
 
 ```
 apps/tenants/
-├── models.py                 # Tenant, TenantMembership, SubscriptionPlan
-├── views.py                  # API endpoints (signup, subscribe, status, etc.)
-├── urls.py                   # URL routing
-├── middleware.py              # TenantMiddleware (request.tenant resolution)
-├── mixins.py                 # PlanEnforcementMixin
-├── admin.py                  # Django admin configuration
-├── webhooks.py               # Stripe webhook handler
-├── services/
-│   ├── subscription_service.py  # Stripe lifecycle management
-│   └── usage_service.py         # Usage tracking vs plan limits
-├── management/commands/
-│   └── seed_plans.py            # Seed the 4 standard plans
-└── migrations/
-    ├── 0001_create_tenant_and_membership.py
-    ├── 0002_create_default_tenant_and_backfill.py
-    ├── 0003_add_subscription_plan_model_and_billing_fields.py
-    └── 0004_seed_subscription_plans.py
+ models.py                 # Tenant, TenantMembership, SubscriptionPlan
+ views.py                  # API endpoints (signup, subscribe, status, etc.)
+ urls.py                   # URL routing
+ middleware.py              # TenantMiddleware (request.tenant resolution)
+ mixins.py                 # PlanEnforcementMixin
+ admin.py                  # Django admin configuration
+ webhooks.py               # Stripe webhook handler
+ services/
+    subscription_service.py  # Stripe lifecycle management
+    usage_service.py         # Usage tracking vs plan limits
+ management/commands/
+    seed_plans.py            # Seed the 4 standard plans
+ migrations/
+     0001_create_tenant_and_membership.py
+     0002_create_default_tenant_and_backfill.py
+     0003_add_subscription_plan_model_and_billing_fields.py
+     0004_seed_subscription_plans.py
 ```
 
 ---
 
-*Author: Amelia (Clawdbot AI) — Last updated: January 29, 2026*
+*Author: Amelia (Clawdbot AI)  Last updated: January 29, 2026*

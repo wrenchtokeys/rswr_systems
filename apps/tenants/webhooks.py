@@ -427,7 +427,7 @@ def _notify_owner(tenant, event_type, context):
         subject = subjects.get(event_type, f'RS Systems notification for {tenant.name}')
         body = messages.get(event_type, f'A subscription event occurred for {tenant.name}.')
         
-        from_email = getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'notifications@rockstarwindshield.repair')
+        from_email = getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
         
         send_mail(
             subject=subject,

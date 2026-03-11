@@ -10,6 +10,7 @@ Author: Amelia (Clawdbot AI)
 
 import uuid
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -154,6 +155,32 @@ class Tenant(models.Model):
     auto_invoice_enabled = models.BooleanField(
         default=True,
         help_text="When enabled, invoices are auto-generated on repair completion (per customer preference). Disable for testing."
+    )
+    use_progressive_pricing = models.BooleanField(
+        default=True,
+        help_text="When enabled, repair prices decrease with each subsequent repair on a unit. When disabled, every repair uses first-repair pricing."
+    )
+    
+    # Configurable pricing tiers (used when progressive pricing is enabled)
+    repair_price_1 = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('50.00'),
+        help_text="Price for 1st repair on a unit"
+    )
+    repair_price_2 = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('40.00'),
+        help_text="Price for 2nd repair on a unit"
+    )
+    repair_price_3 = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('35.00'),
+        help_text="Price for 3rd repair on a unit"
+    )
+    repair_price_4 = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('30.00'),
+        help_text="Price for 4th repair on a unit"
+    )
+    repair_price_5_plus = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('25.00'),
+        help_text="Price for 5th+ repairs on a unit"
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

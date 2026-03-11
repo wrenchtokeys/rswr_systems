@@ -37,6 +37,9 @@ def reward_fulfillment_detail(request, redemption_id):
             customer_qs = Customer.objects.all()
             if tenant:
                 customer_qs = customer_qs.filter(tenant=tenant)
+
+            else:
+                customer_qs = customer_qs.none()
             customer = customer_qs.get(email=customer_email)
             repair_qs = Repair.objects.filter(
                 customer=customer,
@@ -44,6 +47,9 @@ def reward_fulfillment_detail(request, redemption_id):
             )
             if tenant:
                 repair_qs = repair_qs.filter(tenant=tenant)
+
+            else:
+                repair_qs = repair_qs.none()
             customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-service_date')
         except Customer.DoesNotExist:
             pass
@@ -93,6 +99,9 @@ def apply_reward_to_repair(request, repair_id):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)
+
+        else:
+            qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
     else:
         if not hasattr(request.user, 'technician'):
@@ -101,6 +110,9 @@ def apply_reward_to_repair(request, repair_id):
         qs = Repair.objects.filter(technician=request.user.technician)
         if tenant:
             qs = qs.filter(tenant=tenant)
+
+        else:
+            qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
 
     if request.method == 'POST':

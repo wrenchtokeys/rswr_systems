@@ -3,7 +3,7 @@
 ## Overview
 The Manager Settings portal provides managers with a centralized interface for configuring system parameters and managing their teams. This document outlines completed features and planned enhancements.
 
-## ✅ Phase 1: Core Settings Infrastructure (Completed - November 2025)
+##  Phase 1: Core Settings Infrastructure (Completed - November 2025)
 
 ### Implemented Features
 
@@ -37,7 +37,7 @@ The Manager Settings portal provides managers with a centralized interface for c
 - Professional card aesthetics matching repair form
 
 **Database Model**: `ViscosityRecommendation`
-- Temperature range configuration (min/max in °F)
+- Temperature range configuration (min/max in �F)
 - Recommended viscosity level
 - Custom suggestion text for technicians
 - Badge color selection (6 color options)
@@ -87,7 +87,7 @@ The Manager Settings portal provides managers with a centralized interface for c
 
 ---
 
-## 🚧 Phase 2: Pricing Management (Planned)
+##  Phase 2: Pricing Management (Planned)
 
 ### Overview
 Extend manager settings to include comprehensive pricing configuration capabilities, reducing dependency on database-level pricing modifications.
@@ -217,7 +217,7 @@ class PricingOverrideRequest(models.Model):
 
 ---
 
-## 🚧 Phase 3: Audit & Reporting (Planned)
+##  Phase 3: Audit & Reporting (Planned)
 
 ### Overview
 Provide comprehensive audit trails and reporting capabilities for manager actions and system changes.
@@ -298,7 +298,7 @@ class PricingAuditLog(models.Model):
 
 ---
 
-## 📋 Phase 4: Advanced Features (Future)
+##  Phase 4: Advanced Features (Future)
 
 ### Team Scheduling
 - Calendar view for managed technicians
@@ -372,9 +372,9 @@ class PricingAuditLog(models.Model):
 ## Success Metrics
 
 ### Phase 1 (Current)
-- ✅ Manager settings accessible to all managers
-- ✅ Viscosity rules configurable without code changes
-- ✅ Team overview provides actionable insights
+-  Manager settings accessible to all managers
+-  Viscosity rules configurable without code changes
+-  Team overview provides actionable insights
 
 ### Phase 2 (Pricing)
 - Reduce pricing override requests by 50%

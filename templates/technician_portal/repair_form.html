@@ -306,6 +306,41 @@
                                 {% endif %}
                             </div>
                         </div>
+                        
+                        <!-- Damage Location Diagram -->
+                        <div class="mt-6">
+                            <label class="icon-field-label mb-3">
+                                <i class="fas fa-crosshairs"></i>
+                                Damage Location
+                                <span class="text-gray-400 font-normal ml-2">(tap to mark)</span>
+                            </label>
+                            <div class="windshield-diagram-container" style="max-width: 500px;">
+                                <div id="windshieldDiagram" class="windshield-diagram" 
+                                     style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 3px solid #0284c7; border-radius: 12px; cursor: crosshair; overflow: hidden;">
+                                    <!-- Windshield frame indicators -->
+                                    <div style="position: absolute; top: 8px; left: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">DRIVER</div>
+                                    <div style="position: absolute; top: 8px; right: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">PASSENGER</div>
+                                    <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #0369a1;">↑ HOOD</div>
+                                    <!-- Center line -->
+                                    <div style="position: absolute; top: 20%; bottom: 20%; left: 50%; width: 1px; background: rgba(2,132,199,0.3);"></div>
+                                    <!-- Damage marker -->
+                                    <div id="damageMarker" style="display: none; position: absolute; width: 20px; height: 20px; background: #dc2626; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none;">
+                                        <div style="position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%);"></div>
+                                    </div>
+                                </div>
+                                <input type="hidden" name="damage_location_x" id="id_damage_location_x" value="{{ form.damage_location_x.value|default:'' }}">
+                                <input type="hidden" name="damage_location_y" id="id_damage_location_y" value="{{ form.damage_location_y.value|default:'' }}">
+                                <div class="flex justify-between items-center mt-2">
+                                    <p class="icon-field-helper mb-0">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span id="locationText">Tap on the windshield to mark damage location</span>
+                                    </p>
+                                    <button type="button" id="clearLocationBtn" class="text-sm text-red-600 hover:text-red-800" style="display: none;">
+                                        <i class="fas fa-times"></i> Clear
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- SECTION 3: Technical Conditions -->
@@ -681,6 +716,95 @@
     if (customerSelect) {
         updateFieldsForCustomerType();
         customerSelect.addEventListener('change', updateFieldsForCustomerType);
+    }
+})();
+</script>
+
+<!-- Viscosity suggestion on temperature change -->
+<script>
+(function() {
+    const tempInput = document.getElementById('id_windshield_temperature');
+    if (tempInput) {
+        tempInput.addEventListener('change', function() {
+            if (this.value) {
+                fetch('/tech/api/viscosity-suggestion/?temperature=' + this.value)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.suggestion) {
+                            const viscInput = document.getElementById('id_resin_viscosity');
+                            if (viscInput && !viscInput.value) {
+                                viscInput.value = data.suggestion;
+                            }
+                            const el = document.getElementById('viscositySuggestion');
+                            if (el) {
+                                el.innerHTML = '<div class="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">💡 Suggested: ' + data.suggestion + (data.reason ? ' — ' + data.reason : '') + '</div>';
+                                el.classList.remove('hidden');
+                            }
+                        }
+                    })
+                    .catch(() => {});
+            }
+        });
+    }
+})();
+</script>
+
+<!-- Windshield damage location diagram -->
+<script>
+(function() {
+    const diagram = document.getElementById('windshieldDiagram');
+    const marker = document.getElementById('damageMarker');
+    const xInput = document.getElementById('id_damage_location_x');
+    const yInput = document.getElementById('id_damage_location_y');
+    const locationText = document.getElementById('locationText');
+    const clearBtn = document.getElementById('clearLocationBtn');
+    
+    if (!diagram || !marker) return;
+    
+    function placeMarker(xPercent, yPercent) {
+        marker.style.left = xPercent + '%';
+        marker.style.top = yPercent + '%';
+        marker.style.display = 'block';
+        xInput.value = xPercent.toFixed(1);
+        yInput.value = yPercent.toFixed(1);
+        
+        // Determine location description
+        const side = xPercent < 50 ? 'driver' : 'passenger';
+        const vertical = yPercent < 33 ? 'upper' : (yPercent > 66 ? 'lower' : 'middle');
+        locationText.textContent = 'Marked: ' + vertical + ' ' + side + ' side';
+        clearBtn.style.display = 'inline';
+    }
+    
+    function clearMarker() {
+        marker.style.display = 'none';
+        xInput.value = '';
+        yInput.value = '';
+        locationText.textContent = 'Tap on the windshield to mark damage location';
+        clearBtn.style.display = 'none';
+    }
+    
+    diagram.addEventListener('click', function(e) {
+        const rect = diagram.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        placeMarker(x, y);
+    });
+    
+    // Touch support for mobile
+    diagram.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        const touch = e.changedTouches[0];
+        const rect = diagram.getBoundingClientRect();
+        const x = ((touch.clientX - rect.left) / rect.width) * 100;
+        const y = ((touch.clientY - rect.top) / rect.height) * 100;
+        placeMarker(x, y);
+    });
+    
+    clearBtn.addEventListener('click', clearMarker);
+    
+    // Restore existing location on page load
+    if (xInput.value && yInput.value) {
+        placeMarker(parseFloat(xInput.value), parseFloat(yInput.value));
     }
 })();
 </script>

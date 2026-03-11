@@ -67,6 +67,7 @@
 
                         {% if user_can_repairs %}
                         <a href="{% url 'repair_list' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'repair_list' or request.resolver_match.url_name == 'assigned_repairs' or request.resolver_match.url_name == 'repair_detail' or request.resolver_match.url_name == 'create_repair' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Repairs</a>
+                        <a href="{% url 'replacement_list' %}" class="text-sm font-medium {% if 'replacement' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Replacements</a>
                         {% endif %}
 
                         {% if user_can_customers %}
@@ -146,6 +147,7 @@
                 {% endif %}
                 {% if user_can_repairs %}
                 <a href="{% url 'repair_list' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Repairs</a>
+                <a href="{% url 'replacement_list' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Replacements</a>
                 {% endif %}
                 {% if user_can_customers %}
                 <a href="{% url 'technician_customers' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Customers</a>

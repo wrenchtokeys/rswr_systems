@@ -101,6 +101,12 @@ class Customer(models.Model):
         help_text="Tax exemption certificate number"
     )
 
+    # Pricing model
+    use_progressive_pricing = models.BooleanField(
+        default=True,
+        help_text="If enabled, repairs get cheaper with each subsequent repair on a unit. If disabled, every repair uses first-repair pricing."
+    )
+
     # Stripe integration
     stripe_customer_id = models.CharField(
         max_length=100,

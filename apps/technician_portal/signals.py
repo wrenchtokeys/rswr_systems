@@ -108,6 +108,7 @@ def handle_repair_status_change(sender, instance, created, **kwargs):
         elif instance.queue_status == 'COMPLETED':
             # Repair finished
             _notify_customer_completed(instance)
+            _notify_owner_repair_completed(instance)
 
     # Clean up tracking dict to prevent memory leaks
     if instance.pk in _repair_previous_status:
@@ -179,6 +180,17 @@ def _notify_customer_approval_needed(repair):
         'damage_type': repair.get_damage_type_display() or 'Unknown',
         'action_url': f'/app/repairs/{repair.pk}/',
     }
+
+    # Generate one-click approval tokens for email links
+    from apps.customer_portal.models import CustomerUser, ApprovalToken
+    try:
+        customer_user = CustomerUser.objects.filter(customer=repair.customer).first()
+        if customer_user:
+            tokens = ApprovalToken.create_pair(repair=repair, customer_user=customer_user)
+            context['quick_approve_token'] = str(tokens['approve_token'].token)
+            context['quick_deny_token'] = str(tokens['deny_token'].token)
+    except Exception as e:
+        logger.warning(f"Could not generate approval tokens for repair {repair.pk}: {e}")
 
     NotificationService.create_notification(
         recipient=repair.customer,
@@ -292,6 +304,74 @@ def _notify_customer_completed(repair):
         repair=repair,
         customer=repair.customer
     )
+
+
+def _notify_owner_repair_completed(repair):
+    """
+    Notify the tenant owner/manager when a repair is completed.
+
+    This ensures the person who assigned the repair (or the shop owner)
+    knows the work is done without having to check manually.
+
+    Priority: NORMAL (in-app + email)
+    Triggered when: status → COMPLETED
+    """
+    if not repair.tenant:
+        return
+
+    # Don't notify if the tech IS the owner (they already know)
+    owner = repair.tenant.owner
+    if repair.technician and repair.technician.user_id == owner.id:
+        return
+
+    tech_name = 'Unknown'
+    if repair.technician:
+        tech_name = repair.technician.user.get_full_name() or repair.technician.user.username
+
+    context = {
+        'repair_id': repair.pk,
+        'unit_number': repair.unit_number,
+        'customer_name': repair.customer.name if repair.customer else 'Unknown',
+        'technician_name': tech_name,
+        'final_cost': float(repair.cost) if repair.cost else 0,
+        'action_url': f'/tech/repairs/{repair.pk}/',
+    }
+
+    # Notify the owner
+    try:
+        NotificationService.create_notification(
+            recipient=owner,
+            template_name='repair_completed',
+            context=context,
+            repair=repair,
+            customer=repair.customer,
+        )
+    except Exception as e:
+        logger.warning(f"Could not notify owner of repair completion: {e}")
+
+    # Also notify managers (who may have assigned the repair)
+    try:
+        from apps.tenants.models import TenantMembership
+        manager_memberships = TenantMembership.objects.filter(
+            tenant=repair.tenant, role='manager', is_active=True,
+        ).exclude(user=owner).select_related('user')
+
+        for membership in manager_memberships:
+            # Don't notify the tech who completed it
+            if repair.technician and membership.user_id == repair.technician.user_id:
+                continue
+            try:
+                NotificationService.create_notification(
+                    recipient=membership.user,
+                    template_name='repair_completed',
+                    context=context,
+                    repair=repair,
+                    customer=repair.customer,
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify manager {membership.user_id} of repair completion: {e}")
+    except Exception as e:
+        logger.warning(f"Could not notify managers of repair completion: {e}")
 
 
 def _notify_technician_assigned(repair):

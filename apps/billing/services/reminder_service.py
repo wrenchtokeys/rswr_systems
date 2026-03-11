@@ -36,7 +36,7 @@ class ReminderService:
         # Use noreply email - replies won't be received
         self.from_email = getattr(
             settings, 'REMINDER_FROM_EMAIL',
-            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@rockstarwindshield.repair')
+            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@rssystems.io')
         )
     
     def _filter(self, qs):
@@ -293,7 +293,7 @@ Please contact us to arrange payment or if you have any questions.
         company_website = ""
         try:
             from apps.billing.models import BillingConfig
-            config = BillingConfig.objects.first()
+            config = BillingConfig.get_instance()
             if config:
                 company_name = config.company_name or company_name
                 company_phone = config.company_phone or ""

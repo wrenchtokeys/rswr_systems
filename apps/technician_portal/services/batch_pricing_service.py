@@ -18,7 +18,11 @@ def calculate_batch_pricing(
     breaks_count: int
 ) -> List[Dict]:
     """
-    Calculate progressive pricing for a batch of breaks on the same unit.
+    Calculate pricing for a batch of breaks on the same unit.
+
+    Multi-break batches ALWAYS use progressive pricing within the batch
+    (break 2 is cheaper than break 1, etc.) regardless of tenant settings.
+    This is because finding multiple breaks at once should be rewarded.
 
     Each break increments the repair count, so:
     - Break 1 priced as repair #N+1
@@ -42,6 +46,9 @@ def calculate_batch_pricing(
             ...
         ]
     """
+    # Get tenant for pricing tiers
+    tenant = getattr(customer, 'tenant', None) if customer else None
+    
     # Get current repair count for this unit
     try:
         unit_count = UnitRepairCount.objects.get(
@@ -59,8 +66,8 @@ def calculate_batch_pricing(
         # Each break increments the repair count
         repair_tier = base_repair_count + i + 1
 
-        # Use existing pricing service (handles custom pricing, defaults, etc.)
-        price = calculate_repair_cost(customer, repair_tier)
+        # Use existing pricing service (handles custom pricing, tenant pricing, defaults)
+        price = calculate_repair_cost(customer, repair_tier, tenant)
 
         pricing_breakdown.append({
             'break_number': i + 1,

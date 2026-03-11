@@ -149,7 +149,7 @@ class StripeService:
                     'type': 'redirect',
                     'redirect': {
                         'url': getattr(settings, 'PAYMENT_SUCCESS_URL',
-                                       'https://rockstarwindshield.repair/payment-complete')
+                                       'https://rssystems.io/payment-complete')
                                + f'?invoice={invoice.invoice_number}'
                     },
                 },
@@ -188,7 +188,7 @@ class StripeService:
         try:
             stripe_customer_id = self.get_or_create_customer(invoice.customer)
             
-            base_url = getattr(settings, 'BASE_URL', 'https://rockstarwindshield.repair')
+            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
             
             session = stripe.checkout.Session.create(
                 customer=stripe_customer_id,
@@ -308,7 +308,11 @@ class StripeService:
         from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
         
         try:
+            # Note: Stripe webhook context has no tenant, but invoice_id
+            # comes from our own metadata so this is safe. We still log
+            # the tenant for audit purposes.
             invoice = Invoice.objects.get(id=invoice_id)
+            logger.info(f"Stripe payment for invoice {invoice_id} (tenant: {invoice.tenant_id})")
         except Invoice.DoesNotExist:
             logger.error(f"Invoice {invoice_id} not found for Stripe payment")
             return {'success': False, 'error': 'Invoice not found'}
@@ -318,7 +322,7 @@ class StripeService:
             logger.info(f"Payment {stripe_payment_id} already recorded")
             return {'success': True, 'duplicate': True}
         
-        tracking = InvoiceTrackingService()
+        tracking = InvoiceTrackingService(tenant=invoice.tenant)
         payment = tracking.record_payment(
             invoice=invoice,
             amount=amount,

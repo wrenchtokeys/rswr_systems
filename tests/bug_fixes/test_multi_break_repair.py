@@ -739,6 +739,7 @@ class MultiBreakTechnicalFieldsTestCase(TestCase):
             'unit_number': '3001',
             'repair_date': '2025-11-09T10:00:00',
             'breaks_count': 1,
+            'technician_id': self.manager.id,  # Managers/admins must specify technician
             'breaks[0][damage_type]': 'chip',
             'breaks[0][notes]': 'Override test',
             'breaks[0][cost_override]': '75.00',
@@ -1076,17 +1077,17 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        # Check that batch_repairs context variable exists
-        self.assertIn('batch_repairs', response.context)
-        self.assertIn('individual_repairs', response.context)
+        # Check that batch/individual counts exist in context
+        self.assertIn('batch_count', response.context)
+        self.assertIn('individual_count', response.context)
 
         # Should have 1 batch
-        batch_repairs = response.context['batch_repairs']
-        self.assertEqual(len(batch_repairs), 1)
+        batch_count = response.context['batch_count']
+        self.assertEqual(batch_count, 1)
 
         # Should have 0 individual repairs
-        individual_repairs = response.context['individual_repairs']
-        self.assertEqual(len(individual_repairs), 0)
+        individual_count = response.context['individual_count']
+        self.assertEqual(individual_count, 0)
 
     def test_mixed_batch_and_individual_repairs(self):
         """Test that dashboard correctly separates batch and individual repairs"""

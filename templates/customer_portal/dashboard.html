@@ -59,7 +59,7 @@
         </div>
 
         <!-- Stats Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
             <div class="bg-blue-600 rounded-lg p-6 text-white shadow-lg">
                 <div class="flex items-center justify-between">
                     <div>
@@ -96,6 +96,23 @@
                     </div>
                 </div>
             </div>
+            <!-- Outstanding Balance Card -->
+            <a href="{% url 'customer_invoices' %}" class="{% if overdue_count > 0 %}bg-red-600{% else %}bg-purple-600{% endif %} rounded-lg p-6 text-white shadow-lg hover:opacity-90 transition-opacity">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-medium {% if overdue_count > 0 %}text-red-100{% else %}text-purple-100{% endif %} uppercase tracking-wider">
+                            {% if overdue_count > 0 %}Overdue{% else %}Outstanding{% endif %}
+                        </h3>
+                        <p class="text-3xl font-bold mt-2">${{ outstanding_total|floatformat:0 }}</p>
+                        <p class="text-sm {% if overdue_count > 0 %}text-red-100{% else %}text-purple-100{% endif %} mt-1">
+                            {% if overdue_count > 0 %}{{ overdue_count }} overdue invoice{{ overdue_count|pluralize }}{% else %}Balance due{% endif %}
+                        </p>
+                    </div>
+                    <div class="{% if overdue_count > 0 %}bg-red-500{% else %}bg-purple-500{% endif %} p-3 rounded-full">
+                        <i class="fas fa-file-invoice-dollar text-2xl text-white"></i>
+                    </div>
+                </div>
+            </a>
         </div>
         
     

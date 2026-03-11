@@ -34,6 +34,7 @@
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-semibold text-gray-900">Business Information</h3>
+            <p class="text-sm text-gray-500 mt-1">Your business name, logo, and contact info. This appears on invoices and customer-facing pages.</p>
         </div>
         <form method="post" enctype="multipart/form-data" class="p-6">
             {% csrf_token %}
@@ -159,6 +160,31 @@
                 </button>
             </div>
         </form>
+    </div>
+
+    <!-- Resin Viscosity Rules -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mt-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-droplet text-cyan-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Resin Viscosity Rules</h3>
+                        <p class="text-sm text-gray-500">Temperature-based resin recommendations for technicians</p>
+                    </div>
+                </div>
+                <a href="{% url 'manage_viscosity_rules' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border bg-white text-gray-700 border-gray-300 hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-cog mr-2"></i> Configure
+                </a>
+            </div>
+        </div>
+        <div class="p-6">
+            <div class="p-3 bg-cyan-50 border border-cyan-200 rounded-lg">
+                <p class="text-sm text-cyan-700"><i class="fas fa-info-circle mr-1"></i> Set up rules that recommend which resin viscosity to use based on windshield temperature. Technicians see these recommendations when logging repairs.</p>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -367,6 +393,101 @@
             {% else %}
             <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p class="text-sm text-amber-700"><i class="fas fa-exclamation-triangle mr-1"></i> Auto-invoicing is disabled. Invoices must be created manually. <strong>Useful for testing.</strong></p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Progressive Pricing -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-tags text-purple-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Progressive Pricing</h3>
+                        <p class="text-sm text-gray-500">Automatically lower the price for each additional repair on the same unit (e.g., 1st=$50, 2nd=$40, etc.). Disable this if you charge a flat rate for all repairs.</p>
+                    </div>
+                </div>
+                <form method="post" action="{% url 'owner_settings' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="toggle_progressive_pricing">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border transition-colors
+                        {% if tenant.use_progressive_pricing %}bg-green-50 text-green-700 border-green-200 hover:bg-green-100
+                        {% else %}bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100{% endif %}">
+                        {% if tenant.use_progressive_pricing %}
+                            <i class="fas fa-check-circle mr-2"></i> Enabled
+                        {% else %}
+                            <i class="fas fa-times-circle mr-2"></i> Disabled
+                        {% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+        <div class="p-6">
+            {% if tenant.use_progressive_pricing %}
+            <div class="p-3 bg-green-50 border border-green-200 rounded-lg mb-4">
+                <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> Repair prices decrease with each subsequent repair on a unit. Great for fleet accounts with high repair volumes.</p>
+            </div>
+            
+            <!-- Pricing Tiers Form -->
+            <form method="post" action="{% url 'owner_settings' %}" class="mt-4">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="update_pricing_tiers">
+                <h4 class="text-sm font-semibold text-gray-700 mb-3">Pricing Tiers</h4>
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">1st Repair</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="number" name="repair_price_1" step="0.01" min="0" value="{{ tenant.repair_price_1 }}"
+                                   class="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">2nd Repair</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="number" name="repair_price_2" step="0.01" min="0" value="{{ tenant.repair_price_2 }}"
+                                   class="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">3rd Repair</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="number" name="repair_price_3" step="0.01" min="0" value="{{ tenant.repair_price_3 }}"
+                                   class="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">4th Repair</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="number" name="repair_price_4" step="0.01" min="0" value="{{ tenant.repair_price_4 }}"
+                                   class="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">5th+ Repair</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="number" name="repair_price_5_plus" step="0.01" min="0" value="{{ tenant.repair_price_5_plus }}"
+                                   class="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3 flex justify-end">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-save mr-2"></i> Save Pricing
+                    </button>
+                </div>
+            </form>
+            {% else %}
+            <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p class="text-sm text-gray-600"><i class="fas fa-info-circle mr-1"></i> Every repair uses first-repair pricing (${{ tenant.repair_price_1 }}). Simple and predictable for all customers.</p>
             </div>
             {% endif %}
         </div>

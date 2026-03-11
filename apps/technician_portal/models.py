@@ -434,6 +434,14 @@ class Repair(GlassService):
     
     # Repair-specific fields
     damage_type = models.CharField(max_length=100, choices=DAMAGE_TYPE_CHOICES, default='')
+    damage_location_x = models.FloatField(
+        null=True, blank=True,
+        help_text="X coordinate of damage on windshield (0-100%)"
+    )
+    damage_location_y = models.FloatField(
+        null=True, blank=True,
+        help_text="Y coordinate of damage on windshield (0-100%)"
+    )
     drilled_before_repair = models.BooleanField(default=False)
     windshield_temperature = models.FloatField(null=True, blank=True)
     resin_viscosity = models.CharField(max_length=20, blank=True)
@@ -543,15 +551,21 @@ class Repair(GlassService):
             )
 
             # --- REPAIR PRICING (progressive logic) ---
+            # Progressive pricing can be disabled at tenant level or per-customer
             # Retail/Walk-in customers don't get sequential discounts (always first repair price)
             # UNLESS it's a multi-break repair (same batch_id)
             is_retail = self.customer and self.customer.customer_type in ('RETAIL', 'WALK_IN')
             is_multi_break = self.repair_batch_id is not None
+            # Check tenant-level setting first, then customer-level
+            tenant_allows_progressive = getattr(self.tenant, 'use_progressive_pricing', True) if self.tenant else True
+            customer_wants_progressive = getattr(self.customer, 'use_progressive_pricing', True)
+            use_progressive = tenant_allows_progressive and customer_wants_progressive
+            skip_progressive = is_retail or not use_progressive
             
             if self.queue_status == 'COMPLETED':
                 if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
-                    # Only increment repair count for fleet customers
-                    if not is_retail:
+                    # Only increment repair count if using progressive pricing
+                    if not skip_progressive:
                         unit_repair_count.repair_count += 1
                         unit_repair_count.save()
 
@@ -560,11 +574,11 @@ class Repair(GlassService):
                     self.cost = self.cost_override
                 else:
                     from .services.pricing_service import calculate_repair_cost
-                    if is_retail and not is_multi_break:
-                        # Retail customers always pay first repair price
+                    if skip_progressive and not is_multi_break:
+                        # No progressive pricing - always first repair price
                         self.cost = calculate_repair_cost(self.customer, 1)
                     else:
-                        # Fleet customers get progressive pricing
+                        # Progressive pricing enabled
                         self.cost = calculate_repair_cost(self.customer, unit_repair_count.repair_count)
             else:
                 # For non-completed repairs, show expected cost for preview
@@ -575,8 +589,8 @@ class Repair(GlassService):
                     pass
                 else:
                     from .services.pricing_service import calculate_repair_cost
-                    if is_retail:
-                        # Retail customers always pay first repair price
+                    if skip_progressive:
+                        # No progressive pricing - always first repair price
                         self.cost = calculate_repair_cost(self.customer, 1)
                     else:
                         next_repair_count = unit_repair_count.repair_count + 1
@@ -586,7 +600,7 @@ class Repair(GlassService):
             if self.cost and self.cost > 0:
                 try:
                     from apps.billing.services.tax_service import TaxService
-                    tax_result = TaxService().calculate_tax(
+                    tax_result = TaxService(tenant=self.tenant).calculate_tax(
                         subtotal=self.cost, customer=self.customer
                     )
                     self.tax_rate = tax_result['rate']
@@ -1007,6 +1021,16 @@ class Replacement(GlassService):
         null=True, blank=True,
         help_text="Cost for ADAS recalibration if required"
     )
+
+    # Tax fields — calculated from BillingConfig rates when cost is set
+    tax_rate = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
+        help_text="Tax rate applied to this replacement (percentage, e.g. 6.500 = 6.5%)"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Tax amount in dollars"
+    )
     
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
@@ -1021,6 +1045,13 @@ class Replacement(GlassService):
     def repair_date(self, value):
         """Backward-compatible alias for service_date."""
         self.service_date = value
+
+    @property
+    def total_with_tax(self):
+        """Cost + tax amount."""
+        cost = self.cost or Decimal('0.00')
+        tax = self.tax_amount or Decimal('0.00')
+        return cost + tax
 
     def save(self, *args, **kwargs):
         # Ensure we have a customer
@@ -1052,6 +1083,32 @@ class Replacement(GlassService):
                 if total > 0:
                     self.cost = total
                 # else: keep existing cost (may have been set manually)
+
+            # Calculate tax from BillingConfig rates
+            if self.cost and self.cost > 0:
+                try:
+                    from apps.billing.services.tax_service import TaxService
+                    tax_result = TaxService(tenant=self.tenant).calculate_tax(
+                        subtotal=self.cost, customer=self.customer
+                    )
+                    self.tax_rate = tax_result['rate']
+                    self.tax_amount = tax_result['amount']
+                except Exception:
+                    pass  # Keep $0 tax if billing app unavailable
+
+            # Reset repair count when replacement is completed
+            # A new windshield means fresh repair pricing for that unit
+            if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
+                try:
+                    unit_repair_count = UnitRepairCount.objects.filter(
+                        customer=self.customer,
+                        unit_number=self.unit_number
+                    ).first()
+                    if unit_repair_count:
+                        unit_repair_count.repair_count = 0
+                        unit_repair_count.save()
+                except Exception:
+                    pass  # Don't fail replacement save if reset fails
         
         super().save(*args, **kwargs)
         self.original_status = self.queue_status
@@ -1119,6 +1176,15 @@ class ViscosityRecommendation(models.Model):
     Configurable temperature-based resin viscosity recommendations.
     Managers can configure these rules through the settings UI.
     """
+    # Multi-tenant support
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='viscosity_recommendations',
+        null=True,  # Nullable during migration transition
+        blank=True,
+    )
+
     BADGE_COLOR_CHOICES = [
         ('blue', 'Blue'),
         ('green', 'Green'),
@@ -1224,12 +1290,13 @@ class ViscosityRecommendation(models.Model):
         return True
 
     @classmethod
-    def get_recommendation_for_temperature(cls, temperature):
+    def get_recommendation_for_temperature(cls, temperature, tenant=None):
         """
         Get the appropriate viscosity recommendation for a given temperature.
 
         Args:
             temperature (Decimal or float): Temperature in Fahrenheit
+            tenant: Tenant instance to scope rules to (required for multi-tenant)
 
         Returns:
             dict or None: Dictionary with recommendation details, or None if no match
@@ -1237,8 +1304,11 @@ class ViscosityRecommendation(models.Model):
         if temperature is None:
             return None
 
-        # Query active rules ordered by display_order
-        active_rules = cls.objects.filter(is_active=True).order_by('display_order', 'id')
+        # Query active rules ordered by display_order, scoped to tenant
+        active_rules = cls.objects.filter(is_active=True)
+        if tenant:
+            active_rules = active_rules.filter(tenant=tenant)
+        active_rules = active_rules.order_by('display_order', 'id')
 
         # Find first matching rule
         for rule in active_rules:

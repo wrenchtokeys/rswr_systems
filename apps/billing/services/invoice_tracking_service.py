@@ -137,7 +137,7 @@ class InvoiceTrackingService:
             # Apply sales tax (if enabled)
             try:
                 from apps.billing.services.tax_service import TaxService
-                tax_svc = TaxService()
+                tax_svc = TaxService(tenant=invoice.tenant)
                 tax_result = tax_svc.apply_tax_to_invoice(invoice)
                 logger.info(
                     f"Tax for {invoice.invoice_number}: enabled={tax_result['enabled']}, "
@@ -171,8 +171,10 @@ class InvoiceTrackingService:
         """
         from apps.technician_portal.models import Repair
         
-        # Get repairs for this customer
+        # Get repairs for this customer (tenant-scoped)
         repairs = Repair.objects.filter(customer=customer)
+        if self.tenant:
+            repairs = repairs.filter(tenant=self.tenant)
         
         if completed_only:
             repairs = repairs.filter(queue_status='COMPLETED')
@@ -182,8 +184,10 @@ class InvoiceTrackingService:
         
         # Exclude repairs that are on active invoices
         # (DRAFT, SENT, PARTIAL, PAID - but not CANCELLED)
+        tenant = self.tenant or customer.tenant
         invoiced_repair_ids = InvoiceLineItem.objects.filter(
             repair__isnull=False,
+            invoice__tenant=tenant,
             invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
         ).values_list('repair_id', flat=True)
         
@@ -242,9 +246,19 @@ class InvoiceTrackingService:
         Returns:
             QuerySet of Invoice instances
         """
-        invoices = Invoice.objects.filter(
-            status__in=['SENT', 'PARTIAL', 'OVERDUE']
-        )
+        if self.tenant:
+            invoices = Invoice.objects.for_tenant(self.tenant).filter(
+                status__in=['SENT', 'PARTIAL', 'OVERDUE']
+            )
+        else:
+            # Safety: scope to customer's tenant if available, else empty
+            if customer:
+                invoices = Invoice.objects.filter(
+                    tenant=customer.tenant,
+                    status__in=['SENT', 'PARTIAL', 'OVERDUE']
+                )
+            else:
+                invoices = Invoice.objects.none()
         
         if customer:
             invoices = invoices.filter(customer=customer)
@@ -266,7 +280,11 @@ class InvoiceTrackingService:
         """
         today = timezone.now().date()
         
-        updated = Invoice.objects.filter(
+        if not self.tenant:
+            logger.warning("update_overdue_statuses called without tenant — skipping")
+            return 0
+        qs = Invoice.objects.for_tenant(self.tenant)
+        updated = qs.filter(
             status__in=['SENT', 'PARTIAL'],
             due_date__lt=today
         ).update(status='OVERDUE')

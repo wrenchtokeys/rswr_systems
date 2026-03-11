@@ -50,6 +50,9 @@ def technician_dashboard(request):
             qs = Repair.objects.filter(queue_status='REQUESTED')
             if tenant:
                 qs = qs.filter(tenant=tenant)
+
+            else:
+                qs = qs.none()
             customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-service_date')
         else:
             customer_requested_repairs = Repair.objects.none()
@@ -60,12 +63,17 @@ def technician_dashboard(request):
             status='PENDING'
         ).order_by('-created_at')
 
-        # Get all pending redemptions (visible to all technicians)
-        all_pending_redemptions = RewardRedemption.objects.filter(
+        # Get all pending redemptions (visible to all technicians, tenant-scoped)
+        pending_qs = RewardRedemption.objects.filter(
             status='PENDING'
         ).exclude(
             id__in=[r.id for r in assigned_redemptions]
-        ).order_by('-created_at')[:5]
+        )
+        if tenant:
+            pending_qs = pending_qs.filter(
+                reward__customer_user__customer__tenant=tenant
+            )
+        all_pending_redemptions = pending_qs.order_by('-created_at')[:5]
 
         # Get unread notifications
         unread_notifications = technician.notifications.filter(read=False).order_by('-created_at')
@@ -158,17 +166,44 @@ def technician_dashboard(request):
             'completed_this_week': recent_completions.count(),
             'total_active_work': len(batch_repairs_in_progress) + len(individual_repairs_in_progress) + len(batch_repairs_approved) + len(individual_repairs_approved),
         }
+
+        # --- Today's Work Queue ---
+        # Priority-ordered list of this tech's actionable work
+        from django.db.models import Case, When, Value, IntegerField
+        queue_qs = Repair.objects.filter(
+            technician=technician,
+            queue_status__in=['IN_PROGRESS', 'APPROVED', 'PENDING'],
+        ).select_related('customer').annotate(
+            priority=Case(
+                When(queue_status='IN_PROGRESS', then=Value(0)),
+                When(queue_status='APPROVED', then=Value(1)),
+                When(queue_status='PENDING', then=Value(2)),
+                output_field=IntegerField(),
+            )
+        ).order_by('priority', 'service_date')
+        if tenant:
+            queue_qs = queue_qs.filter(tenant=tenant)
+
+        else:
+            queue_qs = queue_qs.none()
+        todays_queue = list(queue_qs[:20])
     else:
         # For admins without a technician profile
         qs = Repair.objects.filter(queue_status='REQUESTED')
         if tenant:
             qs = qs.filter(tenant=tenant)
+
+        else:
+            qs = qs.none()
         customer_requested_repairs = qs.select_related('customer', 'technician').order_by('-service_date')
 
         assigned_redemptions = []
-        all_pending_redemptions = RewardRedemption.objects.filter(
-            status='PENDING'
-        ).order_by('-created_at')
+        pending_qs = RewardRedemption.objects.filter(status='PENDING')
+        if tenant:
+            pending_qs = pending_qs.filter(
+                reward__customer_user__customer__tenant=tenant
+            )
+        all_pending_redemptions = pending_qs.order_by('-created_at')
 
         unread_notifications = None
         batch_repairs_approved = {}
@@ -184,6 +219,7 @@ def technician_dashboard(request):
             'completed_this_week': 0,
             'total_active_work': 0,
         }
+        todays_queue = []
 
     # Extra data for admin users
     is_admin = is_tenant_admin(request.user)
@@ -192,15 +228,26 @@ def technician_dashboard(request):
     if is_admin:
         repair_qs = Repair.objects.all()
         customer_qs = Customer.objects.all()
+        tech_qs = Technician.objects.all()
+        redemption_qs = RewardRedemption.objects.filter(status='PENDING')
         if tenant:
             repair_qs = repair_qs.filter(tenant=tenant)
             customer_qs = customer_qs.filter(tenant=tenant)
+            tech_qs = tech_qs.filter(tenant=tenant)
+            redemption_qs = redemption_qs.filter(
+                reward__customer_user__customer__tenant=tenant
+            )
+        else:
+            repair_qs = repair_qs.none()
+            customer_qs = customer_qs.none()
+            tech_qs = tech_qs.none()
+            redemption_qs = redemption_qs.none()
         admin_data = {
             'total_repairs': repair_qs.count(),
             'pending_repairs': repair_qs.filter(queue_status='PENDING').count(),
             'customers': customer_qs.count(),
-            'technicians': Technician.objects.count(),
-            'pending_redemptions': RewardRedemption.objects.filter(status='PENDING').count()
+            'technicians': tech_qs.count(),
+            'pending_redemptions': redemption_qs.count()
         }
 
     # Get notification bell data
@@ -236,4 +283,5 @@ def technician_dashboard(request):
         'is_admin': is_admin,
         'admin_data': admin_data,
         'summary_stats': summary_stats,
+        'todays_queue': todays_queue,
     })

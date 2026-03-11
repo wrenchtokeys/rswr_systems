@@ -12,9 +12,61 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.3.1] - March 3, 2026
+
+### Security
+- **CRITICAL: Cross-tenant customer data leak** — RepairForm showed ALL customers from ALL shops. Now tenant-filtered. (BUG-001)
+- **CRITICAL: Cross-tenant tax leak** — TaxService read from global BillingConfig singleton. Now reads from tenant-scoped TaxRate entries. New tenants default to zero tax. (BUG-003)
+- **CRITICAL: No subscription enforcement** — Users could use app indefinitely after trial expired. New `SubscriptionEnforcementMiddleware` blocks expired/canceled tenants. (BUG-002)
+- **Missing CSRF token** on primary technician change form — caused 403 on save. (BUG-007)
+- **Technician queryset unfiltered** — RepairForm technician dropdown now tenant-scoped. (BUG-001)
+- **Technician lookup on primary tech update** — now filtered by tenant to prevent cross-tenant assignment.
+
+### Fixed
+- **Signup crash on Django 5.x** — `User.objects.make_random_password()` removed in Django 5. Replaced with `secrets.token_urlsafe()`. (BUG-004)
+- **"Add myself as technician" required name fields** — Now uses owner's existing user when `add_self` is checked. (BUG-005)
+- **Skip buttons on onboarding broken** — Browser HTML5 validation blocked submit. Added `formnovalidate`. (BUG-006)
+- **Real customer names in placeholder text** — Changed "EOS Trucking, Penske" to generic examples. (BUG-014)
+
+### Added
+- **Subscription lifecycle documentation** — `docs/development/SUBSCRIPTION_LIFECYCLE.md` with data retention policy, trial email alert plan, and soft landing page spec.
+- **Automated test suite** — 109 tests covering billing models, auth/permissions, tenant isolation, core models, URL routing, and bug fix regressions.
+- **Data retention policy** — All tenant data preserved indefinitely after trial/subscription expiration.
+
+---
+
+## [2.3.0] - February 19, 2026
+
+### Added - Progressive Pricing & Replacements
+- **Configurable progressive pricing tiers** - shop owners can set custom prices for repairs 1-5+ per unit
+- **Progressive pricing toggle** - enable/disable per tenant in owner settings
+- **Per-customer progressive pricing flag** - override tenant default for specific customers
+- **Viscosity rules configuration** - moved to General tab in owner settings with dedicated link
+- **Customer portal replacement views** - customers can view, approve, and deny replacements
+- **Replacement list view** - with filtering and pagination for technicians
+- **Replacement edit view** - technicians can update replacement details and status
+- **Tax fields on Replacement model** - full tax support for glass replacements
+- **Terms of Service page** - `/terms/` with legal content
+- **Privacy Policy page** - `/privacy/` with legal content
+- **Email verification on signup** - sends verification email after owner and customer registration
+
+### Fixed
+- **Multi-break batch tenant isolation** - convert_to_batch now correctly copies tenant to new repairs
+- **UnitRepairCount tenant lookup** - includes tenant in get_or_create to prevent cross-tenant issues
+- **Pricing preview** - respects progressive pricing settings from tenant
+- **Repair count reset** - resets unit repair count when replacement is completed
+- **Owner dashboard recent activity** - fixed template bugs in activity display
+- **Registration form data preservation** - form data preserved on validation errors
+- **Stale branding** - updated all references to RS Systems
+
+### Changed
+- **Documentation cleanup** - removed all emojis from documentation files
+
+---
+
 ## [2.2.3] - February 4, 2026
 
-### Added — Send Reminder Button
+### Added  Send Reminder Button
 - **Send Reminder** button on invoice detail page now functional
 - **Polished modal** with invoice summary, email preview, and confirmation
   - Shows customer, amount due, due date, status
@@ -33,10 +85,10 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ## [2.2.2] - February 4, 2026
 
-### Added — Invoice UX Improvements
+### Added  Invoice UX Improvements
 
 #### Clickable Overdue Badge
-- **Overdue summary card** on `/owner/invoices/` is now clickable — filters to show only overdue invoices
+- **Overdue summary card** on `/owner/invoices/` is now clickable  filters to show only overdue invoices
 - **Count badge** shows number of overdue invoices when > 0
 - **Visual highlight** (ring) when overdue filter is active
 
@@ -48,11 +100,11 @@ All notable changes to the RS Systems windshield repair management platform.
   - Editable recipient email field
   - Support for multiple recipients (comma-separated)
 - Backend `send_invoice_email` endpoint now accepts custom `recipient_email` and `cc_emails` parameters
-- Invoice status auto-updates DRAFT → SENT when email is sent
+- Invoice status auto-updates DRAFT  SENT when email is sent
 
 #### Dismiss Uninvoiced Repairs
-- **"Dismiss" button** on uninvoiced work section — for legacy repairs already paid outside the system
-- Marks repairs with `skip_invoicing=True` flag — hides from invoicing without deleting
+- **"Dismiss" button** on uninvoiced work section  for legacy repairs already paid outside the system
+- Marks repairs with `skip_invoicing=True` flag  hides from invoicing without deleting
 - API endpoint: `POST /api/billing/customers/<id>/uninvoiced/dismiss/`
 - Accepts `{"all": true}` to dismiss all, or `{"repair_ids": [1,2,3]}` for specific repairs
 
@@ -72,7 +124,7 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ## [2.2.1] - February 1, 2026
 
-### Fixed — Tax Calculation on Repair Tickets & Invoices
+### Fixed  Tax Calculation on Repair Tickets & Invoices
 - **Tax on repair tickets**: Added `tax_rate`, `tax_amount` fields to Repair model. Tax is now calculated automatically from `BillingConfig` rates every time a repair is saved. `total_with_tax` property shows cost + tax.
 - **Tax display**: Repair detail pages in both technician and customer portals now show tax breakdown and total with tax.
 - **Invoice creation fix**: Moved `InvoiceService` (reportlab) import into the PDF generation block so invoice record creation and tax calculation no longer fail if reportlab is unavailable.
@@ -82,29 +134,29 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ## [2.2.0] - February 1, 2026
 
-### 🧾 INVOICE PORTALS & PAYMENT MANAGEMENT
+###  INVOICE PORTALS & PAYMENT MANAGEMENT
 
 Full invoice visibility and payment handling across all three portals.
 
-#### Added — Customer Portal
-- **Invoice List** (`/app/invoices/`): Customers see all their invoices with status badges (Paid ✅, Overdue 🔴, Sent 📤, Partial ⚠️, Cancelled)
+#### Added  Customer Portal
+- **Invoice List** (`/app/invoices/`): Customers see all their invoices with status badges (Paid , Overdue , Sent , Partial , Cancelled)
 - **Invoice Detail** (`/app/invoices/<id>/`): Line items, totals, payment history, PDF download
 - **Pay Now**: One-click Stripe checkout from invoice detail page
 - **"Invoices" nav link** added to customer portal navigation
 
-#### Added — Owner Portal
+#### Added  Owner Portal
 - **Invoice Dashboard** (`/owner/invoices/`): Summary cards (outstanding, overdue, payments this month) + full invoice table with filters
-- **Manual Payment Recording**: Form on invoice detail — record cash, check, wire, ACH, credit card payments with reference number, date, notes
+- **Manual Payment Recording**: Form on invoice detail  record cash, check, wire, ACH, credit card payments with reference number, date, notes
 - **Auto-status updates**: Recording payment automatically updates invoice status + sends confirmation emails
 - **PDF view + payment actions** on every invoice row
 
-#### Added — Technician Portal
+#### Added  Technician Portal
 - **Collect Payment On-Site** (`/tech/repairs/<id>/collect-payment/`): Techs can record cash/check payments from repair detail page for completed+invoiced repairs
 - Payment auto-linked to invoice, confirmation emails sent
 
-#### Added — Stripe Landing Pages
-- `/payment-complete` — Branded thank-you page after successful Stripe payment
-- `/payment-cancelled` — Return page for cancelled Stripe checkouts
+#### Added  Stripe Landing Pages
+- `/payment-complete`  Branded thank-you page after successful Stripe payment
+- `/payment-cancelled`  Return page for cancelled Stripe checkouts
 
 #### Technical Details
 - Customer views: `apps/customer_portal/views.py` (`customer_invoices`, `customer_invoice_detail`, `customer_invoice_pay`)
@@ -116,46 +168,46 @@ Full invoice visibility and payment handling across all three portals.
 
 ## [2.1.0] - January 31, 2026
 
-### 💰 BILLING & INVOICING SYSTEM
+###  BILLING & INVOICING SYSTEM
 
 Complete billing infrastructure: auto-invoicing, Stripe payments, payment confirmation emails.
 
 #### Added
-- **BillingConfig** singleton: Company address (street/city/state/zip), default payment terms, invoice prefix/footer — configurable via Admin > Billing
+- **BillingConfig** singleton: Company address (street/city/state/zip), default payment terms, invoice prefix/footer  configurable via Admin > Billing
 - **Payment Terms**: COD (default), Due on Receipt, NET15/30/45/60. Due date auto-calculated. Displayed on PDF invoices.
 - **Stripe Integration**: Payment Links auto-generated on invoice creation. Checkout Sessions. Webhook handler at `/api/billing/stripe/webhook/`
-- **Auto-Invoice on Completion**: Django signal fires on repair COMPLETED → generates PDF → saves to S3 → emails customer (for `per_ticket` preference customers)
+- **Auto-Invoice on Completion**: Django signal fires on repair COMPLETED  generates PDF  saves to S3  emails customer (for `per_ticket` preference customers)
 - **Payment Confirmation Emails**: Branded HTML receipt to customer (amount, method, date, remaining balance with "Pay Remaining" link for partials). Plain text notification to owner.
 - **Payment Status in Portals**: Owner dashboard and repair detail pages show invoice/payment status
-- **15+ Billing API Endpoints** at `/api/billing/` — dashboard, CRUD, Stripe, reminders, customer preferences
+- **15+ Billing API Endpoints** at `/api/billing/`  dashboard, CRUD, Stripe, reminders, customer preferences
 
 #### Technical Details
 - Invoice + InvoiceLineItem + Payment models with double-billing prevention
 - Services: `invoice_service.py` (PDF), `auto_invoice_service.py`, `stripe_service.py`, `invoice_email_service.py`, `reminder_service.py`, `dashboard_service.py`, `report_service.py`
-- Stripe webhook handles `checkout.session.completed` + `payment_intent.succeeded` → auto-records Payment → updates Invoice status
+- Stripe webhook handles `checkout.session.completed` + `payment_intent.succeeded`  auto-records Payment  updates Invoice status
 - Full billing roadmap: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md)
 
 ---
 
 ## [2.0.0] - January 30, 2026
 
-### 🏗️ UNIFIED PERMISSIONS, TEMPLATES & ONBOARDING
+###  UNIFIED PERMISSIONS, TEMPLATES & ONBOARDING
 
-Major architectural overhaul: one permission system, one base template, fixed signup flow. Built in a single session — 28 tests passing.
+Major architectural overhaul: one permission system, one base template, fixed signup flow. Built in a single session  28 tests passing.
 
 #### Added
 - **Unified Permission System** (`common/auth.py`):
-  - `can_access(user, area, tenant)` — single function replacing 182 scattered permission checks across 7 mechanisms
+  - `can_access(user, area, tenant)`  single function replacing 182 scattered permission checks across 7 mechanisms
   - `@requires('area')` decorator for all views
   - Context processor providing `user_can_repair`, `user_can_invoice`, etc. to all templates
   - Areas: repairs, customers, invoices, reports, team, settings
-- **`base_app.html`** — One base template for all shop staff (owner, manager, tech). Modern Tailwind, sticky nav, adapts to user capabilities. Replaces the old `base.html` / `base_owner.html` split.
+- **`base_app.html`**  One base template for all shop staff (owner, manager, tech). Modern Tailwind, sticky nav, adapts to user capabilities. Replaces the old `base.html` / `base_owner.html` split.
 - **Settings Package**: Refactored `settings.py` into `rs_systems/settings/base.py`, `development.py`, `production.py`
 
 #### Changed
-- **Signup & Onboarding**: `create_tenant_with_owner()` now auto-creates Technician profile + adds to Technicians group. Onboarding cut to 2 steps (business info → dashboard). No more silent failures.
-- **All redirects**: `redirect('home')` for authenticated users replaced with `redirect_to_portal(user)` — customers go to `/app/`, staff go to `/tech/dashboard/`
-- **Owner Navigation**: Changed from `Dashboard | Billing | Settings | [Tech Portal]` to `Dashboard | Repairs | Customers | Invoices | Settings` — linking to existing pages
+- **Signup & Onboarding**: `create_tenant_with_owner()` now auto-creates Technician profile + adds to Technicians group. Onboarding cut to 2 steps (business info  dashboard). No more silent failures.
+- **All redirects**: `redirect('home')` for authenticated users replaced with `redirect_to_portal(user)`  customers go to `/app/`, staff go to `/tech/dashboard/`
+- **Owner Navigation**: Changed from `Dashboard | Billing | Settings | [Tech Portal]` to `Dashboard | Repairs | Customers | Invoices | Settings`  linking to existing pages
 - **~25 tech portal templates** updated from `{% extends "base.html" %}` to `{% extends "base_app.html" %}`
 
 #### Fixed
@@ -164,19 +216,19 @@ Major architectural overhaul: one permission system, one base template, fixed si
 - Authenticated users being redirected to landing page instead of their portal
 
 #### Details
-- Full plan and rationale: [`PLAN.md`](/PLAN.md)
+- Full plan and rationale: [Unified permissions plan (archived)
 - Steps 1-5 completed in one day. Step 6 (deploy to AWS) pending.
 
 ---
 
 ## [1.7.0] - November 18, 2025
 
-### 🎛️ MANAGER SETTINGS PORTAL
+###  MANAGER SETTINGS PORTAL
 
 #### Added
 - **Manager Settings Dashboard** (`/tech/settings/`): Card-based navigation hub for managers
-- **Viscosity Rules Management** (`/tech/settings/viscosity/`): CRUD interface with auto-priority system (🥇🥈🥉 badges), modal editing, toggle switches, AJAX operations
-- **Team Overview** (`/tech/settings/team/`): Performance dashboard — per-technician stats, completion rates, recent repairs
+- **Viscosity Rules Management** (`/tech/settings/viscosity/`): CRUD interface with auto-priority system (� badges), modal editing, toggle switches, AJAX operations
+- **Team Overview** (`/tech/settings/team/`): Performance dashboard  per-technician stats, completion rates, recent repairs
 - **`@manager_required` decorator** for view-level access control
 
 #### Changed
@@ -190,14 +242,14 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 ## [1.6.3] - November 3, 2025
 
-### 🗄️ STORAGE & DATA MANAGEMENT
+###  STORAGE & DATA MANAGEMENT
 
 #### Added
 - **Automatic Photo Deletion**: `django-cleanup` package deletes S3 files when repairs are removed
-- **Storage Audit Command**: `python manage.py audit_repair_photos` — finds orphaned files, calculates storage costs, optional `--delete`
+- **Storage Audit Command**: `python manage.py audit_repair_photos`  finds orphaned files, calculates storage costs, optional `--delete`
 
 #### Changed
-- `TechnicianNotification` cascade behavior: SET_NULL → CASCADE (notifications deleted with repair)
+- `TechnicianNotification` cascade behavior: SET_NULL  CASCADE (notifications deleted with repair)
 
 #### Fixed
 - Orphaned photos remaining in S3 after repair deletion (14+ files, ~16 MB in production)
@@ -209,22 +261,22 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 ## [1.6.2] - October 30, 2025
 
-### 🔒 BACKUP & DATA PROTECTION
+###  BACKUP & DATA PROTECTION
 
 #### Changed
-- **RDS backup retention**: 7 → 30 days with point-in-time recovery
+- **RDS backup retention**: 7  30 days with point-in-time recovery
 - **S3 versioning enabled**: Deleted/replaced photos recoverable for 30 days
 - **Lifecycle policies**: Auto-cleanup of old versions, expired markers, incomplete uploads
 
 #### Removed
-- Custom SQLite backup system (was silently failing since August — production uses PostgreSQL)
+- Custom SQLite backup system (was silently failing since August  production uses PostgreSQL)
 - Empty `rs-systems-backups-20250823` S3 bucket
 
 ---
 
 ## [1.6.1] - October 29, 2025
 
-### 🔧 ADMIN ENHANCEMENTS
+###  ADMIN ENHANCEMENTS
 
 #### Added
 - **Lot Walking Admin Configuration**: Checkbox widgets for day selection, time picker, frequency dropdown in CustomerRepairPreference admin
@@ -234,12 +286,12 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 ## [1.6.0] - October 29, 2025
 
-### 📸 IMAGE UPLOAD ENHANCEMENTS
+###  IMAGE UPLOAD ENHANCEMENTS
 
 #### Added
 - **HEIC/HEIF Support**: Native iPhone photo format with auto-conversion to JPEG (95% quality)
 - **10MB Upload Limit**: Increased from 2.5MB (Django + Nginx configured)
-- **Image Conversion Utility** (`common/utils.py`): Shared HEIC→JPEG converter
+- **Image Conversion Utility** (`common/utils.py`): Shared HEICJPEG converter
 
 #### Fixed
 - Upload failures for 2.5-5MB files (Django default limit)
@@ -250,10 +302,10 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 ## [1.5.0] - October 25, 2025
 
-### 🎨 MAJOR UI/UX REDESIGN
+###  MAJOR UI/UX REDESIGN
 
 #### Changed
-- **Customer Account Settings**: Complete redesign — card-based layout, tooltip system, tab navigation, Tailwind CSS
+- **Customer Account Settings**: Complete redesign  card-based layout, tooltip system, tab navigation, Tailwind CSS
 
 #### Added
 - **Lot Walking Configuration UI**: Customer-facing settings for frequency, preferred days/time
@@ -263,10 +315,10 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 ## [1.4.0] - October 21, 2025
 
-### 🚨 CRITICAL SECURITY FIXES & WORKFLOW
+###  CRITICAL SECURITY FIXES & WORKFLOW
 
 #### Security
-- **CRITICAL**: Fixed approval bypass — technicians could set status to COMPLETED to skip customer approval
+- **CRITICAL**: Fixed approval bypass  technicians could set status to COMPLETED to skip customer approval
 - **HIGH**: Fixed IntegrityError when technicians updated their own repairs
 
 #### Added
@@ -280,7 +332,7 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 ## [1.3.0] - September 28, 2025
 
-### 🎯 SPRINT 1: Core Pricing & Roles
+###  SPRINT 1: Core Pricing & Roles
 
 #### Added
 - Custom pricing system (CustomerPricing model + PricingService)
@@ -321,42 +373,42 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 | Version | Date | Focus | Status |
 |---------|------|-------|--------|
-| 2.2.0 | Feb 1, 2026 | Invoice Portals & Payments | ✅ Complete |
-| 2.1.0 | Jan 31, 2026 | Billing & Invoicing System | ✅ Complete |
-| 2.0.0 | Jan 30, 2026 | Unified Permissions & Templates | ✅ Complete |
-| 1.7.0 | Nov 18, 2025 | Manager Settings Portal | ✅ Complete |
-| 1.6.3 | Nov 3, 2025 | Storage & Data Management | ✅ Complete |
-| 1.6.2 | Oct 30, 2025 | Backup & Data Protection | ✅ Complete |
-| 1.6.1 | Oct 29, 2025 | Admin Lot Walking Config | ✅ Complete |
-| 1.6.0 | Oct 29, 2025 | Image Upload (HEIC) | ✅ Complete |
-| 1.5.0 | Oct 25, 2025 | UI/UX Redesign | ✅ Complete |
-| 1.4.0 | Oct 21, 2025 | Security Fixes & Workflow | ✅ Deployed |
-| 1.3.0 | Sep 28, 2025 | Pricing & Roles | ✅ Complete |
-| 1.2.0 | Aug 23, 2025 | Backup & Security | ✅ Complete |
-| 1.1.0 | Aug 2025 | Photos & Security | ✅ Complete |
-| 1.0.0 | Jul 2025 | Initial Release | ✅ Complete |
+| 2.2.0 | Feb 1, 2026 | Invoice Portals & Payments |  Complete |
+| 2.1.0 | Jan 31, 2026 | Billing & Invoicing System |  Complete |
+| 2.0.0 | Jan 30, 2026 | Unified Permissions & Templates |  Complete |
+| 1.7.0 | Nov 18, 2025 | Manager Settings Portal |  Complete |
+| 1.6.3 | Nov 3, 2025 | Storage & Data Management |  Complete |
+| 1.6.2 | Oct 30, 2025 | Backup & Data Protection |  Complete |
+| 1.6.1 | Oct 29, 2025 | Admin Lot Walking Config |  Complete |
+| 1.6.0 | Oct 29, 2025 | Image Upload (HEIC) |  Complete |
+| 1.5.0 | Oct 25, 2025 | UI/UX Redesign |  Complete |
+| 1.4.0 | Oct 21, 2025 | Security Fixes & Workflow |  Deployed |
+| 1.3.0 | Sep 28, 2025 | Pricing & Roles |  Complete |
+| 1.2.0 | Aug 23, 2025 | Backup & Security |  Complete |
+| 1.1.0 | Aug 2025 | Photos & Security |  Complete |
+| 1.0.0 | Jul 2025 | Initial Release |  Complete |
 
 ---
 
 **Latest Version**: 2.2.0
 **Last Updated**: February 1, 2026
-**Status**: Production Ready ✅
+**Status**: Production Ready 
 
 ## [2.3.0] - February 10, 2026
 
-### Added — Phase 7: SaaS Subscription Billing Polish
+### Added  Phase 7: SaaS Subscription Billing Polish
 
 #### Usage Enforcement
-- **Repair creation limit** — blocks creating repairs when monthly limit reached
-- **Customer creation limit** — blocks adding customers when at plan limit
-- **Technician invite limit** — blocks inviting technicians when at seat limit
+- **Repair creation limit**  blocks creating repairs when monthly limit reached
+- **Customer creation limit**  blocks adding customers when at plan limit
+- **Technician invite limit**  blocks inviting technicians when at seat limit
 - All limits show friendly message with upgrade CTA
 
 #### Subscription Status Banners
-- **Trial expiring soon** (≤7 days) — amber banner with upgrade CTA
-- **Trial expired** — red banner prompting upgrade
-- **Past due** — red banner prompting payment method update
-- **Canceled** — gray banner with reactivate option
+- **Trial expiring soon** (7 days)  amber banner with upgrade CTA
+- **Trial expired**  red banner prompting upgrade
+- **Past due**  red banner prompting payment method update
+- **Canceled**  gray banner with reactivate option
 - Banners display for owners/managers across all pages
 
 #### Already Built (discovered during Phase 7)
@@ -374,11 +426,11 @@ Major architectural overhaul: one permission system, one base template, fixed si
 ## [2.3.1] - February 11, 2026
 
 ### Security
-- **CRITICAL: Plan upgrade now requires payment** — Fixed security hole where clicking "Upgrade" granted paid plan features before payment completed. Plan now only upgrades via `checkout.session.completed` webhook after Stripe confirms payment.
+- **CRITICAL: Plan upgrade now requires payment**  Fixed security hole where clicking "Upgrade" granted paid plan features before payment completed. Plan now only upgrades via `checkout.session.completed` webhook after Stripe confirms payment.
 
 ### Fixed
-- **Stripe API breaking change** — Switched from direct subscription creation to Stripe Checkout Sessions (Stripe removed `payment_intent` from Invoice objects in March 2025)
-- **Added checkout.session.completed webhook handler** — Captures subscription ID and upgrades plan after successful payment
+- **Stripe API breaking change**  Switched from direct subscription creation to Stripe Checkout Sessions (Stripe removed `payment_intent` from Invoice objects in March 2025)
+- **Added checkout.session.completed webhook handler**  Captures subscription ID and upgrades plan after successful payment
 
 ### Changed
 - `create_subscription` now returns `checkout_url` for redirect instead of `client_secret`

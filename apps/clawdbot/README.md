@@ -44,27 +44,27 @@ The clawdbot app provides:
 
 ### List customers
 ```bash
-curl https://rockstarwindshield.repair/clawdbot/customers/
+curl https://rssystems.io/clawdbot/customers/
 ```
 
 ### Preview an invoice
 ```bash
-curl https://rockstarwindshield.repair/clawdbot/invoices/preview/1/
+curl https://rssystems.io/clawdbot/invoices/preview/1/
 ```
 
 ### Download PDF invoice
 ```bash
-curl -o invoice.pdf https://rockstarwindshield.repair/clawdbot/invoices/generate/1/
+curl -o invoice.pdf https://rssystems.io/clawdbot/invoices/generate/1/
 ```
 
 ### Invoice for specific repairs only
 ```bash
-curl -o invoice.pdf "https://rockstarwindshield.repair/clawdbot/invoices/generate/1/?repair_ids=10,11,12"
+curl -o invoice.pdf "https://rssystems.io/clawdbot/invoices/generate/1/?repair_ids=10,11,12"
 ```
 
 ### Invoice for last 7 days
 ```bash
-curl -o invoice.pdf "https://rockstarwindshield.repair/clawdbot/invoices/generate/1/?days=7"
+curl -o invoice.pdf "https://rssystems.io/clawdbot/invoices/generate/1/?days=7"
 ```
 
 ## Architecture

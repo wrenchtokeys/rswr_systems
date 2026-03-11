@@ -15,7 +15,7 @@ from apps.customer_portal.pricing_models import CustomerPricing
 from apps.technician_portal.models import UnitRepairCount
 
 
-# Default pricing tiers (previously on Repair.calculate_cost static method)
+# Default pricing tiers (used when tenant has no custom pricing)
 DEFAULT_PRICING = {
     1: Decimal('50.00'),
     2: Decimal('40.00'),
@@ -23,6 +23,32 @@ DEFAULT_PRICING = {
     4: Decimal('30.00'),
 }
 DEFAULT_PRICE_5_PLUS = Decimal('25.00')
+
+
+def get_tenant_repair_price(tenant, repair_count: int) -> Decimal:
+    """
+    Get the repair price for a given repair count tier from tenant settings.
+
+    Args:
+        tenant: The Tenant object (or None for system defaults)
+        repair_count: The repair number for this unit (1, 2, 3, 4, 5+)
+
+    Returns:
+        Decimal: The repair cost based on tenant configuration
+    """
+    if tenant:
+        if repair_count == 1:
+            return tenant.repair_price_1 or DEFAULT_PRICING[1]
+        elif repair_count == 2:
+            return tenant.repair_price_2 or DEFAULT_PRICING[2]
+        elif repair_count == 3:
+            return tenant.repair_price_3 or DEFAULT_PRICING[3]
+        elif repair_count == 4:
+            return tenant.repair_price_4 or DEFAULT_PRICING[4]
+        else:
+            return tenant.repair_price_5_plus or DEFAULT_PRICE_5_PLUS
+    
+    return DEFAULT_PRICING.get(repair_count, DEFAULT_PRICE_5_PLUS)
 
 
 def get_default_repair_price(repair_count: int) -> Decimal:
@@ -40,19 +66,21 @@ def get_default_repair_price(repair_count: int) -> Decimal:
     return DEFAULT_PRICING.get(repair_count, DEFAULT_PRICE_5_PLUS)
 
 
-def calculate_repair_cost(customer: Customer, repair_count: int) -> Decimal:
+def calculate_repair_cost(customer: Customer, repair_count: int, tenant=None) -> Decimal:
     """
     Calculate the cost for a repair based on customer pricing configuration.
 
-    Checks for customer-specific pricing first, falls back to default tiers.
+    Checks for customer-specific pricing first, then tenant pricing, then defaults.
 
     Args:
         customer: The Customer object
         repair_count: The number of repairs for this unit (1, 2, 3, 4, 5+)
+        tenant: Optional Tenant object for shop-specific pricing
 
     Returns:
         Decimal: The calculated repair cost
     """
+    # First check customer-specific pricing
     try:
         pricing = CustomerPricing.objects.get(customer=customer, use_custom_pricing=True)
         custom_price = pricing.get_repair_price(repair_count)
@@ -63,7 +91,11 @@ def calculate_repair_cost(customer: Customer, repair_count: int) -> Decimal:
     except CustomerPricing.DoesNotExist:
         pass
 
-    return get_default_repair_price(repair_count)
+    # Fall back to tenant pricing, then system defaults
+    if tenant is None and customer:
+        tenant = getattr(customer, 'tenant', None)
+    
+    return get_tenant_repair_price(tenant, repair_count)
 
 
 def calculate_repair_cost_with_volume_discount(customer: Customer, repair_count: int, total_customer_repairs: int) -> Tuple[Decimal, bool, Decimal]:
@@ -111,22 +143,35 @@ def get_retail_repair_price(customer: Customer) -> Decimal:
     return calculate_repair_cost(customer, 1)
 
 
-def get_expected_repair_cost(customer: Customer, unit_number: str) -> Tuple[Decimal, int]:
+def get_expected_repair_cost(customer: Customer, unit_number: str, tenant=None) -> Tuple[Decimal, int]:
     """
     Get the expected cost for the next repair on a specific unit.
 
     Args:
         customer: The Customer object
         unit_number: The unit number
+        tenant: Optional Tenant object (defaults to customer.tenant)
 
     Returns:
         Tuple of (expected_cost, next_repair_count)
     """
-    # Retail/Walk-in customers always pay first repair price (no sequential discounts)
-    if customer and customer.customer_type in ('RETAIL', 'WALK_IN'):
-        return get_retail_repair_price(customer), 1
+    # Get tenant if not provided
+    if tenant is None and customer:
+        tenant = getattr(customer, 'tenant', None)
     
-    # Fleet customers get progressive pricing based on unit repair count
+    # Check if progressive pricing is enabled
+    tenant_allows_progressive = getattr(tenant, 'use_progressive_pricing', True) if tenant else True
+    customer_wants_progressive = getattr(customer, 'use_progressive_pricing', True) if customer else True
+    use_progressive = tenant_allows_progressive and customer_wants_progressive
+    
+    # Retail/Walk-in customers always pay first repair price (no sequential discounts)
+    is_retail = customer and customer.customer_type in ('RETAIL', 'WALK_IN')
+    
+    # If progressive pricing disabled OR retail customer, always first repair price
+    if is_retail or not use_progressive:
+        return calculate_repair_cost(customer, 1, tenant), 1
+    
+    # Fleet customers with progressive pricing enabled
     unit_repair_count, created = UnitRepairCount.objects.get_or_create(
         customer=customer,
         unit_number=unit_number,
@@ -134,7 +179,7 @@ def get_expected_repair_cost(customer: Customer, unit_number: str) -> Tuple[Deci
     )
 
     next_repair_count = unit_repair_count.repair_count + 1
-    expected_cost = calculate_repair_cost(customer, next_repair_count)
+    expected_cost = calculate_repair_cost(customer, next_repair_count, tenant)
 
     return expected_cost, next_repair_count
 

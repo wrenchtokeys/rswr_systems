@@ -202,19 +202,23 @@ class RewardService:
         return reward
 
     @staticmethod
-    def get_reward_options(active_only=True):
+    def get_reward_options(active_only=True, tenant=None):
         """
-        Get all available reward options.
-        
+        Get available reward options, scoped to tenant.
+
         Args:
             active_only (bool): Whether to return only active reward options
-            
+            tenant: Tenant instance to filter by
+
         Returns:
             QuerySet: Reward options
         """
+        qs = RewardOption.objects.all()
+        if tenant:
+            qs = qs.filter(tenant=tenant)
         if active_only:
-            return RewardOption.objects.filter(is_active=True)
-        return RewardOption.objects.all()
+            qs = qs.filter(is_active=True)
+        return qs
     
     @staticmethod
     def get_reward_redemptions(customer_user):
@@ -379,8 +383,14 @@ class RewardFulfillmentService:
         """
         from apps.technician_portal.models import Technician, Repair
         
-        # Get active technicians
+        # Get active technicians scoped to the redemption's tenant
+        try:
+            tenant = redemption.reward.customer_user.customer.tenant
+        except AttributeError:
+            tenant = None
         technicians = Technician.objects.all()
+        if tenant:
+            technicians = technicians.filter(tenant=tenant)
         
         if not technicians.exists():
             return None
@@ -466,14 +476,20 @@ class RewardFulfillmentService:
         return redemption
         
     @staticmethod
-    def get_pending_redemptions():
+    def get_pending_redemptions(tenant=None):
         """
         Get all pending redemptions that need to be fulfilled.
         
+        Args:
+            tenant: Optional tenant to scope results
+            
         Returns:
             QuerySet: All pending redemptions
         """
-        return RewardRedemption.objects.filter(status='PENDING').order_by('created_at')
+        qs = RewardRedemption.objects.filter(status='PENDING')
+        if tenant:
+            qs = qs.filter(reward__customer_user__customer__tenant=tenant)
+        return qs.order_by('created_at')
         
     @staticmethod
     def get_technician_redemptions(technician):

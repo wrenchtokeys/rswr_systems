@@ -139,7 +139,7 @@ SENDGRID_API_KEY=SG....
 
 ### Stripe Webhook Setup
 1. Stripe Dashboard → Webhooks → Add endpoint
-2. URL: `https://rockstarwindshield.repair/api/billing/stripe/webhook/`
+2. URL: `https://rssystems.io/api/billing/stripe/webhook/`
 3. Events: `checkout.session.completed`, `payment_intent.succeeded`
 
 ## What's Next

@@ -9,15 +9,22 @@ Author: Amelia (Clawdbot AI)
 """
 
 import logging
+import secrets
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.db import models, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 from common.decorators import owner_or_manager_required
 from django.utils import timezone
 from django.utils.text import slugify
@@ -76,6 +83,56 @@ def _get_owner_tenant(request):
     return tenant, membership
 
 
+def _send_verification_email(request, user):
+    """
+    Send email verification link to a user after signup.
+    
+    Uses Django's token generator for secure verification links.
+    Fails silently to never block the signup flow.
+    """
+    try:
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        
+        # Check if user is a CustomerUser or shop owner
+        try:
+            from apps.customer_portal.models import CustomerUser
+            CustomerUser.objects.get(user=user)
+            # Customer - use customer verification URL
+            verification_url = request.build_absolute_uri(
+                reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
+            )
+        except:
+            # Shop owner - use password reset infrastructure for now
+            # (they can verify via account settings later)
+            verification_url = request.build_absolute_uri(
+                reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
+            )
+        
+        send_mail(
+            subject='Verify your email address - RS Systems',
+            message=f'''Welcome to RS Systems!
+
+Please verify your email address by clicking the link below:
+
+{verification_url}
+
+This link will expire in 24 hours.
+
+If you didn't create an account, you can safely ignore this email.
+
+— The RS Systems Team
+''',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=True,  # Never block signup on email failure
+        )
+        logger.info(f"Verification email sent to {user.email}")
+    except Exception as e:
+        # Log but don't fail - verification email is non-critical
+        logger.warning(f"Failed to send verification email to {user.email}: {e}")
+
+
 # ------------------------------------------------------------------
 # 1. Signup
 # ------------------------------------------------------------------
@@ -110,10 +167,13 @@ def signup_view(request):
                     login(request, auth_user)
                     request.session['tenant_id'] = tenant.id
 
+                # Send verification email (fails silently)
+                _send_verification_email(request, user)
+
                 messages.success(
                     request,
                     f'Welcome to RS Systems, {cd["first_name"]}! '
-                    f'Your 30-day free trial has started.',
+                    f'Your 30-day free trial has started. Check your email to verify your address.',
                 )
                 return redirect('onboarding')
 
@@ -129,6 +189,20 @@ def signup_view(request):
         form = SignupForm()
 
     return render(request, 'saas/signup.html', {'form': form})
+
+
+# ------------------------------------------------------------------
+# 2. Legal Pages
+# ------------------------------------------------------------------
+
+def terms_of_service(request):
+    """Terms of Service page."""
+    return render(request, 'saas/terms_of_service.html')
+
+
+def privacy_policy(request):
+    """Privacy Policy page."""
+    return render(request, 'saas/privacy_policy.html')
 
 
 # ------------------------------------------------------------------
@@ -174,45 +248,63 @@ def onboarding_view(request):
                 return redirect('/onboarding/?step=2')
 
         elif step == '2':
-            # Step 2: Add ANOTHER technician (owner is already set up from signup)
+            # Step 2: Add technician — either yourself or someone else
             form = OnboardingTechnicianForm(request.POST)
             if form.is_valid():
                 cd = form.cleaned_data
                 try:
                     with transaction.atomic():
-                        # Create a new user + technician (not yourself — you're already set up)
-                        tech_email = cd.get('tech_email', '')
-                        tech_first = cd.get('tech_first_name', '')
-                        tech_last = cd.get('tech_last_name', '')
+                        add_self = cd.get('add_self', False)
 
-                        if tech_email or tech_first:
-                            from apps.tenants.services.signup_service import generate_unique_username
-                            tech_username = generate_unique_username(tech_email or '', tech_first)
-                            if not User.objects.filter(username=tech_username).exists():
-                                tech_user = User.objects.create_user(
-                                    username=tech_username,
-                                    email=tech_email or '',
-                                    first_name=tech_first,
-                                    last_name=tech_last,
-                                    password=User.objects.make_random_password(),
-                                )
+                        if add_self:
+                            # Add the owner as a technician (use their existing user)
+                            if not Technician.objects.filter(user=request.user, tenant=tenant).exists():
                                 Technician.objects.create(
                                     tenant=tenant,
-                                    user=tech_user,
-                                    phone_number=cd.get('tech_phone', ''),
+                                    user=request.user,
+                                    phone_number=cd.get('tech_phone', '') or tenant.business_phone,
                                     is_active=True,
-                                )
-                                TenantMembership.objects.create(
-                                    tenant=tenant, user=tech_user, role='technician',
                                 )
                                 from django.contrib.auth.models import Group
                                 tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                tech_user.groups.add(tech_group)
-                                messages.success(request, 'Technician added!')
+                                request.user.groups.add(tech_group)
+                                messages.success(request, 'You have been added as a technician!')
                             else:
-                                messages.info(request, 'A user with that email already exists.')
+                                messages.info(request, 'You are already set up as a technician.')
                         else:
-                            messages.info(request, 'No technician info provided.')
+                            # Add a different person as technician
+                            tech_email = cd.get('tech_email', '')
+                            tech_first = cd.get('tech_first_name', '')
+                            tech_last = cd.get('tech_last_name', '')
+
+                            if tech_email or tech_first:
+                                from apps.tenants.services.signup_service import generate_unique_username
+                                tech_username = generate_unique_username(tech_email or '', tech_first)
+                                if not User.objects.filter(username=tech_username).exists():
+                                    tech_user = User.objects.create_user(
+                                        username=tech_username,
+                                        email=tech_email or '',
+                                        first_name=tech_first,
+                                        last_name=tech_last,
+                                        password=secrets.token_urlsafe(16),
+                                    )
+                                    Technician.objects.create(
+                                        tenant=tenant,
+                                        user=tech_user,
+                                        phone_number=cd.get('tech_phone', ''),
+                                        is_active=True,
+                                    )
+                                    TenantMembership.objects.create(
+                                        tenant=tenant, user=tech_user, role='technician',
+                                    )
+                                    from django.contrib.auth.models import Group
+                                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                                    tech_user.groups.add(tech_group)
+                                    messages.success(request, 'Technician added!')
+                                else:
+                                    messages.info(request, 'A user with that email already exists.')
+                            else:
+                                messages.info(request, 'No technician info provided.')
 
                 except Exception as e:
                     logger.error(f"Onboarding tech error: {e}")
@@ -408,15 +500,71 @@ def owner_dashboard(request):
         .order_by('-service_date')[:5]
     )
 
-    # Merge and sort
+    # Merge and sort, annotate with item_type for template
+    all_items = list(recent_repairs) + list(recent_replacements)
+    for item in all_items:
+        item.item_type = 'Replacement' if isinstance(item, Replacement) else 'Repair'
     recent_activity = sorted(
-        list(recent_repairs) + list(recent_replacements),
+        all_items,
         key=lambda x: x.service_date,
         reverse=True,
     )[:5]
 
     # Billing summary
     billing_context = _get_billing_context(tenant)
+
+    # Setup checklist for new users
+    from decimal import Decimal as D
+    from apps.billing.models import TaxRate
+
+    setup_steps = []
+    pricing_is_default = (
+        tenant.repair_price_1 == D('50.00') and
+        tenant.repair_price_2 == D('40.00') and
+        tenant.repair_price_3 == D('35.00') and
+        tenant.repair_price_4 == D('30.00') and
+        tenant.repair_price_5_plus == D('25.00')
+    )
+    has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
+    has_customers = Customer.objects.filter(tenant=tenant).exists()
+    has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
+    has_business_info = bool(tenant.business_address or tenant.business_phone)
+
+    if not has_business_info:
+        setup_steps.append({
+            'label': 'Add your business info',
+            'desc': 'Address and phone number for invoices',
+            'url': '/owner/settings/?tab=general',
+            'icon': 'fas fa-building',
+        })
+    if pricing_is_default:
+        setup_steps.append({
+            'label': 'Set your repair pricing',
+            'desc': 'Default pricing is $50/$40/$35/$30/$25 — update to match your rates',
+            'url': '/owner/settings/?tab=billing',
+            'icon': 'fas fa-dollar-sign',
+        })
+    if not has_tax_rates:
+        setup_steps.append({
+            'label': 'Configure sales tax',
+            'desc': 'Tax is disabled until you add a tax rate for your area',
+            'url': '/owner/settings/?tab=billing',
+            'icon': 'fas fa-receipt',
+        })
+    if not has_customers:
+        setup_steps.append({
+            'label': 'Add your first customer',
+            'desc': 'Fleet accounts, retail, or walk-in',
+            'url': '/tech/customers/create/',
+            'icon': 'fas fa-users',
+        })
+    if not has_technicians:
+        setup_steps.append({
+            'label': 'Add a technician',
+            'desc': 'Add yourself or invite a team member',
+            'url': '/owner/settings/?tab=team',
+            'icon': 'fas fa-hard-hat',
+        })
 
     context = {
         'tenant': tenant,
@@ -426,6 +574,7 @@ def owner_dashboard(request):
         'trial_days_remaining': tenant.trial_days_remaining,
         'is_trial': tenant.plan == 'trial',
         'is_trial_expired': tenant.is_trial_expired,
+        'setup_steps': setup_steps,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
@@ -530,8 +679,52 @@ def billing_view(request):
 
 
 # ------------------------------------------------------------------
-# 7. Replacement form
+# 7. Replacement management
 # ------------------------------------------------------------------
+
+@owner_or_manager_required
+def replacement_list(request):
+    """List all glass replacements for the tenant."""
+    from django.core.paginator import Paginator
+    
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+
+    # Filter by status if specified
+    status_filter = request.GET.get('status', '')
+    replacements = Replacement.objects.filter(tenant=tenant).select_related(
+        'customer', 'technician__user'
+    ).order_by('-service_date', '-id')
+
+    if status_filter:
+        replacements = replacements.filter(queue_status=status_filter)
+
+    # Pagination
+    paginator = Paginator(replacements, 25)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+
+    # Status choices for filter dropdown
+    status_choices = [
+        ('', 'All Statuses'),
+        ('REQUESTED', 'Customer Requested'),
+        ('PENDING', 'Approval Pending'),
+        ('APPROVED', 'Approved'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('COMPLETED', 'Completed'),
+        ('DENIED', 'Denied'),
+    ]
+
+    return render(request, 'saas/replacement_list.html', {
+        'page_obj': page_obj,
+        'tenant': tenant,
+        'status_filter': status_filter,
+        'status_choices': status_choices,
+    })
+
 
 @owner_or_manager_required
 def replacement_create(request):
@@ -587,10 +780,78 @@ def replacement_detail(request, pk):
         messages.error(request, 'Access denied.')
         return redirect('owner_dashboard')
 
+    # Build allowed status transitions for the UI
+    status_transitions = []
+    current = replacement.queue_status
+    if current == 'REQUESTED':
+        status_transitions = [('PENDING', 'Move to Pending')]
+    elif current == 'PENDING':
+        status_transitions = [('APPROVED', 'Approve'), ('DENIED', 'Deny')]
+    elif current == 'APPROVED':
+        status_transitions = [('IN_PROGRESS', 'Start Work'), ('DENIED', 'Deny')]
+    elif current == 'IN_PROGRESS':
+        status_transitions = [('COMPLETED', 'Mark Complete')]
+    # COMPLETED and DENIED are terminal states
+
     return render(request, 'saas/replacement_detail.html', {
         'replacement': replacement,
         'tenant': tenant,
+        'status_transitions': status_transitions,
     })
+
+
+@owner_or_manager_required
+def replacement_edit(request, pk):
+    """Edit an existing glass replacement."""
+    tenant = getattr(request, 'tenant', None)
+    replacement = get_object_or_404(Replacement, pk=pk)
+    
+    if not tenant or replacement.tenant_id != tenant.id:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_dashboard')
+
+    if request.method == 'POST':
+        form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Replacement updated successfully!')
+            return redirect('replacement_detail', pk=replacement.pk)
+    else:
+        form = ReplacementForm(instance=replacement, tenant=tenant)
+
+    return render(request, 'saas/replacement_edit.html', {
+        'form': form,
+        'replacement': replacement,
+        'tenant': tenant,
+    })
+
+
+@require_POST
+@owner_or_manager_required
+def replacement_update_status(request, pk):
+    """Update the status of a glass replacement."""
+    tenant = getattr(request, 'tenant', None)
+    replacement = get_object_or_404(Replacement, pk=pk)
+    
+    if not tenant or replacement.tenant_id != tenant.id:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_dashboard')
+
+    new_status = request.POST.get('status')
+    valid_statuses = ['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED']
+    
+    if new_status not in valid_statuses:
+        messages.error(request, 'Invalid status.')
+        return redirect('replacement_detail', pk=pk)
+
+    old_status = replacement.queue_status
+    replacement.queue_status = new_status
+    replacement.save()
+
+    status_display = replacement.get_queue_status_display()
+    messages.success(request, f'Status updated to {status_display}.')
+    
+    return redirect('replacement_detail', pk=pk)
 
 
 # ------------------------------------------------------------------
@@ -725,6 +986,42 @@ def owner_settings_view(request):
             tenant.save(update_fields=['auto_invoice_enabled'])
             status = 'enabled' if tenant.auto_invoice_enabled else 'disabled'
             messages.success(request, f'Auto invoice generation {status}.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'toggle_progressive_pricing':
+            # Toggle progressive pricing at tenant level
+            tenant.use_progressive_pricing = not tenant.use_progressive_pricing
+            tenant.save(update_fields=['use_progressive_pricing'])
+            if tenant.use_progressive_pricing:
+                messages.success(request, 'Progressive pricing enabled. Repair prices decrease with each subsequent repair on a unit.')
+            else:
+                messages.success(request, 'Progressive pricing disabled. Every repair uses first-repair pricing.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'update_pricing_tiers':
+            # Update pricing tier values
+            from decimal import Decimal, InvalidOperation
+            try:
+                def _parse_price(field, default):
+                    try:
+                        val = request.POST.get(field, '')
+                        return Decimal(val) if val else default
+                    except (InvalidOperation, ValueError):
+                        return default
+
+                tenant.repair_price_1 = _parse_price('repair_price_1', Decimal('50.00'))
+                tenant.repair_price_2 = _parse_price('repair_price_2', Decimal('40.00'))
+                tenant.repair_price_3 = _parse_price('repair_price_3', Decimal('35.00'))
+                tenant.repair_price_4 = _parse_price('repair_price_4', Decimal('30.00'))
+                tenant.repair_price_5_plus = _parse_price('repair_price_5_plus', Decimal('25.00'))
+                tenant.save(update_fields=[
+                    'repair_price_1', 'repair_price_2', 'repair_price_3',
+                    'repair_price_4', 'repair_price_5_plus'
+                ])
+                messages.success(request, 'Pricing tiers updated successfully.')
+            except Exception as e:
+                logger.error(f"Error updating pricing tiers: {e}")
+                messages.error(request, 'Could not update pricing tiers.')
             return redirect('/owner/settings/?tab=billing')
 
         if form_type == 'billing_location':
@@ -919,6 +1216,11 @@ def invite_member(request):
 
     if not email:
         messages.error(request, 'Email is required.')
+        return redirect('owner_settings')
+
+    # Prevent inviting yourself (owner)
+    if email == request.user.email.lower():
+        messages.warning(request, "That's your own email. To add yourself as a technician, go to Team settings and use the 'Add myself' option.")
         return redirect('owner_settings')
 
     if role not in ('manager', 'technician', 'viewer'):
@@ -1133,7 +1435,10 @@ def shop_join_view(request, slug):
                 login(request, auth_user)
                 request.session['tenant_id'] = tenant.id
 
-            messages.success(request, f'Welcome to {tenant.name}! Your portal account is ready.')
+            # 6. Send verification email (fails silently)
+            _send_verification_email(request, user)
+
+            messages.success(request, f'Welcome to {tenant.name}! Your portal account is ready. Check your email to verify your address.')
             return redirect('customer_dashboard')
 
         except Exception as e:
@@ -1747,7 +2052,7 @@ def owner_send_invoice(request, invoice_id):
         email_sent = False
         try:
             from apps.billing.services.invoice_email_service import InvoiceEmailService
-            email_service = InvoiceEmailService()
+            email_service = InvoiceEmailService(tenant=tenant)
             
             # Get recipient email
             recipient = None
@@ -1804,7 +2109,7 @@ def owner_email_invoice(request, invoice_id):
 
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
-        email_service = InvoiceEmailService()
+        email_service = InvoiceEmailService(tenant=tenant)
         
         # Get recipient email (can be overridden from form)
         recipient = request.POST.get('email', '').strip()

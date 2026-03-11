@@ -11,6 +11,8 @@ urlpatterns = [
     # Public pages
     path('signup/', views.signup_view, name='signup'),
     path('pricing/', views.pricing_view, name='pricing'),
+    path('terms/', views.terms_of_service, name='terms_of_service'),
+    path('privacy/', views.privacy_policy, name='privacy_policy'),
 
     # Post-signup onboarding
     path('onboarding/', views.onboarding_view, name='onboarding'),
@@ -47,6 +49,9 @@ urlpatterns = [
     path('owner/tax-rates/toggle/', views.owner_toggle_tax, name='owner_toggle_tax'),
 
     # Replacement management
+    path('tech/replacements/', views.replacement_list, name='replacement_list'),
     path('tech/replacement/new/', views.replacement_create, name='replacement_create'),
     path('tech/replacement/<int:pk>/', views.replacement_detail, name='replacement_detail'),
+    path('tech/replacement/<int:pk>/edit/', views.replacement_edit, name='replacement_edit'),
+    path('tech/replacement/<int:pk>/update-status/', views.replacement_update_status, name='replacement_update_status'),
 ]

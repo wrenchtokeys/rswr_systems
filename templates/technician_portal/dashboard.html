@@ -58,6 +58,117 @@
             </div>
         </div>
 
+        <!-- TODAY'S WORK QUEUE -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-600 to-green-700 rounded-t-lg">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                        </svg>
+                        <h2 class="text-lg font-semibold text-white">Today's Queue</h2>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-white text-green-700">
+                            {{ todays_queue|length }} job{{ todays_queue|length|pluralize }}
+                        </span>
+                    </div>
+                    {% if todays_queue|length > 5 %}
+                    <button onclick="document.getElementById('queue-overflow').classList.toggle('hidden')" class="text-green-100 hover:text-white text-sm font-medium">
+                        Show all
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if todays_queue %}
+            <div class="divide-y divide-gray-100">
+                {% for repair in todays_queue %}
+                <div class="{% if forloop.counter > 5 %}hidden queue-overflow-item{% endif %}">
+                    <div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4">
+                        <!-- Priority indicator -->
+                        <div class="flex-shrink-0 w-1.5 h-12 rounded-full
+                            {% if repair.queue_status == 'IN_PROGRESS' %}bg-orange-500
+                            {% elif repair.queue_status == 'APPROVED' %}bg-green-500
+                            {% else %}bg-yellow-400{% endif %}">
+                        </div>
+
+                        <!-- Main info -->
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-semibold text-gray-900 text-sm">{{ repair.customer.name|default:"Walk-in" }}</span>
+                                {% if repair.unit_number %}
+                                <span class="text-xs text-gray-500">Unit {{ repair.unit_number }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                    {% if repair.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
+                                    {% elif repair.queue_status == 'APPROVED' %}bg-green-100 text-green-800
+                                    {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                    {% if repair.queue_status == 'IN_PROGRESS' %}In Progress
+                                    {% elif repair.queue_status == 'APPROVED' %}Ready
+                                    {% else %}Pending{% endif %}
+                                </span>
+                                {% if repair.cost %}
+                                <span class="text-xs text-gray-500">${{ repair.cost|floatformat:2 }}</span>
+                                {% endif %}
+                                <span class="text-xs text-gray-400">{{ repair.service_date|date:"M d" }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Action button -->
+                        <div class="flex-shrink-0">
+                            {% if repair.queue_status == 'IN_PROGRESS' %}
+                            <a href="{% url 'repair_detail' repair.id %}" class="inline-flex items-center px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors shadow-sm">
+                                Continue
+                            </a>
+                            {% elif repair.queue_status == 'APPROVED' %}
+                            <a href="{% url 'repair_detail' repair.id %}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors shadow-sm">
+                                Start
+                            </a>
+                            {% else %}
+                            <a href="{% url 'repair_detail' repair.id %}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                                View
+                            </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if todays_queue|length > 5 %}
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const btn = document.querySelector('[onclick*="queue-overflow"]');
+                    if (btn) {
+                        let expanded = false;
+                        btn.onclick = function(e) {
+                            e.preventDefault();
+                            expanded = !expanded;
+                            document.querySelectorAll('.queue-overflow-item').forEach(function(el) {
+                                el.classList.toggle('hidden', !expanded);
+                            });
+                            btn.textContent = expanded ? 'Show less' : 'Show all';
+                        };
+                    }
+                });
+            </script>
+            {% endif %}
+
+            {% else %}
+            <div class="px-6 py-12 text-center">
+                <div class="text-4xl mb-3">☕</div>
+                <p class="text-gray-500 font-medium">No jobs queued — time for coffee</p>
+                <a href="{% url 'create_repair' %}" class="inline-flex items-center mt-4 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                    Create a Repair
+                </a>
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Quick Actions + Work Summary - TOP PRIORITY SECTION -->
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-6">
             <!-- Quick Actions (Left - 2 columns on large screens) -->
