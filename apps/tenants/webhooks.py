@@ -19,6 +19,7 @@ import logging
 import stripe
 from django.conf import settings
 from django.http import JsonResponse, HttpResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -261,8 +262,8 @@ def _handle_invoice_payment_failed(invoice):
         f"Invoice: {invoice.get('id')}. Attempt: {invoice.get('attempt_count', '?')}"
     )
     
-    # Notify shop owner about failed payment
-    _notify_owner(tenant, 'payment_failed', {
+    # Notify shop owners AND managers about failed payment
+    _notify_owners_and_managers(tenant, 'payment_failed', {
         'invoice_id': invoice.get('id'),
         'attempt_count': invoice.get('attempt_count', 1),
     })
@@ -367,48 +368,78 @@ def _handle_subscription_deleted(subscription):
     
     tenant.subscription_status = 'expired'
     tenant.plan = 'trial'  # Revert to trial-level access
-    
+
+    # Set 30-day grace period from now
+    tenant.grace_period_end = timezone.now() + timezone.timedelta(days=30)
+
     # Try to set subscription_plan to trial plan
     trial_plan = SubscriptionPlan.objects.filter(slug='trial').first()
     if trial_plan:
         tenant.subscription_plan = trial_plan
-    
+
     tenant.save(update_fields=[
-        'subscription_status', 'plan', 'subscription_plan',
+        'subscription_status', 'plan', 'subscription_plan', 'grace_period_end',
     ])
-    
+
     logger.info(
         f"subscription.deleted: Tenant {tenant.slug} subscription ended. "
-        f"Reverted to trial plan."
+        f"Reverted to trial plan. Grace period until {tenant.grace_period_end}."
     )
-    
-    # Notify shop owner their subscription has ended
-    _notify_owner(tenant, 'subscription_ended', {})
+
+    # Notify shop owners AND managers their subscription has ended
+    _notify_owners_and_managers(tenant, 'subscription_ended', {})
+
+
+def _get_owner_and_manager_emails(tenant):
+    """Return a list of email addresses for all owners and managers of a tenant."""
+    from apps.tenants.models import TenantMembership
+    emails = set()
+    if tenant.owner and tenant.owner.email:
+        emails.add(tenant.owner.email)
+    manager_emails = (
+        TenantMembership.objects
+        .filter(tenant=tenant, role='manager', is_active=True)
+        .exclude(user__email='')
+        .values_list('user__email', flat=True)
+    )
+    emails.update(manager_emails)
+    return list(emails)
 
 
 def _notify_owner(tenant, event_type, context):
     """
     Send email notification to shop owner about subscription events.
-    
+    Kept for backward compatibility — delegates to _notify_owners_and_managers.
+    """
+    _notify_owners_and_managers(tenant, event_type, context)
+
+
+def _notify_owners_and_managers(tenant, event_type, context):
+    """
+    Send email notification to ALL owners AND managers about subscription events.
+
     Uses SendGrid if configured, otherwise logs a warning.
     """
     try:
         from django.core.mail import send_mail
         from django.conf import settings as django_settings
-        
-        owner = tenant.owner
-        if not owner or not owner.email:
-            logger.warning(f"Cannot notify owner for tenant {tenant.slug}: no owner email")
+
+        recipient_list = _get_owner_and_manager_emails(tenant)
+        if not recipient_list:
+            logger.warning(f"Cannot notify owners/managers for tenant {tenant.slug}: no emails found")
             return
-        
+
+        owner = tenant.owner
+        owner_name = (owner.first_name or 'there') if owner else 'there'
+
         subjects = {
             'payment_failed': f'⚠️ Payment failed for {tenant.name}',
             'subscription_ended': f'Your {tenant.name} subscription has ended',
         }
-        
-        messages = {
+
+        email_bodies = {
             'payment_failed': (
-                f"Hi {owner.first_name or 'there'},\n\n"
+                f"Hi {owner_name},\n\n"
                 f"We were unable to process your payment for {tenant.name}.\n"
                 f"Attempt #{context.get('attempt_count', 1)}.\n\n"
                 f"Please update your payment method to avoid service interruption.\n"
@@ -416,27 +447,30 @@ def _notify_owner(tenant, event_type, context):
                 f"— RS Systems"
             ),
             'subscription_ended': (
-                f"Hi {owner.first_name or 'there'},\n\n"
-                f"Your subscription for {tenant.name} has been cancelled.\n"
-                f"Your account has been reverted to the free trial plan.\n\n"
-                f"You can resubscribe anytime from your billing settings: /owner/billing/\n\n"
+                f"Hi {owner_name},\n\n"
+                f"Your subscription for {tenant.name} has ended.\n"
+                f"Your account has been moved to read-only mode for 30 days.\n\n"
+                f"During this time you can view your data but cannot make changes.\n"
+                f"Resubscribe anytime from your billing settings: /owner/billing/\n\n"
                 f"— RS Systems"
             ),
         }
-        
+
         subject = subjects.get(event_type, f'RS Systems notification for {tenant.name}')
-        body = messages.get(event_type, f'A subscription event occurred for {tenant.name}.')
-        
+        body = email_bodies.get(event_type, f'A subscription event occurred for {tenant.name}.')
+
         from_email = getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
-        
+
         send_mail(
             subject=subject,
             message=body,
             from_email=from_email,
-            recipient_list=[owner.email],
+            recipient_list=recipient_list,
             fail_silently=True,
         )
-        logger.info(f"Sent {event_type} notification to {owner.email} for tenant {tenant.slug}")
-        
+        logger.info(
+            f"Sent {event_type} notification to {recipient_list} for tenant {tenant.slug}"
+        )
+
     except Exception as e:
         logger.error(f"Failed to send {event_type} notification for tenant {tenant.slug}: {e}")

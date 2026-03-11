@@ -146,6 +146,40 @@
         </div>
     </nav>
 
+    <!-- Subscription Status Banners (customers) -->
+    {% if request.tenant and request.user.is_authenticated %}
+    {% if subscription_grace_period %}
+    <div class="bg-orange-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center">
+                <i class="fas fa-info-circle mr-2"></i>
+                <span>
+                    {% if request.tenant.name %}{{ request.tenant.name }}'s{% else %}This shop's{% endif %}
+                    portal has limited availability. Some features may be unavailable.
+                    Please contact the shop for assistance.
+                </span>
+            </div>
+        </div>
+    </div>
+    {% elif request.tenant.subscription_status == 'expired' or request.tenant.is_trial_expired %}
+    <div class="bg-amber-600 text-white">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div class="flex items-center">
+                <i class="fas fa-info-circle mr-2"></i>
+                <span>
+                    This shop's portal is temporarily unavailable.
+                    {% if request.tenant.business_phone %}
+                    Please contact {{ request.tenant.name }} at {{ request.tenant.business_phone }} for assistance.
+                    {% else %}
+                    Please contact the shop directly for assistance.
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
     <!-- Messages -->
     {% if messages %}
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">

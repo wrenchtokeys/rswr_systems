@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server Error | RS Systems</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+    <!-- Simple header -->
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center h-16">
+                <a href="/" class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                        <svg viewBox="0 0 40 40" class="w-5 h-5">
+                            <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">RS</text>
+                            <circle cx="32" cy="10" r="2" fill="white"/>
+                            <path d="M32 5 L32 7 M32 13 L32 15 M27 10 L29 10 M35 10 L37 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="text-xl font-bold text-gray-900">RS Systems</span>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Error content -->
+    <main class="flex-1 flex items-center justify-center px-4 py-16">
+        <div class="text-center max-w-md">
+            <!-- 500 icon -->
+            <div class="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-exclamation-triangle text-red-500 text-4xl"></i>
+            </div>
+
+            <h1 class="text-6xl font-extrabold text-gray-200 mb-2">500</h1>
+            <h2 class="text-2xl font-bold text-gray-900 mb-3">Something Went Wrong</h2>
+            <p class="text-gray-500 mb-8">
+                We hit an unexpected error on our end. Our team has been notified.
+                Please try again in a moment.
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <a href="javascript:location.reload()"
+                   class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-redo mr-2"></i>Try Again
+                </a>
+                <a href="/"
+                   class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-home mr-2"></i>Go to Home
+                </a>
+            </div>
+
+            <p class="mt-8 text-xs text-gray-400">
+                If this keeps happening, please
+                <a href="mailto:support@rockstarwindshield.repair" class="text-blue-500 hover:underline">contact support</a>.
+            </p>
+        </div>
+    </main>
+
+    <footer class="py-6 text-center text-sm text-gray-400 border-t border-gray-200 bg-white">
+        &copy; {% now "Y" %} RS Systems. All rights reserved.
+    </footer>
+</body>
+</html>

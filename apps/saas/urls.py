@@ -8,6 +8,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    # Subscription blocked (role-aware)
+    path('subscription-blocked/', views.subscription_blocked_view, name='subscription_blocked'),
+
     # Public pages
     path('signup/', views.signup_view, name='signup'),
     path('pricing/', views.pricing_view, name='pricing'),

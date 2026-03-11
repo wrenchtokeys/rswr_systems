@@ -2,9 +2,9 @@
 Subscription Enforcement Middleware
 
 Blocks access when a tenant's trial has expired or subscription is
-canceled/past_due. Read-only API access is allowed so users can still
-view their data and manage billing, but write operations and core
-feature access are gated.
+canceled/past_due. Supports a 30-day read-only grace period where GET
+requests are allowed but writes are blocked. After the grace period,
+all access is blocked.
 
 Author: Amelia (Clawdbot AI)
 """
@@ -38,6 +38,7 @@ EXEMPT_PREFIXES = (
     '/payment-cancelled',
     '/owner/billing/',    # Must be accessible to upgrade/reactivate
     '/app/invite/',       # Customer invitation acceptance (may be unauthenticated)
+    '/subscription-blocked/',  # The blocked page itself
 )
 
 # Paths for static/media
@@ -46,6 +47,9 @@ STATIC_PREFIXES = (
     '/media/',
     '/favicon',
 )
+
+# HTTP methods that modify state (blocked during grace period)
+WRITE_METHODS = {'POST', 'PUT', 'PATCH', 'DELETE'}
 
 
 class SubscriptionEnforcementMiddleware:
@@ -56,10 +60,12 @@ class SubscriptionEnforcementMiddleware:
 
     Behavior:
     - trialing + not expired: ALLOW
-    - trialing + expired: BLOCK (upgrade prompt)
+    - trialing + expired (in grace period): ALLOW GETs, BLOCK writes
+    - trialing + expired (grace period ended): BLOCK ALL → /subscription-blocked/
     - active: ALLOW
-    - past_due: WARN (grace period, show banner)
-    - canceled / expired: BLOCK (reactivate prompt)
+    - past_due: WARN (show banner)
+    - canceled / expired (in grace period): ALLOW GETs, BLOCK writes
+    - canceled / expired (grace period ended): BLOCK ALL → /subscription-blocked/
     - No tenant: ALLOW (public pages, pre-signup)
     """
 
@@ -81,7 +87,6 @@ class SubscriptionEnforcementMiddleware:
             return self.get_response(request)
 
         # If authenticated + non-exempt + no tenant → block access
-        # This prevents data leaks when tenant context is missing
         tenant = getattr(request, 'tenant', None)
         if not tenant:
             logger.warning(
@@ -101,14 +106,20 @@ class SubscriptionEnforcementMiddleware:
         # Check subscription status
         status = tenant.subscription_status
         is_trial = tenant.plan == 'trial'
+        is_subscription_expired = (
+            (is_trial and tenant.is_trial_expired)
+            or status in ('canceled', 'expired')
+        )
 
-        if is_trial and tenant.is_trial_expired:
-            return self._block(request, 'trial_expired')
+        if is_subscription_expired:
+            if tenant.is_in_grace_period:
+                # Grace period: allow GETs, block writes
+                return self._handle_grace_period(request, tenant)
+            else:
+                # Grace period ended: full block
+                return self._block(request, tenant, status)
 
-        if status in ('canceled', 'expired'):
-            return self._block(request, status)
-
-        # past_due gets a warning but isn't blocked (grace period)
+        # past_due gets a warning but isn't blocked
         if status == 'past_due':
             try:
                 messages.warning(
@@ -120,27 +131,64 @@ class SubscriptionEnforcementMiddleware:
 
         return self.get_response(request)
 
-    def _block(self, request, reason):
+    def _handle_grace_period(self, request, tenant):
+        """Handle requests during the 30-day read-only grace period."""
+        days_remaining = tenant.grace_days_remaining
+
+        # Block write operations
+        if request.method in WRITE_METHODS:
+            if request.path.startswith('/api/'):
+                return JsonResponse({
+                    'error': 'Your subscription has expired. You are in read-only mode.',
+                    'grace_days_remaining': days_remaining,
+                    'upgrade_url': '/owner/billing/',
+                }, status=402)
+            try:
+                messages.error(
+                    request,
+                    f"⛔ Your subscription has expired. You have {days_remaining} day"
+                    f"{'s' if days_remaining != 1 else ''} of read-only access remaining. "
+                    "Upgrade to continue making changes."
+                )
+            except Exception:
+                pass
+            # Redirect back to the referring page or home
+            referer = request.META.get('HTTP_REFERER', '/')
+            return redirect(referer if referer.startswith('/') else '/')
+
+        # Allow GET — set a flag for the template to show the grace period banner
+        request.subscription_grace_period = True
+        request.grace_days_remaining = days_remaining
+        return self.get_response(request)
+
+    def _block(self, request, tenant, reason):
         """Block access with appropriate response based on request type."""
+        # Determine reason message for API responses
+        if tenant.plan == 'trial' and tenant.is_trial_expired:
+            if tenant.had_paid_subscription:
+                api_reason = 'subscription_ended'
+            else:
+                api_reason = 'trial_expired'
+        else:
+            api_reason = reason
+
         reason_messages = {
             'trial_expired': "Your free trial has expired. Please upgrade to continue using RS Systems.",
+            'subscription_ended': "Your subscription has ended. Please reactivate to continue.",
             'canceled': "Your subscription has been canceled. Please reactivate to continue.",
             'expired': "Your subscription has expired. Please renew to continue.",
         }
-        msg = reason_messages.get(reason, "Your subscription is inactive.")
+        msg = reason_messages.get(api_reason, "Your subscription is inactive.")
 
         # API requests get JSON
         if request.path.startswith('/api/'):
             return JsonResponse({
                 'error': msg,
-                'subscription_status': reason,
-                'upgrade_url': '/pricing/',
-            }, status=402)  # 402 Payment Required
+                'subscription_status': api_reason,
+                'upgrade_url': '/owner/billing/',
+            }, status=402)
 
-        # HTML requests get redirect to pricing/upgrade page
-        try:
-            messages.error(request, msg)
-        except Exception:
-            pass
-
-        return redirect('/pricing/')
+        # HTML requests get redirected to role-aware blocked page
+        # Note: ?source=pricing is kept for backward compatibility with any
+        # existing links/bookmarks that pointed to /pricing/
+        return redirect('/subscription-blocked/?source=pricing')
