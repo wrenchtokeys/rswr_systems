@@ -79,7 +79,7 @@ When a trial expires or subscription is canceled:
 ### Implementation Plan
 1. **Celery beat task**: `check_trial_expirations` — runs daily at 9 AM UTC
 2. Query all tenants where `plan='trial'` and `trial_started_at` matches alert windows
-3. Use existing SendGrid integration via `notifications@rockstarwindshield.repair`
+3. Use existing SendGrid integration via `notifications@rssystems.io`
 4. Track sent alerts in a `TrialAlert` model (prevent duplicate sends):
    ```python
    class TrialAlert(models.Model):

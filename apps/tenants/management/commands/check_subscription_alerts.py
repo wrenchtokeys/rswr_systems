@@ -75,7 +75,7 @@ def _send_alert(tenant, alert_key, subject, body, dry_run=False):
         )
         return True
 
-    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'notifications@rockstarwindshield.repair')
+    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
     try:
         send_mail(
             subject=subject,
@@ -155,7 +155,7 @@ class Command(BaseCommand):
                         f"Your free trial for {tenant.name} ends in 7 days "
                         f"({tenant.trial_expiry.strftime('%B %d, %Y')}).\n\n"
                         f"Upgrade now to keep your data and avoid any service interruption:\n"
-                        f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                        f"https://rssystems.io/owner/billing/\n\n"
                         f"— RS Systems"
                     ),
                     dry_run=dry_run,
@@ -171,7 +171,7 @@ class Command(BaseCommand):
                         f"Your free trial for {tenant.name} expires tomorrow "
                         f"({tenant.trial_expiry.strftime('%B %d, %Y')}).\n\n"
                         f"Don't lose access to your shop data! Upgrade today:\n"
-                        f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                        f"https://rssystems.io/owner/billing/\n\n"
                         f"— RS Systems"
                     ),
                     dry_run=dry_run,
@@ -189,7 +189,7 @@ class Command(BaseCommand):
                     f"Your free trial for {tenant.name} has expired.\n\n"
                     f"You have 30 days of read-only access to your data before your account "
                     f"is fully locked. Upgrade now to restore full access:\n"
-                    f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                    f"https://rssystems.io/owner/billing/\n\n"
                     f"— RS Systems"
                 )
             else:
@@ -200,7 +200,7 @@ class Command(BaseCommand):
                     f"Your subscription for {tenant.name} has ended.\n\n"
                     f"You have 30 days of read-only access to your data. "
                     f"Reactivate now to restore full access:\n"
-                    f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                    f"https://rssystems.io/owner/billing/\n\n"
                     f"— RS Systems"
                 )
             if _send_alert(tenant, alert_key, subject=subject, body=body, dry_run=dry_run):
@@ -216,7 +216,7 @@ class Command(BaseCommand):
                     f"Your RS Systems subscription for {tenant.name} has expired.\n\n"
                     f"You have 30 days of read-only access to your data. "
                     f"Reactivate now to restore full access:\n"
-                    f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                    f"https://rssystems.io/owner/billing/\n\n"
                     f"— RS Systems"
                 ),
                 dry_run=dry_run,
@@ -238,7 +238,7 @@ class Command(BaseCommand):
                         f"After {grace_end.strftime('%B %d, %Y')}, your account will be fully "
                         f"locked and you'll need to contact support to recover your data.\n\n"
                         f"Reactivate your subscription now:\n"
-                        f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                        f"https://rssystems.io/owner/billing/\n\n"
                         f"— RS Systems"
                     ),
                     dry_run=dry_run,
@@ -255,7 +255,7 @@ class Command(BaseCommand):
                         f"day{'s' if days_remaining != 1 else ''}.\n\n"
                         f"After {grace_end.strftime('%B %d, %Y')}, you will lose access to "
                         f"your shop's data entirely. Upgrade now to avoid this:\n"
-                        f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                        f"https://rssystems.io/owner/billing/\n\n"
                         f"— RS Systems"
                     ),
                     dry_run=dry_run,
@@ -277,9 +277,9 @@ class Command(BaseCommand):
                         f"Your read-only access period for {tenant.name} has ended.\n\n"
                         f"You no longer have access to your shop's data in RS Systems. "
                         f"Upgrade your subscription to regain access:\n"
-                        f"https://rockstarwindshield.repair/owner/billing/\n\n"
+                        f"https://rssystems.io/owner/billing/\n\n"
                         f"If you need help recovering your data, contact us at "
-                        f"support@rockstarwindshield.repair\n\n"
+                        f"support@rssystems.io\n\n"
                         f"— RS Systems"
                     ),
                     dry_run=dry_run,
