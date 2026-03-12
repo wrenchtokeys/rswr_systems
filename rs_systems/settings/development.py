@@ -139,18 +139,7 @@ else:
         }
     }
 
-# =========================================
-# CELERY (Dev overrides)
-# =========================================
-
 TIME_ZONE = os.environ.get('TIME_ZONE', 'America/Chicago')
-CELERY_TIMEZONE = TIME_ZONE
-
-CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_CONCURRENCY', 4))
-
-# Development: Uncomment to run tasks synchronously for easier debugging
-# CELERY_TASK_ALWAYS_EAGER = True
-# CELERY_TASK_EAGER_PROPAGATES = True
 
 # =========================================
 # EMAIL (Dev overrides)
@@ -191,11 +180,6 @@ LOGGING = {
         'django': {
             'handlers': ['console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
-            'propagate': False,
-        },
-        'celery': {
-            'handlers': ['console'],
-            'level': 'INFO',
             'propagate': False,
         },
     },

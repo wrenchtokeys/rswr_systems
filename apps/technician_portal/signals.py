@@ -7,7 +7,7 @@ These signals automatically trigger notifications when repair events occur:
 - Batch repair approvals
 
 Signal handlers call NotificationService to create notifications which
-then queue email/SMS delivery tasks via Celery.
+then send email/SMS notifications synchronously.
 """
 
 import logging

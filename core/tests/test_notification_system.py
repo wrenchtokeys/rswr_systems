@@ -126,8 +126,8 @@ try:
 except ImportError as e:
     print(f"✗ Service import failed: {e}")
 
-# Test 6: Verify tasks can be imported
-print("\n[Test 6] Checking Celery task imports...")
+# Test 6: Verify notification functions can be imported
+print("\n[Test 6] Checking notification function imports...")
 try:
     from core.tasks import (
         send_notification_email,
@@ -136,14 +136,14 @@ try:
         send_daily_digests,
         cleanup_old_delivery_logs
     )
-    print("✓ All Celery tasks imported successfully")
+    print("✓ All notification functions imported successfully")
     print("  - send_notification_email")
     print("  - send_notification_sms")
     print("  - retry_failed_notifications")
     print("  - send_daily_digests")
     print("  - cleanup_old_delivery_logs")
 except ImportError as e:
-    print(f"✗ Task import failed: {e}")
+    print(f"✗ Function import failed: {e}")
 
 # Summary
 print("\n" + "=" * 60)
@@ -152,7 +152,7 @@ print("=" * 60)
 print("\nPhase 4 notification system is operational!")
 print("\nNext steps:")
 print("1. Create a repair to test signal-triggered notifications")
-print("2. Start Celery worker to test task execution")
+print("2. Start synchronous worker to test task execution")
 print("3. Configure AWS SES/SNS credentials for email/SMS delivery")
 print("4. Monitor logs for notification creation and delivery")
 print("\nTo manually test notification creation:")

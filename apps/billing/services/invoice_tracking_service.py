@@ -273,7 +273,7 @@ class InvoiceTrackingService:
     def update_overdue_statuses(self):
         """
         Batch update: Mark invoices as OVERDUE if past due date.
-        Run this daily via cron/celery.
+        Run this daily via cron.
         
         Returns:
             int: Number of invoices marked overdue

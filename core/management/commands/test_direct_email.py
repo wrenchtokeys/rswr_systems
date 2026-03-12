@@ -1,10 +1,9 @@
 """
-Management command to test email sending directly (bypassing Celery).
+Management command to test email sending directly via SendGrid.
 
 This helps diagnose whether email issues are due to:
 1. SendGrid configuration problems
-2. Celery workers not running
-3. Network/firewall issues
+2. Network/firewall issues
 
 Usage:
     python manage.py test_direct_email your-email@example.com
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Test email sending directly via SendGrid (bypasses Celery queue)'
+    help = 'Test email sending directly via SendGrid'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -47,10 +46,9 @@ class Command(BaseCommand):
             from django.utils import timezone
 
             text_content = '''
-This is a test email sent directly via SendGrid (bypassing Celery).
+This is a test email sent directly via SendGrid.
 
 If you receive this email, SendGrid is configured correctly.
-If emails still don't work, the issue is likely with Celery workers.
 
 Timestamp: {timestamp}
 Environment: Production
@@ -70,8 +68,8 @@ Environment: Production
     <p class="success">SendGrid is configured correctly!</p>
 
     <div class="info">
-        <p><strong>This email was sent directly</strong> (bypassing Celery queue).</p>
-        <p>If you receive this but not notification emails, the issue is with Celery workers.</p>
+        <p><strong>This email was sent directly via SendGrid.</strong></p>
+        <p>If you receive this, your email configuration is working correctly.</p>
     </div>
 
     <p><small>Sent from RS Systems Production</small></p>
@@ -98,8 +96,7 @@ Environment: Production
                 self.stdout.write('')
                 self.stdout.write(self.style.WARNING('If you receive this email but NOT notification emails:'))
                 self.stdout.write('→ SendGrid is working correctly')
-                self.stdout.write('→ The issue is Celery workers not processing tasks')
-                self.stdout.write('→ Check systemd status: sudo systemctl status celery-worker')
+                self.stdout.write('→ Check notification preferences and email verification settings')
             else:
                 self.stdout.write(self.style.ERROR(f'\n❌ Email send returned 0 (no emails sent)'))
 
