@@ -199,7 +199,7 @@ Otherwise TaxService finds no rate and sets tax_rate=0.
 
 ## Branch Strategy
 
-- `main` — production (AWS Elastic Beanstalk, rockstarwindshield.repair)
+- `main` — production (AWS Elastic Beanstalk, rssystems.io)
 - `autonomous-work` — active development (Amelia's work branch)
 - PRs from `autonomous-work` → `main` for production deploys
 
@@ -217,7 +217,7 @@ Otherwise TaxService finds no rate and sets tax_rate=0.
 ```bash
 eb deploy        # from repo root on main branch
 eb events | head -20
-curl -I https://rockstarwindshield.repair/health/
+curl -I https://rssystems.io/health/
 ```
 
 **Deploy workflow:**
@@ -225,7 +225,7 @@ curl -I https://rockstarwindshield.repair/health/
 2. Merge into `main` via GitHub PR
 3. `git checkout main && git pull origin main`
 4. `eb deploy`
-5. Verify with `curl -I https://rockstarwindshield.repair/health/`
+5. Verify with `curl -I https://rssystems.io/health/`
 
 Required EB environment variable: `DJANGO_SETTINGS_MODULE=rs_systems.settings.production`
 
@@ -258,7 +258,7 @@ AWS_S3_REGION_NAME=us-east-1
 
 # SendGrid (email)
 SENDGRID_API_KEY=SG....
-DEFAULT_FROM_EMAIL=notifications@rockstarwindshield.repair
+DEFAULT_FROM_EMAIL=notifications@rssystems.io
 ```
 
 ---

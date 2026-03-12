@@ -25,7 +25,7 @@
 |---|------|----------|
 | 1.1 | Go to login page, click "Forgot Password" | Reset form loads |
 | 1.2 | Enter valid email, submit | "Email sent" confirmation |
-| 1.3 | Check email for reset link | Email arrives from notifications@rockstarwindshield.repair |
+| 1.3 | Check email for reset link | Email arrives from notifications@rssystems.io |
 | 1.4 | Click link, enter new password | Password changed, redirect to login |
 | 1.5 | Login with new password | Success |
 | 1.6 | Enter non-existent email | Should NOT reveal that email doesn't exist (security) |
@@ -95,11 +95,11 @@
 
 ---
 
-## 7. Domain & Branding Update (rockstarwindshield.repair → rssystems.io)
+## 7. Domain & Branding Update (rssystems.io → rssystems.io)
 
 | # | Step | Expected |
 |---|------|----------|
-| 7.1 | Search all visible pages for old domain references | No "rockstarwindshield.repair" in UI text |
+| 7.1 | Search all visible pages for old domain references | No "rssystems.io" in UI text |
 | 7.2 | Check email templates/subjects | New domain in links |
 | 7.3 | Check login page branding | Says "RS Systems" |
 | 7.4 | Check technician login page | Updated branding |
