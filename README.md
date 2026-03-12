@@ -334,7 +334,9 @@ Configure state/county/city tax rates at Settings → Billing → Tax Rates. Tax
 - **Frontend:** Tailwind CSS, Bootstrap, D3.js (data visualizations)
 - **Payments:** Stripe (subscriptions + invoice payments)
 - **Storage:** AWS S3 (photos, invoices)
-- **Email:** SendGrid (notifications, invitations, invoices)
+- **Email (outbound):** SendGrid (notifications, invitations, invoices) — sends from `notifications@rssystems.io`
+- **Email (inbound):** ImprovMX (forwards `contact@rssystems.io` to Gmail)
+- **DNS:** AWS Route 53
 - **Deployment:** AWS EC2 + Elastic Beanstalk
 
 ---
@@ -357,8 +359,9 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_STORAGE_BUCKET_NAME=...
 AWS_S3_REGION_NAME=us-east-1
 
-# SendGrid (optional — for email delivery)
+# SendGrid (optional — for outbound email delivery)
 SENDGRID_API_KEY=SG....
+DEFAULT_FROM_EMAIL=notifications@rssystems.io
 ```
 
 ---
@@ -397,6 +400,20 @@ See the [`docs/`](docs/) directory for detailed guides:
 - [Developer Guide](docs/DEVELOPER_GUIDE.md)
 - [User Flows](docs/USER_FLOWS.md)
 - [API Docs](docs/user-guides/ADMIN_GUIDE.md) — or visit `/api/schema/swagger-ui/`
+
+---
+
+## Email Configuration
+
+### Outbound (SendGrid)
+- Sends from: `notifications@rssystems.io`
+- Domain authenticated via `em50.rssystems.io` CNAME records (DKIM + SPF)
+- Used for: repair notifications, invoice delivery, invitation emails, subscription alerts
+
+### Inbound (ImprovMX)
+- `contact@rssystems.io` forwards to the team inbox (Gmail)
+- MX records on Route 53: `mx1.improvmx.com` / `mx2.improvmx.com`
+- SPF record includes both `sendgrid.net` and `spf.improvmx.com`
 
 ---
 
