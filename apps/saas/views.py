@@ -300,11 +300,23 @@ def onboarding_view(request):
                                     from django.contrib.auth.models import Group
                                     tech_group, _ = Group.objects.get_or_create(name='Technicians')
                                     tech_user.groups.add(tech_group)
-                                    messages.success(request, 'Technician added!')
+                                    tech_display = f"{tech_first} {tech_last}".strip() or tech_email or 'Technician'
+                                    if tech_email:
+                                        messages.success(
+                                            request,
+                                            f'{tech_display} has been added to your team. '
+                                            f'Go to Settings → Team to send them an invite so they can log in.'
+                                        )
+                                    else:
+                                        messages.success(
+                                            request,
+                                            f'{tech_display} has been added to your team. '
+                                            f'Add their email in Settings → Team to send a login invite.'
+                                        )
                                 else:
                                     messages.info(request, 'A user with that email already exists.')
                             else:
-                                messages.info(request, 'No technician info provided.')
+                                messages.info(request, 'No technician info provided — you can add team members later in Settings → Team.')
 
                 except Exception as e:
                     logger.error(f"Onboarding tech error: {e}")

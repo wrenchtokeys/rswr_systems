@@ -10,12 +10,16 @@ Provides admin interfaces for:
 Author: Amelia (Clawdbot AI)
 """
 
+import csv
+
 from django.contrib import admin
+from django.http import HttpResponse
 from django.utils.html import format_html
 from django.urls import reverse
 from decimal import Decimal
 
 from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate
+from rs_systems.admin_mixins import TenantFilterMixin
 
 
 # =============================================================================
@@ -104,18 +108,20 @@ class PaymentInline(admin.TabularInline):
 
 
 @admin.register(Invoice)
-class InvoiceAdmin(admin.ModelAdmin):
+class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for Invoice model."""
     
     list_display = [
-        'invoice_number', 'customer_link', 'invoice_date', 'due_date',
+        'invoice_number', 'get_tenant', 'customer_link', 'invoice_date', 'due_date',
         'payment_terms',
         'total_display', 'amount_paid_display', 'amount_due_display', 
         'status_badge', 'line_item_count'
     ]
-    list_filter = ['status', 'invoice_date', 'due_date']
+    list_filter = ['tenant', 'status', 'invoice_date', 'due_date']
     search_fields = ['invoice_number', 'customer__name']
     date_hierarchy = 'invoice_date'
+    list_select_related = ['customer', 'tenant']
+    list_per_page = 25
     readonly_fields = [
         'invoice_number', 'created_at', 'updated_at', 'amount_paid', 
         'sent_at', 'paid_at'
@@ -147,6 +153,11 @@ class InvoiceAdmin(admin.ModelAdmin):
     
     inlines = [InvoiceLineItemInline, PaymentInline]
     
+    def get_tenant(self, obj):
+        return obj.tenant.name if obj.tenant else '—'
+    get_tenant.short_description = 'Tenant'
+    get_tenant.admin_order_field = 'tenant__name'
+
     def customer_link(self, obj):
         url = reverse('admin:core_customer_change', args=[obj.customer.id])
         return format_html('<a href="{}">{}</a>', url, obj.customer.name)
@@ -192,8 +203,34 @@ class InvoiceAdmin(admin.ModelAdmin):
         return obj.line_items.count()
     line_item_count.short_description = 'Items'
     
-    actions = ['mark_as_sent', 'mark_as_overdue']
-    
+    actions = ['mark_as_sent', 'mark_as_overdue', 'export_csv']
+
+    @admin.action(description='📥 Export selected invoices as CSV')
+    def export_csv(self, request, queryset):
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="invoices.csv"'
+        writer = csv.writer(response)
+        writer.writerow([
+            'Invoice #', 'Customer', 'Invoice Date', 'Due Date',
+            'Payment Terms', 'Status', 'Subtotal', 'Tax', 'Total',
+            'Amount Paid', 'Amount Due',
+        ])
+        for inv in queryset.select_related('customer'):
+            writer.writerow([
+                inv.invoice_number,
+                inv.customer.name if inv.customer else '',
+                inv.invoice_date,
+                inv.due_date,
+                inv.payment_terms,
+                inv.status,
+                inv.subtotal,
+                inv.tax_amount,
+                inv.total,
+                inv.amount_paid,
+                inv.amount_due,
+            ])
+        return response
+
     @admin.action(description='Mark selected invoices as Sent')
     def mark_as_sent(self, request, queryset):
         updated = 0
@@ -211,17 +248,30 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 
 @admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
+class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for Payment model."""
-    
+
+    # Payments have no direct tenant FK; filter through invoice -> customer -> tenant
+    tenant_field = 'invoice__customer__tenant'
+
     list_display = [
-        'id', 'invoice_link', 'amount_display', 'payment_date', 
+        'id', 'get_tenant', 'invoice_link', 'amount_display', 'payment_date', 
         'payment_method', 'reference_number', 'created_at'
     ]
     list_filter = ['payment_method', 'payment_date']
     search_fields = ['invoice__invoice_number', 'reference_number', 'notes']
     date_hierarchy = 'payment_date'
     readonly_fields = ['created_at']
+    list_select_related = ['invoice', 'invoice__customer', 'invoice__customer__tenant']
+    list_per_page = 25
+
+    def get_tenant(self, obj):
+        try:
+            return obj.invoice.customer.tenant.name
+        except AttributeError:
+            return '—'
+    get_tenant.short_description = 'Tenant'
+    get_tenant.admin_order_field = 'invoice__customer__tenant__name'
     
     def invoice_link(self, obj):
         url = reverse('admin:billing_invoice_change', args=[obj.invoice.id])

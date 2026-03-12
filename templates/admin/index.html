@@ -1,0 +1,365 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}{% trans 'Dashboard' %} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  /* ── Dashboard Layout ───────────────────────────── */
+  #dashboard-root {
+    padding: 20px 0;
+  }
+
+  /* ── Section headers ────────────────────────────── */
+  .dash-section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #4299E1;
+    border-bottom: 2px solid #4299E1;
+    padding-bottom: 6px;
+    margin: 28px 0 16px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  /* ── Metric cards ───────────────────────────────── */
+  .dash-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+
+  .dash-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 18px 16px 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    transition: box-shadow .15s;
+  }
+  .dash-card:hover {
+    box-shadow: 0 4px 12px rgba(66,153,225,.15);
+  }
+
+  .dash-card-label {
+    font-size: 0.73rem;
+    font-weight: 600;
+    color: #718096;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+
+  .dash-card-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #2d3748;
+    line-height: 1;
+  }
+
+  .dash-card-sub {
+    font-size: 0.78rem;
+    color: #a0aec0;
+    margin-top: 6px;
+  }
+
+  /* colour accents */
+  .dash-card.accent-blue  .dash-card-value { color: #4299E1; }
+  .dash-card.accent-green .dash-card-value { color: #38a169; }
+  .dash-card.accent-orange .dash-card-value { color: #dd6b20; }
+  .dash-card.accent-red   .dash-card-value { color: #e53e3e; }
+  .dash-card.accent-gray  .dash-card-value { color: #718096; }
+
+  /* ── Tables ─────────────────────────────────────── */
+  .dash-table-wrap {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    margin-bottom: 20px;
+  }
+
+  .dash-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+  }
+
+  .dash-table th {
+    background: #4299E1;
+    color: #fff;
+    padding: 9px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .dash-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f4f8;
+    color: #4a5568;
+  }
+
+  .dash-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .dash-table tr:hover td {
+    background: #ebf8ff;
+  }
+
+  /* status badges */
+  .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .status-COMPLETED, .status-PAID   { background: #c6f6d5; color: #276749; }
+  .status-IN_PROGRESS, .status-SENT { background: #bee3f8; color: #2b6cb0; }
+  .status-PENDING, .status-PARTIAL  { background: #feebc8; color: #c05621; }
+  .status-DENIED, .status-OVERDUE   { background: #fed7d7; color: #9b2c2c; }
+  .status-REQUESTED, .status-DRAFT  { background: #e2e8f0; color: #4a5568; }
+
+  /* ── Quick links ─────────────────────────────────── */
+  .dash-quicklinks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .dash-quicklink {
+    background: #4299E1;
+    color: #fff !important;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background .15s;
+  }
+  .dash-quicklink:hover {
+    background: #2b6cb0;
+    color: #fff !important;
+  }
+  .dash-quicklink.ghost {
+    background: transparent;
+    border: 2px solid #4299E1;
+    color: #4299E1 !important;
+  }
+  .dash-quicklink.ghost:hover {
+    background: #ebf8ff;
+  }
+
+  /* ── Two-column layout for recent activity ────── */
+  .dash-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  @media (max-width: 900px) {
+    .dash-two-col { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="dashboard-root">
+
+  <!-- ── Global Search ─────────────────────────────── -->
+  <div style="margin-bottom:24px;">
+    <form method="get" action="{% url 'admin:global_search' %}">
+      <div style="display:flex; gap:10px; align-items:center; max-width:600px;">
+        <input type="text" name="q" placeholder="🔍 Search customers, repairs, invoices, users…"
+               style="flex:1; padding:10px 16px; border:1px solid #ccd; border-radius:6px; font-size:.93rem;">
+        <button type="submit"
+                style="padding:10px 20px; background:#417690; color:white; border:none; border-radius:6px; cursor:pointer; font-size:.93rem;">
+          Search
+        </button>
+        <a href="{% url 'admin:admin_logentry_changelist' %}"
+           style="font-size:.82rem; color:#718096; white-space:nowrap; text-decoration:none;">📋 Audit Log</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Subscription Overview ─────────────────────── -->
+  <h2 class="dash-section-title">📊 Subscription Overview</h2>
+  <div class="dash-cards">
+    <div class="dash-card accent-green">
+      <div class="dash-card-label">Active</div>
+      <div class="dash-card-value">{{ tenant_active_count }}</div>
+      <div class="dash-card-sub">paying tenants</div>
+    </div>
+    <div class="dash-card accent-blue">
+      <div class="dash-card-label">Trialing</div>
+      <div class="dash-card-value">{{ tenant_trial_count }}</div>
+      <div class="dash-card-sub">
+        {% if tenant_trial_expiring_soon %}
+          ⚠️ {{ tenant_trial_expiring_soon }} expiring in 7 days
+        {% else %}
+          none expiring soon
+        {% endif %}
+      </div>
+    </div>
+    <div class="dash-card accent-orange">
+      <div class="dash-card-label">Grace Period</div>
+      <div class="dash-card-value">{{ tenant_grace_count }}</div>
+      <div class="dash-card-sub">read-only access</div>
+    </div>
+    <div class="dash-card accent-red">
+      <div class="dash-card-label">Expired</div>
+      <div class="dash-card-value">{{ tenant_expired_count }}</div>
+      <div class="dash-card-sub">+ {{ tenant_canceled_count }} canceled</div>
+    </div>
+    <div class="dash-card accent-gray">
+      <div class="dash-card-label">Total Tenants</div>
+      <div class="dash-card-value">{{ tenant_total }}</div>
+      <div class="dash-card-sub">all time</div>
+    </div>
+  </div>
+
+  <!-- ── This Month ────────────────────────────────── -->
+  <h2 class="dash-section-title">📅 This Month</h2>
+  <div class="dash-cards">
+    <div class="dash-card accent-blue">
+      <div class="dash-card-label">Repairs Completed</div>
+      <div class="dash-card-value">{{ repairs_this_month }}</div>
+    </div>
+    <div class="dash-card accent-blue">
+      <div class="dash-card-label">Invoices Generated</div>
+      <div class="dash-card-value">{{ invoices_this_month }}</div>
+    </div>
+    <div class="dash-card accent-green">
+      <div class="dash-card-label">Revenue Collected</div>
+      <div class="dash-card-value" style="font-size:1.5rem;">{{ revenue_this_month }}</div>
+    </div>
+    <div class="dash-card accent-orange">
+      <div class="dash-card-label">Outstanding Balance</div>
+      <div class="dash-card-value" style="font-size:1.5rem;">{{ outstanding_balance }}</div>
+    </div>
+  </div>
+
+  <!-- ── Recent Activity ───────────────────────────── -->
+  <h2 class="dash-section-title">⚡ Recent Activity</h2>
+  <div class="dash-two-col">
+
+    <!-- Recent Repairs -->
+    <div>
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Customer</th>
+              <th>Unit</th>
+              <th>Tech</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for repair in recent_repairs %}
+            <tr>
+              <td><a href="{% url 'admin:technician_portal_repair_change' repair.id %}">{{ repair.id }}</a></td>
+              <td>{{ repair.customer.name|default:"—" }}</td>
+              <td>{{ repair.unit_number|default:"—" }}</td>
+              <td>{% if repair.technician %}{{ repair.technician.user.get_full_name|default:repair.technician.user.username }}{% else %}—{% endif %}</td>
+              <td><span class="status-badge status-{{ repair.queue_status }}">{{ repair.get_queue_status_display }}</span></td>
+              <td>{{ repair.service_date|date:"M d" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" style="color:#a0aec0;text-align:center;padding:20px;">No repairs found</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <a href="{% url 'admin:technician_portal_repair_changelist' %}" class="dash-quicklink ghost" style="font-size:.8rem;">View all repairs →</a>
+    </div>
+
+    <!-- Recent Invoices -->
+    <div>
+      <div class="dash-table-wrap">
+        <table class="dash-table">
+          <thead>
+            <tr>
+              <th>Invoice #</th>
+              <th>Customer</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for invoice in recent_invoices %}
+            <tr>
+              <td><a href="{% url 'admin:billing_invoice_change' invoice.id %}">{{ invoice.invoice_number }}</a></td>
+              <td>{{ invoice.customer.name|default:"—" }}</td>
+              <td>${{ invoice.total|floatformat:2 }}</td>
+              <td><span class="status-badge status-{{ invoice.status }}">{{ invoice.get_status_display }}</span></td>
+              <td>{{ invoice.invoice_date|date:"M d" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" style="color:#a0aec0;text-align:center;padding:20px;">No invoices found</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <a href="{% url 'admin:billing_invoice_changelist' %}" class="dash-quicklink ghost" style="font-size:.8rem;">View all invoices →</a>
+    </div>
+  </div>
+
+  <!-- ── Quick Links ───────────────────────────────── -->
+  <h2 class="dash-section-title">🔗 Quick Links</h2>
+  <div class="dash-quicklinks">
+    <a href="{% url 'admin:tenants_tenant_changelist' %}" class="dash-quicklink">🏢 Tenants</a>
+    <a href="{% url 'admin:tenants_tenant_add' %}" class="dash-quicklink ghost">+ New Tenant</a>
+    <a href="{% url 'admin:technician_portal_repair_changelist' %}" class="dash-quicklink">🔧 Repairs</a>
+    <a href="{% url 'admin:billing_invoice_changelist' %}" class="dash-quicklink">🧾 Invoices</a>
+    <a href="{% url 'admin:auth_user_changelist' %}" class="dash-quicklink">👤 Users</a>
+    <a href="{% url 'admin:core_customer_changelist' %}" class="dash-quicklink">🏭 Customers</a>
+    <a href="{% url 'admin:tenants_subscriptionplan_changelist' %}" class="dash-quicklink">💳 Plans</a>
+    <a href="{% url 'admin:billing_billingconfig_changelist' %}" class="dash-quicklink ghost">⚙️ Billing Config</a>
+    <a href="{% url 'admin:core_notification_changelist' %}" class="dash-quicklink ghost">🔔 Notifications</a>
+    <a href="{% url 'admin:global_search' %}" class="dash-quicklink">🔍 Global Search</a>
+    <a href="{% url 'admin:admin_logentry_changelist' %}" class="dash-quicklink ghost">📋 Audit Log</a>
+  </div>
+
+  <!-- ── Standard app/model index (collapsible) ──── -->
+  <details style="margin-top:28px;">
+    <summary style="cursor:pointer; color:#4299E1; font-weight:600; font-size:.95rem; margin-bottom:12px;">
+      📋 All Registered Models
+    </summary>
+    {% if app_list %}
+      {% for app in app_list %}
+      <div style="margin-bottom:16px;">
+        <h3 style="font-size:.9rem; font-weight:700; color:#2d3748; margin-bottom:6px;">{{ app.name }}</h3>
+        <ul style="list-style:none; padding:0; margin:0; display:flex; flex-wrap:wrap; gap:6px;">
+          {% for model in app.models %}
+          <li>
+            {% if model.admin_url %}
+              <a href="{{ model.admin_url }}" style="color:#4299E1; font-size:.83rem; padding:3px 8px; border:1px solid #bee3f8; border-radius:4px; text-decoration:none; background:#f0f8ff;">
+                {{ model.name }}
+              </a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p>{% trans "You don't have permission to view or edit anything." %}</p>
+    {% endif %}
+  </details>
+
+</div>
+{% endblock %}

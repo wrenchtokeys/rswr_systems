@@ -1,0 +1,200 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Global Search | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+  .search-box-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0 30px;
+  }
+  .search-box-wrap input[type=text] {
+    flex: 1;
+    padding: 10px 16px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    max-width: 600px;
+  }
+  .search-box-wrap button {
+    padding: 10px 20px;
+    background: #417690;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+  .search-box-wrap button:hover { background: #2a4c6e; }
+
+  .result-section {
+    margin-bottom: 30px;
+  }
+  .result-section h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #417690;
+    border-bottom: 2px solid #417690;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .result-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .result-table th {
+    background: #f7f8f9;
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    color: #666;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .result-table td {
+    padding: 8px 12px;
+    font-size: 0.88rem;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .result-table tr:last-child td { border-bottom: none; }
+  .result-table tr:hover td { background: #f7fbff; }
+  .result-count {
+    font-size: 0.78rem;
+    color: #999;
+    margin-left: 8px;
+    font-weight: normal;
+  }
+  .no-results {
+    color: #999;
+    font-style: italic;
+    padding: 10px 0;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: white;
+    background: #6c757d;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>🔍 Global Search</h1>
+  <p style="color:#666;">Search across customers, repairs, invoices, and users.</p>
+
+  <form method="get" action="">
+    <div class="search-box-wrap">
+      <input type="text" name="q" value="{{ query }}" placeholder="Type a name, unit number, invoice number, email…" autofocus>
+      <button type="submit">Search</button>
+    </div>
+  </form>
+
+  {% if query %}
+    {% if not results.customers and not results.repairs and not results.invoices and not results.users %}
+      <p class="no-results">No results found for "<strong>{{ query }}</strong>".</p>
+    {% else %}
+
+      {# ── Customers ── #}
+      {% if results.customers %}
+      <div class="result-section">
+        <h3>Customers <span class="result-count">{{ results.customers|length }} result(s)</span></h3>
+        <table class="result-table">
+          <thead><tr><th>Name</th><th>Tenant</th><th>Email</th><th>Phone</th><th></th></tr></thead>
+          <tbody>
+          {% for c in results.customers %}
+            <tr>
+              <td>{{ c.name }}</td>
+              <td>{{ c.tenant.name|default:"—" }}</td>
+              <td>{{ c.email|default:"—" }}</td>
+              <td>{{ c.phone|default:"—" }}</td>
+              <td><a href="/admin/core/customer/{{ c.pk }}/change/">Edit</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {# ── Repairs ── #}
+      {% if results.repairs %}
+      <div class="result-section">
+        <h3>Repairs <span class="result-count">{{ results.repairs|length }} result(s)</span></h3>
+        <table class="result-table">
+          <thead><tr><th>#</th><th>Tenant</th><th>Customer</th><th>Unit #</th><th>Status</th><th>Date</th><th></th></tr></thead>
+          <tbody>
+          {% for r in results.repairs %}
+            <tr>
+              <td>{{ r.pk }}</td>
+              <td>{{ r.tenant.name|default:"—" }}</td>
+              <td>{{ r.customer.name|default:"—" }}</td>
+              <td>{{ r.unit_number|default:"—" }}</td>
+              <td><span class="badge">{{ r.get_queue_status_display }}</span></td>
+              <td>{{ r.service_date }}</td>
+              <td><a href="/admin/technician_portal/repair/{{ r.pk }}/change/">Edit</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {# ── Invoices ── #}
+      {% if results.invoices %}
+      <div class="result-section">
+        <h3>Invoices <span class="result-count">{{ results.invoices|length }} result(s)</span></h3>
+        <table class="result-table">
+          <thead><tr><th>Invoice #</th><th>Tenant</th><th>Customer</th><th>Date</th><th>Total</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+          {% for inv in results.invoices %}
+            <tr>
+              <td>{{ inv.invoice_number }}</td>
+              <td>{{ inv.tenant.name|default:"—" }}</td>
+              <td>{{ inv.customer.name|default:"—" }}</td>
+              <td>{{ inv.invoice_date }}</td>
+              <td>${{ inv.total }}</td>
+              <td><span class="badge">{{ inv.get_status_display }}</span></td>
+              <td><a href="/admin/billing/invoice/{{ inv.pk }}/change/">Edit</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {# ── Users ── #}
+      {% if results.users %}
+      <div class="result-section">
+        <h3>Users <span class="result-count">{{ results.users|length }} result(s)</span></h3>
+        <table class="result-table">
+          <thead><tr><th>Username</th><th>Full Name</th><th>Email</th><th>Staff?</th><th></th></tr></thead>
+          <tbody>
+          {% for u in results.users %}
+            <tr>
+              <td>{{ u.username }}</td>
+              <td>{{ u.get_full_name|default:"—" }}</td>
+              <td>{{ u.email|default:"—" }}</td>
+              <td>{% if u.is_staff %}✓{% else %}—{% endif %}</td>
+              <td><a href="/admin/auth/user/{{ u.pk }}/change/">Edit</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

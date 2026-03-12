@@ -95,11 +95,11 @@
 
 ---
 
-## 7. Domain & Branding Update (rockstarwindshield.repair → rssystems.io)
+## 7. Domain & Branding Update (rssystems.io → rssystems.io)
 
 | # | Step | Expected |
 |---|------|----------|
-| 7.1 | Search all visible pages for old domain references | No "rockstarwindshield.repair" in UI text |
+| 7.1 | Search all visible pages for old domain references | No "rssystems.io" in UI text |
 | 7.2 | Check email templates/subjects | New domain in links |
 | 7.3 | Check login page branding | Says "RS Systems" |
 | 7.4 | Check technician login page | Updated branding |

@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
+# Load the admin customizations (dashboard, site header, etc.)
+from rs_systems import admin as _rs_admin_setup  # noqa: F401, E402
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static

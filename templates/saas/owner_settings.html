@@ -103,15 +103,23 @@
                 <div class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700 font-mono break-all" id="joinLinkText">
                     {{ shop_join_url }}
                 </div>
-                <button onclick="copyJoinLink()" id="copyBtn"
-                    class="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm whitespace-nowrap">
-                    <i class="fas fa-copy mr-2" id="copyIcon"></i>
-                    <span id="copyBtnText">Copy Link</span>
-                </button>
+                <div class="flex gap-2">
+                    <a href="{{ shop_join_url }}" target="_blank" rel="noopener noreferrer" id="previewBtn"
+                        class="inline-flex items-center justify-center px-4 py-2.5 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap">
+                        <i class="fas fa-eye mr-2"></i>
+                        Preview
+                    </a>
+                    <button onclick="copyJoinLink()" id="copyBtn"
+                        class="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm whitespace-nowrap">
+                        <i class="fas fa-copy mr-2" id="copyIcon"></i>
+                        <span id="copyBtnText">Copy Link</span>
+                    </button>
+                </div>
             </div>
             <p class="text-xs text-gray-500 mt-3">
                 <i class="fas fa-info-circle mr-1"></i>
                 Customers who visit this link can sign up to track repairs, approve work orders, and view invoices.
+                Use <strong>Preview</strong> to see exactly what your customers will see when they sign up.
             </p>
         </div>
     </div>
@@ -247,10 +255,10 @@
                             {% else %}bg-gray-100 text-gray-800{% endif %}">
                             {{ member.get_role_display }}
                         </span>
-                        {% if member.technician_record %}
+                        {% if member.technician_record and member.role != 'owner' %}
                             {% if member.technician_record.can_repair %}
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                                <i class="fas fa-tools mr-1 text-[10px]"></i>Repairs
+                                <i class="fas fa-wrench mr-1 text-[10px]"></i>Repairs
                             </span>
                             {% endif %}
                             {% if member.technician_record.can_replace %}
@@ -801,7 +809,7 @@
                         <div class="space-y-2">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" name="can_repair" checked class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-                                <span class="text-sm text-gray-700"><i class="fas fa-tools text-amber-500 mr-1"></i>Can do repairs</span>
+                                <span class="text-sm text-gray-700"><i class="fas fa-wrench text-amber-500 mr-1"></i>Can do repairs</span>
                             </label>
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" name="can_replace" class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">

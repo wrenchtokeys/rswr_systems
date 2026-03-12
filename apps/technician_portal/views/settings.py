@@ -39,7 +39,6 @@ def get_ordinal_suffix(n):
         return {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
 
 
-@technician_required
 @manager_required
 def manager_settings_dashboard(request):
     """Main manager settings dashboard with navigation tiles."""
@@ -68,12 +67,14 @@ def manager_settings_dashboard(request):
     return render(request, 'technician_portal/settings/settings_dashboard.html', context)
 
 
-@technician_required
 @manager_required
 @ensure_csrf_cookie
 def manage_viscosity_rules(request):
     """Manage viscosity recommendation rules with card-based interface."""
-    manager = request.user.technician if hasattr(request.user, 'technician') else None
+    try:
+        manager = request.user.technician if hasattr(request.user, 'technician') else None
+    except Exception:
+        manager = None
 
     tenant = getattr(request, 'tenant', None)
     rules = ViscosityRecommendation.objects.all()
@@ -102,7 +103,6 @@ def manage_viscosity_rules(request):
     return render(request, 'technician_portal/settings/viscosity_rules.html', context)
 
 
-@technician_required
 @manager_required
 def get_viscosity_rule(request, rule_id):
     """AJAX endpoint to fetch a single viscosity recommendation rule."""
@@ -132,7 +132,6 @@ def get_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@technician_required
 @manager_required
 def create_viscosity_rule(request):
     """AJAX endpoint to create a new viscosity recommendation rule."""
@@ -196,7 +195,6 @@ def create_viscosity_rule(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@technician_required
 @manager_required
 def update_viscosity_rule(request, rule_id):
     """AJAX endpoint to update an existing viscosity recommendation rule."""
@@ -248,7 +246,6 @@ def update_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@technician_required
 @manager_required
 def delete_viscosity_rule(request, rule_id):
     """AJAX endpoint to delete a viscosity recommendation rule."""
@@ -270,7 +267,6 @@ def delete_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@technician_required
 @manager_required
 def toggle_viscosity_rule(request, rule_id):
     """AJAX endpoint to toggle active status of a viscosity recommendation rule."""
@@ -293,7 +289,6 @@ def toggle_viscosity_rule(request, rule_id):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
-@technician_required
 @manager_required
 def team_overview(request):
     """Team overview dashboard showing managed technicians and their stats."""

@@ -1,25 +1,39 @@
 from django.contrib import admin
+from django.utils import timezone
+from django.utils.html import format_html
 from .models import Tenant, TenantMembership, SubscriptionPlan
 
 
 class TenantMembershipInline(admin.TabularInline):
     model = TenantMembership
     extra = 1
-    raw_id_fields = ['user']
+    autocomplete_fields = ['user']
 
 
 @admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
     list_display = [
         'name', 'slug', 'owner', 'plan', 'subscription_plan',
-        'subscription_status', 'is_active', 'created_at',
+        'subscription_status', 'grace_period_end', 'had_paid_subscription_display',
+        'is_active', 'created_at',
     ]
     list_filter = ['is_active', 'plan', 'subscription_status']
     search_fields = ['name', 'slug', 'subdomain']
     prepopulated_fields = {'slug': ('name',)}
-    raw_id_fields = ['owner']
+    autocomplete_fields = ['owner']
     inlines = [TenantMembershipInline]
-    readonly_fields = ['created_at', 'updated_at', 'trial_started_at']
+    list_per_page = 25
+    readonly_fields = [
+        'created_at', 'updated_at', 'trial_started_at',
+        'grace_period_end', 'had_paid_subscription_display',
+        'is_in_grace_period_display', 'grace_days_remaining_display',
+    ]
+    actions = [
+        'extend_trial_7_days',
+        'extend_trial_30_days',
+        'activate_subscription',
+        'deactivate_subscription',
+    ]
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'subdomain', 'owner'),
@@ -31,13 +45,92 @@ class TenantAdmin(admin.ModelAdmin):
             'fields': (
                 'plan', 'subscription_plan', 'subscription_status',
                 'trial_started_at',
+                'grace_period_end',
                 'stripe_customer_id', 'stripe_subscription_id',
+                'had_paid_subscription_display',
+                'is_in_grace_period_display',
+                'grace_days_remaining_display',
             ),
+        }),
+        ('Alerts', {
+            'fields': ('subscription_alerts_sent',),
+            'classes': ('collapse',),
+            'description': 'Tracks which subscription alert emails have been sent.',
         }),
         ('Status', {
             'fields': ('is_active', 'created_at', 'updated_at'),
         }),
     )
+
+    # -------------------------------------------------------------------------
+    # Computed display fields
+    # -------------------------------------------------------------------------
+
+    def had_paid_subscription_display(self, obj):
+        if obj.had_paid_subscription:
+            return format_html('<span style="color: green;">✓ Yes</span>')
+        return format_html('<span style="color: #999;">No</span>')
+    had_paid_subscription_display.short_description = 'Had Paid Sub?'
+    had_paid_subscription_display.boolean = False
+
+    def is_in_grace_period_display(self, obj):
+        if obj.is_in_grace_period:
+            days = obj.grace_days_remaining
+            return format_html(
+                '<span style="color: orange;">⏳ Yes ({} days left)</span>', days
+            )
+        return format_html('<span style="color: #999;">No</span>')
+    is_in_grace_period_display.short_description = 'In Grace Period?'
+
+    def grace_days_remaining_display(self, obj):
+        days = obj.grace_days_remaining
+        if days > 0:
+            return format_html('<strong>{}</strong> days', days)
+        return '—'
+    grace_days_remaining_display.short_description = 'Grace Days Remaining'
+
+    # -------------------------------------------------------------------------
+    # Admin actions — Subscription management (Phase 3)
+    # -------------------------------------------------------------------------
+
+    @admin.action(description='⏱ Extend trial by 7 days')
+    def extend_trial_7_days(self, request, queryset):
+        updated = 0
+        for tenant in queryset.filter(plan='trial'):
+            if not tenant.trial_started_at:
+                tenant.trial_started_at = timezone.now()
+            # Extend by shifting trial_started_at forward 7 days
+            tenant.trial_started_at = tenant.trial_started_at + timezone.timedelta(days=7)
+            tenant.save(update_fields=['trial_started_at'])
+            updated += 1
+        self.message_user(request, f'{updated} trial(s) extended by 7 days.')
+
+    @admin.action(description='⏱ Extend trial by 30 days')
+    def extend_trial_30_days(self, request, queryset):
+        updated = 0
+        for tenant in queryset.filter(plan='trial'):
+            if not tenant.trial_started_at:
+                tenant.trial_started_at = timezone.now()
+            tenant.trial_started_at = tenant.trial_started_at + timezone.timedelta(days=30)
+            tenant.save(update_fields=['trial_started_at'])
+            updated += 1
+        self.message_user(request, f'{updated} trial(s) extended by 30 days.')
+
+    @admin.action(description='✅ Activate subscription')
+    def activate_subscription(self, request, queryset):
+        updated = queryset.update(subscription_status='active', is_active=True)
+        self.message_user(request, f'{updated} tenant(s) activated.')
+
+    @admin.action(description='🚫 Deactivate subscription (set expired + 30-day grace)')
+    def deactivate_subscription(self, request, queryset):
+        grace_end = timezone.now() + timezone.timedelta(days=30)
+        updated = 0
+        for tenant in queryset:
+            tenant.subscription_status = 'expired'
+            tenant.grace_period_end = grace_end
+            tenant.save(update_fields=['subscription_status', 'grace_period_end'])
+            updated += 1
+        self.message_user(request, f'{updated} tenant(s) deactivated with 30-day grace period.')
 
 
 @admin.register(TenantMembership)
@@ -45,7 +138,9 @@ class TenantMembershipAdmin(admin.ModelAdmin):
     list_display = ['user', 'tenant', 'role', 'is_active', 'joined_at']
     list_filter = ['role', 'is_active']
     search_fields = ['user__username', 'user__email', 'tenant__name']
-    raw_id_fields = ['user', 'tenant']
+    autocomplete_fields = ['user', 'tenant']
+    list_select_related = ['user', 'tenant']
+    list_per_page = 25
 
 
 @admin.register(SubscriptionPlan)
@@ -58,6 +153,7 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
     list_filter = ['is_active']
     prepopulated_fields = {'slug': ('name',)}
     list_editable = ['display_order', 'is_active']
+    list_per_page = 25
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'is_active', 'display_order'),
