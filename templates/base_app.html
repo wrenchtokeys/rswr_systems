@@ -90,7 +90,7 @@
                     <span class="text-sm text-gray-500 hidden sm:inline truncate max-w-[200px]" title="{{ tenant.name }}">{{ tenant.name }}</span>
                     {% if is_owner_or_manager %}
                     <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
-                        {% if tenant.plan == 'trial' %}bg-amber-100 text-amber-800
+                        {% if tenant.plan == 'trial' %}border border-blue-300 text-blue-600 bg-white
                         {% elif tenant.plan == 'starter' %}bg-blue-100 text-blue-800
                         {% elif tenant.plan == 'pro' %}bg-green-100 text-green-800
                         {% elif tenant.plan == 'enterprise' %}bg-purple-100 text-purple-800
