@@ -1092,6 +1092,7 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
     def test_mixed_batch_and_individual_repairs(self):
         """Test that dashboard correctly separates batch and individual repairs"""
         # Create an individual (non-batch) repair
+        # Must include tenant= so it passes the base_qs tenant filter in customer_dashboard
         individual_repair = Repair.objects.create(
             customer=self.customer,
             unit_number='2002',
@@ -1099,7 +1100,8 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
             repair_date=timezone.now(),
             cost=50,
             queue_status='PENDING',
-            technician=self.technician
+            technician=self.technician,
+            tenant=self.tenant,
             # No repair_batch_id - this is individual
         )
 
