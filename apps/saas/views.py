@@ -2244,3 +2244,155 @@ def subscription_blocked_view(request):
             context['shop_email'] = tenant.business_email
 
     return render(request, 'saas/subscription_blocked.html', context)
+
+
+# ------------------------------------------------------------------
+# 13. Billing Phase 6 — Aging Report, Statement of Account
+# ------------------------------------------------------------------
+
+@owner_or_manager_required
+def owner_aging_report_json(request):
+    """GET /owner/billing/aging/ — AR aging data as JSON."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        from django.http import JsonResponse
+        return JsonResponse({'error': 'No tenant'}, status=403)
+
+    from apps.billing.tasks import generate_aging_report
+    from django.http import JsonResponse
+
+    reports = generate_aging_report(tenant_id=tenant.id)
+    data = reports.get(tenant.slug, {
+        'buckets': {k: {'count': 0, 'total': 0.0} for k in ['current', '1_30', '31_60', '61_90', '90_plus']},
+        'grand_total': 0.0,
+        'generated_at': '',
+    })
+    return JsonResponse(data)
+
+
+@owner_or_manager_required
+def owner_aging_report_csv(request):
+    """GET /owner/billing/aging/export/ — CSV download of AR aging data."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden()
+
+    import csv
+    from django.http import HttpResponse
+    from django.utils import timezone
+    from apps.billing.models import Invoice
+
+    today = timezone.now().date()
+    outstanding = Invoice.objects.filter(
+        customer__tenant=tenant,
+        status__in=['SENT', 'PARTIAL', 'OVERDUE'],
+    ).select_related('customer').order_by('due_date')
+
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="aging_report_{today}.csv"'
+    writer = csv.writer(response)
+    writer.writerow(['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Amount Due', 'Days Overdue', 'Bucket'])
+
+    bucket_label = {
+        'current': 'Current',
+        '1_30': '1-30 days',
+        '31_60': '31-60 days',
+        '61_90': '61-90 days',
+        '90_plus': '90+ days',
+    }
+
+    for inv in outstanding:
+        days_old = (today - inv.due_date).days if inv.due_date else 0
+        if days_old <= 0:
+            bucket = 'current'
+        elif days_old <= 30:
+            bucket = '1_30'
+        elif days_old <= 60:
+            bucket = '31_60'
+        elif days_old <= 90:
+            bucket = '61_90'
+        else:
+            bucket = '90_plus'
+
+        writer.writerow([
+            inv.invoice_number,
+            inv.customer.name,
+            inv.invoice_date.strftime('%Y-%m-%d'),
+            inv.due_date.strftime('%Y-%m-%d') if inv.due_date else '',
+            f'{float(inv.amount_due):.2f}',
+            max(0, days_old),
+            bucket_label[bucket],
+        ])
+
+    return response
+
+
+@owner_or_manager_required
+def owner_customer_statement(request, customer_id):
+    """GET /owner/customers/<id>/statement/ — Statement of Account for a customer."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    from django.shortcuts import get_object_or_404
+    from decimal import Decimal
+
+    customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
+
+    # All invoices for this customer, oldest first
+    invoices = Invoice.objects.filter(
+        customer=customer,
+    ).prefetch_related('payments').order_by('invoice_date', 'created_at')
+
+    # All payments for this customer, chronological
+    payments = Payment.objects.filter(
+        invoice__customer=customer,
+    ).select_related('invoice').order_by('payment_date', 'created_at')
+
+    # Build a unified timeline for running balance
+    events = []
+    for inv in invoices:
+        events.append({
+            'type': 'invoice',
+            'date': inv.invoice_date,
+            'description': f'Invoice {inv.invoice_number}',
+            'debit': inv.total,
+            'credit': Decimal('0.00'),
+            'invoice': inv,
+            'payment': None,
+        })
+    for pmt in payments:
+        events.append({
+            'type': 'payment',
+            'date': pmt.payment_date,
+            'description': f'Payment — {pmt.get_payment_method_display()}' + (f' #{pmt.reference_number}' if pmt.reference_number else ''),
+            'debit': Decimal('0.00'),
+            'credit': pmt.amount,
+            'invoice': pmt.invoice,
+            'payment': pmt,
+        })
+
+    events.sort(key=lambda e: (e['date'], e['type']))  # invoices before payments same day
+
+    running_balance = Decimal('0.00')
+    for ev in events:
+        running_balance += ev['debit'] - ev['credit']
+        ev['running_balance'] = running_balance
+
+    # Summary stats
+    total_invoiced = sum(inv.total for inv in invoices)
+    total_paid = sum(pmt.amount for pmt in payments)
+    balance_due = total_invoiced - total_paid
+
+    context = {
+        'tenant': tenant,
+        'customer': customer,
+        'events': events,
+        'total_invoiced': total_invoiced,
+        'total_paid': total_paid,
+        'balance_due': balance_due,
+        'statement_date': timezone.now().date(),
+    }
+    return render(request, 'saas/customer_statement.html', context)
