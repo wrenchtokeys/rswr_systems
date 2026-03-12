@@ -402,3 +402,277 @@ class SubscriptionActionTests(TestCase):
         days_remaining = (self.tenant.grace_period_end - timezone.now()).days
         self.assertGreaterEqual(days_remaining, 29)
         self.assertTrue(self.tenant.is_in_grace_period)
+
+
+# =============================================================================
+# Phase 5: Tenant-Aware Filtering Tests
+# =============================================================================
+
+class TenantFilterMixinTests(TestCase):
+    """Tests for TenantFilterMixin — superuser vs. non-superuser queryset filtering."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
+        from apps.technician_portal.models import Repair
+        from decimal import Decimal
+
+        # Two tenants
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial-test', defaults={
+                'name': 'Trial Test', 'monthly_price': Decimal('0'), 'trial_days': 14
+            }
+        )
+
+        # Superuser can see everything
+        cls.superuser = User.objects.create_superuser(
+            username='super_filter', email='super@filter.com', password='Test1234!'
+        )
+        # Staff user belonging only to tenant A
+        cls.staff_a = User.objects.create_user(
+            username='staff_a_filter', email='staffa@filter.com',
+            password='Test1234!', is_staff=True, is_superuser=False
+        )
+        owner_b = User.objects.create_user(username='owner_b_filter', password='Test1234!')
+
+        # Grant view/change permissions for Repair and Customer
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+        from apps.technician_portal.models import Repair as RepairModel
+        from core.models import Customer as CustomerModel
+        for model_cls in [RepairModel, CustomerModel]:
+            ct = ContentType.objects.get_for_model(model_cls)
+            for codename in [f'view_{ct.model}', f'change_{ct.model}']:
+                perm = Permission.objects.filter(content_type=ct, codename=codename).first()
+                if perm:
+                    cls.staff_a.user_permissions.add(perm)
+
+        cls.tenant_a = Tenant.objects.create(name='Tenant A', slug='tenant-a-filter', owner=cls.staff_a)
+        cls.tenant_b = Tenant.objects.create(name='Tenant B', slug='tenant-b-filter', owner=owner_b)
+        TenantMembership.objects.create(
+            tenant=cls.tenant_a, user=cls.staff_a, role='manager', is_active=True
+        )
+
+        # A customer per tenant
+        from core.models import Customer
+        cls.cust_a = Customer.objects.create(name='Customer A', tenant=cls.tenant_a)
+        cls.cust_b = Customer.objects.create(name='Customer B', tenant=cls.tenant_b)
+
+        # A technician per tenant
+        from apps.technician_portal.models import Technician
+        cls.tech_a = Technician.objects.create(user=cls.staff_a, tenant=cls.tenant_a, expertise='General')
+        cls.tech_b = Technician.objects.create(user=owner_b, tenant=cls.tenant_b, expertise='General')
+
+        # A repair per tenant
+        cls.repair_a = Repair.objects.create(
+            customer=cls.cust_a, tenant=cls.tenant_a, technician=cls.tech_a,
+            unit_number='UNIT-A', cost=Decimal('50'), queue_status='COMPLETED'
+        )
+        cls.repair_b = Repair.objects.create(
+            customer=cls.cust_b, tenant=cls.tenant_b, technician=cls.tech_b,
+            unit_number='UNIT-B', cost=Decimal('75'), queue_status='COMPLETED'
+        )
+
+    def setUp(self):
+        self.client = Client()
+
+    def _get_changelist_ids(self, url, user):
+        self.client.force_login(user)
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        return set(obj.pk for obj in resp.context['cl'].queryset)
+
+    def test_superuser_sees_all_repairs(self):
+        ids = self._get_changelist_ids(
+            reverse('admin:technician_portal_repair_changelist'), self.superuser
+        )
+        self.assertIn(self.repair_a.pk, ids)
+        self.assertIn(self.repair_b.pk, ids)
+
+    def test_non_superuser_sees_only_own_tenant_repairs(self):
+        ids = self._get_changelist_ids(
+            reverse('admin:technician_portal_repair_changelist'), self.staff_a
+        )
+        self.assertIn(self.repair_a.pk, ids)
+        self.assertNotIn(self.repair_b.pk, ids)
+
+    def test_superuser_sees_all_customers(self):
+        ids = self._get_changelist_ids(
+            reverse('admin:core_customer_changelist'), self.superuser
+        )
+        self.assertIn(self.cust_a.pk, ids)
+        self.assertIn(self.cust_b.pk, ids)
+
+    def test_non_superuser_sees_only_own_tenant_customers(self):
+        ids = self._get_changelist_ids(
+            reverse('admin:core_customer_changelist'), self.staff_a
+        )
+        self.assertIn(self.cust_a.pk, ids)
+        self.assertNotIn(self.cust_b.pk, ids)
+
+
+# =============================================================================
+# Phase 6a: Bulk Invoice Generation Tests
+# =============================================================================
+
+class BulkInvoiceGenerationTests(TestCase):
+    """Tests for the 'Generate draft invoices' admin action on CustomerAdmin."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.tenants.models import Tenant, SubscriptionPlan
+        from apps.technician_portal.models import Repair
+        from decimal import Decimal
+
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial-inv-test', defaults={
+                'name': 'Trial Inv Test', 'monthly_price': Decimal('0'), 'trial_days': 14
+            }
+        )
+        cls.admin_user = User.objects.create_superuser(
+            username='admin_inv', email='admin_inv@test.com', password='Test1234!'
+        )
+        cls.tenant = Tenant.objects.create(name='Invoice Tenant', slug='invoice-tenant', owner=cls.admin_user)
+
+        from core.models import Customer
+        from apps.technician_portal.models import Technician
+        cls.customer = Customer.objects.create(name='Inv Customer', tenant=cls.tenant)
+        cls.tech = Technician.objects.create(user=cls.admin_user, tenant=cls.tenant, expertise='General')
+
+        # Two completed repairs, no invoices
+        cls.repair1 = Repair.objects.create(
+            customer=cls.customer, tenant=cls.tenant, technician=cls.tech,
+            unit_number='T001', cost=Decimal('100'), queue_status='COMPLETED'
+        )
+        cls.repair2 = Repair.objects.create(
+            customer=cls.customer, tenant=cls.tenant, technician=cls.tech,
+            unit_number='T002', cost=Decimal('150'), queue_status='COMPLETED'
+        )
+        # One pending repair (should NOT be billed)
+        cls.repair_pending = Repair.objects.create(
+            customer=cls.customer, tenant=cls.tenant, technician=cls.tech,
+            unit_number='T003', cost=Decimal('50'), queue_status='PENDING'
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.admin_user)
+
+    def test_generate_invoices_creates_draft(self):
+        from apps.billing.models import Invoice, InvoiceLineItem
+        url = reverse('admin:core_customer_changelist')
+        data = {
+            'action': 'generate_invoices',
+            '_selected_action': [self.customer.pk],
+        }
+        resp = self.client.post(url, data, follow=True)
+        self.assertEqual(resp.status_code, 200)
+
+        invoice = Invoice.objects.filter(customer=self.customer, status='DRAFT').first()
+        self.assertIsNotNone(invoice)
+        self.assertEqual(invoice.line_items.count(), 2)
+
+        line_repairs = set(invoice.line_items.values_list('repair_id', flat=True))
+        self.assertIn(self.repair1.pk, line_repairs)
+        self.assertIn(self.repair2.pk, line_repairs)
+        self.assertNotIn(self.repair_pending.pk, line_repairs)
+
+    def test_generate_invoices_skips_already_billed(self):
+        """Running the action twice should not create duplicate line items."""
+        from apps.billing.models import Invoice, InvoiceLineItem
+        url = reverse('admin:core_customer_changelist')
+        data = {
+            'action': 'generate_invoices',
+            '_selected_action': [self.customer.pk],
+        }
+        self.client.post(url, data, follow=True)
+        self.client.post(url, data, follow=True)
+
+        # Should still be just one invoice (second run: no unbilled repairs left)
+        self.assertEqual(
+            Invoice.objects.filter(customer=self.customer, status='DRAFT').count(), 1
+        )
+
+
+# =============================================================================
+# Phase 6b: Audit Log Admin Tests
+# =============================================================================
+
+class AuditLogAdminTests(TestCase):
+    """Tests that the Django LogEntry admin view loads correctly."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin_user = User.objects.create_superuser(
+            username='admin_audit', email='admin_audit@test.com', password='Test1234!'
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.admin_user)
+
+    def test_audit_log_changelist_loads(self):
+        url = reverse('admin:admin_logentry_changelist')
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_audit_log_no_add_permission(self):
+        url = reverse('admin:admin_logentry_add')
+        resp = self.client.get(url)
+        # Should redirect or 403 (Django returns 403 for no add permission)
+        self.assertIn(resp.status_code, [302, 403])
+
+
+# =============================================================================
+# Phase 6c: Global Search Tests
+# =============================================================================
+
+class GlobalSearchTests(TestCase):
+    """Tests for the custom global admin search view."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.tenants.models import Tenant
+        from decimal import Decimal
+
+        cls.admin_user = User.objects.create_superuser(
+            username='admin_search', email='admin_search@test.com', password='Test1234!'
+        )
+        cls.tenant = Tenant.objects.create(name='Search Tenant', slug='search-tenant', owner=cls.admin_user)
+
+        from core.models import Customer
+        cls.customer = Customer.objects.create(
+            name='Searchable Corp', email='search@corp.com', tenant=cls.tenant
+        )
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.admin_user)
+
+    def test_search_page_loads(self):
+        url = reverse('admin:global_search')
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_search_returns_customer_results(self):
+        url = reverse('admin:global_search')
+        resp = self.client.get(url, {'q': 'Searchable'})
+        self.assertEqual(resp.status_code, 200)
+        customers = resp.context['results']['customers']
+        self.assertTrue(any(c.pk == self.customer.pk for c in customers))
+
+    def test_search_empty_query_no_results(self):
+        url = reverse('admin:global_search')
+        resp = self.client.get(url, {'q': ''})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context.get('results', {}), {})
+
+    def test_search_no_match_returns_empty(self):
+        url = reverse('admin:global_search')
+        resp = self.client.get(url, {'q': 'xyzzy_no_match_12345'})
+        self.assertEqual(resp.status_code, 200)
+        results = resp.context['results']
+        self.assertFalse(
+            any(list(v) for v in results.values()),
+            "Expected no results for a non-matching query"
+        )

@@ -19,6 +19,7 @@ from django.urls import reverse
 from decimal import Decimal
 
 from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate
+from rs_systems.admin_mixins import TenantFilterMixin
 
 
 # =============================================================================
@@ -107,19 +108,19 @@ class PaymentInline(admin.TabularInline):
 
 
 @admin.register(Invoice)
-class InvoiceAdmin(admin.ModelAdmin):
+class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for Invoice model."""
     
     list_display = [
-        'invoice_number', 'customer_link', 'invoice_date', 'due_date',
+        'invoice_number', 'get_tenant', 'customer_link', 'invoice_date', 'due_date',
         'payment_terms',
         'total_display', 'amount_paid_display', 'amount_due_display', 
         'status_badge', 'line_item_count'
     ]
-    list_filter = ['status', 'invoice_date', 'due_date']
+    list_filter = ['tenant', 'status', 'invoice_date', 'due_date']
     search_fields = ['invoice_number', 'customer__name']
     date_hierarchy = 'invoice_date'
-    list_select_related = ['customer']
+    list_select_related = ['customer', 'tenant']
     list_per_page = 25
     readonly_fields = [
         'invoice_number', 'created_at', 'updated_at', 'amount_paid', 
@@ -152,6 +153,11 @@ class InvoiceAdmin(admin.ModelAdmin):
     
     inlines = [InvoiceLineItemInline, PaymentInline]
     
+    def get_tenant(self, obj):
+        return obj.tenant.name if obj.tenant else '—'
+    get_tenant.short_description = 'Tenant'
+    get_tenant.admin_order_field = 'tenant__name'
+
     def customer_link(self, obj):
         url = reverse('admin:core_customer_change', args=[obj.customer.id])
         return format_html('<a href="{}">{}</a>', url, obj.customer.name)
@@ -242,19 +248,30 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 
 @admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
+class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for Payment model."""
-    
+
+    # Payments have no direct tenant FK; filter through invoice -> customer -> tenant
+    tenant_field = 'invoice__customer__tenant'
+
     list_display = [
-        'id', 'invoice_link', 'amount_display', 'payment_date', 
+        'id', 'get_tenant', 'invoice_link', 'amount_display', 'payment_date', 
         'payment_method', 'reference_number', 'created_at'
     ]
     list_filter = ['payment_method', 'payment_date']
     search_fields = ['invoice__invoice_number', 'reference_number', 'notes']
     date_hierarchy = 'payment_date'
     readonly_fields = ['created_at']
-    list_select_related = ['invoice']
+    list_select_related = ['invoice', 'invoice__customer', 'invoice__customer__tenant']
     list_per_page = 25
+
+    def get_tenant(self, obj):
+        try:
+            return obj.invoice.customer.tenant.name
+        except AttributeError:
+            return '—'
+    get_tenant.short_description = 'Tenant'
+    get_tenant.admin_order_field = 'invoice__customer__tenant__name'
     
     def invoice_link(self, obj):
         url = reverse('admin:billing_invoice_change', args=[obj.invoice.id])

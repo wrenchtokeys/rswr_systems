@@ -9,10 +9,11 @@ from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django import forms
 from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation
+from rs_systems.admin_mixins import TenantFilterMixin
 
 
 @admin.register(Technician)
-class TechnicianAdmin(admin.ModelAdmin):
+class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_display = ['user', 'get_email', 'get_full_name', 'phone_number', 'expertise', 'is_manager', 'is_active', 'repairs_completed']
     list_filter = ['expertise', 'is_manager', 'is_active', 'can_assign_work', 'can_override_pricing']
     search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name', 'phone_number']
@@ -80,7 +81,7 @@ class TechnicianAdmin(admin.ModelAdmin):
 
 
 @admin.register(Repair)
-class RepairAdmin(admin.ModelAdmin):
+class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_display = ['id', 'tenant', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
     list_filter = ['tenant', 'queue_status', 'service_date', 'technician']
     search_fields = ['customer__name', 'unit_number', 'damage_type', 'technician__user__username', 'tenant__name']
@@ -157,7 +158,7 @@ class RepairAdmin(admin.ModelAdmin):
 
 
 @admin.register(Replacement)
-class ReplacementAdmin(admin.ModelAdmin):
+class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_display = ['id', 'tenant', 'customer', 'unit_number', 'glass_position', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
     list_filter = ['tenant', 'queue_status', 'service_date', 'technician', 'glass_position', 'requires_adas_calibration']
     search_fields = ['customer__name', 'unit_number', 'nags_number', 'technician__user__username', 'tenant__name']
@@ -210,13 +211,13 @@ class ReplacementAdmin(admin.ModelAdmin):
 
 
 @admin.register(Customer)
-class CustomerAdmin(admin.ModelAdmin):
+class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_display = ['name', 'tenant', 'email', 'phone', 'address', 'tax_exempt', 'get_primary_contact']
     search_fields = ['name', 'email', 'phone', 'tenant__name']
     list_filter = ['tenant', 'customer_type', 'tax_exempt']
     list_select_related = ['tenant']
     list_per_page = 25
-    actions = ['export_csv']
+    actions = ['export_csv', 'generate_invoices']
 
     def get_primary_contact(self, obj):
         from apps.customer_portal.models import CustomerUser
@@ -250,6 +251,87 @@ class CustomerAdmin(admin.ModelAdmin):
                 customer.tax_exempt,
             ])
         return response
+
+    @admin.action(description='🧾 Generate draft invoices for selected customers')
+    def generate_invoices(self, request, queryset):
+        """
+        For each selected customer, find completed repairs not yet on any invoice
+        and create a single DRAFT invoice containing all of them.
+        """
+        from django.utils import timezone
+        from apps.billing.models import Invoice, InvoiceLineItem, BillingConfig
+        from apps.technician_portal.models import Repair
+
+        invoices_created = 0
+        repairs_billed = 0
+        skipped = 0
+
+        config = BillingConfig.get_instance() if BillingConfig.objects.exists() else None
+        prefix = (config.invoice_number_prefix if config else None) or 'INV'
+
+        for customer in queryset.select_related('tenant'):
+            # Find completed repairs not yet linked to any invoice line item
+            unbilled_repairs = (
+                Repair.objects
+                .filter(customer=customer, queue_status='COMPLETED')
+                .exclude(invoice_line_items__isnull=False)
+                .order_by('service_date')
+            )
+
+            if not unbilled_repairs.exists():
+                skipped += 1
+                continue
+
+            # Generate a unique invoice number
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            invoice_number = f"{prefix}-{customer.id}-{timestamp}"
+
+            total = sum(r.cost for r in unbilled_repairs)
+
+            invoice = Invoice.objects.create(
+                tenant=customer.tenant,
+                customer=customer,
+                invoice_number=invoice_number,
+                status='DRAFT',
+                invoice_date=timezone.now().date(),
+                subtotal=total,
+                discount=0,
+                tax_rate=0,
+                tax_amount=0,
+                total=total,
+                amount_paid=0,
+                payment_terms=(config.default_payment_terms if config else 'NET30'),
+            )
+
+            for repair in unbilled_repairs:
+                InvoiceLineItem.objects.create(
+                    invoice=invoice,
+                    repair=repair,
+                    description=f"Windshield repair — Unit #{repair.unit_number}" if repair.unit_number else "Windshield repair",
+                    quantity=1,
+                    unit_price=repair.cost,
+                    discount=0,
+                    amount=repair.cost,
+                    repair_date=repair.service_date,
+                    unit_number=repair.unit_number or '',
+                )
+                repairs_billed += 1
+
+            invoices_created += 1
+
+        if invoices_created:
+            self.message_user(
+                request,
+                f"✅ Created {invoices_created} draft invoice(s) covering {repairs_billed} repair(s). "
+                f"{skipped} customer(s) had no unbilled completed repairs.",
+                level='success',
+            )
+        else:
+            self.message_user(
+                request,
+                f"No new invoices created — {skipped} customer(s) had no unbilled completed repairs.",
+                level='warning',
+            )
 
 
 @admin.register(UnitRepairCount)

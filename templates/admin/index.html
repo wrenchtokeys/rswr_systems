@@ -176,6 +176,22 @@
 {% block content %}
 <div id="dashboard-root">
 
+  <!-- ── Global Search ─────────────────────────────── -->
+  <div style="margin-bottom:24px;">
+    <form method="get" action="{% url 'admin:global_search' %}">
+      <div style="display:flex; gap:10px; align-items:center; max-width:600px;">
+        <input type="text" name="q" placeholder="🔍 Search customers, repairs, invoices, users…"
+               style="flex:1; padding:10px 16px; border:1px solid #ccd; border-radius:6px; font-size:.93rem;">
+        <button type="submit"
+                style="padding:10px 20px; background:#417690; color:white; border:none; border-radius:6px; cursor:pointer; font-size:.93rem;">
+          Search
+        </button>
+        <a href="{% url 'admin:admin_logentry_changelist' %}"
+           style="font-size:.82rem; color:#718096; white-space:nowrap; text-decoration:none;">📋 Audit Log</a>
+      </div>
+    </form>
+  </div>
+
   <!-- ── Subscription Overview ─────────────────────── -->
   <h2 class="dash-section-title">📊 Subscription Overview</h2>
   <div class="dash-cards">
@@ -314,6 +330,8 @@
     <a href="{% url 'admin:tenants_subscriptionplan_changelist' %}" class="dash-quicklink">💳 Plans</a>
     <a href="{% url 'admin:billing_billingconfig_changelist' %}" class="dash-quicklink ghost">⚙️ Billing Config</a>
     <a href="{% url 'admin:core_notification_changelist' %}" class="dash-quicklink ghost">🔔 Notifications</a>
+    <a href="{% url 'admin:global_search' %}" class="dash-quicklink">🔍 Global Search</a>
+    <a href="{% url 'admin:admin_logentry_changelist' %}" class="dash-quicklink ghost">📋 Audit Log</a>
   </div>
 
   <!-- ── Standard app/model index (collapsible) ──── -->

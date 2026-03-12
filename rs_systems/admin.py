@@ -1,9 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
+from django.contrib.admin.models import LogEntry, ADDITION, CHANGE, DELETION
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from apps.customer_portal.models import CustomerUser
 from apps.technician_portal.models import Technician
 from core.models import Customer
@@ -231,3 +234,132 @@ def _dashboard_index(self, request, extra_context=None):
 
 
 admin.AdminSite.index = _dashboard_index
+
+
+# =============================================================================
+# Phase 6b: Audit Log — nice view over Django's built-in LogEntry
+# =============================================================================
+
+@admin.register(LogEntry)
+class AuditLogAdmin(admin.ModelAdmin):
+    """
+    Read-only admin view over Django's built-in action log.
+    Shows who changed what and when, across all admin-managed models.
+    """
+
+    list_display = [
+        'action_time', 'user_link', 'action_badge', 'content_type',
+        'object_repr_short', 'change_message_short',
+    ]
+    list_filter = ['action_flag', 'content_type', 'action_time']
+    search_fields = ['user__username', 'user__email', 'object_repr', 'change_message']
+    date_hierarchy = 'action_time'
+    list_select_related = ['user', 'content_type']
+    list_per_page = 50
+    ordering = ['-action_time']
+
+    # No adding, editing, or deleting audit records
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def user_link(self, obj):
+        url = f"/admin/auth/user/{obj.user_id}/change/"
+        return format_html('<a href="{}">{}</a>', url, obj.user.get_full_name() or obj.user.username)
+    user_link.short_description = 'User'
+    user_link.admin_order_field = 'user__username'
+
+    def action_badge(self, obj):
+        flag_map = {
+            ADDITION: ('Added', '#28a745'),
+            CHANGE: ('Changed', '#007bff'),
+            DELETION: ('Deleted', '#dc3545'),
+        }
+        label, color = flag_map.get(obj.action_flag, ('Unknown', '#6c757d'))
+        return format_html(
+            '<span style="background: {}; color: white; padding: 2px 8px; '
+            'border-radius: 4px; font-size: 11px;">{}</span>',
+            color, label,
+        )
+    action_badge.short_description = 'Action'
+    action_badge.admin_order_field = 'action_flag'
+
+    def object_repr_short(self, obj):
+        return obj.object_repr[:60] + ('…' if len(obj.object_repr) > 60 else '')
+    object_repr_short.short_description = 'Object'
+
+    def change_message_short(self, obj):
+        msg = obj.get_change_message()
+        return msg[:100] + ('…' if len(msg) > 100 else '') if msg else '—'
+    change_message_short.short_description = 'Changes'
+
+
+# =============================================================================
+# Phase 6c: Global Admin Search
+# =============================================================================
+
+def _global_search_view(request):
+    """
+    Search across Customers, Repairs, Invoices, and Users in one shot.
+    Results are grouped by model type.
+    Accessible at /admin/search/
+    """
+    query = request.GET.get('q', '').strip()
+    results = {}
+
+    if query:
+        from apps.billing.models import Invoice
+        from apps.technician_portal.models import Repair
+        from django.db.models import Q
+
+        customers = Customer.objects.filter(
+            Q(name__icontains=query) | Q(email__icontains=query)
+        ).select_related('tenant')[:20]
+
+        repairs = Repair.objects.filter(
+            Q(unit_number__icontains=query) | Q(customer__name__icontains=query)
+        ).select_related('customer', 'tenant')[:20]
+
+        invoices = Invoice.objects.filter(
+            Q(invoice_number__icontains=query) | Q(customer__name__icontains=query)
+        ).select_related('customer', 'tenant')[:20]
+
+        users = User.objects.filter(
+            Q(username__icontains=query) | Q(email__icontains=query) |
+            Q(first_name__icontains=query) | Q(last_name__icontains=query)
+        )[:20]
+
+        results = {
+            'customers': customers,
+            'repairs': repairs,
+            'invoices': invoices,
+            'users': users,
+        }
+
+    context = {
+        **admin.site.each_context(request),
+        'title': 'Global Search',
+        'query': query,
+        'results': results,
+    }
+    return render(request, 'admin/global_search.html', context)
+
+
+# Monkey-patch get_urls to add our search URL
+_original_get_urls = admin.AdminSite.get_urls
+
+
+def _custom_get_urls(self):
+    original_urls = _original_get_urls(self)
+    custom = [
+        path('search/', self.admin_view(_global_search_view), name='global_search'),
+    ]
+    return custom + original_urls
+
+
+admin.AdminSite.get_urls = _custom_get_urls
