@@ -103,15 +103,23 @@
                 <div class="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-700 font-mono break-all" id="joinLinkText">
                     {{ shop_join_url }}
                 </div>
-                <button onclick="copyJoinLink()" id="copyBtn"
-                    class="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm whitespace-nowrap">
-                    <i class="fas fa-copy mr-2" id="copyIcon"></i>
-                    <span id="copyBtnText">Copy Link</span>
-                </button>
+                <div class="flex gap-2">
+                    <a href="{{ shop_join_url }}" target="_blank" rel="noopener noreferrer" id="previewBtn"
+                        class="inline-flex items-center justify-center px-4 py-2.5 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap">
+                        <i class="fas fa-eye mr-2"></i>
+                        Preview
+                    </a>
+                    <button onclick="copyJoinLink()" id="copyBtn"
+                        class="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors shadow-sm whitespace-nowrap">
+                        <i class="fas fa-copy mr-2" id="copyIcon"></i>
+                        <span id="copyBtnText">Copy Link</span>
+                    </button>
+                </div>
             </div>
             <p class="text-xs text-gray-500 mt-3">
                 <i class="fas fa-info-circle mr-1"></i>
                 Customers who visit this link can sign up to track repairs, approve work orders, and view invoices.
+                Use <strong>Preview</strong> to see exactly what your customers will see when they sign up.
             </p>
         </div>
     </div>
