@@ -279,7 +279,7 @@ class Command(BaseCommand):
                         f"Upgrade your subscription to regain access:\n"
                         f"https://rssystems.io/owner/billing/\n\n"
                         f"If you need help recovering your data, contact us at "
-                        f"support@rssystems.io\n\n"
+                        f"contact@rssystems.io\n\n"
                         f"— RS Systems"
                     ),
                     dry_run=dry_run,
