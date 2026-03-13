@@ -256,7 +256,7 @@ class EmailBrandingConfig(models.Model):
                     domain = Site.objects.get_current().domain
                     protocol = 'https' if settings.USE_HTTPS else 'http'
                     return f'{protocol}://{domain}{self.logo.url}'
-                except:
+                except Exception:
                     # Fallback to relative URL
                     return self.logo.url
         return ''

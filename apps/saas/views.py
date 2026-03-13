@@ -102,7 +102,7 @@ def _send_verification_email(request, user):
             verification_url = request.build_absolute_uri(
                 reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
-        except:
+        except (CustomerUser.DoesNotExist, Exception):
             # Shop owner - use password reset infrastructure for now
             # (they can verify via account settings later)
             verification_url = request.build_absolute_uri(
