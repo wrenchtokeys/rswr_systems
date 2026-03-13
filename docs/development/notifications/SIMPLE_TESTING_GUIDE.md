@@ -2,11 +2,12 @@
 
 **Quick Reference**: How to test notifications while developing
 
+> **Architecture note**: Notifications are **synchronous** — no Celery or Redis needed.
+> Just run Django and notifications fire inline during request handling.
+
 ---
 
-##  Starting the App (Simple Method)
-
-### Just run Django (no background services):
+##  Starting the App
 
 ```bash
 python manage.py runserver
@@ -14,42 +15,17 @@ python manage.py runserver
 
 Then open: **http://localhost:8000**
 
-**That's it!** You can now:
-- Create repairs
-- Test the app normally
-- Make changes and see them live
-
----
-
-##  To Test Notifications (Full System)
-
-Only when you want to test actual notification delivery, run these in **3 separate terminal windows**:
-
-### Terminal 1 - Django (main app):
-```bash
-python manage.py runserver
-```
-
-### Terminal 2 - Celery Worker (sends notifications):
-```bash
-celery -A rs_systems worker --loglevel=info
-```
-
-### Terminal 3 - Celery Beat (scheduler):
-```bash
-celery -A rs_systems beat --loglevel=info
-```
+That's it! Notifications fire automatically when repair events occur.
 
 ---
 
 ##  Stopping Services
 
-### If services are in terminals:
-- Press `Ctrl+C` in each terminal window
-
-### If services are in background:
 ```bash
-pkill -f "celery"
+# Stop Django
+Ctrl+C in terminal
+
+# If running in background
 pkill -f "manage.py runserver"
 ```
 

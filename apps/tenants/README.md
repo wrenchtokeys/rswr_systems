@@ -319,4 +319,26 @@ apps/tenants/
 
 ---
 
-*Author: Amelia (Clawdbot AI)  Last updated: January 29, 2026*
+## Subscription Expiry UX (v2.3, Feb 2026)
+
+### Grace Period & Blocked Page
+- **SubscriptionEnforcementMiddleware** blocks authenticated users whose subscription is expired/canceled
+- Blocked users are redirected to a dedicated blocked/upgrade page instead of being silently logged out
+- A grace period allows tenants to continue after trial expiry for a short window
+
+### Email Alerts
+- `check_subscription_alerts` management command (scheduled via EB cron):
+  - Sends expiry warning at 7 days, 3 days, and 1 day before trial end
+  - Sends "your trial has expired" email on day-of
+- Emails sent from `notifications@rssystems.io` via SendGrid
+
+### Subscription Middleware
+The `SubscriptionEnforcementMiddleware` runs after `TenantMiddleware` and:
+1. Checks `tenant.subscription_status` on every authenticated request
+2. Allows `trialing` and `active` through
+3. Redirects `expired`, `canceled` to the blocked/upgrade page
+4. Skips check for admin, static, health-check, and billing/webhook URLs
+
+---
+
+*Author: Amelia (Clawdbot AI)  Last updated: March 2026*

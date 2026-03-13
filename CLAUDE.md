@@ -62,10 +62,17 @@ python manage.py security_audit              # Security checks
 python manage.py setup_simplified_rewards    # Seed 4 default reward options
 ```
 
-### Notification Testing
+### Notification & Billing Commands
 ```bash
 python manage.py test_ses email@example.com   # Test SendGrid delivery
-python manage.py check_notifications          # Check notification queue health
+
+# Billing (also scheduled via EB cron)
+python manage.py process_batch_invoices       # Generate batch invoices
+python manage.py process_overdue_invoices     # Mark overdue, send reminders
+python manage.py generate_aging_report        # Refresh aging data
+
+# Subscription alerts (scheduled via EB cron)
+python manage.py check_subscription_alerts    # Send expiry warning emails
 ```
 
 ---
@@ -126,6 +133,14 @@ Tax is calculated automatically on every `Repair.save()` via `TaxService(tenant=
 All fire via `core.services.notification_service`. Per-user and per-customer preferences. Customer notifications are company-scoped (all `CustomerUser` accounts for a company share the feed).
 
 **Reward Integration**: Points-based loyalty with referral codes. `RewardOption` objects are tenant-scoped (have a `tenant` FK). `get_reward_options(tenant=...)` filters by tenant. Tests must pass `tenant=` when creating RewardOptions.
+
+**Configure Your Shop** (`/owner/setup/`): Onboarding page where new owners fill in shop info. Includes viscosity auto-populate — selecting windshield type auto-fills viscosity value.
+
+**BillingConfig (known issue CODE-002)**: BillingConfig is a singleton with no `tenant` FK. All tenants share one BillingConfig. Multi-tenant config is backlogged.
+
+**v2.3 — Subscription Expiry UX**: Grace period, blocked/upgrade page, subscription enforcement middleware, email alerts via `check_subscription_alerts` management command.
+
+**v2.4 — Admin Console Overhaul**: Dashboard widget, tenant filtering, CSV exports, global search, audit log. Tests: `tests/test_admin.py` (41 tests).
 
 ### Technician Auto-Assignment
 

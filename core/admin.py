@@ -276,8 +276,9 @@ class DeliveryLogAdmin(admin.ModelAdmin):
 
     def cost_display(self, obj):
         """Display cost with currency formatting"""
-        if obj.cost and obj.cost > 0:
-            return f"${obj.cost:.4f}"
+        cost = getattr(obj, 'estimated_cost', None)
+        if cost and cost > 0:
+            return f"${cost:.4f}"
         return "—"
     cost_display.short_description = 'Cost'
 

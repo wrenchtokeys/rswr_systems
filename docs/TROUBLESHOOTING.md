@@ -812,6 +812,7 @@ When reporting issues, include:
 - **Django REST Framework**: https://www.django-rest-framework.org/
 - **Project Documentation**: See `/docs` directory
 - **Code Comments**: Inline documentation throughout codebase
+- **Contact**: contact@rssystems.io
 
 ---
 

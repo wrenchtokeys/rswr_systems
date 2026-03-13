@@ -1,7 +1,7 @@
 # Customer Portal App
 
 ## Overview
-The Customer Portal is a Django web application that provides a complete self-service interface for RSWR Systems clients. It enables customers to view their repair history, request new windshield repairs, manage approvals, and visualize their repair data through interactive charts. The portal is designed to be intuitive, responsive, and information-rich for customers.
+The Customer Portal is a Django web application that provides a complete self-service interface for RS Systems clients. It enables customers to view their repair history, request new windshield repairs, manage approvals, view invoices, and visualize their repair data through interactive charts. The portal is designed to be intuitive, responsive, and information-rich for customers.
 
 ## Key Features
 
@@ -160,9 +160,19 @@ The Customer Portal exposes two main API endpoints for data visualization:
 - **Authentication**: Requires customer user login
 - **Powers**: Repair Frequency Over Time line chart
 
+### Invoice Portal
+- **Invoice List** (`/app/invoices/`): View all invoices with status badges (Paid, Overdue, Sent, Partial)
+- **Invoice Detail** (`/app/invoices/<id>/`): Line items, subtotal, discount, total, payment history
+- **Pay Now**: Stripe checkout integration for online payments
+- **Download PDF**: S3-hosted invoice PDFs
+
 ## Technical Dependencies
 - **Django**: Core web framework
 - **D3.js v7**: Data visualization library
 - **Bootstrap**: UI components and responsive design
 - **Font Awesome**: Icon library for interface elements
 - **Django ORM**: Database access and model relationships
+
+## Production URL
+
+Customer portal is accessible at: `https://rssystems.io/app/`

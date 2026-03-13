@@ -2,8 +2,12 @@
 
 **Purpose**: Daily, weekly, and monthly operational procedures for the RS Systems notification system.
 
-**Last Updated**: November 30, 2025
+**Last Updated**: March 2026
 **Audience**: DevOps Team, Backend Engineers, On-Call Engineers
+
+> **Architecture**: Notifications are **synchronous** — no Celery workers, no Redis, no background queues.
+> Emails deliver inline via SendGrid during the request. Billing tasks run as management commands
+> via EB cron (not notification tasks).
 
 ---
 
@@ -13,120 +17,43 @@
 2. [Weekly Review Procedures](#weekly-review-procedures)
 3. [Monthly Maintenance Tasks](#monthly-maintenance-tasks)
 4. [Incident Response Procedures](#incident-response-procedures)
-5. [Maintenance Windows](#maintenance-windows)
-6. [Health Check Dashboard](#health-check-dashboard)
-7. [Performance Baselines](#performance-baselines)
+5. [Health Check Dashboard](#health-check-dashboard)
+6. [Performance Baselines](#performance-baselines)
+7. [Troubleshooting Runbook](#troubleshooting-runbook)
 
 ---
 
 ## Daily Monitoring Tasks
 
-**Time Required**: 15-20 minutes
-**When**: First thing in the morning (9:00 AM)
-**Owner**: On-call engineer or designated team member
+**Time Required**: 10-15 minutes
+**When**: Morning (9:00 AM)
+**Owner**: On-call engineer
 
-### 1. Check CloudWatch Dashboard
-
-**Dashboard URL**: https://console.aws.amazon.com/cloudwatch/
-
-**Metrics to Review**:
+### 1. Check Application Health
 
 ```bash
-# Quick check via CLI (optional)
-aws cloudwatch get-metric-statistics \
-    --namespace RS_Systems/Notifications \
-    --metric-name NotificationCreated \
-    --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
-    --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
-    --period 3600 \
-    --statistics Sum \
-    --region us-east-1
+# Production health check
+curl -s https://rssystems.io/health/
+
+# Expected: {"status": "healthy"}
 ```
-
-**Key Indicators**:
--  **NotificationCreated**: Should show steady daily volume (baseline: 50-200/day)
--  **NotificationDelivered**: Should be 95% of created notifications
--  **NotificationFailed**: Should be <5% of created notifications
--  **DeliveryLatency**: Average should be <5 seconds
--  **SMSCost**: Daily total should be <$50
--  **QueueDepth**: Should be <100 pending tasks
-
-**Red Flags**:
--  NotificationFailed spike (>10% of total)
--  SMSCost >$50 in 24 hours
--  QueueDepth >500 for >10 minutes
--  DeliveryLatency >30 seconds average
 
 ### 2. Review CloudWatch Alarms
 
-**Check Alarm Status**:
 ```bash
 aws cloudwatch describe-alarms \
-    --alarm-name-prefix RS-Notifications- \
+    --alarm-name-prefix RS-Systems- \
     --state-value ALARM \
     --region us-east-1
 ```
 
-**Expected**: All alarms in `OK` state
+**Expected**: All alarms in `OK` state.
 
-**If ALARM State**:
-1. Click alarm name to see details
-2. Review graph to understand trigger
-3. Follow [Troubleshooting Runbook](#troubleshooting-runbook) below
-4. Document incident (see [Incident Response](#incident-response-procedures))
+### 3. Check Delivery Success Rates
 
-### 3. Check Sentry for Errors
-
-**Dashboard URL**: https://sentry.io/organizations/your-org/issues/
-
-**Review**:
--  **New Issues**: Should be 0-2 new issues per day
--  **Event Volume**: Check for unusual spikes
--  **Performance**: Review slow transactions (>5s)
-
-**Action Items**:
-- Triage new issues (assign severity P1-P4)
-- Resolve or snooze known issues
-- Create tickets for recurring issues
-
-### 4. Verify Celery Workers Healthy
-
-**Check Worker Status**:
 ```bash
-# SSH to production server
-ssh ec2-user@your-production-server
-
-# Check systemd services
-sudo systemctl status celery-worker
-sudo systemctl status celery-beat
-
-# Check active tasks
-celery -A rs_systems inspect active
-
-# Check worker stats
-celery -A rs_systems inspect stats
-```
-
-**Expected Output**:
-```
-celery-worker.service - Celery Worker for RS Systems
-   Active: active (running) since [timestamp]
-
-celery@hostname:
-  - pool: prefork
-  - concurrency: 8
-  - autoscaler: off
-```
-
-**Red Flags**:
--  Service status: `inactive (dead)`
--  No worker processes running
--  Worker restarted recently (<1 hour ago)
-
-### 5. Check Delivery Success Rates
-
-**Query Database**:
-```bash
+cd /var/app/current
+source /var/app/venv/*/bin/activate
 python manage.py shell
 
 from core.models import NotificationDeliveryLog
@@ -135,126 +62,38 @@ from datetime import timedelta
 
 yesterday = timezone.now() - timedelta(days=1)
 
-# Email success rate
-email_total = NotificationDeliveryLog.objects.filter(
-    channel='email',
-    created_at__gte=yesterday
-).count()
-
-email_delivered = NotificationDeliveryLog.objects.filter(
-    channel='email',
-    created_at__gte=yesterday,
-    status='delivered'
-).count()
-
+email_total = NotificationDeliveryLog.objects.filter(channel='email', created_at__gte=yesterday).count()
+email_delivered = NotificationDeliveryLog.objects.filter(channel='email', created_at__gte=yesterday, status='delivered').count()
 email_rate = (email_delivered / email_total * 100) if email_total > 0 else 0
-print(f"Email Delivery Rate (24h): {email_rate:.1f}%")
-
-# SMS success rate
-sms_total = NotificationDeliveryLog.objects.filter(
-    channel='sms',
-    created_at__gte=yesterday
-).count()
-
-sms_delivered = NotificationDeliveryLog.objects.filter(
-    channel='sms',
-    created_at__gte=yesterday,
-    status='delivered'
-).count()
-
-sms_rate = (sms_delivered / sms_total * 100) if sms_total > 0 else 0
-print(f"SMS Delivery Rate (24h): {sms_rate:.1f}%")
+print(f"Email Delivery Rate (24h): {email_rate:.1f}% ({email_delivered}/{email_total})")
 ```
 
-**Target Rates**:
--  Email: 95%
--  SMS: 98%
+**Target**: Email ≥ 95%
 
-**If Below Target**:
-- Review failed delivery logs
-- Check for common error patterns
-- Follow troubleshooting runbook
+### 4. Check EB Cron (Billing Tasks)
 
-### 6. Quick Log Review
+Verify billing management commands ran:
 
-**Check for Errors**:
 ```bash
-# Check Celery worker logs
-sudo journalctl -u celery-worker --since "1 hour ago" | grep ERROR
-
-# Check Django application logs
-sudo journalctl -u gunicorn --since "1 hour ago" | grep ERROR
-
-# Check for repeated errors
-sudo journalctl -u celery-worker --since "24 hours ago" | grep ERROR | sort | uniq -c | sort -rn | head -10
+eb logs | grep -E "(process_batch_invoices|process_overdue_invoices|generate_aging_report)"
 ```
 
-**No errors**:  Proceed
-**Errors found**: Investigate and create tickets as needed
+Or check the EB cron log directly:
+
+```bash
+eb ssh
+sudo tail -50 /var/log/eb-activity.log | grep billing
+```
 
 ---
 
 ## Weekly Review Procedures
 
-**Time Required**: 45-60 minutes
-**When**: Monday morning (10:00 AM)
-**Owner**: Backend team lead or DevOps lead
+**Time Required**: 30-45 minutes
+**When**: Monday morning
 
-### 1. Analyze SMS Cost Trends
+### 1. Analyze Notification Volume
 
-**Weekly Cost Report**:
-```bash
-# Get SMS costs for past 7 days
-python manage.py shell
-
-from core.models import NotificationDeliveryLog
-from django.utils import timezone
-from datetime import timedelta
-from decimal import Decimal
-import pandas as pd
-
-week_ago = timezone.now() - timedelta(days=7)
-
-# Daily SMS costs
-daily_costs = []
-for i in range(7):
-    day_start = week_ago + timedelta(days=i)
-    day_end = day_start + timedelta(days=1)
-
-    cost = NotificationDeliveryLog.objects.filter(
-        channel='sms',
-        created_at__gte=day_start,
-        created_at__lt=day_end,
-        status='delivered'
-    ).aggregate(total=Sum('cost'))['total'] or Decimal('0')
-
-    daily_costs.append({
-        'date': day_start.date(),
-        'cost': float(cost),
-        'count': NotificationDeliveryLog.objects.filter(
-            channel='sms',
-            created_at__gte=day_start,
-            created_at__lt=day_end
-        ).count()
-    })
-
-for day in daily_costs:
-    print(f"{day['date']}: ${day['cost']:.2f} ({day['count']} SMS)")
-
-weekly_total = sum(d['cost'] for d in daily_costs)
-print(f"\nWeekly Total: ${weekly_total:.2f}")
-print(f"Monthly Projection: ${weekly_total * 4.3:.2f}")
-```
-
-**Action Items**:
--  Document weekly cost
--  Compare to previous week (trend analysis)
--  Flag if monthly projection >$1,500
--  Identify cost optimization opportunities
-
-### 2. Review Notification Volume Patterns
-
-**Volume Analysis**:
 ```bash
 python manage.py shell
 
@@ -265,38 +104,17 @@ from django.db.models import Count
 
 week_ago = timezone.now() - timedelta(days=7)
 
-# Notifications by category
 category_breakdown = Notification.objects.filter(
     created_at__gte=week_ago
-).values('category').annotate(
-    count=Count('id')
-).order_by('-count')
+).values('category').annotate(count=Count('id')).order_by('-count')
 
 print("Weekly Notifications by Category:")
 for cat in category_breakdown:
     print(f"  {cat['category']}: {cat['count']}")
-
-# Notifications by priority
-priority_breakdown = Notification.objects.filter(
-    created_at__gte=week_ago
-).values('priority').annotate(
-    count=Count('id')
-).order_by('-count')
-
-print("\nWeekly Notifications by Priority:")
-for pri in priority_breakdown:
-    print(f"  {pri['priority']}: {pri['count']}")
 ```
 
-**Questions to Ask**:
-- Are volume patterns expected?
-- Any unexpected spikes in certain categories?
-- Is URGENT priority being overused? (should be <10% of total)
-- Any notification loops detected?
+### 2. Failed Delivery Analysis
 
-### 3. Failed Delivery Analysis
-
-**Review Top Failure Reasons**:
 ```bash
 python manage.py shell
 
@@ -307,211 +125,41 @@ from django.db.models import Count
 
 week_ago = timezone.now() - timedelta(days=7)
 
-# Top error messages
-error_summary = NotificationDeliveryLog.objects.filter(
+errors = NotificationDeliveryLog.objects.filter(
     created_at__gte=week_ago,
     status__in=['failed', 'failed_permanent']
-).values('error_message').annotate(
-    count=Count('id')
-).order_by('-count')[:10]
+).values('error_message').annotate(count=Count('id')).order_by('-count')[:10]
 
 print("Top Failure Reasons (Past Week):")
-for i, error in enumerate(error_summary, 1):
-    print(f"{i}. {error['count']:3d}  {error['error_message'][:70]}")
+for e in errors:
+    print(f"  {e['count']:3d}  {e['error_message'][:70]}")
 ```
 
-**Action Items**:
-- Document recurring errors
-- Create tickets for fixable issues
-- Update validation logic if needed
-- Improve error messages for users
+### 3. Database Cleanup Check
 
-### 4. Performance Review
-
-**Check Average Delivery Times**:
 ```bash
-# Query CloudWatch for weekly latency stats
-aws cloudwatch get-metric-statistics \
-    --namespace RS_Systems/Notifications \
-    --metric-name DeliveryLatency \
-    --start-time $(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%S) \
-    --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
-    --period 86400 \
-    --statistics Average,Maximum,Minimum \
-    --region us-east-1
+python manage.py shell
+
+from core.models import NotificationDeliveryLog
+from django.utils import timezone
+
+oldest = NotificationDeliveryLog.objects.order_by('created_at').first()
+if oldest:
+    age = (timezone.now() - oldest.created_at).days
+    print(f"Oldest delivery log: {age} days old")
+    if age > 95:
+        print("WARNING: Cleanup task may not be running")
 ```
-
-**Targets**:
-- Average: <5 seconds
-- P95: <10 seconds
-- Maximum: <30 seconds
-
-**If Degraded**: Investigate database query performance, caching, worker capacity
-
-### 5. Review and Close Sentry Issues
-
-**Sentry Triage**:
-1. Review all open issues in Sentry
-2. Categorize by severity:
-   - **Critical**: Affecting >10% of users  Fix immediately
-   - **High**: Affecting <10% users  Fix this sprint
-   - **Medium**: Edge cases  Schedule for next sprint
-   - **Low**: Enhancement/optimization  Backlog
-3. Resolve or snooze issues
-4. Update documentation for known issues
-
-**Goal**: <5 open high-priority issues
 
 ---
 
 ## Monthly Maintenance Tasks
 
-**Time Required**: 2-3 hours
+**Time Required**: 1-2 hours
 **When**: First Monday of each month
-**Owner**: Backend team + DevOps team
 
-### 1. Performance Optimization Review
+### 1. Database Cleanup
 
-**Database Performance**:
-```bash
-# Check slow queries (if slow query log enabled)
-# Or use Django Debug Toolbar in staging
-
-python manage.py shell
-
-from django.db import connection
-from django.test.utils import override_settings
-
-# Test notification history view performance
-# Count queries (should be <10 after Phase 6 optimizations)
-with override_settings(DEBUG=True):
-    # Simulate view logic
-    from apps.technician_portal.views import notification_history
-    # ... test query count
-
-print(f"Total queries: {len(connection.queries)}")
-```
-
-**Action Items**:
-- Review slow query log
-- Add missing indexes if identified
-- Optimize views with high query counts
-- Test caching effectiveness
-
-### 2. Cost Analysis and Forecasting
-
-**Monthly Cost Report**:
-```bash
-python manage.py shell
-
-from core.models import NotificationDeliveryLog
-from django.utils import timezone
-from datetime import timedelta
-from decimal import Decimal
-
-month_ago = timezone.now() - timedelta(days=30)
-
-# Email costs (essentially free with SES)
-email_count = NotificationDeliveryLog.objects.filter(
-    channel='email',
-    created_at__gte=month_ago,
-    status='delivered'
-).count()
-
-# SMS costs
-sms_cost = NotificationDeliveryLog.objects.filter(
-    channel='sms',
-    created_at__gte=month_ago,
-    status='delivered'
-).aggregate(total=Sum('cost'))['total'] or Decimal('0')
-
-sms_count = NotificationDeliveryLog.objects.filter(
-    channel='sms',
-    created_at__gte=month_ago
-).count()
-
-print(f"30-Day Summary:")
-print(f"  Emails Sent: {email_count}")
-print(f"  SMS Sent: {sms_count}")
-print(f"  SMS Cost: ${float(sms_cost):.2f}")
-print(f"  Average Cost/SMS: ${float(sms_cost/sms_count):.4f}" if sms_count > 0 else "  Average: N/A")
-
-# Project next month
-print(f"\nNext Month Projection:")
-print(f"  Estimated SMS Cost: ${float(sms_cost):.2f}")
-```
-
-**Budget Review**:
-- Target: <$1,500/month for SMS
-- If over budget: Review SMS usage, consider email-only for LOW priority
-
-### 3. Review and Update CloudWatch Alarms
-
-**Alarm Tuning**:
-```bash
-# List current alarm thresholds
-aws cloudwatch describe-alarms \
-    --alarm-name-prefix RS-Notifications- \
-    --region us-east-1 \
-    --query 'MetricAlarms[*].[AlarmName,Threshold]' \
-    --output table
-```
-
-**Questions**:
-- Are alarm thresholds still appropriate based on actual metrics?
-- Too many false positives? (increase threshold)
-- Missing real issues? (decrease threshold)
-- Need new alarms for emerging patterns?
-
-**Action**: Update thresholds as needed using CloudWatch console or script
-
-### 4. Test Disaster Recovery Procedures
-
-**Backup Validation**:
-```bash
-# Verify automated backups are working
-aws rds describe-db-snapshots \
-    --db-instance-identifier your-rds-instance \
-    --query 'DBSnapshots[*].[DBSnapshotIdentifier,SnapshotCreateTime]' \
-    --output table
-
-# Should show recent automated backups
-```
-
-**Recovery Test** (in staging):
-1. Create manual backup
-2. Simulate notification system failure
-3. Restore from backup
-4. Verify functionality
-5. Document recovery time
-
-**Goal**: Recovery Time Objective (RTO) <2 hours
-
-### 5. Database Cleanup and Maintenance
-
-**Clean Old Delivery Logs**:
-```bash
-# Automated cleanup task should run weekly
-# Verify it's working:
-python manage.py shell
-
-from core.models import NotificationDeliveryLog
-from django.utils import timezone
-from datetime import timedelta
-
-# Check oldest delivery log
-oldest = NotificationDeliveryLog.objects.order_by('created_at').first()
-print(f"Oldest delivery log: {oldest.created_at}")
-
-# Should not be >90 days old (cleanup task deletes older logs)
-age_days = (timezone.now() - oldest.created_at).days
-print(f"Age: {age_days} days")
-
-if age_days > 95:
-    print(" WARNING: Cleanup task may not be running!")
-```
-
-**Manual Cleanup** (if needed):
 ```bash
 python manage.py shell
 
@@ -520,23 +168,34 @@ from django.utils import timezone
 from datetime import timedelta
 
 cutoff = timezone.now() - timedelta(days=90)
-
-# Delete old successful deliveries only (keep failures for analysis)
 deleted_count, _ = NotificationDeliveryLog.objects.filter(
     created_at__lt=cutoff,
     status='delivered'
 ).delete()
-
 print(f"Deleted {deleted_count} old delivery logs")
 ```
 
-### 6. Documentation Updates
+### 2. Test Backup Recovery (Staging)
 
-**Review and Update**:
--  This operations guide (add new procedures learned)
--  Troubleshooting runbook (add new error patterns)
--  Deployment guide (incorporate lessons learned)
--  Performance baselines (update with current metrics)
+```bash
+# Verify automated backups
+aws rds describe-db-snapshots \
+    --db-instance-identifier rs-systems-production-db \
+    --query 'DBSnapshots[*].[DBSnapshotIdentifier,SnapshotCreateTime]' \
+    --output table
+```
+
+### 3. Verify EB Cron Configuration
+
+```bash
+eb ssh
+cat /etc/cron.d/billing_tasks
+```
+
+Expected entries:
+- `0 6 * * * process_batch_invoices`
+- `0 8 * * * process_overdue_invoices`
+- `0 9 * * * generate_aging_report`
 
 ---
 
@@ -544,324 +203,132 @@ print(f"Deleted {deleted_count} old delivery logs")
 
 ### Incident Classification
 
-**P1 (Critical) - Page Immediately**
-- **Definition**: System down or severely degraded affecting >50% of users
-- **Examples**:
-  - All emails failing (>50% failure rate)
-  - Celery workers completely down for >10 minutes
-  - Data loss or corruption
-  - SMS costs >$100/hour (runaway costs)
-- **Response Time**: Immediate (15 minutes)
-- **Escalation**: Page on-call engineer + backend lead
-- **Communication**: Post in #incidents channel immediately
+| Level | Definition | Response Time |
+|-------|-----------|---------------|
+| P1 Critical | App down, emails failing >50%, data loss | Immediate (15 min) |
+| P2 High | Email failure 10-50%, performance degradation | 1 hour |
+| P3 Medium | <10% failures, minor issues | 4 hours |
+| P4 Low | Optimization, enhancement | 1 week |
 
-**P2 (High) - Alert Team**
-- **Definition**: Significant degradation affecting <50% of users
-- **Examples**:
-  - Email failure rate 10-50%
-  - Queue backlog >5,000 for >30 minutes
-  - Performance degradation (>60s latency)
-  - SMS costs >$50/hour
-- **Response Time**: 1 hour
-- **Escalation**: Notify team in #notifications-team
-- **Communication**: Status update every 30 minutes
+### Response Steps
 
-**P3 (Medium) - Create Ticket**
-- **Definition**: Minor issues with workarounds available
-- **Examples**:
-  - Minor delivery failures (<10%)
-  - Queue backlog 1,000-5,000
-  - Cache hit rate low
-  - Single component degraded
-- **Response Time**: 4 hours (during business hours)
-- **Escalation**: Create ticket, assign to team
-- **Communication**: Update ticket progress
+1. **Acknowledge** — Post in #incidents, note start time
+2. **Assess** — Check `/health/`, CloudWatch, EB logs
+3. **Stabilize** — Restart EB environment if needed (`eb restart`)
+4. **Communicate** — Update stakeholders every 30 min for P1/P2
+5. **Resolve** — Fix root cause, verify fix
+6. **Document** — Post-mortem for P1/P2
 
-**P4 (Low) - Backlog**
-- **Definition**: Non-urgent improvements or enhancements
-- **Examples**:
-  - Optimization opportunities
-  - Documentation gaps
-  - Feature requests
-  - Code refactoring
-- **Response Time**: 1 week or next sprint
-- **Escalation**: Add to backlog
-- **Communication**: Discuss in weekly planning
-
-### Incident Response Steps
-
-**1. Acknowledge Incident**
-- Acknowledge alert in PagerDuty/CloudWatch
-- Post in #incidents Slack channel
-- Note incident start time
-
-**2. Initial Assessment**
-- Determine severity (P1-P4)
-- Identify affected components
-- Check CloudWatch metrics for scope
-- Review recent deployments/changes
-
-**3. Stabilize System**
-- Follow troubleshooting runbook for specific issue
-- Implement quick fixes (restart workers, clear queues, etc.)
-- Consider rollback if recent deployment caused issue
-
-**4. Communicate Status**
-- Update #incidents channel with findings
-- Notify affected users if customer-facing impact
-- Provide ETA for resolution
-
-**5. Resolve Root Cause**
-- Fix underlying issue
-- Verify fix in staging (if possible)
-- Deploy fix to production
-- Monitor for 30 minutes post-fix
-
-**6. Document and Follow Up**
-- Document incident in incident log
-- Create post-mortem (for P1/P2)
-- Create tickets for preventative measures
-- Update runbooks with lessons learned
-
-### Post-Mortem Template (P1/P2 Incidents)
+### Post-Mortem Template
 
 ```markdown
-# Incident Post-Mortem: [Brief Description]
-
-**Date**: YYYY-MM-DD
-**Duration**: X hours Y minutes
-**Severity**: P1/P2
-**Responders**: [Names]
+# Incident: [Brief Description]
+**Date**: YYYY-MM-DD | **Duration**: X hr Y min | **Severity**: P1/P2
 
 ## Summary
-Brief description of what happened
-
 ## Timeline
-- HH:MM - Event started (alert triggered)
-- HH:MM - Team notified
-- HH:MM - Root cause identified
-- HH:MM - Fix deployed
-- HH:MM - Incident resolved
-
 ## Root Cause
-Detailed explanation of what caused the incident
-
 ## Impact
-- Users affected: X
-- Notifications failed: Y
-- Revenue impact: $Z (if applicable)
-
 ## Resolution
-What was done to fix the issue
-
 ## Action Items
-- [ ] Ticket #123: Prevent similar issues (owner: @person)
-- [ ] Update monitoring/alerts
-- [ ] Update documentation
-
-## Lessons Learned
-What we learned and how we can improve
+- [ ] Ticket: preventative measure (owner: @person)
 ```
-
----
-
-## Maintenance Windows
-
-### Scheduled Maintenance
-
-**When**: Second Sunday of each month, 2:00 AM - 6:00 AM EST
-**Duration**: 4 hours max
-**Notification**: 1 week advance notice to users
-
-**Typical Activities**:
-- Database maintenance (vacuum, reindex)
-- Dependency updates (pip packages)
-- Infrastructure upgrades (EC2, RDS)
-- Major configuration changes
-
-**Procedures**:
-1. **Pre-Maintenance** (1 week before):
-   - Announce maintenance window
-   - Create backup
-   - Test changes in staging
-   - Prepare rollback plan
-
-2. **During Maintenance**:
-   - Put notification system in maintenance mode
-   - Apply updates
-   - Run smoke tests
-   - Monitor logs
-
-3. **Post-Maintenance**:
-   - Verify all services healthy
-   - Run full test suite
-   - Monitor for 24 hours
-   - Document changes made
 
 ---
 
 ## Health Check Dashboard
 
-### Quick Health Check URL
-
-**Endpoint**: `/health/` (if implemented)
+**Endpoint**: `https://rssystems.io/health/`
 
 **Expected Response**:
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-11-30T10:00:00Z",
+  "timestamp": "2026-03-12T10:00:00Z",
   "components": {
-    "database": "healthy",
-    "redis": "healthy",
-    "celery_worker": "healthy",
-    "celery_beat": "healthy",
-    "ses": "healthy",
-    "sns": "healthy"
+    "database": "healthy"
   }
 }
 ```
 
-**Alternative**: Manual checks via systemctl/celery commands
+**Alternative**: `eb health` from CLI
 
 ---
 
 ## Performance Baselines
 
-**Updated**: November 30, 2025
-
-### Current Baselines (Production)
+*Updated March 2026*
 
 | Metric | Baseline | Warning | Critical |
 |--------|----------|---------|----------|
 | Email Delivery Rate | 97% | <95% | <90% |
-| SMS Delivery Rate | 99% | <98% | <95% |
-| Average Latency | 3.2s | >10s | >30s |
-| Queue Depth | 20-50 | >500 | >1,000 |
-| Daily Notifications | 120 | N/A | N/A |
-| Daily SMS Cost | $15 | >$30 | >$50 |
-| Worker CPU Usage | 25% | >60% | >80% |
+| Average Send Latency | <3s (inline) | >10s | >30s |
+| Daily Notifications | 50-200 | N/A | N/A |
 | Database Connections | 15 | >40 | >50 |
-| Cache Hit Rate | 75% | <50% | <30% |
-
-**Review baselines monthly** and adjust based on growth
-
----
 
 ---
 
 ## Troubleshooting Runbook
 
-Quick reference for diagnosing and resolving common notification system issues in production.
-
 ### 1. Emails Not Sending
 
-**Symptoms**: Notifications created but emails not received, `email_sent=False`, delivery logs show `status='failed'`.
-
-**Common Causes**: AWS SES credentials invalid, SES in sandbox mode, Celery worker not running, rate limiting exceeded.
+**Symptoms**: `email_sent=False` on notifications, delivery logs show `failed`.
 
 **Investigation**:
 ```bash
-# Check Celery worker
-sudo systemctl status celery-worker
-celery -A rs_systems inspect active
-
-# Test SES
+# Test SendGrid connectivity
 python manage.py test_ses admin@rssystems.io
-
-# Check SES sandbox status
-aws ses get-account-sending-enabled --region us-east-1
 
 # Check delivery logs
 python manage.py shell -c "
 from core.models import NotificationDeliveryLog
-for log in NotificationDeliveryLog.objects.filter(channel='email', status__in=['failed', 'failed_permanent']).order_by('-created_at')[:10]:
-    print(f'ID: {log.id}, Error: {log.error_message}')
+for log in NotificationDeliveryLog.objects.filter(status__in=['failed','failed_permanent']).order_by('-created_at')[:10]:
+    print(f'Error: {log.error_message}')
 "
 ```
 
-**Resolution**: Regenerate SES SMTP credentials, request production access, restart Celery workers, reduce rate limit.
+**Resolution**: Check `SENDGRID_API_KEY` env var in EB (`eb printenv | grep SENDGRID`). Update with `eb setenv SENDGRID_API_KEY=SG....`
 
-### 2. High SMS Costs
+### 2. EB Cron Not Running
 
-**Symptoms**: CloudWatch alarm `RS-Notifications-HighSMSCost`, unexpected AWS bill.
+**Symptoms**: Batch invoices not generating, overdue invoices not updating.
 
-**Investigation**:
+```bash
+eb ssh
+sudo crontab -l
+cat /etc/cron.d/billing_tasks
+sudo tail -100 /var/log/cron
+```
+
+**Resolution**: Redeploy — EB cron is set via `.ebextensions/11_billing_cron.config`. Check that file exists and `eb deploy` was run.
+
+### 3. Notifications Not Triggering
+
+**Symptoms**: Repairs complete but no notifications created.
+
 ```bash
 python manage.py shell -c "
-from core.models import NotificationDeliveryLog
+from core.models import Notification
 from django.utils import timezone
 from datetime import timedelta
-from django.db.models import Count
-yesterday = timezone.now() - timedelta(days=1)
-sms_count = NotificationDeliveryLog.objects.filter(channel='sms', created_at__gte=yesterday).count()
-print(f'SMS sent in last 24 hours: {sms_count}')
-top = NotificationDeliveryLog.objects.filter(channel='sms', created_at__gte=yesterday).values('recipient_phone').annotate(count=Count('id')).order_by('-count')[:10]
-for r in top:
-    print(f'{r[\"recipient_phone\"]}: {r[\"count\"]} SMS')
+recent = Notification.objects.filter(created_at__gte=timezone.now()-timedelta(hours=2))
+print(f'Notifications in last 2h: {recent.count()}')
 "
 ```
 
-**Immediate action**: Disable SMS for affected users or globally reduce SMS priority threshold.
+**Resolution**: Check signal handlers in `core/signals.py`. Verify `core` app is in `INSTALLED_APPS` with correct `AppConfig`. Run `python manage.py check`.
 
-### 3. Celery Workers Not Processing
+### 4. Failed Deliveries
 
-**Symptoms**: Queue depth increasing, notifications created but not delivered.
-
-**Investigation**:
-```bash
-sudo systemctl status celery-worker
-sudo systemctl status celery-beat
-ps aux | grep celery | grep -v grep
-redis-cli -h your-elasticache-endpoint ping
-sudo journalctl -u celery-worker -n 200 | grep ERROR
-```
-
-**Resolution**: Restart services (`sudo systemctl restart celery-worker celery-beat`), check Redis connectivity, reduce concurrency if OOM.
-
-### 4. Notification Queue Backlog
-
-**Symptoms**: CloudWatch alarm `RS-Notifications-QueueBacklog` (>1,000 pending), slow delivery.
-
-**Investigation**:
-```bash
-celery -A rs_systems inspect stats
-redis-cli -h your-elasticache-endpoint llen celery
-```
-
-**Resolution**: Increase worker concurrency, add worker instances, or purge old tasks (emergency: `celery -A rs_systems purge`).
-
-### 5. Failed Deliveries
-
-**Investigation**:
 ```bash
 python manage.py shell -c "
 from core.models import NotificationDeliveryLog
 from django.db.models import Count
-errors = NotificationDeliveryLog.objects.filter(status__in=['failed', 'failed_permanent']).values('error_message').annotate(count=Count('id')).order_by('-count')[:10]
+errors = NotificationDeliveryLog.objects.filter(status__in=['failed','failed_permanent']).values('error_message').annotate(count=Count('id')).order_by('-count')[:10]
 for e in errors:
     print(f'{e[\"count\"]:4d}  {e[\"error_message\"][:80]}')
 "
 ```
-
-**Common errors**: `SMTPAuthenticationError` (regenerate SES creds), `Address not verified` (SES sandbox), `Throttling` (reduce rate limit), `InvalidParameter: Phone number` (validate E.164 format).
-
-### 6. Performance Degradation
-
-**Symptoms**: High latency (>30s), slow notification history pages.
-
-**Investigation**: Check database query counts, cache hit rate (`redis-cli info stats | grep hits`), CloudWatch latency metrics.
-
-**Resolution**: Verify indexes on `core_notification`, increase cache timeout, optimize queries with `select_related`.
-
-### Escalation Levels
-
-| Level | Definition | Response Time |
-|-------|-----------|---------------|
-| P1 Critical | >50% failure rate, workers down >10min, SMS costs >$100/hr | Immediate (15 min) |
-| P2 High | 10-50% failure, queue >5,000, latency >60s | 1 hour |
-| P3 Medium | <10% failures, queue 1,000-5,000 | 4 hours |
-| P4 Low | Optimization opportunities | 1 week |
 
 ---
 
@@ -869,9 +336,10 @@ for e in errors:
 
 - [Deployment Guide](../deployment/AWS_DEPLOYMENT.md)
 - [Notification System Docs](../development/notifications/README.md)
+- [Billing Roadmap](../../BILLING_ROADMAP.md)
 
 ---
 
-**Document Version**: 1.1
+**Document Version**: 2.0
 **Last Updated**: March 2026
 **Maintained By**: DevOps Team + Backend Team

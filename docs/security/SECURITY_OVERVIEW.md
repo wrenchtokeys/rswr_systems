@@ -459,7 +459,7 @@ User.objects.filter(username=username)
 
 **Use HTTPS Everywhere:**
 ```python
-# settings_aws.py
+# rs_systems/settings/production.py
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 ```

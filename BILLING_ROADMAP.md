@@ -177,7 +177,7 @@
 **Goal**: Production-ready billing that runs itself.
 
 ### 6.1 Batch Invoicing 
-- [x] Celery task: `billing.process_batch_invoices` runs daily at 6 AM
+- [x] Management command: `python manage.py process_batch_invoices` (scheduled via EB cron at 6 AM UTC)
 - [x] Configurable frequency: weekly, bi-weekly, monthly, or disabled
 - [x] Configurable day: day of week (0-6) or day of month (1-28)
 - [x] Auto-send option: creates as DRAFT or sends immediately
@@ -185,15 +185,15 @@
 - [x] Only processes customers with `invoice_preference='batch'`
 
 ### 6.2 Overdue Auto-Processing 
-- [x] Celery task: `billing.process_overdue_invoices` runs daily at 8 AM
-- [x] Auto-update status from SENT/PARTIAL  OVERDUE when past due date
+- [x] Management command: `python manage.py process_overdue_invoices` (scheduled via EB cron at 8 AM UTC)
+- [x] Auto-update status from SENT/PARTIAL → OVERDUE when past due date
 - [x] Configurable reminder schedule (e.g., "7,14,30" days after due)
 - [x] Customizable email subject template with variables
 - [x] Reminders logged in invoice internal_notes
 - [x] Enable/disable toggle in BillingConfig
 
 ### 6.3 Aging Report 
-- [x] Celery task: `billing.generate_aging_report`
+- [x] Management command: `python manage.py generate_aging_report` (scheduled via EB cron at 9 AM UTC)
 - [x] Buckets: current, 1-30, 31-60, 61-90, 90+ days
 - [x] Returns count + total per bucket, plus invoice details
 - [x] Can run for single tenant or all tenants

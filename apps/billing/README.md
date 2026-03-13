@@ -1,8 +1,8 @@
 # Billing App - RS Systems
 
 **Author:** Amelia (Clawdbot AI)
-**Version:** 2.2.0
-**Last Updated:** February 1, 2026
+**Version:** 2.4.0
+**Last Updated:** March 12, 2026
 
 ## Overview
 
@@ -37,7 +37,9 @@ Links repairs to invoices — prevents double-billing. Each repair can only appe
 Supports: STRIPE, CHECK, CASH, WIRE, ACH, OTHER. Tracks `reference_number`, `recorded_by`, `stripe_payment_id`.
 
 ### BillingConfig (Singleton)
-Company address, default payment terms, invoice prefix/footer. Managed via Admin > Billing > Billing Configuration.
+Company address, default payment terms, invoice prefix/footer, automation settings. Managed via Admin > Billing > Billing Configuration.
+
+> **Known issue CODE-002**: BillingConfig has no tenant FK — it is a true singleton shared across all tenants. This is a known limitation; multi-tenant BillingConfig is on the backlog.
 
 ## Services
 
@@ -50,7 +52,15 @@ Company address, default payment terms, invoice prefix/footer. Managed via Admin
 | `invoice_tracking_service.py` | Double-billing prevention, status tracking |
 | `dashboard_service.py` | Business metrics and insights |
 | `report_service.py` | Daily/weekly reports |
-| `reminder_service.py` | Payment reminders (backend ready, UI pending) |
+| `reminder_service.py` | Payment reminders (owner-triggered via UI + auto via cron) |
+
+## Management Commands (Billing)
+
+| Command | Schedule | Purpose |
+|---------|----------|---------|
+| `python manage.py process_batch_invoices` | 6 AM UTC via EB cron | Auto-generate batch invoices |
+| `python manage.py process_overdue_invoices` | 8 AM UTC via EB cron | Mark overdue, send reminders |
+| `python manage.py generate_aging_report` | 9 AM UTC via EB cron | Refresh aging data |
 
 ## Endpoints
 
@@ -142,9 +152,25 @@ SENDGRID_API_KEY=SG....
 2. URL: `https://rssystems.io/api/billing/stripe/webhook/`
 3. Events: `checkout.session.completed`, `payment_intent.succeeded`
 
-## What's Next
-- Sales tax by zip code (Phase 8)
-- Batch invoicing automation (Phase 6)
-- Reminder UI for owners
-- Aging reports
-- See [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) for full details
+## Phase 6 Features (Complete as of Mar 12, 2026)
+
+### AR Aging Report Widget
+- Widget on `/owner/invoices/` showing Current / 1-30 / 31-60 / 61-90 / 90+ day buckets
+- Color-coded green → dark red
+- AJAX-loaded from `/owner/billing/aging/` JSON endpoint
+- Export CSV at `/owner/billing/aging/export/`
+
+### Statement of Account
+- Per-customer statement at `/owner/customers/<id>/statement/`
+- Shows all invoices + payments with running balance
+- Print-friendly layout
+
+### Send Reminder from Invoice List
+- "Remind" button on each overdue/sent row in the invoice list
+- AJAX toast on success
+
+### EB Cron Scheduling
+- `.ebextensions/11_billing_cron.config` — cron.d entries for billing commands
+
+## All Phases Complete
+See [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) for full history.
