@@ -579,6 +579,8 @@ def owner_dashboard(request):
             'icon': 'fas fa-hard-hat',
         })
 
+    setup_completion = _setup_completion(tenant)
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -588,6 +590,7 @@ def owner_dashboard(request):
         'is_trial': tenant.plan == 'trial',
         'is_trial_expired': tenant.is_trial_expired,
         'setup_steps': setup_steps,
+        'setup_completion': setup_completion,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
@@ -2397,3 +2400,368 @@ def owner_customer_statement(request, customer_id):
         'statement_date': timezone.now().date(),
     }
     return render(request, 'saas/customer_statement.html', context)
+
+
+# ------------------------------------------------------------------
+# 14. Owner Setup — Unified "Configure Your Shop" Page
+# ------------------------------------------------------------------
+
+DEFAULT_VISCOSITY_RULES = [
+    {
+        'name': 'Cold Glass',
+        'min_temperature': None,
+        'max_temperature': 59.9,
+        'recommended_viscosity': 'Low',
+        'suggestion_text': (
+            'Use low viscosity resin. Allow extra cure time in cold conditions. '
+            'Consider warming the glass with a heat gun before injection for best results.'
+        ),
+        'badge_color': 'blue',
+        'display_order': 1,
+    },
+    {
+        'name': 'Cool Glass',
+        'min_temperature': 60.0,
+        'max_temperature': 74.9,
+        'recommended_viscosity': 'Low-Medium',
+        'suggestion_text': (
+            'Low to medium viscosity resin. Standard injection pressure. '
+            'Good conditions for most repairs.'
+        ),
+        'badge_color': 'green',
+        'display_order': 2,
+    },
+    {
+        'name': 'Ideal Conditions',
+        'min_temperature': 75.0,
+        'max_temperature': 95.0,
+        'recommended_viscosity': 'Medium',
+        'suggestion_text': (
+            'Medium viscosity resin. Ideal repair conditions \u2014 standard cure time and best penetration.'
+        ),
+        'badge_color': 'green',
+        'display_order': 3,
+    },
+    {
+        'name': 'Warm Glass',
+        'min_temperature': 95.1,
+        'max_temperature': 105.0,
+        'recommended_viscosity': 'High',
+        'suggestion_text': (
+            'Use high viscosity resin. Work quickly \u2014 resin cures faster in heat. '
+            'Shade the repair area if possible.'
+        ),
+        'badge_color': 'orange',
+        'display_order': 4,
+    },
+    {
+        'name': 'Hot Glass \u2014 Cool First',
+        'min_temperature': 105.1,
+        'max_temperature': None,
+        'recommended_viscosity': 'Cool Glass First',
+        'suggestion_text': (
+            'Glass is too hot for optimal repair. Cool the windshield first \u2014 park in shade, '
+            'run A/C, or use cooling spray. Once below 105\u00b0F, use high viscosity resin.'
+        ),
+        'badge_color': 'red',
+        'display_order': 5,
+    },
+]
+
+
+def _setup_completion(tenant):
+    """Return completion info for each of the 6 setup sections."""
+    from apps.billing.models import TaxRate, BillingConfig
+    from apps.technician_portal.models import ViscosityRecommendation
+    from decimal import Decimal
+
+    try:
+        billing_config = BillingConfig.get_instance()
+    except Exception:
+        billing_config = None
+
+    has_business_info = bool(tenant.business_phone and tenant.business_email)
+    has_tax = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
+    has_viscosity = ViscosityRecommendation.objects.filter(tenant=tenant, is_active=True).exists()
+    has_billing = bool(billing_config and billing_config.default_payment_terms)
+
+    return {
+        'business_info': has_business_info,
+        'pricing': True,  # always has defaults
+        'tax': has_tax,
+        'billing': has_billing,
+        'viscosity': has_viscosity,
+        'assignment': True,  # always has default
+        'critical_complete': has_business_info and has_billing,
+        'all_complete': has_business_info and has_tax and has_billing and has_viscosity,
+        'configured_count': sum([
+            has_business_info, True, has_tax, has_billing, has_viscosity, True
+        ]),
+    }
+
+
+@owner_or_manager_required
+def owner_setup_view(request):
+    """GET /owner/setup/ — unified shop configuration accordion page."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found. Please complete signup first.')
+        return redirect('signup')
+    if not membership or membership.role not in ('owner', 'manager'):
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden('Access denied.')
+
+    from apps.billing.models import TaxRate, BillingConfig
+    from apps.technician_portal.models import ViscosityRecommendation
+
+    try:
+        billing_config = BillingConfig.get_instance()
+    except Exception:
+        billing_config = None
+
+    tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).order_by('state', 'city')
+    viscosity_rules = ViscosityRecommendation.objects.filter(tenant=tenant, is_active=True).order_by('display_order')
+
+    completion = _setup_completion(tenant)
+
+    context = {
+        'tenant': tenant,
+        'membership': membership,
+        'billing_config': billing_config,
+        'tax_rates': tax_rates,
+        'viscosity_rules': viscosity_rules,
+        'completion': completion,
+        'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
+    }
+    return render(request, 'saas/owner_setup.html', context)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_setup_save_business(request):
+    """POST /owner/setup/save/business/ — AJAX save business info."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role not in ('owner', 'manager'):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    try:
+        tenant.name = request.POST.get('business_name', tenant.name).strip() or tenant.name
+        tenant.business_phone = request.POST.get('business_phone', '').strip()
+        tenant.business_email = request.POST.get('business_email', '').strip()
+        tenant.business_address = request.POST.get('business_address', '').strip()
+        logo_url = request.POST.get('logo_url', '').strip()
+        if logo_url:
+            # Store logo URL in a note field if no logo_url field exists
+            pass
+        tenant.save(update_fields=['name', 'business_phone', 'business_email', 'business_address'])
+        return JsonResponse({'success': True, 'message': 'Business info saved!'})
+    except Exception as e:
+        logger.error(f"Setup save business error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_setup_save_pricing(request):
+    """POST /owner/setup/save/pricing/ — AJAX save pricing structure."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role not in ('owner', 'manager'):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    try:
+        from decimal import Decimal, InvalidOperation
+
+        def _parse(field, default):
+            try:
+                val = request.POST.get(field, '').strip()
+                return Decimal(val) if val else default
+            except (InvalidOperation, ValueError):
+                return default
+
+        pricing_model = request.POST.get('pricing_model', 'progressive')
+        tenant.use_progressive_pricing = (pricing_model == 'progressive')
+        tenant.repair_price_1 = _parse('repair_price_1', Decimal('50.00'))
+        tenant.repair_price_2 = _parse('repair_price_2', Decimal('40.00'))
+        tenant.repair_price_3 = _parse('repair_price_3', Decimal('35.00'))
+        tenant.repair_price_4 = _parse('repair_price_4', Decimal('30.00'))
+        tenant.repair_price_5_plus = _parse('repair_price_5_plus', Decimal('25.00'))
+        tenant.save(update_fields=[
+            'use_progressive_pricing',
+            'repair_price_1', 'repair_price_2', 'repair_price_3',
+            'repair_price_4', 'repair_price_5_plus',
+        ])
+        return JsonResponse({'success': True, 'message': 'Pricing saved!'})
+    except Exception as e:
+        logger.error(f"Setup save pricing error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_setup_save_tax(request):
+    """POST /owner/setup/save/tax/ — AJAX save tax rates."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role not in ('owner', 'manager'):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    try:
+        from decimal import Decimal, InvalidOperation
+        from apps.billing.models import TaxRate, BillingConfig
+
+        tax_enabled = request.POST.get('tax_enabled') == '1'
+
+        def _dec(field, default='0'):
+            try:
+                return Decimal(request.POST.get(field, default) or default)
+            except (InvalidOperation, ValueError):
+                return Decimal(default)
+
+        state_rate = _dec('state_rate')
+        county_rate = _dec('county_rate')
+        city_rate = _dec('city_rate')
+        special_rate = _dec('special_rate')
+        total = state_rate + county_rate + city_rate + special_rate
+
+        city = request.POST.get('city', '').strip()
+        state = request.POST.get('state', 'AR').strip().upper()
+
+        # Update global BillingConfig tax enabled flag
+        config = BillingConfig.get_instance()
+        config.tax_enabled = tax_enabled
+        if tax_enabled and total > 0:
+            config.state_tax_rate = state_rate
+            config.county_tax_rate = county_rate
+            config.city_tax_rate = city_rate
+            config.special_tax_rate = special_rate
+            config.default_tax_rate = total
+            config.save()
+        else:
+            config.save(update_fields=['tax_enabled'])
+
+        # Create or update tenant TaxRate if enabled and we have location
+        if tax_enabled and total > 0 and city and state:
+            existing = TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).first()
+            if existing:
+                existing.state_rate = state_rate
+                existing.county_rate = county_rate
+                existing.city_rate = city_rate
+                existing.special_rate = special_rate
+                existing.save()
+            else:
+                TaxRate.objects.create(
+                    tenant=tenant,
+                    city=city,
+                    state=state,
+                    state_rate=state_rate,
+                    county_rate=county_rate,
+                    city_rate=city_rate,
+                    special_rate=special_rate,
+                )
+
+        return JsonResponse({'success': True, 'message': 'Tax settings saved!'})
+    except Exception as e:
+        logger.error(f"Setup save tax error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_setup_save_billing(request):
+    """POST /owner/setup/save/billing/ — AJAX save billing & invoicing config."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role not in ('owner', 'manager'):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    try:
+        from apps.billing.models import BillingConfig
+
+        config = BillingConfig.get_instance()
+        config.default_payment_terms = request.POST.get('default_payment_terms', 'COD')
+        config.overdue_reminder_enabled = request.POST.get('overdue_reminder_enabled') == '1'
+        config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
+        config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
+        try:
+            config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
+        except (ValueError, TypeError):
+            config.batch_invoice_day = 1
+        config.save(update_fields=[
+            'default_payment_terms', 'overdue_reminder_enabled', 'overdue_reminder_days',
+            'batch_invoice_frequency', 'batch_invoice_day',
+        ])
+
+        # Auto-email invoices is on the Tenant model
+        auto_email = request.POST.get('auto_email_invoices') == '1'
+        tenant.auto_invoice_enabled = auto_email
+        tenant.save(update_fields=['auto_invoice_enabled'])
+
+        return JsonResponse({'success': True, 'message': 'Billing settings saved!'})
+    except Exception as e:
+        logger.error(f"Setup save billing error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_setup_save_viscosity(request):
+    """POST /owner/setup/save/viscosity/ — AJAX toggle viscosity and auto-populate defaults."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role not in ('owner', 'manager'):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    try:
+        from apps.technician_portal.models import ViscosityRecommendation
+        from decimal import Decimal
+
+        enable = request.POST.get('enable_viscosity') == '1'
+
+        if enable:
+            # Auto-populate defaults if none exist
+            if not ViscosityRecommendation.objects.filter(tenant=tenant).exists():
+                for rule_data in DEFAULT_VISCOSITY_RULES:
+                    min_temp = Decimal(str(rule_data['min_temperature'])) if rule_data['min_temperature'] is not None else None
+                    max_temp = Decimal(str(rule_data['max_temperature'])) if rule_data['max_temperature'] is not None else None
+                    ViscosityRecommendation.objects.create(
+                        tenant=tenant,
+                        name=rule_data['name'],
+                        min_temperature=min_temp,
+                        max_temperature=max_temp,
+                        recommended_viscosity=rule_data['recommended_viscosity'],
+                        suggestion_text=rule_data['suggestion_text'],
+                        badge_color=rule_data['badge_color'],
+                        display_order=rule_data['display_order'],
+                        is_active=True,
+                    )
+            else:
+                # Re-activate existing rules
+                ViscosityRecommendation.objects.filter(tenant=tenant).update(is_active=True)
+            message = 'Viscosity recommendations enabled with default rules!'
+        else:
+            # Deactivate all rules for this tenant
+            ViscosityRecommendation.objects.filter(tenant=tenant).update(is_active=False)
+            message = 'Viscosity recommendations disabled.'
+
+        return JsonResponse({'success': True, 'message': message, 'enabled': enable})
+    except Exception as e:
+        logger.error(f"Setup save viscosity error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_setup_save_assignment(request):
+    """POST /owner/setup/save/assignment/ — AJAX save repair assignment strategy."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role not in ('owner', 'manager'):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    try:
+        strategy = request.POST.get('assignment_strategy', 'primary_first')
+        valid = [c[0] for c in tenant.ASSIGNMENT_STRATEGY_CHOICES]
+        if strategy not in valid:
+            return JsonResponse({'success': False, 'error': 'Invalid strategy.'}, status=400)
+        tenant.assignment_strategy = strategy
+        tenant.save(update_fields=['assignment_strategy'])
+        return JsonResponse({'success': True, 'message': 'Assignment strategy saved!'})
+    except Exception as e:
+        logger.error(f"Setup save assignment error: {e}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
