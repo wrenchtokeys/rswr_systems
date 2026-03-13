@@ -540,7 +540,7 @@ Example:
 Next repair:
 - Base price: $35 (3rd repair for this unit)
 - Volume discount: 15% off
-- Final price: $35 � 0.85 = $29.75
+- Final price: $35 � 0.85 = $29.75
 ```
 
 ---
@@ -698,6 +698,37 @@ You receive invoice
 
 ---
 
+## When the Shop's Subscription Expires
+
+If the windshield repair shop's RS Systems subscription has expired, you'll see a "Portal Temporarily Unavailable" screen when you try to log in or access the customer portal.
+
+### What You'll See
+
+```
+ Portal Temporarily Unavailable
+
+[Shop Name]'s customer portal is temporarily unavailable.
+Please contact the shop directly for assistance with
+your repairs or account.
+
+[Shop Phone]
+[Shop Email]
+```
+
+### What This Means for You
+
+- Your repair history is **safe** — no data is lost
+- You can't view repairs, invoices, or approve work orders while the shop's subscription is inactive
+- The issue is on the **shop's end**, not yours
+
+### What to Do
+
+1. **Contact the shop directly** using the phone number or email shown on the blocked page
+2. Ask them about the status of your repairs or invoices
+3. Once the shop renews their subscription, you'll regain full access automatically — no action needed on your part
+
+---
+
 ## Best Practices
 
 ### Submitting Requests
@@ -755,9 +786,8 @@ You receive invoice
 ## Getting Help
 
 ### Support Contact
-- **Email**: [support@yourdomain.com]
-- **Phone**: [Support number]
-- **Hours**: [Business hours]
+- **Email**: contact@rssystems.io
+- **For shop-specific issues**: Contact your shop directly (they manage your account)
 
 ### Resources
 - User guide (this document)
@@ -775,6 +805,6 @@ Contact your account manager or support team.
 
 ---
 
-**Last Updated**: October 21, 2025
-**For**: RS Systems v1.4.0
+**Last Updated**: March 13, 2026
+**For**: RS Systems v2.4
 **Portal**: Customer Portal

@@ -60,13 +60,15 @@ Click the **"Add Break"** button to open the modal for each damage point:
 
 **Technical Conditions:**
 3. **Windshield Temperature** (Optional)
-   - Enter temperature in �F
-   - Optimal range: 60-80�F
+   - Enter temperature in °F
+   - Ideal range: 60-95°F (best conditions: 75-95°F)
    - Example: "72.5"
+   - If your shop owner has enabled viscosity recommendations, a colored suggestion badge will appear automatically as you type the temperature (e.g., "🟢 Medium viscosity — Ideal conditions")
 
 4. **Resin Viscosity** (Optional)
    - Enter resin type/viscosity
    - Example: "Low(l)", "Medium(m)", "High(h)"
+   - If viscosity recommendations are enabled, the suggested value will be shown — you can follow the suggestion or enter your own
 
 **Photo Documentation:**
 5. **Photo Before** (Optional)

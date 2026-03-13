@@ -222,6 +222,198 @@ When a repair or replacement is auto-assigned, the technician receives an in-app
 
 ---
 
+## Configure Your Shop Flow
+
+After completing onboarding, shop owners can fine-tune their setup using the **Configure Your Shop** page at `/owner/setup/`. A setup progress card on the owner dashboard links here until the critical sections are done.
+
+### The 6 Setup Sections
+
+```
+1. Business Info        — Name, phone, email, address (shown on invoices)
+2. Pricing Structure    — Progressive vs flat rate pricing
+3. Tax Settings         — Sales tax rates and exemptions
+4. Billing & Invoicing  — Invoice prefix, payment terms, defaults
+5. Viscosity            — Enable temperature-based resin suggestions (optional)
+6. Repair Assignment    — Manual, primary tech first, smart auto, or round robin
+```
+
+### How It Works
+
+- Each section is an **accordion** — click to expand and edit
+- Each section has its own **Save button** — changes save independently (AJAX, no page reload)
+- A **progress bar** at the top shows how many of the 6 sections are configured
+- An **⚠ Not configured** badge marks incomplete sections
+- A **✓ Complete** badge marks finished sections
+- A toast notification confirms each save
+
+### Viscosity Auto-Populate
+
+If you enable viscosity recommendations for the first time:
+- 5 default rules are automatically created for your shop
+- Rules cover: Cold (<60°F), Cool (60–75°F), Ideal (75–95°F), Warm (95–105°F), Hot >105°F
+- A preview of your rules is shown in the section
+- Click "Edit rules directly →" to customize them at `/tech/settings/viscosity/`
+
+### After Setup
+
+Once Business Info and Billing are complete, the setup progress card on the dashboard disappears. You can return to `/owner/setup/` anytime to update your configuration.
+
+---
+
+## Subscription Expiry Flow
+
+What happens when a shop's trial or subscription expires.
+
+### During Trial
+
+```
+Owner signs up
+    ↓
+30-day free trial begins
+    ↓
+7 days before trial ends:
+- Owner dashboard shows "Trial Expiring Soon" warning banner
+- Banner includes days remaining and an upgrade link
+    ↓
+Trial expires
+- Owner dashboard shows "Your free trial has expired" banner
+- Access is still available during the grace period
+```
+
+### When Subscription Expires (Paid or Trial)
+
+```
+Subscription expires
+    ↓
+30-day grace period begins
+- Owners and managers: see warning banner, can still use the system
+- Technicians and customers: can still access
+    ↓
+Grace period ends
+- Subscription middleware blocks all portal access
+- Everyone sees the "Subscription Blocked" screen
+```
+
+### What Each Role Sees After Grace Period
+
+**Owners and Managers**:
+```
+Your Subscription Has Expired
+
+Your RS Systems subscription is no longer active.
+Upgrade now to restore full access.
+
+[Upgrade Now →]
+
+Questions? Email us at contact@rssystems.io
+```
+
+**Technicians**:
+```
+Shop Subscription Expired
+
+Your shop's RS Systems subscription has expired.
+Contact your shop owner to reactivate.
+
+Owner: [Name] — [email@example.com]
+
+Once the subscription is renewed, you'll regain access automatically.
+```
+
+**Customers**:
+```
+Portal Temporarily Unavailable
+
+[Shop Name]'s customer portal is temporarily unavailable.
+Please contact the shop directly.
+
+[Shop Phone]
+[Shop Email]
+```
+
+### Reactivating
+
+1. Owner goes to `/owner/billing/` (still accessible even when blocked, for owners only)
+2. Upgrades or renews the subscription via Stripe
+3. Subscription status updates to `active`
+4. All users regain access immediately — no action required from technicians or customers
+
+Admins can also reactivate a subscription from the Django admin:
+- Go to Admin → Tenants → Tenants
+- Select the tenant
+- Use action: **✅ Activate subscription**
+
+---
+
+## Statement of Account Flow
+
+Owners can generate a Statement of Account for any customer — useful for billing disputes, collections, or customer requests.
+
+### Accessing a Statement
+
+```
+1. Go to /owner/ (Owner Dashboard)
+2. Click "Customers" or "Invoices" in the sidebar
+3. Find the customer in the list
+4. Click their name to view customer details
+5. Look for "Statement of Account" or navigate directly:
+   /owner/customers/<customer_id>/statement/
+```
+
+### What's on the Statement
+
+The Statement of Account shows:
+- Customer name and your shop's billing info
+- Statement date
+- All invoices for this customer with status (Paid, Sent, Overdue, etc.)
+- Invoice totals, amounts paid, amounts due
+- Summary: total outstanding balance
+
+### Use Cases
+
+- **Customer requests a summary** of all their outstanding invoices
+- **Collections** — print or email the statement to a customer with overdue balances
+- **Year-end accounting** — snapshot of a customer's billing history
+- **Dispute resolution** — show exactly what was invoiced and when
+
+---
+
+## Aging Report Flow
+
+The AR Aging Report shows all outstanding invoices grouped by how long they've been unpaid. It's a standard accounts receivable tool to identify who owes money and for how long.
+
+### Accessing the Aging Report
+
+```
+1. Go to /owner/billing/ (Owner Invoices page)
+2. The "AR Aging Report" widget appears at the top of the page
+3. Data loads automatically when the page opens
+```
+
+The widget shows invoices bucketed by age:
+- **Current** — due date hasn't passed yet
+- **1–30 days overdue**
+- **31–60 days overdue**
+- **61–90 days overdue**
+- **90+ days overdue**
+
+Each bucket shows the number of invoices and total dollar amount.
+
+### Exporting to CSV
+
+Click **Export CSV** in the aging report widget header to download a full breakdown including customer name, invoice number, invoice date, due date, and amount due for every outstanding invoice.
+
+**CSV URL**: `/owner/billing/aging/export/`
+
+### How to Use It
+
+1. **Identify priority collections** — focus on the 90+ days overdue bucket first
+2. **Export the CSV** and share with your bookkeeper or accountant
+3. **Cross-reference with customer statements** — generate a statement for any overdue customer at `/owner/customers/<id>/statement/`
+4. **Take action**: Send reminders, call customers, or mark invoices as OVERDUE in Admin → Billing → Invoices
+
+---
+
 ## Summary: How Everyone Connects
 
 ```

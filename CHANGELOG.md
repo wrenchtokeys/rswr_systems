@@ -4,6 +4,14 @@ All notable changes to RS Systems are documented here.
 
 ## [Unreleased] — 2026-03-13
 
+### Documentation
+- **ADMIN_GUIDE.md** — Updated for v2.4 admin overhaul: added Admin Dashboard section (metrics, subscription overview, activity feed), Tenant Filtering section (TenantFilterMixin behavior for superusers vs non-superusers), Subscription Management section (extend trial 7/30d, activate, deactivate actions), CSV Exports section (repairs, invoices, customers), Bulk Invoice Generation section (CustomerAdmin action), Audit Log section (Django LogEntry viewer, color-coded badges), Global Search section (/admin/search/). Updated all navigation arrows to use → format. Bumped to v2.4.
+- **CUSTOMER_GUIDE.md** — Added "When the Shop's Subscription Expires" section explaining what customers see (blocked screen with shop contact info) and what to do. Updated support contact email to contact@rssystems.io. Bumped to v2.4.
+- **TECHNICIAN_GUIDE.md** — Added viscosity recommendation note with default temperature rules table. Clarified that settings pages are accessible to owners AND managers (not just `is_manager=True` technicians). Bumped to v2.4.
+- **VISCOSITY_CONFIGURATION_GUIDE.md** — Major rewrite. Primary access path is now /owner/setup/ (Configure Your Shop) with auto-populate defaults on first enable. Documented all 5 default rules with temperature ranges and suggestion text. Clarified that owners and managers can access settings (fixed @technician_required bug note). Manual editing still available at /tech/settings/viscosity/. Bumped to v2.4.
+- **USER_FLOWS.md** — Added 4 new flows: Configure Your Shop (setup accordion, viscosity auto-populate), Subscription Expiry (trial warning → grace → blocked, per-role screens), Statement of Account (/owner/customers/<id>/statement/), and AR Aging Report (/owner/billing/ widget + CSV export).
+- **MULTI_BREAK_QUICK_START.md** — Updated windshield temperature field to mention viscosity auto-suggestions. Corrected optimal temperature range to 60–95°F (ideal: 75–95°F) per actual ViscosityRecommendation defaults.
+
 ### Added
 - **"Configure Your Shop" unified setup page** (`/owner/setup/`)
   - 6-section accordion UI covering Business Info, Pricing, Tax, Billing, Viscosity, Assignment

@@ -1,193 +1,217 @@
-# Viscosity Recommendation Configuration Guide
+# Viscosity Recommendations Configuration Guide
 
-## Overview
-The system provides intelligent, real-time resin viscosity recommendations to technicians based on windshield temperature. These recommendations are fully configurable by managers through a modern, card-based interface in the technician portal.
+How to set up and manage temperature-based resin viscosity recommendations for your technicians.
 
-## Accessing Configuration
+## Table of Contents
+- [What Are Viscosity Recommendations?](#what-are-viscosity-recommendations)
+- [Who Can Configure This?](#who-can-configure-this)
+- [Quick Setup via Configure Your Shop](#quick-setup-via-configure-your-shop)
+- [Default Rules](#default-rules)
+- [Manual Editing via Settings](#manual-editing-via-settings)
+- [Managing Rules](#managing-rules)
+- [What Technicians See](#what-technicians-see)
+- [Troubleshooting](#troubleshooting)
 
-### For Managers (Recommended)
-1. **Login to Technician Portal**: Login with your manager account at `/tech/login/`
-2. **Open User Menu**: Click your username in the top-right corner
-3. **Click "Manager Settings"**: Select the sliders icon option from the dropdown
-4. **Navigate to Viscosity Rules**: Click the "Viscosity Rules" card on the settings dashboard
-5. **Manage Rules**: Use the card-based interface to view, add, edit, or delete rules
+---
 
-### For Administrators (Alternative)
-1. **Login to Django Admin**: Navigate to `/admin/` and login with staff credentials
-2. **Navigate to Viscosity Recommendations**: Click on "Viscosity recommendations" under the "TECHNICIAN_PORTAL" section
-3. **View Rules**: Traditional Django admin list view interface
+## What Are Viscosity Recommendations?
 
-**Note**: Managers (users with `is_manager=True`) can only access the technician portal settings page. Staff users (administrators) have access to both interfaces.
+When technicians log a repair and enter the windshield temperature, RS Systems can automatically suggest the right resin viscosity. This helps ensure:
+- Proper resin selection for the conditions
+- Consistent technique across your team
+- Fewer callbacks from poor resin choice
 
-## Understanding Viscosity Rules
+The recommendation appears as a colored badge next to the temperature field during repair entry:
 
-Each rule consists of:
-- **Name**: Descriptive name (e.g., "Cold Weather", "Standard Conditions")
-- **Temperature Range**: Min/Max temperature thresholds in �F
-  - Leave `min_temperature` blank for "all temperatures below max"
-  - Leave `max_temperature` blank for "all temperatures above min"
-- **Recommended Viscosity**: The viscosity level to suggest (e.g., "Low", "Medium", "High")
-- **Suggestion Text**: The message technicians will see
-- **Badge Color**: Visual indicator color (blue, green, orange, red, yellow, purple)
-- **Display Order**: Priority (lower number = higher priority when rules could overlap)
-- **Active Status**: Whether the rule is currently in use
+```
+Temperature: 85°F
+
+  🟢 Medium viscosity — Ideal conditions.
+     Standard cure time and best penetration.
+```
+
+This feature is **optional**. You can enable it, disable it, or customize the rules entirely.
+
+---
+
+## Who Can Configure This?
+
+**Shop owners** and **managers** can configure viscosity recommendations.
+
+- **Owners**: Full access via "Configure Your Shop" (`/owner/setup/`) and the direct settings page (`/tech/settings/viscosity/`)
+- **Managers** (technicians with the manager flag): Access via the Manager Settings portal (`/tech/settings/viscosity/`)
+- **Regular technicians**: Can view recommendations during repairs, but cannot change the rules
+
+> **Previously**: An earlier version of the system incorrectly required the `@technician_required` permission for the viscosity settings page, which locked out some owners. This bug has been fixed — owners and managers can now access the settings page without needing a technician profile.
+
+---
+
+## Quick Setup via Configure Your Shop
+
+The easiest way to enable viscosity recommendations is through the **Configure Your Shop** page:
+
+```
+1. Go to /owner/setup/
+   (Or: Owner Dashboard → "Configure Your Shop")
+
+2. Scroll to the "Viscosity Recommendations" section
+   (Section 5 of 6 in the setup accordion)
+
+3. Check "Enable viscosity recommendations"
+
+4. Click "Save Viscosity Settings"
+```
+
+**What happens on first enable**:
+- If you've never set up viscosity rules before, the system **automatically creates 5 default rules** covering the full temperature range
+- These defaults are immediately active for your technicians
+- You can customize them at any time
+
+**If you had existing rules** that were previously disabled, enabling this will re-activate them without recreating them.
+
+**To disable**:
+- Uncheck "Enable viscosity recommendations" and save
+- Your rules are preserved but hidden from technicians until you re-enable
+
+The setup page also shows a preview of your current rules so you can confirm everything looks right before leaving the page.
+
+---
 
 ## Default Rules
 
-The system comes with 3 default rules:
+When viscosity recommendations are enabled for the first time, five rules are automatically created:
 
-| Name | Temperature Range | Viscosity | Badge Color |
-|------|------------------|-----------|-------------|
-| Cold Weather |  59.9�F | Low | Blue |
-| Standard Conditions | 60.0�F - 84.9�F | Medium | Green |
-| Hot Weather |  85.0�F | High | Orange |
+| Rule Name | Temperature Range | Recommended Viscosity | Badge Color |
+|-----------|------------------|----------------------|-------------|
+| **Cold Glass** | Below 60°F | Low | Blue |
+| **Cool Glass** | 60°F – 74.9°F | Low-Medium | Green |
+| **Ideal Conditions** | 75°F – 95°F | Medium | Green |
+| **Warm Glass** | 95.1°F – 105°F | High | Orange |
+| **Hot Glass — Cool First** | Above 105°F | Cool Glass First | Red |
 
-## Using the Manager Settings Interface
+**Default suggestion text**:
 
-### Card-Based Interface Features
-- **Visual Cards**: Each rule is displayed as an interactive card showing all key information
-- **Toggle Switch**: Quickly enable/disable rules with one click
-- **Badge Preview**: See exactly how the viscosity badge will appear to technicians
-- **Modal Editing**: Click "Edit" to open a detailed form overlay
-- **Drag-and-Drop**: Reorder rules by priority (coming soon)
-- **Real-time Updates**: Changes take effect immediately without page refresh
+- **Cold Glass**: "Use low viscosity resin. Allow extra cure time in cold conditions. Consider warming the glass with a heat gun before injection for best results."
+- **Cool Glass**: "Low to medium viscosity resin. Standard injection pressure. Good conditions for most repairs."
+- **Ideal Conditions**: "Medium viscosity resin. Ideal repair conditions — standard cure time and best penetration."
+- **Warm Glass**: "Use high viscosity resin. Work quickly — resin cures faster in heat. Shade the repair area if possible."
+- **Hot Glass — Cool First**: "Glass is too hot for optimal repair. Cool the windshield first — park in shade, run A/C, or use cooling spray. Once below 105°F, use high viscosity resin."
+
+These defaults work well for most shops. You can edit any rule to match your preferred resin brands or technique.
+
+---
+
+## Manual Editing via Settings
+
+For fine-grained control, you can edit rules individually at:
+
+**URL**: `/tech/settings/viscosity/`
+
+This page is accessible to owners and managers. It shows all your rules as cards with full edit/delete controls.
+
+### Getting There
+
+- **From Owner Dashboard**: Settings → Manager Settings → Viscosity Rules
+- **From Configure Your Shop** (`/owner/setup/`): The viscosity section includes a link: "Edit rules directly →"
+- **Direct URL**: `https://[your-domain]/tech/settings/viscosity/`
+
+---
+
+## Managing Rules
 
 ### Adding a New Rule
 
-1. Click **"Add New Rule"** button (green button in top-right)
+1. Click **"Add New Rule"** (green button at the top)
 2. Fill in the modal form:
-   - **Basic Information**:
-     - **Rule Name**: Give it a descriptive name (e.g., "Cold Weather")
-     - **Priority**: Set display order (1 = highest priority)
-   - **Temperature Range**:
-     - **Minimum Temperature**: Lower bound in �F (or leave blank for "all temps below max")
-     - **Maximum Temperature**: Upper bound in �F (or leave blank for "all temps above min")
-   - **Recommendation**:
-     - **Recommended Viscosity**: The viscosity level (e.g., "Low", "Medium", "High")
-     - **Badge Color**: Choose visual color (blue, green, orange, red, yellow, purple)
-     - **Suggestion Text**: Helpful message technicians will see
-   - **Active**: Check to enable rule immediately
+
+| Field | Description |
+|-------|-------------|
+| **Rule Name** | Descriptive name (e.g., "Cold Weather", "Summer Heat") |
+| **Min Temperature** | Lowest temperature this rule applies to (leave blank for no minimum) |
+| **Max Temperature** | Highest temperature (leave blank for no maximum) |
+| **Recommended Viscosity** | What technicians should use (e.g., "Low", "Medium", "High") |
+| **Suggestion Text** | The message shown to technicians |
+| **Badge Color** | Blue, Green, Orange, Red, Yellow, or Purple |
+| **Display Order** | Lower numbers show first in lists |
+| **Active** | Check to enable; uncheck to hide without deleting |
+
 3. Click **"Save Rule"**
-4. The new rule card will appear in the grid
 
-### Editing Existing Rules (Manager Interface)
+### Editing an Existing Rule
 
-1. Find the rule card you want to edit
-2. Click the **"Edit"** button on the card
-3. The modal form will open with current values pre-filled
-4. Modify any fields
-5. Click **"Save Rule"**
-6. Changes take effect immediately
+1. Find the rule card
+2. Click **"Edit"**
+3. Modify fields in the modal
+4. Click **"Save Rule"**
 
-**Quick Actions**:
-- **Toggle Active/Inactive**: Use the switch in the card header to enable/disable without opening the modal
-- **Delete**: Click the red "Delete" button and confirm
+### Enabling/Disabling a Rule
 
-### Editing Rules (Django Admin)
+Each rule card has an **Active** toggle switch. Toggle it to enable or disable that specific rule without deleting it.
 
-**Quick Edit (In List View)**:
-- **Display Order**: Click the number and type new value
-- **Active Status**: Check/uncheck the checkbox
-- Click **"Save"** at the bottom
+### Deleting a Rule
 
-**Full Edit**:
-1. Click on the rule name
-2. Modify any fields in the detailed form
-3. Click **"Save"**
+Click the red **"Delete"** button on the rule card and confirm. Deleted rules cannot be recovered — if you might want it back, disable it instead.
 
-## Deleting Rules
+### Tips for Good Rules
 
-### Manager Interface
-1. Click the **red "Delete" button** on the rule card
-2. Confirm deletion in the popup dialog
-3. Rule is removed immediately
+- **Don't overlap temperature ranges** — if 72°F matches two rules, the one with the lower display order wins
+- **Cover the full range** — leave the lowest rule's minimum blank and the highest rule's maximum blank so every temperature gets a suggestion
+- **Keep suggestion text short** — technicians read this quickly in the field; 1–2 sentences is ideal
+- **Use badge colors consistently** — green for good conditions, orange for caution, red for stop/act first, blue for cold
 
-### Django Admin
-1. Select rules using checkboxes
-2. Choose "Delete selected viscosity recommendations" from the action dropdown
-3. Click **"Go"**
-4. Confirm deletion
+---
 
-## Best Practices
+## What Technicians See
 
-### Temperature Boundaries
-- Avoid overlapping ranges (e.g., don't have one rule end at 60�F and another start at 60�F)
-- Use decimal precision for clean boundaries:
-  - Rule 1: max = 59.9�F
-  - Rule 2: min = 60.0�F
+Viscosity suggestions appear automatically when technicians enter a windshield temperature during repair creation or editing.
 
-### Badge Colors
-- **Blue**: Cold conditions
-- **Green**: Optimal/normal conditions
-- **Orange**: Warm/caution conditions
-- **Red**: Critical/extreme conditions
-- **Yellow**: Warning/borderline conditions
-- **Purple**: Special cases
-
-### Suggestion Text
-- Be specific and actionable
-- Example: "Low viscosity recommended for cold conditions" 
-- Avoid: "Use this one" 
-
-### Display Order
-- Lower numbers have higher priority
-- Important if temperature ranges could overlap
-- Rule with order=1 will be checked before order=2
-
-## How Technicians See Recommendations
-
-When a technician enters a windshield temperature in the repair form:
-
-1. **Real-time Update**: Suggestion appears automatically after 500ms
-2. **Visual Badge**: Colored badge with icon shows recommended viscosity
-3. **Helpful Text**: Your configured suggestion text provides guidance
-4. **Optional Field**: Temperature is optional - suggestions only show when entered
-
-### Example Display
+**In the repair form**:
 ```
-Temperature: 72�F
+Windshield Temperature: [__72__] °F
 
-  Medium viscosity recommended for    
-    optimal conditions                   
-
+ 🟢 Ideal Conditions
+ Medium viscosity — Ideal repair conditions.
+ Standard cure time and best penetration.
 ```
+
+The suggestion updates in real time as the technician types a temperature — no page reload needed.
+
+If no temperature is entered, no suggestion appears. If a temperature is entered but no rule matches, no suggestion appears (the field still works fine).
+
+Technicians **cannot** change the rules from the repair form — they can only see the recommendation and decide whether to follow it.
+
+---
 
 ## Troubleshooting
 
-### Rule Not Appearing
-- Check **Is Active** is enabled
-- Verify temperature range includes the test value
-- Check **Display Order** - higher priority rule may be matching first
+### "I enabled it but technicians don't see suggestions"
 
-### Wrong Rule Showing
-- Review temperature boundaries for overlaps
-- Check **Display Order** for rule priority
-- Verify min/max temperature values are correct decimals
+- Check that at least one rule is **active** (toggle switch is on)
+- Check that the temperature the technician entered falls within a rule's range
+- Make sure temperature ranges don't have a gap that the entered temperature falls into
 
-### No Recommendation Showing
-- Ensure at least one active rule covers the temperature range
-- Check that temperature field has a value
-- Verify API endpoint is working: `/tech/api/viscosity-suggestion/?temperature=72`
+### "The /tech/settings/viscosity/ page says permission denied"
 
-## Management Command
+- Ensure your account has owner or manager access
+- Owners: Make sure you're logged in with your owner account (the one associated with the shop's Tenant)
+- Managers: Your technician profile must have `is_manager` checked — ask your shop owner to enable it
+- If you're an owner and still blocked, contact RS Systems support at contact@rssystems.io
 
-To reset rules to defaults:
-```bash
-python manage.py setup_viscosity_rules --reset
-```
+### "I want to reset to defaults"
 
- **Warning**: This will delete all existing rules and recreate the 3 defaults.
+There's no one-click reset, but you can:
+1. Delete all existing rules
+2. Disable viscosity, then re-enable it from `/owner/setup/`
+3. The system will re-create the 5 default rules on enable
 
-## Technical Notes
+### "A technician is getting the wrong suggestion"
 
-- **Database Model**: `ViscosityRecommendation` in `apps.technician_portal.models`
-- **API Endpoint**: `/tech/api/viscosity-suggestion/`
-- **Admin Class**: `ViscosityRecommendationAdmin` in `apps.technician_portal.admin`
-- **Temperature Precision**: Uses `DecimalField` for accurate comparisons
+- Check for overlapping temperature ranges in your rules
+- Verify the rule with the correct range is active
+- Check the display order — if two rules match, the lower display order number wins
 
-## Support
+---
 
-For technical issues or questions:
-- Check Django admin error messages
-- Review server logs for API errors
-- Contact system administrator if issues persist
+**Last Updated**: March 13, 2026
+**For**: RS Systems v2.4
+**Target Users**: Shop Owners and Managers

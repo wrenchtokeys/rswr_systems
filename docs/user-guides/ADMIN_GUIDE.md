@@ -4,11 +4,18 @@ Complete guide for administrators managing RS Systems via Django admin.
 
 ## Table of Contents
 - [Getting Started](#getting-started)
+- [Admin Dashboard](#admin-dashboard)
+- [Tenant Filtering](#tenant-filtering)
+- [Subscription Management](#subscription-management)
 - [Customer Management](#customer-management)
 - [Technician Management](#technician-management)
 - [Pricing Configuration](#pricing-configuration)
 - [Repair Preferences](#repair-preferences)
 - [User Management](#user-management)
+- [CSV Exports](#csv-exports)
+- [Bulk Invoice Generation](#bulk-invoice-generation)
+- [Audit Log](#audit-log)
+- [Global Search](#global-search)
 
 ---
 
@@ -18,14 +25,23 @@ Complete guide for administrators managing RS Systems via Django admin.
 
 ```
 URL: https://[your-domain]/admin/
-Credentials: Superuser account
+Credentials: Superuser account required
 ```
+
+**Important**: The admin interface is restricted to superusers. Regular staff accounts cannot log in. Contact your system administrator to request superuser access.
 
 ### Admin Dashboard Overview
 
-```
-RS Systems Administration
+When you first log in at `/admin/`, you land on a **custom metrics dashboard** instead of the default Django list view. The dashboard shows real business data at a glance.
 
+**Sections on the dashboard**:
+- **Subscription Overview** — active, trialing, in grace period, expired tenant counts
+- **This Month** — repairs completed, invoices created, revenue collected, outstanding balance
+- **Recent Activity** — last 10 repairs and last 5 invoices across all tenants
+
+Below the metrics, the standard model list is still available:
+
+```
 AUTHENTICATION AND AUTHORIZATION
 - Groups
 - Users
@@ -35,17 +51,196 @@ CORE
 
 CUSTOMER_PORTAL
 - Customer preferences
-- Customer pricing           Pricing configuration
+- Customer pricing
 - Customer users
 - Repair approvals
-- Customer repair preferences   NEW: Approval settings
+- Customer repair preferences
 
 TECHNICIAN_PORTAL
 - Repairs
-- Technicians               Manager setup
+- Replacements
+- Technicians
 - Unit repair counts
-- Technician notifications
+- Viscosity recommendations
+
+TENANTS
+- Tenants
+- Tenant memberships
+- Subscription plans
+
+BILLING
+- Invoices
+- Payments
+- Tax rates
+- Billing config
+
+DJANGO ADMIN LOG
+- Log entries (Audit Log)
 ```
+
+---
+
+## Admin Dashboard
+
+The admin dashboard (`/admin/`) shows live business metrics pulled from the database.
+
+### Subscription Overview
+
+| Metric | What It Means |
+|--------|---------------|
+| **Active** | Tenants with a live paid subscription |
+| **Trialing** | Tenants on free trial |
+| **Expiring Soon** | Trial tenants with ≤ 7 days remaining |
+| **Grace Period** | Expired tenants still within the 30-day grace window |
+| **Expired** | Tenants whose subscription and grace period have ended |
+| **Canceled** | Tenants who explicitly canceled |
+| **Total** | All tenants in the system |
+
+### This Month's Stats
+
+| Metric | Source |
+|--------|--------|
+| **Repairs** | Completed repairs with a service date in the current calendar month |
+| **Invoices** | Invoices created this month |
+| **Revenue** | Payments collected this month (PAID + PARTIAL invoices) |
+| **Outstanding** | Total unpaid balance across all tenants (SENT + PARTIAL + OVERDUE) |
+
+### Recent Activity Feed
+
+- **Recent Repairs** — last 10 repairs created, showing customer, tech, tenant, and status
+- **Recent Invoices** — last 5 invoices, showing customer, status, and total
+
+---
+
+## Tenant Filtering
+
+RS Systems is a multi-tenant platform. The admin is tenant-aware:
+
+- **Superusers** see all data across every tenant. A "Tenant" filter appears in list views so you can narrow by shop.
+- **Non-superuser staff** only see data belonging to their own tenant. The tenant filter is hidden since it would be redundant.
+
+This applies to: Repairs, Replacements, Invoices, Payments, Customers, Technicians, and any other model with a tenant relationship.
+
+**Practical example**: A staff member at "Acme Glass" logs into `/admin/` and opens Repairs — they only see Acme Glass repairs. A superuser sees all repairs from all shops.
+
+---
+
+## Subscription Management
+
+**Navigation**: Admin → Tenants → Tenants
+
+The Tenants list provides bulk actions for managing shop subscriptions without touching Stripe directly.
+
+### Available Actions
+
+Select one or more tenants, then choose an action from the dropdown:
+
+| Action | What It Does |
+|--------|-------------|
+| **⏱ Extend trial by 7 days** | Pushes the trial expiry 7 days forward. Only affects tenants on the `trial` plan. |
+| **⏱ Extend trial by 30 days** | Same as above but 30 days. Useful for customer service situations. |
+| **✅ Activate subscription** | Sets `subscription_status` to `active` and marks the tenant as active. Use after manual payment or account resolution. |
+| **🚫 Deactivate subscription** | Sets status to `expired` and grants a 30-day grace period. The shop owner sees an upgrade prompt; technicians and customers see a blocked screen. |
+
+### Tenant Detail View
+
+Opening a tenant shows its full subscription state:
+
+- **Plan** — `trial`, `starter`, `pro`, etc.
+- **Subscription Status** — `trialing`, `active`, `expired`, `canceled`
+- **Grace Period End** — if in grace, shows the expiry date
+- **Had Paid Subscription** — whether this tenant ever had a paid plan (affects what they see when expired)
+- **Stripe IDs** — linked customer and subscription IDs for Stripe lookups
+
+### Grace Period Behavior
+
+When you deactivate a subscription or a payment fails, the system grants a **30-day grace period**. During grace:
+- The shop owner sees a warning banner but can still access the system
+- Technicians and customers can still work
+- After grace expires, all non-superuser access is blocked until the subscription is reactivated
+
+---
+
+## CSV Exports
+
+Several models support exporting selected records to CSV directly from the admin list view. Select the rows you want, choose the export action from the dropdown, and click **Go**.
+
+| Model | Action | File |
+|-------|--------|------|
+| **Repairs** | 📥 Export selected repairs as CSV | `repairs.csv` |
+| **Customers** | 📥 Export selected customers as CSV | `customers.csv` |
+| **Invoices** | 📥 Export selected invoices as CSV | `invoices.csv` |
+
+**What's included**:
+- **Repairs CSV**: ID, Tenant, Customer, Unit #, Technician, Status, Damage Type, Cost, Service Date
+- **Customers CSV**: ID, Name, Tenant, Email, Phone, Address, Customer Type, Tax Exempt
+- **Invoices CSV**: Invoice #, Customer, Invoice Date, Due Date, Payment Terms, Status, Subtotal, Tax, Total, Amount Paid, Amount Due
+
+---
+
+## Bulk Invoice Generation
+
+**Navigation**: Admin → Technician Portal → Customers
+
+You can generate draft invoices for multiple customers at once:
+
+1. Select one or more customers using the checkboxes
+2. Choose **🧾 Generate draft invoices for selected customers** from the Actions dropdown
+3. Click **Go**
+
+**What happens**:
+- For each selected customer, the system finds all **completed repairs** that haven't been billed yet
+- Creates one **DRAFT invoice** per customer covering all their unbilled repairs
+- Each repair becomes a line item on the invoice
+- Invoices use the payment terms from Billing Config (default: NET30)
+- Customers with no unbilled completed repairs are skipped
+
+**After generation**:
+- Go to Billing → Invoices to review the drafts
+- Set status to **SENT** when ready to bill
+- Use the "Mark as Sent" action or open the invoice and change status manually
+
+---
+
+## Audit Log
+
+**Navigation**: Admin → Django Admin Log → Log entries
+
+Every change made through the Django admin is automatically recorded. The audit log shows:
+
+| Column | What It Shows |
+|--------|---------------|
+| **Time** | When the action happened |
+| **User** | Who made the change (links to their user record) |
+| **Action** | Color-coded badge — Added (green), Changed (blue), Deleted (red) |
+| **Content Type** | Which model was affected (Repair, Invoice, Tenant, etc.) |
+| **Object** | The specific record that was changed |
+| **Changes** | A summary of what changed |
+
+**The audit log is read-only** — you cannot add, edit, or delete entries. This is intentional; the log is an immutable record.
+
+**Filtering options**:
+- By action type (Added / Changed / Deleted)
+- By content type (model)
+- By date range (date hierarchy at the top)
+- Search by username, email, object name, or change description
+
+---
+
+## Global Search
+
+**URL**: `/admin/search/`
+
+The global search lets you find anything across the system from one place. Enter a name, email, unit number, or invoice number and get results grouped by type:
+
+- **Customers** — matches on company name or email
+- **Repairs** — matches on unit number or customer name
+- **Invoices** — matches on invoice number or customer name
+- **Users** — matches on username, email, first name, or last name
+
+Up to 20 results per category are shown. Click any result to go straight to its admin edit page.
+
+You can also access global search from the admin navigation bar (look for the search link in the top navigation).
 
 ---
 
@@ -53,7 +248,7 @@ TECHNICIAN_PORTAL
 
 ### Viewing Customers
 
-**Navigation**: Admin  Core  Customers
+**Navigation**: Admin → Core → Customers
 
 **List View Shows**:
 - Company name
@@ -91,7 +286,7 @@ TECHNICIAN_PORTAL
 
 ### Viewing Technicians
 
-**Navigation**: Admin  Technician Portal  Technicians
+**Navigation**: Admin → Technician Portal → Technicians
 
 **List Shows**:
 - User (linked Django account)
@@ -108,7 +303,7 @@ TECHNICIAN_PORTAL
 **Prerequisites**: User account must exist first
 
 ```
-1. Admin  Technician Portal  Technicians
+1. Admin → Technician Portal → Technicians
 2. Click "Add technician"
 3. Select user from dropdown
 4. Fill basic info:
@@ -180,7 +375,7 @@ Example:
 
 ### Customer Pricing
 
-**Navigation**: Admin  Customer Portal  Customer Pricing
+**Navigation**: Admin → Customer Portal → Customer Pricing
 
 ### Creating Custom Pricing
 
@@ -256,7 +451,7 @@ Total customer repairs: 12 (exceeds threshold of 10)
 Calculation:
 - Base price (3rd repair): $31.50 (custom tier)
 - Volume discount: 15%
-- Final price: $31.50 � 0.85 = $26.78
+- Final price: $31.50 � 0.85 = $26.78
 ```
 
 ---
@@ -265,7 +460,7 @@ Calculation:
 
 ### Customer Repair Preferences
 
-**Navigation**: Admin  Customer Portal  Customer Repair Preferences
+**Navigation**: Admin → Customer Portal → Customer Repair Preferences
 
 ### Approval Modes
 
@@ -301,7 +496,7 @@ Calculation:
 
 ### Lot Walking Service Configuration
 
-**Same Interface**: Admin  Customer Portal  Customer Repair Preferences
+**Same Interface**: Admin → Customer Portal → Customer Repair Preferences
 
 Configure scheduled lot walking service for customers:
 
@@ -413,7 +608,7 @@ Result:
 ### Creating Users
 
 ```
-1. Admin  Authentication and Authorization  Users
+1. Admin → Authentication and Authorization → Users
 2. Click "Add user"
 3. Enter:
    - Username
@@ -875,6 +1070,6 @@ for r in repairs[:10]:
 
 ---
 
-**Last Updated**: October 29, 2025
-**For**: RS Systems v1.6.1
+**Last Updated**: March 13, 2026
+**For**: RS Systems v2.4
 **Target Users**: System Administrators
