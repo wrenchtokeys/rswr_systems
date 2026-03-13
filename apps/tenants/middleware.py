@@ -112,7 +112,7 @@ class TenantMiddleware(MiddlewareMixin):
             if cu and cu.customer and cu.customer.tenant:
                 return cu.customer.tenant
         except Exception:
-            pass
+            logger.exception("Unexpected error resolving tenant from CustomerUser for user=%s", user.pk if user else None)
         return None
 
     def _get_default_tenant(self, user):

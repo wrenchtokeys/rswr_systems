@@ -102,7 +102,7 @@ def _send_verification_email(request, user):
             verification_url = request.build_absolute_uri(
                 reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
-        except (CustomerUser.DoesNotExist, Exception):
+        except CustomerUser.DoesNotExist:
             # Shop owner - use password reset infrastructure for now
             # (they can verify via account settings later)
             verification_url = request.build_absolute_uri(
@@ -476,6 +476,7 @@ def _get_billing_context(tenant):
             'replacement_revenue': replacement_revenue,
         }
     except Exception:
+        logger.exception("Failed to load billing dashboard stats for tenant")
         return {
             'outstanding_invoices': [],
             'outstanding_count': 0,

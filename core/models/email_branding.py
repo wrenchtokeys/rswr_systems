@@ -13,6 +13,8 @@ Features:
 - Typography settings
 """
 
+import logging
+
 from django.db import models
 from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
@@ -21,6 +23,8 @@ from PIL import Image
 from io import BytesIO
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import sys
+
+logger = logging.getLogger(__name__)
 
 
 class EmailBrandingConfig(models.Model):
@@ -257,7 +261,7 @@ class EmailBrandingConfig(models.Model):
                     protocol = 'https' if settings.USE_HTTPS else 'http'
                     return f'{protocol}://{domain}{self.logo.url}'
                 except Exception:
-                    # Fallback to relative URL
+                    logger.warning("Failed to get current site domain for logo URL; falling back to relative URL", exc_info=True)
                     return self.logo.url
         return ''
 
