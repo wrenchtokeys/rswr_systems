@@ -194,29 +194,4 @@ STRIPE_TEST_MODE = STRIPE_SECRET_KEY.startswith('sk_test_') if STRIPE_SECRET_KEY
 INVOICE_DEFAULT_DUE_DAYS = 30
 INVOICE_FROM_EMAIL = os.environ.get('INVOICE_FROM_EMAIL', 'billing@rssystems.io')
 
-# =========================================
-# CELERY CONFIGURATION (Shared)
-# =========================================
-
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
-
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-
-CELERY_ENABLE_UTC = True
-
-CELERY_TASK_ROUTES = {
-    'core.tasks.send_notification_email': {'queue': 'notifications'},
-    'core.tasks.send_notification_sms': {'queue': 'notifications'},
-    'core.tasks.retry_failed_notifications': {'queue': 'notifications'},
-    'core.tasks.send_daily_digests': {'queue': 'notifications'},
-    'core.tasks.cleanup_old_delivery_logs': {'queue': 'maintenance'},
-}
-
-CELERY_TASK_TIME_LIMIT = 300  # 5 minutes hard limit
-CELERY_TASK_SOFT_TIME_LIMIT = 240  # 4 minutes soft limit
-
-CELERY_TASK_ACKS_LATE = True
-CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# Celery removed — notifications are synchronous; batch billing runs via management commands.

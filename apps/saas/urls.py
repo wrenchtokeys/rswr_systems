@@ -44,6 +44,22 @@ urlpatterns = [
     path('owner/invoices/<int:invoice_id>/email/', views.owner_email_invoice, name='owner_email_invoice'),
     path('owner/invoices/<int:invoice_id>/reminder/', views.owner_send_reminder, name='owner_send_reminder'),
 
+    # Aging report (Phase 6)
+    path('owner/billing/aging/', views.owner_aging_report_json, name='owner_aging_report'),
+    path('owner/billing/aging/export/', views.owner_aging_report_csv, name='owner_aging_report_csv'),
+
+    # Statement of Account (Phase 6)
+    path('owner/customers/<int:customer_id>/statement/', views.owner_customer_statement, name='owner_customer_statement'),
+
+    # Unified setup page
+    path('owner/setup/', views.owner_setup_view, name='owner_setup'),
+    path('owner/setup/save/business/', views.owner_setup_save_business, name='owner_setup_save_business'),
+    path('owner/setup/save/pricing/', views.owner_setup_save_pricing, name='owner_setup_save_pricing'),
+    path('owner/setup/save/tax/', views.owner_setup_save_tax, name='owner_setup_save_tax'),
+    path('owner/setup/save/billing/', views.owner_setup_save_billing, name='owner_setup_save_billing'),
+    path('owner/setup/save/viscosity/', views.owner_setup_save_viscosity, name='owner_setup_save_viscosity'),
+    path('owner/setup/save/assignment/', views.owner_setup_save_assignment, name='owner_setup_save_assignment'),
+
     # Tax rate management
     path('owner/tax-rates/', views.owner_tax_rates, name='owner_tax_rates'),
     path('owner/tax-rates/add/', views.owner_add_tax_rate, name='owner_add_tax_rate'),

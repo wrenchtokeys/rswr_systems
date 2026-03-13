@@ -371,6 +371,7 @@ class Invoice(models.Model):
         indexes = [
             models.Index(fields=['customer', 'status']),
             models.Index(fields=['due_date', 'status']),
+            models.Index(fields=['created_at'], name='billing_invoice_created_at_idx'),
         ]
         constraints = [
             models.UniqueConstraint(

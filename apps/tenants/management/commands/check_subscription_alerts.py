@@ -2,7 +2,7 @@
 Management command: check_subscription_alerts
 
 Scans all tenants and sends subscription lifecycle email notifications to
-owners AND managers. Designed to be run via cron or Celery Beat.
+owners AND managers. Designed to be run via cron.
 
 Emails sent:
 - 7 days before trial expires

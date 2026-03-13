@@ -145,6 +145,34 @@
 
 ---
 
+## Phase 6 UI: Dashboard Surfaces & Automation  DONE (Mar 12, 2026)
+**Goal**: Surface billing data in the owner portal UI. Built by Amelia.
+
+### 6 UI.1 Aging Report Widget 
+- [x] AR aging widget on owner invoice list (`/owner/invoices/`)
+- [x] Buckets: Current, 1-30, 31-60, 61-90, 90+ days — color-coded green→dark red
+- [x] AJAX-loaded from `/owner/billing/aging/` JSON endpoint
+- [x] Export CSV button at `/owner/billing/aging/export/`
+
+### 6 UI.2 Statement of Account 
+- [x] Per-customer statement at `/owner/customers/<id>/statement/`
+- [x] Shows all invoices + payments with running balance
+- [x] Print-friendly layout, no nav clutter
+- [x] Print button (CSS @media print)
+
+### 6 UI.3 Send Reminder from Invoice List 
+- [x] "Remind" button on each overdue/sent invoice row in the list
+- [x] AJAX call with toast notification on success
+- [x] Uses existing `owner_send_reminder` view
+
+### 6 UI.4 EB Cron Scheduling 
+- [x] `.ebextensions/11_billing_cron.config` — cron.d file for billing commands
+- [x] process_batch_invoices at 6 AM UTC daily
+- [x] process_overdue_invoices at 8 AM UTC daily
+- [x] generate_aging_report at 9 AM UTC daily
+
+---
+
 ## Phase 6: Polish & Automation  DONE (Feb 11, 2026)
 **Goal**: Production-ready billing that runs itself.
 
@@ -169,12 +197,12 @@
 - [x] Buckets: current, 1-30, 31-60, 61-90, 90+ days
 - [x] Returns count + total per bucket, plus invoice details
 - [x] Can run for single tenant or all tenants
-- [ ] UI dashboard widget (future)
-- [ ] Export to CSV (future)
+- [x] UI dashboard widget — `/owner/invoices/` (Phase 6 UI)
+- [x] Export to CSV — `/owner/billing/aging/export/` (Phase 6 UI)
 
 ### 6.4 Statement of Account
-- [ ] Per-customer statement showing all invoices and payments (future)
-- [ ] Monthly or on-demand generation (future)
+- [x] Per-customer statement — `/owner/customers/<id>/statement/` (Phase 6 UI)
+- [ ] Monthly email generation (future)
 
 ### Configuration (BillingConfig)
 All automation settings are configurable in Settings  Billing:

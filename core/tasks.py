@@ -1,17 +1,13 @@
 """
-Celery tasks for the notification system.
+Notification delivery functions (synchronous).
 
-This module contains all asynchronous tasks for:
-- Email delivery
-- SMS delivery
-- Retry logic for failed deliveries
-- Daily digest emails
-- Cleanup of old delivery logs
+Previously Celery tasks; now called directly (inline during request or
+from management commands).  All email/SMS sending is synchronous and
+wrapped in try/except so failures never crash the caller.
 """
 
 import logging
 from datetime import timedelta
-from celery import shared_task
 from django.utils import timezone
 from core.services.email_service import EmailService
 from core.services.sms_service import SMSService
@@ -21,21 +17,16 @@ from core.models.notification_delivery_log import NotificationDeliveryLog
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=3)
 def send_notification_email(
-    self,
     notification_id: int,
     recipient_email: str,
     subject: str,
     html_content: str,
     text_content: str,
     attempt_number: int = 1
-):
+) -> bool:
     """
-    Send notification email via AWS SES.
-
-    This task is queued by NotificationService when creating notifications.
-    It uses EmailService to send the actual email and track delivery.
+    Send a notification email synchronously.
 
     Args:
         notification_id: ID of Notification object (None for digests)
@@ -45,8 +36,8 @@ def send_notification_email(
         text_content: Plain text email body
         attempt_number: Current delivery attempt (1-indexed)
 
-    Raises:
-        Exception: Retries task on failure up to max_retries
+    Returns:
+        True if sent successfully, False otherwise
     """
     try:
         logger.info(
@@ -64,38 +55,25 @@ def send_notification_email(
         )
 
         if success:
-            logger.info(
-                f"Email sent successfully (notification {notification_id})"
-            )
+            logger.info(f"Email sent successfully (notification {notification_id})")
         else:
-            logger.warning(
-                f"Email send failed (notification {notification_id}), "
-                f"will retry if attempts remain"
-            )
+            logger.warning(f"Email send failed (notification {notification_id})")
 
         return success
 
     except Exception as e:
-        logger.exception(
-            f"Error in send_notification_email task: {e}"
-        )
-        # Retry task with exponential backoff
-        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+        logger.exception(f"Error in send_notification_email: {e}")
+        return False
 
 
-@shared_task(bind=True, max_retries=3)
 def send_notification_sms(
-    self,
     notification_id: int,
     recipient_phone: str,
     message: str,
     attempt_number: int = 1
-):
+) -> bool:
     """
-    Send notification SMS via AWS SNS.
-
-    This task is queued by NotificationService when creating notifications.
-    It uses SMSService to send the actual SMS and track delivery.
+    Send a notification SMS synchronously.
 
     Args:
         notification_id: ID of Notification object
@@ -103,8 +81,8 @@ def send_notification_sms(
         message: SMS message text (max 160 chars)
         attempt_number: Current delivery attempt (1-indexed)
 
-    Raises:
-        Exception: Retries task on failure up to max_retries
+    Returns:
+        True if sent successfully, False otherwise
     """
     try:
         logger.info(
@@ -120,77 +98,58 @@ def send_notification_sms(
         )
 
         if success:
-            logger.info(
-                f"SMS sent successfully (notification {notification_id})"
-            )
+            logger.info(f"SMS sent successfully (notification {notification_id})")
         else:
-            logger.warning(
-                f"SMS send failed (notification {notification_id}), "
-                f"will retry if attempts remain"
-            )
+            logger.warning(f"SMS send failed (notification {notification_id})")
 
         return success
 
     except Exception as e:
-        logger.exception(
-            f"Error in send_notification_sms task: {e}"
-        )
-        # Retry task with exponential backoff
-        raise self.retry(exc=e, countdown=60 * (2 ** self.request.retries))
+        logger.exception(f"Error in send_notification_sms: {e}")
+        return False
 
 
-@shared_task
-def retry_failed_notifications():
+def retry_failed_notifications() -> dict:
     """
-    Periodic task to retry failed email and SMS deliveries.
+    Retry failed email and SMS deliveries.
 
-    Runs every 5 minutes (configured in celery.py beat_schedule).
-    Checks for delivery logs with status='pending_retry' and
-    next_retry_at <= now, then re-queues them.
+    Check for delivery logs with status='pending_retry' and
+    next_retry_at <= now, then re-attempt delivery synchronously.
 
-    This task is idempotent and safe to run multiple times.
+    Returns:
+        dict with email_retries and sms_retries counts
     """
-    logger.info("Starting retry_failed_notifications task")
+    logger.info("Starting retry_failed_notifications")
 
-    # Get pending retries for email
     email_retries = EmailService.get_pending_retries()
     email_count = 0
-
     for log in email_retries:
         if EmailService.retry_failed_delivery(log):
             email_count += 1
 
-    # Get pending retries for SMS
     sms_retries = SMSService.get_pending_retries()
     sms_count = 0
-
     for log in sms_retries:
         if SMSService.retry_failed_delivery(log):
             sms_count += 1
 
     logger.info(
-        f"Retry task completed: {email_count} emails, {sms_count} SMS "
-        f"queued for retry"
+        f"Retry completed: {email_count} emails, {sms_count} SMS retried"
     )
-
-    return {
-        'email_retries': email_count,
-        'sms_retries': sms_count
-    }
+    return {'email_retries': email_count, 'sms_retries': sms_count}
 
 
-@shared_task
-def send_daily_digests():
+def send_daily_digests() -> dict:
     """
-    Send daily digest emails to users who have digest mode enabled.
+    Send daily digest emails to users with unread notifications.
 
-    Runs daily at 9 AM (configured in celery.py beat_schedule).
     Collects unread notifications from the past 24 hours and sends
-    a summary email to users with digest preferences enabled.
+    a summary email. Call from a cron management command daily at 9 AM.
 
-    This task queries both Technician and CustomerUser preferences.
+    Returns:
+        dict with digests_sent count
     """
-    logger.info("Starting send_daily_digests task")
+    logger.info("Starting send_daily_digests")
 
     from core.models.notification_preferences import (
         TechnicianNotificationPreference,
@@ -201,13 +160,12 @@ def send_daily_digests():
     digest_count = 0
     yesterday = timezone.now() - timedelta(days=1)
 
-    # Process technician digests (optimized with select_related)
+    # Process technician digests
     tech_prefs = TechnicianNotificationPreference.objects.filter(
         receive_email_notifications=True
     ).select_related('technician', 'technician__user')
 
     for pref in tech_prefs:
-        # Get unread notifications from past 24 hours
         from django.contrib.contenttypes.models import ContentType
         tech_content_type = ContentType.objects.get_for_model(pref.technician)
 
@@ -226,13 +184,12 @@ def send_daily_digests():
             if success:
                 digest_count += 1
 
-    # Process customer digests (optimized with select_related)
+    # Process customer digests
     customer_prefs = CustomerNotificationPreference.objects.filter(
         receive_email_notifications=True
     ).select_related('customer')
 
     for pref in customer_prefs:
-        # Get unread notifications from past 24 hours
         from django.contrib.contenttypes.models import ContentType
         customer_type = ContentType.objects.get_for_model(pref.customer)
 
@@ -251,57 +208,43 @@ def send_daily_digests():
             if success:
                 digest_count += 1
 
-    logger.info(
-        f"Daily digest task completed: {digest_count} digests sent"
-    )
-
+    logger.info(f"Daily digest completed: {digest_count} digests sent")
     return {'digests_sent': digest_count}
 
 
-@shared_task
-def cleanup_old_delivery_logs():
+def cleanup_old_delivery_logs() -> dict:
     """
     Clean up old delivery logs to prevent database bloat.
 
-    Runs weekly on Sunday at 2 AM (configured in celery.py beat_schedule).
-    Deletes delivery logs older than 90 days.
+    Deletes successful delivery logs older than 90 days.
+    Keeps failed logs for debugging.
 
-    Keeps logs for:
-    - Failed deliveries (for debugging)
-    - Recent deliveries (< 90 days)
-
-    This task is safe to run multiple times and is idempotent.
+    Returns:
+        dict with logs_deleted count
     """
-    logger.info("Starting cleanup_old_delivery_logs task")
+    logger.info("Starting cleanup_old_delivery_logs")
 
-    # Delete logs older than 90 days
     cutoff_date = timezone.now() - timedelta(days=90)
-
-    # Only delete successful deliveries (keep failures for analysis)
     deleted_count, _ = NotificationDeliveryLog.objects.filter(
         created_at__lt=cutoff_date,
         status='delivered'
     ).delete()
 
-    logger.info(
-        f"Cleanup task completed: {deleted_count} old delivery logs deleted"
-    )
-
+    logger.info(f"Cleanup completed: {deleted_count} old delivery logs deleted")
     return {'logs_deleted': deleted_count}
 
 
-@shared_task
-def send_scheduled_notifications():
+def send_scheduled_notifications() -> dict:
     """
     Process notifications scheduled for future delivery.
 
-    This task finds notifications with scheduled_for <= now and
-    queues their delivery tasks.
+    Finds notifications with scheduled_for <= now and delivers them.
+    Call from a cron management command periodically (e.g. every 15 min).
 
-    Can be run periodically (e.g., every 15 minutes) if scheduled
-    notifications are needed.
+    Returns:
+        dict with notifications_queued count
     """
-    logger.info("Starting send_scheduled_notifications task")
+    logger.info("Starting send_scheduled_notifications")
 
     now = timezone.now()
     scheduled_notifications = Notification.objects.filter(
@@ -314,34 +257,18 @@ def send_scheduled_notifications():
     count = 0
     for notification in scheduled_notifications:
         try:
-            # Get recipient and re-queue delivery
             recipient = notification.recipient
 
             if notification.template:
-                rendered = notification.template.render(
-                    notification.template_context
-                )
+                rendered = notification.template.render(notification.template_context)
 
-                # Queue delivery using NotificationService
                 from core.services.notification_service import NotificationService
-                NotificationService._queue_delivery(
-                    notification,
-                    recipient,
-                    rendered
-                )
-
+                NotificationService._queue_delivery(notification, recipient, rendered)
                 count += 1
-                logger.info(
-                    f"Queued scheduled notification {notification.id}"
-                )
+                logger.info(f"Queued scheduled notification {notification.id}")
 
         except Exception as e:
-            logger.exception(
-                f"Error processing scheduled notification {notification.id}: {e}"
-            )
+            logger.exception(f"Error processing scheduled notification {notification.id}: {e}")
 
-    logger.info(
-        f"Scheduled notifications task completed: {count} notifications queued"
-    )
-
+    logger.info(f"Scheduled notifications completed: {count} notifications processed")
     return {'notifications_queued': count}

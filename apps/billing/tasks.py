@@ -1,9 +1,14 @@
 """
-Billing Automation Tasks
+Billing Automation
 
-Celery tasks for automated billing operations:
+Business logic for automated billing operations:
 - process_overdue_invoices: Daily check for overdue invoices + reminder emails
 - process_batch_invoices: Scheduled batch invoice generation for fleet customers
+- generate_aging_report: AR aging report
+
+These are plain functions (no Celery). Invoke them:
+  - From management commands (cron): process_batch_invoices, process_overdue_invoices
+  - On-demand: generate_aging_report
 
 Author: Amelia (Clawdbot AI)
 """
@@ -12,11 +17,9 @@ import logging
 from datetime import timedelta
 from decimal import Decimal
 
-from celery import shared_task
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Sum
 from django.utils import timezone
 
 from apps.billing.models import BillingConfig, Invoice, InvoiceLineItem
@@ -32,7 +35,6 @@ logger = logging.getLogger(__name__)
 # OVERDUE INVOICE PROCESSING
 # =============================================================================
 
-@shared_task(name='billing.process_overdue_invoices')
 def process_overdue_invoices():
     """
     Daily task to:
@@ -155,7 +157,6 @@ Thank you,
 # BATCH INVOICING
 # =============================================================================
 
-@shared_task(name='billing.process_batch_invoices')
 def process_batch_invoices():
     """
     Scheduled task to generate batch invoices for fleet customers.
@@ -402,7 +403,6 @@ Thank you for your business!
 # AGING REPORT
 # =============================================================================
 
-@shared_task(name='billing.generate_aging_report')
 def generate_aging_report(tenant_id=None):
     """
     Generate accounts receivable aging report.

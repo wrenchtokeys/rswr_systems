@@ -166,18 +166,10 @@ class NotificationService:
         # Get delivery channels based on priority
         channels = notification.get_delivery_channels()
 
-        # Check if Celery is available before queueing tasks
-        try:
-            from rs_systems.celery import CELERY_AVAILABLE
-        except ImportError:
-            logger.error("Cannot import Celery - notifications will not be queued")
-            CELERY_AVAILABLE = False
-
         # Send email if channel enabled
         if 'email' in channels and preferences.can_send_email():
             email = NotificationService._get_recipient_email(recipient)
             if email:
-                # Send email directly (synchronous) - no Celery dependency
                 from core.services.email_service import EmailService
 
                 try:
@@ -195,26 +187,22 @@ class NotificationService:
                 except Exception as e:
                     logger.error(f"Email error for notification {notification.id}: {e}")
 
-        # Queue SMS if channel enabled
+        # Send SMS synchronously if channel enabled
         if 'sms' in channels and preferences.receive_sms_notifications:
             phone = NotificationService._get_recipient_phone(recipient)
             if phone and preferences.phone_verified:
-                if CELERY_AVAILABLE:
-                    # Import here to avoid circular dependency
-                    from core.tasks import send_notification_sms
+                from core.tasks import send_notification_sms
 
-                    sms_message = rendered.get('sms', notification.message[:160])
-                    send_notification_sms.delay(
+                sms_message = rendered.get('sms', notification.message[:160])
+                try:
+                    send_notification_sms(
                         notification_id=notification.id,
                         recipient_phone=phone,
                         message=sms_message
                     )
-                    logger.info(f"Queued SMS for notification {notification.id}")
-                else:
-                    logger.warning(
-                        f"Celery unavailable - SMS for notification {notification.id} "
-                        "not queued (can be delivered manually via admin)"
-                    )
+                    logger.info(f"SMS sent for notification {notification.id}")
+                except Exception as e:
+                    logger.error(f"SMS error for notification {notification.id}: {e}")
 
     @staticmethod
     def _get_preferences(recipient: Any):
@@ -472,8 +460,8 @@ class NotificationBatchService:
                 context
             )
 
-            # Send digest
-            send_notification_email.delay(
+            # Send digest synchronously
+            send_notification_email(
                 notification_id=None,  # No specific notification
                 recipient_email=email,
                 subject=f"Daily Digest - {len(notifications)} updates",

@@ -178,35 +178,9 @@ if not USE_S3:
     AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 
-# =========================================
-# CELERY (Production overrides)
-# =========================================
-
 TIME_ZONE = 'UTC'
-CELERY_TIMEZONE = TIME_ZONE
 
-CELERY_BROKER_URL = os.environ.get(
-    'CELERY_BROKER_URL',
-    os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-)
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
-
-CELERY_WORKER_CONCURRENCY = int(os.environ.get('CELERY_CONCURRENCY', 8))
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
-
-CELERY_TASK_ALWAYS_EAGER = False
-
-CELERY_ANNOTATIONS = {
-    'core.tasks.send_notification_email': {
-        'rate_limit': '14/s',
-    },
-    'core.tasks.send_notification_sms': {
-        'rate_limit': '10/s',
-    },
-}
-
-CELERY_SEND_TASK_ERROR_EMAILS = True
-CELERY_SEND_TASK_SENT_EVENT = True
+# Celery removed — notifications are synchronous; batch billing runs via management commands.
 
 # =========================================
 # LOGGING
@@ -242,11 +216,6 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': False,
         },
-        'celery': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
         'core.tasks': {
             'handlers': ['console'],
             'level': 'INFO',
@@ -268,15 +237,11 @@ SENTRY_DSN = os.environ.get('SENTRY_DSN')
 if SENTRY_DSN:
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
-    from sentry_sdk.integrations.celery import CeleryIntegration
-    from sentry_sdk.integrations.redis import RedisIntegration
 
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         integrations=[
             DjangoIntegration(),
-            CeleryIntegration(),
-            RedisIntegration(),
         ],
         traces_sample_rate=0.1,
         sample_rate=1.0,

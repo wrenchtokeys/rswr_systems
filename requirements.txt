@@ -13,13 +13,6 @@ Pillow==11.3.0
 pillow-heif==1.1.1
 django-ratelimit==4.1.0
 
-# Celery for async task processing
-celery==5.3.4
-redis==5.0.1
-django-celery-beat==2.7.0
-django-celery-results==2.5.1
-flower==2.0.1
-
 # Payments
 stripe>=8.0.0
 

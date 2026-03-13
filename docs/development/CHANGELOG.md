@@ -12,6 +12,123 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.5.0] - March 11-12, 2026
+
+### Added — Admin Console Overhaul
+
+#### Custom Metrics Dashboard
+- **Subscription breakdown** — trial/active/expired counts, plan distribution
+- **Monthly repairs + revenue** — rolling 30-day summary on admin home
+- **Activity feed** — recent signups, repairs, and key events at a glance
+
+#### Tenant Filtering
+- **TenantFilterMixin** — non-superusers (tenant admins) now see only their own tenant's data across all admin list views
+
+#### Subscription Management Actions
+- **Extend trial 7 days** — one-click action on Tenant admin list
+- **Extend trial 30 days** — bulk or individual
+- **Activate subscription** — mark tenant as active from admin
+- **Deactivate subscription** — cancel/expire a tenant from admin
+
+#### Data Exports
+- **CSV export: repairs** — all repairs for selected tenants
+- **CSV export: invoices** — invoice history with line-item totals
+- **CSV export: customers** — customer roster with contact info
+
+#### Bulk Invoice Generation
+- Select customers in admin → generate invoices for all uninvoiced repairs in one action
+
+#### Audit Log Viewer
+- **Django LogEntry integration** — read-only view of all admin actions
+- Color-coded by action type (add/change/delete)
+- Filterable by user, content type, and date
+
+#### Global Admin Search
+- `/admin/search/` — search across tenants, users, repairs, and customers from one place
+
+#### Performance Improvements
+- `select_related` on all heavy admin list views
+- `autocomplete_fields` on FK dropdowns (eliminates N+1 on inline selects)
+- `list_per_page` tuned across all model admins
+- `@admin.register` cleanup — removed legacy `admin.site.register()` calls
+
+#### Tests
+- 41 admin tests covering metrics, filtering, actions, exports, search, and audit log
+
+### Infrastructure (March 11-12)
+- **Domain migration** — all `rockstarwindshield.repair` references replaced with `rssystems.io`
+- **Contact email** — standardized to `contact@rssystems.io` across all templates and settings
+- **SendGrid domain auth** — `rssystems.io` authenticated for email deliverability
+- **ImprovMX inbound forwarding** — `contact@rssystems.io` forwards to Gmail
+- **Email service docs** — README updated with full email service configuration guide
+
+---
+
+## [2.4.0] - March 11, 2026
+
+### Added — Subscription Expiry UX
+
+#### Role-Aware Blocked Page
+- **`/subscription-blocked/`** — dedicated page for expired/canceled tenants (replaces hard redirect to `/pricing/`)
+  - **Owner** → upgrade CTA with plan comparison
+  - **Technician** → contact your account owner messaging
+  - **Customer** → shop contact info and status message
+
+#### Grace Period
+- **30-day read-only grace period** after trial/subscription expiry
+  - GET requests allowed — users can still view their data
+  - Write operations blocked — no new repairs, customers, or invoices
+  - `grace_period_end` field added to Tenant model
+  - Grace period warnings shown in banners
+
+#### Subscription Banners
+- **Trial countdown** — amber banner for all authenticated users when ≤ 7 days remain
+- **Grace period warnings** — banner shown when in read-only grace window
+- **Expired notice** — clear messaging when grace period ends
+- Smart messaging distinguishes trial-ended vs subscription-ended scenarios
+
+#### Email Alerts — 6 Lifecycle Stages
+- Management command: `check_subscription_alerts` (run daily via cron)
+- Alert stages tracked via `subscription_alerts_sent` JSONField on Tenant
+
+| Stage | Trigger |
+|-------|---------|
+| 7 days before expiry | Friendly heads-up with upgrade CTA |
+| 1 day before expiry | Last-chance alert |
+| Day of expiry | Trial/subscription ended notice |
+| 15 days into grace | Mid-grace warning |
+| 5 days before grace ends | Urgent final warning |
+| Grace period ended | Access fully suspended notice |
+
+#### Tests
+- 31 tests covering blocked page, grace period, banners, email alerts, and management command
+
+---
+
+## [2.3.2] - March 9-12, 2026
+
+### Fixed — Bug Fixes & UX Polish
+
+#### Bug Fixes
+- **BUG-001** — `create_repair` 500 error when no technician is assigned; added guard for empty technician queryset
+- **BUG-004** — Custom branded 404/500 error pages with RS Systems styling (replaces Django defaults)
+- **Viscosity settings 500** — Changed `@technician_required` → `@manager_required` on viscosity settings view; owners without technician profiles can now access it
+
+#### UX Fixes (UX-001 through UX-011)
+- **UX-001** — Navbar name truncation on long business names
+- **UX-002** — Customer repair table clipping on small screens
+- **UX-003** — Customer Portal preview button added to owner settings
+- **UX-004** — Trial badge blue outline styling fixed
+- **UX-005** — Onboarding technician confirmation messages corrected
+- **UX-006** — Contextual assignment warning when no primary techs are set
+- **UX-007** — Add phone/email CTAs shown in customer detail when fields are empty
+- **UX-008** — (included in owner contact updates)
+- **UX-009** — Redundant ability badges removed from team member list; using fa-wrench icon instead
+- **UX-010** — Billing settings improvements
+- **UX-011** — Batch invoicing improvements
+
+---
+
 ## [2.3.1] - March 3, 2026
 
 ### Security
@@ -373,6 +490,14 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 | Version | Date | Focus | Status |
 |---------|------|-------|--------|
+| 2.5.0 | Mar 11-12, 2026 | Admin Console Overhaul |  Complete |
+| 2.4.0 | Mar 11, 2026 | Subscription Expiry UX |  Complete |
+| 2.3.2 | Mar 9-12, 2026 | Bug Fixes & UX Polish |  Complete |
+| 2.3.1 | Mar 3, 2026 | Security: Cross-tenant & Subscription |  Complete |
+| 2.3.0 | Feb 10, 2026 | SaaS Subscription Billing Polish |  Complete |
+| 2.2.3 | Feb 4, 2026 | Send Reminder Button |  Complete |
+| 2.2.2 | Feb 4, 2026 | Invoice UX Improvements |  Complete |
+| 2.2.1 | Feb 1, 2026 | Tax on Repairs & Invoices |  Complete |
 | 2.2.0 | Feb 1, 2026 | Invoice Portals & Payments |  Complete |
 | 2.1.0 | Jan 31, 2026 | Billing & Invoicing System |  Complete |
 | 2.0.0 | Jan 30, 2026 | Unified Permissions & Templates |  Complete |
@@ -390,8 +515,8 @@ Major architectural overhaul: one permission system, one base template, fixed si
 
 ---
 
-**Latest Version**: 2.2.0
-**Last Updated**: February 1, 2026
+**Latest Version**: 2.5.0
+**Last Updated**: March 12, 2026
 **Status**: Production Ready 
 
 ## [2.3.0] - February 10, 2026

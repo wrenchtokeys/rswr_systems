@@ -4,9 +4,14 @@
 
 {% block content %}
 
-<div class="mb-6">
-    <h1 class="text-3xl font-bold text-gray-900">Settings</h1>
-    <p class="text-gray-500 mt-1">Manage your shop configuration</p>
+<div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div>
+        <h1 class="text-3xl font-bold text-gray-900">Settings</h1>
+        <p class="text-gray-500 mt-1">Manage your shop configuration</p>
+    </div>
+    <a href="/owner/setup/" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition-colors self-start sm:self-auto">
+        <i class="fas fa-sliders-h"></i>Configure Your Shop →
+    </a>
 </div>
 
 <!-- Tabs -->

@@ -67,34 +67,20 @@ class Command(BaseCommand):
                 f'(date: {repair.repair_date}, customer: {repair.customer.name})'
             )
 
-        # 5. Check Celery Availability
-        self.stdout.write(self.style.WARNING('\n5. CELERY STATUS:'))
-        try:
-            from rs_systems.celery import CELERY_AVAILABLE
-            self.stdout.write(f'  CELERY_AVAILABLE: {CELERY_AVAILABLE}')
-        except Exception as e:
-            self.stdout.write(f'  Error checking Celery: {e}')
+        # 5. Delivery mode
+        self.stdout.write(self.style.WARNING('\n5. DELIVERY MODE:'))
+        self.stdout.write('  Notifications are delivered synchronously (no Celery/Redis required).')
+        self.stdout.write('  Batch billing tasks run via management commands (cron).')
 
-        # 6. Check Redis Connection
-        self.stdout.write(self.style.WARNING('\n6. REDIS CONNECTION:'))
-        try:
-            from django.conf import settings
-            import redis
-            r = redis.from_url(settings.CELERY_BROKER_URL)
-            r.ping()
-            self.stdout.write('  ✓ Redis connection OK')
-        except Exception as e:
-            self.stdout.write(f'  ✗ Redis connection failed: {e}')
-
-        # 7. Check Email Configuration
-        self.stdout.write(self.style.WARNING('\n7. EMAIL CONFIGURATION:'))
+        # 6. Check Email Configuration
+        self.stdout.write(self.style.WARNING('\n6. EMAIL CONFIGURATION:'))
         from django.conf import settings
         self.stdout.write(f'  EMAIL_BACKEND: {settings.EMAIL_BACKEND}')
         self.stdout.write(f'  EMAIL_HOST: {settings.EMAIL_HOST}')
         self.stdout.write(f'  DEFAULT_FROM_EMAIL: {settings.DEFAULT_FROM_EMAIL}')
 
-        # 8. Check Recent Delivery Logs
-        self.stdout.write(self.style.WARNING('\n8. RECENT DELIVERY LOGS (Last 10):'))
+        # 7. Check Recent Delivery Logs
+        self.stdout.write(self.style.WARNING('\n7. RECENT DELIVERY LOGS (Last 10):'))
         delivery_logs = NotificationDeliveryLog.objects.all().order_by('-created_at')[:10]
         if delivery_logs:
             for log in delivery_logs:

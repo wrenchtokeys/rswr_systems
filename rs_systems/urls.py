@@ -24,7 +24,7 @@ from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from . import views
 from apps.saas import views as saas_views
-from core.views import preview_email_template, test_notification, check_notification_prefs, celery_status
+from core.views import preview_email_template, test_notification, check_notification_prefs
 
 # Custom error handlers (BUG-004 — replace bare Django 404/500 with branded templates)
 handler404 = 'rs_systems.views.custom_404'
@@ -38,7 +38,6 @@ urlpatterns = [
     # setup-database/ removed — security risk (unauthenticated DB setup with hardcoded creds)
 
     # Test/diagnostic endpoints (for debugging)
-    path('celery-status/', celery_status, name='celery_status'),
     path('test-notification/', test_notification, name='test_notification'),
     path('check-notification-prefs/', check_notification_prefs, name='check_notification_prefs'),
 

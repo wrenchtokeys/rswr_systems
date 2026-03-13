@@ -113,25 +113,35 @@ class NotificationAdmin(admin.ModelAdmin):
         for notification in queryset:
             # Only retry if not successfully delivered
             if not notification.email_sent or not notification.sms_sent:
-                # Re-queue email delivery if needed
+                # Re-attempt email delivery if needed
                 if not notification.email_sent and notification.should_send_email():
-                    send_notification_email.apply_async(
-                        args=[notification.id],
-                        countdown=5  # Wait 5 seconds before retrying
-                    )
-                    retried += 1
+                    try:
+                        send_notification_email(
+                            notification_id=notification.id,
+                            recipient_email=notification.recipient_email or '',
+                            subject=notification.title,
+                            html_content='',
+                            text_content=notification.message,
+                        )
+                        retried += 1
+                    except Exception:
+                        pass
 
-                # Re-queue SMS delivery if needed
+                # Re-attempt SMS delivery if needed
                 if not notification.sms_sent and notification.should_send_sms():
-                    send_notification_sms.apply_async(
-                        args=[notification.id],
-                        countdown=5
-                    )
-                    retried += 1
+                    try:
+                        send_notification_sms(
+                            notification_id=notification.id,
+                            recipient_phone=notification.recipient_phone or '',
+                            message=notification.message[:160],
+                        )
+                        retried += 1
+                    except Exception:
+                        pass
 
         self.message_user(
             request,
-            f"Queued {retried} notification(s) for retry delivery. Check Celery logs for results.",
+            f"Retried {retried} notification delivery/deliveries.",
             level='success' if retried > 0 else 'warning'
         )
     retry_delivery.short_description = "Retry delivery for selected notifications"
@@ -282,23 +292,35 @@ class DeliveryLogAdmin(admin.ModelAdmin):
         for log in failed_logs:
             notification = log.notification
 
-            # Re-queue based on channel
+            # Re-attempt based on channel
             if log.channel == 'email' and notification:
-                send_notification_email.apply_async(
-                    args=[notification.id],
-                    countdown=10  # Wait 10 seconds before retrying
-                )
-                count += 1
+                try:
+                    send_notification_email(
+                        notification_id=notification.id,
+                        recipient_email=log.recipient_email or '',
+                        subject=notification.title,
+                        html_content='',
+                        text_content=notification.message,
+                        attempt_number=log.attempt_number + 1,
+                    )
+                    count += 1
+                except Exception:
+                    pass
             elif log.channel == 'sms' and notification:
-                send_notification_sms.apply_async(
-                    args=[notification.id],
-                    countdown=10
-                )
-                count += 1
+                try:
+                    send_notification_sms(
+                        notification_id=notification.id,
+                        recipient_phone=log.recipient_phone or '',
+                        message=notification.message[:160],
+                        attempt_number=log.attempt_number + 1,
+                    )
+                    count += 1
+                except Exception:
+                    pass
 
         self.message_user(
             request,
-            f"Queued {count} failed delivery/deliveries for retry. Check Celery logs for results.",
+            f"Retried {count} failed delivery/deliveries.",
             level='success' if count > 0 else 'warning'
         )
     retry_failed_deliveries.short_description = "Retry failed deliveries"

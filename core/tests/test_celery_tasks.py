@@ -1,13 +1,13 @@
 """
-Unit tests for Celery tasks in the notification system.
+Unit tests for notification delivery functions in core.tasks.
 
 Tests cover:
-- send_notification_email task
-- send_notification_sms task
-- retry_failed_notifications periodic task
-- send_daily_digests periodic task
-- cleanup_old_delivery_logs periodic task
-- send_scheduled_notifications task
+- send_notification_email
+- send_notification_sms
+- retry_failed_notifications
+- send_daily_digests
+- cleanup_old_delivery_logs
+- send_scheduled_notifications
 """
 
 from datetime import timedelta
@@ -33,7 +33,7 @@ from django.contrib.auth.models import User
 
 
 class SendNotificationEmailTaskTest(TestCase):
-    """Test cases for send_notification_email Celery task."""
+    """Test cases for send_notification_email function."""
 
     def setUp(self):
         """Set up test data."""
@@ -115,7 +115,7 @@ class SendNotificationEmailTaskTest(TestCase):
 
 
 class SendNotificationSMSTaskTest(TestCase):
-    """Test cases for send_notification_sms Celery task."""
+    """Test cases for send_notification_sms function."""
 
     def setUp(self):
         """Set up test data."""

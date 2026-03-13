@@ -140,7 +140,7 @@ def create_multi_break_repair(request):
 
             tenant = getattr(request, 'tenant', None)
             try:
-                customer_qs = Customer.objects.all()
+                customer_qs = Customer.objects.select_related('tenant')
                 if tenant:
                     customer_qs = customer_qs.filter(tenant=tenant)
 
@@ -351,7 +351,7 @@ def create_multi_break_repair(request):
     else:
         # GET request
         tenant = getattr(request, 'tenant', None)
-        customer_qs = Customer.objects.all()
+        customer_qs = Customer.objects.select_related('tenant')
         if tenant:
             customer_qs = customer_qs.filter(tenant=tenant)
 
@@ -369,7 +369,7 @@ def create_multi_break_repair(request):
 def convert_to_batch(request, repair_id):
     """Convert a single repair into a multi-break batch by adding additional breaks."""
     tenant = getattr(request, 'tenant', None)
-    qs = Repair.objects.all()
+    qs = Repair.objects.select_related('customer', 'technician__user', 'tenant')
     if tenant:
         qs = qs.filter(tenant=tenant)
 
