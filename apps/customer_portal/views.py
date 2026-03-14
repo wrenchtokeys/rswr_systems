@@ -1781,7 +1781,9 @@ def repair_cost_data_api(request):
 def customer_rewards_redirect(request):
     """Customer rewards and referrals dashboard"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = CustomerUser.objects.select_related('customer__tenant').get(user=request.user)
+        customer = customer_user.customer
+        tenant = customer.tenant
 
         # Get referral and reward information
         # Get user's referral code (or None if they don't have one)
@@ -1794,8 +1796,8 @@ def customer_rewards_redirect(request):
         # Get reward points balance
         reward_points = RewardService.get_reward_balance(customer_user)
         
-        # Get available reward options
-        reward_options = RewardOption.objects.filter(is_active=True).order_by('points_required')
+        # Get available reward options — scoped to this customer's tenant
+        reward_options = RewardOption.objects.filter(is_active=True, tenant=tenant).order_by('points_required')
         
         # Get recent referrals (people this customer referred)
         recent_referrals = Referral.objects.filter(
