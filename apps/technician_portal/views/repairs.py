@@ -669,7 +669,12 @@ def assign_repair(request, repair_id):
             return redirect('assign_repair', repair_id=repair.id)
 
         try:
-            assigned_tech = Technician.objects.get(id=technician_id)
+            tech_qs = Technician.objects.filter(id=technician_id)
+            if tenant:
+                tech_qs = tech_qs.filter(tenant=tenant)
+            else:
+                tech_qs = tech_qs.none()
+            assigned_tech = tech_qs.get()
 
             if not is_tenant_admin(request.user):
                 manager = request.user.technician

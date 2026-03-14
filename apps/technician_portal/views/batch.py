@@ -180,7 +180,12 @@ def create_multi_break_repair(request):
                     messages.error(request, "As an admin, you must select a technician.")
                     return redirect('create_multi_break_repair')
                 try:
-                    technician = Technician.objects.get(id=tech_id)
+                    tech_qs = Technician.objects.filter(id=tech_id)
+                    if tenant:
+                        tech_qs = tech_qs.filter(tenant=tenant)
+                    else:
+                        tech_qs = tech_qs.none()
+                    technician = tech_qs.get()
                 except Technician.DoesNotExist:
                     messages.error(request, "Invalid technician selected.")
                     return redirect('create_multi_break_repair')
