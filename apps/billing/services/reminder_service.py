@@ -208,13 +208,27 @@ Invoice Status: {invoice.get_status_display()}
             body += "\nThis invoice has been paid in full. Thank you for your business!"
         else:
             body += f"\nRemaining Balance: ${invoice.amount_due:,.2f}"
-        
-        body += """
+
+        # Look up company name from per-tenant BillingConfig
+        _company_name = ""
+        _tenant = self.tenant or getattr(invoice, 'tenant', None)
+        if _tenant:
+            try:
+                from apps.billing.models import BillingConfig
+                _config = BillingConfig.get_for_tenant(_tenant)
+                if _config:
+                    _company_name = _config.company_name or ""
+            except Exception:
+                pass
+            if not _company_name:
+                _company_name = _tenant.name
+
+        body += f"""
 
 If you have any questions, please don't hesitate to contact us.
 
 Best regards,
-Rockstar Windshield Repair
+{_company_name}
 """
         
         try:
@@ -288,20 +302,22 @@ Please contact us to arrange payment or if you have any questions.
 """
         
         # Get company info from BillingConfig (per-tenant)
-        company_name = "Rockstar Windshield Repair"
+        company_name = ""
         company_phone = ""
         company_website = ""
-        try:
-            from apps.billing.models import BillingConfig
-            tenant = self.tenant or getattr(invoice, 'tenant', None)
-            if tenant:
-                config = BillingConfig.get_for_tenant(tenant)
+        _reminder_tenant = self.tenant or getattr(invoice, 'tenant', None)
+        if _reminder_tenant:
+            try:
+                from apps.billing.models import BillingConfig
+                config = BillingConfig.get_for_tenant(_reminder_tenant)
                 if config:
-                    company_name = config.company_name or company_name
+                    company_name = config.company_name or ""
                     company_phone = config.company_phone or ""
                     company_website = config.company_website or ""
-        except Exception:
-            pass
+            except Exception:
+                pass
+            if not company_name:
+                company_name = _reminder_tenant.name
         
         # Build closing with actual company info
         closing_lines = [

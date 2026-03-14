@@ -128,7 +128,7 @@ class InvoiceService:
             billing_cfg = BillingConfig.get_for_tenant(self.tenant) if self.tenant else None
             if billing_cfg is None:
                 raise ValueError("No tenant available")
-            self.COMPANY_NAME = billing_cfg.company_name or "Rockstar Windshield Repair"
+            self.COMPANY_NAME = billing_cfg.company_name or (self.tenant.name if self.tenant else "")
             self.COMPANY_ADDRESS = billing_cfg.full_address
             self.COMPANY_PHONE = billing_cfg.company_phone or ""
             self.COMPANY_EMAIL = billing_cfg.company_email or ""
@@ -139,7 +139,7 @@ class InvoiceService:
             self.INVOICE_PREFIX = billing_cfg.invoice_number_prefix or 'INV'
         except Exception as e:
             print(f"Could not load billing config: {e}")
-            self.COMPANY_NAME = "Rockstar Windshield Repair"
+            self.COMPANY_NAME = self.tenant.name if self.tenant else ""
             self.COMPANY_ADDRESS = ""
             self.COMPANY_PHONE = ""
             self.COMPANY_EMAIL = ""
