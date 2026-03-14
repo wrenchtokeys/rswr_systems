@@ -221,6 +221,7 @@ class DeliveryLogAdmin(admin.ModelAdmin):
     list_display = [
         'id',
         'notification_id',
+        'tenant',
         'channel',
         'status_badge',
         'recipient',
@@ -230,6 +231,7 @@ class DeliveryLogAdmin(admin.ModelAdmin):
     ]
 
     list_filter = [
+        'tenant',
         'channel',
         'status',
         'created_at',
