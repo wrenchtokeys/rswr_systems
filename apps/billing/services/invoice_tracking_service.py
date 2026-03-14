@@ -36,11 +36,12 @@ class InvoiceTrackingService:
     
     @property
     def billing_config(self):
-        """Lazy-load the BillingConfig singleton."""
+        """Lazy-load BillingConfig for this tenant."""
         if self._billing_config is None:
             try:
                 from apps.billing.models import BillingConfig
-                self._billing_config = BillingConfig.get_instance()
+                if self.tenant:
+                    self._billing_config = BillingConfig.get_for_tenant(self.tenant)
             except Exception:
                 self._billing_config = None
         return self._billing_config

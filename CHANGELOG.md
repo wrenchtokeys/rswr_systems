@@ -2,6 +2,18 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-03-14
+
+### Fixed (CODE-002 — Multi-tenant BillingConfig)
+- **BillingConfig is now per-tenant** (`OneToOneField(Tenant)`) — removed the `singleton_id` global singleton
+- Added `BillingConfig.get_for_tenant(tenant)` — creates with defaults if missing for that tenant
+- `BillingConfig.get_instance()` now raises `RuntimeError` to surface any remaining legacy callers
+- Updated all 14 call sites across 7 files: `apps/saas/views.py` (10), `invoice_service.py`, `invoice_tracking_service.py`, `payment_notification_service.py`, `reminder_service.py`, `tax_service.py`
+- `tax_debug` management command now iterates all tenants (or accepts `--tenant <id|slug>`)
+- Admin: `BillingConfigAdmin` uses `TenantFilterMixin` — non-superusers only see their tenant's config
+- Migrations: `0013_billingconfig_tenant_fk` (data migration assigns existing config to first tenant) + `0014_alter_billingconfig_options`
+- Tests: updated 11 existing tests + added 3 new tests (two-tenant isolation, deprecated get_instance, idempotent get_for_tenant)
+
 ## [Unreleased] — 2026-03-13
 
 ### Documentation

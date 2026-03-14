@@ -136,7 +136,7 @@ All fire via `core.services.notification_service`. Per-user and per-customer pre
 
 **Configure Your Shop** (`/owner/setup/`): Onboarding page where new owners fill in shop info. Includes viscosity auto-populate — selecting windshield type auto-fills viscosity value.
 
-**BillingConfig (known issue CODE-002)**: BillingConfig is a singleton with no `tenant` FK. All tenants share one BillingConfig. Multi-tenant config is backlogged.
+**BillingConfig (per-tenant, fixed CODE-002)**: BillingConfig is now per-tenant via `OneToOneField(Tenant)`. Use `BillingConfig.get_for_tenant(tenant)` — creates with defaults if missing. `get_instance()` raises `RuntimeError`. Migrations: `0013_billingconfig_tenant_fk`, `0014_alter_billingconfig_options`.
 
 **v2.3 — Subscription Expiry UX**: Grace period, blocked/upgrade page, subscription enforcement middleware, email alerts via `check_subscription_alerts` management command.
 

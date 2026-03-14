@@ -287,17 +287,19 @@ Or contact us to arrange alternative payment methods.
 Please contact us to arrange payment or if you have any questions.
 """
         
-        # Get company info from BillingConfig
+        # Get company info from BillingConfig (per-tenant)
         company_name = "Rockstar Windshield Repair"
         company_phone = ""
         company_website = ""
         try:
             from apps.billing.models import BillingConfig
-            config = BillingConfig.get_instance()
-            if config:
-                company_name = config.company_name or company_name
-                company_phone = config.company_phone or ""
-                company_website = config.company_website or ""
+            tenant = self.tenant or getattr(invoice, 'tenant', None)
+            if tenant:
+                config = BillingConfig.get_for_tenant(tenant)
+                if config:
+                    company_name = config.company_name or company_name
+                    company_phone = config.company_phone or ""
+                    company_website = config.company_website or ""
         except Exception:
             pass
         

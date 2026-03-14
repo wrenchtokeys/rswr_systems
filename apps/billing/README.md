@@ -36,10 +36,12 @@ Links repairs to invoices — prevents double-billing. Each repair can only appe
 ### Payment
 Supports: STRIPE, CHECK, CASH, WIRE, ACH, OTHER. Tracks `reference_number`, `recorded_by`, `stripe_payment_id`.
 
-### BillingConfig (Singleton)
-Company address, default payment terms, invoice prefix/footer, automation settings. Managed via Admin > Billing > Billing Configuration.
+### BillingConfig (Per-Tenant)
+Company address, default payment terms, invoice prefix/footer, automation settings. **Each tenant has their own BillingConfig** via a OneToOne relationship with `Tenant`. Managed via Admin > Billing > Billing Configuration.
 
-> **Known issue CODE-002**: BillingConfig has no tenant FK — it is a true singleton shared across all tenants. This is a known limitation; multi-tenant BillingConfig is on the backlog.
+Use `BillingConfig.get_for_tenant(tenant)` — creates with defaults if the tenant doesn't have one yet. `get_instance()` raises `RuntimeError` to surface legacy callers.
+
+Previously a singleton (CODE-002 — fixed 2026-03-14).
 
 ## Services
 

@@ -21,13 +21,16 @@ from apps.tenants.managers import TenantManager
 
 
 # =============================================================================
-# BILLING CONFIGURATION (Singleton)
+# BILLING CONFIGURATION (Per-Tenant)
 # =============================================================================
 
 class BillingConfig(models.Model):
     """
-    Singleton billing configuration — controls company info on invoices,
-    default payment terms, and other billing defaults.
+    Per-tenant billing configuration — controls company info on invoices,
+    default payment terms, and other billing defaults for each shop.
+
+    Each Tenant has exactly one BillingConfig (OneToOne). Use
+    BillingConfig.get_for_tenant(tenant) to fetch or create it.
 
     Editable via Admin Dashboard → Billing → Billing Configuration.
     """
@@ -41,8 +44,12 @@ class BillingConfig(models.Model):
         ('NET60', 'Net 60'),
     ]
 
-    # Singleton enforcement
-    singleton_id = models.BooleanField(default=True, unique=True, editable=False)
+    # Multi-tenant: each shop gets its own config
+    tenant = models.OneToOneField(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='billing_config',
+    )
 
     # === COMPANY INFO (shown on invoices) ===
     company_name = models.CharField(
@@ -181,25 +188,45 @@ class BillingConfig(models.Model):
 
     class Meta:
         verbose_name = 'Billing Configuration'
-        verbose_name_plural = 'Billing Configuration'
+        verbose_name_plural = 'Billing Configurations'
 
     def __str__(self):
-        return f'Billing Configuration (updated {self.updated_at.strftime("%Y-%m-%d %H:%M") if self.updated_at else "never"})'
+        tenant_name = self.tenant.name if self.tenant_id else 'No Tenant'
+        return f'Billing Configuration — {tenant_name}'
 
     def save(self, *args, **kwargs):
-        # Enforce singleton
-        if not self.pk and BillingConfig.objects.exists():
-            raise ValidationError('Only one BillingConfig instance is allowed.')
+        # OneToOneField on tenant handles uniqueness — no manual enforcement needed
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         raise ValidationError('Billing configuration cannot be deleted.')
 
     @classmethod
-    def get_instance(cls):
-        """Get the singleton instance, creating with defaults if needed."""
-        instance, created = cls.objects.get_or_create(singleton_id=True)
+    def get_for_tenant(cls, tenant):
+        """
+        Get (or create with defaults) the BillingConfig for this tenant.
+
+        Args:
+            tenant: Tenant instance
+
+        Returns:
+            BillingConfig instance for the given tenant
+        """
+        instance, _created = cls.objects.get_or_create(tenant=tenant)
         return instance
+
+    @classmethod
+    def get_instance(cls):
+        """
+        DEPRECATED — do not use in new code.
+        Use BillingConfig.get_for_tenant(tenant) instead.
+        Raises RuntimeError to surface incorrect usage quickly.
+        """
+        raise RuntimeError(
+            "BillingConfig.get_instance() is deprecated. "
+            "BillingConfig is now per-tenant. "
+            "Use BillingConfig.get_for_tenant(tenant) instead."
+        )
 
     @property
     def full_address(self):

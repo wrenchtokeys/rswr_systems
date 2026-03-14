@@ -26,26 +26,65 @@ TEST_OVERRIDES = {
 
 @override_settings(**TEST_OVERRIDES)
 class BillingConfigTests(TestCase):
-    """BillingConfig singleton behavior and computed properties."""
+    """BillingConfig per-tenant behavior and computed properties."""
 
-    def test_get_instance_creates_default(self):
-        self.assertEqual(BillingConfig.objects.count(), 0)
-        config = BillingConfig.get_instance()
-        self.assertEqual(BillingConfig.objects.count(), 1)
+    def setUp(self):
+        from apps.tenants.models import SubscriptionPlan
+        self.plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial',
+            defaults={'name': 'Trial', 'monthly_price': Decimal('0.00'),
+                      'trial_days': 30, 'display_order': 0},
+        )
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user('bc_owner', 'bc@test.com', 'pass')
+        self.tenant = Tenant.objects.create(
+            name='Test Shop', slug='bc-test', subdomain='bc-test',
+            owner=self.user, subscription_plan=self.plan,
+        )
+
+    def test_get_for_tenant_creates_default(self):
+        self.assertEqual(BillingConfig.objects.filter(tenant=self.tenant).count(), 0)
+        config = BillingConfig.get_for_tenant(self.tenant)
+        self.assertEqual(BillingConfig.objects.filter(tenant=self.tenant).count(), 1)
         self.assertEqual(config.company_name, 'Rockstar Windshield Repair')
+        self.assertEqual(config.tenant, self.tenant)
 
-    def test_singleton_enforcement(self):
-        BillingConfig.get_instance()
-        with self.assertRaises(ValidationError):
-            BillingConfig(singleton_id=True).save()
+    def test_get_for_tenant_idempotent(self):
+        """Calling get_for_tenant twice returns the same config."""
+        config1 = BillingConfig.get_for_tenant(self.tenant)
+        config2 = BillingConfig.get_for_tenant(self.tenant)
+        self.assertEqual(config1.pk, config2.pk)
+
+    def test_two_tenants_independent_configs(self):
+        """Two tenants get separate, independent BillingConfig instances."""
+        from django.contrib.auth.models import User
+        user2 = User.objects.create_user('bc_owner2', 'bc2@test.com', 'pass')
+        tenant2 = Tenant.objects.create(
+            name='Shop B', slug='bc-test-2', subdomain='bc-test-2',
+            owner=user2, subscription_plan=self.plan,
+        )
+        config_a = BillingConfig.get_for_tenant(self.tenant)
+        config_b = BillingConfig.get_for_tenant(tenant2)
+        self.assertNotEqual(config_a.pk, config_b.pk)
+
+        # Changing A doesn't affect B
+        config_a.company_name = 'Shop A Name'
+        config_a.save()
+        config_b.refresh_from_db()
+        self.assertNotEqual(config_b.company_name, 'Shop A Name')
 
     def test_cannot_delete(self):
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(self.tenant)
         with self.assertRaises(ValidationError):
             config.delete()
 
+    def test_get_instance_deprecated(self):
+        """get_instance() raises RuntimeError to surface incorrect usage."""
+        with self.assertRaises(RuntimeError):
+            BillingConfig.get_instance()
+
     def test_full_address(self):
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(self.tenant)
         config.company_address = '123 Main St'
         config.company_city = 'Little Rock'
         config.company_state = 'AR'
@@ -55,14 +94,14 @@ class BillingConfigTests(TestCase):
         self.assertIn('Little Rock, AR 72201', config.full_address)
 
     def test_full_address_partial(self):
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(self.tenant)
         config.company_city = 'Fayetteville'
         config.company_state = 'AR'
         config.save()
         self.assertEqual(config.full_address, 'Fayetteville, AR')
 
     def test_due_days_for_terms(self):
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(self.tenant)
         config.default_payment_terms = 'NET30'
         self.assertEqual(config.due_days_for_terms, 30)
 
@@ -73,7 +112,7 @@ class BillingConfigTests(TestCase):
         self.assertEqual(config.due_days_for_terms, 60)
 
     def test_tax_defaults(self):
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(self.tenant)
         self.assertFalse(config.tax_enabled)
         self.assertEqual(config.state_tax_rate, Decimal('6.500'))
 

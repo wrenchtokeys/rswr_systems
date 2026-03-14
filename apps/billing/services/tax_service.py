@@ -36,19 +36,29 @@ class TaxService:
     def __init__(self, tenant=None):
         self.tenant = tenant
 
-    def _get_billing_config(self):
-        """Get the BillingConfig singleton with caching (legacy fallback)."""
-        config = cache.get(_BILLING_CONFIG_CACHE_KEY)
+    def _get_billing_config(self, tenant=None):
+        """
+        Get BillingConfig for a tenant (with caching).
+
+        Legacy note: previously this was a global singleton fallback. Now each
+        tenant has their own config. When tenant is None, returns None (no config).
+        """
+        tenant = tenant or self.tenant
+        if tenant is None:
+            return None
+
+        cache_key = f'billing_config_tax_{tenant.pk}'
+        config = cache.get(cache_key)
         if config is not None:
             return config
 
         try:
             from apps.billing.models import BillingConfig
-            config = BillingConfig.get_instance()
-            cache.set(_BILLING_CONFIG_CACHE_KEY, config, _BILLING_CONFIG_CACHE_TTL)
+            config = BillingConfig.get_for_tenant(tenant)
+            cache.set(cache_key, config, _BILLING_CONFIG_CACHE_TTL)
             return config
         except Exception as e:
-            logger.warning(f"Could not load BillingConfig: {e}")
+            logger.warning(f"Could not load BillingConfig for tenant {tenant}: {e}")
             return None
 
     def _get_tenant_default_tax_rate(self, tenant):

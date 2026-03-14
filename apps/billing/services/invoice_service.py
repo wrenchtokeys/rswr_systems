@@ -125,7 +125,9 @@ class InvoiceService:
         # --- BillingConfig (address + payment terms) ---
         try:
             from apps.billing.models import BillingConfig
-            billing_cfg = BillingConfig.get_instance()
+            billing_cfg = BillingConfig.get_for_tenant(self.tenant) if self.tenant else None
+            if billing_cfg is None:
+                raise ValueError("No tenant available")
             self.COMPANY_NAME = billing_cfg.company_name or "Rockstar Windshield Repair"
             self.COMPANY_ADDRESS = billing_cfg.full_address
             self.COMPANY_PHONE = billing_cfg.company_phone or ""
