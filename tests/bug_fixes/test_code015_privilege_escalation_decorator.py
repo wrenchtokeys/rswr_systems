@@ -206,9 +206,9 @@ class ManagerRequiredDecoratorTenantScopeTest(TestCase):
         req = self.factory.get('/')
         req.user = user
         req.tenant = tenant
-        # Attach a messages storage so decorators can call messages.warning()
-        from django.contrib.messages.storage.fallback import FallbackStorage
-        req._messages = FallbackStorage(req)
+        # Attach a cookie-based message storage (no session required)
+        from django.contrib.messages.storage.cookie import CookieStorage
+        req._messages = CookieStorage(req)
         return req
 
     def test_manager_at_a_blocked_at_b(self):
@@ -250,11 +250,11 @@ class ManagerRequiredDecoratorTenantScopeTest(TestCase):
 
     def test_unauthenticated_redirected(self):
         from django.contrib.auth.models import AnonymousUser
-        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.contrib.messages.storage.cookie import CookieStorage
         req = self.factory.get('/')
         req.user = AnonymousUser()
         req.tenant = self.tenant_a
-        req._messages = FallbackStorage(req)
+        req._messages = CookieStorage(req)
 
         view = manager_required(_dummy_view)
         response = view(req)
@@ -295,11 +295,11 @@ class AdminRequiredDecoratorTenantScopeTest(TestCase):
         self.tenant_b = _make_tenant('Zeta Shop', self.owner_b, plan)
 
     def _request(self, user, tenant):
-        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.contrib.messages.storage.cookie import CookieStorage
         req = self.factory.get('/')
         req.user = user
         req.tenant = tenant
-        req._messages = FallbackStorage(req)
+        req._messages = CookieStorage(req)
         return req
 
     def test_owner_at_a_blocked_at_b(self):
