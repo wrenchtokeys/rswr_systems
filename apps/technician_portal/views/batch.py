@@ -447,15 +447,16 @@ def convert_to_batch(request, repair_id):
                     try:
                         override_cost_decimal = Decimal(override_cost)
 
-                        if is_tenant_admin(request.user):
+                        if is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None)):
                             cost = override_cost_decimal
-                        elif hasattr(request.user, 'technician') and request.user.technician.is_manager:
-                            if override_cost_decimal <= request.user.technician.approval_limit:
-                                cost = override_cost_decimal
-                            else:
-                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit")
+                        elif hasattr(request.user, 'technician') and request.user.technician.is_manager and request.user.technician.can_override_pricing:
+                            tech = request.user.technician
+                            # approval_limit=None means unlimited; comparison requires non-None
+                            if tech.approval_limit is not None and override_cost_decimal > tech.approval_limit:
+                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${tech.approval_limit}")
+                            cost = override_cost_decimal
                         else:
-                            raise ValueError("Only managers can override prices")
+                            raise ValueError("Only managers with override pricing permission can override prices")
 
                         if not override_reason:
                             raise ValueError("Override reason is required when overriding price")
