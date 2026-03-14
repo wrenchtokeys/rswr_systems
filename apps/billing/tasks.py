@@ -52,7 +52,7 @@ def process_overdue_invoices():
     
     for tenant in tenants:
         try:
-            config = BillingConfig.get_instance()
+            config = BillingConfig.get_for_tenant(tenant)
         except Exception:
             config = None
         
@@ -175,7 +175,7 @@ def process_batch_invoices():
     
     for tenant in tenants:
         try:
-            config = BillingConfig.get_instance()
+            config = BillingConfig.get_for_tenant(tenant)
         except Exception:
             continue
         

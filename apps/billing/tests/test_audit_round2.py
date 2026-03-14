@@ -182,16 +182,23 @@ class TestStripeServiceTenantPropagation(TestCase):
 
 
 class TestReminderServiceSingletonAccess(TestCase):
-    """BUG-024: _build_reminder_email should use get_instance() not objects.first()."""
+    """
+    BUG-024 (updated): _build_reminder_email must use get_for_tenant(), not
+    the deprecated get_instance() or the raw objects.first().
 
-    def test_build_reminder_uses_get_instance(self):
-        """Verify BillingConfig.get_instance() is used (not .first())."""
+    After CODE-002 (BillingConfig per-tenant migration), get_instance() raises
+    RuntimeError, so any call to it in a hot path is a crash.
+    """
+
+    def test_build_reminder_uses_get_for_tenant(self):
+        """Verify _build_reminder_email uses get_for_tenant(), not get_instance() or .first()."""
         from apps.billing.services.reminder_service import ReminderService
         import inspect
 
         source = inspect.getsource(ReminderService._build_reminder_email)
         self.assertNotIn('objects.first()', source)
-        self.assertIn('get_instance()', source)
+        self.assertNotIn('get_instance()', source)
+        self.assertIn('get_for_tenant(', source)
 
 
 class TestInvoiceServiceTenantParam(TestCase):

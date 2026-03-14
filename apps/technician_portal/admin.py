@@ -266,9 +266,6 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
         repairs_billed = 0
         skipped = 0
 
-        config = BillingConfig.get_instance() if BillingConfig.objects.exists() else None
-        prefix = (config.invoice_number_prefix if config else None) or 'INV'
-
         for customer in queryset.select_related('tenant'):
             # Find completed repairs not yet linked to any invoice line item
             unbilled_repairs = (
@@ -282,7 +279,14 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
                 skipped += 1
                 continue
 
+            # Get per-tenant billing config for prefix and payment terms
+            try:
+                config = BillingConfig.get_for_tenant(customer.tenant)
+            except Exception:
+                config = None
+
             # Generate a unique invoice number
+            prefix = (config.invoice_number_prefix if config else None) or 'INV'
             timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
             invoice_number = f"{prefix}-{customer.id}-{timestamp}"
 
