@@ -11,6 +11,7 @@ from core.models import (
     CustomerNotificationPreference,
     EmailBrandingConfig,
 )
+from rs_systems.admin_mixins import TenantFilterMixin
 
 # Note: Customer model is already registered in apps/customer_portal/admin.py
 # We don't register it here to avoid conflicts
@@ -215,7 +216,7 @@ class NotificationTemplateAdmin(admin.ModelAdmin):
 
 
 @admin.register(NotificationDeliveryLog)
-class DeliveryLogAdmin(admin.ModelAdmin):
+class DeliveryLogAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for delivery logs with retry actions"""
 
     list_display = [

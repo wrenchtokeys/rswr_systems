@@ -2,6 +2,19 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-03-14 (2)
+
+### Fixed (CODE-006 — Admin classes missing TenantFilterMixin / tenant visibility)
+- **TechnicianAdmin** — added `tenant` to `list_display` and `list_filter`
+- **UnitRepairCountAdmin** — added `TenantFilterMixin`; tenant now visible in list_display/list_filter
+- **ViscosityRecommendationAdmin** — added `TenantFilterMixin`; tenant visible in list_display/list_filter
+- **TaxRateAdmin** (billing app) — added `TenantFilterMixin`; tenant visible in list_display/list_filter
+- **DeliveryLogAdmin** (core) — added `TenantFilterMixin` (model already had tenant FK; was missing from admin)
+- **customer_portal admins** — new `CustomerTenantFilterMixin` (filters via `customer__tenant`) applied to CustomerUserAdmin, CustomerPreferenceAdmin, RepairApprovalAdmin (`repair__customer`), CustomerPricingAdmin, CustomerRepairPreferenceAdmin, CustomerInvitationAdmin; `get_tenant_display` shown in all list views
+- **rewards_referrals admins** — `RewardOptionAdmin` uses `TenantFilterMixin`; `RewardAdmin`, `ReferralCodeAdmin` use new `CustomerUserTenantFilterMixin`; `ReferralAdmin` and `RewardRedemptionAdmin` have custom `get_queryset` scoping; all show tenant in list view
+- **BillingConfig data fix** — new management command `fix_billing_config_names` corrects company_name = tenant.name for all rows where migration incorrectly defaulted to "Rockstar Windshield Repair" (`python manage.py fix_billing_config_names --apply`)
+- All 98 existing admin/billing/owner-setup tests pass
+
 ## [Unreleased] — 2026-03-14
 
 ### Fixed (CODE-002 — Multi-tenant BillingConfig)

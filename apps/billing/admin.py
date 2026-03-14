@@ -301,15 +301,16 @@ class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
 # =============================================================================
 
 @admin.register(TaxRate)
-class TaxRateAdmin(admin.ModelAdmin):
+class TaxRateAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for viewing/editing sales tax rates."""
 
-    list_display = ['city', 'county', 'state', 'total_rate', 'is_active', 'effective_date']
-    list_filter = ['state', 'is_active', 'county']
-    search_fields = ['city', 'county', 'zip_code']
+    list_display = ['tenant', 'city', 'county', 'state', 'total_rate', 'is_active', 'effective_date']
+    list_filter = ['tenant', 'state', 'is_active', 'county']
+    search_fields = ['city', 'county', 'zip_code', 'tenant__name']
     list_editable = ['is_active']
+    list_select_related = ['tenant']
     list_per_page = 50
-    ordering = ['state', 'city']
+    ordering = ['tenant', 'state', 'city']
     readonly_fields = ['total_rate']
 
     fieldsets = (
