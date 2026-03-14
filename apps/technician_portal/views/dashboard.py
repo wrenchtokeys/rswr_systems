@@ -222,7 +222,7 @@ def technician_dashboard(request):
         todays_queue = []
 
     # Extra data for admin users
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     admin_data = None
 
     if is_admin:

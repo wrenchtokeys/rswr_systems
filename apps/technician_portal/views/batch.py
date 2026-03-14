@@ -38,7 +38,7 @@ def technician_batch_detail(request, batch_id):
     can_view = False
     can_start_work = False
 
-    if is_tenant_admin(request.user):
+    if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         can_view = True
         can_start_work = True
     elif technician:
@@ -76,7 +76,7 @@ def technician_batch_detail(request, batch_id):
         'repairs': batch_summary['repairs'],
         'technician': technician,
         'can_start_work': can_start_work,
-        'is_admin': is_tenant_admin(request.user),
+        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
     })
 
 
@@ -174,7 +174,7 @@ def create_multi_break_repair(request):
             created_repairs = []
 
             # Determine technician
-            if is_tenant_admin(request.user):
+            if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
                 tech_id = request.POST.get('technician_id')
                 if not tech_id:
                     messages.error(request, "As an admin, you must select a technician.")
@@ -363,7 +363,7 @@ def create_multi_break_repair(request):
         else:
             customer_qs = customer_qs.none()
         return render(request, 'technician_portal/multi_break_repair_form.html', {
-            'is_admin': is_tenant_admin(request.user),
+            'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
             'customers': customer_qs.order_by('name'),
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
         })
@@ -382,7 +382,7 @@ def convert_to_batch(request, repair_id):
         qs = qs.none()
     original_repair = get_object_or_404(qs, id=repair_id)
 
-    if not is_tenant_admin(request.user):
+    if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have permission to modify this repair.")
             return redirect('repair_detail', repair_id=repair_id)
@@ -523,5 +523,5 @@ def convert_to_batch(request, repair_id):
         return render(request, 'technician_portal/convert_to_batch_form.html', {
             'repair': original_repair,
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
-            'is_admin': is_tenant_admin(request.user),
+            'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
         })

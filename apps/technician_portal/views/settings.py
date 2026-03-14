@@ -58,7 +58,7 @@ def manager_settings_dashboard(request):
         team_count = manager.managed_technicians.filter(is_active=True).count()
 
     context = {
-        'is_admin': is_tenant_admin(request.user),
+        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
         'technician': manager,
         'viscosity_rules_count': viscosity_rules_count,
         'team_count': team_count,
@@ -94,7 +94,7 @@ def manage_viscosity_rules(request):
     ]
 
     context = {
-        'is_admin': is_tenant_admin(request.user),
+        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
         'technician': manager,
         'rules_with_position': rules_with_position,
         'badge_colors': ViscosityRecommendation.BADGE_COLOR_CHOICES,
@@ -339,7 +339,7 @@ def team_overview(request):
     total_team_completed = sum(stat['completed_repairs'] for stat in team_stats)
 
     context = {
-        'is_admin': is_tenant_admin(request.user),
+        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
         'technician': manager,
         'team_stats': team_stats,
         'total_team_repairs': total_team_repairs,

@@ -84,7 +84,7 @@ def customer_list(request):
     tenant = getattr(request, 'tenant', None)
 
     # Admins and working managers see all customers in their tenant
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = (hasattr(request.user, 'technician') and
               request.user.technician.is_manager)
 
@@ -158,7 +158,7 @@ def customer_details(request, customer_id):
     customer = get_object_or_404(qs, id=customer_id)
 
     # Determine if user is admin/owner/manager (can see all repairs)
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = technician and technician.is_manager
     
     # Build repairs query
@@ -228,7 +228,7 @@ def unit_details(request, customer_id, unit_number):
     tenant = getattr(request, 'tenant', None)
     
     # Check if user is admin/manager (can see all)
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
 
     qs = Customer.objects.all()
@@ -358,7 +358,7 @@ def update_primary_technician(request, customer_id):
     """Update the primary technician for a customer (manager/admin only)."""
     tenant = getattr(request, 'tenant', None)
 
-    if not is_tenant_admin(request.user):
+    if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
             messages.error(request, "Only managers or admins can change a customer's primary technician.")
             return redirect('customer_detail', customer_id=customer_id)
@@ -398,7 +398,7 @@ def edit_customer(request, customer_id):
     tenant = getattr(request, 'tenant', None)
     
     # Check permissions
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
     
     if not (is_admin or is_mgr):
@@ -437,7 +437,7 @@ def delete_customer(request, customer_id):
     tenant = getattr(request, 'tenant', None)
     
     # Only admins can delete
-    if not is_tenant_admin(request.user):
+    if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         messages.error(request, "Only shop owners can delete customers.")
         return redirect('customer_detail', customer_id=customer_id)
     
@@ -474,7 +474,7 @@ def send_customer_invitation(request, customer_id):
     tenant = getattr(request, 'tenant', None)
     
     # Only admins/managers can send invitations
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
     
     if not (is_admin or is_mgr):
@@ -531,7 +531,7 @@ def resend_customer_invitation(request, invitation_id):
     tenant = getattr(request, 'tenant', None)
     
     # Only admins/managers can resend invitations
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
     
     if not (is_admin or is_mgr):
@@ -563,7 +563,7 @@ def cancel_customer_invitation(request, invitation_id):
     tenant = getattr(request, 'tenant', None)
     
     # Only admins/managers can cancel invitations
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
     
     if not (is_admin or is_mgr):
@@ -595,7 +595,7 @@ def set_primary_contact(request, customer_id, cu_id):
 
     tenant = getattr(request, 'tenant', None)
 
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
 
     if not (is_admin or is_mgr):

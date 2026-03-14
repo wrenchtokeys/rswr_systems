@@ -37,7 +37,7 @@ def reward_fulfillment_detail(request, redemption_id):
     redemption = get_object_or_404(redemption_qs, id=redemption_id)
 
     is_assigned_technician = (redemption.assigned_technician == technician)
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     can_fulfill = is_assigned_technician or is_admin
 
     # Get customer repairs for applying reward
@@ -109,7 +109,7 @@ def reward_fulfillment_detail(request, redemption_id):
 def apply_reward_to_repair(request, repair_id):
     """Apply a reward redemption to a specific repair."""
     tenant = getattr(request, 'tenant', None)
-    if is_tenant_admin(request.user):
+    if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)
