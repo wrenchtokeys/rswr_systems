@@ -464,7 +464,7 @@ class Invoice(models.Model):
 class InvoiceLineItem(models.Model):
     """
     Individual line items on an invoice.
-    Links repairs to invoices to prevent double-billing.
+    Links repairs/replacements to invoices to prevent double-billing.
     """
     
     invoice = models.ForeignKey(
@@ -480,6 +480,15 @@ class InvoiceLineItem(models.Model):
         null=True, blank=True,
         related_name='invoice_line_items',
         help_text="The repair this line item is for. PROTECT prevents deleting invoiced repairs."
+    )
+    
+    # Link to replacement (if applicable)
+    replacement = models.ForeignKey(
+        'technician_portal.Replacement',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='invoice_line_items',
+        help_text="The replacement this line item is for. PROTECT prevents deleting invoiced replacements."
     )
     
     # Line item details
