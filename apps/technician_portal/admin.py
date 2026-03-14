@@ -17,7 +17,7 @@ class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_display = ['user', 'tenant', 'get_email', 'get_full_name', 'phone_number', 'expertise', 'is_manager', 'is_active', 'repairs_completed']
     list_filter = ['tenant', 'expertise', 'is_manager', 'is_active', 'can_assign_work', 'can_override_pricing']
     search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name', 'phone_number']
-    list_select_related = ['user']
+    list_select_related = ['user', 'tenant']  # 'tenant' prevents N+1 when rendering list_display
     filter_horizontal = ['managed_technicians']
     list_per_page = 25
 

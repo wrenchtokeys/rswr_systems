@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db.models import Count
 from django.utils import timezone
 from rs_systems.admin_mixins import TenantFilterMixin
 from .models import ReferralCode, Referral, Reward, RewardOption, RewardRedemption, RewardType
@@ -242,9 +243,22 @@ class ReferralCodeAdmin(CustomerUserTenantFilterMixin, admin.ModelAdmin):
     customer_email.short_description = 'Customer'
     customer_email.admin_order_field = 'customer_user__user__email'
 
+    def get_queryset(self, request):
+        """Annotate with referral count to avoid N+1 queries in list view."""
+        qs = super().get_queryset(request)
+        # ORM reverse-relation name is the lowercase model name ('referral'),
+        # NOT the Python manager accessor ('referral_set').
+        return qs.annotate(_referral_count=Count('referral'))
+
     def get_referral_count(self, obj):
+        # Use the queryset annotation from get_queryset() instead of issuing
+        # a separate COUNT query for every row in the list view (N+1 problem).
+        # NOTE: getattr's default arg is always evaluated, so use hasattr instead.
+        if hasattr(obj, '_referral_count'):
+            return obj._referral_count
         return Referral.objects.filter(referral_code=obj).count()
     get_referral_count.short_description = 'Referral Count'
+    get_referral_count.admin_order_field = '_referral_count'
 
 
 @admin.register(Referral)
