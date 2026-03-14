@@ -2,12 +2,38 @@ from django.contrib import admin
 from django.utils import timezone
 from django.utils.html import format_html
 from .models import Tenant, TenantMembership, SubscriptionPlan
+from apps.technician_portal.models import ViscosityRecommendation
+from apps.billing.models import BillingConfig
 
 
 class TenantMembershipInline(admin.TabularInline):
     model = TenantMembership
     extra = 1
     autocomplete_fields = ['user']
+
+
+class ViscosityRecommendationInline(admin.TabularInline):
+    """Inline viscosity rules so admins can manage them directly on the Tenant page."""
+    model = ViscosityRecommendation
+    extra = 0
+    fields = ['name', 'min_temperature', 'max_temperature', 'recommended_viscosity', 'display_order', 'is_active']
+    ordering = ['display_order']
+    show_change_link = True
+
+
+class BillingConfigInline(admin.StackedInline):
+    """Inline billing config so admins can view/edit it directly on the Tenant page."""
+    model = BillingConfig
+    extra = 0
+    max_num = 1
+    can_delete = False
+    show_change_link = True
+    fields = [
+        'company_name', 'company_address', 'company_city', 'company_state',
+        'company_zip', 'company_phone', 'company_email',
+        'default_payment_terms', 'invoice_number_prefix',
+        'tax_enabled', 'default_tax_rate',
+    ]
 
 
 @admin.register(Tenant)
@@ -21,7 +47,7 @@ class TenantAdmin(admin.ModelAdmin):
     search_fields = ['name', 'slug', 'subdomain']
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ['owner']
-    inlines = [TenantMembershipInline]
+    inlines = [TenantMembershipInline, ViscosityRecommendationInline, BillingConfigInline]
     list_per_page = 25
     readonly_fields = [
         'created_at', 'updated_at', 'trial_started_at',

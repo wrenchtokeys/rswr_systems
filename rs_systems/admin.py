@@ -12,108 +12,108 @@ from apps.technician_portal.models import Technician
 from core.models import Customer
 from rs_systems.admin_dashboard import get_dashboard_context
 
+
+class UserTenantFilter(admin.SimpleListFilter):
+    """Filter users by their associated tenant (via Technician or CustomerUser)."""
+    title = 'tenant / shop'
+    parameter_name = 'tenant'
+
+    def lookups(self, request, model_admin):
+        from apps.tenants.models import Tenant
+        tenants = Tenant.objects.filter(is_active=True).order_by('name')
+        return [(str(t.id), t.name) for t in tenants]
+
+    def queryset(self, request, queryset):
+        if not self.value():
+            return queryset
+        tech_user_ids = Technician.objects.filter(
+            tenant_id=self.value()
+        ).values_list('user_id', flat=True)
+        cu_user_ids = CustomerUser.objects.filter(
+            customer__tenant_id=self.value()
+        ).values_list('user_id', flat=True)
+        from django.db.models import Q
+        return queryset.filter(Q(id__in=tech_user_ids) | Q(id__in=cu_user_ids))
+
+
 # Extend the User admin
 class UserAdmin(BaseUserAdmin):
-    list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'get_role', 'is_active', 'date_joined']
-    list_filter = ['is_staff', 'is_active', 'date_joined', 'groups']
+    list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'get_role', 'get_tenant', 'is_active', 'date_joined']
+    list_filter = ['is_staff', 'is_active', 'date_joined', 'groups', UserTenantFilter]
     actions = ['make_technician', 'make_customer', 'make_dual_role', 'deactivate_users', 'activate_users']
-    
+
     def get_role(self, obj):
         """Display the user's role (Technician, Customer, or Admin)"""
         if obj.is_staff and obj.is_superuser:
             return 'Admin'
-        
+
         is_technician = Technician.objects.filter(user=obj).exists()
         is_customer = CustomerUser.objects.filter(user=obj).exists()
-        
+
         if is_technician and is_customer:
             return 'Tech & Customer'
         elif is_technician:
             return 'Technician'
         elif is_customer:
             return 'Customer'
-            
+
         return 'Unassigned'
     get_role.short_description = 'Role'
-    
+
+    def get_tenant(self, obj):
+        """Display the user's tenant/shop via Technician or CustomerUser."""
+        # Technician has a direct tenant FK
+        tech = Technician.objects.filter(user=obj).select_related('tenant').first()
+        if tech and tech.tenant:
+            return tech.tenant.name
+        # CustomerUser reaches tenant via customer → tenant
+        cu = CustomerUser.objects.filter(user=obj).select_related('customer__tenant').first()
+        if cu and cu.customer and cu.customer.tenant:
+            return cu.customer.tenant.name
+        return '—'
+    get_tenant.short_description = 'Tenant / Shop'
+
     def make_technician(self, request, queryset):
-        """Convert selected users to technicians (if they aren't already)"""
-        count = 0
-        for user in queryset:
-            # Skip users who are already technicians
-            if Technician.objects.filter(user=user).exists():
-                continue
-                
-            # Create technician record
-            Technician.objects.create(
-                user=user,
-                phone_number='',
-                expertise='General'
-            )
-            count += 1
-            
-        self.message_user(request, f'{count} users were successfully converted to technicians.')
-    make_technician.short_description = 'Convert selected users to technicians'
-    
+        """
+        Disabled: creating a Technician requires specifying a tenant/shop.
+        Use Technicians → Add Technician instead.
+        """
+        self.message_user(
+            request,
+            'Cannot auto-assign technician role from here: a tenant/shop must be '
+            'specified for each technician. Please create technician records directly '
+            'via Technicians → Add Technician and pick the correct shop.',
+            level=messages.WARNING,
+        )
+    make_technician.short_description = 'Convert selected users to technicians (requires tenant — see warning)'
+
     def make_customer(self, request, queryset):
-        """Convert selected users to customers (if they aren't already)"""
-        count = 0
-        # Need to check if there's at least one company in the system
-        if not Customer.objects.exists():
-            self.message_user(request, 'Error: You need to create at least one company first.', level=messages.ERROR)
-            return
-            
-        default_company = Customer.objects.first()
-        
-        for user in queryset:
-            # Skip users who are already customers
-            if CustomerUser.objects.filter(user=user).exists():
-                continue
-                
-            # Create customer user record
-            CustomerUser.objects.create(
-                user=user,
-                customer=default_company,
-                is_primary_contact=False
-            )
-            count += 1
-            
-        self.message_user(request, f'{count} users were successfully converted to customers and associated with {default_company.name}.')
-    make_customer.short_description = 'Convert selected users to customers'
-    
+        """
+        Disabled: creating a CustomerUser requires specifying a tenant-scoped customer.
+        Use Customer Portal → Add Customer User instead.
+        """
+        self.message_user(
+            request,
+            'Cannot auto-assign customer role from here: a specific tenant/shop and '
+            'customer account must be selected. Please create customer user records '
+            'directly via Customer Portal → Customer Users → Add.',
+            level=messages.WARNING,
+        )
+    make_customer.short_description = 'Convert selected users to customers (requires tenant — see warning)'
+
     def make_dual_role(self, request, queryset):
-        """Make selected users both technicians and customers"""
-        tech_count = 0
-        cust_count = 0
-        
-        # Need to check if there's at least one company in the system
-        if not Customer.objects.exists():
-            self.message_user(request, 'Error: You need to create at least one company first.', level=messages.ERROR)
-            return
-            
-        default_company = Customer.objects.first()
-        
-        for user in queryset:
-            # Add technician role if needed
-            if not Technician.objects.filter(user=user).exists():
-                Technician.objects.create(
-                    user=user,
-                    phone_number='',
-                    expertise='General'
-                )
-                tech_count += 1
-                
-            # Add customer role if needed
-            if not CustomerUser.objects.filter(user=user).exists():
-                CustomerUser.objects.create(
-                    user=user,
-                    customer=default_company,
-                    is_primary_contact=False
-                )
-                cust_count += 1
-                
-        self.message_user(request, f'Users updated: {tech_count} new technician roles and {cust_count} new customer roles assigned.')
-    make_dual_role.short_description = 'Give selected users both technician and customer roles'
+        """
+        Disabled: assigning dual roles requires tenant-aware technician and customer records.
+        Create them directly via their respective admin sections.
+        """
+        self.message_user(
+            request,
+            'Cannot auto-assign dual roles from here: both the Technician and '
+            'CustomerUser records require a specific tenant/shop. Please create them '
+            'directly via Technicians → Add Technician and Customer Portal → Customer Users → Add.',
+            level=messages.WARNING,
+        )
+    make_dual_role.short_description = 'Give selected users both technician and customer roles (requires tenant — see warning)'
     
     def deactivate_users(self, request, queryset):
         """Deactivate selected users"""
