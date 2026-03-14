@@ -2,6 +2,7 @@ import csv
 
 from django.contrib import admin
 from django.contrib.admin.widgets import FilteredSelectMultiple
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.urls import path
 from django.shortcuts import render
@@ -238,11 +239,44 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_per_page = 25
     actions = ['export_csv', 'generate_invoices']
 
-    def get_primary_contact(self, obj):
+    def get_queryset(self, request):
+        """
+        Prefetch primary CustomerUser contacts to avoid an N+1 query in
+        get_primary_contact().  Without this, every row in the changelist
+        issues its own SELECT against customeruser; with 25-50 customers per
+        page that's 25-50 extra round-trips.
+        """
         from apps.customer_portal.models import CustomerUser
+        qs = super().get_queryset(request)
+        primary_contact_qs = (
+            CustomerUser.objects
+            .filter(is_primary_contact=True)
+            .select_related('user')
+        )
+        return qs.prefetch_related(
+            Prefetch(
+                'customeruser_set',
+                queryset=primary_contact_qs,
+                to_attr='_primary_contacts',
+            )
+        )
+
+    def get_primary_contact(self, obj):
+        """Return the primary contact name/email, using the prefetched cache."""
         try:
-            primary = CustomerUser.objects.filter(customer=obj, is_primary_contact=True).first()
-            if primary:
+            # _primary_contacts is populated by get_queryset()'s Prefetch;
+            # fall back to a live query only if the attribute is somehow absent.
+            if hasattr(obj, '_primary_contacts'):
+                contacts = obj._primary_contacts
+            else:
+                from apps.customer_portal.models import CustomerUser
+                contacts = list(
+                    CustomerUser.objects.filter(
+                        customer=obj, is_primary_contact=True
+                    ).select_related('user')
+                )
+            if contacts:
+                primary = contacts[0]
                 return f"{primary.user.get_full_name()} ({primary.user.email})"
             return "No primary contact"
         except Exception:
