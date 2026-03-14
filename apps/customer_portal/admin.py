@@ -7,12 +7,63 @@ from .models import CustomerUser, CustomerPreference, RepairApproval, CustomerRe
 from .pricing_models import CustomerPricing
 
 
+# ---------------------------------------------------------------------------
+# Helper mixin for models that reach their tenant through customer → tenant
+# ---------------------------------------------------------------------------
+
+class CustomerTenantFilterMixin:
+    """
+    Mixin for admin classes whose models don't have a direct tenant FK but
+    reach a tenant through a `customer` FK: model → customer → tenant.
+
+    Superusers see all records. Non-superusers see only their own tenant(s).
+    Adds tenant to list_filter for superusers only.
+    """
+
+    # Override this if the path to customer differs (e.g. 'repair__customer')
+    customer_path: str = 'customer'
+
+    def _get_user_tenant_ids(self, request):
+        from apps.tenants.models import TenantMembership
+        return (
+            TenantMembership.objects
+            .filter(user=request.user, is_active=True)
+            .values_list('tenant_id', flat=True)
+        )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        tenant_ids = self._get_user_tenant_ids(request)
+        return qs.filter(**{f"{self.customer_path}__tenant__in": tenant_ids})
+
+    def get_list_filter(self, request):
+        filters = list(super().get_list_filter(request))
+        if request.user.is_superuser:
+            tenant_filter = f'{self.customer_path}__tenant'
+            if tenant_filter not in filters:
+                filters = [tenant_filter] + filters
+        return filters
+
+    def get_tenant_display(self, obj):
+        """Helper for list_display: shows tenant name."""
+        try:
+            customer = obj
+            for part in self.customer_path.split('__'):
+                customer = getattr(customer, part)
+            return customer.tenant.name
+        except AttributeError:
+            return '—'
+    get_tenant_display.short_description = 'Tenant'
+
+
 @admin.register(CustomerUser)
-class CustomerUserAdmin(admin.ModelAdmin):
-    list_display = ['user', 'customer', 'get_email', 'get_full_name', 'is_primary_contact']
+class CustomerUserAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
+    list_display = ['user', 'get_tenant_display', 'customer', 'get_email', 'get_full_name', 'is_primary_contact']
     list_filter = ['is_primary_contact', 'customer']
-    search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name', 'customer__name']
-    list_select_related = ['user', 'customer']
+    search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name', 'customer__name', 'customer__tenant__name']
+    list_select_related = ['user', 'customer', 'customer__tenant']
     list_per_page = 25
 
     def get_email(self, obj):
@@ -33,28 +84,33 @@ class CustomerUserAdmin(admin.ModelAdmin):
 
 
 @admin.register(CustomerPreference)
-class CustomerPreferenceAdmin(admin.ModelAdmin):
-    list_display = ['customer', 'receive_email_notifications', 'receive_sms_notifications', 'default_view']
+class CustomerPreferenceAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
+    list_display = ['get_tenant_display', 'customer', 'receive_email_notifications', 'receive_sms_notifications', 'default_view']
     list_filter = ['receive_email_notifications', 'receive_sms_notifications', 'default_view']
-    search_fields = ['customer__name']
+    search_fields = ['customer__name', 'customer__tenant__name']
+    list_select_related = ['customer', 'customer__tenant']
     list_per_page = 25
 
 
 @admin.register(RepairApproval)
-class RepairApprovalAdmin(admin.ModelAdmin):
-    list_display = ['repair', 'approved', 'approved_by', 'approval_date']
+class RepairApprovalAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
+    # RepairApproval → repair → customer → tenant
+    customer_path = 'repair__customer'
+
+    list_display = ['repair', 'get_tenant_display', 'approved', 'approved_by', 'approval_date']
     list_filter = ['approved', 'approval_date']
-    search_fields = ['repair__id', 'repair__customer__name', 'approved_by__user__username']
+    search_fields = ['repair__id', 'repair__customer__name', 'approved_by__user__username', 'repair__customer__tenant__name']
     readonly_fields = ['approval_date']
+    list_select_related = ['repair', 'repair__customer', 'repair__customer__tenant', 'approved_by']
     list_per_page = 25
 
 
 @admin.register(CustomerPricing)
-class CustomerPricingAdmin(admin.ModelAdmin):
-    list_display = ['customer', 'use_custom_pricing', 'created_at', 'created_by']
+class CustomerPricingAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
+    list_display = ['get_tenant_display', 'customer', 'use_custom_pricing', 'created_at', 'created_by']
     list_filter = ['use_custom_pricing', 'created_at']
-    search_fields = ['customer__name', 'notes']
-    list_select_related = ['customer', 'created_by']
+    search_fields = ['customer__name', 'notes', 'customer__tenant__name']
+    list_select_related = ['customer', 'customer__tenant', 'created_by']
     readonly_fields = ['created_at', 'updated_at']
     list_per_page = 25
 
@@ -154,12 +210,12 @@ class CustomerRepairPreferenceForm(forms.ModelForm):
 
 
 @admin.register(CustomerRepairPreference)
-class CustomerRepairPreferenceAdmin(admin.ModelAdmin):
+class CustomerRepairPreferenceAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
     form = CustomerRepairPreferenceForm
-    list_display = ['customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'updated_at']
+    list_display = ['get_tenant_display', 'customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'updated_at']
     list_filter = ['field_repair_approval_mode', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'lot_walking_frequency', 'updated_at']
-    search_fields = ['customer__name']
-    list_select_related = ['customer']
+    search_fields = ['customer__name', 'customer__tenant__name']
+    list_select_related = ['customer', 'customer__tenant']
     readonly_fields = ['created_at', 'updated_at']
     list_per_page = 25
 
@@ -192,15 +248,16 @@ class CustomerRepairPreferenceAdmin(admin.ModelAdmin):
 
 
 @admin.register(CustomerInvitation)
-class CustomerInvitationAdmin(admin.ModelAdmin):
-    list_display = ['email', 'customer', 'status', 'created_at', 'expires_at', 'sent_at']
+class CustomerInvitationAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
+    list_display = ['get_tenant_display', 'email', 'customer', 'status', 'created_at', 'expires_at', 'sent_at']
     list_filter = ['status', 'created_at']
-    search_fields = ['email', 'customer__name', 'first_name', 'last_name']
+    search_fields = ['email', 'customer__name', 'first_name', 'last_name', 'customer__tenant__name']
     readonly_fields = ['token', 'created_at', 'sent_at', 'accepted_at', 'accepted_user']
     # customer and invited_by have search_fields on their target admins → use autocomplete
     autocomplete_fields = ['customer', 'invited_by']
     raw_id_fields = ['accepted_user']  # User is rarely searched by accepted_user context
     ordering = ['-created_at']
+    list_select_related = ['customer', 'customer__tenant']
     list_per_page = 25
 
     fieldsets = (

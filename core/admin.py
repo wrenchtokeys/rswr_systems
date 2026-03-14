@@ -11,6 +11,7 @@ from core.models import (
     CustomerNotificationPreference,
     EmailBrandingConfig,
 )
+from rs_systems.admin_mixins import TenantFilterMixin
 
 # Note: Customer model is already registered in apps/customer_portal/admin.py
 # We don't register it here to avoid conflicts
@@ -215,12 +216,13 @@ class NotificationTemplateAdmin(admin.ModelAdmin):
 
 
 @admin.register(NotificationDeliveryLog)
-class DeliveryLogAdmin(admin.ModelAdmin):
+class DeliveryLogAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for delivery logs with retry actions"""
 
     list_display = [
         'id',
         'notification_id',
+        'tenant',
         'channel',
         'status_badge',
         'recipient',
@@ -230,6 +232,7 @@ class DeliveryLogAdmin(admin.ModelAdmin):
     ]
 
     list_filter = [
+        'tenant',
         'channel',
         'status',
         'created_at',
@@ -276,8 +279,9 @@ class DeliveryLogAdmin(admin.ModelAdmin):
 
     def cost_display(self, obj):
         """Display cost with currency formatting"""
-        if obj.cost and obj.cost > 0:
-            return f"${obj.cost:.4f}"
+        cost = getattr(obj, 'estimated_cost', None)
+        if cost and cost > 0:
+            return f"${cost:.4f}"
         return "—"
     cost_display.short_description = 'Cost'
 

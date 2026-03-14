@@ -85,40 +85,12 @@ Automatic calculation of key metrics:
 
 #### Retry Delivery
 **Action:** `retry_delivery`
-**Description:** Re-queues failed notifications for delivery via Celery
+**Description:** Re-attempts synchronous delivery for failed notifications
 **Logic:**
 - Only retries notifications that failed email or SMS delivery
 - Checks `should_send_email()` and `should_send_sms()` methods
-- Queues tasks with 5-second delay to avoid immediate re-failure
-- Shows success message with count of queued notifications
-
-**Code Example:**
-```python
-def retry_delivery(self, request, queryset):
-    """Bulk action to retry delivery for failed notifications"""
-    from core.tasks import send_notification_email, send_notification_sms
-
-    retried = 0
-    for notification in queryset:
-        if not notification.email_sent and notification.should_send_email():
-            send_notification_email.apply_async(
-                args=[notification.id],
-                countdown=5
-            )
-            retried += 1
-
-        if not notification.sms_sent and notification.should_send_sms():
-            send_notification_sms.apply_async(
-                args=[notification.id],
-                countdown=5
-            )
-            retried += 1
-
-    self.message_user(
-        request,
-        f"Queued {retried} notification(s) for retry delivery."
-    )
-```
+- Calls delivery functions directly (synchronous — no task queue)
+- Shows success message with count of retried notifications
 
 ---
 
@@ -141,39 +113,11 @@ def retry_delivery(self, request, queryset):
 #### Bulk Action: Retry Failed Deliveries
 
 **Action:** `retry_failed_deliveries`
-**Description:** Re-queues failed delivery logs for retry via Celery
+**Description:** Re-attempts synchronous delivery for failed delivery logs
 **Logic:**
 - Filters to only failed deliveries with attempt_number < 3
-- Re-queues based on channel (email or sms)
-- Uses 10-second countdown before retry
+- Calls delivery functions directly based on channel (email or sms)
 - Prevents retry loops by checking attempt limit
-
-**Code Example:**
-```python
-def retry_failed_deliveries(self, request, queryset):
-    from core.tasks import send_notification_email, send_notification_sms
-
-    failed_logs = queryset.filter(status='failed', attempt_number__lt=3)
-    count = 0
-
-    for log in failed_logs:
-        notification = log.notification
-
-        if log.channel == 'email' and notification:
-            send_notification_email.apply_async(
-                args=[notification.id],
-                countdown=10
-            )
-            count += 1
-        elif log.channel == 'sms' and notification:
-            send_notification_sms.apply_async(
-                args=[notification.id],
-                countdown=10
-            )
-            count += 1
-
-    self.message_user(request, f"Queued {count} failed deliveries for retry.")
-```
 
 ---
 
@@ -280,11 +224,11 @@ def should_send_sms(self):
 3. Select the failed notifications (checkbox on left)
 4. Choose "Retry delivery for selected notifications" from Actions dropdown
 5. Click "Go"
-6. Check Celery worker logs to verify retry success
+6. Verify success message in admin
 
 **Expected Output:**
 ```
-Queued 15 notification(s) for retry delivery. Check Celery logs for results.
+Retried 15 notification delivery/deliveries.
 ```
 
 ### Retrying Failed Delivery Logs
@@ -315,7 +259,7 @@ Queued 15 notification(s) for retry delivery. Check Celery logs for results.
 1. **`core/admin.py`**
    - Added `retry_delivery` action to NotificationAdmin (lines 107-136)
    - Added `cost_display` method to DeliveryLogAdmin (lines 266-271)
-   - Enhanced `retry_failed_deliveries` with Celery task queueing (lines 273-303)
+   - Enhanced `retry_failed_deliveries` with synchronous retry logic (lines 273-303)
 
 2. **`core/models/notification.py`**
    - Added `should_send_email()` method (lines 187-189)
@@ -369,10 +313,7 @@ Notification.objects.filter(id__in=[1, 2, 3]).update(email_sent=False)
 Then in admin:
 1. Select the 3 notifications
 2. Run "Retry delivery" action
-3. Verify Celery logs show task queuing:
-   ```
-   [INFO] Task core.tasks.send_notification_email[...] received
-   ```
+3. Verify success message: `Retried X notification delivery/deliveries.`
 
 **Test 3: Cost Display**
 ```python
@@ -448,30 +389,26 @@ print(stats)
 - Verify Django version supports `filter` parameter in `Count()` (Django 2.0+)
 - Clear browser cache and refresh
 
-### Issue: Retry action not queueing tasks
+### Issue: Retry action not working
 
-**Symptoms:** Click "Retry delivery" but no tasks appear in Celery logs
+**Symptoms:** Click "Retry delivery" but no deliveries succeed
 
 **Investigation:**
 ```bash
-# Check Celery worker is running
-celery -A rs_systems inspect active
+# Check SendGrid API key
+eb printenv | grep SENDGRID
 
-# Check Redis connection
-redis-cli ping
-
-# Check notification has correct priority
+# Check notification priority
 python manage.py shell
 >>> from core.models import Notification
 >>> n = Notification.objects.get(id=123)
 >>> n.should_send_email()  # Should return True/False
->>> n.should_send_sms()    # Should return True/False
 ```
 
 **Resolution:**
-- Restart Celery workers: `sudo systemctl restart celery-worker`
-- Verify Redis broker URL in settings
-- Check notification priority allows email/SMS delivery
+- Verify `SENDGRID_API_KEY` is set correctly
+- Check Django logs for exceptions during delivery
+- Verify notification priority allows email delivery
 
 ### Issue: Template not rendering
 

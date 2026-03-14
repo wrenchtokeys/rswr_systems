@@ -1044,7 +1044,7 @@ def owner_settings_view(request):
             # Update shop location + tax rate breakdown
             try:
                 from decimal import Decimal, InvalidOperation
-                config = BillingConfig.get_instance()
+                config = BillingConfig.get_for_tenant(tenant)
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
                 config.company_zip = request.POST.get('company_zip', '').strip()
@@ -1083,7 +1083,7 @@ def owner_settings_view(request):
         if form_type == 'toggle_overdue_reminders':
             # Toggle overdue reminder emails
             try:
-                config = BillingConfig.get_instance()
+                config = BillingConfig.get_for_tenant(tenant)
                 config.overdue_reminder_enabled = not config.overdue_reminder_enabled
                 config.save(update_fields=['overdue_reminder_enabled'])
                 status = 'enabled' if config.overdue_reminder_enabled else 'disabled'
@@ -1096,7 +1096,7 @@ def owner_settings_view(request):
         if form_type == 'overdue_reminder_settings':
             # Update overdue reminder configuration
             try:
-                config = BillingConfig.get_instance()
+                config = BillingConfig.get_for_tenant(tenant)
                 config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
                 config.overdue_reminder_subject = request.POST.get('overdue_reminder_subject', 'Reminder: Invoice #{invoice_number} is overdue').strip()
                 config.save(update_fields=['overdue_reminder_days', 'overdue_reminder_subject'])
@@ -1109,7 +1109,7 @@ def owner_settings_view(request):
         if form_type == 'batch_invoice_settings':
             # Update batch invoicing configuration
             try:
-                config = BillingConfig.get_instance()
+                config = BillingConfig.get_for_tenant(tenant)
                 config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
                 config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
                 config.batch_invoice_auto_send = request.POST.get('batch_invoice_auto_send') == '1'
@@ -1173,7 +1173,7 @@ def owner_settings_view(request):
         models.Q(tenant=tenant) | models.Q(tenant__isnull=True)
     ).order_by('state', 'city')
     try:
-        billing_config = BillingConfig.get_instance()
+        billing_config = BillingConfig.get_for_tenant(tenant)
         tax_enabled = billing_config.tax_enabled
     except Exception:
         billing_config = None
@@ -2028,12 +2028,17 @@ def owner_delete_tax_rate(request, rate_id):
 
 @owner_or_manager_required
 def owner_toggle_tax(request):
-    """POST /owner/tax-rates/toggle/ — enable/disable tax globally."""
+    """POST /owner/tax-rates/toggle/ — enable/disable tax for this tenant."""
     if request.method != 'POST':
         return redirect('/owner/settings/?tab=billing')
 
+    tenant, _membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('/owner/settings/?tab=billing')
+
     try:
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(tenant)
         config.tax_enabled = not config.tax_enabled
         config.save()
         from django.core.cache import cache
@@ -2476,7 +2481,7 @@ def _setup_completion(tenant):
     from decimal import Decimal
 
     try:
-        billing_config = BillingConfig.get_instance()
+        billing_config = BillingConfig.get_for_tenant(tenant)
     except Exception:
         billing_config = None
 
@@ -2515,7 +2520,7 @@ def owner_setup_view(request):
     from apps.technician_portal.models import ViscosityRecommendation
 
     try:
-        billing_config = BillingConfig.get_instance()
+        billing_config = BillingConfig.get_for_tenant(tenant)
     except Exception:
         billing_config = None
 
@@ -2625,8 +2630,8 @@ def owner_setup_save_tax(request):
         city = request.POST.get('city', '').strip()
         state = request.POST.get('state', 'AR').strip().upper()
 
-        # Update global BillingConfig tax enabled flag
-        config = BillingConfig.get_instance()
+        # Update tenant's BillingConfig tax enabled flag
+        config = BillingConfig.get_for_tenant(tenant)
         config.tax_enabled = tax_enabled
         if tax_enabled and total > 0:
             config.state_tax_rate = state_rate
@@ -2675,7 +2680,7 @@ def owner_setup_save_billing(request):
     try:
         from apps.billing.models import BillingConfig
 
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(tenant)
         config.default_payment_terms = request.POST.get('default_payment_terms', 'COD')
         config.overdue_reminder_enabled = request.POST.get('overdue_reminder_enabled') == '1'
         config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()

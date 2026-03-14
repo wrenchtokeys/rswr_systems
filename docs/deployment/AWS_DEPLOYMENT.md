@@ -750,10 +750,10 @@ eb terminate ENVIRONMENT_NAME
 
 ### Important URLs
 
-- **Production App**: https://yourdomain.com
-- **Admin Interface**: https://yourdomain.com/admin/
-- **API Docs**: https://yourdomain.com/api/schema/swagger-ui/
-- **Health Check**: https://yourdomain.com/health
+- **Production App**: https://rssystems.io
+- **Admin Interface**: https://rssystems.io/admin/
+- **API Docs**: https://rssystems.io/api/schema/swagger-ui/
+- **Health Check**: https://rssystems.io/health/
 
 ### Support Resources
 
@@ -763,7 +763,14 @@ eb terminate ENVIRONMENT_NAME
 
 ---
 
-**Last Updated**: October 21, 2025
+**Last Updated**: March 2026
 **Environment**: rs-systems-prod
+**Domain**: rssystems.io
 **Region**: us-east-1
-**Status**: Production Ready 
+**Status**: Production Ready
+
+## Architecture Notes (Current)
+
+- **No Celery / No Redis**: Notifications are synchronous. Billing tasks run as management commands via EB cron (`.ebextensions/11_billing_cron.config`).
+- **Email**: SendGrid (`notifications@rssystems.io`). No AWS SES in active use.
+- **Settings**: `rs_systems.settings.production` (three-file layout: base/development/production).

@@ -14,8 +14,8 @@ from rs_systems.admin_mixins import TenantFilterMixin
 
 @admin.register(Technician)
 class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
-    list_display = ['user', 'get_email', 'get_full_name', 'phone_number', 'expertise', 'is_manager', 'is_active', 'repairs_completed']
-    list_filter = ['expertise', 'is_manager', 'is_active', 'can_assign_work', 'can_override_pricing']
+    list_display = ['user', 'tenant', 'get_email', 'get_full_name', 'phone_number', 'expertise', 'is_manager', 'is_active', 'repairs_completed']
+    list_filter = ['tenant', 'expertise', 'is_manager', 'is_active', 'can_assign_work', 'can_override_pricing']
     search_fields = ['user__username', 'user__email', 'user__first_name', 'user__last_name', 'phone_number']
     list_select_related = ['user']
     filter_horizontal = ['managed_technicians']
@@ -335,20 +335,22 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
 
 
 @admin.register(UnitRepairCount)
-class UnitRepairCountAdmin(admin.ModelAdmin):
-    list_display = ['customer', 'unit_number', 'repair_count']
-    list_filter = ['customer']
-    search_fields = ['customer__name', 'unit_number']
+class UnitRepairCountAdmin(TenantFilterMixin, admin.ModelAdmin):
+    list_display = ['tenant', 'customer', 'unit_number', 'repair_count']
+    list_filter = ['tenant', 'customer']
+    search_fields = ['customer__name', 'unit_number', 'tenant__name']
+    list_select_related = ['tenant', 'customer']
     list_per_page = 25
 
 
 @admin.register(ViscosityRecommendation)
-class ViscosityRecommendationAdmin(admin.ModelAdmin):
-    list_display = ['name', 'get_temp_range_display', 'recommended_viscosity', 'get_badge_preview', 'display_order', 'is_active']
-    list_filter = ['badge_color', 'is_active']
-    search_fields = ['name', 'recommended_viscosity', 'suggestion_text']
+class ViscosityRecommendationAdmin(TenantFilterMixin, admin.ModelAdmin):
+    list_display = ['tenant', 'name', 'get_temp_range_display', 'recommended_viscosity', 'get_badge_preview', 'display_order', 'is_active']
+    list_filter = ['tenant', 'badge_color', 'is_active']
+    search_fields = ['name', 'recommended_viscosity', 'suggestion_text', 'tenant__name']
     list_editable = ['display_order', 'is_active']
-    ordering = ['display_order', 'id']
+    ordering = ['tenant', 'display_order', 'id']
+    list_select_related = ['tenant']
     list_per_page = 25
 
     fieldsets = (

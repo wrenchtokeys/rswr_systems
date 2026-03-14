@@ -2,8 +2,11 @@
 
 Comprehensive testing procedures for the RS Systems windshield repair management platform.
 
+**Last Updated**: March 2026
+
 ## Table of Contents
 - [Quick Start](#quick-start)
+- [Test Suite Structure](#test-suite-structure)
 - [Automated Testing](#automated-testing)
 - [Manual Testing Procedures](#manual-testing-procedures)
 - [Feature Testing](#feature-testing)
@@ -15,75 +18,112 @@ Comprehensive testing procedures for the RS Systems windshield repair management
 
 ## Quick Start
 
-### Run All Tests
 ```bash
-# Run full Django test suite
-python manage.py test
+# Set up test environment
+export LOCAL_DATABASE_URL="postgresql://amelia_test:AmeliaTest2026!@localhost:5432/rs_systems_test"
+export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
 
-# Run with verbosity
-python manage.py test --verbosity=2
+# Full suite (~331 tests, ~7 min)
+python manage.py test tests/ -v 1
 
-# Run specific app tests
-python manage.py test apps.technician_portal
-python manage.py test apps.customer_portal
-python manage.py test apps.security
+# Fast smoke tests (use during dev)
+python manage.py test tests.test_primary_contact tests.test_e2e_today -v 2
+
+# Specific test file
+python manage.py test tests.test_admin
+python manage.py test tests.test_subscription_expiry
+python manage.py test tests.test_billing_phase6
 ```
 
 ### Quick System Verification
 ```bash
-# Run automated end-to-end test
-python manage.py test_system_flow --verbose
-
-# Create fresh test data
-python manage.py create_test_data --clean
-
 # Run Django system checks
 python manage.py check --deploy
 ```
 
 ---
 
+## Test Suite Structure
+
+All canonical tests live in `tests/` (top-level). Some app-level `tests.py` exist but the main suite is here.
+
+```
+tests/
+├── README.md
+├── helpers.py                          # Shared test utilities
+├── test_e2e_today.py                   # Core E2E workflow tests
+├── test_primary_contact.py             # Primary contact notification tests
+├── test_admin.py                       # Admin console (41 tests) — v2.4
+├── test_subscription_expiry.py         # Subscription expiry UX (31 tests) — v2.3
+├── test_billing_phase6.py              # Billing Phase 6 features (32 tests)
+├── test_owner_setup.py                 # Configure Your Shop (/owner/setup/) tests
+├── test_ux004_005_fixes.py             # UX fix regression tests
+├── test_auth_permissions.py
+├── test_billing_models.py
+├── test_bug_fixes_march.py
+├── test_models_core.py
+├── test_step3_signup.py
+├── test_step5_nav.py
+├── test_tenant_isolation.py
+├── test_tenant_isolation_round3.py
+├── test_tenant_isolation_round4.py
+├── test_url_routing.py
+├── bug_fixes/                          # Regression tests for specific bugs
+│   ├── test_billing_settings_ux.py
+│   ├── test_code001_exception_logging.py
+│   ├── test_code003_invoice_created_at_index.py
+│   ├── test_code004_n_plus_one_batch_views.py
+│   ├── test_custom_error_pages.py
+│   ├── test_multi_break_repair.py
+│   ├── test_navbar_duplicate.py
+│   ├── test_reward_discount_fix.py
+│   ├── test_ux003_portal_preview.py
+│   ├── test_ux006_assignment_context.py
+│   ├── test_ux007_customer_phone.py
+│   ├── test_ux009_team_role_badges.py
+│   └── test_ux_template_fixes.py
+├── comprehensive/                      # Longer integration flows
+├── integration/
+└── security/
+```
+
+### Key Test Files by Feature
+
+| File | Tests | Feature |
+|------|-------|---------|
+| `test_admin.py` | 41 | Admin console: dashboard, tenant filter, CSV export, global search, audit log |
+| `test_subscription_expiry.py` | 31 | Grace period, blocked page, email alerts, middleware |
+| `test_billing_phase6.py` | 32 | Aging widget, statement of account, remind from list, EB cron |
+| `test_owner_setup.py` | — | Configure Your Shop page, viscosity auto-populate |
+| `test_ux004_005_fixes.py` | — | UX fix regression tests |
+
+---
+
 ## Automated Testing
 
-### Test Structure
+### Test Setup Pattern
 
-```
-rs_systems_branch2/
- test_sprint1.py                    # Sprint 1 feature tests
- apps/
-    customer_portal/
-       tests.py                  # Customer portal tests
-    technician_portal/
-       tests.py                  # Technician portal tests
-       api/
-           tests.py              # API tests
-    security/
-        tests.py                  # Security tests
- core/
-     tests.py                      # Core model tests
-```
+Always use `force_login` (not `client.login`) and set `tenant_id` in session:
 
-### Sprint 1 Automated Tests
+```python
+from apps.tenants.services.signup_service import create_tenant_with_owner
+from apps.tenants.models import SubscriptionPlan
 
-**Test File**: `test_sprint1.py`
-**Tests**: 9 comprehensive tests
-**Last Run**: October 2, 2025
-**Status**:  9/9 passing
-
-```bash
-# Run Sprint 1 tests
-python test_sprint1.py
-
-# Expected output:
-#  PASS - CustomerPricing model exists and has all required fields
-#  PASS - CustomerPricing helper methods work correctly
-#  PASS - Technician model has all manager fields
-#  PASS - Technician helper methods work correctly
-#  PASS - Pricing service calculates default pricing correctly
-#  PASS - Pricing service uses custom pricing when configured
-#  PASS - Volume discount calculation works correctly
-#  PASS - Manager override permission validation works
-#  PASS - Repair model uses pricing service in save method
+class MyTestCase(TestCase):
+    def setUp(self):
+        SubscriptionPlan.objects.get_or_create(
+            slug='trial', defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True}
+        )
+        result = create_tenant_with_owner(
+            business_name='Test Shop', email='owner@test.com',
+            password='testpass123!', first_name='Test', last_name='Owner',
+        )
+        self.user = result['user']
+        self.tenant = result['tenant']
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
 ```
 
 ### Test Categories

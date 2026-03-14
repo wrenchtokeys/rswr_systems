@@ -223,7 +223,7 @@ class OwnerSetupSaveTaxTest(TestCase):
         data = json.loads(resp.content)
         self.assertTrue(data['success'])
 
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(self.tenant)
         self.assertFalse(config.tax_enabled)
 
 
@@ -253,7 +253,7 @@ class OwnerSetupSaveBillingTest(TestCase):
         data = json.loads(resp.content)
         self.assertTrue(data['success'])
 
-        config = BillingConfig.get_instance()
+        config = BillingConfig.get_for_tenant(self.tenant)
         self.assertEqual(config.default_payment_terms, 'NET30')
         self.assertTrue(config.overdue_reminder_enabled)
         self.assertEqual(config.overdue_reminder_days, '7,30')

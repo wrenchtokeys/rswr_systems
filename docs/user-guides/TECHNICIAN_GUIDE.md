@@ -266,7 +266,7 @@ As a manager, you have access to a dedicated settings portal for configuring sys
 2. Click "Add New Rule" (green button)
 3. Fill in modal form:
    - Rule name: "Cold Weather"
-   - Temperature range: Min 32�F, Max 59.9�F
+   - Temperature range: Min 32�F, Max 59.9�F
    - Recommended viscosity: "Low"
    - Badge color: Blue
    - Suggestion text: "Low viscosity recommended for cold conditions"
@@ -296,12 +296,24 @@ As a manager, you have access to a dedicated settings portal for configuring sys
 
 **Example Display for Technicians**:
 ```
-Temperature: 72�F
+Temperature: 72°F
 
-  Medium viscosity recommended for    
-    optimal conditions                   
+  Medium viscosity recommended for
+    optimal conditions
 
 ```
+
+> **Note**: Viscosity suggestions only appear if your shop owner has enabled this feature. Owners and managers configure it via the "Configure Your Shop" page (`/owner/setup/`) or directly at `/tech/settings/viscosity/`. If you don't see suggestions when entering a temperature, ask your shop owner to enable viscosity recommendations.
+
+**Default Temperature Rules** (when enabled):
+
+| Temperature | Recommended Viscosity |
+|-------------|----------------------|
+| Below 60°F | Low |
+| 60–75°F | Low-Medium |
+| 75–95°F | Medium (ideal conditions) |
+| 95–105°F | High |
+| Above 105°F | Cool Glass First — glass too hot, cool before repairing |
 
 #### Team Overview Features
 
@@ -346,13 +358,12 @@ See `docs/development/MANAGER_SETTINGS_ROADMAP.md` for detailed feature roadmap 
 
 #### Permissions
 
-**Who Can Access**:
-- Users with `is_manager=True` flag
-- Staff users (administrators)
+**Who Can Access Settings Pages**:
+- **Shop owners** (full access via `/owner/` or `/tech/settings/`)
+- **Managers** — users with the `is_manager` flag on their technician profile
+- **Staff/admin** users
 
-**What Requires Staff Access**:
-- Some future features may require staff-level permissions
-- Current features (viscosity rules, team overview) accessible to all managers
+Regular technicians without the manager flag do not see the Settings link. If you think you should have access, ask your shop owner to enable the manager flag on your account.
 
 **Security**:
 - All actions are logged for audit trail
@@ -685,8 +696,8 @@ This helps you know what to expect before finalizing.
 
 ---
 
-**Last Updated**: November 18, 2025
-**For**: RS Systems v1.7.0
+**Last Updated**: March 13, 2026
+**For**: RS Systems v2.4
 **Support**: Contact your team lead or system administrator
 
 ---

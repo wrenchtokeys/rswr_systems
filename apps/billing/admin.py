@@ -23,17 +23,20 @@ from rs_systems.admin_mixins import TenantFilterMixin
 
 
 # =============================================================================
-# BILLING CONFIGURATION (Singleton)
+# BILLING CONFIGURATION (Per-Tenant)
 # =============================================================================
 
 @admin.register(BillingConfig)
-class BillingConfigAdmin(admin.ModelAdmin):
+class BillingConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
     """
-    Singleton billing settings — company address, payment terms, invoice defaults.
-    Always shows the single instance; Add button is hidden when it exists.
+    Per-tenant billing settings — company address, payment terms, invoice defaults.
+    Superusers see all tenants' configs. Non-superusers only see their own tenant's config.
     """
 
     fieldsets = (
+        ('Tenant', {
+            'fields': ('tenant',),
+        }),
         ('Company Information (shown on invoices)', {
             'fields': (
                 'company_name',
@@ -61,22 +64,30 @@ class BillingConfigAdmin(admin.ModelAdmin):
         }),
     )
 
-    list_display = ['__str__', 'company_name', 'default_payment_terms', 'updated_at']
-
-    def has_add_permission(self, request):
-        # Only allow adding if no instance exists yet
-        return not BillingConfig.objects.exists()
+    list_display = ['tenant', 'company_name', 'default_payment_terms', 'updated_at']
+    list_select_related = ['tenant']
 
     def has_delete_permission(self, request, obj=None):
         return False
 
-    def changelist_view(self, request, extra_context=None):
-        """Redirect list view straight to the singleton edit page."""
-        instance = BillingConfig.get_instance()
-        from django.shortcuts import redirect
-        return redirect(
-            reverse('admin:billing_billingconfig_change', args=[instance.pk])
-        )
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        # Non-superusers only see their own tenant's config
+        tenant = getattr(request, 'tenant', None)
+        if tenant:
+            return qs.filter(tenant=tenant)
+        return qs.none()
+
+    def has_add_permission(self, request):
+        # Superusers can always add; non-superusers can add only if their tenant lacks a config
+        if request.user.is_superuser:
+            return True
+        tenant = getattr(request, 'tenant', None)
+        if tenant:
+            return not BillingConfig.objects.filter(tenant=tenant).exists()
+        return False
 
 
 # =============================================================================
@@ -290,15 +301,16 @@ class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
 # =============================================================================
 
 @admin.register(TaxRate)
-class TaxRateAdmin(admin.ModelAdmin):
+class TaxRateAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for viewing/editing sales tax rates."""
 
-    list_display = ['city', 'county', 'state', 'total_rate', 'is_active', 'effective_date']
-    list_filter = ['state', 'is_active', 'county']
-    search_fields = ['city', 'county', 'zip_code']
+    list_display = ['tenant', 'city', 'county', 'state', 'total_rate', 'is_active', 'effective_date']
+    list_filter = ['tenant', 'state', 'is_active', 'county']
+    search_fields = ['city', 'county', 'zip_code', 'tenant__name']
     list_editable = ['is_active']
+    list_select_related = ['tenant']
     list_per_page = 50
-    ordering = ['state', 'city']
+    ordering = ['tenant', 'state', 'city']
     readonly_fields = ['total_rate']
 
     fieldsets = (

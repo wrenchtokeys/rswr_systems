@@ -44,9 +44,9 @@
 #### 3. **Company Information**
 - **Company Name**: RS Systems
 - **Company Address**: Your physical address
-- **Support Email**: support@rssystems.com
+- **Support Email**: contact@rssystems.io
 - **Support Phone**: +1-800-555-1234
-- **Website URL**: https://rssystems.com
+- **Website URL**: https://rssystems.io
 
 #### 4. **Social Media Links** (Optional)
 - Facebook URL
@@ -60,7 +60,7 @@
 
 #### 6. **Footer Text**
 - Custom footer text for all emails
-- Default: "Â 2025 RS Systems. All rights reserved."
+- Default: "ï¿½ 2025 RS Systems. All rights reserved."
 
 ### How to Update:
 
@@ -217,54 +217,39 @@
 
 ##  System Settings
 
-### Environment Variables (.env file)
-
-**Location**: `/Users/drakeduncan/projects/rs_systems_branch2/.env`
+### Environment Variables
 
 **Key Settings**:
 
 ```bash
-# Email Settings (Development - Console Backend)
-DEFAULT_FROM_EMAIL=notifications@rssystems.com
-DEFAULT_FROM_NAME=RS Systems
+# Email (SendGrid)
+SENDGRID_API_KEY=SG....
+DEFAULT_FROM_EMAIL=notifications@rssystems.io
 
-# Email Settings (Production - AWS SES)
-# Uncomment when ready for production:
-# AWS_SES_HOST=email-smtp.us-east-1.amazonaws.com
-# AWS_SES_PORT=587
-# AWS_SES_SMTP_USER=your-smtp-username
-# AWS_SES_SMTP_PASSWORD=your-smtp-password
-# AWS_SES_REGION=us-east-1
+# AWS S3 (media/photos)
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_STORAGE_BUCKET_NAME=rs-systems-media-20251029
 
-# SMS Settings (Production - AWS SNS)
-SMS_ENABLED=false  # Set to true for production
-AWS_SNS_REGION=us-east-1
-
-# Celery & Redis
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/0
-REDIS_CACHE_URL=redis://localhost:6379/1
-CELERY_CONCURRENCY=4
+# Django
+DJANGO_SETTINGS_MODULE=rs_systems.settings.production  # or development
+SECRET_KEY=...
+LOCAL_DATABASE_URL=postgresql://...  # dev only
 ```
 
 ### Django Settings Files
 
-**Development**: `rs_systems/settings.py`
+**Development**: `rs_systems/settings/development.py`
 - Console email backend (prints to terminal)
-- Local Redis
-- SQLite database
+- SQLite fallback if no `LOCAL_DATABASE_URL`
+- `DEBUG=True`
 
-**Production**: `rs_systems/settings_aws.py`
-- AWS SES email backend
-- AWS SNS SMS
-- ElastiCache Redis
-- PostgreSQL database
+**Production**: `rs_systems/settings/production.py`
+- SendGrid email backend
+- PostgreSQL required
+- `DEBUG=False`, S3 media, hardened security
 
-**Switch Between Environments**:
-Set `ENVIRONMENT` variable in `.env`:
-```bash
-ENVIRONMENT=development  # or 'production'
-```
+**Base** (`rs_systems/settings/base.py`): Single source of truth for INSTALLED_APPS, MIDDLEWARE, etc.
 
 ---
 
@@ -420,8 +405,8 @@ ENVIRONMENT=development  # or 'production'
 ### Issue: Emails not sending
 
 **Check**:
-1. Celery worker running? (`celery -A rs_systems worker --loglevel=info`)
-2. Email backend configured? (Console backend for dev, SES for prod)
+1. `SENDGRID_API_KEY` set? Run `python manage.py test_ses your@email.com`
+2. Email backend configured? (Console backend prints to terminal in dev)
 3. Contact verified? (Email Verified checkbox)
 4. Preferences enabled? (User notification preferences)
 5. Delivery logs: http://localhost:8000/admin/core/notificationdeliverylog/
@@ -445,11 +430,10 @@ ENVIRONMENT=development  # or 'production'
 ### Issue: Notifications created but not delivered
 
 **Check**:
-1. Celery worker running?
-2. Check delivery logs for errors: http://localhost:8000/admin/core/notificationdeliverylog/
-3. Look for error messages in Celery terminal
-4. Check user preferences (may be disabled)
-5. Check quiet hours settings
+1. Check delivery logs for errors: http://localhost:8000/admin/core/notificationdeliverylog/
+2. Check Django server logs for exceptions
+3. Check user preferences (may be disabled)
+4. Check quiet hours settings
 
 ---
 
@@ -462,11 +446,10 @@ Before going to production:
 - [ ] All customer emails/phones in E.164 format
 - [ ] All technician emails/phones in E.164 format
 - [ ] Email/phone verification enabled for all users
-- [ ] AWS SES configured and verified
-- [ ] AWS SNS configured with spending limits
+- [ ] SendGrid API key configured (`SENDGRID_API_KEY`)
+- [ ] `DEFAULT_FROM_EMAIL=notifications@rssystems.io`
 - [ ] Notification templates previewed and approved
-- [ ] Test emails sent successfully
-- [ ] Test SMS sent successfully (if using)
+- [ ] Test emails sent successfully (`python manage.py test_ses`)
 - [ ] Quiet hours tested
 - [ ] Notification preferences tested
 - [ ] Delivery logs monitored for errors

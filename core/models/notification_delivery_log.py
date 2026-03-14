@@ -1,5 +1,9 @@
+import logging
+
 from django.db import models
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationDeliveryLog(models.Model):
@@ -38,6 +42,16 @@ class NotificationDeliveryLog(models.Model):
         (STATUS_OPTED_OUT, 'User Opted Out'),
         (STATUS_SKIPPED, 'Skipped (preferences/quiet hours)'),
     ]
+
+    # Tenant association — nullable for backward compat; auto-populated from notification
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notification_delivery_logs',
+        help_text="Tenant that owns this delivery log (derived from notification recipient)",
+    )
 
     # Related notification
     notification = models.ForeignKey(
@@ -156,12 +170,76 @@ class NotificationDeliveryLog(models.Model):
             models.Index(fields=['status', 'next_retry_at']),
             models.Index(fields=['provider_message_id']),
             models.Index(fields=['created_at', 'channel']),
+            models.Index(fields=['tenant', 'created_at'], name='ndl_tenant_created_idx'),
         ]
         verbose_name = "Notification Delivery Log"
         verbose_name_plural = "Notification Delivery Logs"
 
     def __str__(self):
         return f"{self.channel} to {self.recipient_email or self.recipient_phone} - {self.status}"
+
+    def _resolve_tenant(self):
+        """
+        Attempt to derive the tenant from the notification's recipient.
+
+        Supported recipient types:
+        - Technician  → has a direct tenant FK
+        - CustomerUser → customer.tenant
+        - User → first TenantMembership (best-effort)
+
+        Returns Tenant or None.
+        """
+        if not self.notification_id:
+            return None
+        try:
+            notification = self.notification
+            if not notification:
+                return None
+            recipient = notification.recipient
+            if recipient is None:
+                return None
+
+            # Technician has a direct tenant FK
+            from apps.technician_portal.models import Technician
+            if isinstance(recipient, Technician):
+                return recipient.tenant
+
+            # CustomerUser → customer → tenant
+            from apps.customer_portal.models import CustomerUser
+            if isinstance(recipient, CustomerUser):
+                return getattr(recipient.customer, 'tenant', None)
+
+            # Fall back: try attribute directly (future-proof)
+            if hasattr(recipient, 'tenant'):
+                return recipient.tenant
+
+            # Django User — check TenantMembership
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            if isinstance(recipient, User):
+                from apps.tenants.models import TenantMembership
+                membership = TenantMembership.objects.filter(user=recipient).first()
+                if membership:
+                    return membership.tenant
+        except Exception:
+            logger.debug(
+                "Could not resolve tenant for NotificationDeliveryLog (notification_id=%s)",
+                self.notification_id,
+                exc_info=True,
+            )
+        return None
+
+    def save(self, *args, **kwargs):
+        # Auto-populate tenant from notification recipient if not already set
+        if self.tenant_id is None and self.notification_id:
+            try:
+                self.tenant = self._resolve_tenant()
+            except Exception:
+                logger.warning(
+                    "Unexpected error auto-populating tenant on NotificationDeliveryLog; leaving null.",
+                    exc_info=True,
+                )
+        super().save(*args, **kwargs)
 
     def mark_sent(self, provider_message_id=None, provider_response=None):
         """Mark delivery as successful"""

@@ -1,39 +1,36 @@
 # Notification System Documentation
 
-**Status**:  Phases 1-5 Complete |  Ready for Phase 6 Testing
-**Last Updated**: November 30, 2025
-**Version**: 1.0
+**Status**:  All Phases Complete | Notifications are synchronous (no Celery/Redis)
+**Last Updated**: March 2026
+**Version**: 2.0
 
 ---
 
 ## Overview
 
-Complete documentation for the RS Systems notification system implementation. This multi-phase project adds comprehensive notification capabilities with email (AWS SES), SMS (AWS SNS), and in-app notifications for technicians, managers, and customers.
+Complete documentation for the RS Systems notification system. Notifications fire **synchronously** — no Celery, no Redis, no background workers required.
 
 ## Quick Navigation
 
 - ** [Configuration Guide](NOTIFICATION_CONFIGURATION_GUIDE.md)** - Branding, settings, phone numbers
-- ** [Setup & Testing Guide](SETUP_AND_TESTING_GUIDE.md)** - Comprehensive setup and testing
-- ** [Phase 6 Testing Checklist](PHASE_6_TESTING_CHECKLIST.md)** - Ready to begin testing
 - ** [Simple Testing Guide](SIMPLE_TESTING_GUIDE.md)** - Quick developer reference
-- ** [AWS Setup Guide](setup/AWS_SETUP_GUIDE.md)** - AWS SES/SNS configuration
-- ** [Redis Setup Guide](setup/REDIS_LOCAL_SETUP.md)** - Local Redis installation
 
 ---
 
-## Project Scope
+## Current Architecture
+
+**Notifications are synchronous.** When a repair event fires a Django signal, the notification service runs inline during the request and delivers via SendGrid email + in-app notification.
 
 **4-Tier Priority System:**
-- **URGENT**: SMS + Email + In-app (approvals, denials, critical assignments)
-- **HIGH**: SMS + In-app (new requests, completions, reassignments)
+- **URGENT**: Email + In-app (approvals, denials, critical assignments)
+- **HIGH**: In-app + Email (new requests, completions, reassignments)
 - **MEDIUM**: Email + In-app (status updates, photos, rewards)
 - **LOW**: In-app only (notes, minor updates)
 
 **Infrastructure:**
-- AWS SES for email delivery
-- AWS SNS for SMS delivery
-- Celery + Redis for async task processing
-- Signal-based event triggers
+- **SendGrid** for email delivery (`notifications@rssystems.io`)
+- **In-app notifications** via database records
+- **Signal-based triggers** — no task queue
 - Customizable email templates with branding
 
 ---
@@ -160,26 +157,6 @@ Production readiness:
 
 ## Quick Start
 
-### 3-Step Local Setup
-
-```bash
-# Step 1: Install & Start Redis
-brew install redis && brew services start redis
-redis-cli ping  # Should return: PONG
-
-# Step 2: Run Setup Script
-bash docs/development/notifications/setup/setup_notifications.sh
-
-# Step 3: Start All Services
-bash docs/development/notifications/setup/start_notifications.sh
-```
-
-**Access at**: http://localhost:8000
-
-**Detailed Instructions**: See [SETUP_AND_TESTING_GUIDE.md](SETUP_AND_TESTING_GUIDE.md)
-
-### Manual Setup (Alternative)
-
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -190,16 +167,13 @@ python manage.py migrate
 # Create notification templates
 python manage.py setup_notification_templates
 
-# Start services (4 terminals)
-python manage.py runserver                           # Terminal 1
-celery -A rs_systems worker --loglevel=info          # Terminal 2
-celery -A rs_systems beat --loglevel=info            # Terminal 3
-celery -A rs_systems flower                          # Terminal 4 (optional)
+# Start Django (just this — no background services needed)
+python manage.py runserver
 ```
 
 ### Verify Setup
 
-1. **Login**: http://localhost:8000/tech/login/ (use `testtech` / `testpass123`)
+1. **Login**: http://localhost:8000/tech/login/
 2. **Dashboard**: Check notification bell icon in header
 3. **Preferences**: http://localhost:8000/tech/notifications/preferences/
 4. **Create test repair** in Django shell to trigger a notification
@@ -208,18 +182,15 @@ celery -A rs_systems flower                          # Terminal 4 (optional)
 ### Testing
 
 ```bash
-# Test AWS services
-python manage.py test_ses your@email.com             # Email test
-python manage.py test_sns +12025551234               # SMS test
+# Test SendGrid delivery
+python manage.py test_ses your@email.com
 
 # Run test suite
-python manage.py test core.tests                     # Unit tests
+python manage.py test core.tests
 
 # Django checks
-python manage.py check                               # System validation
+python manage.py check
 ```
-
-**Full Testing Guide**: See [PHASE_6_TESTING_CHECKLIST.md](PHASE_6_TESTING_CHECKLIST.md)
 
 ### Technician Portal URLs
 
@@ -342,16 +313,13 @@ python manage.py check                               # System validation
 ### Common Issues
 
 **Emails not sending?**
- See [SETUP_AND_TESTING_GUIDE.md - Troubleshooting](SETUP_AND_TESTING_GUIDE.md#troubleshooting)
-
-**High SMS costs?**
- Review priority mapping, encourage email preferences, see [setup/AWS_SETUP_GUIDE.md](setup/AWS_SETUP_GUIDE.md)
-
-**Celery tasks stuck?**
- Check Redis connection, restart workers, see [setup/REDIS_LOCAL_SETUP.md](setup/REDIS_LOCAL_SETUP.md)
+ Check `SENDGRID_API_KEY` env var. Run `python manage.py test_ses your@email.com` to verify connectivity.
 
 **Notifications not triggering?**
- Verify signal handlers, see [SETUP_AND_TESTING_GUIDE.md](SETUP_AND_TESTING_GUIDE.md#testing-each-component)
+ Verify signal handlers in `core/signals.py` are connected. Check `INSTALLED_APPS` includes `core` with correct `AppConfig.ready()`.
+
+**In-app notifications not showing?**
+ Verify `NotificationTemplate` records exist: `python manage.py setup_notification_templates`
 
 ### Getting Help
 
@@ -423,6 +391,6 @@ When updating notification system:
 
 ---
 
-**Status**:  Phases 1-5 Complete |  Ready for Phase 6 Testing
-**Last Updated**: November 30, 2025
-**Version**: 1.0
+**Status**:  All Phases Complete | Synchronous delivery (no Celery/Redis)
+**Last Updated**: March 2026
+**Version**: 2.0

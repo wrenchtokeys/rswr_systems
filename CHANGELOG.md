@@ -2,7 +2,40 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-03-14 (2)
+
+### Fixed (CODE-006 — Admin classes missing TenantFilterMixin / tenant visibility)
+- **TechnicianAdmin** — added `tenant` to `list_display` and `list_filter`
+- **UnitRepairCountAdmin** — added `TenantFilterMixin`; tenant now visible in list_display/list_filter
+- **ViscosityRecommendationAdmin** — added `TenantFilterMixin`; tenant visible in list_display/list_filter
+- **TaxRateAdmin** (billing app) — added `TenantFilterMixin`; tenant visible in list_display/list_filter
+- **DeliveryLogAdmin** (core) — added `TenantFilterMixin` (model already had tenant FK; was missing from admin)
+- **customer_portal admins** — new `CustomerTenantFilterMixin` (filters via `customer__tenant`) applied to CustomerUserAdmin, CustomerPreferenceAdmin, RepairApprovalAdmin (`repair__customer`), CustomerPricingAdmin, CustomerRepairPreferenceAdmin, CustomerInvitationAdmin; `get_tenant_display` shown in all list views
+- **rewards_referrals admins** — `RewardOptionAdmin` uses `TenantFilterMixin`; `RewardAdmin`, `ReferralCodeAdmin` use new `CustomerUserTenantFilterMixin`; `ReferralAdmin` and `RewardRedemptionAdmin` have custom `get_queryset` scoping; all show tenant in list view
+- **BillingConfig data fix** — new management command `fix_billing_config_names` corrects company_name = tenant.name for all rows where migration incorrectly defaulted to "Rockstar Windshield Repair" (`python manage.py fix_billing_config_names --apply`)
+- All 98 existing admin/billing/owner-setup tests pass
+
+## [Unreleased] — 2026-03-14
+
+### Fixed (CODE-002 — Multi-tenant BillingConfig)
+- **BillingConfig is now per-tenant** (`OneToOneField(Tenant)`) — removed the `singleton_id` global singleton
+- Added `BillingConfig.get_for_tenant(tenant)` — creates with defaults if missing for that tenant
+- `BillingConfig.get_instance()` now raises `RuntimeError` to surface any remaining legacy callers
+- Updated all 14 call sites across 7 files: `apps/saas/views.py` (10), `invoice_service.py`, `invoice_tracking_service.py`, `payment_notification_service.py`, `reminder_service.py`, `tax_service.py`
+- `tax_debug` management command now iterates all tenants (or accepts `--tenant <id|slug>`)
+- Admin: `BillingConfigAdmin` uses `TenantFilterMixin` — non-superusers only see their tenant's config
+- Migrations: `0013_billingconfig_tenant_fk` (data migration assigns existing config to first tenant) + `0014_alter_billingconfig_options`
+- Tests: updated 11 existing tests + added 3 new tests (two-tenant isolation, deprecated get_instance, idempotent get_for_tenant)
+
 ## [Unreleased] — 2026-03-13
+
+### Documentation
+- **ADMIN_GUIDE.md** — Updated for v2.4 admin overhaul: added Admin Dashboard section (metrics, subscription overview, activity feed), Tenant Filtering section (TenantFilterMixin behavior for superusers vs non-superusers), Subscription Management section (extend trial 7/30d, activate, deactivate actions), CSV Exports section (repairs, invoices, customers), Bulk Invoice Generation section (CustomerAdmin action), Audit Log section (Django LogEntry viewer, color-coded badges), Global Search section (/admin/search/). Updated all navigation arrows to use → format. Bumped to v2.4.
+- **CUSTOMER_GUIDE.md** — Added "When the Shop's Subscription Expires" section explaining what customers see (blocked screen with shop contact info) and what to do. Updated support contact email to contact@rssystems.io. Bumped to v2.4.
+- **TECHNICIAN_GUIDE.md** — Added viscosity recommendation note with default temperature rules table. Clarified that settings pages are accessible to owners AND managers (not just `is_manager=True` technicians). Bumped to v2.4.
+- **VISCOSITY_CONFIGURATION_GUIDE.md** — Major rewrite. Primary access path is now /owner/setup/ (Configure Your Shop) with auto-populate defaults on first enable. Documented all 5 default rules with temperature ranges and suggestion text. Clarified that owners and managers can access settings (fixed @technician_required bug note). Manual editing still available at /tech/settings/viscosity/. Bumped to v2.4.
+- **USER_FLOWS.md** — Added 4 new flows: Configure Your Shop (setup accordion, viscosity auto-populate), Subscription Expiry (trial warning → grace → blocked, per-role screens), Statement of Account (/owner/customers/<id>/statement/), and AR Aging Report (/owner/billing/ widget + CSV export).
+- **MULTI_BREAK_QUICK_START.md** — Updated windshield temperature field to mention viscosity auto-suggestions. Corrected optimal temperature range to 60–95°F (ideal: 75–95°F) per actual ViscosityRecommendation defaults.
 
 ### Added
 - **"Configure Your Shop" unified setup page** (`/owner/setup/`)

@@ -229,8 +229,10 @@ rs_systems_branch2/
 │   ├── models.py                 # Customer model
 │   └── management/commands/      # CLI utilities
 ├── rs_systems/                   # Django project settings
-│   ├── settings.py               # Development settings
-│   ├── settings_aws.py          # Production settings
+│   ├── settings/                 # Settings package
+│   │   ├── base.py               # Shared settings (INSTALLED_APPS, MIDDLEWARE, etc.)
+│   │   ├── development.py        # Dev settings (DEBUG=True, SQLite fallback)
+│   │   └── production.py         # Production settings (PostgreSQL, S3, security)
 │   └── urls.py                   # URL routing
 ├── static/                       # Static assets
 │   ├── css/                      # Stylesheets
@@ -466,7 +468,7 @@ customer_stats = Repair.objects.filter(
 #### Token Authentication Setup
 
 ```python
-# settings.py
+# rs_systems/settings/base.py
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
@@ -509,7 +511,7 @@ class IsRepairOwnerOrAdmin(BasePermission):
 The system uses `drf-spectacular` for automatic API documentation:
 
 ```python
-# settings.py
+# rs_systems/settings/base.py
 SPECTACULAR_SETTINGS = {
     'TITLE': 'RS Systems API',
     'DESCRIPTION': 'Windshield Repair Management API',
@@ -861,31 +863,31 @@ class PerformanceTest(TestCase):
 #### Production Settings
 
 ```python
-# rs_systems/settings_aws.py
-import os
-from .settings import *
+# rs_systems/settings/production.py
+from .base import *
 
-# Security
 DEBUG = False
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'rssystems.io').split(',')
 
-# Database
+# Database (PostgreSQL required)
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL')
-    )
+    'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
 }
 
 # Static files
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Security headers
-if os.environ.get('USE_HTTPS') == 'true':
-    SECURE_SSL_REDIRECT = True
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+# Email (SendGrid)
+EMAIL_BACKEND = 'sendgrid_backend.SendgridBackend'
+SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
+
+# Security
+SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
 ```
 
 #### Docker Configuration
@@ -996,7 +998,7 @@ jobs:
 #### Production Logging
 
 ```python
-# settings_aws.py
+# rs_systems/settings/production.py
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

@@ -19,11 +19,11 @@
 <!-- Print / Nav bar (hidden when printing) -->
 <div class="no-print bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
     <div class="flex items-center gap-4">
-        <a href="javascript:history.back()" class="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
-            <i class="fas fa-arrow-left mr-2"></i>Back
+        <a href="{% url 'owner_invoice_list' %}" class="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
+            <i class="fas fa-arrow-left mr-2"></i>Back to Invoices
         </a>
         <span class="text-gray-300">|</span>
-        <span class="text-sm font-medium text-gray-700">Statement of Account</span>
+        <span class="text-sm font-medium text-gray-700">Statement of Account — {{ customer.name }}</span>
     </div>
     <div class="flex items-center gap-2">
         <button onclick="window.print()"

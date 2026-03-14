@@ -133,12 +133,14 @@ class PaymentNotificationService:
         invoice = payment.invoice
         customer = invoice.customer
 
-        # Get owner email from BillingConfig or fallback
+        # Get owner email from BillingConfig (per-tenant) or fallback
         owner_email = None
         try:
             from apps.billing.models import BillingConfig
-            cfg = BillingConfig.get_instance()
-            owner_email = cfg.company_email
+            tenant = getattr(invoice, 'tenant', None)
+            if tenant:
+                cfg = BillingConfig.get_for_tenant(tenant)
+                owner_email = cfg.company_email
         except Exception:
             pass
 

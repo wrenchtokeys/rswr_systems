@@ -221,6 +221,7 @@ Comprehensive pre-deployment, deployment, and post-deployment verification check
 - [ ] Database performance monitoring enabled
 - [ ] Backup system running
 - [ ] Log aggregation working
+- [ ] EB cron jobs verified (billing commands running at scheduled times)
 
 ---
 
@@ -440,8 +441,27 @@ Deployment is considered successful when:
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: October 21, 2025
+---
+
+## Billing Automation (EB Cron)
+
+Billing tasks are scheduled via `.ebextensions/11_billing_cron.config`. No Celery or Redis required.
+
+Verify cron is active after deploy:
+```bash
+eb ssh
+cat /etc/cron.d/billing_tasks
+```
+
+Expected entries:
+- `0 6 * * *` — `process_batch_invoices`
+- `0 8 * * *` — `process_overdue_invoices`
+- `0 9 * * *` — `generate_aging_report`
+
+---
+
+**Document Version**: 1.1
+**Last Updated**: March 2026
 **Next Review**: After each major deployment
 
 ---
