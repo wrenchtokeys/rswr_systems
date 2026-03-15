@@ -103,10 +103,9 @@ def _send_verification_email(request, user):
                 reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
         except CustomerUser.DoesNotExist:
-            # Shop owner - use password reset infrastructure for now
-            # (they can verify via account settings later)
+            # Shop owner — use the dedicated owner verification endpoint
             verification_url = request.build_absolute_uri(
-                reverse('customer_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
+                reverse('owner_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
         
         send_mail(
@@ -2811,6 +2810,37 @@ def owner_setup_save_viscosity(request):
     except Exception as e:
         logger.error(f"Setup save viscosity error: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def owner_confirm_email_verification(request, uidb64, token):
+    """
+    GET /owner/verify-email/<uidb64>/<token>/
+
+    Process email verification token for a shop owner.  No login required —
+    the link is sent immediately after signup, before the session is fully
+    established on all devices.  The token itself authenticates the action.
+
+    Unlike customer/technician verification there is no email_verified flag
+    to persist for owners (email verification doesn't gate any owner feature).
+    The view just validates the token and shows a success (or error) message,
+    then redirects to the owner dashboard (or signup page if not logged in).
+    """
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        messages.success(request, "Email verified successfully! Welcome to RS Systems.")
+    else:
+        messages.error(request, "Invalid or expired verification link.")
+
+    if request.user.is_authenticated:
+        return redirect('owner_dashboard')
+    return redirect('signup')
 
 
 @owner_or_manager_required

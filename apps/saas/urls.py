@@ -11,6 +11,9 @@ urlpatterns = [
     # Subscription blocked (role-aware)
     path('subscription-blocked/', views.subscription_blocked_view, name='subscription_blocked'),
 
+    # Email verification for shop owners
+    path('verify-email/<str:uidb64>/<str:token>/', views.owner_confirm_email_verification, name='owner_confirm_email_verification'),
+
     # Public pages
     path('signup/', views.signup_view, name='signup'),
     path('pricing/', views.pricing_view, name='pricing'),
