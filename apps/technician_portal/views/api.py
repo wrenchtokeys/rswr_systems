@@ -36,7 +36,8 @@ def get_batch_pricing_json(request):
         if breaks_count < 1 or breaks_count > 20:
             return JsonResponse({'error': 'Breaks count must be between 1 and 20'}, status=400)
 
-        pricing_data = get_batch_pricing_preview(int(customer_id), unit_number, breaks_count)
+        tenant = getattr(request, 'tenant', None)
+        pricing_data = get_batch_pricing_preview(int(customer_id), unit_number, breaks_count, tenant=tenant)
 
         if pricing_data is None:
             return JsonResponse({'error': 'Customer not found'}, status=404)

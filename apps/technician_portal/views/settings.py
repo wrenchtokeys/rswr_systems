@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse
 from django.db import models
+from django.db.models import Prefetch
 import json
 import logging
 
@@ -298,32 +299,45 @@ def team_overview(request):
         messages.warning(request, "Technician profile not found")
         return redirect('technician_dashboard')
 
-    team_members = manager.managed_technicians.filter(is_active=True).select_related('user')
+    tenant = getattr(request, 'tenant', None)
+
+    # Build a Prefetch for the 5 most-recent repairs per technician so we avoid
+    # firing one Repair query per tech inside the loop below (N+1).
+    # Django's Prefetch with to_attr allows slicing per-object after the fact.
+    recent_repairs_qs = Repair.objects.select_related('customer').order_by('-service_date')
+    if tenant:
+        recent_repairs_qs = recent_repairs_qs.filter(tenant=tenant)
 
     # Annotate team members with repair stats to minimize queries
     from django.db.models import Count, Q
-    team_members_annotated = team_members.annotate(
-        total_repairs=Count('repair'),
-        pending_repairs_count=Count(
-            'repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED'])
-        ),
-        completed_repairs_count=Count(
-            'repair', filter=Q(repair__queue_status='COMPLETED')
-        ),
+    team_members_annotated = (
+        manager.managed_technicians
+        .filter(is_active=True)
+        .select_related('user')
+        .prefetch_related(
+            Prefetch(
+                'repair_set',
+                queryset=recent_repairs_qs,
+                to_attr='_recent_repairs_cache',
+            )
+        )
+        .annotate(
+            total_repairs=Count('repair'),
+            pending_repairs_count=Count(
+                'repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED'])
+            ),
+            completed_repairs_count=Count(
+                'repair', filter=Q(repair__queue_status='COMPLETED')
+            ),
+        )
     )
-
-    tenant = getattr(request, 'tenant', None)
 
     team_stats = []
     for tech in team_members_annotated:
         completion_rate = (tech.completed_repairs_count / tech.total_repairs * 100) if tech.total_repairs > 0 else 0
 
-        recent_qs = Repair.objects.filter(technician=tech)
-        if tenant:
-            recent_qs = recent_qs.filter(tenant=tenant)
-
-        else:
-            recent_qs = recent_qs.none()
+        # Use the prefetched cache instead of issuing a new query per technician
+        recent_repairs = tech._recent_repairs_cache[:5]
 
         team_stats.append({
             'technician': tech,
@@ -331,7 +345,7 @@ def team_overview(request):
             'pending_repairs': tech.pending_repairs_count,
             'completed_repairs': tech.completed_repairs_count,
             'completion_rate': round(completion_rate, 1),
-            'recent_repairs': recent_qs.select_related('customer').order_by('-service_date')[:5]
+            'recent_repairs': recent_repairs,
         })
 
     total_team_repairs = sum(stat['total_repairs'] for stat in team_stats)
@@ -345,7 +359,7 @@ def team_overview(request):
         'total_team_repairs': total_team_repairs,
         'total_team_pending': total_team_pending,
         'total_team_completed': total_team_completed,
-        'team_members_count': team_members.count(),
+        'team_members_count': len(team_stats),
     }
 
     return render(request, 'technician_portal/settings/team_overview.html', context)

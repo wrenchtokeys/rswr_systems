@@ -3,23 +3,65 @@ UX Bug Fix Tests
 Consolidated from: UX-003 through UX-012, error pages, navbar, billing settings
 """
 
-from apps.technician_portal.models import Technician
+import os
+from decimal import Decimal
+
+from django.contrib.auth.models import User
+from django.test import TestCase, Client, override_settings
+from django.urls import reverse
+
 from apps.technician_portal.models import Technician, Repair
 from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from core.models import Customer
-from decimal import Decimal
-from django.contrib.auth.models import User
-from django.test import TestCase
-from django.test import TestCase, Client
-from django.test import TestCase, Client, override_settings
-from django.urls import reverse
 from tests.helpers import make_tenant
-import os
 
 TEST_OVERRIDES = {
     'ALLOWED_HOSTS': ['*'],
     'CACHES': {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
 }
+
+TEMPLATE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    'templates',
+)
+
+
+def _read_template(*path_parts):
+    path = os.path.join(TEMPLATE_DIR, *path_parts)
+    with open(path) as fh:
+        return fh.read()
+
+
+def _add_member(tenant, username, role, can_repair=True, can_replace=True):
+    """Create a user + TenantMembership + Technician record for the tenant."""
+    user = User.objects.create_user(
+        username, f'{username}@test.com', 'testpass123',
+        first_name='Test', last_name=username.title(),
+    )
+    TenantMembership.objects.create(tenant=tenant, user=user, role=role)
+    tech = Technician.objects.create(
+        user=user, tenant=tenant,
+        can_repair=can_repair,
+        can_replace=can_replace,
+        is_active=True,
+    )
+    return user, tech
+
+
+def _make_tenant_with_owner(name, username, plan_slug='trial'):
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        slug=plan_slug,
+        defaults={'name': plan_slug.title(), 'monthly_price': Decimal('0.00'),
+                  'trial_days': 30, 'display_order': 0},
+    )
+    user = User.objects.create_user(username, f'{username}@test.com', 'testpass123',
+                                    first_name='Test', last_name='Owner')
+    tenant = Tenant.objects.create(
+        name=name, slug=username, subdomain=username, owner=user,
+        subscription_plan=plan,
+    )
+    TenantMembership.objects.create(tenant=tenant, user=user, role='owner')
+    return user, tenant
 
 
 # --- From test_ux003_portal_preview.py ---
@@ -1121,22 +1163,6 @@ class NavbarStickyOffsetTemplateTest(TestCase):
             f"These templates have inner 'sticky top-0 z-{{10,20}}' which conflicts "
             f"with the main nav (z-50): {violations}. Change to top-16."
         )
-
-
-def _make_tenant_with_owner(name, username, plan_slug='trial'):
-    plan, _ = SubscriptionPlan.objects.get_or_create(
-        slug=plan_slug,
-        defaults={'name': plan_slug.title(), 'monthly_price': Decimal('0.00'),
-                  'trial_days': 30, 'display_order': 0},
-    )
-    user = User.objects.create_user(username, f'{username}@test.com', 'testpass123',
-                                    first_name='Test', last_name='Owner')
-    tenant = Tenant.objects.create(
-        name=name, slug=username, subdomain=username, owner=user,
-        subscription_plan=plan,
-    )
-    TenantMembership.objects.create(tenant=tenant, user=user, role='owner')
-    return user, tenant
 
 
 @override_settings(**TEST_OVERRIDES)

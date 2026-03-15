@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
+from django.db.models import Count
 from apps.customer_portal.models import CustomerUser
 from .models import ReferralCode, Referral, Reward, RewardOption, RewardRedemption
 import uuid
@@ -256,23 +257,25 @@ def referral_leaderboard(request):
         HttpResponse: Rendered template with leaderboard data
     """
     # Get referral counts for each user (tenant-scoped)
-    top_referrers = []
+    # Use annotate() to avoid N+1: one query instead of one COUNT per ReferralCode
     tenant = getattr(request, 'tenant', None)
-    
+
     code_qs = ReferralCode.objects.all()
     if tenant:
         code_qs = code_qs.filter(customer_user__customer__tenant=tenant)
-    
-    for code in code_qs:
-        count = Referral.objects.filter(referral_code=code).count()
-        if count > 0:
-            top_referrers.append({
-                'user': code.customer_user,
-                'count': count
-            })
-    
-    # Sort by count, take top 10
-    top_referrers = sorted(top_referrers, key=lambda x: x['count'], reverse=True)[:10]
+
+    code_qs = (
+        code_qs
+        .annotate(referral_count=Count('referral'))
+        .filter(referral_count__gt=0)
+        .select_related('customer_user')
+        .order_by('-referral_count')[:10]
+    )
+
+    top_referrers = [
+        {'user': code.customer_user, 'count': code.referral_count}
+        for code in code_qs
+    ]
     
     return render(request, 'customer_portal/referrals/leaderboard.html', {'top_referrers': top_referrers})
 

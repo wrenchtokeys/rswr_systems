@@ -29,6 +29,7 @@ def technician_batch_detail(request, batch_id):
     # Admins/owners without a Technician profile are allowed by @technician_required;
     # guard with getattr to avoid RelatedObjectDoesNotExist for those users.
     technician = getattr(request.user, 'technician', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None))
 
     batch_summary = Repair.get_batch_summary(batch_id)
     if not batch_summary:
@@ -40,7 +41,7 @@ def technician_batch_detail(request, batch_id):
     can_view = False
     can_start_work = False
 
-    if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
+    if user_is_admin:
         can_view = True
         can_start_work = True
     elif technician:
@@ -78,7 +79,7 @@ def technician_batch_detail(request, batch_id):
         'repairs': batch_summary['repairs'],
         'technician': technician,
         'can_start_work': can_start_work,
-        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
+        'is_admin': user_is_admin,
     })
 
 
@@ -125,6 +126,7 @@ def technician_batch_start_work(request, batch_id):
 @technician_required
 def create_multi_break_repair(request):
     """Create multiple repairs (breaks) on the same unit in one session."""
+    user_is_admin = is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None))
     if request.method == 'POST':
         try:
             customer_id = request.POST.get('customer')
@@ -178,7 +180,7 @@ def create_multi_break_repair(request):
             created_repairs = []
 
             # Determine technician
-            if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
+            if user_is_admin:
                 tech_id = request.POST.get('technician_id')
                 if not tech_id:
                     messages.error(request, "As an admin, you must select a technician.")
@@ -367,7 +369,7 @@ def create_multi_break_repair(request):
         else:
             customer_qs = customer_qs.none()
         return render(request, 'technician_portal/multi_break_repair_form.html', {
-            'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
+            'is_admin': user_is_admin,
             'customers': customer_qs.order_by('name'),
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
         })
@@ -378,6 +380,7 @@ def create_multi_break_repair(request):
 def convert_to_batch(request, repair_id):
     """Convert a single repair into a multi-break batch by adding additional breaks."""
     tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
     qs = Repair.objects.select_related('customer', 'technician__user', 'tenant')
     if tenant:
         qs = qs.filter(tenant=tenant)
@@ -386,7 +389,7 @@ def convert_to_batch(request, repair_id):
         qs = qs.none()
     original_repair = get_object_or_404(qs, id=repair_id)
 
-    if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
+    if not user_is_admin:
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have permission to modify this repair.")
             return redirect('repair_detail', repair_id=repair_id)
@@ -451,7 +454,7 @@ def convert_to_batch(request, repair_id):
                     try:
                         override_cost_decimal = Decimal(override_cost)
 
-                        if is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None)):
+                        if user_is_admin:
                             cost = override_cost_decimal
                         elif hasattr(request.user, 'technician') and request.user.technician.is_manager and request.user.technician.can_override_pricing:
                             tech = request.user.technician
@@ -527,5 +530,5 @@ def convert_to_batch(request, repair_id):
         return render(request, 'technician_portal/convert_to_batch_form.html', {
             'repair': original_repair,
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
-            'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
+            'is_admin': user_is_admin,
         })

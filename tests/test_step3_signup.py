@@ -72,6 +72,128 @@ class SignupAutoTechnicianTests(TestCase):
         self.assertTrue(membership.is_active)
 
 
+class OnboardingDuplicateEmailTests(TestCase):
+    """
+    CODE-027: Onboarding step 2 had dead-code email check.
+    generate_unique_username() always returns a unique username, so the old guard
+    `if not User.objects.filter(username=tech_username).exists()` was always True
+    and never blocked duplicate emails. Fix: check email before creating user.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial', defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True}
+        )
+
+    def setUp(self):
+        # Create owner and their tenant (Shop A)
+        result = create_tenant_with_owner(
+            business_name='Code 027 Shop',
+            email='code027owner@test.com',
+            password='testpass123!',
+            first_name='Owner',
+            last_name='Code027',
+        )
+        self.user = result['user']
+        self.tenant = result['tenant']
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+        # Pre-existing user at another shop with a known email
+        self.existing_user = User.objects.create_user(
+            username='existingtech_other',
+            email='existing_tech@test.com',
+            first_name='Other',
+            last_name='Tech',
+            password='somepass',
+        )
+
+    def test_step2_duplicate_email_does_not_create_second_user(self):
+        """
+        Submitting an existing email in onboarding step 2 should NOT create a
+        second User record — it should show an info message and advance.
+        """
+        initial_user_count = User.objects.count()
+        response = self.client.post('/onboarding/?step=2', {
+            'add_self': '',
+            'tech_first_name': 'Other',
+            'tech_last_name': 'Tech',
+            'tech_email': 'existing_tech@test.com',
+            'tech_phone': '555-0000',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        # No new user should be created
+        self.assertEqual(
+            User.objects.count(), initial_user_count,
+            "Duplicate email in onboarding step 2 must NOT create a second User"
+        )
+
+    def test_step2_duplicate_email_shows_info_message(self):
+        """
+        The duplicate-email case should show a friendly info message, not a 500.
+        """
+        response = self.client.post('/onboarding/?step=2', {
+            'add_self': '',
+            'tech_first_name': 'Other',
+            'tech_last_name': 'Tech',
+            'tech_email': 'existing_tech@test.com',
+            'tech_phone': '555-0000',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        # Should contain the info message and advance cleanly (no server error page)
+        self.assertIn('already exists', content)
+        self.assertNotIn('Server Error', content)
+        self.assertNotIn('Internal Server Error', content)
+
+    def test_step2_new_email_still_creates_user(self):
+        """
+        A brand-new email should still create a User and Technician record.
+        """
+        from apps.technician_portal.models import Technician
+        initial_user_count = User.objects.count()
+        response = self.client.post('/onboarding/?step=2', {
+            'add_self': '',
+            'tech_first_name': 'Brand',
+            'tech_last_name': 'New',
+            'tech_email': 'brandnewtech_code027@test.com',
+            'tech_phone': '555-1234',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            User.objects.count(), initial_user_count + 1,
+            "A new email should create a User during onboarding step 2"
+        )
+        new_user = User.objects.get(email='brandnewtech_code027@test.com')
+        self.assertTrue(
+            Technician.objects.filter(user=new_user, tenant=self.tenant).exists(),
+            "New tech user should have a Technician profile for this tenant"
+        )
+
+    def test_step2_no_email_only_first_name_still_creates_user(self):
+        """
+        Providing only a first name (no email) should still create a user — the
+        duplicate-email guard must not accidentally block email-less technicians.
+        """
+        from apps.technician_portal.models import Technician
+        initial_user_count = User.objects.count()
+        response = self.client.post('/onboarding/?step=2', {
+            'add_self': '',
+            'tech_first_name': 'NoEmail',
+            'tech_last_name': 'Tech',
+            'tech_email': '',
+            'tech_phone': '555-9999',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            User.objects.count(), initial_user_count + 1,
+            "Tech without email should still be created"
+        )
+
+
 class OnboardingStepProgressionTests(TestCase):
     """Onboarding should NOT advance on invalid form submissions."""
 

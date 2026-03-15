@@ -280,7 +280,7 @@ def accept_invite(request, token):
                 tech_group, _ = Group.objects.get_or_create(name='Technicians')
                 user.groups.add(tech_group)
 
-                if not Technician.objects.filter(user=user).exists():
+                if not Technician.objects.filter(user=user, tenant=invite.tenant).exists():
                     Technician.objects.create(
                         tenant=invite.tenant,
                         user=user,
@@ -290,7 +290,7 @@ def accept_invite(request, token):
                         can_replace=False,
                     )
                 else:
-                    tech = Technician.objects.get(user=user)
+                    tech = Technician.objects.get(user=user, tenant=invite.tenant)
                     if invite.role == 'manager':
                         tech.is_manager = True
                         tech.save()

@@ -129,7 +129,8 @@ def calculate_batch_total(pricing_breakdown: List[Dict]) -> Dict:
 def get_batch_pricing_preview(
     customer_id: int,
     unit_number: str,
-    breaks_count: int
+    breaks_count: int,
+    tenant=None,
 ) -> Optional[Dict]:
     """
     Get pricing preview for frontend display before batch submission.
@@ -161,7 +162,10 @@ def get_batch_pricing_preview(
         }
     """
     try:
-        customer = Customer.objects.get(id=customer_id)
+        lookup = {'id': customer_id}
+        if tenant is not None:
+            lookup['tenant'] = tenant
+        customer = Customer.objects.get(**lookup)
     except Customer.DoesNotExist:
         return None
 

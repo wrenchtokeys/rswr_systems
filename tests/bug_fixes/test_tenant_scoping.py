@@ -1,5 +1,5 @@
 """
-Tenant Scoping Bug Fix Tests
+Tenant Scoping Tests
 Consolidated from: CODE-005, CODE-008, CODE-009, CODE-011, CODE-020, CODE-021, CODE-022
 """
 
@@ -7,39 +7,87 @@ from apps.customer_portal.models import CustomerUser
 from apps.rewards_referrals.models import RewardOption
 from apps.technician_portal.admin import TechnicianAdmin
 from apps.technician_portal.decorators import is_tenant_admin
-from apps.technician_portal.models import Technician
-from apps.technician_portal.models import Technician, Repair
-from apps.technician_portal.models import Technician, Repair, TechnicianNotification
-from apps.tenants.models import SubscriptionPlan
-from apps.tenants.models import Tenant, SubscriptionPlan
-from apps.tenants.models import Tenant, SubscriptionPlan, TenantMembership
-from apps.tenants.models import Tenant, TenantMembership
+from apps.technician_portal.models import Repair, Technician, TechnicianNotification
+from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
 from common.auth import get_user_role
-from core.models import Customer
-from core.models import Notification
+from core.models import Customer, Notification
 from core.models.notification_delivery_log import NotificationDeliveryLog
 from decimal import Decimal
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
-from django.http import Http404
-from django.http import HttpResponse
-from django.test import TestCase
-from django.test import TestCase, Client, override_settings
-from django.test import TestCase, RequestFactory
-from unittest.mock import patch
-from unittest.mock import patch, MagicMock, PropertyMock
+from django.http import Http404, HttpResponse
+from django.test import Client, RequestFactory, TestCase, override_settings
+from unittest.mock import MagicMock, PropertyMock, patch
 import logging
 import uuid
 
-TEST_OVERRIDES = {
-    'ALLOWED_HOSTS': ['*'],
-    'CACHES': {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
-}
+User = get_user_model()
 
 
 # --- From test_code005_delivery_log_tenant.py ---
+
+User = get_user_model()
+
+_tenant_counter = 0
+
+
+def _make_tenant_c005(name="Test Shop"):
+    """Create a minimal Tenant (with required owner) for testing."""
+    global _tenant_counter
+    _tenant_counter += 1
+    from apps.tenants.models import Tenant, TenantMembership
+    from apps.tenants.models import SubscriptionPlan
+    slug = name.lower().replace(" ", "-")
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        slug="starter",
+        defaults={"name": "Starter", "monthly_price": Decimal("0.00"), "trial_days": 30, "display_order": 0},
+    )
+    owner = User.objects.create_user(
+        username=f"owner_{slug}_{_tenant_counter}",
+        email=f"owner{_tenant_counter}@{slug}.test",
+        password="pass",
+    )
+    tenant = Tenant.objects.create(
+        name=name,
+        slug=f"{slug}-{_tenant_counter}",
+        subdomain=f"{slug}-{_tenant_counter}",
+        owner=owner,
+        subscription_plan=plan,
+    )
+    TenantMembership.objects.create(tenant=tenant, user=owner, role="owner")
+    return tenant
+
+
+def _make_technician(tenant, username="tech1"):
+    """Create a Technician linked to a tenant."""
+    from apps.technician_portal.models import Technician
+    user = User.objects.create_user(username=username, password="pass")
+    return Technician.objects.create(user=user, tenant=tenant)
+
+
+def _make_customer_user_c005(tenant, username="custuser1"):
+    """Create a CustomerUser linked to a tenant (via Customer)."""
+    from core.models import Customer
+    from apps.customer_portal.models import CustomerUser
+    customer = Customer.objects.create(name="Fleet Co", tenant=tenant)
+    user = User.objects.create_user(username=username, password="pass")
+    return CustomerUser.objects.create(user=user, customer=customer)
+
+
+def _make_notification(recipient):
+    """Create a minimal Notification for a given recipient object."""
+    ct = ContentType.objects.get_for_model(recipient)
+    return Notification.objects.create(
+        recipient_type=ct,
+        recipient_id=recipient.pk,
+        title="Test Notification",
+        message="Test message",
+        priority=Notification.PRIORITY_MEDIUM,
+        category=Notification.CATEGORY_SYSTEM,
+    )
+
 
 class TestDeliveryLogTenantField(TestCase):
     """Verify the tenant field exists and is nullable."""
@@ -55,7 +103,7 @@ class TestDeliveryLogTenantField(TestCase):
 
     def test_tenant_fk_can_be_set_explicitly(self):
         """tenant can be set explicitly without notification."""
-        tenant = _make_tenant("Explicit Tenant")
+        tenant = _make_tenant_c005("Explicit Tenant")
         log = NotificationDeliveryLog.objects.create(
             channel="email",
             status="sent",
@@ -74,7 +122,7 @@ class TestDeliveryLogTenantAutopopulate(TestCase):
         When notification recipient is a Technician, save() should derive
         tenant from Technician.tenant.
         """
-        tenant = _make_tenant("Tech Tenant")
+        tenant = _make_tenant_c005("Tech Tenant")
         tech = _make_technician(tenant, username="auto_tech1")
         notification = _make_notification(tech)
 
@@ -93,8 +141,8 @@ class TestDeliveryLogTenantAutopopulate(TestCase):
         When notification recipient is a CustomerUser, save() should derive
         tenant from CustomerUser.customer.tenant.
         """
-        tenant = _make_tenant("Customer Tenant")
-        cu = _make_customer_user(tenant, username="auto_cu1")
+        tenant = _make_tenant_c005("Customer Tenant")
+        cu = _make_customer_user_c005(tenant, username="auto_cu1")
         notification = _make_notification(cu)
 
         log = NotificationDeliveryLog.objects.create(
@@ -121,8 +169,8 @@ class TestDeliveryLogTenantAutopopulate(TestCase):
         If tenant is explicitly set before save, it should NOT be overwritten
         by _resolve_tenant().
         """
-        tenant_a = _make_tenant("Tenant A")
-        tenant_b = _make_tenant("Tenant B")
+        tenant_a = _make_tenant_c005("Tenant A")
+        tenant_b = _make_tenant_c005("Tenant B")
         tech = _make_technician(tenant_a, username="tech_override")
         notification = _make_notification(tech)
 
@@ -143,8 +191,8 @@ class TestDeliveryLogTenantFilter(TestCase):
 
     def test_filter_by_tenant(self):
         """logs can be filtered by tenant FK."""
-        tenant_x = _make_tenant("Shop X")
-        tenant_y = _make_tenant("Shop Y")
+        tenant_x = _make_tenant_c005("Shop X")
+        tenant_y = _make_tenant_c005("Shop Y")
         tech_x = _make_technician(tenant_x, username="tech_x")
         tech_y = _make_technician(tenant_y, username="tech_y")
         notif_x = _make_notification(tech_x)
@@ -172,7 +220,7 @@ class TestDeliveryLogTenantFilter(TestCase):
         If _resolve_tenant() raises, save() should still succeed with tenant=None
         (no exception propagated).
         """
-        tenant = _make_tenant("Safe Tenant")
+        tenant = _make_tenant_c005("Safe Tenant")
         tech = _make_technician(tenant, username="safe_tech")
         notification = _make_notification(tech)
 
@@ -209,6 +257,22 @@ class TestDeliveryLogAdminTenantFilter(TestCase):
 
 # --- From test_code008_cross_tenant_tech_assign.py ---
 
+def _make_tenant_c008(name, owner_username, plan):
+    owner = User.objects.create_user(username=owner_username, password='pw')
+    return Tenant.objects.create(
+        name=name,
+        slug=name.lower().replace(' ', '-'),
+        subdomain=name.lower().replace(' ', '-'),
+        owner=owner,
+        plan='trial',
+        subscription_plan=plan,
+    ), owner
+
+
+def _add_membership(user, tenant, role='owner'):
+    TenantMembership.objects.create(user=user, tenant=tenant, role=role, is_active=True)
+
+
 class AssignRepairCrossTenantTest(TestCase):
     """
     assign_repair() must not allow assigning a technician from another tenant.
@@ -220,11 +284,11 @@ class AssignRepairCrossTenantTest(TestCase):
             defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
         )
         # Shop A
-        self.tenant_a, self.owner_a = _make_tenant('Shop A', 'owner_a', plan)
+        self.tenant_a, self.owner_a = _make_tenant_c008('Shop A', 'owner_a', plan)
         _add_membership(self.owner_a, self.tenant_a, 'owner')
 
         # Shop B
-        self.tenant_b, self.owner_b = _make_tenant('Shop B', 'owner_b', plan)
+        self.tenant_b, self.owner_b = _make_tenant_c008('Shop B', 'owner_b', plan)
         _add_membership(self.owner_b, self.tenant_b, 'owner')
 
         # Technician belonging to Shop B
@@ -334,8 +398,8 @@ class BatchCrossTenantTechTest(TestCase):
             slug='trial',
             defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
         )
-        tenant_a, owner_a = _make_tenant('Batch Shop A', 'batch_owner_a', plan)
-        tenant_b, owner_b = _make_tenant('Batch Shop B', 'batch_owner_b', plan)
+        tenant_a, owner_a = _make_tenant_c008('Batch Shop A', 'batch_owner_a', plan)
+        tenant_b, owner_b = _make_tenant_c008('Batch Shop B', 'batch_owner_b', plan)
 
         tech_b_user = User.objects.create_user(username='batch_tech_b', password='pw')
         tech_b = Technician.objects.create(
@@ -363,7 +427,7 @@ class BatchCrossTenantTechTest(TestCase):
             slug='trial',
             defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
         )
-        tenant_a, owner_a = _make_tenant('Batch Shop C', 'batch_owner_c', plan)
+        tenant_a, owner_a = _make_tenant_c008('Batch Shop C', 'batch_owner_c', plan)
 
         tech_a_user = User.objects.create_user(username='batch_tech_a', password='pw')
         tech_a = Technician.objects.create(
@@ -383,6 +447,53 @@ class BatchCrossTenantTechTest(TestCase):
 
 # --- From test_code009_admin_managed_technicians_tenant.py ---
 
+def _make_plan_c009():
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        name="Test Plan",
+        defaults={
+            "monthly_price": 0,
+            "max_technicians": 10,
+            "max_customers": 100,
+            "trial_days": 14,
+        },
+    )
+    return plan
+
+
+def _make_tenant_c009(name):
+    plan = _make_plan_c009()
+    owner = User.objects.create_user(
+        username=f"owner_{name.lower().replace(' ', '_')}",
+        email=f"owner_{name.lower().replace(' ', '_')}@example.com",
+        password="pass",
+    )
+    tenant = Tenant.objects.create(
+        name=name,
+        subdomain=name.lower().replace(" ", "-"),
+        subscription_plan=plan,
+        owner=owner,
+    )
+    return tenant
+
+
+def _make_tech_c009(tenant, username, is_manager=False):
+    user = User.objects.create_user(
+        username=username,
+        email=f"{username}@example.com",
+        password="pass",
+        first_name=username,
+        last_name="Test",
+    )
+    tech = Technician.objects.create(
+        user=user,
+        tenant=tenant,
+        expertise="CHIP",
+        is_manager=is_manager,
+        is_active=True,
+    )
+    return tech
+
+
 class ManagedTechnicianAdminQuerysetTest(TestCase):
     """
     TechnicianAdmin.get_form() managed_technicians queryset must be
@@ -393,14 +504,14 @@ class ManagedTechnicianAdminQuerysetTest(TestCase):
         self.site = AdminSite()
         self.admin = TechnicianAdmin(Technician, self.site)
 
-        self.tenant_a = _make_tenant("Shop A")
-        self.tenant_b = _make_tenant("Shop B")
+        self.tenant_a = _make_tenant_c009("Shop A")
+        self.tenant_b = _make_tenant_c009("Shop B")
 
-        self.manager_a = _make_tech(self.tenant_a, "mgr_a", is_manager=True)
-        self.tech_a1 = _make_tech(self.tenant_a, "tech_a1")
-        self.tech_a2 = _make_tech(self.tenant_a, "tech_a2")
-        self.tech_b1 = _make_tech(self.tenant_b, "tech_b1")
-        self.tech_b2 = _make_tech(self.tenant_b, "tech_b2")
+        self.manager_a = _make_tech_c009(self.tenant_a, "mgr_a", is_manager=True)
+        self.tech_a1 = _make_tech_c009(self.tenant_a, "tech_a1")
+        self.tech_a2 = _make_tech_c009(self.tenant_a, "tech_a2")
+        self.tech_b1 = _make_tech_c009(self.tenant_b, "tech_b1")
+        self.tech_b2 = _make_tech_c009(self.tenant_b, "tech_b2")
 
         # Superuser request
         self.superuser = User.objects.create_superuser(
@@ -464,11 +575,11 @@ class ValidateManagedTechniciansTest(TestCase):
     """
 
     def setUp(self):
-        self.tenant_a = _make_tenant("Shop X")
-        self.tenant_b = _make_tenant("Shop Y")
-        self.manager_a = _make_tech(self.tenant_a, "mgr_x", is_manager=True)
-        self.tech_b = _make_tech(self.tenant_b, "tech_y")
-        self.tech_a = _make_tech(self.tenant_a, "tech_x")
+        self.tenant_a = _make_tenant_c009("Shop X")
+        self.tenant_b = _make_tenant_c009("Shop Y")
+        self.manager_a = _make_tech_c009(self.tenant_a, "mgr_x", is_manager=True)
+        self.tech_b = _make_tech_c009(self.tenant_b, "tech_y")
+        self.tech_a = _make_tech_c009(self.tenant_a, "tech_x")
 
     def test_validate_strips_cross_tenant_techs(self):
         """validate_managed_technicians() removes foreign-tenant techs."""
@@ -525,18 +636,58 @@ class ValidateManagedTechniciansTest(TestCase):
 
 # --- From test_code011_reward_options_tenant_scope.py ---
 
+def _make_plan_c011():
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        slug='trial',
+        defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
+    )
+    return plan
+
+
+def _make_tenant_c011(name, plan):
+    owner = User.objects.create_user(
+        username=f"owner_{name.lower().replace(' ', '_')}",
+        password='pw'
+    )
+    tenant = Tenant.objects.create(
+        name=name,
+        slug=name.lower().replace(' ', '-'),
+        subdomain=name.lower().replace(' ', '-'),
+        owner=owner,
+        plan='trial',
+        subscription_plan=plan,
+    )
+    TenantMembership.objects.create(user=owner, tenant=tenant, role='owner', is_active=True)
+    return tenant, owner
+
+
+def _make_customer_user_c011(tenant, username='cust_user'):
+    user = User.objects.create_user(username=username, password='pw', email=f'{username}@test.com')
+    customer = Customer.objects.create(
+        name='Test Fleet Co.',
+        email=f'{username}@fleet.com',
+        tenant=tenant,
+    )
+    customer_user = CustomerUser.objects.create(
+        user=user,
+        customer=customer,
+        is_primary_contact=True,
+    )
+    return user, customer_user
+
+
 class RewardOptionTenantScopeTest(TestCase):
     """
     customer_rewards_redirect must only show the requesting tenant's reward options.
     """
 
     def setUp(self):
-        plan = _make_plan()
-        self.tenant_a, _owner_a = _make_tenant('Shop A', plan)
-        self.tenant_b, _owner_b = _make_tenant('Shop B', plan)
+        plan = _make_plan_c011()
+        self.tenant_a, _owner_a = _make_tenant_c011('Shop A', plan)
+        self.tenant_b, _owner_b = _make_tenant_c011('Shop B', plan)
 
-        self.user_a, self.cu_a = _make_customer_user(self.tenant_a, 'cust_a')
-        self.user_b, self.cu_b = _make_customer_user(self.tenant_b, 'cust_b')
+        self.user_a, self.cu_a = _make_customer_user_c011(self.tenant_a, 'cust_a')
+        self.user_b, self.cu_b = _make_customer_user_c011(self.tenant_b, 'cust_b')
 
         # Shop A reward option
         self.option_a = RewardOption.objects.create(
@@ -626,9 +777,9 @@ class RewardOptionTenantScopeTest(TestCase):
     def test_no_options_for_tenant_returns_empty(self):
         """If a tenant has no active reward options, the view gets an empty list."""
         # Create a third tenant with no options
-        plan = _make_plan()
-        tenant_c, _owner_c = _make_tenant('Shop C', plan)
-        user_c, _cu_c = _make_customer_user(tenant_c, 'cust_c')
+        plan = _make_plan_c011()
+        tenant_c, _owner_c = _make_tenant_c011('Shop C', plan)
+        user_c, _cu_c = _make_customer_user_c011(tenant_c, 'cust_c')
 
         qs_c = RewardOption.objects.filter(is_active=True, tenant=tenant_c)
         self.assertEqual(qs_c.count(), 0)
@@ -654,6 +805,62 @@ class RewardOptionTenantScopeTest(TestCase):
 
 # --- From test_code020_update_team_member_tenant_scope.py ---
 
+TEST_OVERRIDES = {
+    'ALLOWED_HOSTS': ['*'],
+    'CACHES': {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
+}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _plan_c020():
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        slug="trial",
+        defaults={
+            "name": "Trial",
+            "monthly_price": Decimal("0.00"),
+            "trial_days": 30,
+            "is_active": True,
+            "display_order": 0,
+        },
+    )
+    return plan
+
+
+def _make_tenant_c020(name, slug, owner):
+    return Tenant.objects.create(
+        name=name,
+        slug=slug,
+        subdomain=slug,
+        owner=owner,
+        plan="trial",
+        subscription_plan=_plan_c020(),
+    )
+
+
+def _membership_c020(user, tenant, role="owner"):
+    return TenantMembership.objects.create(
+        user=user, tenant=tenant, role=role, is_active=True
+    )
+
+
+def _make_user(username):
+    return User.objects.create_user(
+        username=username,
+        password="pw",
+        email=f"{username}@ex.com",
+        first_name="Test",
+        last_name="User",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 @override_settings(**TEST_OVERRIDES)
 class UpdateTeamMemberTenantScopeTests(TestCase):
     """update_team_member() must never touch Technician records from other tenants."""
@@ -663,11 +870,11 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
         self.owner_a = _make_user("owner_a_020")
         self.owner_b = _make_user("owner_b_020")
 
-        self.tenant_a = _make_tenant("Shop A 020", "shop-a-020", self.owner_a)
-        self.tenant_b = _make_tenant("Shop B 020", "shop-b-020", self.owner_b)
+        self.tenant_a = _make_tenant_c020("Shop A 020", "shop-a-020", self.owner_a)
+        self.tenant_b = _make_tenant_c020("Shop B 020", "shop-b-020", self.owner_b)
 
-        _membership(self.owner_a, self.tenant_a, "owner")
-        _membership(self.owner_b, self.tenant_b, "owner")
+        _membership_c020(self.owner_a, self.tenant_a, "owner")
+        _membership_c020(self.owner_b, self.tenant_b, "owner")
 
         self.client_a = Client()
         self.client_a.force_login(self.owner_a)
@@ -682,7 +889,7 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
     def test_promote_creates_technician_for_correct_tenant(self):
         """Promoting a brand-new viewer to technician creates a Technician for THIS tenant."""
         new_user = _make_user("newbie_020")
-        mem = _membership(new_user, self.tenant_a, "viewer")
+        mem = _membership_c020(new_user, self.tenant_a, "viewer")
 
         resp = self.client_a.post(
             f"/owner/team/{mem.id}/update/",
@@ -715,7 +922,7 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
         )
 
         # Shop A adds them as a viewer, then owner promotes to technician
-        mem_a = _membership(shared_user, self.tenant_a, "viewer")
+        mem_a = _membership_c020(shared_user, self.tenant_a, "viewer")
 
         self.client_a.post(
             f"/owner/team/{mem_a.id}/update/",
@@ -741,7 +948,7 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
             is_manager=False,
         )
 
-        mem_a = _membership(shared_user, self.tenant_a, "viewer")
+        mem_a = _membership_c020(shared_user, self.tenant_a, "viewer")
 
         self.client_a.post(
             f"/owner/team/{mem_a.id}/update/",
@@ -770,7 +977,7 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
             can_repair=True,
             can_replace=False,
         )
-        mem = _membership(user, self.tenant_a, "technician")
+        mem = _membership_c020(user, self.tenant_a, "technician")
 
         resp = self.client_a.post(
             f"/owner/team/{mem.id}/update/",
@@ -792,7 +999,7 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
             is_active=True,
             is_manager=False,
         )
-        mem = _membership(user, self.tenant_a, "technician")
+        mem = _membership_c020(user, self.tenant_a, "technician")
 
         self.client_a.post(
             f"/owner/team/{mem.id}/update/",
@@ -812,7 +1019,7 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
         (get_object_or_404 tenant scoping).
         """
         user = _make_user("target_user_020")
-        mem_a = _membership(user, self.tenant_a, "technician")
+        mem_a = _membership_c020(user, self.tenant_a, "technician")
 
         resp = self.client_b.post(
             f"/owner/team/{mem_a.id}/update/",
@@ -843,7 +1050,7 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
             is_active=True,
         )
 
-        mem_a = _membership(shared_user, self.tenant_a, "viewer")
+        mem_a = _membership_c020(shared_user, self.tenant_a, "viewer")
 
         with self.assertLogs("apps.saas.views", level=logging.WARNING) as log_cm:
             self.client_a.post(
@@ -864,6 +1071,40 @@ class UpdateTeamMemberTenantScopeTests(TestCase):
 
 # --- From test_code021_unscoped_is_tenant_admin_in_views.py ---
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _plan_c021():
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        slug='trial',
+        defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
+    )
+    return plan
+
+
+def _make_tenant_c021(name, owner_user, plan):
+    return Tenant.objects.create(
+        name=name,
+        slug=name.lower().replace(' ', '-').replace('_', '-'),
+        subdomain=name.lower().replace(' ', '-').replace('_', '-'),
+        owner=owner_user,
+        plan='trial',
+        subscription_plan=plan,
+    )
+
+
+def _membership_c021(user, tenant, role):
+    return TenantMembership.objects.create(
+        user=user, tenant=tenant, role=role, is_active=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 class IsAdminScopingTests(TestCase):
     """
     Verify that is_tenant_admin with vs without tenant parameter behaves
@@ -871,22 +1112,22 @@ class IsAdminScopingTests(TestCase):
     """
 
     def setUp(self):
-        plan = _plan()
+        plan = _plan_c021()
 
         # Shop A owner (also manager at Shop A)
         self.owner_a = User.objects.create_user('owner_a_021', password='pw')
-        self.tenant_a = _make_tenant('shop_a_021', self.owner_a, plan)
-        _membership(self.owner_a, self.tenant_a, 'owner')
+        self.tenant_a = _make_tenant_c021('shop_a_021', self.owner_a, plan)
+        _membership_c021(self.owner_a, self.tenant_a, 'owner')
 
         # Shop B owner
         self.owner_b = User.objects.create_user('owner_b_021', password='pw')
-        self.tenant_b = _make_tenant('shop_b_021', self.owner_b, plan)
-        _membership(self.owner_b, self.tenant_b, 'owner')
+        self.tenant_b = _make_tenant_c021('shop_b_021', self.owner_b, plan)
+        _membership_c021(self.owner_b, self.tenant_b, 'owner')
 
         # Cross-tenant user: admin at Shop A, plain technician at Shop B
         self.cross_user = User.objects.create_user('cross_021', password='pw')
-        _membership(self.cross_user, self.tenant_a, 'owner')   # admin at A
-        _membership(self.cross_user, self.tenant_b, 'viewer')  # viewer at B
+        _membership_c021(self.cross_user, self.tenant_a, 'owner')   # admin at A
+        _membership_c021(self.cross_user, self.tenant_b, 'viewer')  # viewer at B
 
     def test_unscoped_returns_highest_privilege(self):
         """Without tenant, is_tenant_admin returns True if user is admin anywhere."""
@@ -907,7 +1148,7 @@ class IsAdminScopingTests(TestCase):
     def test_plain_technician_not_admin_at_either_shop(self):
         """A plain technician is not admin at any shop."""
         tech_user = User.objects.create_user('tech_only_021', password='pw')
-        _membership(tech_user, self.tenant_a, 'technician')
+        _membership_c021(tech_user, self.tenant_a, 'technician')
 
         self.assertFalse(is_tenant_admin(tech_user))
         self.assertFalse(is_tenant_admin(tech_user, tenant=self.tenant_a))
@@ -916,8 +1157,8 @@ class IsAdminScopingTests(TestCase):
     def test_manager_at_shop_a_not_admin_at_shop_b(self):
         """A manager at Shop A is not admin at Shop B (even with unrelated membership)."""
         mgr = User.objects.create_user('mgr_021', password='pw')
-        _membership(mgr, self.tenant_a, 'manager')
-        _membership(mgr, self.tenant_b, 'technician')
+        _membership_c021(mgr, self.tenant_a, 'manager')
+        _membership_c021(mgr, self.tenant_b, 'technician')
 
         # Unscoped: True (manager at A)
         self.assertTrue(is_tenant_admin(mgr))
@@ -931,18 +1172,18 @@ class GetUserRoleScopingTests(TestCase):
     """Verify get_user_role (underlying function) respects tenant parameter."""
 
     def setUp(self):
-        plan = _plan()
+        plan = _plan_c021()
         self.owner_a = User.objects.create_user('gr_owner_a_021', password='pw')
-        self.tenant_a = _make_tenant('gr_shop_a_021', self.owner_a, plan)
-        _membership(self.owner_a, self.tenant_a, 'owner')
+        self.tenant_a = _make_tenant_c021('gr_shop_a_021', self.owner_a, plan)
+        _membership_c021(self.owner_a, self.tenant_a, 'owner')
 
         self.owner_b = User.objects.create_user('gr_owner_b_021', password='pw')
-        self.tenant_b = _make_tenant('gr_shop_b_021', self.owner_b, plan)
-        _membership(self.owner_b, self.tenant_b, 'owner')
+        self.tenant_b = _make_tenant_c021('gr_shop_b_021', self.owner_b, plan)
+        _membership_c021(self.owner_b, self.tenant_b, 'owner')
 
         self.cross_user = User.objects.create_user('gr_cross_021', password='pw')
-        _membership(self.cross_user, self.tenant_a, 'owner')
-        _membership(self.cross_user, self.tenant_b, 'technician')
+        _membership_c021(self.cross_user, self.tenant_a, 'owner')
+        _membership_c021(self.cross_user, self.tenant_b, 'technician')
 
     def test_role_without_tenant_returns_highest(self):
         role = get_user_role(self.cross_user)
@@ -1027,6 +1268,38 @@ class ViewCodeUsesCorrectParamTests(TestCase):
 
 # --- From test_code022_batch_detail_no_technician_profile.py ---
 
+def _make_plan_c022():
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        slug='trial',
+        defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
+    )
+    return plan
+
+
+def _make_tenant_c022(name, owner):
+    return Tenant.objects.create(
+        name=name,
+        slug=name.lower().replace(' ', '-'),
+        subdomain=name.lower().replace(' ', '-'),
+        owner=owner,
+        plan='trial',
+        subscription_plan=_make_plan_c022(),
+    )
+
+
+def _make_membership(user, tenant, role='technician'):
+    TenantMembership.objects.create(user=user, tenant=tenant, role=role, is_active=True)
+
+
+def _make_tech_c022(user, tenant, is_manager=False):
+    return Technician.objects.create(
+        user=user,
+        tenant=tenant,
+        phone_number='555-0100',
+        is_manager=is_manager,
+    )
+
+
 class BatchDetailNoTechProfileTests(TestCase):
     """
     Verifies that technician_batch_detail and technician_batch_start_work do NOT
@@ -1034,18 +1307,18 @@ class BatchDetailNoTechProfileTests(TestCase):
     """
 
     def setUp(self):
-        _make_plan()
+        _make_plan_c022()
 
         # Owner without a Technician record
         self.owner_user = User.objects.create_user(username='shop_owner', password='pw')
-        self.tenant = _make_tenant('Test Shop', self.owner_user)
+        self.tenant = _make_tenant_c022('Test Shop', self.owner_user)
         _make_membership(self.owner_user, self.tenant, 'owner')
         # Intentionally NOT creating a Technician for owner_user
 
         # Separate tech user who DOES have a Technician record (creates the batch)
         self.tech_user = User.objects.create_user(username='tech_a', password='pw')
         _make_membership(self.tech_user, self.tenant, 'technician')
-        self.tech = _make_tech(self.tech_user, self.tenant)
+        self.tech = _make_tech_c022(self.tech_user, self.tenant)
 
         self.customer = Customer.objects.create(
             name='Fleet Co',
@@ -1225,3 +1498,87 @@ class BatchDetailNoTechProfileTests(TestCase):
 
         result = getattr(self.owner_user, 'technician', None)
         self.assertIsNone(result)
+
+
+# --- CODE-029: IDOR on batch pricing AJAX endpoint ---
+
+from django.test import TestCase, Client
+from apps.technician_portal.services.batch_pricing_service import get_batch_pricing_preview
+
+
+class BatchPricingTenantScopeTests(TestCase):
+    """
+    CODE-029: get_batch_pricing_preview() and the /tech/api/batch-pricing/ endpoint
+    had no tenant filter on Customer lookup. Any technician could probe any shop's
+    customer pricing data by guessing integer PKs.
+    """
+
+    def setUp(self):
+        from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
+        from apps.technician_portal.models import Technician
+
+        plan = SubscriptionPlan.objects.create(
+            name='Trial', slug='trial-bprice', monthly_price=0,
+            max_technicians=10, trial_days=14,
+        )
+        owner_a = User.objects.create_user('bp_owner_a', 'bp_owner_a@ex.com', 'pass')
+        owner_b = User.objects.create_user('bp_owner_b', 'bp_owner_b@ex.com', 'pass')
+        self.tenant_a = Tenant.objects.create(name='BP Shop A', slug='bp-shop-a', plan=plan, owner=owner_a)
+        self.tenant_b = Tenant.objects.create(name='BP Shop B', slug='bp-shop-b', plan=plan, owner=owner_b)
+
+        # Customer at Shop B
+        self.customer_b = Customer.objects.create(
+            name='Shop B Customer', tenant=self.tenant_b, email='custb@ex.com'
+        )
+
+        # Technician at Shop A
+        self.tech_user = User.objects.create_user('bp_tech_a', 'bp_tech_a@ex.com', 'pass')
+        TenantMembership.objects.create(tenant=self.tenant_a, user=self.tech_user, role='technician')
+        from django.contrib.auth.models import Group
+        grp, _ = Group.objects.get_or_create(name='Technicians')
+        self.tech_user.groups.add(grp)
+        self.tech = Technician.objects.create(
+            tenant=self.tenant_a, user=self.tech_user, is_active=True,
+        )
+
+    def test_service_returns_none_for_cross_tenant_customer(self):
+        """With tenant filter, pricing preview returns None for wrong-tenant customer."""
+        result = get_batch_pricing_preview(
+            customer_id=self.customer_b.id,
+            unit_number='UNIT-1',
+            breaks_count=2,
+            tenant=self.tenant_a,   # Shop A tenant — should NOT find Shop B customer
+        )
+        self.assertIsNone(result, "Must return None when customer belongs to a different tenant")
+
+    def test_service_returns_data_for_correct_tenant_customer(self):
+        """With tenant filter, pricing preview returns data for same-tenant customer."""
+        customer_a = Customer.objects.create(
+            name='Shop A Customer', tenant=self.tenant_a, email='custa@ex.com'
+        )
+        result = get_batch_pricing_preview(
+            customer_id=customer_a.id,
+            unit_number='UNIT-1',
+            breaks_count=2,
+            tenant=self.tenant_a,
+        )
+        # None means not found; non-None means found (even if pricing is default)
+        self.assertIsNotNone(result, "Must return pricing data for correct-tenant customer")
+
+    def test_endpoint_returns_404_for_cross_tenant_customer(self):
+        """AJAX endpoint returns 404 when tech probes another shop's customer ID."""
+        client = Client()
+        client.force_login(self.tech_user)
+
+        # Simulate middleware setting tenant to Shop A
+        session = client.session
+        session['tenant_id'] = self.tenant_a.id
+        session.save()
+
+        response = client.get('/tech/api/batch-pricing/', {
+            'customer_id': self.customer_b.id,
+            'unit_number': 'UNIT-1',
+            'breaks_count': '2',
+        })
+        # Should return 404 (customer not found in tenant A) not 200 with Shop B's data
+        self.assertEqual(response.status_code, 404)

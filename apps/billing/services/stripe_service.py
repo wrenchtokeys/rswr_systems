@@ -255,6 +255,7 @@ class StripeService:
         event_type = event['type']
         data = event['data']['object']
         
+        # Billing payment handlers (invoice checkout + payment intents)
         handlers = {
             'checkout.session.completed': self._handle_checkout_completed,
             'payment_intent.succeeded': self._handle_payment_succeeded,
@@ -263,6 +264,12 @@ class StripeService:
         handler = handlers.get(event_type)
         if handler:
             return handler(data)
+        
+        # SaaS subscription handlers (delegated to tenants.webhooks)
+        from apps.tenants.webhooks import handle_subscription_event
+        sub_result = handle_subscription_event(event_type, data)
+        if sub_result.get('handled'):
+            return sub_result
         
         logger.debug(f"Unhandled webhook: {event_type}")
         return {'success': True, 'handled': False, 'event_type': event_type}

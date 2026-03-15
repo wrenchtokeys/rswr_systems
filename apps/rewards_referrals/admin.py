@@ -137,6 +137,20 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
+        # Eagerly load all FK chains used in list_display to prevent N+1 queries.
+        # Without this, each row fires 5+ extra SELECTs for:
+        #   reward → customer_user → user         (get_customer_email)
+        #   reward → customer_user → customer → tenant  (get_tenant_display)
+        #   reward_option                          (reward_option col)
+        #   assigned_technician → user             (assigned_technician col)
+        #   applied_to_repair                      (get_applied_to_repair)
+        qs = qs.select_related(
+            'reward__customer_user__user',
+            'reward__customer_user__customer__tenant',
+            'reward_option__tenant',
+            'assigned_technician__user',
+            'applied_to_repair',
+        )
         if request.user.is_superuser:
             return qs
         from apps.tenants.models import TenantMembership
