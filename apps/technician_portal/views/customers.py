@@ -149,7 +149,7 @@ def customer_details(request, customer_id):
     if hasattr(request.user, 'technician'):
         technician = request.user.technician
 
-    qs = Customer.objects.all()
+    qs = Customer.objects.select_related('primary_technician__user').all()
     if tenant:
         qs = qs.filter(tenant=tenant)
 
@@ -192,7 +192,7 @@ def customer_details(request, customer_id):
     can_edit_customer = is_admin or is_mgr
 
     # Provide available technicians for the primary tech dropdown
-    available_technicians = Technician.objects.filter(is_active=True)
+    available_technicians = Technician.objects.select_related('user').filter(is_active=True)
     if tenant:
         available_technicians = available_technicians.filter(tenant=tenant)
 
