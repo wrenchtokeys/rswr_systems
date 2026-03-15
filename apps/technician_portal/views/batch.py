@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 @technician_required
 def technician_batch_detail(request, batch_id):
     """Display all repairs in a batch with batch actions for technician."""
-    technician = request.user.technician
+    # Admins/owners without a Technician profile are allowed by @technician_required;
+    # guard with getattr to avoid RelatedObjectDoesNotExist for those users.
+    technician = getattr(request.user, 'technician', None)
 
     batch_summary = Repair.get_batch_summary(batch_id)
     if not batch_summary:
@@ -84,7 +86,9 @@ def technician_batch_detail(request, batch_id):
 @transaction.atomic
 def technician_batch_start_work(request, batch_id):
     """Start work on all repairs in a batch at once."""
-    technician = request.user.technician
+    # Guard: admin/owner users without a Technician record are allowed through
+    # @technician_required but don't have a .technician reverse relation.
+    technician = getattr(request.user, 'technician', None)
 
     batch_summary = Repair.get_batch_summary(batch_id)
     if not batch_summary:
