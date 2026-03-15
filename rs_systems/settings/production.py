@@ -145,32 +145,22 @@ CSRF_TRUSTED_ORIGINS = [
 # across multiple workers (unlike LocMemCache which is per-process).
 # django-ratelimit, DRF throttling, and template caching all depend on this.
 
-_REDIS_URL = os.environ.get('REDIS_CACHE_URL') or os.environ.get('REDIS_URL')
-
-if _REDIS_URL:
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-            'LOCATION': _REDIS_URL,
-            'KEY_PREFIX': 'rs_systems',
-            'TIMEOUT': 300,
-        }
+# Database-backed cache — no external dependencies, works across multiple
+# gunicorn workers, survives process restarts. The django_cache table is
+# created by the postdeploy hook (createcachetable).
+#
+# To upgrade to Redis later: install redis package, add REDIS_URL env var,
+# and swap the backend. See docs/SCALING.md for details.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'MAX_ENTRIES': 5000,
+        },
     }
-else:
-    # Database-backed cache — no external dependencies, works with multiple
-    # gunicorn workers, and survives process restarts. Requires the cache
-    # table to exist (created by migrate via createcachetable or the
-    # migration we ship).
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-            'LOCATION': 'django_cache',
-            'TIMEOUT': 300,
-            'OPTIONS': {
-                'MAX_ENTRIES': 5000,
-            },
-        }
-    }
+}
 
 # =========================================
 # EMAIL (Production overrides)
