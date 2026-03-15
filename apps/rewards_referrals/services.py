@@ -279,7 +279,10 @@ class RewardService:
             tuple: (bool success, str message or RewardRedemption object)
         """
         try:
-            reward_option = RewardOption.objects.get(id=reward_option_id)
+            # Scope the lookup to the customer's tenant to prevent IDOR
+            # (a customer from Shop A must not be able to redeem Shop B's options)
+            tenant = customer_user.customer.tenant
+            reward_option = RewardOption.objects.get(id=reward_option_id, tenant=tenant)
             
             # Check if reward option is active
             if not reward_option.is_active:
@@ -323,7 +326,9 @@ class RewardService:
         """
         points = RewardService.get_reward_balance(customer_user)
         
-        all_rewards = RewardOption.objects.filter(is_active=True).order_by('points_required')
+        # Scope to the customer's tenant to prevent cross-tenant data leaks
+        tenant = customer_user.customer.tenant
+        all_rewards = RewardOption.objects.filter(is_active=True, tenant=tenant).order_by('points_required')
         
         result = {
             'available': [],
