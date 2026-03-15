@@ -11,6 +11,7 @@ Author: Amelia (Clawdbot AI)
 import json
 from datetime import datetime, timedelta
 from decimal import Decimal
+from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
@@ -128,7 +129,12 @@ def list_invoices(request):
     if request.GET.get('outstanding', '').lower() == 'true':
         invoices = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE'])
 
-    invoices = invoices.select_related('customer').order_by('-invoice_date')[:50]
+    invoices = (
+        invoices
+        .select_related('customer')
+        .annotate(line_item_count=Count('line_items'))
+        .order_by('-invoice_date')[:50]
+    )
 
     return JsonResponse({
         'invoices': [{
@@ -142,7 +148,7 @@ def list_invoices(request):
             'amount_due': float(inv.amount_due),
             'status': inv.status,
             'stripe_hosted_url': inv.stripe_hosted_url or None,
-            'line_item_count': inv.line_items.count(),
+            'line_item_count': inv.line_item_count,
         } for inv in invoices],
         'count': len(invoices),
     })
@@ -379,25 +385,35 @@ def send_invoice_email_batch(request):
     from apps.billing.services.invoice_email_service import InvoiceEmailService
     email_svc = InvoiceEmailService(tenant=tenant)
 
+    # Fetch all requested invoices in one query (with customer & line items prefetched)
+    # to avoid N individual .get() calls + lazy FK traversals inside the loop.
+    invoice_map = {
+        inv.id: inv
+        for inv in Invoice.objects.filter(
+            id__in=invoice_ids, tenant=tenant
+        ).select_related('customer').prefetch_related('line_items')
+    }
+
     results = []
     for inv_id in invoice_ids:
+        invoice = invoice_map.get(inv_id)
+        if invoice is None:
+            results.append({'id': inv_id, 'success': False, 'error': 'Not found'})
+            continue
         try:
-            invoice = Invoice.objects.get(id=inv_id, tenant=tenant)
             if invoice.status == 'PAID':
                 results.append({'id': inv_id, 'success': False, 'error': 'Already paid'})
                 continue
             if not invoice.customer.email:
                 results.append({'id': inv_id, 'success': False, 'error': 'No email'})
                 continue
-            repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
+            repair_ids = [item.repair_id for item in invoice.line_items.all()]
             email_svc.send_invoice_email(
                 customer_id=invoice.customer_id,
                 recipient_email=invoice.customer.email,
                 repair_ids=repair_ids if repair_ids else None,
             )
             results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
-        except Invoice.DoesNotExist:
-            results.append({'id': inv_id, 'success': False, 'error': 'Not found'})
         except Exception as e:
             results.append({'id': inv_id, 'success': False, 'error': str(e)})
 
