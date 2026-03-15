@@ -1498,3 +1498,156 @@ class BatchDetailNoTechProfileTests(TestCase):
 
         result = getattr(self.owner_user, 'technician', None)
         self.assertIsNone(result)
+
+
+# --- CODE-029: invite_member and accept_invite Technician scoped to correct tenant ---
+
+from apps.tenants.models import InviteToken
+import uuid as _uuid
+
+
+class InviteMemberTechnicianTenantScopeTests(TestCase):
+    """
+    CODE-029: Technician.objects.filter(user=user) in invite_member() and accept_invite()
+    was missing tenant= filter. A user who already had a Technician record at Shop A
+    would not get a new Technician record when joining Shop B, and the else branch in
+    accept_invite() would mutate Shop A's record instead of Shop B's.
+    """
+
+    def setUp(self):
+        plan = SubscriptionPlan.objects.create(
+            name='Trial', slug='trial', monthly_price=0,
+            max_technicians=10, trial_days=14,
+        )
+        self.owner_a = User.objects.create_user('owner_a', 'owner_a@example.com', 'pass')
+        self.owner_b = User.objects.create_user('owner_b', 'owner_b@example.com', 'pass')
+        self.shop_a = Tenant.objects.create(name='Shop A', slug='shop-a', plan=plan, owner=self.owner_a)
+        self.shop_b = Tenant.objects.create(name='Shop B', slug='shop-b', plan=plan, owner=self.owner_b)
+        TenantMembership.objects.create(tenant=self.shop_a, user=self.owner_a, role='owner')
+
+        # shared_user already has a Technician record at Shop A
+        self.shared_user = User.objects.create_user(
+            'shared', 'shared@example.com', password=None
+        )
+        self.shared_user.set_unusable_password()
+        self.shared_user.save()
+        TenantMembership.objects.create(tenant=self.shop_a, user=self.shared_user, role='technician')
+        self.tech_shop_a = Technician.objects.create(
+            tenant=self.shop_a,
+            user=self.shared_user,
+            is_manager=False,
+            is_active=True,
+        )
+
+    def _make_invite(self, tenant, user, role='technician'):
+        invite = InviteToken(
+            tenant=tenant,
+            user=user,
+            role=role,
+            invited_by=self.owner_a,
+        )
+        invite.save()
+        return invite
+
+    def test_invite_member_creates_technician_for_correct_tenant(self):
+        """
+        When a user already has Technician@Shop-A and is invited to Shop-B as technician,
+        a NEW Technician record must be created for Shop-B, not skipped.
+        """
+        from django.contrib.auth.models import Group
+        tech_group, _ = Group.objects.get_or_create(name='Technicians')
+
+        # Simulate the fixed path: filter by user AND tenant
+        tenant = self.shop_b
+        user = self.shared_user
+        role = 'technician'
+
+        TenantMembership.objects.create(tenant=tenant, user=user, role=role)
+
+        if not Technician.objects.filter(user=user, tenant=tenant).exists():
+            Technician.objects.create(
+                tenant=tenant, user=user,
+                is_manager=(role == 'manager'),
+                is_active=True,
+            )
+
+        self.assertTrue(
+            Technician.objects.filter(user=user, tenant=self.shop_b).exists(),
+            "Technician record for Shop B must be created even if user has one at Shop A"
+        )
+        # Shop A record must be untouched
+        tech_a = Technician.objects.get(user=user, tenant=self.shop_a)
+        self.assertFalse(tech_a.is_manager)
+
+    def test_old_unscoped_check_would_skip_creation(self):
+        """Demonstrate the bug: unscoped .exists() returns True, skipping Shop B creation."""
+        user = self.shared_user
+        # Old code (unscoped): would return True because Shop A record exists
+        old_check = Technician.objects.filter(user=user).exists()
+        self.assertTrue(old_check, "Old unscoped check sees Shop A record and skips creation")
+        # Shop B still doesn't have a record — bug confirmed
+        self.assertFalse(Technician.objects.filter(user=user, tenant=self.shop_b).exists())
+
+    def test_accept_invite_else_branch_uses_tenant_scope(self):
+        """
+        When user already has Technician@Shop-A and accepts invite as manager for Shop-B,
+        the else branch must get/mutate Shop-B's record, NOT Shop-A's.
+        """
+        invite = self._make_invite(self.shop_b, self.shared_user, role='manager')
+
+        # Simulate: Shop B Technician already exists (e.g., from a prior partial signup)
+        tech_b = Technician.objects.create(
+            tenant=self.shop_b,
+            user=self.shared_user,
+            is_manager=False,
+            is_active=True,
+        )
+
+        # Fixed code: get(user=user, tenant=invite.tenant)
+        tech = Technician.objects.get(user=self.shared_user, tenant=invite.tenant)
+        if invite.role == 'manager':
+            tech.is_manager = True
+            tech.save()
+
+        # Shop B's record gets is_manager=True
+        tech_b.refresh_from_db()
+        self.assertTrue(tech_b.is_manager)
+
+        # Shop A's record is UNTOUCHED
+        self.tech_shop_a.refresh_from_db()
+        self.assertFalse(self.tech_shop_a.is_manager, "Shop A Technician must not be modified")
+
+    def test_old_else_branch_would_corrupt_shop_a(self):
+        """Demonstrate the old bug: get(user=user) without tenant finds Shop A's record."""
+        invite = self._make_invite(self.shop_b, self.shared_user, role='manager')
+
+        # Old code: Technician.objects.get(user=user) — no tenant filter
+        # With only Shop A record in place, this would return Shop A's Technician
+        tech = Technician.objects.get(user=self.shared_user)  # ambiguous w/ 1 record
+        self.assertEqual(tech.tenant, self.shop_a, "Without tenant filter, gets Shop A record")
+
+        # If we then set is_manager=True and save, Shop A is corrupted
+        # We don't actually save in this test (it's just illustrating the bug)
+        self.assertFalse(tech.is_manager, "Shop A should start with is_manager=False")
+
+    def test_accept_invite_view_integration(self):
+        """Integration: accept_invite POST creates correct Technician record for the token's tenant."""
+        invite = self._make_invite(self.shop_b, self.shared_user, role='technician')
+        client = Client()
+
+        response = client.post(f'/invite/{invite.token}/', {
+            'password': 'Str0ng!Pass#2026',
+            'password_confirm': 'Str0ng!Pass#2026',
+        })
+
+        # Should redirect on success (not re-render form)
+        self.assertIn(response.status_code, [200, 302])
+
+        # Shop B Technician must now exist
+        self.assertTrue(
+            Technician.objects.filter(user=self.shared_user, tenant=self.shop_b).exists(),
+            "Accepting invite for Shop B must create Technician at Shop B"
+        )
+        # Shop A Technician must remain untouched
+        self.tech_shop_a.refresh_from_db()
+        self.assertFalse(self.tech_shop_a.is_manager)

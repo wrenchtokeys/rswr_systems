@@ -1294,7 +1294,7 @@ def invite_member(request):
             tech_group, _ = Group.objects.get_or_create(name='Technicians')
             user.groups.add(tech_group)
 
-            if not Technician.objects.filter(user=user).exists():
+            if not Technician.objects.filter(user=user, tenant=tenant).exists():
                 Technician.objects.create(
                     tenant=tenant,
                     user=user,
