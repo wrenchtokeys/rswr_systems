@@ -646,8 +646,12 @@ def assign_repair(request, repair_id):
     tenant = getattr(request, 'tenant', None)
 
     if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
-        if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
+        tech = getattr(request.user, 'technician', None)
+        if not tech or not tech.is_manager:
             messages.error(request, "Only managers can assign repairs.")
+            return redirect('technician_dashboard')
+        if not tech.can_assign_work:
+            messages.error(request, "You do not have permission to assign repairs.")
             return redirect('technician_dashboard')
 
     qs = Repair.objects.all()
@@ -744,8 +748,12 @@ def reassign_to_self(request, repair_id):
     tenant = getattr(request, 'tenant', None)
 
     if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
-        if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
+        tech = getattr(request.user, 'technician', None)
+        if not tech or not tech.is_manager:
             messages.error(request, "Only managers can reassign repairs.")
+            return redirect('technician_dashboard')
+        if not tech.can_assign_work:
+            messages.error(request, "You do not have permission to reassign repairs.")
             return redirect('technician_dashboard')
 
     qs = Repair.objects.all()
