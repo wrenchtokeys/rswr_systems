@@ -1000,7 +1000,6 @@ def is_suspicious_username(username):
 
     return False
 
-@ratelimit(key='ip', rate='5/h', method='POST')
 def customer_register(request):
     if request.user.is_authenticated:
         return redirect('customer_dashboard')
@@ -2725,7 +2724,6 @@ def customer_team(request):
 
 
 @customer_required
-@ratelimit(key='user', rate='10/h', method='POST', block=True)
 def customer_invite_team_member(request):
     """
     Send an invitation to a new team member.

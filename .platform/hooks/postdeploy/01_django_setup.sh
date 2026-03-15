@@ -1,23 +1,30 @@
 #!/bin/bash
+set -e
 
 # Django post-deployment setup
-echo "Running Django migrations..."
 source /var/app/venv/*/bin/activate
 cd /var/app/current
 
-# Create media directories if they don't exist
+# Create media directories
 echo "Creating media directories..."
 mkdir -p /var/app/current/media/repair_photos/before
 mkdir -p /var/app/current/media/repair_photos/after
-# Set appropriate permissions for media directories
 chmod -R 755 /var/app/current/media
 chown -R webapp:webapp /var/app/current/media
 
+# Database migrations
+echo "Running Django migrations..."
 python manage.py migrate --noinput
+
+# Create cache table (used by django-ratelimit when Redis is not available)
+echo "Creating cache table..."
+python manage.py createcachetable --database default 2>/dev/null || echo "Cache table already exists"
+
+# Static files
 python manage.py collectstatic --noinput
 
-# Setup notification templates (safe to run multiple times)
+# Notification templates (idempotent)
 echo "Setting up notification templates..."
-python manage.py setup_notification_templates || echo "Warning: setup_notification_templates failed or not needed"
+python manage.py setup_notification_templates || echo "Warning: setup_notification_templates failed"
 
 echo "Django setup completed"

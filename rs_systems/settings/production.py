@@ -6,8 +6,11 @@ Used by wsgi.py, Procfile, and .ebextensions for AWS Elastic Beanstalk.
 """
 
 import os
+import logging
 import dj_database_url
 from .base import *  # noqa: F401,F403
+
+logger = logging.getLogger(__name__)
 
 # =========================================
 # CORE
@@ -26,20 +29,15 @@ ALLOWED_HOSTS.extend([
     'www.rssystems.io',
 ])
 
-# Add specific EB hostname from environment variable (instead of broad wildcard)
-# Set EB_HOSTNAME to your specific Elastic Beanstalk domain, e.g., "myapp.us-east-1.elasticbeanstalk.com"
+# EB hostname (e.g., "myapp.us-east-1.elasticbeanstalk.com")
 EB_HOSTNAME = os.environ.get('EB_HOSTNAME')
 if EB_HOSTNAME:
     ALLOWED_HOSTS.append(EB_HOSTNAME)
 
-# Add specific internal AWS hostname if needed for health checks
-# Set AWS_INTERNAL_HOSTNAME for internal load balancer access if required
+# Internal AWS hostname for health checks behind load balancer
 AWS_INTERNAL_HOSTNAME = os.environ.get('AWS_INTERNAL_HOSTNAME')
 if AWS_INTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(AWS_INTERNAL_HOSTNAME)
-
-if DEBUG:
-    ALLOWED_HOSTS.extend(['localhost', '127.0.0.1'])
 
 # =========================================
 # DATABASE - PostgreSQL required
@@ -74,7 +72,6 @@ if USE_S3:
     AWS_DEFAULT_ACL = None
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
 
-    # Django 4.2+ STORAGES format - S3 for media
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3.S3Storage",
@@ -94,7 +91,6 @@ if USE_S3:
     }
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
 else:
-    # Django 4.2+ STORAGES format - local filesystem for media
     STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -142,26 +138,39 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # =========================================
-# CACHING - Redis only
+# CACHING
 # =========================================
+# Use Redis if available (set REDIS_URL or REDIS_CACHE_URL in EB env vars).
+# Falls back to database-backed cache — survives gunicorn restarts and works
+# across multiple workers (unlike LocMemCache which is per-process).
+# django-ratelimit, DRF throttling, and template caching all depend on this.
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.environ.get(
-            'REDIS_CACHE_URL',
-            os.environ.get('REDIS_URL', '')
-        ),
-        'KEY_PREFIX': 'rs_systems_prod',
-        'TIMEOUT': 300,
+_REDIS_URL = os.environ.get('REDIS_CACHE_URL') or os.environ.get('REDIS_URL')
+
+if _REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': _REDIS_URL,
+            'KEY_PREFIX': 'rs_systems',
+            'TIMEOUT': 300,
+        }
     }
-} if os.environ.get('REDIS_CACHE_URL') or os.environ.get('REDIS_URL') else {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'rs-systems-prod',
-        'TIMEOUT': 300,
+else:
+    # Database-backed cache — no external dependencies, works with multiple
+    # gunicorn workers, and survives process restarts. Requires the cache
+    # table to exist (created by migrate via createcachetable or the
+    # migration we ship).
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+            'LOCATION': 'django_cache',
+            'TIMEOUT': 300,
+            'OPTIONS': {
+                'MAX_ENTRIES': 5000,
+            },
+        }
     }
-}
 
 # =========================================
 # EMAIL (Production overrides)
@@ -191,6 +200,8 @@ TIME_ZONE = 'UTC'
 # =========================================
 # LOGGING
 # =========================================
+# In production, log WARNING+ for Django internals and INFO for our apps.
+# All output goes to stdout where EB/CloudWatch can capture it.
 
 LOGGING = {
     'version': 1,
@@ -198,10 +209,6 @@ LOGGING = {
     'formatters': {
         'verbose': {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{levelname} {message}',
             'style': '{',
         },
     },
@@ -214,7 +221,7 @@ LOGGING = {
     'loggers': {
         'django': {
             'handlers': ['console'],
-            'level': 'ERROR',
+            'level': 'WARNING',
             'propagate': True,
         },
         'django.request': {
@@ -222,12 +229,22 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': False,
         },
-        'core.tasks': {
+        'django.security.DisallowedHost': {
+            'handlers': ['console'],
+            'level': 'CRITICAL',  # Suppress noisy scanner traffic
+            'propagate': False,
+        },
+        'core': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
         },
-        'apps.billing': {
+        'apps': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'common': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
