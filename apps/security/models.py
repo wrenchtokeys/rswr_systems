@@ -17,8 +17,9 @@ class LoginAttempt(models.Model):
             ('customer', 'Customer Portal'),
             ('technician', 'Technician Portal'),
             ('admin', 'Admin Portal'),
+            ('unified', 'Unified Login'),
         ],
-        default='customer'
+        default='unified'
     )
     failure_reason = models.CharField(
         max_length=100,
@@ -37,19 +38,27 @@ class LoginAttempt(models.Model):
         return f"{self.username} - {self.ip_address} - {'Success' if self.success else 'Failed'}"
 
     @classmethod
-    def log_attempt(cls, request, username, success, portal='customer', failure_reason=''):
-        """Helper method to log a login attempt"""
-        ip_address = cls.get_client_ip(request)
-        user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]  # Limit length
+    def log_attempt(cls, request, username, success, portal='unified', failure_reason=''):
+        """Helper method to log a login attempt. Never raises — login must not
+        fail because security logging is broken."""
+        try:
+            ip_address = cls.get_client_ip(request)
+            user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
 
-        return cls.objects.create(
-            username=username,
-            ip_address=ip_address,
-            user_agent=user_agent,
-            success=success,
-            portal=portal,
-            failure_reason=failure_reason
-        )
+            return cls.objects.create(
+                username=username,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                success=success,
+                portal=portal,
+                failure_reason=failure_reason,
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Failed to log login attempt for %s", username
+            )
+            return None
 
     @classmethod
     def get_client_ip(cls, request):

@@ -127,7 +127,6 @@ def _route_authenticated_user(request, user):
 
 
 @never_cache
-@ratelimit(key='ip', rate='30/h', method='POST')
 def login_router(request):
     """Unified login page — authenticates user and routes to appropriate portal."""
     from apps.tenants.models import TenantMembership
@@ -147,10 +146,18 @@ def login_router(request):
     }
 
     if request.method == 'POST':
-        # Check rate limit
-        if getattr(request, 'limited', False):
-            context['error'] = 'Too many login attempts. Please try again later.'
-            return render(request, 'saas/login.html', context)
+        # Rate limiting — uses cache backend, wrapped in try/except so a
+        # cache misconfiguration never takes down login entirely.
+        try:
+            from django_ratelimit.core import is_ratelimited
+            if is_ratelimited(request, key='ip', rate='30/h', method='POST',
+                              group='login_router'):
+                context['error'] = 'Too many login attempts. Please try again later.'
+                return render(request, 'saas/login.html', context)
+        except Exception:
+            # Cache backend unavailable — log but don't block login
+            logger.warning("Rate limiting unavailable (cache backend error)")
+            pass
 
         login_id = request.POST.get('email', '').strip()
         password = request.POST.get('password', '')
@@ -225,7 +232,6 @@ def logout_view(request):
     logout(request)
     return redirect('login')
 
-@ratelimit(key='ip', rate='10/h', method='POST')
 def accept_invite(request, token):
     """Accept an invite token — set password and join the shop."""
     from apps.tenants.models import InviteToken, TenantMembership
