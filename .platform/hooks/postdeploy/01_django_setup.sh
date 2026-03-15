@@ -27,4 +27,8 @@ python manage.py collectstatic --noinput
 echo "Setting up notification templates..."
 python manage.py setup_notification_templates || echo "Warning: setup_notification_templates failed"
 
+# Set Stripe price IDs (idempotent)
+echo "Setting Stripe price IDs..."
+python manage.py set_stripe_prices || echo "Warning: set_stripe_prices failed"
+
 echo "Django setup completed"

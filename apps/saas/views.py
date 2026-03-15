@@ -413,7 +413,7 @@ def _get_billing_context(tenant):
         today = timezone.now().date()
         Invoice.objects.filter(
             tenant=tenant,
-            status__in=['SENT', 'PARTIAL', 'DRAFT'],
+            status__in=['SENT', 'PARTIAL'],
             due_date__lt=today,
         ).update(status='OVERDUE')
 
@@ -1718,7 +1718,7 @@ def owner_invoice_list(request):
     # This catches invoices that became overdue since last check
     Invoice.objects.filter(
         customer__tenant=tenant,
-        status__in=['SENT', 'PARTIAL', 'DRAFT'],
+        status__in=['SENT', 'PARTIAL'],
         due_date__lt=timezone.now().date(),
     ).update(status='OVERDUE')
 
