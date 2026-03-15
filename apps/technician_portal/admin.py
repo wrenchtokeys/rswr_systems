@@ -320,11 +320,21 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
         skipped = 0
 
         for customer in queryset.select_related('tenant'):
-            # Find completed repairs not yet linked to any invoice line item
+            # Find completed repairs not yet on any active (non-cancelled) invoice.
+            # We intentionally do NOT exclude repairs linked to CANCELLED invoices —
+            # those repairs should be re-invoiceable.
+            # We also skip repairs flagged as skip_invoicing (already accounted for
+            # outside the normal billing flow).
+            invoiced_repair_ids = InvoiceLineItem.objects.filter(
+                repair__isnull=False,
+                invoice__tenant=customer.tenant,
+                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+            ).values_list('repair_id', flat=True)
+
             unbilled_repairs = (
                 Repair.objects
-                .filter(customer=customer, queue_status='COMPLETED')
-                .exclude(invoice_line_items__isnull=False)
+                .filter(customer=customer, queue_status='COMPLETED', skip_invoicing=False)
+                .exclude(id__in=invoiced_repair_ids)
                 .order_by('service_date')
             )
 
