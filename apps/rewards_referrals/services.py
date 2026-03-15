@@ -386,35 +386,37 @@ class RewardFulfillmentService:
         Returns:
             Technician: The assigned technician, or None if no technicians are available
         """
+        from django.db.models import Count, Q
         from apps.technician_portal.models import Technician, Repair
-        
+
         # Get active technicians scoped to the redemption's tenant
         try:
             tenant = redemption.reward.customer_user.customer.tenant
         except AttributeError:
             tenant = None
-        technicians = Technician.objects.all()
+        technicians_qs = Technician.objects.all()
         if tenant:
-            technicians = technicians.filter(tenant=tenant)
-        
-        if not technicians.exists():
+            technicians_qs = technicians_qs.filter(tenant=tenant)
+
+        if not technicians_qs.exists():
             return None
-            
-        # Simple algorithm: assign to technician with least active repairs
-        technician_workloads = {}
-        
-        for tech in technicians:
-            active_repairs = Repair.objects.filter(
-                technician=tech
-            ).exclude(
-                queue_status__in=['COMPLETED', 'DENIED']
-            ).count()
-            
-            technician_workloads[tech.id] = active_repairs
-        
-        # Find technician with minimum workload
-        min_workload_tech_id = min(technician_workloads, key=technician_workloads.get)
-        assigned_technician = Technician.objects.get(id=min_workload_tech_id)
+
+        # Single annotated query: get each technician's active-repair count in one shot.
+        # Previously this was an N+1 loop (one COUNT per technician row).
+        assigned_technician = (
+            technicians_qs
+            .annotate(
+                active_repair_count=Count(
+                    'repair',
+                    filter=~Q(repair__queue_status__in=['COMPLETED', 'DENIED'])
+                )
+            )
+            .order_by('active_repair_count', 'id')  # stable tie-break by PK
+            .first()
+        )
+
+        if assigned_technician is None:
+            return None
         
         # Assign to redemption
         redemption.assigned_technician = assigned_technician
