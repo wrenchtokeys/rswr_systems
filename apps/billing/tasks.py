@@ -226,17 +226,22 @@ def _create_batch_invoice(tenant, customer, config):
     
     Returns the created Invoice or None if no uninvoiced repairs.
     """
-    # Get uninvoiced repairs for this customer
+    # Get uninvoiced repairs for this customer.
+    # NOTE: The repair exclusion subquery MUST scope to invoice__tenant=tenant.
+    # Without it, a repair from Tenant A with the same integer PK as a repair
+    # from Tenant B could be incorrectly excluded, AND the subquery forces a
+    # full-table scan of all InvoiceLineItems across all tenants. (CODE-036)
+    invoiced_repair_ids = InvoiceLineItem.objects.filter(
+        repair__isnull=False,
+        invoice__tenant=tenant,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+    ).values_list('repair_id', flat=True)
     uninvoiced_repairs = Repair.objects.filter(
         tenant=tenant,
         customer=customer,
         queue_status='COMPLETED',
         skip_invoicing=False,
-    ).exclude(
-        id__in=InvoiceLineItem.objects.filter(
-            repair__isnull=False
-        ).values_list('repair_id', flat=True)
-    )
+    ).exclude(id__in=invoiced_repair_ids)
     
     # Get uninvoiced replacements too
     invoiced_replacement_ids = InvoiceLineItem.objects.filter(
@@ -335,18 +340,35 @@ def _create_batch_invoice(tenant, customer, config):
 
 
 def _generate_invoice_number(tenant, config):
-    """Generate a unique invoice number."""
+    """
+    Generate a unique invoice number for the tenant.
+
+    The simple count-based approach has a race condition: two concurrent batch
+    runs can compute the same count, then one will hit the UniqueConstraint and
+    crash.  (CODE-036)
+
+    Fix: keep incrementing the counter until we find an unused number.  The
+    DB-level UniqueConstraint on (tenant, invoice_number) is the ultimate guard;
+    this loop just avoids predictable collisions under normal concurrency.
+    """
     prefix = config.invoice_number_prefix or 'INV'
     date_str = timezone.now().strftime('%Y%m%d')
-    
-    # Count existing invoices today for this tenant
+
+    # Start from today's existing count + 1 and walk upward until free.
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    count = Invoice.objects.filter(
+    base_count = Invoice.objects.filter(
         tenant=tenant,
         created_at__gte=today_start,
     ).count() + 1
-    
-    return f"{prefix}-{tenant.id}-{date_str}-{count:03d}"
+
+    for attempt in range(base_count, base_count + 500):
+        candidate = f"{prefix}-{tenant.id}-{date_str}-{attempt:03d}"
+        if not Invoice.objects.filter(tenant=tenant, invoice_number=candidate).exists():
+            return candidate
+
+    # Fallback: append microseconds for guaranteed uniqueness
+    import time
+    return f"{prefix}-{tenant.id}-{date_str}-{int(time.time() * 1000) % 1000000:06d}"
 
 
 def _calculate_due_date(config):
