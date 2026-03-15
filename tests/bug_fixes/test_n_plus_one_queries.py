@@ -4,38 +4,31 @@ Consolidated from: CODE-004, CODE-013, CODE-016, CODE-018
 """
 
 from apps.billing.admin import InvoiceAdmin
-from apps.billing.models import Invoice, InvoiceLineItem
 from apps.billing.models import Invoice, InvoiceLineItem, Payment
 from apps.customer_portal.models import CustomerUser
 from apps.rewards_referrals.admin import ReferralCodeAdmin
-from apps.rewards_referrals.models import ReferralCode, Referral
-from apps.technician_portal.admin import CustomerAdmin
-from apps.technician_portal.admin import TechnicianAdmin
+from apps.rewards_referrals.models import Referral, ReferralCode
+from apps.technician_portal.admin import CustomerAdmin, TechnicianAdmin
 from apps.technician_portal.models import Repair, Technician
-from apps.technician_portal.models import Technician
-from apps.technician_portal.models import Technician, Repair
-from apps.tenants.models import Tenant, SubscriptionPlan
-from apps.tenants.models import Tenant, TenantMembership
+from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
 from core.models import Customer
 from decimal import Decimal
 from django.contrib.admin.sites import AdminSite
 from django.contrib.auth.models import User
-from django.db import connection
 from django.db import connection, reset_queries
-from django.test import TestCase
-from django.test import TestCase, Client, override_settings
-from django.test import TestCase, RequestFactory, override_settings
-from django.test.utils import CaptureQueriesContext
-from django.test.utils import override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext, override_settings
 import datetime
-
-TEST_OVERRIDES = {
-    'ALLOWED_HOSTS': ['*'],
-    'CACHES': {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
-}
 
 
 # --- From test_code004_n_plus_one_batch_views.py ---
+
+def _count_queries_for(queryset_fn):
+    """Evaluate queryset_fn() and return (results, query_count)."""
+    reset_queries()
+    results = list(queryset_fn())
+    return results, len(connection.queries)
+
 
 @override_settings(DEBUG=True)  # DEBUG=True is required for connection.queries to populate
 class CustomerSelectRelatedTest(TestCase):
@@ -262,14 +255,67 @@ class BatchViewQuerysetSignatureTest(TestCase):
 
 # --- From test_code013_admin_n_plus_one.py ---
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_superuser_c013(username='su_code013'):
+    user, _ = User.objects.get_or_create(
+        username=username,
+        defaults={'is_staff': True, 'is_superuser': True}
+    )
+    user.set_password('x')
+    user.save()
+    return user
+
+
+def _make_tenant_c013(name='CODE013Shop'):
+    owner = User.objects.create_user(username=f'owner_{name}', password='x')
+    tenant, _ = Tenant.objects.get_or_create(
+        slug=f'code013-{name.lower()}',
+        defaults={'name': name, 'owner': owner, 'is_active': True}
+    )
+    return tenant
+
+
+def _make_invoice(tenant, customer, index=1):
+    """Create a draft invoice with a given number of line items."""
+    inv = Invoice.objects.create(
+        tenant=tenant,
+        customer=customer,
+        invoice_number=f'INV-C013-{index:04d}',
+        invoice_date=datetime.date.today(),
+        due_date=datetime.date.today() + datetime.timedelta(days=30),
+        payment_terms='NET30',
+        status='DRAFT',
+        subtotal=Decimal('100.00'),
+        total=Decimal('100.00'),
+    )
+    # Add some line items so the count is non-trivial
+    for i in range(index % 3 + 1):
+        InvoiceLineItem.objects.create(
+            invoice=inv,
+            description=f'Line item {i + 1}',
+            quantity=1,
+            unit_price=Decimal('50.00'),
+            amount=Decimal('50.00'),
+        )
+    return inv
+
+
+# ---------------------------------------------------------------------------
+# 1. InvoiceAdmin — line_item_count uses annotation, not per-row COUNT
+# ---------------------------------------------------------------------------
+
+
 class InvoiceAdminLineItemCountTest(TestCase):
 
     def setUp(self):
         self.site = AdminSite()
         self.admin = InvoiceAdmin(Invoice, self.site)
         self.factory = RequestFactory()
-        self.superuser = _make_superuser('su_inv_c013')
-        self.tenant = _make_tenant('InvoiceN1')
+        self.superuser = _make_superuser_c013('su_inv_c013')
+        self.tenant = _make_tenant_c013('InvoiceN1')
         self.customer = Customer.objects.create(
             name='N+1 Test Corp', tenant=self.tenant
         )
@@ -366,8 +412,8 @@ class ReferralCodeAdminReferralCountTest(TestCase):
         self.site = AdminSite()
         self.admin = ReferralCodeAdmin(ReferralCode, self.site)
         self.factory = RequestFactory()
-        self.superuser = _make_superuser('su_ref_c013')
-        self.tenant = _make_tenant('ReferralN1')
+        self.superuser = _make_superuser_c013('su_ref_c013')
+        self.tenant = _make_tenant_c013('ReferralN1')
         customer_owner = User.objects.create_user(username='cu_owner_ref', password='x')
         self.customer = Customer.objects.create(
             name='Referral Test Corp', tenant=self.tenant
@@ -438,6 +484,62 @@ class ReferralCodeAdminReferralCountTest(TestCase):
 
 # --- From test_code016_customer_admin_n_plus_one.py ---
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_superuser_c016(username='su_code016'):
+    user, _ = User.objects.get_or_create(
+        username=username,
+        defaults={'is_staff': True, 'is_superuser': True}
+    )
+    user.set_password('x')
+    user.save()
+    return user
+
+
+def _make_tenant_c016(name='CODE016Shop'):
+    owner, _ = User.objects.get_or_create(
+        username=f'owner_c016_{name}',
+        defaults={'password': 'x'}
+    )
+    tenant, _ = Tenant.objects.get_or_create(
+        slug=f'code016-{name.lower().replace(" ", "-")}',
+        defaults={'name': name, 'owner': owner, 'is_active': True}
+    )
+    return tenant
+
+
+def _make_customer_c016(tenant, name='ACME Corp'):
+    return Customer.objects.create(
+        tenant=tenant,
+        name=name,
+        email=f'contact@{name.replace(" ", "").lower()}.example.com',
+    )
+
+
+def _make_customer_user(customer, username, is_primary=True):
+    user, _ = User.objects.get_or_create(
+        username=username,
+        defaults={
+            'first_name': 'Test',
+            'last_name': 'User',
+            'email': f'{username}@example.com',
+        }
+    )
+    cu, _ = CustomerUser.objects.get_or_create(
+        user=user,
+        customer=customer,
+        defaults={'is_primary_contact': is_primary},
+    )
+    return cu
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 @override_settings(
     LOCAL_DATABASE_URL='postgresql://amelia_test:AmeliaTest2026!@localhost:5432/rs_systems_test'
 )
@@ -447,9 +549,9 @@ class CustomerAdminPrimaryContactTests(TestCase):
     def setUp(self):
         self.site = AdminSite()
         self.admin = CustomerAdmin(Customer, self.site)
-        self.superuser = _make_superuser()
+        self.superuser = _make_superuser_c016()
         self.factory = RequestFactory()
-        self.tenant = _make_tenant()
+        self.tenant = _make_tenant_c016()
 
     def _make_request(self):
         request = self.factory.get('/admin/technician_portal/customer/')
@@ -459,7 +561,7 @@ class CustomerAdminPrimaryContactTests(TestCase):
 
     def test_prefetch_attribute_present_on_queryset(self):
         """get_queryset() should attach _primary_contacts to every Customer object."""
-        customer = _make_customer(self.tenant, 'PrefetchTest Corp')
+        customer = _make_customer_c016(self.tenant, 'PrefetchTest Corp')
         request = self._make_request()
         qs = self.admin.get_queryset(request)
         obj = qs.get(id=customer.id)
@@ -470,7 +572,7 @@ class CustomerAdminPrimaryContactTests(TestCase):
 
     def test_get_primary_contact_with_primary_contact(self):
         """Returns 'Full Name (email)' when a primary contact exists."""
-        customer = _make_customer(self.tenant, 'HasContact Corp')
+        customer = _make_customer_c016(self.tenant, 'HasContact Corp')
         cu = _make_customer_user(customer, 'code016_primary_cu', is_primary=True)
         request = self._make_request()
         qs = self.admin.get_queryset(request)
@@ -481,7 +583,7 @@ class CustomerAdminPrimaryContactTests(TestCase):
 
     def test_get_primary_contact_without_primary_contact(self):
         """Returns 'No primary contact' when no CustomerUser with is_primary_contact=True."""
-        customer = _make_customer(self.tenant, 'NoContact Corp')
+        customer = _make_customer_c016(self.tenant, 'NoContact Corp')
         # Create a non-primary CustomerUser to ensure the filter is correct
         _make_customer_user(customer, 'code016_nonprimary_cu', is_primary=False)
         request = self._make_request()
@@ -492,7 +594,7 @@ class CustomerAdminPrimaryContactTests(TestCase):
 
     def test_get_primary_contact_no_customer_users(self):
         """Returns 'No primary contact' when the customer has no CustomerUsers at all."""
-        customer = _make_customer(self.tenant, 'EmptyContact Corp')
+        customer = _make_customer_c016(self.tenant, 'EmptyContact Corp')
         request = self._make_request()
         qs = self.admin.get_queryset(request)
         obj = qs.get(id=customer.id)
@@ -510,7 +612,7 @@ class CustomerAdminPrimaryContactTests(TestCase):
         """
         customers = []
         for i in range(5):
-            c = _make_customer(self.tenant, f'QueryCountTest {i}')
+            c = _make_customer_c016(self.tenant, f'QueryCountTest {i}')
             if i % 2 == 0:
                 # Give half the customers a primary contact
                 _make_customer_user(c, f'code016_qc_cu_{i}', is_primary=True)
@@ -541,7 +643,7 @@ class CustomerAdminPrimaryContactTests(TestCase):
         Non-primary CustomerUser rows should NOT appear in _primary_contacts.
         The Prefetch queryset filters is_primary_contact=True.
         """
-        customer = _make_customer(self.tenant, 'FilterTest Corp')
+        customer = _make_customer_c016(self.tenant, 'FilterTest Corp')
         _make_customer_user(customer, 'code016_nonprim_filter', is_primary=False)
         primary_cu = _make_customer_user(customer, 'code016_prim_filter', is_primary=True)
 
@@ -555,19 +657,98 @@ class CustomerAdminPrimaryContactTests(TestCase):
 
 # --- From test_code018_invoice_list_n_plus_one.py ---
 
+TEST_OVERRIDES = {
+    'ALLOWED_HOSTS': ['*'],
+    'CACHES': {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
+}
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_tenant_c018(slug, plan='pro'):
+    owner = User.objects.create_user(
+        username=f'owner_{slug}',
+        email=f'owner_{slug}@test.com',
+        password='testpass',
+    )
+    tenant = Tenant.objects.create(
+        name=f'Shop {slug}',
+        slug=slug,
+        subdomain=slug,
+        owner=owner,
+        plan=plan,
+    )
+    TenantMembership.objects.create(tenant=tenant, user=owner, role='owner')
+    return tenant, owner
+
+
+def _make_tech(tenant, suffix=''):
+    user = User.objects.create_user(
+        username=f'tech_{tenant.slug}{suffix}',
+        email=f'tech_{tenant.slug}{suffix}@test.com',
+        password='x',
+    )
+    tech, _ = Technician.objects.get_or_create(
+        user=user, tenant=tenant, defaults={'is_active': True}
+    )
+    return tech
+
+
+def _make_customer_c018(tenant, name):
+    return Customer.objects.create(tenant=tenant, name=name)
+
+
+def _make_repair(tenant, customer, tech, cost=50, invoiced=False):
+    repair = Repair.objects.create(
+        tenant=tenant,
+        customer=customer,
+        technician=tech,
+        queue_status='COMPLETED',
+        skip_invoicing=False,
+        service_date=datetime.date.today(),
+        cost=Decimal(str(cost)),
+    )
+    if invoiced:
+        inv = Invoice.objects.create(
+            tenant=tenant,
+            customer=customer,
+            invoice_number=f'INV-T{tenant.id}-R{repair.id}',
+            invoice_date=datetime.date.today(),
+            due_date=datetime.date.today(),
+            status='SENT',
+            total=Decimal(str(cost)),
+        )
+        InvoiceLineItem.objects.create(
+            invoice=inv,
+            repair=repair,
+            description='Repair',
+            quantity=1,
+            unit_price=Decimal(str(cost)),
+            amount=Decimal(str(cost)),
+        )
+    return repair
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 @override_settings(**TEST_OVERRIDES)
 class TestInvoiceListUninvoicedBulkQuery(TestCase):
     """Verify correctness and query-efficiency of the uninvoiced_customers widget."""
 
     def setUp(self):
-        self.tenant, self.owner = _make_tenant('c018main')
+        self.tenant, self.owner = _make_tenant_c018('c018main')
         self.tech = _make_tech(self.tenant)
         self.client = Client()
         self.client.force_login(self.owner)
 
     def test_uninvoiced_customer_appears_in_context(self):
         """Customer with uninvoiced completed repairs should appear in widget."""
-        cust = _make_customer(self.tenant, 'Cust018A')
+        cust = _make_customer_c018(self.tenant, 'Cust018A')
         repair = _make_repair(self.tenant, cust, self.tech, invoiced=False)
         # Reload from DB — save() may have recalculated cost via pricing rules
         repair.refresh_from_db()
@@ -586,7 +767,7 @@ class TestInvoiceListUninvoicedBulkQuery(TestCase):
 
     def test_fully_invoiced_customer_excluded(self):
         """Customer whose repairs are all invoiced should NOT appear in widget."""
-        cust = _make_customer(self.tenant, 'Cust018B')
+        cust = _make_customer_c018(self.tenant, 'Cust018B')
         _make_repair(self.tenant, cust, self.tech, invoiced=True)
 
         resp = self.client.get('/owner/invoices/')
@@ -598,7 +779,7 @@ class TestInvoiceListUninvoicedBulkQuery(TestCase):
 
     def test_mixed_repairs_partial_uninvoiced(self):
         """Customer with one invoiced + one uninvoiced repair: widget shows count=1."""
-        cust = _make_customer(self.tenant, 'Cust018C')
+        cust = _make_customer_c018(self.tenant, 'Cust018C')
         _make_repair(self.tenant, cust, self.tech, invoiced=True)
         repair2 = _make_repair(self.tenant, cust, self.tech, invoiced=False)
         repair2.refresh_from_db()
@@ -623,9 +804,9 @@ class TestInvoiceListUninvoicedBulkQuery(TestCase):
         5+ as it would be with the N+1 bug.
         """
         # Baseline: 2 customers, no repairs
-        tenant_base, owner_base = _make_tenant('c018base')
+        tenant_base, owner_base = _make_tenant_c018('c018base')
         for i in range(2):
-            _make_customer(tenant_base, f'BaseCust{i}')
+            _make_customer_c018(tenant_base, f'BaseCust{i}')
         client_base = Client()
         client_base.force_login(owner_base)
 
@@ -635,9 +816,9 @@ class TestInvoiceListUninvoicedBulkQuery(TestCase):
         baseline_count = len(ctx_base)
 
         # Scaled: 7 customers, no repairs
-        tenant_scaled, owner_scaled = _make_tenant('c018scaled')
+        tenant_scaled, owner_scaled = _make_tenant_c018('c018scaled')
         for i in range(7):
-            _make_customer(tenant_scaled, f'ScaledCust{i}')
+            _make_customer_c018(tenant_scaled, f'ScaledCust{i}')
         client_scaled = Client()
         client_scaled.force_login(owner_scaled)
 
