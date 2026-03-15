@@ -150,9 +150,15 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': os.environ.get(
             'REDIS_CACHE_URL',
-            os.environ.get('REDIS_URL', 'redis://localhost:6379/1')
+            os.environ.get('REDIS_URL', '')
         ),
         'KEY_PREFIX': 'rs_systems_prod',
+        'TIMEOUT': 300,
+    }
+} if os.environ.get('REDIS_CACHE_URL') or os.environ.get('REDIS_URL') else {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'rs-systems-prod',
         'TIMEOUT': 300,
     }
 }
