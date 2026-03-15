@@ -414,6 +414,36 @@ def _notify_owner(tenant, event_type, context):
     _notify_owners_and_managers(tenant, event_type, context)
 
 
+def handle_subscription_event(event_type, data_object):
+    """
+    Process a subscription-related Stripe webhook event.
+    
+    Called from the unified billing webhook endpoint to handle
+    SaaS subscription events without needing a separate webhook URL.
+    
+    Returns dict with 'success' and 'handled' keys.
+    """
+    handlers = {
+        'checkout.session.completed': _handle_checkout_completed,
+        'invoice.paid': _handle_invoice_paid,
+        'invoice.payment_failed': _handle_invoice_payment_failed,
+        'customer.subscription.updated': _handle_subscription_updated,
+        'customer.subscription.deleted': _handle_subscription_deleted,
+    }
+    
+    handler = handlers.get(event_type)
+    if not handler:
+        return {'success': True, 'handled': False}
+    
+    try:
+        handler(data_object)
+        return {'success': True, 'handled': True, 'event_type': event_type}
+    except Exception as e:
+        logger.exception(f"Error processing subscription webhook {event_type}: {e}")
+        # Return success so Stripe doesn't retry (error is logged)
+        return {'success': True, 'handled': True, 'event_type': event_type, 'error': str(e)}
+
+
 def _notify_owners_and_managers(tenant, event_type, context):
     """
     Send email notification to ALL owners AND managers about subscription events.

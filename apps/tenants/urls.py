@@ -8,7 +8,6 @@ Author: Amelia (Clawdbot AI)
 
 from django.urls import path
 from . import views
-from . import webhooks
 
 app_name = 'tenants'
 
@@ -34,6 +33,7 @@ urlpatterns = [
     # Billing portal (authenticated, owner-only)
     path('billing-portal/', views.billing_portal, name='billing_portal'),
     
-    # Stripe webhook
-    path('webhooks/stripe/', webhooks.stripe_subscription_webhook, name='stripe_subscription_webhook'),
+    # Stripe webhook (DEPRECATED — consolidated into /billing/stripe/webhook/)
+    # Old endpoint kept as redirect for any lingering Stripe configs
+    # path('webhooks/stripe/', webhooks.stripe_subscription_webhook, name='stripe_subscription_webhook'),
 ]
