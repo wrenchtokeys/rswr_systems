@@ -50,6 +50,12 @@ urlpatterns = [
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
     # Admin and authentication
+    path('admin/password_reset/', auth_views.PasswordResetView.as_view(
+        template_name='registration/password_reset_form.html',
+        email_template_name='registration/password_reset_email.html',
+        subject_template_name='registration/password_reset_subject.txt',
+        success_url='/password-reset/done/',
+    ), name='admin_password_reset'),
     path('admin/register-technician/', views.register_technician, name='register_technician'),
     path('admin/email-preview/<str:template_name>/', preview_email_template, name='email_preview'),
     path('admin/', admin.site.urls),
