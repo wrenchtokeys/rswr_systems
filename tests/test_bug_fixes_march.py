@@ -357,3 +357,134 @@ class MakeRandomPasswordTests(TestCase):
         )
         self.assertEqual(result.stdout.strip(), '',
                          f"make_random_password still used:\n{result.stdout}")
+
+
+# =============================================================================
+# CODE-014: Unscoped RewardRedemption fetches in technician portal rewards views
+# =============================================================================
+
+@override_settings(**TEST_OVERRIDES)
+class RewardRedemptionTenantIsolationTests(TestCase):
+    """
+    reward_fulfillment_detail and apply_reward_to_repair must return 404
+    when a technician from Tenant A tries to access a redemption that
+    belongs to Tenant B (IDOR via integer PK guessing).
+    """
+
+    def setUp(self):
+        from apps.rewards_referrals.models import RewardOption, Reward, RewardRedemption
+        from apps.customer_portal.models import CustomerUser
+
+        # Tenant A — the attacker's shop
+        self.user_a, self.tenant_a = _make_tenant('shop-a', 'tech_a_owner')
+        self.tech_user_a = User.objects.create_user('tech_a', 'tech_a@a.com', 'pass')
+        TenantMembership.objects.create(tenant=self.tenant_a, user=self.tech_user_a, role='technician')
+        self.technician_a = Technician.objects.create(
+            user=self.tech_user_a, tenant=self.tenant_a, is_active=True,
+        )
+
+        # Tenant B — the victim's shop
+        self.user_b, self.tenant_b = _make_tenant('shop-b', 'tech_b_owner')
+        cust_user_b = User.objects.create_user('cust_b', 'cust_b@b.com', 'pass')
+        self.customer_b = Customer.objects.create(
+            name='B Corp', tenant=self.tenant_b, email='corp@b.com',
+        )
+        self.customer_user_b = CustomerUser.objects.create(
+            user=cust_user_b, customer=self.customer_b,
+        )
+        self.reward_b = Reward.objects.create(
+            customer_user=self.customer_user_b, points=500,
+        )
+        reward_opt_b = RewardOption.objects.create(
+            tenant=self.tenant_b, name='Free wash', description='desc',
+            points_required=100,
+        )
+        self.redemption_b = RewardRedemption.objects.create(
+            reward=self.reward_b, reward_option=reward_opt_b, status='PENDING',
+        )
+
+        self.client = Client()
+
+    def _login_tech_a(self):
+        self.client.force_login(self.tech_user_a)
+        session = self.client.session
+        session['tenant_id'] = self.tenant_a.id
+        session.save()
+
+    def test_fulfillment_detail_cross_tenant_returns_404(self):
+        """Tech A must not be able to view Tenant B's redemption (IDOR)."""
+        self._login_tech_a()
+        response = self.client.get(
+            f'/tech/reward-fulfillment/{self.redemption_b.id}/',
+        )
+        self.assertEqual(
+            response.status_code, 404,
+            "Expected 404 for cross-tenant redemption access, got "
+            f"{response.status_code}",
+        )
+
+    def test_fulfillment_detail_own_tenant_accessible(self):
+        """Sanity: a redemption in Tenant A should be accessible to Tech A."""
+        from apps.rewards_referrals.models import RewardOption, Reward, RewardRedemption
+        from apps.customer_portal.models import CustomerUser
+
+        cust_user_a = User.objects.create_user('cust_a2', 'cust_a2@a.com', 'pass')
+        customer_a = Customer.objects.create(
+            name='A Corp', tenant=self.tenant_a, email='corp@a.com',
+        )
+        cu_a = CustomerUser.objects.create(user=cust_user_a, customer=customer_a)
+        reward_a = Reward.objects.create(customer_user=cu_a, points=200)
+        opt_a = RewardOption.objects.create(
+            tenant=self.tenant_a, name='Discount', description='d',
+            points_required=50,
+        )
+        redemption_a = RewardRedemption.objects.create(
+            reward=reward_a, reward_option=opt_a, status='PENDING',
+        )
+
+        self._login_tech_a()
+        response = self.client.get(
+            f'/tech/reward-fulfillment/{redemption_a.id}/',
+        )
+        # 200 = rendered detail page, 302 = redirect (e.g. permission check inside view)
+        self.assertIn(
+            response.status_code, [200, 302],
+            f"Own-tenant redemption should be accessible, got {response.status_code}",
+        )
+
+    def test_apply_reward_cross_tenant_redemption_returns_404(self):
+        """
+        apply_reward_to_repair must not apply Tenant B's redemption to a
+        Tenant A repair when Tech A POSTs with a cross-tenant redemption_id.
+        """
+        from apps.technician_portal.models import Repair
+
+        repair_a = Repair.objects.create(
+            tenant=self.tenant_a, customer=Customer.objects.create(
+                name='A Repair Customer', tenant=self.tenant_a, email='arc@a.com',
+            ),
+            technician=self.technician_a,
+            service_date=timezone.now().date(),
+            queue_status='APPROVED',
+        )
+
+        self._login_tech_a()
+        response = self.client.post(
+            f'/tech/repairs/{repair_a.id}/apply-reward/',
+            data={'redemption_id': self.redemption_b.id, 'auto_fulfill': ''},
+        )
+        # Should be 404 (redemption not in tenant scope) not 200/302 success
+        self.assertEqual(
+            response.status_code, 404,
+            "Expected 404 when applying cross-tenant redemption to repair, got "
+            f"{response.status_code}",
+        )
+
+    def test_no_tenant_fulfillment_returns_404(self):
+        """With no tenant session (tenant=None), view should return 404."""
+        self.client.force_login(self.tech_user_a)
+        # Deliberately do NOT set session['tenant_id'] so request.tenant stays None
+        response = self.client.get(
+            f'/tech/reward-fulfillment/{self.redemption_b.id}/',
+        )
+        self.assertEqual(response.status_code, 404)

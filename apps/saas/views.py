@@ -1525,26 +1525,52 @@ def update_team_member(request, membership_id):
             tech_group, _ = Group.objects.get_or_create(name='Technicians')
             target.user.groups.add(tech_group)
 
-            tech, created = Technician.objects.get_or_create(
-                user=target.user,
-                defaults={
-                    'tenant': tenant,
-                    'is_manager': (new_role == 'manager'),
-                    'is_active': True,
-                    'can_repair': can_repair,
-                    'can_replace': can_replace,
-                },
-            )
-            if not created:
+            # IMPORTANT: Technician.user is a OneToOneField — a user can only have
+            # one Technician record across ALL tenants.  We must scope the lookup
+            # to THIS tenant to avoid:
+            #   (a) silently rewriting another tenant's Technician.tenant to ours, or
+            #   (b) updating another tenant's is_manager/can_repair flags.
+            # If the user already has a Technician record for a *different* tenant,
+            # we leave it untouched and log a warning; the admin should resolve the
+            # cross-tenant membership manually.
+            try:
+                tech = Technician.objects.get(user=target.user, tenant=tenant)
+                # Existing record for this tenant — update in place
                 tech.is_manager = (new_role == 'manager')
                 tech.can_repair = can_repair
                 tech.can_replace = can_replace
-                tech.tenant = tenant
+                tech.is_active = True
                 tech.save()
+            except Technician.DoesNotExist:
+                # No record for this tenant yet.  Check if user has a record for
+                # another tenant (cross-tenant shared user edge case).
+                foreign_tech = Technician.objects.filter(user=target.user).exclude(tenant=tenant).first()
+                if foreign_tech:
+                    # User is already a Technician at a different shop.
+                    # Do NOT steal that record — log and skip creation so we don't
+                    # corrupt the other tenant's data.
+                    logger.warning(
+                        "update_team_member: user %s already has a Technician record "
+                        "for tenant %s (id=%s). Skipping Technician creation for tenant %s.",
+                        target.user_id,
+                        foreign_tech.tenant_id,
+                        foreign_tech.id,
+                        tenant.id,
+                    )
+                else:
+                    Technician.objects.create(
+                        user=target.user,
+                        tenant=tenant,
+                        is_manager=(new_role == 'manager'),
+                        is_active=True,
+                        can_repair=can_repair,
+                        can_replace=can_replace,
+                    )
         elif old_role in ('technician', 'manager') and new_role not in ('technician', 'manager'):
-            # Deactivate technician record if moving away from tech/manager
+            # Deactivate technician record if moving away from tech/manager.
+            # Scope to THIS tenant so we don't touch another shop's record.
             try:
-                tech = Technician.objects.get(user=target.user)
+                tech = Technician.objects.get(user=target.user, tenant=tenant)
                 tech.is_active = False
                 tech.save()
             except Technician.DoesNotExist:
@@ -1748,20 +1774,51 @@ def owner_invoice_list(request):
     # Customer list for filter dropdown
     customers = Customer.objects.filter(tenant=tenant).order_by('name')
 
-    # Uninvoiced completed repairs per customer
-    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-    tracking = InvoiceTrackingService(tenant=tenant)
+    # Uninvoiced completed repairs per customer — computed in bulk to avoid N+1.
+    # Strategy:
+    #   1. Fetch all invoiced repair IDs for this tenant in one query.
+    #   2. Fetch all uninvoiced completed repairs for this tenant in one query.
+    #   3. Group in Python by customer_id.
+    from django.db.models import Sum as _Sum
+    from apps.billing.models import InvoiceLineItem as _ILI
+
+    _invoiced_repair_ids = set(
+        _ILI.objects.filter(
+            repair__isnull=False,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).values_list('repair_id', flat=True)
+    )
+
+    # All uninvoiced completed repairs for this tenant, excluding skip_invoicing
+    _uninvoiced_qs = (
+        Repair.objects.filter(
+            tenant=tenant,
+            queue_status='COMPLETED',
+            skip_invoicing=False,
+        )
+        .exclude(id__in=_invoiced_repair_ids)
+        .values('customer_id', 'cost')
+    )
+
+    # Group by customer_id
+    _by_customer: dict = {}
+    for row in _uninvoiced_qs:
+        cid = row['customer_id']
+        cost = row['cost'] or 0
+        if cid not in _by_customer:
+            _by_customer[cid] = {'count': 0, 'total': 0}
+        _by_customer[cid]['count'] += 1
+        _by_customer[cid]['total'] += cost
+
     uninvoiced_customers = []
     for cust in customers:
-        uninvoiced = tracking.get_uninvoiced_repairs(cust)
-        count = uninvoiced.count() if hasattr(uninvoiced, 'count') else len(uninvoiced)
-        if count > 0:
-            # Sum up costs
-            total_cost = sum(r.cost or 0 for r in uninvoiced)
+        info = _by_customer.get(cust.id)
+        if info and info['count'] > 0:
             uninvoiced_customers.append({
                 'customer': cust,
-                'count': count,
-                'total': total_cost,
+                'count': info['count'],
+                'total': info['total'],
             })
 
     context = {

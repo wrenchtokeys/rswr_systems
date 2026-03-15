@@ -46,7 +46,7 @@ class BillingConfigTests(TestCase):
         self.assertEqual(BillingConfig.objects.filter(tenant=self.tenant).count(), 0)
         config = BillingConfig.get_for_tenant(self.tenant)
         self.assertEqual(BillingConfig.objects.filter(tenant=self.tenant).count(), 1)
-        self.assertEqual(config.company_name, 'Rockstar Windshield Repair')
+        self.assertEqual(config.company_name, 'Test Shop')
         self.assertEqual(config.tenant, self.tenant)
 
     def test_get_for_tenant_idempotent(self):

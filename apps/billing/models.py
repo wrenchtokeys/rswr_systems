@@ -54,8 +54,9 @@ class BillingConfig(models.Model):
     # === COMPANY INFO (shown on invoices) ===
     company_name = models.CharField(
         max_length=200,
-        default='Rockstar Windshield Repair',
-        help_text='Company name displayed on invoices',
+        default='',
+        blank=True,
+        help_text='Company name displayed on invoices (defaults to shop name if blank)',
     )
     company_address = models.CharField(
         max_length=200,
@@ -206,13 +207,19 @@ class BillingConfig(models.Model):
         """
         Get (or create with defaults) the BillingConfig for this tenant.
 
+        On creation, auto-populates company_name from tenant.name so new shops
+        don't inherit any hardcoded placeholder value.
+
         Args:
             tenant: Tenant instance
 
         Returns:
             BillingConfig instance for the given tenant
         """
-        instance, _created = cls.objects.get_or_create(tenant=tenant)
+        instance, created = cls.objects.get_or_create(tenant=tenant)
+        if created and not instance.company_name:
+            instance.company_name = tenant.name
+            instance.save(update_fields=['company_name'])
         return instance
 
     @classmethod
@@ -457,7 +464,7 @@ class Invoice(models.Model):
 class InvoiceLineItem(models.Model):
     """
     Individual line items on an invoice.
-    Links repairs to invoices to prevent double-billing.
+    Links repairs/replacements to invoices to prevent double-billing.
     """
     
     invoice = models.ForeignKey(
@@ -473,6 +480,15 @@ class InvoiceLineItem(models.Model):
         null=True, blank=True,
         related_name='invoice_line_items',
         help_text="The repair this line item is for. PROTECT prevents deleting invoiced repairs."
+    )
+    
+    # Link to replacement (if applicable)
+    replacement = models.ForeignKey(
+        'technician_portal.Replacement',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='invoice_line_items',
+        help_text="The replacement this line item is for. PROTECT prevents deleting invoiced replacements."
     )
     
     # Line item details

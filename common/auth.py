@@ -11,6 +11,7 @@ Author: Amelia (Clawdbot AI)
 
 import logging
 from functools import wraps
+from django.db.models import Case, When, IntegerField
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.contrib import messages
@@ -38,13 +39,23 @@ def _get_membership(user, tenant=None):
             user=user, tenant=tenant, is_active=True
         ).first()
 
-    # No tenant given — find highest-privilege membership
+    # No tenant given — find highest-privilege membership.
+    # order_by() with no args clears Django's default ordering, so we must
+    # annotate with an explicit priority to guarantee owner > manager > technician > viewer.
     return (
         TenantMembership.objects
         .filter(user=user, is_active=True)
-        .order_by(
-            # owner=0, manager=1, technician=2, viewer=3
+        .annotate(
+            role_priority=Case(
+                When(role='owner', then=0),
+                When(role='manager', then=1),
+                When(role='technician', then=2),
+                When(role='viewer', then=3),
+                default=99,
+                output_field=IntegerField(),
+            )
         )
+        .order_by('role_priority')
         .first()
     )
 

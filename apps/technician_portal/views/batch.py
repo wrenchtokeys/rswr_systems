@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 @technician_required
 def technician_batch_detail(request, batch_id):
     """Display all repairs in a batch with batch actions for technician."""
-    technician = request.user.technician
+    # Admins/owners without a Technician profile are allowed by @technician_required;
+    # guard with getattr to avoid RelatedObjectDoesNotExist for those users.
+    technician = getattr(request.user, 'technician', None)
 
     batch_summary = Repair.get_batch_summary(batch_id)
     if not batch_summary:
@@ -38,7 +40,7 @@ def technician_batch_detail(request, batch_id):
     can_view = False
     can_start_work = False
 
-    if is_tenant_admin(request.user):
+    if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         can_view = True
         can_start_work = True
     elif technician:
@@ -76,7 +78,7 @@ def technician_batch_detail(request, batch_id):
         'repairs': batch_summary['repairs'],
         'technician': technician,
         'can_start_work': can_start_work,
-        'is_admin': is_tenant_admin(request.user),
+        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
     })
 
 
@@ -84,7 +86,9 @@ def technician_batch_detail(request, batch_id):
 @transaction.atomic
 def technician_batch_start_work(request, batch_id):
     """Start work on all repairs in a batch at once."""
-    technician = request.user.technician
+    # Guard: admin/owner users without a Technician record are allowed through
+    # @technician_required but don't have a .technician reverse relation.
+    technician = getattr(request.user, 'technician', None)
 
     batch_summary = Repair.get_batch_summary(batch_id)
     if not batch_summary:
@@ -174,13 +178,18 @@ def create_multi_break_repair(request):
             created_repairs = []
 
             # Determine technician
-            if is_tenant_admin(request.user):
+            if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
                 tech_id = request.POST.get('technician_id')
                 if not tech_id:
                     messages.error(request, "As an admin, you must select a technician.")
                     return redirect('create_multi_break_repair')
                 try:
-                    technician = Technician.objects.get(id=tech_id)
+                    tech_qs = Technician.objects.filter(id=tech_id)
+                    if tenant:
+                        tech_qs = tech_qs.filter(tenant=tenant)
+                    else:
+                        tech_qs = tech_qs.none()
+                    technician = tech_qs.get()
                 except Technician.DoesNotExist:
                     messages.error(request, "Invalid technician selected.")
                     return redirect('create_multi_break_repair')
@@ -358,7 +367,7 @@ def create_multi_break_repair(request):
         else:
             customer_qs = customer_qs.none()
         return render(request, 'technician_portal/multi_break_repair_form.html', {
-            'is_admin': is_tenant_admin(request.user),
+            'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
             'customers': customer_qs.order_by('name'),
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
         })
@@ -377,7 +386,7 @@ def convert_to_batch(request, repair_id):
         qs = qs.none()
     original_repair = get_object_or_404(qs, id=repair_id)
 
-    if not is_tenant_admin(request.user):
+    if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         if not hasattr(request.user, 'technician'):
             messages.error(request, "You don't have permission to modify this repair.")
             return redirect('repair_detail', repair_id=repair_id)
@@ -442,15 +451,16 @@ def convert_to_batch(request, repair_id):
                     try:
                         override_cost_decimal = Decimal(override_cost)
 
-                        if is_tenant_admin(request.user):
+                        if is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None)):
                             cost = override_cost_decimal
-                        elif hasattr(request.user, 'technician') and request.user.technician.is_manager:
-                            if override_cost_decimal <= request.user.technician.approval_limit:
-                                cost = override_cost_decimal
-                            else:
-                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit")
+                        elif hasattr(request.user, 'technician') and request.user.technician.is_manager and request.user.technician.can_override_pricing:
+                            tech = request.user.technician
+                            # approval_limit=None means unlimited; comparison requires non-None
+                            if tech.approval_limit is not None and override_cost_decimal > tech.approval_limit:
+                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${tech.approval_limit}")
+                            cost = override_cost_decimal
                         else:
-                            raise ValueError("Only managers can override prices")
+                            raise ValueError("Only managers with override pricing permission can override prices")
 
                         if not override_reason:
                             raise ValueError("Override reason is required when overriding price")
@@ -517,5 +527,5 @@ def convert_to_batch(request, repair_id):
         return render(request, 'technician_portal/convert_to_batch_form.html', {
             'repair': original_repair,
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
-            'is_admin': is_tenant_admin(request.user),
+            'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
         })

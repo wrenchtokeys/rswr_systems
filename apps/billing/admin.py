@@ -13,6 +13,7 @@ Author: Amelia (Clawdbot AI)
 import csv
 
 from django.contrib import admin
+from django.db.models import Count
 from django.http import HttpResponse
 from django.utils.html import format_html
 from django.urls import reverse
@@ -163,7 +164,12 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     )
     
     inlines = [InvoiceLineItemInline, PaymentInline]
-    
+
+    def get_queryset(self, request):
+        """Annotate each invoice with line_items_count to avoid N+1 queries."""
+        qs = super().get_queryset(request)
+        return qs.annotate(_line_items_count=Count('line_items'))
+
     def get_tenant(self, obj):
         return obj.tenant.name if obj.tenant else '—'
     get_tenant.short_description = 'Tenant'
@@ -211,8 +217,14 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     status_badge.admin_order_field = 'status'
     
     def line_item_count(self, obj):
+        # Use the queryset annotation from get_queryset() to avoid an extra
+        # COUNT query per invoice row (N+1 problem).
+        # NOTE: getattr's default arg is always evaluated, so use hasattr instead.
+        if hasattr(obj, '_line_items_count'):
+            return obj._line_items_count
         return obj.line_items.count()
     line_item_count.short_description = 'Items'
+    line_item_count.admin_order_field = '_line_items_count'
     
     actions = ['mark_as_sent', 'mark_as_overdue', 'export_csv']
 

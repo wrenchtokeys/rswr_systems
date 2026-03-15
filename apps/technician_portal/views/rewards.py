@@ -23,10 +23,21 @@ def reward_fulfillment_detail(request, redemption_id):
     tenant = getattr(request, 'tenant', None)
     technician = get_object_or_404(Technician, user=request.user)
 
-    redemption = get_object_or_404(RewardRedemption, id=redemption_id)
+    # Scope redemption to the current tenant via the customer chain.
+    # RewardRedemption has no direct tenant FK; path is
+    # redemption → reward → customer_user → customer → tenant.
+    # An unscoped get_object_or_404 here lets a tech from Shop A read/fulfill
+    # redemptions belonging to Shop B just by guessing the integer PK (IDOR).
+    if tenant:
+        redemption_qs = RewardRedemption.objects.filter(
+            reward__customer_user__customer__tenant=tenant
+        )
+    else:
+        redemption_qs = RewardRedemption.objects.none()
+    redemption = get_object_or_404(redemption_qs, id=redemption_id)
 
     is_assigned_technician = (redemption.assigned_technician == technician)
-    is_admin = is_tenant_admin(request.user)
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     can_fulfill = is_assigned_technician or is_admin
 
     # Get customer repairs for applying reward
@@ -71,7 +82,10 @@ def reward_fulfillment_detail(request, redemption_id):
         repair_id = request.POST.get('apply_to_repair')
         if repair_id:
             try:
-                repair = Repair.objects.get(id=repair_id)
+                repair_qs = Repair.objects.all()
+                if tenant:
+                    repair_qs = repair_qs.filter(tenant=tenant)
+                repair = repair_qs.get(id=repair_id)
                 redemption.applied_to_repair = repair
             except Repair.DoesNotExist:
                 pass
@@ -95,7 +109,7 @@ def reward_fulfillment_detail(request, redemption_id):
 def apply_reward_to_repair(request, repair_id):
     """Apply a reward redemption to a specific repair."""
     tenant = getattr(request, 'tenant', None)
-    if is_tenant_admin(request.user):
+    if is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         qs = Repair.objects.all()
         if tenant:
             qs = qs.filter(tenant=tenant)
@@ -123,7 +137,14 @@ def apply_reward_to_repair(request, repair_id):
             messages.error(request, "No reward selected")
             return redirect('repair_detail', repair_id=repair.id)
 
-        redemption = get_object_or_404(RewardRedemption, id=redemption_id)
+        # Scope to tenant; prevents applying a redemption from Shop B to a Shop A repair.
+        if tenant:
+            redemption_qs = RewardRedemption.objects.filter(
+                reward__customer_user__customer__tenant=tenant
+            )
+        else:
+            redemption_qs = RewardRedemption.objects.none()
+        redemption = get_object_or_404(redemption_qs, id=redemption_id)
 
         customer_users = CustomerUser.objects.filter(customer=repair.customer)
         reward_customer_user = redemption.reward.customer_user

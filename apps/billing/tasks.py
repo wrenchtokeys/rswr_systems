@@ -25,7 +25,7 @@ from django.utils import timezone
 from apps.billing.models import BillingConfig, Invoice, InvoiceLineItem
 from apps.tenants.models import Tenant
 from apps.technician_portal.models import Repair, Replacement
-from apps.customer_portal.models import CustomerPreference
+from apps.customer_portal.models import CustomerRepairPreference
 from core.models import Customer
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ def process_overdue_invoices():
     
     for tenant in tenants:
         try:
-            config = BillingConfig.get_instance()
+            config = BillingConfig.get_for_tenant(tenant)
         except Exception:
             config = None
         
@@ -175,7 +175,7 @@ def process_batch_invoices():
     
     for tenant in tenants:
         try:
-            config = BillingConfig.get_instance()
+            config = BillingConfig.get_for_tenant(tenant)
         except Exception:
             continue
         
@@ -190,7 +190,7 @@ def process_batch_invoices():
         batch_customers = Customer.objects.filter(
             tenant=tenant,
         ).filter(
-            id__in=CustomerPreference.objects.filter(
+            id__in=CustomerRepairPreference.objects.filter(
                 invoice_preference='batch'
             ).values_list('customer_id', flat=True)
         )
@@ -239,15 +239,16 @@ def _create_batch_invoice(tenant, customer, config):
     )
     
     # Get uninvoiced replacements too
+    invoiced_replacement_ids = InvoiceLineItem.objects.filter(
+        replacement__isnull=False,
+        invoice__tenant=tenant,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+    ).values_list('replacement_id', flat=True)
     uninvoiced_replacements = Replacement.objects.filter(
         tenant=tenant,
         customer=customer,
         queue_status='COMPLETED',
-    ).exclude(
-        id__in=InvoiceLineItem.objects.filter(
-            repair__isnull=False  # replacements use repair FK too
-        ).values_list('repair_id', flat=True)
-    )
+    ).exclude(id__in=invoiced_replacement_ids)
     
     repairs_list = list(uninvoiced_repairs)
     replacements_list = list(uninvoiced_replacements)
@@ -298,6 +299,7 @@ def _create_batch_invoice(tenant, customer, config):
                 
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
+                    replacement=replacement,
                     description=f"Windshield Replacement - Unit {replacement.unit_number or 'N/A'}",
                     quantity=1,
                     unit_price=amount,
