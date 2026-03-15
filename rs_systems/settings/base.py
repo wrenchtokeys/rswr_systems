@@ -106,8 +106,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+        'common.throttles.ResilientAnonRateThrottle',
+        'common.throttles.ResilientUserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/minute',
