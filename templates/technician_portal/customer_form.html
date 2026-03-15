@@ -113,9 +113,30 @@
                                 name="{{ form.phone.name }}"
                                 value="{{ form.phone.value|default:'' }}"
                                 placeholder="(555) 123-4567">
+                            {% if form.phone.errors %}
+                            <p class="text-xs text-red-600 mt-1">{{ form.phone.errors.0 }}</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
+
+                {% if form.errors and not form.non_field_errors %}
+                <div class="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+                    <div class="flex">
+                        <i class="fas fa-exclamation-circle text-red-400 mt-0.5 mr-3"></i>
+                        <div>
+                            <h3 class="text-sm font-medium text-red-800">Please correct the following errors:</h3>
+                            <ul class="mt-2 text-sm text-red-700 list-disc list-inside">
+                                {% for field, errors in form.errors.items %}
+                                    {% for error in errors %}
+                                    <li><strong>{{ field|title }}:</strong> {{ error }}</li>
+                                    {% endfor %}
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <!-- Section 2: Portal Invitation -->
                 <div class="p-6 border-t border-b border-gray-200 bg-blue-50">

@@ -48,13 +48,7 @@ class Customer(models.Model):
         max_length=20,
         null=True,
         blank=True,
-        validators=[
-            RegexValidator(
-                regex=r'^\+?1?\d{9,15}$',
-                message="Phone number must be entered in format: '+999999999'. Up to 15 digits allowed."
-            )
-        ],
-        help_text="Contact phone number in E.164 format (e.g., +12025551234)"
+        help_text="Contact phone number"
     )
     address = models.TextField(null=True, blank=True)
     city = models.CharField(max_length=100, null=True, blank=True)

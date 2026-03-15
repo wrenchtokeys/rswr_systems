@@ -179,6 +179,24 @@ class CustomerForm(forms.ModelForm):
         self.fields['phone'].required = False
         self.fields['customer_type'].required = False
 
+    def clean_phone(self):
+        """Normalize phone to digits-only, accept common formats."""
+        import re
+        phone = self.cleaned_data.get('phone', '')
+        if not phone:
+            return phone
+        # Strip everything except digits and leading +
+        digits = re.sub(r'[^\d]', '', phone)
+        if len(digits) == 10:
+            # US number without country code
+            return f'+1{digits}'
+        elif len(digits) == 11 and digits.startswith('1'):
+            return f'+{digits}'
+        elif 9 <= len(digits) <= 15:
+            return f'+{digits}'
+        # Return as-is if it doesn't match — model no longer has strict validator
+        return phone
+
 
 class CustomerEditForm(forms.ModelForm):
     """Full form for editing customer details."""
