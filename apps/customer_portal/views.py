@@ -2899,41 +2899,65 @@ def quick_approve_repair(request, token):
         notes = request.POST.get('notes', '')
         customer_user = approval_token.customer_user
 
-        # Create or update approval
-        approval, created = RepairApproval.objects.get_or_create(
-            repair=repair,
-            defaults={
-                'approved': True,
-                'approved_by': customer_user,
-                'approval_date': timezone.now(),
-                'notes': notes,
-            }
-        )
-        if not created:
-            approval.approved = True
-            approval.approved_by = customer_user
-            approval.approval_date = timezone.now()
-            approval.notes = notes
-            approval.save()
+        try:
+            with transaction.atomic():
+                # Re-fetch token under a row lock to prevent double-submission race
+                locked_token = ApprovalToken.objects.select_for_update().get(
+                    pk=approval_token.pk
+                )
+                if not locked_token.is_valid():
+                    # Another concurrent request already consumed this token
+                    return render(request, 'customer_portal/quick_action_expired.html', {
+                        'reason': 'This approval link has already been used.'
+                    })
 
-        repair.queue_status = 'APPROVED'
-        repair.save()
+                # Re-check repair status inside the lock
+                locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    return render(request, 'customer_portal/quick_action_expired.html', {
+                        'reason': f'This repair has already been {locked_repair.get_queue_status_display().lower()}.'
+                    })
 
-        # Notify technician
-        if repair.technician:
-            TechnicianNotification.objects.create(
-                technician=repair.technician,
-                message=f"✅ Repair #{repair.id} APPROVED by {repair.customer.name} - Unit {repair.unit_number}. You can now complete the work.",
-                read=False,
-                repair=repair,
-            )
+                # Create or update approval
+                approval, created = RepairApproval.objects.get_or_create(
+                    repair=locked_repair,
+                    defaults={
+                        'approved': True,
+                        'approved_by': customer_user,
+                        'approval_date': timezone.now(),
+                        'notes': notes,
+                    }
+                )
+                if not created:
+                    approval.approved = True
+                    approval.approved_by = customer_user
+                    approval.approval_date = timezone.now()
+                    approval.notes = notes
+                    approval.save()
 
-        approval_token.mark_used()
+                locked_repair.queue_status = 'APPROVED'
+                locked_repair.save()
 
-        # Also invalidate the corresponding deny token
-        ApprovalToken.objects.filter(
-            repair=repair, customer_user=customer_user, action='deny', used_at__isnull=True
-        ).update(used_at=timezone.now())
+                # Notify technician
+                if locked_repair.technician:
+                    TechnicianNotification.objects.create(
+                        technician=locked_repair.technician,
+                        message=f"✅ Repair #{locked_repair.id} APPROVED by {locked_repair.customer.name} - Unit {locked_repair.unit_number}. You can now complete the work.",
+                        read=False,
+                        repair=locked_repair,
+                    )
+
+                locked_token.mark_used()
+
+                # Also invalidate the corresponding deny token
+                ApprovalToken.objects.filter(
+                    repair=locked_repair, customer_user=customer_user, action='deny', used_at__isnull=True
+                ).update(used_at=timezone.now())
+
+        except Repair.DoesNotExist:
+            return render(request, 'customer_portal/quick_action_expired.html', {
+                'reason': 'This repair no longer exists.'
+            })
 
         return render(request, 'customer_portal/quick_approve_success.html', {'repair': repair})
 
@@ -2968,43 +2992,67 @@ def quick_deny_repair(request, token):
         reason = request.POST.get('reason', '')
         customer_user = approval_token.customer_user
 
-        approval, created = RepairApproval.objects.get_or_create(
-            repair=repair,
-            defaults={
-                'approved': False,
-                'approved_by': customer_user,
-                'approval_date': timezone.now(),
-                'notes': reason,
-            }
-        )
-        if not created:
-            approval.approved = False
-            approval.approved_by = customer_user
-            approval.approval_date = timezone.now()
-            approval.notes = reason
-            approval.save()
+        try:
+            with transaction.atomic():
+                # Re-fetch token under a row lock to prevent double-submission race
+                locked_token = ApprovalToken.objects.select_for_update().get(
+                    pk=approval_token.pk
+                )
+                if not locked_token.is_valid():
+                    # Another concurrent request already consumed this token
+                    return render(request, 'customer_portal/quick_action_expired.html', {
+                        'reason': 'This denial link has already been used.'
+                    })
 
-        repair.queue_status = 'DENIED'
-        repair.save()
+                # Re-check repair status inside the lock
+                locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    return render(request, 'customer_portal/quick_action_expired.html', {
+                        'reason': f'This repair has already been {locked_repair.get_queue_status_display().lower()}.'
+                    })
 
-        # Notify technician
-        if repair.technician:
-            denial_message = f"❌ Repair #{repair.id} DENIED by {repair.customer.name} - Unit {repair.unit_number}."
-            if reason:
-                denial_message += f" Reason: {reason}"
-            TechnicianNotification.objects.create(
-                technician=repair.technician,
-                message=denial_message,
-                read=False,
-                repair=repair,
-            )
+                approval, created = RepairApproval.objects.get_or_create(
+                    repair=locked_repair,
+                    defaults={
+                        'approved': False,
+                        'approved_by': customer_user,
+                        'approval_date': timezone.now(),
+                        'notes': reason,
+                    }
+                )
+                if not created:
+                    approval.approved = False
+                    approval.approved_by = customer_user
+                    approval.approval_date = timezone.now()
+                    approval.notes = reason
+                    approval.save()
 
-        approval_token.mark_used()
+                locked_repair.queue_status = 'DENIED'
+                locked_repair.save()
 
-        # Invalidate the corresponding approve token
-        ApprovalToken.objects.filter(
-            repair=repair, customer_user=customer_user, action='approve', used_at__isnull=True
-        ).update(used_at=timezone.now())
+                # Notify technician
+                if locked_repair.technician:
+                    denial_message = f"❌ Repair #{locked_repair.id} DENIED by {locked_repair.customer.name} - Unit {locked_repair.unit_number}."
+                    if reason:
+                        denial_message += f" Reason: {reason}"
+                    TechnicianNotification.objects.create(
+                        technician=locked_repair.technician,
+                        message=denial_message,
+                        read=False,
+                        repair=locked_repair,
+                    )
+
+                locked_token.mark_used()
+
+                # Invalidate the corresponding approve token
+                ApprovalToken.objects.filter(
+                    repair=locked_repair, customer_user=customer_user, action='approve', used_at__isnull=True
+                ).update(used_at=timezone.now())
+
+        except Repair.DoesNotExist:
+            return render(request, 'customer_portal/quick_action_expired.html', {
+                'reason': 'This repair no longer exists.'
+            })
 
         return render(request, 'customer_portal/quick_deny_success.html', {'repair': repair})
 
