@@ -279,8 +279,15 @@ def onboarding_view(request):
 
                             if tech_email or tech_first:
                                 from apps.tenants.services.signup_service import generate_unique_username
-                                tech_username = generate_unique_username(tech_email or '', tech_first)
-                                if not User.objects.filter(username=tech_username).exists():
+                                # Check email uniqueness BEFORE generating username.
+                                # generate_unique_username() always returns a unique username, so the
+                                # old guard `if not User.objects.filter(username=...).exists()` was
+                                # always True — dead code that never caught duplicate emails.
+                                # Fix: check email first (the actual duplicate risk).
+                                if tech_email and User.objects.filter(email__iexact=tech_email).exists():
+                                    messages.info(request, 'A user with that email already exists. You can add them to your team from Settings → Team.')
+                                else:
+                                    tech_username = generate_unique_username(tech_email or '', tech_first)
                                     tech_user = User.objects.create_user(
                                         username=tech_username,
                                         email=tech_email or '',
@@ -313,8 +320,6 @@ def onboarding_view(request):
                                             f'{tech_display} has been added to your team. '
                                             f'Add their email in Settings → Team to send a login invite.'
                                         )
-                                else:
-                                    messages.info(request, 'A user with that email already exists.')
                             else:
                                 messages.info(request, 'No technician info provided — you can add team members later in Settings → Team.')
 
