@@ -218,15 +218,17 @@
 </div>
 
 <script>
-// Get CSRF token
-function getCookie(name) {
+// Get CSRF token — form field first (httpOnly cookie safe), cookie fallback
+function getCSRFToken() {
+    const formEl = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (formEl) return formEl.value;
     let cookieValue = null;
     if (document.cookie && document.cookie !== '') {
         const cookies = document.cookie.split(';');
         for (let i = 0; i < cookies.length; i++) {
             const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            if (cookie.substring(0, 'csrftoken'.length + 1) === ('csrftoken=')) {
+                cookieValue = decodeURIComponent(cookie.substring('csrftoken'.length + 1));
                 break;
             }
         }
@@ -234,7 +236,7 @@ function getCookie(name) {
     return cookieValue;
 }
 
-const csrftoken = getCookie('csrftoken');
+const csrftoken = getCSRFToken();
 
 // Mark single notification as read
 document.querySelectorAll('.mark-read-btn').forEach(btn => {

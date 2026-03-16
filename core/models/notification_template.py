@@ -139,9 +139,16 @@ class NotificationTemplate(models.Model):
                 # Render as inline template syntax
                 return Template(content).render(context)
 
+        # Use autoescape=False to prevent double-escaping when the rendered
+        # message is later displayed in Django templates (which auto-escape).
+        # The context values (customer name, unit number, etc.) are internal
+        # data from our own models, not raw user input.
+        from django.template import engines
+        plain_context = Context(context_dict, autoescape=False)
+
         return {
-            'title': Template(self.title_template).render(context),
-            'message': Template(self.message_template).render(context),
+            'title': Template(self.title_template).render(plain_context),
+            'message': Template(self.message_template).render(plain_context),
             'email_subject': Template(self.email_subject_template).render(context) if self.email_subject_template else '',
             'email_html': render_template_field(self.email_html_template),
             'email_text': render_template_field(self.email_text_template),
