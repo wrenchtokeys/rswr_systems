@@ -1338,8 +1338,8 @@ def invite_member(request):
     last_name = request.POST.get('last_name', '').strip()
     role = request.POST.get('role', 'viewer')
 
-    # Usage limit check for technicians
-    if role == 'technician' and tenant:
+    # Usage limit check for technicians AND managers (both consume Technician seats)
+    if role in ('technician', 'manager') and tenant:
         from apps.tenants.services.usage_service import UsageService
         can_add, limit_msg = UsageService(tenant).can_add_technician()
         if not can_add:
