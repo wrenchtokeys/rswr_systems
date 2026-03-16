@@ -488,3 +488,118 @@ class RewardRedemptionTenantIsolationTests(TestCase):
             f'/tech/reward-fulfillment/{self.redemption_b.id}/',
         )
         self.assertEqual(response.status_code, 404)
+
+
+# =============================================================================
+# CODE-047: UnitRepairCount missing tenant in get_or_create lookup
+# =============================================================================
+
+@override_settings(**TEST_OVERRIDES)
+class UnitRepairCountTenantScopeTests(TestCase):
+    """
+    UnitRepairCount.objects.get_or_create must include tenant in the lookup.
+    Without it, a NULL-tenant row is created (or a cross-tenant row is matched),
+    breaking TenantManager scoping and progressive pricing isolation.
+    """
+
+    def setUp(self):
+        self.user_a, self.tenant_a = _make_tenant('Shop Alpha', 'owner_alpha')
+        self.user_b, self.tenant_b = _make_tenant('Shop Beta', 'owner_beta')
+
+        self.tech_user_a = User.objects.create_user('tech_alpha', 'ta@test.com', 'pass')
+        self.technician_a = Technician.objects.create(
+            tenant=self.tenant_a, user=self.tech_user_a, is_active=True, can_repair=True
+        )
+        TenantMembership.objects.create(tenant=self.tenant_a, user=self.tech_user_a, role='technician')
+
+        self.customer_a = Customer.objects.create(
+            tenant=self.tenant_a, name='Fleet A', email='fleet@a.com',
+            customer_type='FLEET',
+        )
+
+    def test_repair_save_creates_unit_repair_count_with_tenant(self):
+        """Saving a COMPLETED repair should create UnitRepairCount with correct tenant, not NULL."""
+        from apps.technician_portal.models import Repair, UnitRepairCount
+
+        repair = Repair.objects.create(
+            tenant=self.tenant_a,
+            customer=self.customer_a,
+            technician=self.technician_a,
+            service_date=timezone.now(),
+            unit_number='UNIT-001',
+            queue_status='COMPLETED',
+            damage_type='BULLSEYE',
+        )
+
+        # The UnitRepairCount for this unit/customer should have tenant set
+        urc = UnitRepairCount.objects.filter(
+            customer=self.customer_a,
+            unit_number='UNIT-001',
+        ).first()
+        self.assertIsNotNone(urc, "UnitRepairCount should have been created on repair save")
+        self.assertEqual(
+            urc.tenant, self.tenant_a,
+            f"UnitRepairCount.tenant should be {self.tenant_a}, got {urc.tenant}"
+        )
+
+    def test_pricing_service_creates_unit_repair_count_with_tenant(self):
+        """get_expected_repair_cost should create UnitRepairCount scoped to tenant."""
+        from apps.technician_portal.models import UnitRepairCount
+        from apps.technician_portal.services.pricing_service import get_expected_repair_cost
+
+        # Ensure no pre-existing count
+        UnitRepairCount.objects.filter(customer=self.customer_a, unit_number='UNIT-PRICE').delete()
+
+        get_expected_repair_cost(self.customer_a, 'UNIT-PRICE', tenant=self.tenant_a)
+
+        urc = UnitRepairCount.objects.filter(
+            customer=self.customer_a,
+            unit_number='UNIT-PRICE',
+        ).first()
+        # The row may or may not be created depending on progressive pricing settings,
+        # but if it was created it must have the correct tenant.
+        if urc:
+            self.assertEqual(
+                urc.tenant, self.tenant_a,
+                f"UnitRepairCount created by pricing service must be tenant-scoped, got tenant={urc.tenant}"
+            )
+
+    def test_two_tenants_same_unit_number_do_not_share_counts(self):
+        """Two shops tracking the same unit number should get separate UnitRepairCount rows."""
+        from apps.technician_portal.models import Repair, UnitRepairCount
+
+        customer_b = Customer.objects.create(
+            tenant=self.tenant_b, name='Fleet B', email='fleet@b.com',
+            customer_type='FLEET',
+        )
+        tech_user_b = User.objects.create_user('tech_beta2', 'tb2@test.com', 'pass')
+        technician_b = Technician.objects.create(
+            tenant=self.tenant_b, user=tech_user_b, is_active=True, can_repair=True
+        )
+
+        # Repair for Tenant A
+        Repair.objects.create(
+            tenant=self.tenant_a, customer=self.customer_a,
+            technician=self.technician_a, service_date=timezone.now(),
+            unit_number='SHARED-UNIT', queue_status='COMPLETED', damage_type='BULLSEYE',
+        )
+
+        # Repair for Tenant B
+        Repair.objects.create(
+            tenant=self.tenant_b, customer=customer_b,
+            technician=technician_b, service_date=timezone.now(),
+            unit_number='SHARED-UNIT', queue_status='COMPLETED', damage_type='BULLSEYE',
+        )
+
+        count_a = UnitRepairCount.objects.filter(tenant=self.tenant_a, unit_number='SHARED-UNIT').count()
+        count_b = UnitRepairCount.objects.filter(tenant=self.tenant_b, unit_number='SHARED-UNIT').count()
+
+        self.assertGreaterEqual(count_a, 1, "Tenant A should have its own UnitRepairCount")
+        self.assertGreaterEqual(count_b, 1, "Tenant B should have its own UnitRepairCount")
+
+        # Tenant A's count should not be affected by Tenant B's repairs
+        urc_a = UnitRepairCount.objects.filter(tenant=self.tenant_a, unit_number='SHARED-UNIT').first()
+        self.assertEqual(
+            urc_a.repair_count, 1,
+            f"Tenant A's SHARED-UNIT should have 1 repair, got {urc_a.repair_count}"
+        )

@@ -300,11 +300,15 @@ def mark_unit_replaced(request, customer_id, unit_number):
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
-    # Get or create the unit repair count record
+    # Get or create the unit repair count record.
+    # Include tenant in the lookup (not just defaults) so the lookup itself is
+    # tenant-scoped.  Having tenant only in defaults means a NULL-tenant row
+    # from an older codepath would match and the correct tenant would never be set.
     unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+        tenant=tenant,
         customer=customer,
         unit_number=unit_number,
-        defaults={'repair_count': 0, 'tenant': tenant}
+        defaults={'repair_count': 0}
     )
     
     # Get the technician (current user or fallback)

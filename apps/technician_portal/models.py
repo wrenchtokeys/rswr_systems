@@ -543,8 +543,14 @@ class Repair(GlassService):
                     # No preferences set - default to requiring approval
                     pass
 
-            # Get or create the unit repair count
+            # Get or create the unit repair count.
+            # IMPORTANT: include tenant in the lookup so the created row is
+            # tenant-scoped.  Omitting tenant caused new rows to be saved with
+            # tenant=NULL (the field is nullable for migration compat), which
+            # breaks TenantManager scoping and could produce duplicate NULL-tenant
+            # rows on PostgreSQL (where NULL != NULL in unique constraints).
             unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+                tenant=self.tenant,
                 customer=self.customer,
                 unit_number=self.unit_number,
                 defaults={'repair_count': 0}

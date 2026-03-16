@@ -74,9 +74,10 @@ def rebuild_unit_repair_counts(customer):
     # Delete existing counts for this customer
     UnitRepairCount.objects.filter(customer=customer).delete()
     
-    # Create new counts
+    # Create new counts (include tenant so rows are properly scoped)
     for repair in repair_counts:
         UnitRepairCount.objects.create(
+            tenant=customer.tenant,
             customer=customer,
             unit_number=repair['unit_number'],
             repair_count=repair['count']
