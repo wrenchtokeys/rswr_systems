@@ -2497,7 +2497,11 @@ def customer_invoice_pay(request, invoice_id):
         if invoice.stripe_hosted_url:
             return redirect(invoice.stripe_hosted_url)
 
-        # Create a Stripe checkout session
+        # Create a Stripe checkout session — prefer connected routing when the
+        # shop has completed Stripe Connect onboarding.  Without this, customer
+        # payments go to the platform account (Drake's) instead of the shop's
+        # connected account, bypassing all platform-fee and payout logic.
+        # (BUG: CODE-051 — missing Connect routing in customer portal pay view)
         from apps.billing.services.stripe_service import StripeService
 
         stripe_svc = StripeService()
@@ -2510,11 +2514,33 @@ def customer_invoice_pay(request, invoice_id):
         success_url = f"{base_url}/app/invoices/{invoice.id}/?payment=success"
         cancel_url = f"{base_url}/app/invoices/{invoice.id}/?payment=cancelled"
 
-        result = stripe_svc.create_checkout_session(
-            invoice,
-            success_url=success_url,
-            cancel_url=cancel_url,
-        )
+        result = None
+
+        # Use Stripe Connect (tenant-routed) checkout when shop is set up
+        tenant = getattr(invoice, 'tenant', None)
+        if tenant and tenant.can_accept_payments:
+            try:
+                from apps.tenants.services.connect_service import ConnectService
+                connect_svc = ConnectService()
+                result = connect_svc.create_connected_checkout_session(
+                    invoice,
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Connected checkout failed for {invoice.invoice_number}, "
+                    f"falling back to platform: {e}"
+                )
+                result = None
+
+        # Fall back to platform (Drake's account) checkout
+        if not result or not result.get('success'):
+            result = stripe_svc.create_checkout_session(
+                invoice,
+                success_url=success_url,
+                cancel_url=cancel_url,
+            )
 
         if result.get('success'):
             return redirect(result['checkout_url'])
