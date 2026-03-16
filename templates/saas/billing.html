@@ -142,6 +142,53 @@
     </div>
 </div>
 
+<!-- Payment Processing (Stripe Connect) -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
+    <div class="p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Payment Processing</h3>
+                <p class="text-sm text-gray-500 mt-0.5">Accept online payments from your customers</p>
+            </div>
+            {% if tenant.stripe_connect_charges_enabled %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                <i class="fas fa-check-circle mr-1"></i> Active
+            </span>
+            {% elif tenant.stripe_connect_account_id %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                <i class="fas fa-clock mr-1"></i> Setup Incomplete
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+                Not set up
+            </span>
+            {% endif %}
+        </div>
+        <div class="mt-4">
+            {% if tenant.stripe_connect_charges_enabled %}
+            <p class="text-sm text-gray-600 mb-3">
+                <i class="fas fa-check text-green-500 mr-1"></i> Customer payments are routed directly to your bank account.
+            </p>
+            <div class="flex gap-3">
+                <a href="{% url 'connect_dashboard' %}" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                    <i class="fas fa-external-link-alt mr-1"></i> Stripe Dashboard
+                </a>
+                <a href="{% url 'connect_setup' %}" class="text-sm text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-cog mr-1"></i> Settings
+                </a>
+            </div>
+            {% else %}
+            <p class="text-sm text-gray-600 mb-3">
+                Set up payment processing so customers can pay invoices online. Funds go directly to your bank account.
+            </p>
+            <a href="{% url 'connect_setup' %}" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                <i class="fas fa-credit-card mr-1"></i> Set Up Payments
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
 <!-- Plan Comparison -->
 <div class="mb-8">
     <h3 class="text-lg font-semibold text-gray-900 mb-4">Available Plans</h3>
