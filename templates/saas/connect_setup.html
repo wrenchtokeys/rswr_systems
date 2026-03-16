@@ -1,173 +1,148 @@
 {% extends "saas/base_owner.html" %}
 
-{% block title %}Set Up Payments | {{ tenant.name }} | RS Systems{% endblock %}
+{% block title %}Payment Processing Setup | {{ tenant.name }} | RS Systems{% endblock %}
 
 {% block content %}
-
-<div class="mb-8">
-    <div class="flex items-center gap-3 mb-2">
-        <a href="/owner/billing/" class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
-            <i class="fas fa-arrow-left text-xs"></i>
-            Back to Billing
-        </a>
+<div class="max-w-3xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Accept Invoice Payments</h1>
+        <p class="text-gray-500 mt-1">Set up Stripe to receive payments directly from your customers</p>
     </div>
-    <h1 class="text-3xl font-bold text-gray-900">Set Up Payment Processing</h1>
-    <p class="text-gray-500 mt-1">Accept credit card payments directly from your customers via invoice links</p>
-</div>
 
-<!-- Status Card -->
-{% if tenant.can_accept_payments %}
-<div class="bg-green-50 border border-green-200 rounded-xl p-6 mb-8">
-    <div class="flex items-start gap-4">
-        <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-check-circle text-green-600 text-lg"></i>
-        </div>
-        <div>
-            <h2 class="text-lg font-semibold text-green-900">Payments Active</h2>
-            <p class="text-green-700 mt-1">
-                Your Stripe account is connected and ready to accept payments.
-                Customers can pay invoices online and funds go directly to your bank account.
-            </p>
-            <div class="mt-4 flex flex-wrap gap-3">
-                <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
-                    <i class="fas fa-external-link-alt mr-2"></i>
-                    Open Stripe Dashboard
-                </a>
+    {% if tenant.can_accept_payments %}
+    <!-- Already set up -->
+    <div class="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start">
+            <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-4 mt-0.5">
+                <i class="fas fa-check-circle text-green-600 text-xl"></i>
             </div>
-        </div>
-    </div>
-</div>
-
-{% elif tenant.stripe_connect_account_id and tenant.stripe_connect_onboarding_complete %}
-<div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
-    <div class="flex items-start gap-4">
-        <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-clock text-amber-600 text-lg"></i>
-        </div>
-        <div>
-            <h2 class="text-lg font-semibold text-amber-900">Under Review</h2>
-            <p class="text-amber-700 mt-1">
-                Your information has been submitted to Stripe. Review typically takes 1–2 business days.
-                You'll receive an email when your account is approved.
-            </p>
-        </div>
-    </div>
-</div>
-
-{% elif tenant.stripe_connect_account_id %}
-<div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
-    <div class="flex items-start gap-4">
-        <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-exclamation-triangle text-amber-600 text-lg"></i>
-        </div>
-        <div>
-            <h2 class="text-lg font-semibold text-amber-900">Setup Incomplete</h2>
-            <p class="text-amber-700 mt-1">
-                You started the setup but didn't finish. Click below to continue where you left off.
-            </p>
-            <div class="mt-4">
-                <form method="post" action="{% url 'connect_setup' %}">
-                    {% csrf_token %}
-                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 transition-colors">
-                        <i class="fas fa-arrow-right mr-2"></i>
-                        Continue Setup
-                    </button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-{% else %}
-
-<!-- How It Works -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
-    <div class="p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">How It Works</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="flex flex-col items-start gap-3">
-                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-blue-700 font-bold text-sm">1</span>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-gray-900">Connect to Stripe</h3>
-                    <p class="text-sm text-gray-500 mt-1">
-                        Create or connect a Stripe Express account. Stripe handles KYC, identity verification, and banking details.
-                    </p>
-                </div>
-            </div>
-            <div class="flex flex-col items-start gap-3">
-                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-blue-700 font-bold text-sm">2</span>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-gray-900">Send Invoices with Pay Links</h3>
-                    <p class="text-sm text-gray-500 mt-1">
-                        Every invoice will include a "Pay Now" link. Customers can pay by credit card, debit, or ACH — no account needed.
-                    </p>
-                </div>
-            </div>
-            <div class="flex flex-col items-start gap-3">
-                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span class="text-blue-700 font-bold text-sm">3</span>
-                </div>
-                <div>
-                    <h3 class="font-semibold text-gray-900">Get Paid Directly</h3>
-                    <p class="text-sm text-gray-500 mt-1">
-                        Funds go directly into your bank account. Stripe charges standard payment processing fees (2.9% + 30¢).
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- CTA -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-8">
-    <div class="p-6">
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-                <h2 class="text-lg font-semibold text-gray-900">Ready to Get Started?</h2>
-                <p class="text-gray-500 mt-1">
-                    You'll be redirected to Stripe to complete onboarding. It takes about 5 minutes.
+                <h2 class="text-lg font-semibold text-green-900">Payment Processing Active</h2>
+                <p class="text-green-700 mt-1">
+                    Your customers can pay invoices online. Funds go directly to your bank account.
+                </p>
+                {% if tenant.stripe_connect_payouts_enabled %}
+                <p class="text-green-600 text-sm mt-2">
+                    <i class="fas fa-university mr-1"></i> Payouts to your bank are enabled
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="mt-4 flex gap-3">
+            <form method="post" action="{% url 'connect_dashboard' %}">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium text-green-700 bg-green-100 border border-green-300 rounded-lg hover:bg-green-200 transition-colors">
+                    <i class="fas fa-external-link-alt mr-2"></i> View Stripe Dashboard
+                </button>
+            </form>
+            <a href="{% url 'billing_settings' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-arrow-left mr-2"></i> Back to Billing
+            </a>
+        </div>
+    </div>
+
+    {% elif tenant.stripe_connect_account_id and not tenant.stripe_connect_onboarding_complete %}
+    <!-- Onboarding started but not complete -->
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start">
+            <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center mr-4 mt-0.5">
+                <i class="fas fa-clock text-amber-600 text-xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-amber-900">Setup Incomplete</h2>
+                <p class="text-amber-700 mt-1">
+                    You started setting up payment processing but didn't finish. Continue where you left off.
                 </p>
             </div>
-            <form method="post" action="{% url 'connect_setup' %}">
+        </div>
+        <div class="mt-4">
+            <form method="post">
                 {% csrf_token %}
-                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap">
-                    <i class="fas fa-link mr-2"></i>
-                    Connect with Stripe
+                <button type="submit" class="inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors">
+                    <i class="fas fa-arrow-right mr-2"></i> Continue Setup
                 </button>
             </form>
         </div>
     </div>
-</div>
 
-{% endif %}
-
-<!-- FAQ -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200">
-    <div class="p-6">
-        <h2 class="text-lg font-semibold text-gray-900 mb-4">Frequently Asked Questions</h2>
-        <dl class="space-y-5">
-            <div>
-                <dt class="font-medium text-gray-900">What are the fees?</dt>
-                <dd class="text-sm text-gray-500 mt-1">Stripe charges 2.9% + 30¢ per card transaction. ACH bank transfers are 0.8% (capped at $5). RS Systems does not add additional fees.</dd>
+    {% elif tenant.stripe_connect_account_id and tenant.stripe_connect_onboarding_complete and not tenant.stripe_connect_charges_enabled %}
+    <!-- Onboarding complete, under review -->
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start">
+            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-4 mt-0.5">
+                <i class="fas fa-hourglass-half text-blue-600 text-xl"></i>
             </div>
             <div>
-                <dt class="font-medium text-gray-900">When do I get paid?</dt>
-                <dd class="text-sm text-gray-500 mt-1">Stripe typically sends payouts to your bank account within 2 business days of a successful payment.</dd>
+                <h2 class="text-lg font-semibold text-blue-900">Under Review</h2>
+                <p class="text-blue-700 mt-1">
+                    Your information has been submitted to Stripe for review. This usually takes 1-2 business days.
+                    We'll update your account automatically when it's approved.
+                </p>
             </div>
-            <div>
-                <dt class="font-medium text-gray-900">What if my customer already paid by check?</dt>
-                <dd class="text-sm text-gray-500 mt-1">You can still record manual payments (check, cash, etc.) directly in RS Systems — Stripe is optional and only used when a customer clicks "Pay Online."</dd>
-            </div>
-            <div>
-                <dt class="font-medium text-gray-900">Is my customer's card data secure?</dt>
-                <dd class="text-sm text-gray-500 mt-1">Yes. Card details are handled entirely by Stripe — RS Systems never sees or stores payment card information.</dd>
-            </div>
-        </dl>
+        </div>
     </div>
-</div>
 
+    {% else %}
+    <!-- Not started -->
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <!-- Hero -->
+        <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
+            <div class="flex items-center mb-4">
+                <i class="fas fa-credit-card text-3xl mr-4 opacity-80"></i>
+                <div>
+                    <h2 class="text-xl font-bold">Get Paid Directly</h2>
+                    <p class="text-blue-100">Accept card payments from your fleet customers</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6">
+            <!-- Benefits -->
+            <div class="space-y-4 mb-6">
+                <div class="flex items-start">
+                    <i class="fas fa-bolt text-blue-500 mt-1 mr-3"></i>
+                    <div>
+                        <p class="font-medium text-gray-900">Fast payments</p>
+                        <p class="text-sm text-gray-500">Customers pay invoices with one click. No more chasing checks.</p>
+                    </div>
+                </div>
+                <div class="flex items-start">
+                    <i class="fas fa-university text-blue-500 mt-1 mr-3"></i>
+                    <div>
+                        <p class="font-medium text-gray-900">Direct deposits</p>
+                        <p class="text-sm text-gray-500">Funds go straight to your bank account. Typically arrives in 2 business days.</p>
+                    </div>
+                </div>
+                <div class="flex items-start">
+                    <i class="fas fa-shield-alt text-blue-500 mt-1 mr-3"></i>
+                    <div>
+                        <p class="font-medium text-gray-900">Powered by Stripe</p>
+                        <p class="text-sm text-gray-500">Industry-leading payment security. PCI compliant. Used by millions of businesses.</p>
+                    </div>
+                </div>
+                <div class="flex items-start">
+                    <i class="fas fa-clock text-blue-500 mt-1 mr-3"></i>
+                    <div>
+                        <p class="font-medium text-gray-900">5-minute setup</p>
+                        <p class="text-sm text-gray-500">Quick verification — Stripe handles all the compliance.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CTA -->
+            <form method="post">
+                {% csrf_token %}
+                <button type="submit" class="w-full inline-flex items-center justify-center px-5 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-arrow-right mr-2"></i> Set Up Payment Processing
+                </button>
+            </form>
+
+            <p class="text-xs text-gray-400 text-center mt-4">
+                You'll be redirected to Stripe to verify your identity and connect your bank account.
+                Standard Stripe processing fees apply (2.9% + $0.30 per transaction).
+            </p>
+        </div>
+    </div>
+    {% endif %}
+</div>
 {% endblock %}
