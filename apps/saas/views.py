@@ -1273,12 +1273,92 @@ def invite_member(request):
     if existing:
         if existing.is_active:
             messages.warning(request, f'{email} is already a team member.')
+            return redirect('owner_settings')
         else:
+            # Re-activate the membership with the new role
             existing.is_active = True
             existing.role = role
             existing.save()
-            messages.success(request, f'{email} has been re-added to the team.')
-        return redirect('owner_settings')
+
+            # Re-activate / update Technician record if they need tech portal access.
+            # Without this, the re-added member's Technician.is_active stays False and
+            # they cannot log in to the technician portal.  Also sync is_manager and
+            # can_repair/can_replace to reflect the new role + ability checkboxes.
+            with transaction.atomic():
+                if role in ('technician', 'manager'):
+                    from django.contrib.auth.models import Group
+                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                    user.groups.add(tech_group)
+
+                    # Update or create the Technician record for this tenant
+                    Technician.objects.update_or_create(
+                        user=user,
+                        tenant=tenant,
+                        defaults={
+                            'is_active': True,
+                            'is_manager': (role == 'manager'),
+                            'can_repair': can_repair,
+                            'can_replace': can_replace,
+                        },
+                    )
+                else:
+                    # Non-tech role: deactivate any lingering Technician record
+                    try:
+                        tech = Technician.objects.get(user=user, tenant=tenant)
+                        tech.is_active = False
+                        tech.save(update_fields=['is_active'])
+                    except Technician.DoesNotExist:
+                        pass
+
+                # Create a fresh InviteToken so they get a password-reset link.
+                # (Their old token may have expired or been consumed.)
+                from apps.tenants.models import InviteToken
+                invite_token = InviteToken(
+                    tenant=tenant,
+                    user=user,
+                    role=role,
+                    invited_by=request.user,
+                )
+                invite_token.save()
+
+            invite_url = request.build_absolute_uri(f"/invite/{invite_token.token}/")
+
+            # Try to send a fresh invite email so they can regain access
+            email_sent = False
+            try:
+                from django.core.mail import send_mail
+                from django.conf import settings
+
+                inviter_name = request.user.get_full_name() or request.user.email
+                subject = f"You've been re-added to {tenant.name} on RS Systems"
+                body = (
+                    f"Hi {user.first_name or user.email},\n\n"
+                    f"{inviter_name} has re-added you to {tenant.name} as a {role}.\n\n"
+                    f"Use this link to set your password and get back in:\n"
+                    f"{invite_url}\n\n"
+                    f"This link expires in 7 days.\n\n"
+                    f"— RS Systems"
+                )
+                send_mail(
+                    subject=subject,
+                    message=body,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                email_sent = True
+            except Exception as e:
+                logger.warning(f"Failed to send re-invite email to {email}: {e}")
+
+            if email_sent:
+                messages.success(request, f'{email} has been re-added to the team. A fresh invite email has been sent.')
+            else:
+                messages.success(
+                    request,
+                    f'{email} has been re-added to the team. '
+                    f'Email could not be sent. Share this link manually: {invite_url}'
+                )
+            return redirect('owner_settings')
 
     with transaction.atomic():
         TenantMembership.objects.create(

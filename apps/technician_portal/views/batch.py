@@ -183,23 +183,37 @@ def create_multi_break_repair(request):
             if user_is_admin:
                 tech_id = request.POST.get('technician_id')
                 if not tech_id:
-                    messages.error(request, "As an admin, you must select a technician.")
-                    return redirect('create_multi_break_repair')
-                try:
-                    tech_qs = Technician.objects.filter(id=tech_id)
-                    if tenant:
-                        tech_qs = tech_qs.filter(tenant=tenant)
+                    # Admin who is also a technician — use their own profile
+                    if hasattr(request.user, 'technician'):
+                        technician = request.user.technician
                     else:
-                        tech_qs = tech_qs.none()
-                    technician = tech_qs.get()
-                except Technician.DoesNotExist:
-                    messages.error(request, "Invalid technician selected.")
-                    return redirect('create_multi_break_repair')
+                        error_msg = "As an admin, you must select a technician."
+                        messages.error(request, error_msg)
+                        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                            return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                        return redirect('create_multi_break_repair')
+                else:
+                    try:
+                        tech_qs = Technician.objects.filter(id=tech_id)
+                        if tenant:
+                            tech_qs = tech_qs.filter(tenant=tenant)
+                        else:
+                            tech_qs = tech_qs.none()
+                        technician = tech_qs.get()
+                    except Technician.DoesNotExist:
+                        error_msg = "Invalid technician selected."
+                        messages.error(request, error_msg)
+                        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                            return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                        return redirect('create_multi_break_repair')
             else:
                 try:
                     technician = request.user.technician
                 except AttributeError:
-                    messages.error(request, "You don't have a technician profile to create repairs.")
+                    error_msg = "You don't have a technician profile to create repairs."
+                    messages.error(request, error_msg)
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse({'success': False, 'error': error_msg}, status=400)
                     return redirect('technician_dashboard')
 
             logger.info(f"[MULTI-BREAK] Starting atomic transaction for {breaks_count} breaks")
@@ -368,10 +382,19 @@ def create_multi_break_repair(request):
 
         else:
             customer_qs = customer_qs.none()
+        # Get technicians for admin selector
+        technicians = []
+        if user_is_admin:
+            tech_qs = Technician.objects.filter(is_active=True).select_related('user')
+            if tenant:
+                tech_qs = tech_qs.filter(tenant=tenant)
+            technicians = tech_qs.order_by('user__first_name')
+
         return render(request, 'technician_portal/multi_break_repair_form.html', {
             'is_admin': user_is_admin,
             'customers': customer_qs.order_by('name'),
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
+            'technicians': technicians,
         })
 
 
