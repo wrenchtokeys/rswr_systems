@@ -460,34 +460,32 @@ class RepairForm(forms.ModelForm):
         if customer and unit_number:
             repair_batch_id = cleaned_data.get('repair_batch_id')
 
-            existing_repairs = Repair.objects.filter(
-                customer=customer,
-                unit_number=unit_number,
-                queue_status__in=['PENDING', 'APPROVED', 'IN_PROGRESS']
-            ).exclude(pk=self.instance.pk if self.instance.pk else None)
+            # Skip duplicate check entirely when editing an existing repair
+            # (only warn on NEW repairs to prevent accidental duplicates)
+            if not self.instance.pk:
+                existing_repairs = Repair.objects.filter(
+                    customer=customer,
+                    unit_number=unit_number,
+                    queue_status__in=['PENDING', 'APPROVED', 'IN_PROGRESS']
+                )
 
-            # Allow duplicates if part of same batch
-            # Case 1: Creating a new repair with a batch_id (from multi-break form)
-            if repair_batch_id:
-                existing_repairs = existing_repairs.exclude(repair_batch_id=repair_batch_id)
-            # Case 2: Updating an existing repair that's part of a batch
-            # This allows completing breaks independently within the same batch
-            elif self.instance.pk and self.instance.repair_batch_id:
-                existing_repairs = existing_repairs.exclude(repair_batch_id=self.instance.repair_batch_id)
+                # Allow duplicates if part of same batch
+                if repair_batch_id:
+                    existing_repairs = existing_repairs.exclude(repair_batch_id=repair_batch_id)
 
-            if existing_repairs.exists():
-                existing_repair = existing_repairs.first()
-                if queue_status in ['PENDING', 'APPROVED', 'IN_PROGRESS']:
-                    from django.utils.html import format_html
-                    raise forms.ValidationError(
-                        format_html(
-                            "There is already a {} repair for this unit. "
-                            "<a href='/tech/repairs/{}/'>View existing repair</a>",
-                            existing_repair.get_queue_status_display(),
-                            existing_repair.id
-                        ),
-                        code='existing_repair'
-                    )
+                if existing_repairs.exists():
+                    existing_repair = existing_repairs.first()
+                    if queue_status in ['PENDING', 'APPROVED', 'IN_PROGRESS']:
+                        from django.utils.html import format_html
+                        raise forms.ValidationError(
+                            format_html(
+                                "There is already a {} repair for this unit. "
+                                "<a href='/tech/repairs/{}/'>View existing repair</a>",
+                                existing_repair.get_queue_status_display(),
+                                existing_repair.id
+                            ),
+                            code='existing_repair'
+                        )
 
         # Customer type validation: require appropriate fields
         if customer:
