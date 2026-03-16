@@ -747,9 +747,18 @@ def assign_repair(request, repair_id):
     else:
         manager = request.user.technician
         managed_techs = manager.managed_technicians.filter(is_active=True)
-        available_technicians = Technician.objects.filter(
+        # Always apply tenant filter as defense-in-depth so that even if a
+        # cross-tenant tech somehow ended up in managed_technicians (e.g. via
+        # admin bypass or direct DB edit), they cannot appear in the assign
+        # dropdown and cannot be assigned to this shop's repairs.
+        tech_qs = Technician.objects.filter(
             Q(id=manager.id) | Q(id__in=managed_techs)
-        ).filter(is_active=True).order_by('user__first_name')
+        ).filter(is_active=True)
+        if tenant:
+            tech_qs = tech_qs.filter(tenant=tenant)
+        else:
+            tech_qs = tech_qs.none()
+        available_technicians = tech_qs.order_by('user__first_name')
 
     return render(request, 'technician_portal/assign_repair.html', {
         'repair': repair,
