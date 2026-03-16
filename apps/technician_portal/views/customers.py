@@ -527,29 +527,33 @@ def resend_customer_invitation(request, invitation_id):
     """Resend an existing customer invitation."""
     from apps.customer_portal.models import CustomerInvitation
     from apps.customer_portal.services.invitation_service import CustomerInvitationService
-    
+
     tenant = getattr(request, 'tenant', None)
-    
+
+    # Reject early if no tenant context — we cannot safely scope the lookup.
+    if not tenant:
+        messages.error(request, "No shop context found. Please log out and back in.")
+        return redirect('technician_dashboard')
+
     # Only admins/managers can resend invitations
-    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
+    is_admin = is_tenant_admin(request.user, tenant=tenant)
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
-    
+
     if not (is_admin or is_mgr):
         messages.error(request, "Only managers can resend invitations.")
         return redirect('technician_dashboard')
-    
-    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
-    
-    # Verify customer belongs to tenant
-    if tenant and invitation.customer.tenant != tenant:
-        messages.error(request, "Invitation not found.")
-        return redirect('technician_dashboard')
-    
+
+    # Scope the lookup to this tenant directly — never fetch the record first and
+    # check the tenant afterwards, because a missing/None tenant would skip the check.
+    invitation = get_object_or_404(
+        CustomerInvitation, id=invitation_id, customer__tenant=tenant
+    )
+
     if CustomerInvitationService.resend_invitation(invitation, request):
         messages.success(request, f"Invitation resent to {invitation.email}")
     else:
         messages.error(request, "Failed to resend invitation.")
-    
+
     return redirect('customer_detail', customer_id=invitation.customer_id)
 
 
@@ -559,31 +563,35 @@ def cancel_customer_invitation(request, invitation_id):
     """Cancel a pending customer invitation."""
     from apps.customer_portal.models import CustomerInvitation
     from apps.customer_portal.services.invitation_service import CustomerInvitationService
-    
+
     tenant = getattr(request, 'tenant', None)
-    
+
+    # Reject early if no tenant context — we cannot safely scope the lookup.
+    if not tenant:
+        messages.error(request, "No shop context found. Please log out and back in.")
+        return redirect('technician_dashboard')
+
     # Only admins/managers can cancel invitations
-    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
+    is_admin = is_tenant_admin(request.user, tenant=tenant)
     is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
-    
+
     if not (is_admin or is_mgr):
         messages.error(request, "Only managers can cancel invitations.")
         return redirect('technician_dashboard')
-    
-    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
-    
-    # Verify customer belongs to tenant
-    if tenant and invitation.customer.tenant != tenant:
-        messages.error(request, "Invitation not found.")
-        return redirect('technician_dashboard')
-    
+
+    # Scope the lookup to this tenant directly — same defence-in-depth reasoning
+    # as resend: never rely on a post-fetch `if tenant and ...` guard.
+    invitation = get_object_or_404(
+        CustomerInvitation, id=invitation_id, customer__tenant=tenant
+    )
+
     customer_id = invitation.customer_id
-    
+
     if CustomerInvitationService.cancel_invitation(invitation):
         messages.success(request, f"Invitation to {invitation.email} cancelled.")
     else:
         messages.error(request, "Could not cancel this invitation.")
-    
+
     return redirect('customer_detail', customer_id=customer_id)
 
 
