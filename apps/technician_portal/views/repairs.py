@@ -237,7 +237,7 @@ def repair_detail(request, repair_id):
     next_break = None
     if repair.is_part_of_batch:
         try:
-            batch_summary = Repair.get_batch_summary(repair.repair_batch_id)
+            batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
             if batch_summary:
                 batch_info = batch_summary
                 incomplete_repairs = [
@@ -496,7 +496,7 @@ def update_repair(request, repair_id):
 
             # Batch navigation
             if updated_repair.repair_batch_id:
-                batch_summary = Repair.get_batch_summary(updated_repair.repair_batch_id)
+                batch_summary = Repair.get_batch_summary(updated_repair.repair_batch_id, tenant=tenant)
                 if batch_summary and batch_summary['completed_count'] == batch_summary['break_count']:
                     messages.success(request, "All breaks in this batch are complete!")
                 return redirect('repair_detail', repair_id=updated_repair.id)

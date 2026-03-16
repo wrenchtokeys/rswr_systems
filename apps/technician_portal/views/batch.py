@@ -30,9 +30,11 @@ def technician_batch_detail(request, batch_id):
     # Admins/owners without a Technician profile are allowed by @technician_required;
     # guard with getattr to avoid RelatedObjectDoesNotExist for those users.
     technician = getattr(request.user, 'technician', None)
-    user_is_admin = is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None))
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
-    batch_summary = Repair.get_batch_summary(batch_id)
+    # Pass tenant so cross-tenant batch access is blocked at the DB layer.
+    batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
     if not batch_summary:
         messages.error(request, "Batch not found.")
         return redirect('technician_dashboard')
@@ -91,8 +93,9 @@ def technician_batch_start_work(request, batch_id):
     # Guard: admin/owner users without a Technician record are allowed through
     # @technician_required but don't have a .technician reverse relation.
     technician = getattr(request.user, 'technician', None)
+    tenant = getattr(request, 'tenant', None)
 
-    batch_summary = Repair.get_batch_summary(batch_id)
+    batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
     if not batch_summary:
         messages.error(request, "Batch not found.")
         return redirect('technician_dashboard')
