@@ -30,7 +30,7 @@ from unittest.mock import patch, MagicMock
 
 from django.test import TestCase, RequestFactory, override_settings
 from django.contrib.auth.models import User
-from django.contrib.messages.storage.fallback import FallbackStorage
+from django.contrib.messages.storage.cookie import CookieStorage
 from django.utils import timezone
 
 from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
@@ -40,8 +40,7 @@ from apps.customer_portal.models import Customer, CustomerUser
 
 TEST_OVERRIDES = {
     'ALLOWED_HOSTS': ['*'],
-    'SESSION_ENGINE': 'django.contrib.sessions.backends.db',
-    'MESSAGE_STORAGE': 'django.contrib.messages.storage.fallback.FallbackStorage',
+    'MESSAGE_STORAGE': 'django.contrib.messages.storage.cookie.CookieStorage',
     'EMAIL_BACKEND': 'django.core.mail.backends.locmem.EmailBackend',
 }
 
@@ -112,8 +111,8 @@ def _make_invoice(tenant, customer, status='SENT', amount_paid=Decimal('0.00'),
 
 
 def _add_messages(request):
-    """Attach FallbackStorage so django.messages works on a bare RequestFactory request."""
-    setattr(request, '_messages', FallbackStorage(request))
+    """Attach CookieStorage so django.messages works on a bare RequestFactory request."""
+    setattr(request, '_messages', CookieStorage(request))
 
 
 def _post_request(user, invoice_id, tenant=None):
