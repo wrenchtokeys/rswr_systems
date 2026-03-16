@@ -1287,3 +1287,96 @@ class TechnicianPortalBatchTestCase(TestCase):
         # Check batch context is displayed
         self.assertContains(response, 'Part of Multi-Break Batch')
         self.assertContains(response, 'Break 1 of 3')
+
+
+class AdminPriceOverrideMultiBreakTestCase(TestCase):
+    """
+    Regression tests for CODE-042: create_multi_break_repair checked the assigned
+    technician's override permissions instead of the requesting user's permissions.
+
+    An admin assigning a repair to a plain (non-manager) tech was incorrectly blocked
+    from overriding prices because technician.is_manager was False.
+    """
+
+    def setUp(self):
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial', defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True}
+        )
+        # Shop owner (admin)
+        self.owner_user = User.objects.create_user(username='code042_owner', password='testpass123')
+        self.tenant = Tenant.objects.create(
+            name='Code042 Shop', slug='code042-shop', subdomain='code042-shop',
+            owner=self.owner_user, plan='trial', subscription_plan=plan,
+        )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.owner_user, role='owner')
+
+        self.customer = Customer.objects.create(
+            name="Code042 Fleet",
+            address="42 Test Ave",
+            email="code042@example.com",
+            tenant=self.tenant,
+        )
+
+        # Plain technician (non-manager, no override rights)
+        self.tech_user = User.objects.create_user(username='code042_tech', password='testpass123')
+        self.technician = Technician.objects.create(
+            user=self.tech_user,
+            phone_number='555-0420',
+            is_manager=False,
+            can_override_pricing=False,
+            tenant=self.tenant,
+        )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.tech_user, role='technician')
+
+    def _post_batch(self, user, unit, override=None, reason=None, tech_id=None):
+        """Helper to POST a single-break batch."""
+        self.client.login(username=user.username, password='testpass123')
+        data = {
+            'customer': self.customer.id,
+            'unit_number': unit,
+            'repair_date': '2026-03-16T10:00:00',
+            'breaks_count': 1,
+            'breaks[0][damage_type]': 'chip',
+            'breaks[0][notes]': 'test',
+        }
+        if override:
+            data['breaks[0][cost_override]'] = override
+        if reason:
+            data['breaks[0][override_reason]'] = reason
+        if tech_id:
+            data['technician_id'] = tech_id
+        resp = self.client.post('/tech/repairs/create-multi-break/', data)
+        return resp
+
+    def test_admin_can_override_price_when_assigning_to_non_manager_tech(self):
+        """
+        CODE-042: Admin posting a price override while assigning to a plain tech
+        should succeed. Before the fix, it was blocked because `technician.is_manager`
+        (the assigned tech, not the admin) was False.
+        """
+        resp = self._post_batch(
+            self.owner_user, 'C042-001', override='99.00', tech_id=self.technician.id
+        )
+        self.assertEqual(resp.status_code, 302, "Admin override should succeed (302 redirect)")
+        repair = Repair.objects.filter(customer=self.customer, unit_number='C042-001').first()
+        self.assertIsNotNone(repair, "Repair should have been created")
+        self.assertEqual(repair.cost, Decimal('99.00'))
+
+    def test_plain_tech_cannot_override_price(self):
+        """Non-manager technician must still be blocked from overriding prices."""
+        resp = self._post_batch(
+            self.tech_user, 'C042-002', override='99.00', reason='discount'
+        )
+        self.assertEqual(resp.status_code, 302)
+        count = Repair.objects.filter(customer=self.customer, unit_number='C042-002').count()
+        self.assertEqual(count, 0, "Repair must NOT be created for non-manager override attempt")
+
+    def test_admin_no_override_normal_pricing_works(self):
+        """Admin assigning to a non-manager tech with no override still creates the repair."""
+        resp = self._post_batch(
+            self.owner_user, 'C042-003', tech_id=self.technician.id
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(
+            Repair.objects.filter(customer=self.customer, unit_number='C042-003').exists()
+        )

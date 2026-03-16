@@ -17,6 +17,7 @@ from apps.technician_portal.models import Technician, Repair, UnitRepairCount, T
 from apps.customer_portal.models import CustomerRepairPreference
 from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
+from common.auth import get_user_role
 from apps.technician_portal.services.batch_pricing_service import calculate_batch_pricing
 from common.utils import convert_heic_to_jpeg
 
@@ -256,17 +257,32 @@ def create_multi_break_repair(request):
                     if cost_override:
                         try:
                             override_amount = Decimal(cost_override)
-                            if not (technician.is_manager and technician.can_override_pricing):
+                            # Determine the *requesting user's* role (not the assigned technician's).
+                            # Previously this checked `technician.is_manager` which is wrong when an
+                            # owner/admin assigns a repair to a plain tech: the assigned tech's
+                            # permissions were checked instead of the submitter's. (CODE-042)
+                            requesting_role = get_user_role(request.user, tenant=getattr(request, 'tenant', None))
+                            if requesting_role in ('superuser', 'owner'):
+                                # Owners/superusers can always override; no approval_limit applies.
+                                pass
+                            elif requesting_role == 'manager':
+                                # Managers: must have override permission, reason, and stay within limit.
+                                requesting_tech = getattr(request.user, 'technician', None)
+                                if not (requesting_tech and requesting_tech.can_override_pricing):
+                                    messages.error(request, f"Break {i+1}: You don't have permission to override prices.")
+                                    return redirect('create_multi_break_repair')
+                                if not override_reason:
+                                    messages.error(request, f"Break {i+1}: Override reason is required when setting a custom price.")
+                                    return redirect('create_multi_break_repair')
+                                if requesting_tech.approval_limit and override_amount > requesting_tech.approval_limit:
+                                    messages.error(
+                                        request,
+                                        f"Break {i+1}: Override amount ${override_amount} exceeds your approval limit of ${requesting_tech.approval_limit}."
+                                    )
+                                    return redirect('create_multi_break_repair')
+                            else:
+                                # Technicians and viewers cannot override pricing.
                                 messages.error(request, f"Break {i+1}: You don't have permission to override prices.")
-                                return redirect('create_multi_break_repair')
-                            if not override_reason:
-                                messages.error(request, f"Break {i+1}: Override reason is required when setting a custom price.")
-                                return redirect('create_multi_break_repair')
-                            if technician.approval_limit and override_amount > technician.approval_limit:
-                                messages.error(
-                                    request,
-                                    f"Break {i+1}: Override amount ${override_amount} exceeds your approval limit of ${technician.approval_limit}."
-                                )
                                 return redirect('create_multi_break_repair')
                             break_price = override_amount
                         except (ValueError, InvalidOperation):
