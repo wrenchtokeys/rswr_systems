@@ -85,98 +85,124 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('✅ Billing processing complete'))
         self.stdout.write(f"{'='*60}\n")
     
+    def _get_active_tenants(self):
+        """Return all active Tenant objects."""
+        from apps.tenants.models import Tenant
+        return Tenant.objects.filter(is_active=True)
+
     def _check_overdue(self):
-        """Mark invoices as overdue if past due date."""
+        """Mark invoices as overdue if past due date — runs per tenant."""
         from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
         
         self.stdout.write("\n📅 Checking for overdue invoices...")
         
-        service = InvoiceTrackingService()
-        updated = service.update_overdue_statuses()
+        total_updated = 0
+        for tenant in self._get_active_tenants():
+            service = InvoiceTrackingService(tenant=tenant)
+            updated = service.update_overdue_statuses()
+            total_updated += updated
+            if updated:
+                self.stdout.write(f"   [{tenant.name}] ⚠️ {updated} invoice(s) marked OVERDUE")
         
-        if updated:
-            self.stdout.write(self.style.WARNING(f"   ⚠️ {updated} invoice(s) marked OVERDUE"))
+        if total_updated:
+            self.stdout.write(self.style.WARNING(f"   Total: {total_updated} invoice(s) marked OVERDUE"))
         else:
             self.stdout.write(self.style.SUCCESS("   ✅ No new overdue invoices"))
     
     def _send_reminders(self):
-        """Send payment reminders."""
+        """Send payment reminders — runs per tenant."""
         from apps.billing.services.reminder_service import ReminderService
         
         self.stdout.write("\n📧 Processing payment reminders...")
         
-        service = ReminderService()
+        total_sent = 0
+        total_errors = 0
         
-        due_soon = service.process_due_soon_reminders()
-        overdue = service.process_overdue_reminders()
-        
-        total_sent = due_soon['sent'] + overdue['sent']
-        total_errors = due_soon['errors'] + overdue['errors']
+        for tenant in self._get_active_tenants():
+            service = ReminderService(tenant=tenant)
+            
+            due_soon = service.process_due_soon_reminders()
+            overdue = service.process_overdue_reminders()
+            
+            tenant_sent = due_soon['sent'] + overdue['sent']
+            tenant_errors = due_soon['errors'] + overdue['errors']
+            total_sent += tenant_sent
+            total_errors += tenant_errors
+            
+            if tenant_sent:
+                self.stdout.write(f"   [{tenant.name}] 📨 {tenant_sent} reminder(s) sent")
         
         if total_sent:
-            self.stdout.write(self.style.SUCCESS(f"   📨 Sent {total_sent} reminder(s)"))
+            self.stdout.write(self.style.SUCCESS(f"   Total: {total_sent} reminder(s) sent"))
         if total_errors:
-            self.stdout.write(self.style.ERROR(f"   ❌ {total_errors} error(s)"))
+            self.stdout.write(self.style.ERROR(f"   Total errors: {total_errors}"))
         if total_sent == 0 and total_errors == 0:
             self.stdout.write("   No reminders needed today")
     
     def _batch_invoices(self):
-        """Generate invoices for batch customers with pending repairs."""
+        """Generate invoices for batch customers with pending repairs — runs per tenant."""
         from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
         from apps.customer_portal.models import CustomerRepairPreference
         
         self.stdout.write("\n📋 Checking batch invoice customers...")
         
-        tracking = InvoiceTrackingService()
-        
-        # Find batch customers with uninvoiced repairs
-        batch_prefs = CustomerRepairPreference.objects.filter(
-            invoice_preference='batch'
-        ).select_related('customer')
-        
         invoiced_count = 0
         
-        for pref in batch_prefs:
-            uninvoiced = list(tracking.get_uninvoiced_repairs(pref.customer))
+        for tenant in self._get_active_tenants():
+            tracking = InvoiceTrackingService(tenant=tenant)
             
-            if len(uninvoiced) >= 10:  # Auto-batch at 10+ repairs
-                try:
-                    invoice = tracking.create_invoice_from_repairs(
-                        customer=pref.customer,
-                        repairs=uninvoiced,
-                        auto_send=True,
-                    )
-                    invoiced_count += 1
+            # Find batch customers with uninvoiced repairs for THIS tenant
+            batch_prefs = CustomerRepairPreference.objects.filter(
+                invoice_preference='batch',
+                customer__tenant=tenant,
+            ).select_related('customer')
+            
+            for pref in batch_prefs:
+                uninvoiced = list(tracking.get_uninvoiced_repairs(pref.customer))
+                
+                if len(uninvoiced) >= 10:  # Auto-batch at 10+ repairs
+                    try:
+                        invoice = tracking.create_invoice_from_repairs(
+                            customer=pref.customer,
+                            repairs=uninvoiced,
+                            auto_send=True,
+                        )
+                        invoiced_count += 1
+                        self.stdout.write(
+                            f"   [{tenant.name}] 📄 {pref.customer.name}: "
+                            f"{len(uninvoiced)} repairs → {invoice.invoice_number} (${invoice.total})"
+                        )
+                    except Exception as e:
+                        self.stdout.write(self.style.ERROR(
+                            f"   [{tenant.name}] ❌ {pref.customer.name}: Error - {e}"
+                        ))
+                elif len(uninvoiced) > 0:
                     self.stdout.write(
-                        f"   📄 {pref.customer.name}: {len(uninvoiced)} repairs → "
-                        f"{invoice.invoice_number} (${invoice.total})"
+                        f"   [{tenant.name}] ⏳ {pref.customer.name}: {len(uninvoiced)} repairs waiting "
+                        f"(threshold: 10)"
                     )
-                except Exception as e:
-                    self.stdout.write(self.style.ERROR(
-                        f"   ❌ {pref.customer.name}: Error - {e}"
-                    ))
-            elif len(uninvoiced) > 0:
-                self.stdout.write(
-                    f"   ⏳ {pref.customer.name}: {len(uninvoiced)} repairs waiting "
-                    f"(threshold: 10)"
-                )
         
         if invoiced_count == 0:
             self.stdout.write("   No batch invoices generated")
     
     def _daily_report(self):
-        """Print daily report summary."""
+        """Print daily report summary — runs per tenant."""
         from apps.billing.services.report_service import ReportService
         
         self.stdout.write("\n📊 Daily Report...")
         
-        service = ReportService()
-        report = service.generate_daily_report(timezone.now().date())
-        
-        self.stdout.write(f"\n{report['summary']}")
-        self.stdout.write(f"\n   Outstanding: ${report['outstanding']['total']:,.2f} ({report['outstanding']['count']} invoices)")
-        
-        if report['overdue']['count'] > 0:
-            self.stdout.write(self.style.WARNING(
-                f"   Overdue: ${report['overdue']['total']:,.2f} ({report['overdue']['count']} invoices)"
-            ))
+        for tenant in self._get_active_tenants():
+            service = ReportService(tenant=tenant)
+            report = service.generate_daily_report(timezone.now().date())
+            
+            self.stdout.write(f"\n  [{tenant.name}] {report['summary']}")
+            self.stdout.write(
+                f"   Outstanding: ${report['outstanding']['total']:,.2f} "
+                f"({report['outstanding']['count']} invoices)"
+            )
+            
+            if report['overdue']['count'] > 0:
+                self.stdout.write(self.style.WARNING(
+                    f"   Overdue: ${report['overdue']['total']:,.2f} "
+                    f"({report['overdue']['count']} invoices)"
+                ))
