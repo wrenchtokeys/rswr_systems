@@ -971,7 +971,117 @@ def billing_portal_redirect(request):
 
 
 # ------------------------------------------------------------------
-# 9. Owner Settings
+# 9. Stripe Connect (Receive Invoice Payments)
+# ------------------------------------------------------------------
+
+@owner_or_manager_required
+def connect_setup(request):
+    """POST /owner/payments/setup/ — start Stripe Connect onboarding."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role != 'owner':
+        messages.error(request, 'Only the shop owner can set up payment processing.')
+        return redirect('owner_dashboard')
+
+    if request.method != 'POST':
+        # GET — show the setup page with current status
+        return render(request, 'saas/connect_setup.html', {
+            'tenant': tenant,
+            'membership': membership,
+        })
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    if not svc.is_enabled():
+        messages.error(request, 'Payment processing is not available at this time.')
+        return redirect('billing_settings')
+
+    try:
+        return_url = request.build_absolute_uri('/owner/payments/setup/return/')
+        refresh_url = request.build_absolute_uri('/owner/payments/setup/refresh/')
+        onboarding_url = svc.create_connect_account(tenant, return_url, refresh_url)
+        return redirect(onboarding_url)
+    except ConnectError as e:
+        messages.error(request, f'Failed to start payment setup: {e}')
+        return redirect('billing_settings')
+
+
+@owner_or_manager_required
+def connect_return(request):
+    """GET /owner/payments/setup/return/ — user returned from Stripe onboarding."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('owner_dashboard')
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    try:
+        status = svc.sync_account_status(tenant)
+        if status.get('charges_enabled'):
+            messages.success(
+                request,
+                '✅ Payment processing is set up! Your customers can now pay invoices '
+                'online and funds will go directly to your bank account.'
+            )
+        elif status.get('details_submitted'):
+            messages.info(
+                request,
+                'Your information has been submitted. Stripe is reviewing your account — '
+                'this usually takes 1-2 business days. We\'ll notify you when it\'s ready.'
+            )
+        else:
+            messages.warning(
+                request,
+                'It looks like you didn\'t complete all the setup steps. '
+                'Click "Set Up Payments" to continue where you left off.'
+            )
+    except ConnectError as e:
+        messages.error(request, f'Error checking account status: {e}')
+
+    return redirect('billing_settings')
+
+
+@owner_or_manager_required
+def connect_refresh(request):
+    """GET /owner/payments/setup/refresh/ — onboarding link expired, create new one."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role != 'owner':
+        return redirect('billing_settings')
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    try:
+        return_url = request.build_absolute_uri('/owner/payments/setup/return/')
+        refresh_url = request.build_absolute_uri('/owner/payments/setup/refresh/')
+        onboarding_url = svc.create_connect_account(tenant, return_url, refresh_url)
+        return redirect(onboarding_url)
+    except ConnectError as e:
+        messages.error(request, f'Failed to restart payment setup: {e}')
+        return redirect('billing_settings')
+
+
+@owner_or_manager_required
+def connect_dashboard(request):
+    """GET /owner/payments/dashboard/ — redirect to Stripe Express Dashboard."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('owner_dashboard')
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    try:
+        dashboard_url = svc.create_login_link(tenant)
+        return redirect(dashboard_url)
+    except ConnectError as e:
+        messages.error(request, f'Unable to access payment dashboard: {e}')
+        return redirect('billing_settings')
+
+
+# ------------------------------------------------------------------
+# 10. Owner Settings
 # ------------------------------------------------------------------
 
 @owner_or_manager_required

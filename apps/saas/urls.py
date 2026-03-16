@@ -28,6 +28,12 @@ urlpatterns = [
     path('owner/billing/', views.billing_view, name='billing_settings'),
     path('owner/billing/update/', views.billing_update_plan, name='billing_update_plan'),
     path('owner/billing/cancel/', views.billing_cancel, name='billing_cancel'),
+
+    # Stripe Connect (receive invoice payments)
+    path('owner/payments/setup/', views.connect_setup, name='connect_setup'),
+    path('owner/payments/setup/return/', views.connect_return, name='connect_return'),
+    path('owner/payments/setup/refresh/', views.connect_refresh, name='connect_refresh'),
+    path('owner/payments/dashboard/', views.connect_dashboard, name='connect_dashboard'),
     path('owner/billing/portal/', views.billing_portal_redirect, name='billing_portal_redirect'),
 
     # Owner settings & team

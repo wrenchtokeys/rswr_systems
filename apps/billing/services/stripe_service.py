@@ -270,7 +270,12 @@ class StripeService:
         sub_result = handle_subscription_event(event_type, data)
         if sub_result.get('handled'):
             return sub_result
-        
+
+        # Stripe Connect account updates
+        if event_type == 'account.updated':
+            from apps.tenants.services.connect_service import handle_account_updated
+            return handle_account_updated(data)
+
         logger.debug(f"Unhandled webhook: {event_type}")
         return {'success': True, 'handled': False, 'event_type': event_type}
     

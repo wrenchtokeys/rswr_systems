@@ -194,7 +194,29 @@ class Tenant(models.Model):
         max_length=50, blank=True,
         help_text="Stripe Subscription ID for platform billing"
     )
-    
+
+    # Stripe Connect — for receiving customer invoice payments
+    stripe_connect_account_id = models.CharField(
+        max_length=50, blank=True,
+        help_text="Stripe Connect Account ID (acct_...) for receiving invoice payments"
+    )
+    stripe_connect_onboarding_complete = models.BooleanField(
+        default=False,
+        help_text="Whether Stripe Connect onboarding (KYC, bank account) is fully complete"
+    )
+    stripe_connect_charges_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the connected account can accept charges"
+    )
+    stripe_connect_payouts_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the connected account can receive payouts to their bank"
+    )
+    platform_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text="Platform fee percentage on invoice payments (e.g., 2.00 for 2%)"
+    )
+
     # Plan (for Phase 3 billing)
     plan = models.CharField(
         max_length=20,
@@ -324,6 +346,22 @@ class Tenant(models.Model):
     def had_paid_subscription(self):
         """True if this tenant ever had a paid Stripe subscription."""
         return bool(self.stripe_subscription_id)
+
+    @property
+    def can_accept_payments(self):
+        """True if this tenant's Stripe Connect account can accept invoice payments."""
+        return (
+            bool(self.stripe_connect_account_id)
+            and self.stripe_connect_charges_enabled
+        )
+
+    @property
+    def can_receive_payouts(self):
+        """True if this tenant's Stripe Connect account can pay out to their bank."""
+        return (
+            bool(self.stripe_connect_account_id)
+            and self.stripe_connect_payouts_enabled
+        )
 
 
 class TenantMembership(models.Model):

@@ -260,7 +260,14 @@ def create_invoice(request, customer_id):
             from apps.billing.services.stripe_service import StripeService
             stripe_svc = StripeService()
             if stripe_svc.is_enabled() and invoice.amount_due > 0:
-                stripe_result = stripe_svc.create_payment_link(invoice)
+                # Use connected payment if tenant has Stripe Connect set up
+                if invoice.tenant and invoice.tenant.can_accept_payments:
+                    from apps.tenants.services.connect_service import ConnectService
+                    connect_svc = ConnectService()
+                    stripe_result = connect_svc.create_connected_payment_link(invoice)
+                # Fall back to platform payment link
+                if not stripe_result:
+                    stripe_result = stripe_svc.create_payment_link(invoice)
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Stripe link failed for {invoice.invoice_number}: {e}")
