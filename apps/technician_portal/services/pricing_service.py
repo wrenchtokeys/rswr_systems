@@ -172,7 +172,10 @@ def get_expected_repair_cost(customer: Customer, unit_number: str, tenant=None) 
         return calculate_repair_cost(customer, 1, tenant), 1
     
     # Fleet customers with progressive pricing enabled
+    # Include tenant in lookup so the created row is tenant-scoped (missing tenant
+    # caused NULL-tenant rows to be created, breaking TenantManager scoping).
     unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+        tenant=tenant,
         customer=customer,
         unit_number=unit_number,
         defaults={'repair_count': 0}

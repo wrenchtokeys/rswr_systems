@@ -237,7 +237,7 @@ def repair_detail(request, repair_id):
     next_break = None
     if repair.is_part_of_batch:
         try:
-            batch_summary = Repair.get_batch_summary(repair.repair_batch_id)
+            batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
             if batch_summary:
                 batch_info = batch_summary
                 incomplete_repairs = [
@@ -496,7 +496,7 @@ def update_repair(request, repair_id):
 
             # Batch navigation
             if updated_repair.repair_batch_id:
-                batch_summary = Repair.get_batch_summary(updated_repair.repair_batch_id)
+                batch_summary = Repair.get_batch_summary(updated_repair.repair_batch_id, tenant=tenant)
                 if batch_summary and batch_summary['completed_count'] == batch_summary['break_count']:
                     messages.success(request, "All breaks in this batch are complete!")
                 return redirect('repair_detail', repair_id=updated_repair.id)
@@ -747,9 +747,18 @@ def assign_repair(request, repair_id):
     else:
         manager = request.user.technician
         managed_techs = manager.managed_technicians.filter(is_active=True)
-        available_technicians = Technician.objects.filter(
+        # Always apply tenant filter as defense-in-depth so that even if a
+        # cross-tenant tech somehow ended up in managed_technicians (e.g. via
+        # admin bypass or direct DB edit), they cannot appear in the assign
+        # dropdown and cannot be assigned to this shop's repairs.
+        tech_qs = Technician.objects.filter(
             Q(id=manager.id) | Q(id__in=managed_techs)
-        ).filter(is_active=True).order_by('user__first_name')
+        ).filter(is_active=True)
+        if tenant:
+            tech_qs = tech_qs.filter(tenant=tenant)
+        else:
+            tech_qs = tech_qs.none()
+        available_technicians = tech_qs.order_by('user__first_name')
 
     return render(request, 'technician_portal/assign_repair.html', {
         'repair': repair,
@@ -862,17 +871,18 @@ def bulk_repair_action(request):
         messages.error(request, "Invalid request method.")
         return redirect('repair_list')
 
-    if not hasattr(request.user, 'technician'):
-        messages.error(request, "You don't have a technician profile.")
-        return redirect('technician_dashboard')
-
-    technician = request.user.technician
+    technician = getattr(request.user, 'technician', None)
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
 
-    # Only managers and admins can bulk-approve
-    if not is_admin and not technician.is_manager:
-        messages.error(request, "Only managers can perform bulk actions on repairs.")
-        return redirect('repair_list')
+    # Admins (owners/managers via TenantMembership) may not have a Technician record —
+    # that's fine.  Plain technicians without is_manager must be blocked.
+    if not is_admin:
+        if not technician:
+            messages.error(request, "You don't have a technician profile.")
+            return redirect('technician_dashboard')
+        if not technician.is_manager:
+            messages.error(request, "Only managers can perform bulk actions on repairs.")
+            return redirect('repair_list')
 
     action = request.POST.get('action')
     if action not in ['approve', 'deny']:
@@ -906,12 +916,19 @@ def bulk_repair_action(request):
 
         for repair in repairs:
             if action == 'approve':
-                # For REQUESTED repairs, assign to the acting technician
-                if repair.queue_status == 'REQUESTED' and not repair.technician:
+                # For REQUESTED repairs, assign to the acting technician (only if they have a
+                # Technician record — admin-only users may not have one).
+                if repair.queue_status == 'REQUESTED' and not repair.technician and technician:
                     repair.technician = technician
 
                 repair.queue_status = 'APPROVED'
                 repair.save()
+
+                # Build actor display name for audit notes
+                actor_name = (
+                    technician.user.get_full_name() if technician
+                    else request.user.get_full_name() or request.user.username
+                )
 
                 # Create approval record
                 customer_users = CustomerUser.objects.filter(customer=repair.customer)
@@ -926,7 +943,7 @@ def bulk_repair_action(request):
                             'approved': True,
                             'approved_by': customer_user,
                             'approval_date': timezone.now(),
-                            'notes': f'Bulk approved by technician {technician.user.get_full_name()}'
+                            'notes': f'Bulk approved by {actor_name}'
                         }
                     )
 
@@ -943,6 +960,12 @@ def bulk_repair_action(request):
                 repair.queue_status = 'DENIED'
                 repair.save()
 
+                # Build actor display name for audit notes
+                actor_name = (
+                    technician.user.get_full_name() if technician
+                    else request.user.get_full_name() or request.user.username
+                )
+
                 # Create denial record
                 customer_users = CustomerUser.objects.filter(customer=repair.customer)
                 customer_user = customer_users.filter(is_primary_contact=True).first()
@@ -956,7 +979,7 @@ def bulk_repair_action(request):
                             'approved': False,
                             'approved_by': customer_user,
                             'approval_date': timezone.now(),
-                            'notes': f'Bulk denied by technician {technician.user.get_full_name()}'
+                            'notes': f'Bulk denied by {actor_name}'
                         }
                     )
 

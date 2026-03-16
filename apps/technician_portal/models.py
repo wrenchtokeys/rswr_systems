@@ -543,8 +543,14 @@ class Repair(GlassService):
                     # No preferences set - default to requiring approval
                     pass
 
-            # Get or create the unit repair count
+            # Get or create the unit repair count.
+            # IMPORTANT: include tenant in the lookup so the created row is
+            # tenant-scoped.  Omitting tenant caused new rows to be saved with
+            # tenant=NULL (the field is nullable for migration compat), which
+            # breaks TenantManager scoping and could produce duplicate NULL-tenant
+            # rows on PostgreSQL (where NULL != NULL in unique constraints).
             unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+                tenant=self.tenant,
                 customer=self.customer,
                 unit_number=self.unit_number,
                 defaults={'repair_count': 0}
@@ -750,22 +756,38 @@ class Repair(GlassService):
         return (self.repair_batch_id is not None and self.total_breaks_in_batch and self.total_breaks_in_batch > 1) or self.is_multi_break_estimate
 
     @classmethod
-    def get_batch_repairs(cls, batch_id):
-        """Get all repairs in a batch, ordered by break number."""
+    def get_batch_repairs(cls, batch_id, tenant=None):
+        """Get all repairs in a batch, ordered by break number.
+
+        Args:
+            batch_id: UUID of the batch.
+            tenant: Tenant instance to scope the lookup. When provided, only repairs
+                    belonging to that tenant are returned. Callers with a request
+                    context SHOULD pass ``tenant`` to prevent cross-tenant batch
+                    access (IDOR via batch UUID).
+        """
         if not batch_id:
             return cls.objects.none()
-        return cls.objects.filter(repair_batch_id=batch_id).order_by('break_number')
+        qs = cls.objects.filter(repair_batch_id=batch_id)
+        if tenant is not None:
+            qs = qs.filter(tenant=tenant)
+        return qs.order_by('break_number')
 
     @classmethod
-    def get_batch_summary(cls, batch_id):
+    def get_batch_summary(cls, batch_id, tenant=None):
         """
         Get summary information for a batch of repairs.
         Returns dict with: total_cost, break_count, unit_number, customer, statuses, all_repairs
+
+        Args:
+            batch_id: UUID of the batch.
+            tenant: Tenant instance to scope the lookup. Pass this whenever a request
+                    context is available so cross-tenant batch access is impossible.
         """
         if not batch_id:
             return None
 
-        repairs = cls.get_batch_repairs(batch_id)
+        repairs = cls.get_batch_repairs(batch_id, tenant=tenant)
         if not repairs.exists():
             return None
 

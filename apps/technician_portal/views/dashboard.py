@@ -98,7 +98,7 @@ def technician_dashboard(request):
             if repair.is_part_of_batch:
                 if repair.repair_batch_id not in batch_repairs_approved:
                     try:
-                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id)
+                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
                         if batch_summary:
                             batch_repairs_approved[repair.repair_batch_id] = batch_summary
                     except Exception as e:
@@ -121,7 +121,7 @@ def technician_dashboard(request):
             if repair.is_part_of_batch:
                 if repair.repair_batch_id not in batch_repairs_in_progress:
                     try:
-                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id)
+                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
                         if batch_summary:
                             incomplete_count = batch_summary.get('in_progress_count', 0) + batch_summary.get('approved_count', 0)
                             if incomplete_count > 0 and repair.repair_batch_id not in batch_repairs_approved:
@@ -148,7 +148,7 @@ def technician_dashboard(request):
             if repair.is_part_of_batch:
                 if repair.repair_batch_id not in batch_repairs_completed:
                     try:
-                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id)
+                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
                         if batch_summary:
                             if batch_summary.get('completed_count', 0) == batch_summary.get('break_count', 0):
                                 batch_repairs_completed[repair.repair_batch_id] = batch_summary

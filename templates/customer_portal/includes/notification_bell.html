@@ -116,8 +116,11 @@
         }
     });
 
-    // Get CSRF token
+    // Get CSRF token — from hidden form field first (works with httpOnly cookies),
+    // falls back to cookie for non-httpOnly environments
     function getCookie(name) {
+        const formEl = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (formEl) return formEl.value;
         let cookieValue = null;
         if (document.cookie && document.cookie !== '') {
             const cookies = document.cookie.split(';');

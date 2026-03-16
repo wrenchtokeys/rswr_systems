@@ -1,0 +1,189 @@
+{% extends "saas/base_owner.html" %}
+
+{% block title %}Payment Processing | {{ tenant.name }} | RS Systems{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Accept Payments</h1>
+        <p class="text-gray-500 mt-1">Set up online payment processing so your customers can pay invoices directly</p>
+    </div>
+
+    {% if tenant.stripe_connect_onboarding_complete and tenant.stripe_connect_charges_enabled %}
+    <!-- Fully Set Up -->
+    <div class="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start gap-4">
+            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-check-circle text-green-600 text-xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-green-900">Payment Processing Active</h2>
+                <p class="text-green-700 mt-1">
+                    Your account is fully set up. Customer invoice payments are routed directly to your bank account.
+                </p>
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <i class="fas fa-check mr-1"></i> Charges enabled
+                    </span>
+                    {% if tenant.stripe_connect_payouts_enabled %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <i class="fas fa-check mr-1"></i> Payouts enabled
+                    </span>
+                    {% endif %}
+                    {% if tenant.platform_fee_percent > 0 %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                        Platform fee: {{ tenant.platform_fee_percent }}%
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="mt-4">
+                    <form method="post" action="{% url 'connect_dashboard' %}">
+                        {% csrf_token %}
+                        <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors">
+                            <i class="fas fa-external-link-alt mr-2"></i> View Stripe Dashboard
+                        </a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% elif tenant.stripe_connect_account_id and tenant.stripe_connect_onboarding_complete %}
+    <!-- Onboarding submitted, waiting for verification -->
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start gap-4">
+            <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-clock text-amber-600 text-xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-amber-900">Verification In Progress</h2>
+                <p class="text-amber-700 mt-1">
+                    Your information has been submitted to Stripe. Verification usually takes 1-2 business days.
+                    We'll update your status automatically.
+                </p>
+                <div class="mt-4">
+                    <form method="post" action="{% url 'connect_setup' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors">
+                            <i class="fas fa-redo mr-2"></i> Check Status
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% elif tenant.stripe_connect_account_id %}
+    <!-- Account created but onboarding incomplete -->
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start gap-4">
+            <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-exclamation-triangle text-amber-600 text-xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-amber-900">Setup Incomplete</h2>
+                <p class="text-amber-700 mt-1">
+                    You started setting up payment processing but didn't finish. Click below to continue where you left off.
+                </p>
+                <div class="mt-4">
+                    <form method="post" action="{% url 'connect_setup' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-arrow-right mr-2"></i> Continue Setup
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- Not started -->
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <!-- Hero -->
+        <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                    <i class="fas fa-credit-card text-2xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold">Get paid faster</h2>
+                    <p class="text-blue-100 mt-1">Let your customers pay invoices online with credit card, bank transfer, and more</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6">
+            <!-- Benefits -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-bolt text-green-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Instant payments</p>
+                        <p class="text-xs text-gray-500">Customers pay with one click from their invoice email</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-university text-blue-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Direct to your bank</p>
+                        <p class="text-xs text-gray-500">Funds go straight to your bank account — no middleman</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-shield-alt text-purple-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-gray-900">Powered by Stripe</p>
+                        <p class="text-xs text-gray-500">Enterprise-grade security and PCI compliance built in</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- How it works -->
+            <div class="border-t border-gray-100 pt-4 mb-6">
+                <h3 class="text-sm font-semibold text-gray-700 mb-3">How it works</h3>
+                <ol class="space-y-2 text-sm text-gray-600">
+                    <li class="flex items-start gap-2">
+                        <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
+                        <span>Click "Set Up Payments" — you'll be taken to Stripe to verify your identity and connect your bank account</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
+                        <span>Complete the setup (takes about 5 minutes) — Stripe handles all compliance</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</span>
+                        <span>That's it — invoices automatically include a "Pay Now" button that routes payments to your account</span>
+                    </li>
+                </ol>
+            </div>
+
+            <!-- CTA -->
+            <form method="post" action="{% url 'connect_setup' %}">
+                {% csrf_token %}
+                <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                    <i class="fas fa-credit-card mr-2"></i> Set Up Payments
+                </button>
+            </form>
+
+            <p class="text-xs text-gray-400 mt-3">
+                Powered by <a href="https://stripe.com" target="_blank" class="text-gray-500 hover:underline">Stripe</a>.
+                Standard processing fees apply (2.9% + $0.30 per transaction).
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="mt-6">
+        <a href="{% url 'billing_settings' %}" class="text-sm text-gray-500 hover:text-gray-700">
+            <i class="fas fa-arrow-left mr-1"></i> Back to Billing
+        </a>
+    </div>
+</div>
+{% endblock %}

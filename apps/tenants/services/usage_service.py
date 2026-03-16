@@ -53,10 +53,17 @@ class UsageService:
         return repairs + replacements
     
     def count_active_technicians(self):
-        """Count active technicians for this tenant."""
+        """Count active technicians for this tenant.
+
+        A technician is only counted if BOTH the Technician record AND
+        the underlying user account are active.  Deactivated technicians
+        (tech.is_active=False) must not consume plan seats so shop owners
+        can swap seasonal staff without hitting artificial seat limits.
+        """
         from apps.technician_portal.models import Technician
         return Technician.objects.filter(
             tenant=self.tenant,
+            is_active=True,
             user__is_active=True,
         ).count()
     

@@ -74,9 +74,10 @@ def rebuild_unit_repair_counts(customer):
     # Delete existing counts for this customer
     UnitRepairCount.objects.filter(customer=customer).delete()
     
-    # Create new counts
+    # Create new counts (include tenant so rows are properly scoped)
     for repair in repair_counts:
         UnitRepairCount.objects.create(
+            tenant=customer.tenant,
             customer=customer,
             unit_number=repair['unit_number'],
             repair_count=repair['count']
@@ -136,7 +137,7 @@ def customer_dashboard(request):
             if repair.is_part_of_batch:
                 # Only add batch summary once (for the first repair in batch we encounter)
                 if repair.repair_batch_id not in batch_repairs:
-                    batch_summary = Repair.get_batch_summary(repair.repair_batch_id)
+                    batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
                     if batch_summary:
                         batch_repairs[repair.repair_batch_id] = batch_summary
             else:
@@ -629,8 +630,9 @@ def customer_batch_detail(request, batch_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        # Get batch summary
-        batch_summary = Repair.get_batch_summary(batch_id)
+        # Scope batch lookup to this customer's tenant so cross-tenant batch
+        # access via guessed UUID is blocked at the DB layer.
+        batch_summary = Repair.get_batch_summary(batch_id, tenant=customer.tenant)
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
@@ -653,8 +655,8 @@ def customer_batch_approve(request, batch_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        # Get batch summary
-        batch_summary = Repair.get_batch_summary(batch_id)
+        # Scope to tenant to prevent cross-tenant IDOR via batch UUID.
+        batch_summary = Repair.get_batch_summary(batch_id, tenant=customer.tenant)
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
@@ -729,8 +731,8 @@ def customer_batch_deny(request, batch_id):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        # Get batch summary
-        batch_summary = Repair.get_batch_summary(batch_id)
+        # Scope to tenant to prevent cross-tenant IDOR via batch UUID.
+        batch_summary = Repair.get_batch_summary(batch_id, tenant=customer.tenant)
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")

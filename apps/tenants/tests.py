@@ -641,6 +641,24 @@ class UsageServiceTest(BaseTestCase):
         self.tech_user.save()
         self.assertEqual(self.usage.count_active_technicians(), 0)
 
+    def test_count_active_technicians_excludes_deactivated_tech_record(self):
+        """
+        Regression test for CODE-045: Technician.is_active=False must not count
+        toward plan seat limits even when the underlying user account is active.
+
+        Scenario: shop owner deactivates a seasonal technician via team management.
+        deactivate_team_member() sets tech.is_active=False + membership.is_active=False
+        but leaves user.is_active=True (the user account itself isn't deleted).
+        Before the fix, count_active_technicians() only checked user__is_active and
+        would still count this tech, blocking the owner from inviting a replacement.
+        """
+        from apps.technician_portal.models import Technician
+        # user account stays active, only Technician record is deactivated
+        Technician.objects.filter(user=self.tech_user, tenant=self.tenant).update(
+            is_active=False
+        )
+        self.assertEqual(self.usage.count_active_technicians(), 0)
+
     def test_count_customers(self):
         """Counts customers for tenant."""
         self.assertEqual(self.usage.count_customers(), 1)
