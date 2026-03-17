@@ -638,7 +638,14 @@ def update_queue_status(request, repair_id):
                             if requesting_role in ('superuser', 'owner'):
                                 override_allowed = True
                             elif requesting_role == 'manager':
-                                requesting_tech = getattr(request.user, 'technician', None)
+                                # Use tenant-scoped lookup to prevent a cross-tenant
+                                # manager from bleeding their can_override_pricing=True
+                                # into a shop where they're only a plain technician.
+                                # (CODE-059 cross-tenant fix; see also batch.py)
+                                requesting_tech = (
+                                    Technician.objects.filter(user=request.user, tenant=tenant).first()
+                                    if tenant else None
+                                )
                                 if requesting_tech and requesting_tech.can_override_pricing:
                                     if requesting_tech.approval_limit and override_amount > requesting_tech.approval_limit:
                                         messages.warning(

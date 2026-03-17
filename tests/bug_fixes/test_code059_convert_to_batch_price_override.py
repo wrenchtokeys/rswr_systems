@@ -176,14 +176,18 @@ class TestConvertToBatchPriceOverride(TestCase):
         )
 
     def _call_view(self, user, repair, override_cost=None, override_reason=None):
-        """POST to convert_to_batch with one extra break and optional price override."""
+        """POST to convert_to_batch with one extra break and optional price override.
+
+        The view iterates range(additional_breaks) so indices are 0-based.
+        """
         post_data = {
-            "damage_type_1": "CHIP",
+            "additional_breaks": "1",
+            "damage_type_0": "CHIP",
         }
         if override_cost is not None:
-            post_data["override_cost_1"] = str(override_cost)
+            post_data["override_cost_0"] = str(override_cost)
         if override_reason is not None:
-            post_data["override_reason_1"] = override_reason
+            post_data["override_reason_0"] = override_reason
 
         req = _make_request(self.factory, user, self.tenant_a, data=post_data)
         response = convert_to_batch(req, repair_id=repair.id)
