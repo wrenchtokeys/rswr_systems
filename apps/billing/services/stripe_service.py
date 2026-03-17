@@ -280,20 +280,46 @@ class StripeService:
         return {'success': True, 'handled': False, 'event_type': event_type}
     
     def _handle_checkout_completed(self, session):
-        """Customer completed a Checkout Session — record the payment."""
+        """Customer completed a Checkout Session — record the payment.
+
+        IMPORTANT: Stripe sends checkout.session.completed even when
+        payment_status='unpaid' (async payment methods like ACH/bank
+        transfer). In that case the money hasn't arrived yet and
+        payment_intent is None.
+
+        We must only record the payment when payment_status='paid'.
+        For 'unpaid' sessions the subsequent payment_intent.succeeded
+        event (fired when the money clears, possibly days later) is
+        the correct signal — and _handle_payment_succeeded will catch it.
+
+        Skipping unpaid sessions also prevents a double-recording bug:
+        if we naively recorded now with stripe_payment_id='' (None
+        coerced to empty string), the dedup guard in _record_stripe_payment
+        would not match the real pi_xxx id that arrives later, and the
+        invoice would be credited twice.
+        """
         metadata = session.get('metadata', {})
         invoice_id = metadata.get('rs_invoice_id')
-        
+
         if not invoice_id:
             logger.debug("No rs_invoice_id in checkout metadata")
             return {'success': True, 'handled': False}
-        
+
+        payment_status = session.get('payment_status', 'unpaid')
+        if payment_status != 'paid':
+            logger.info(
+                f"checkout.session.completed with payment_status={payment_status!r} "
+                f"for invoice {invoice_id} — deferring to payment_intent.succeeded"
+            )
+            return {'success': True, 'handled': False, 'deferred': True, 'reason': 'unpaid'}
+
         amount = Decimal(str(session.get('amount_total', 0))) / 100
-        
+        payment_intent_id = session.get('payment_intent') or ''
+
         return self._record_stripe_payment(
             invoice_id=invoice_id,
             amount=amount,
-            stripe_payment_id=session.get('payment_intent', ''),
+            stripe_payment_id=payment_intent_id,
             notes=f"Paid via Stripe Checkout ({session['id']})",
         )
     
