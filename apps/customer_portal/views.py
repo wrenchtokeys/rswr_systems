@@ -2425,13 +2425,26 @@ def customer_invoices(request):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        invoices = Invoice.objects.filter(
-            customer=customer
-        ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
+        invoices = list(
+            Invoice.objects.filter(
+                customer=customer
+            ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
+        )
+
+        # Pre-compute summary counts for the template — Django templates cannot
+        # increment counters (|add in a loop just renders "1" each iteration).
+        paid_count = sum(1 for inv in invoices if inv.status == 'PAID')
+        outstanding_count = sum(
+            1 for inv in invoices if inv.status in ('SENT', 'PARTIAL', 'OVERDUE')
+        )
+        overdue_count = sum(1 for inv in invoices if inv.status == 'OVERDUE')
 
         return render(request, 'customer_portal/invoices.html', {
             'invoices': invoices,
             'customer': customer,
+            'paid_count': paid_count,
+            'outstanding_count': outstanding_count,
+            'overdue_count': overdue_count,
         })
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")

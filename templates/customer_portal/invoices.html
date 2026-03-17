@@ -11,32 +11,22 @@
 {% if invoices %}
 <!-- Summary Cards -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    {% with total_outstanding=0 total_paid=0 overdue_count=0 %}
     <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="text-sm font-medium text-gray-500">Total Invoices</div>
         <div class="text-2xl font-bold text-gray-900 mt-1">{{ invoices|length }}</div>
     </div>
     <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="text-sm font-medium text-gray-500">Paid</div>
-        <div class="text-2xl font-bold text-green-600 mt-1">
-            {% with paid_count=0 %}
-            {% for inv in invoices %}{% if inv.status == 'PAID' %}{{ paid_count|add:"1" }}{% endif %}{% endfor %}
-            {% endwith %}
-        </div>
+        <div class="text-2xl font-bold text-green-600 mt-1">{{ paid_count }}</div>
     </div>
     <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="text-sm font-medium text-gray-500">Outstanding</div>
-        <div class="text-2xl font-bold text-blue-600 mt-1">
-            {% for inv in invoices %}{% if inv.status == 'SENT' or inv.status == 'PARTIAL' or inv.status == 'OVERDUE' %}{{ outstanding_count|add:"1" }}{% endif %}{% endfor %}
-        </div>
+        <div class="text-2xl font-bold text-blue-600 mt-1">{{ outstanding_count }}</div>
     </div>
     <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="text-sm font-medium text-gray-500">Overdue</div>
-        <div class="text-2xl font-bold text-red-600 mt-1">
-            {% for inv in invoices %}{% if inv.status == 'OVERDUE' %}{{ overdue_count|add:"1" }}{% endif %}{% endfor %}
-        </div>
+        <div class="text-2xl font-bold text-red-600 mt-1">{{ overdue_count }}</div>
     </div>
-    {% endwith %}
 </div>
 
 <!-- Invoice Table -->
