@@ -362,6 +362,24 @@ class RepairSerializer(serializers.ModelSerializer):
 
 ## Data Models and Business Logic
 
+### Soft-Delete Pattern
+
+Repairs and Invoices support soft-deletion. A `deleted_at` timestamp marks a record as deleted without removing it from the database.
+
+**Default manager automatically filters deleted records:**
+
+```python
+# Normal usage — deleted records invisible
+repairs = Repair.objects.filter(tenant=tenant)  # excludes deleted_at__isnull=False
+
+# Access deleted records explicitly
+deleted = Repair.all_objects.filter(tenant=tenant, deleted_at__isnull=False)
+```
+
+**Never filter `deleted_at` manually in views** — the default manager handles it. Only use `all_objects` when you intentionally need deleted records (archived page, restore logic, purge command).
+
+See [SOFT_DELETE.md](./SOFT_DELETE.md) for full documentation.
+
 ### Repair Workflow Implementation
 
 #### Load-Balanced Assignment Algorithm

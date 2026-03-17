@@ -270,6 +270,15 @@ class BillingConfig(models.Model):
 # INVOICE
 # =============================================================================
 
+class InvoiceSoftDeleteManager(TenantManager):
+    """
+    Default manager for Invoice — automatically excludes soft-deleted records.
+    Use Invoice.all_objects for unfiltered access (including deleted).
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class Invoice(models.Model):
     """
     Tracks invoices sent to customers.
@@ -389,16 +398,24 @@ class Invoice(models.Model):
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Soft-delete — set to a timestamp to mark as deleted (not visible in default queryset)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this invoice is soft-deleted and excluded from normal querysets"
+    )
+
     # Notes
     notes = models.TextField(blank=True)
     internal_notes = models.TextField(
         blank=True,
         help_text="Internal notes (not shown to customer)"
     )
-    
-    # Tenant-aware manager
-    objects = TenantManager()
+
+    # Soft-delete manager (default — excludes deleted records)
+    objects = InvoiceSoftDeleteManager()
+    # Unfiltered manager — use when you need deleted records too
+    all_objects = TenantManager()
     
     class Meta:
         ordering = ['-invoice_date', '-created_at']

@@ -331,3 +331,28 @@ celery -A rs_systems beat -l info
 # Start Celery Worker
 celery -A rs_systems worker -l info
 ```
+
+---
+
+## Soft-Delete and Invoice Archiving
+
+Invoices can be soft-deleted as a side effect of deleting a repair. See [SOFT_DELETE.md](./SOFT_DELETE.md) for the full reference.
+
+### Key points for billing
+
+- When a repair is soft-deleted, any invoice that has a line item for that repair is also soft-deleted in the same atomic transaction
+- Soft-deleted invoices are **not counted** in AR aging, overdue reminders, or customer balance calculations
+- Restoring a repair automatically restores its linked invoices
+- Invoices are permanently purged after 30 days by the `purge_deleted_records` management command
+
+### What you cannot delete
+
+Repairs with **recorded payments** on any linked invoice cannot be soft-deleted. The system blocks deletion with an error:
+
+> "Cannot delete a repair with recorded payments"
+
+If you need to remove a paid repair, void the payment first (via Django admin or the payment management UI) before deleting the repair.
+
+### Invoice status after restore
+
+Restored invoices return with their original status (DRAFT, SENT, PAID, etc.). No status recalculation is performed automatically — review the invoice after restoring if needed.

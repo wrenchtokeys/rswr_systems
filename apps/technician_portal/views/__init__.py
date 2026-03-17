@@ -27,6 +27,9 @@ from .repairs import (
     check_existing_repair,
     bulk_repair_action,
     tech_collect_payment,
+    delete_repair,
+    restore_repair,
+    archived_repairs,
 )
 
 # Multi-break batch operations

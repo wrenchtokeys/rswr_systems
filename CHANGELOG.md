@@ -2,6 +2,28 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-03-17
+
+### Added (Soft-Delete for Repairs & Invoices)
+
+**Feature: Repairs and invoices can now be soft-deleted instead of permanently removed.**
+
+- **`Repair.deleted_at`** — new nullable `DateTimeField`; when set, the repair is excluded from all default querysets
+- **`Invoice.deleted_at`** — same pattern on Invoice model
+- **`RepairSoftDeleteManager` / `InvoiceSoftDeleteManager`** — default managers auto-filter `deleted_at__isnull=True`; use `Repair.all_objects` / `Invoice.all_objects` for unfiltered access
+- **`delete_repair` view** (`POST /tech/repairs/<id>/delete/`) — owner/manager only; blocks if any payment exists on a linked invoice; soft-deletes repair + cascades to linked invoices
+- **`restore_repair` view** (`POST /tech/repairs/<id>/restore/`) — owner/manager only; restores repair + its linked invoices; blocked after 30 days
+- **`archived_repairs` view** (`GET /tech/repairs/archived/`) — shows all soft-deleted repairs and invoices within the 30-day window with one-click restore
+- **Delete button** on `repair_detail.html` — visible to owners/managers only; triggers a confirmation modal before POSTing
+- **`purge_deleted_records` management command** — hard-deletes records older than `--days` (default 30); dry-run by default, use `--apply` to execute; handles PROTECT constraint by deleting `InvoiceLineItem` rows first
+- **Migrations**: `billing.0017_invoice_deleted_at`, `technician_portal.0034_repair_deleted_at`
+- **Docs**: `docs/SOFT_DELETE.md` — full reference for the feature
+
+### Technical
+- Cascade on delete: invoices with line items pointing to the deleted repair are soft-deleted in the same atomic transaction
+- Restore cascade: restoring a repair also restores `deleted_at__isnull=False` invoices linked to it
+- All existing querysets automatically exclude deleted records via the new default manager (no call-site changes needed)
+
 ## [Unreleased] — 2026-03-14 (2)
 
 ### Fixed (CODE-006 — Admin classes missing TenantFilterMixin / tenant visibility)

@@ -1149,3 +1149,138 @@ def tech_collect_payment(request, repair_id):
         messages.error(request, "An error occurred recording the payment. Please try again.")
 
     return redirect('repair_detail', repair_id=repair_id)
+
+
+# =============================================================================
+# SOFT-DELETE / RESTORE / ARCHIVED VIEWS
+# =============================================================================
+
+@technician_required
+def delete_repair(request, repair_id):
+    """
+    Soft-delete a repair. Owner/manager only.
+    Blocks deletion if any invoice linked to this repair has payments.
+    Also soft-deletes all invoices that have line items pointing to this repair.
+    POST only.
+    """
+    from django.views.decorators.http import require_POST
+    from apps.billing.models import Invoice, Payment
+
+    if request.method != 'POST':
+        return redirect('repair_detail', repair_id=repair_id)
+
+    tenant = getattr(request, 'tenant', None)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        messages.error(request, "Only owners and managers can delete repairs.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    qs = Repair.objects.filter(tenant=tenant) if tenant else Repair.objects.none()
+    repair = get_object_or_404(qs, id=repair_id)
+
+    # Check for payments on any invoice that has a line item for this repair
+    has_payments = Payment.objects.filter(
+        invoice__line_items__repair=repair
+    ).exists()
+    if has_payments:
+        messages.error(request, "Cannot delete a repair with recorded payments.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    customer_id = repair.customer_id
+
+    with transaction.atomic():
+        now = timezone.now()
+        repair.deleted_at = now
+        repair.save(update_fields=['deleted_at'])
+
+        # Soft-delete invoices that have line items for this repair
+        Invoice.objects.filter(
+            line_items__repair=repair
+        ).distinct().update(deleted_at=now)
+
+    messages.success(request, f"Repair #{repair.id} has been deleted.")
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+def restore_repair(request, repair_id):
+    """
+    Restore a soft-deleted repair. Owner/manager only.
+    Clears deleted_at on the repair and its invoices.
+    Only available within 30 days of deletion.
+    POST only.
+    """
+    from apps.billing.models import Invoice
+
+    if request.method != 'POST':
+        return redirect('archived_repairs')
+
+    tenant = getattr(request, 'tenant', None)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        messages.error(request, "Only owners and managers can restore repairs.")
+        return redirect('archived_repairs')
+
+    # Use all_objects to find deleted repairs
+    qs = Repair.all_objects.filter(tenant=tenant) if tenant else Repair.all_objects.none()
+    repair = get_object_or_404(qs, id=repair_id)
+
+    if repair.deleted_at is None:
+        messages.info(request, "That repair is not deleted.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    cutoff = timezone.now() - timezone.timedelta(days=30)
+    if repair.deleted_at < cutoff:
+        messages.error(request, "Cannot restore repairs deleted more than 30 days ago.")
+        return redirect('archived_repairs')
+
+    with transaction.atomic():
+        repair.deleted_at = None
+        repair.save(update_fields=['deleted_at'])
+
+        # Restore invoices that were soft-deleted along with this repair
+        Invoice.all_objects.filter(
+            line_items__repair=repair,
+            deleted_at__isnull=False
+        ).distinct().update(deleted_at=None)
+
+    messages.success(request, f"Repair #{repair.id} has been restored.")
+    return redirect('repair_detail', repair_id=repair_id)
+
+
+@technician_required
+def archived_repairs(request):
+    """
+    Archived (soft-deleted) repairs — owner/manager only.
+    Shows repairs deleted in the last 30 days with option to restore.
+    """
+    from apps.billing.models import Invoice
+
+    tenant = getattr(request, 'tenant', None)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        messages.error(request, "Only owners and managers can view archived repairs.")
+        return redirect('repair_list')
+
+    cutoff = timezone.now() - timezone.timedelta(days=30)
+
+    # Deleted repairs (within 30-day restore window)
+    deleted_repairs = Repair.all_objects.filter(
+        tenant=tenant,
+        deleted_at__isnull=False,
+        deleted_at__gte=cutoff
+    ).select_related('customer', 'technician').order_by('-deleted_at')
+
+    # Deleted invoices (within 30-day window)
+    deleted_invoices = Invoice.all_objects.filter(
+        tenant=tenant,
+        deleted_at__isnull=False,
+        deleted_at__gte=cutoff
+    ).select_related('customer').order_by('-deleted_at')
+
+    context = {
+        'deleted_repairs': deleted_repairs,
+        'deleted_invoices': deleted_invoices,
+        'is_admin': True,
+    }
+    return render(request, 'technician_portal/archived_repairs.html', context)
