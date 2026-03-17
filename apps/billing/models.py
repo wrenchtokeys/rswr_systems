@@ -12,7 +12,7 @@ Tracks:
 Author: Amelia (Clawdbot AI)
 """
 
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.core.validators import MinValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
@@ -585,15 +585,28 @@ class Payment(models.Model):
         self._update_invoice_totals()
     
     def _update_invoice_totals(self):
-        """Update the invoice's amount_paid and status."""
-        invoice = self.invoice
-        total_paid = invoice.payments.aggregate(
-            total=models.Sum('amount')
-        )['total'] or Decimal('0.00')
-        
-        invoice.amount_paid = total_paid
-        invoice.update_status()
-        invoice.save()
+        """
+        Update the invoice's amount_paid and status.
+
+        Uses SELECT FOR UPDATE to prevent a race condition where two concurrent
+        payments both read the same stale aggregate and one overwrites the
+        other's work, leaving amount_paid under-counted.
+
+        Example: customer pays via Stripe webhook AND a technician records a
+        cash payment at the same moment. Without the lock both transactions
+        would read the same SUM and the final write would lose one payment.
+        """
+        with transaction.atomic():
+            # Lock the invoice row for the duration of the read-aggregate-write
+            # sequence so concurrent payments serialise here instead of racing.
+            invoice = Invoice.objects.select_for_update().get(pk=self.invoice_id)
+            total_paid = invoice.payments.aggregate(
+                total=models.Sum('amount')
+            )['total'] or Decimal('0.00')
+
+            invoice.amount_paid = total_paid
+            invoice.update_status()
+            invoice.save()
 
 
 # =============================================================================
