@@ -2359,20 +2359,19 @@ def owner_send_invoice(request, invoice_id):
                 recipient = invoice.customer.email
             
             if recipient:
-                # Get repair IDs from line items
+                # Get repair IDs from line items (may be empty for replacement-only invoices).
+                # Pass None when empty so the service falls back to a time-window scan
+                # instead of silently skipping the email entirely (CODE-060 fix).
                 repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
                 
-                if repair_ids:
-                    success, msg = email_service.send_invoice_email(
-                        customer_id=invoice.customer.id,
-                        recipient_email=recipient,
-                        repair_ids=repair_ids,
-                    )
-                    email_sent = success
-                    if not success:
-                        logger.warning(f"Invoice email failed: {msg}")
-                else:
-                    logger.warning(f"No repair IDs found on invoice {invoice.invoice_number} for email")
+                success, msg = email_service.send_invoice_email(
+                    customer_id=invoice.customer.id,
+                    recipient_email=recipient,
+                    repair_ids=repair_ids if repair_ids else None,
+                )
+                email_sent = success
+                if not success:
+                    logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
         except Exception as e:
             logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
         
