@@ -510,6 +510,14 @@ def customer_repair_approve(request, repair_id):
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: only PENDING or REQUESTED repairs can be approved by the customer.
+        # The template hides the button for other statuses but there is no server-side
+        # check, so a direct POST could corrupt COMPLETED, IN_PROGRESS, or DENIED
+        # repairs by overwriting queue_status → 'APPROVED'. (CODE-061)
+        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+            messages.warning(request, "This repair cannot be approved — it is not pending approval.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
         
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
@@ -573,6 +581,13 @@ def customer_repair_deny(request, repair_id):
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: only PENDING or REQUESTED repairs can be denied by the customer.
+        # Without this check, a direct POST could flip a COMPLETED repair to DENIED,
+        # breaking invoicing and losing data. (CODE-061)
+        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+            messages.warning(request, "This repair cannot be denied — it is not pending approval.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
         
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
@@ -662,6 +677,15 @@ def customer_batch_approve(request, batch_id):
             messages.error(request, "Batch not found or you don't have access to it.")
             return redirect('customer_dashboard')
 
+        # Guard: batch can only be approved when ALL repairs are pending approval.
+        # Without this, a direct POST on a COMPLETED or DENIED batch would overwrite
+        # every repair's queue_status back to APPROVED. (CODE-061)
+        approvable_statuses = {'PENDING', 'REQUESTED'}
+        batch_statuses = set(batch_summary.get('statuses', []))
+        if not batch_statuses.issubset(approvable_statuses):
+            messages.warning(request, "This batch cannot be approved — not all repairs are pending approval.")
+            return redirect('customer_dashboard')
+
         if request.method == 'POST':
             repairs = batch_summary['all_repairs']
             approved_count = 0
@@ -736,6 +760,15 @@ def customer_batch_deny(request, batch_id):
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
+            return redirect('customer_dashboard')
+
+        # Guard: only deny batches that are still in a pending state.
+        # Without this, a direct POST on a COMPLETED batch would overwrite every
+        # repair's queue_status back to DENIED. (CODE-061)
+        deniable_statuses = {'PENDING', 'REQUESTED'}
+        batch_statuses = set(batch_summary.get('statuses', []))
+        if not batch_statuses.issubset(deniable_statuses):
+            messages.warning(request, "This batch cannot be denied — not all repairs are pending approval.")
             return redirect('customer_dashboard')
 
         if request.method == 'POST':
