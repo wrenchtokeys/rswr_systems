@@ -427,3 +427,278 @@ def handle_account_updated(event_data):
         'charges_enabled': status.get('charges_enabled'),
         'payouts_enabled': status.get('payouts_enabled'),
     }
+
+
+# ------------------------------------------------------------------
+# Module-level convenience functions (spec-required names)
+# ------------------------------------------------------------------
+
+def create_connect_account(tenant):
+    """
+    Create (or resume) a Stripe Express account for the tenant.
+
+    This is a module-level wrapper used by views.
+    Returns the Stripe account object.
+
+    Raises ConnectError on failure.
+    """
+    if not getattr(settings, 'STRIPE_SECRET_KEY', None):
+        raise ConnectError("Stripe is not configured")
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    try:
+        if not tenant.stripe_connect_account_id:
+            account = stripe.Account.create(
+                type='express',
+                country='US',
+                email=getattr(tenant, 'business_email', None) or None,
+                capabilities={
+                    'card_payments': {'requested': True},
+                    'transfers': {'requested': True},
+                },
+                metadata={
+                    'rs_tenant_id': str(tenant.id),
+                    'rs_tenant_slug': tenant.slug,
+                },
+            )
+            tenant.stripe_connect_account_id = account.id
+            tenant.stripe_onboarding_status = 'pending'
+            tenant.save(update_fields=[
+                'stripe_connect_account_id',
+                'stripe_onboarding_status',
+            ])
+            logger.info(f"Created Connect account {account.id} for {tenant.slug}")
+            return account
+        else:
+            return stripe.Account.retrieve(tenant.stripe_connect_account_id)
+    except stripe.error.StripeError as e:
+        logger.error(f"create_connect_account error for {tenant.slug}: {e}")
+        raise ConnectError(str(e))
+
+
+def create_account_link(tenant, return_url, refresh_url):
+    """
+    Create a Stripe AccountLink for (re)starting onboarding.
+
+    Returns the AccountLink URL string.
+    """
+    if not getattr(settings, 'STRIPE_SECRET_KEY', None):
+        raise ConnectError("Stripe is not configured")
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    if not tenant.stripe_connect_account_id:
+        raise ConnectError("No Stripe Connect account on this tenant — call create_connect_account first")
+
+    try:
+        link = stripe.AccountLink.create(
+            account=tenant.stripe_connect_account_id,
+            refresh_url=refresh_url,
+            return_url=return_url,
+            type='account_onboarding',
+        )
+        return link.url
+    except stripe.error.StripeError as e:
+        logger.error(f"create_account_link error for {tenant.slug}: {e}")
+        raise ConnectError(str(e))
+
+
+def handle_account_updated_webhook(account_data):
+    """
+    Handle account.updated webhook — update tenant stripe fields.
+
+    Updates stripe_onboarding_status, stripe_connect_charges_enabled,
+    stripe_connect_payouts_enabled, stripe_connect_onboarding_complete.
+
+    Args:
+        account_data: Stripe Account object (dict-like) from webhook event
+
+    Returns:
+        dict with success, handled, tenant, and status fields
+    """
+    from apps.tenants.models import Tenant
+
+    # Support both dict and Stripe object
+    if hasattr(account_data, 'get'):
+        account_id = account_data.get('id')
+        charges_enabled = account_data.get('charges_enabled', False)
+        payouts_enabled = account_data.get('payouts_enabled', False)
+        details_submitted = account_data.get('details_submitted', False)
+        requirements = account_data.get('requirements') or {}
+        if hasattr(requirements, 'get'):
+            disabled_reason = requirements.get('disabled_reason')
+        else:
+            disabled_reason = getattr(requirements, 'disabled_reason', None)
+    else:
+        account_id = getattr(account_data, 'id', None)
+        charges_enabled = getattr(account_data, 'charges_enabled', False)
+        payouts_enabled = getattr(account_data, 'payouts_enabled', False)
+        details_submitted = getattr(account_data, 'details_submitted', False)
+        requirements = getattr(account_data, 'requirements', None)
+        disabled_reason = getattr(requirements, 'disabled_reason', None) if requirements else None
+
+    if not account_id:
+        return {'success': False, 'error': 'No account ID in event data'}
+
+    try:
+        tenant = Tenant.objects.get(stripe_connect_account_id=account_id)
+    except Tenant.DoesNotExist:
+        logger.warning(f"account.updated for unknown account {account_id}")
+        return {'success': True, 'handled': False}
+
+    # Derive status
+    if charges_enabled and details_submitted:
+        new_status = 'restricted' if disabled_reason else 'active'
+    elif details_submitted:
+        new_status = 'in_review'
+    else:
+        new_status = 'pending'
+
+    old_status = tenant.stripe_onboarding_status
+
+    tenant.stripe_connect_charges_enabled = charges_enabled
+    tenant.stripe_connect_payouts_enabled = payouts_enabled
+    tenant.stripe_connect_onboarding_complete = details_submitted
+    tenant.stripe_onboarding_status = new_status
+
+    update_fields = [
+        'stripe_connect_charges_enabled',
+        'stripe_connect_payouts_enabled',
+        'stripe_connect_onboarding_complete',
+        'stripe_onboarding_status',
+    ]
+
+    if new_status == 'active' and old_status != 'active' and not tenant.stripe_connected_at:
+        tenant.stripe_connected_at = timezone.now()
+        update_fields.append('stripe_connected_at')
+
+    tenant.save(update_fields=update_fields)
+
+    logger.info(
+        f"handle_account_updated_webhook for {tenant.slug}: "
+        f"status={new_status}, charges={charges_enabled}, payouts={payouts_enabled}"
+    )
+
+    return {
+        'success': True,
+        'handled': True,
+        'tenant': tenant.slug,
+        'onboarding_status': new_status,
+        'charges_enabled': charges_enabled,
+        'payouts_enabled': payouts_enabled,
+    }
+
+
+def calculate_platform_fee(amount_cents, tenant):
+    """
+    Calculate platform fee in cents.
+
+    Priority:
+    1. Tenant-specific override (tenant.platform_fee_percent)
+    2. Global default (PlatformConfig.get_solo().default_fee_percent)
+    3. Fallback: 0
+
+    Args:
+        amount_cents: Payment amount in CENTS (int)
+        tenant: Tenant model instance
+
+    Returns:
+        int: Platform fee in cents (never negative)
+    """
+    from apps.billing.models import PlatformConfig
+
+    fee_percent = getattr(tenant, 'platform_fee_percent', None)
+    if fee_percent is None:
+        config = PlatformConfig.get_solo()
+        fee_percent = config.default_fee_percent
+
+    if not fee_percent or fee_percent <= 0:
+        return 0
+
+    fee = int(amount_cents * Decimal(str(fee_percent)) / 100)
+    return max(fee, 0)
+
+
+def create_direct_charge_session(invoice, success_url, cancel_url):
+    """
+    Create a Stripe Checkout Session via direct charge on the tenant's connected account.
+
+    HARD BLOCK: Raises ConnectError if tenant has no active Connect account
+    (stripe_onboarding_status != 'active' OR not stripe_connect_charges_enabled).
+
+    Args:
+        invoice: Invoice model instance
+        success_url: Redirect URL on success
+        cancel_url: Redirect URL on cancel
+
+    Returns:
+        Stripe checkout.Session object
+
+    Raises:
+        ConnectError if tenant cannot accept payments
+    """
+    tenant = invoice.tenant
+    if not tenant:
+        raise ConnectError("Invoice has no tenant")
+
+    # Validate Connect status BEFORE checking Stripe config (fail fast with clear error)
+    if tenant.stripe_onboarding_status != 'active':
+        raise ConnectError(
+            f"Tenant '{tenant.name}' Stripe Connect is not active "
+            f"(status: {tenant.stripe_onboarding_status}). "
+            f"Complete onboarding before accepting online payments."
+        )
+
+    if not tenant.stripe_connect_charges_enabled:
+        raise ConnectError(
+            f"Tenant '{tenant.name}' cannot accept charges. "
+            f"Stripe Connect charges are not enabled."
+        )
+
+    if not getattr(settings, 'STRIPE_SECRET_KEY', None):
+        raise ConnectError("Stripe is not configured")
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    amount_cents = int(invoice.amount_due * 100)
+    fee_cents = calculate_platform_fee(amount_cents, tenant)
+
+    session_params = {
+        'payment_method_types': ['card'],
+        'line_items': [{
+            'price_data': {
+                'currency': 'usd',
+                'unit_amount': amount_cents,
+                'product_data': {
+                    'name': f'Invoice {invoice.invoice_number}',
+                },
+            },
+            'quantity': 1,
+        }],
+        'mode': 'payment',
+        'success_url': success_url,
+        'cancel_url': cancel_url,
+        'metadata': {
+            'rs_invoice_id': str(invoice.id),
+            'rs_invoice_number': invoice.invoice_number,
+            'rs_tenant_id': str(tenant.id),
+            'rs_fee_cents': str(fee_cents),
+        },
+        # Direct charge on connected account
+        'stripe_account': tenant.stripe_connect_account_id,
+    }
+
+    if fee_cents > 0:
+        session_params['payment_intent_data'] = {
+            'application_fee_amount': fee_cents,
+        }
+
+    try:
+        session = stripe.checkout.Session.create(**session_params)
+        logger.info(
+            f"Direct charge session for {invoice.invoice_number}: "
+            f"${invoice.amount_due} on {tenant.stripe_connect_account_id} "
+            f"(fee: {fee_cents}¢)"
+        )
+        return session
+    except stripe.error.StripeError as e:
+        logger.error(f"create_direct_charge_session error: {e}")
+        raise ConnectError(str(e))

@@ -767,6 +767,11 @@ class PlatformConfig(models.Model):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
 
+    @classmethod
+    def get_solo(cls):
+        """Alias for get() — singleton accessor."""
+        return cls.get()
+
 
 # =============================================================================
 # PLATFORM FEE RECORDS

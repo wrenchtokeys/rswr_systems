@@ -327,18 +327,50 @@ class StripeService:
         """Payment intent succeeded — could be from Payment Link or Checkout."""
         metadata = payment_intent.get('metadata', {})
         invoice_id = metadata.get('rs_invoice_id')
-        
+
         if not invoice_id:
             return {'success': True, 'handled': False}
-        
+
         amount = Decimal(str(payment_intent.get('amount_received', 0))) / 100
-        
-        return self._record_stripe_payment(
+        payment_intent_id = payment_intent['id']
+
+        result = self._record_stripe_payment(
             invoice_id=invoice_id,
             amount=amount,
-            stripe_payment_id=payment_intent['id'],
+            stripe_payment_id=payment_intent_id,
             notes='Paid via Stripe',
         )
+
+        # Record platform fee if this was a direct charge with an application fee
+        application_fee_amount = payment_intent.get('application_fee_amount')
+        if application_fee_amount and application_fee_amount > 0:
+            try:
+                from apps.billing.models import Invoice, PlatformFeeRecord
+                invoice = Invoice.objects.get(id=invoice_id)
+                if not PlatformFeeRecord.objects.filter(payment_intent_id=payment_intent_id).exists():
+                    fee_amount = Decimal(str(application_fee_amount)) / 100
+                    # Calculate fee percent from metadata or derive from amounts
+                    fee_cents_meta = metadata.get('rs_fee_cents')
+                    if fee_cents_meta and amount > 0:
+                        fee_percent = (Decimal(str(application_fee_amount)) / (amount * 100) * 100).quantize(Decimal('0.01'))
+                    else:
+                        fee_percent = Decimal('0.00')
+                    PlatformFeeRecord.objects.create(
+                        tenant=invoice.tenant,
+                        invoice=invoice,
+                        payment_intent_id=payment_intent_id,
+                        gross_amount=amount,
+                        fee_amount=fee_amount,
+                        fee_percent=fee_percent,
+                        stripe_account_id=payment_intent.get('on_behalf_of') or invoice.tenant.stripe_connect_account_id or '',
+                    )
+                    logger.info(
+                        f"Recorded platform fee ${fee_amount} for {invoice.invoice_number}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to record platform fee for {payment_intent_id}: {e}")
+
+        return result
     
     def _record_stripe_payment(self, invoice_id, amount, stripe_payment_id='', notes=''):
         """Record a Stripe payment against our invoice."""

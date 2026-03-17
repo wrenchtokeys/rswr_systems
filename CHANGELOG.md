@@ -2,6 +2,46 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-03-17 (Stripe Connect)
+
+### Added (Stripe Connect Phases 1-3 — Online Invoice Payments)
+
+**Feature: Shop owners can now connect their Stripe account to accept online invoice payments.**
+
+#### Phase 1: Connected Account Onboarding
+- **`Tenant` model** — new Stripe Connect fields: `stripe_connect_account_id`, `stripe_onboarding_status` (not_started/pending/in_review/active/restricted/disabled), `stripe_connect_charges_enabled`, `stripe_connect_payouts_enabled`, `stripe_connect_onboarding_complete`, `stripe_connected_at`, `platform_fee_percent`
+- **`ConnectService`** (`apps/tenants/services/connect_service.py`) — full service class for Express account creation, onboarding links, status sync, and direct charge sessions
+- **Module-level functions**: `create_connect_account`, `create_account_link`, `handle_account_updated_webhook`, `calculate_platform_fee`, `create_direct_charge_session` — spec-aligned API for views and tests
+- **Owner portal Connect views**: `connect_setup`, `connect_return`, `connect_refresh`, `connect_dashboard` in `apps/saas/views.py`
+- **URLs**: `/owner/payments/setup/`, `/owner/payments/setup/return/`, `/owner/payments/setup/refresh/`, `/owner/payments/dashboard/`
+- **Owner Settings template** — new "Payment Processing" tab with Connect status badge, action buttons, and "Customers cannot pay invoices online" warning when not active
+
+#### Phase 2: Payment Routing (Direct Charges)
+- **Hard block in `create_direct_charge_session`**: raises `ConnectError` if `stripe_onboarding_status != 'active'` OR `stripe_connect_charges_enabled` is False
+- **Direct charges**: checkout sessions created on the connected account via `stripe_account=` param with `application_fee_amount` for platform fee
+- **Invoice email gate** (`InvoiceEmailService`): payment links omitted when `tenant.can_accept_payments` is False
+- **Customer portal gate**: `can_pay_online` context variable is False when tenant has no active Connect
+
+#### Phase 3: Admin Fee Dashboard
+- **`PlatformConfig` model** — singleton global settings (default_fee_percent, competition_pool_enabled, competition_pool_fee_percent); added `get_solo()` alias for `get()`
+- **`PlatformFeeRecord` model** — tracks every platform fee collected (tenant, invoice, payment_intent_id, gross_amount, fee_amount, fee_percent, stripe_account_id)
+- **Fee recording** in `_handle_payment_succeeded` webhook handler — creates `PlatformFeeRecord` when `application_fee_amount > 0`; deduplication prevents double-recording
+- **Admin views**: `/admin/connect-accounts/` (list all tenants with Connect status) and `/admin/platform-config/` (edit global fee settings singleton)
+- **Admin templates**: `templates/admin/connect_accounts.html` and `templates/admin/platform_config.html`
+
+### Tests
+- **`tests/test_stripe_connect.py`** — 31 new tests covering:
+  - Fee calculation: tenant override > global default > 0 fallback
+  - `create_direct_charge_session` hard block for non-active Connect
+  - `handle_account_updated_webhook`: status transitions (active, restricted, in_review, pending)
+  - First activation sets `stripe_connected_at`; re-activation doesn't overwrite it
+  - Invoice email: `can_accept_payments` gate
+  - Customer portal: `can_pay_online` context var logic
+  - `PlatformConfig` singleton behavior and `get_solo()` alias
+  - `PlatformFeeRecord` creation, deduplication, and zero-fee bypass
+
+---
+
 ## [Unreleased] — 2026-03-17
 
 ### Added (Soft-Delete for Repairs & Invoices)
