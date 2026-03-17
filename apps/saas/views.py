@@ -2096,13 +2096,6 @@ def owner_record_payment(request, invoice_id):
         messages.error(request, 'Payment amount must be greater than zero.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
-    if amount > invoice.amount_due:
-        messages.error(
-            request,
-            f'Payment amount (${amount}) exceeds the amount due (${invoice.amount_due}).'
-        )
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
-
     if invoice.status in ('PAID', 'CANCELLED'):
         messages.error(request, f'Cannot record payment — invoice is {invoice.get_status_display()}.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
@@ -2124,10 +2117,31 @@ def owner_record_payment(request, invoice_id):
             return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
     # Create the Payment record
+    # NOTE: The amount_due check must happen INSIDE the transaction with a row-level
+    # lock (select_for_update) to prevent a TOCTOU race where two concurrent payment
+    # submissions both read the same stale amount_due and both pass validation,
+    # resulting in overpayment. (CODE-056)
     try:
         with transaction.atomic():
+            # Re-read the invoice under an exclusive row lock so our amount_due
+            # check reflects any concurrent payment that may have just committed.
+            invoice_locked = Invoice.objects.select_for_update().get(pk=invoice.id)
+
+            # Re-check status inside the lock (it could have changed concurrently)
+            if invoice_locked.status in ('PAID', 'CANCELLED'):
+                raise ValueError(
+                    f'Cannot record payment — invoice is {invoice_locked.get_status_display()}.'
+                )
+
+            # Validate amount against the fresh, locked amount_due
+            if amount > invoice_locked.amount_due:
+                raise ValueError(
+                    f'Payment amount (${amount}) exceeds the remaining balance '
+                    f'(${invoice_locked.amount_due}).'
+                )
+
             payment = Payment.objects.create(
-                invoice=invoice,
+                invoice=invoice_locked,
                 amount=amount,
                 payment_date=payment_date,
                 payment_method=payment_method,
@@ -2135,7 +2149,7 @@ def owner_record_payment(request, invoice_id):
                 notes=notes,
                 recorded_by=request.user,
             )
-            # Payment.save() already calls _update_invoice_totals()
+            # Payment.save() already calls _update_invoice_totals() with its own lock
 
         # Send payment confirmation emails (best-effort, don't fail the request)
         try:
@@ -2151,6 +2165,10 @@ def owner_record_payment(request, invoice_id):
             f'{payment.get_payment_method_display()}.'
         )
 
+    except ValueError as e:
+        # Validation error raised inside the transaction (race condition guard,
+        # overpayment check, status check).  Surface the specific message to the user.
+        messages.error(request, str(e))
     except Exception as e:
         logger.error(f"Error recording payment for invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while recording the payment. Please try again.')
