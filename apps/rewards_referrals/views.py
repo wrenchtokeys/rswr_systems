@@ -433,7 +433,10 @@ def redeem_reward(request):
     
     try:
         customer_user = get_customer_user(request)
-        
+
+        if customer_user is None:
+            return _customer_required_redirect(request)
+
         # Use the reward service to handle the redemption
         success, result = RewardService.redeem_reward(customer_user, option_id)
         
