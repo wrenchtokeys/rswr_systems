@@ -17,6 +17,7 @@ from apps.customer_portal.models import RepairApproval, CustomerUser, CustomerRe
 from core.models import Customer
 from apps.technician_portal.forms import RepairForm
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
+from common.auth import get_user_role
 from common.utils import convert_heic_to_jpeg
 
 logger = logging.getLogger(__name__)
@@ -628,10 +629,35 @@ def update_queue_status(request, repair_id):
 
                     if cost_override:
                         try:
-                            repair.cost_override = float(cost_override)
-                            repair.override_reason = override_reason or "Manual price adjustment"
-                            messages.info(request, f"Custom price of ${cost_override} has been applied.")
-                        except (ValueError, TypeError):
+                            override_amount = Decimal(cost_override)
+                            # Permission check: only owners/superusers and authorised managers
+                            # may set a custom price.  Plain technicians cannot override pricing
+                            # regardless of what they POST. (CODE-058)
+                            requesting_role = get_user_role(request.user, tenant=tenant)
+                            override_allowed = False
+                            if requesting_role in ('superuser', 'owner'):
+                                override_allowed = True
+                            elif requesting_role == 'manager':
+                                requesting_tech = getattr(request.user, 'technician', None)
+                                if requesting_tech and requesting_tech.can_override_pricing:
+                                    if requesting_tech.approval_limit and override_amount > requesting_tech.approval_limit:
+                                        messages.warning(
+                                            request,
+                                            f"Override amount ${override_amount} exceeds your approval limit of "
+                                            f"${requesting_tech.approval_limit}. Price override was not applied."
+                                        )
+                                    else:
+                                        override_allowed = True
+                                else:
+                                    messages.warning(request, "You don't have permission to override prices. Price override was not applied.")
+                            else:
+                                messages.warning(request, "You don't have permission to override prices. Price override was not applied.")
+
+                            if override_allowed:
+                                repair.cost_override = override_amount
+                                repair.override_reason = override_reason or "Manual price adjustment"
+                                messages.info(request, f"Custom price of ${cost_override} has been applied.")
+                        except (ValueError, TypeError, InvalidOperation):
                             messages.warning(request, "Invalid custom price. Using automatic pricing.")
 
                 repair.save()
