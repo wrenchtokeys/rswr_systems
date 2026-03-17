@@ -2505,12 +2505,19 @@ def customer_invoice_detail(request, invoice_id):
         # read from settings, not hardcoded.  Works correctly in dev/prod/staging.
         pdf_url = invoice.get_pdf_url()
 
+        # Determine if online payment is available (tenant has active Connect)
+        can_pay_online = (
+            invoice.tenant
+            and invoice.tenant.can_accept_payments
+        )
+
         return render(request, 'customer_portal/invoice_detail.html', {
             'invoice': invoice,
             'line_items': line_items,
             'payments': payments,
             'pdf_url': pdf_url,
             'customer': customer,
+            'can_pay_online': can_pay_online,
         })
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
@@ -2538,54 +2545,50 @@ def customer_invoice_pay(request, invoice_id):
             messages.info(request, "This invoice is already fully paid.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
+        # HARD GATE: No online payments unless shop has active Stripe Connect.
+        # This is the critical safety check — no Connect = no online payment.
+        tenant = getattr(invoice, 'tenant', None)
+        if not tenant or not tenant.can_accept_payments:
+            messages.error(
+                request,
+                "Online payments are not available for this shop. "
+                "Please contact them directly for payment options."
+            )
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
+
         # If there's already a Stripe hosted URL, redirect there
         if invoice.stripe_hosted_url:
             return redirect(invoice.stripe_hosted_url)
 
-        # Create a Stripe checkout session — prefer connected routing when the
-        # shop has completed Stripe Connect onboarding.  Without this, customer
-        # payments go to the platform account (Drake's) instead of the shop's
-        # connected account, bypassing all platform-fee and payout logic.
-        # (BUG: CODE-051 — missing Connect routing in customer portal pay view)
-        from apps.billing.services.stripe_service import StripeService
+        # Create a direct charge checkout session on the shop's connected account
+        from apps.tenants.services.connect_service import ConnectService, ConnectError
 
-        stripe_svc = StripeService()
+        connect_svc = ConnectService()
 
-        if not stripe_svc.is_enabled():
-            messages.error(request, "Online payments are not currently available. Please contact us for payment options.")
+        if not connect_svc.is_enabled():
+            messages.error(request, "Online payments are not currently available. Please contact the shop for payment options.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
         base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         success_url = f"{base_url}/app/invoices/{invoice.id}/?payment=success"
         cancel_url = f"{base_url}/app/invoices/{invoice.id}/?payment=cancelled"
 
-        result = None
-
-        # Use Stripe Connect (tenant-routed) checkout when shop is set up
-        tenant = getattr(invoice, 'tenant', None)
-        if tenant and tenant.can_accept_payments:
-            try:
-                from apps.tenants.services.connect_service import ConnectService
-                connect_svc = ConnectService()
-                result = connect_svc.create_connected_checkout_session(
-                    invoice,
-                    success_url=success_url,
-                    cancel_url=cancel_url,
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Connected checkout failed for {invoice.invoice_number}, "
-                    f"falling back to platform: {e}"
-                )
-                result = None
-
-        # Fall back to platform (Drake's account) checkout
-        if not result or not result.get('success'):
-            result = stripe_svc.create_checkout_session(
+        try:
+            result = connect_svc.create_connected_checkout_session(
                 invoice,
                 success_url=success_url,
                 cancel_url=cancel_url,
             )
+        except ConnectError as e:
+            logger.error(
+                f"Connected checkout hard-blocked for {invoice.invoice_number}: {e}"
+            )
+            messages.error(
+                request,
+                "This shop has not completed payment setup. "
+                "Please contact them directly for payment options."
+            )
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
         if result.get('success'):
             return redirect(result['checkout_url'])

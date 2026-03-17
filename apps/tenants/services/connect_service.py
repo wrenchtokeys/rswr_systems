@@ -7,7 +7,8 @@ for multi-tenant invoice payments.
 Architecture:
 - Platform account (Drake's) receives SaaS subscriptions
 - Connected accounts (each shop) receive their customer invoice payments
-- Platform takes an optional fee on each invoice payment
+- Platform takes an optional fee (application_fee_amount) via direct charges
+- Direct charges: payment hits shop's connected account, Stripe fees paid by shop
 
 Uses Stripe Express accounts — Stripe handles KYC/compliance, shop owners
 get a simplified onboarding experience.
@@ -19,6 +20,7 @@ import logging
 import stripe
 from decimal import Decimal
 from django.conf import settings
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ class ConnectService:
     """
 
     def __init__(self):
-        self.api_key = settings.STRIPE_SECRET_KEY
+        self.api_key = getattr(settings, 'STRIPE_SECRET_KEY', None)
         if self.api_key:
             stripe.api_key = self.api_key
 
@@ -93,7 +95,11 @@ class ConnectService:
                     },
                 )
                 tenant.stripe_connect_account_id = account.id
-                tenant.save(update_fields=['stripe_connect_account_id'])
+                tenant.stripe_onboarding_status = 'pending'
+                tenant.save(update_fields=[
+                    'stripe_connect_account_id',
+                    'stripe_onboarding_status',
+                ])
                 logger.info(
                     f"Created Stripe Connect account {account.id} "
                     f"for tenant {tenant.slug}"
@@ -159,26 +165,40 @@ class ConnectService:
         try:
             account = stripe.Account.retrieve(tenant.stripe_connect_account_id)
 
+            # Determine onboarding status from Stripe account state
+            old_status = tenant.stripe_onboarding_status
+            new_status = self._derive_onboarding_status(account)
+
             tenant.stripe_connect_charges_enabled = account.charges_enabled
             tenant.stripe_connect_payouts_enabled = account.payouts_enabled
             tenant.stripe_connect_onboarding_complete = account.details_submitted
-            tenant.save(update_fields=[
+            tenant.stripe_onboarding_status = new_status
+
+            update_fields = [
                 'stripe_connect_charges_enabled',
                 'stripe_connect_payouts_enabled',
                 'stripe_connect_onboarding_complete',
-            ])
+                'stripe_onboarding_status',
+            ]
+
+            # Record first activation timestamp
+            if new_status == 'active' and old_status != 'active' and not tenant.stripe_connected_at:
+                tenant.stripe_connected_at = timezone.now()
+                update_fields.append('stripe_connected_at')
+
+            tenant.save(update_fields=update_fields)
 
             logger.info(
                 f"Synced Connect status for {tenant.slug}: "
-                f"charges={account.charges_enabled}, "
-                f"payouts={account.payouts_enabled}, "
-                f"onboarding={'complete' if account.details_submitted else 'incomplete'}"
+                f"status={new_status}, charges={account.charges_enabled}, "
+                f"payouts={account.payouts_enabled}"
             )
 
             return {
                 'charges_enabled': account.charges_enabled,
                 'payouts_enabled': account.payouts_enabled,
                 'details_submitted': account.details_submitted,
+                'onboarding_status': new_status,
                 'requirements': {
                     'currently_due': account.requirements.currently_due if account.requirements else [],
                     'eventually_due': account.requirements.eventually_due if account.requirements else [],
@@ -191,36 +211,62 @@ class ConnectService:
             logger.error(f"Failed to sync Connect status for {tenant.slug}: {e}")
             raise ConnectError(str(e))
 
+    @staticmethod
+    def _derive_onboarding_status(account):
+        """Derive our onboarding_status from Stripe account fields."""
+        if account.charges_enabled and account.details_submitted:
+            # Check for restrictions
+            reqs = account.requirements
+            if reqs and reqs.disabled_reason:
+                return 'restricted'
+            return 'active'
+        elif account.details_submitted:
+            return 'in_review'
+        else:
+            return 'pending'
+
     # ------------------------------------------------------------------
-    # Payment Routing
+    # Payment Routing (Direct Charges)
     # ------------------------------------------------------------------
 
     def calculate_platform_fee(self, amount, tenant):
         """
         Calculate the platform fee for an invoice payment.
 
+        Priority:
+        1. Tenant-specific override (tenant.platform_fee_percent)
+        2. Global default (PlatformConfig.default_fee_percent)
+        3. Fallback: 0 (no fee)
+
         Args:
             amount: Payment amount in dollars (Decimal)
             tenant: Tenant model instance
 
         Returns:
-            int: Fee amount in cents for Stripe
+            tuple: (fee_cents: int, fee_percent: Decimal)
         """
-        fee_percent = tenant.platform_fee_percent or Decimal('0')
-        if fee_percent <= 0:
-            return 0
+        fee_percent = tenant.platform_fee_percent
+        if fee_percent is None:
+            from apps.billing.models import PlatformConfig
+            config = PlatformConfig.get()
+            fee_percent = config.default_fee_percent
+        if fee_percent is None or fee_percent <= 0:
+            return 0, Decimal('0')
         fee = amount * fee_percent / 100
-        return int(fee * 100)  # Convert to cents
+        return max(int(fee * 100), 0), fee_percent  # cents, percent
 
     def create_connected_checkout_session(
         self, invoice, success_url=None, cancel_url=None
     ):
         """
-        Create a Checkout Session that routes payment to the shop's
+        Create a Checkout Session using DIRECT CHARGES on the shop's
         connected account, with an optional platform fee.
 
-        This replaces the standard create_checkout_session when the
-        tenant has a connected Stripe account.
+        Direct charges: the payment is created directly on the connected
+        account (stripe_account param). The platform collects a fee via
+        application_fee_amount. Stripe processing fees are paid by the shop.
+
+        HARD BLOCK: Raises ConnectError if tenant has no active Connect account.
 
         Args:
             invoice: Invoice model instance
@@ -229,18 +275,23 @@ class ConnectService:
 
         Returns:
             dict: {success, checkout_url, session_id}
+
+        Raises:
+            ConnectError if tenant cannot accept payments
         """
         tenant = invoice.tenant
         if not tenant or not tenant.can_accept_payments:
-            return {
-                'success': False,
-                'error': 'Shop has not completed Stripe setup',
-            }
+            raise ConnectError(
+                f"Shop '{tenant.name if tenant else 'unknown'}' has not completed "
+                f"Stripe Connect setup. Online payments are not available."
+            )
 
         try:
             base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
             amount_cents = int(invoice.amount_due * 100)
-            fee_cents = self.calculate_platform_fee(invoice.amount_due, tenant)
+            fee_cents, fee_percent = self.calculate_platform_fee(
+                invoice.amount_due, tenant
+            )
 
             session_params = {
                 'payment_method_types': ['card'],
@@ -265,23 +316,23 @@ class ConnectService:
                     'rs_invoice_id': str(invoice.id),
                     'rs_invoice_number': invoice.invoice_number,
                     'rs_tenant_id': str(tenant.id),
+                    'rs_fee_percent': str(fee_percent),
                 },
-                'payment_intent_data': {
-                    'transfer_data': {
-                        'destination': tenant.stripe_connect_account_id,
-                    },
-                },
+                # Direct charge: session created ON the connected account
+                'stripe_account': tenant.stripe_connect_account_id,
             }
 
-            # Add platform fee if configured
+            # Add platform fee if configured (only with direct charges)
             if fee_cents > 0:
-                session_params['payment_intent_data']['application_fee_amount'] = fee_cents
+                session_params['payment_intent_data'] = {
+                    'application_fee_amount': fee_cents,
+                }
 
             session = stripe.checkout.Session.create(**session_params)
 
             logger.info(
-                f"Connected checkout session for {invoice.invoice_number}: "
-                f"${invoice.amount_due} → {tenant.stripe_connect_account_id} "
+                f"Direct charge checkout for {invoice.invoice_number}: "
+                f"${invoice.amount_due} on {tenant.stripe_connect_account_id} "
                 f"(fee: ${fee_cents/100:.2f})"
             )
 
@@ -298,78 +349,41 @@ class ConnectService:
             )
             return {'success': False, 'error': str(e)}
 
-    def create_connected_payment_link(self, invoice):
+    def record_platform_fee(self, invoice, payment_intent_id, gross_amount,
+                            fee_cents, fee_percent):
         """
-        Create a Stripe Payment Link that routes to the shop's connected account.
+        Record a PlatformFeeRecord after a successful connected charge.
 
-        Unlike checkout sessions, payment links are reusable and can be
-        emailed or shared. However, Payment Links don't support
-        transfer_data directly — so we use on_behalf_of + application_fee.
-
-        For connected payments, we prefer checkout sessions (called from
-        the customer portal "Pay" button) over payment links.
-
-        Returns:
-            dict: {success, payment_link, amount_due}
+        Args:
+            invoice: Invoice model instance
+            payment_intent_id: Stripe PaymentIntent ID
+            gross_amount: Total payment in dollars (Decimal)
+            fee_cents: Platform fee in cents
+            fee_percent: Fee rate at time of charge
         """
+        if fee_cents <= 0:
+            return None
+
+        from apps.billing.models import PlatformFeeRecord
         tenant = invoice.tenant
-        if not tenant or not tenant.can_accept_payments:
-            # Fall back to platform payment link (all funds to Drake)
-            return None  # Caller should use standard payment link
-
         try:
-            amount_cents = int(invoice.amount_due * 100)
-            fee_cents = self.calculate_platform_fee(invoice.amount_due, tenant)
-
-            # Create a one-time price
-            price = stripe.Price.create(
-                unit_amount=amount_cents,
-                currency='usd',
-                product_data={
-                    'name': f'Invoice {invoice.invoice_number} - {invoice.customer.name}',
-                },
+            record = PlatformFeeRecord.objects.create(
+                tenant=tenant,
+                invoice=invoice,
+                payment_intent_id=payment_intent_id,
+                gross_amount=gross_amount,
+                fee_amount=Decimal(str(fee_cents)) / 100,
+                fee_percent=fee_percent,
+                stripe_account_id=tenant.stripe_connect_account_id,
             )
-
-            link_params = {
-                'line_items': [{'price': price.id, 'quantity': 1}],
-                'metadata': {
-                    'rs_invoice_id': str(invoice.id),
-                    'rs_invoice_number': invoice.invoice_number,
-                    'rs_tenant_id': str(tenant.id),
-                },
-                'after_completion': {
-                    'type': 'redirect',
-                    'redirect': {
-                        'url': f'{getattr(settings, "BASE_URL", "https://rssystems.io")}/payment-complete',
-                    },
-                },
-                'transfer_data': {
-                    'destination': tenant.stripe_connect_account_id,
-                },
-            }
-
-            if fee_cents > 0:
-                link_params['application_fee_amount'] = fee_cents
-
-            payment_link = stripe.PaymentLink.create(**link_params)
-
             logger.info(
-                f"Connected payment link for {invoice.invoice_number}: "
-                f"{payment_link.url}"
+                f"Recorded platform fee: ${record.fee_amount} on "
+                f"{invoice.invoice_number}"
             )
-
-            return {
-                'success': True,
-                'payment_link': payment_link.url,
-                'amount_due': float(invoice.amount_due),
-            }
-
-        except stripe.error.StripeError as e:
-            logger.error(
-                f"Failed to create connected payment link for "
-                f"{invoice.invoice_number}: {e}"
-            )
-            return None  # Fall back to standard payment link
+            return record
+        except Exception as e:
+            logger.error(f"Failed to record platform fee: {e}")
+            return None
 
 
 # ------------------------------------------------------------------
@@ -400,6 +414,7 @@ def handle_account_updated(event_data):
 
     logger.info(
         f"account.updated for {tenant.slug}: "
+        f"status={status.get('onboarding_status')}, "
         f"charges={status.get('charges_enabled')}, "
         f"payouts={status.get('payouts_enabled')}"
     )
@@ -408,6 +423,7 @@ def handle_account_updated(event_data):
         'success': True,
         'handled': True,
         'tenant': tenant.slug,
+        'onboarding_status': status.get('onboarding_status'),
         'charges_enabled': status.get('charges_enabled'),
         'payouts_enabled': status.get('payouts_enabled'),
     }

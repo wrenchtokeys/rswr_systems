@@ -720,3 +720,107 @@ class TaxRate(models.Model):
         if self.state:
             self.state = self.state.strip().upper()
         super().save(*args, **kwargs)
+
+
+# =============================================================================
+# PLATFORM CONFIG (Singleton)
+# =============================================================================
+
+class PlatformConfig(models.Model):
+    """
+    Singleton — global platform settings for Stripe Connect fee routing.
+
+    Use PlatformConfig.get() to fetch (creates with defaults if missing).
+    """
+    default_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        help_text="Default platform fee % on invoice payments (e.g. 2.50 = 2.5%)"
+    )
+    competition_pool_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the competition pool feature is active"
+    )
+    competition_pool_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        help_text="% of subscription payments routed to competition pool"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Platform Configuration'
+        verbose_name_plural = 'Platform Configuration'
+
+    def __str__(self):
+        return f'Platform Config (fee: {self.default_fee_percent}%)'
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton: always use pk=1
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Platform configuration cannot be deleted.')
+
+    @classmethod
+    def get(cls):
+        """Get (or create with defaults) the singleton PlatformConfig."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+
+# =============================================================================
+# PLATFORM FEE RECORDS
+# =============================================================================
+
+class PlatformFeeRecord(models.Model):
+    """
+    Tracks every platform fee collected on invoice payments.
+
+    Created when a connected charge succeeds. Used for reporting,
+    audit trail, and future competition pool calculations.
+    """
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='platform_fee_records',
+    )
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name='platform_fee_records',
+    )
+    payment_intent_id = models.CharField(
+        max_length=255, db_index=True,
+        help_text="Stripe PaymentIntent ID (pi_...)"
+    )
+    gross_amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Total payment amount in dollars"
+    )
+    fee_amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Platform fee collected in dollars"
+    )
+    fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        help_text="Fee rate at time of charge (percentage)"
+    )
+    stripe_account_id = models.CharField(
+        max_length=50,
+        help_text="Shop's connected account ID (acct_...)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Platform Fee Record'
+        verbose_name_plural = 'Platform Fee Records'
+        indexes = [
+            models.Index(fields=['tenant', 'created_at']),
+        ]
+
+    def __str__(self):
+        return (
+            f"Fee ${self.fee_amount} ({self.fee_percent}%) on "
+            f"{self.invoice.invoice_number} → {self.stripe_account_id}"
+        )

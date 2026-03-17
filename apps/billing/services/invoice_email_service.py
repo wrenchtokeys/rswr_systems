@@ -268,36 +268,41 @@ class InvoiceEmailService:
                 )
                 photos = self._get_photo_attachments(list(repairs))
             
-            # Look up Stripe payment link from invoice record (if exists)
-            # We search by repair_ids since the invoice_number in invoice_data
-            # is freshly generated and won't match the DB record.
+            # Look up Stripe payment link from invoice record (if exists).
+            # GATE: Only include payment link if tenant has active Stripe Connect.
+            # No Connect = no payment link in email.
             payment_link = None
-            try:
-                from apps.billing.models import InvoiceLineItem
-                line_qs = InvoiceLineItem.objects.all()
-                if self.tenant:
-                    line_qs = line_qs.filter(invoice__tenant=self.tenant)
-                if repair_ids:
-                    line_item = line_qs.filter(
-                        repair_id__in=repair_ids,
-                        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
-                    ).select_related('invoice').first()
-                    if line_item and line_item.invoice.stripe_hosted_url:
-                        payment_link = line_item.invoice.stripe_hosted_url
-                else:
-                    # Fallback: find most recent invoice for this customer
-                    from apps.billing.models import Invoice
-                    inv_qs = Invoice.objects.filter(
-                        customer_id=customer_id,
-                        stripe_hosted_url__gt='',
-                    )
+            tenant_can_pay = (
+                self.tenant and self.tenant.can_accept_payments
+            ) if self.tenant else False
+
+            if tenant_can_pay:
+                try:
+                    from apps.billing.models import InvoiceLineItem
+                    line_qs = InvoiceLineItem.objects.all()
                     if self.tenant:
-                        inv_qs = inv_qs.filter(tenant=self.tenant)
-                    invoice_record = inv_qs.order_by('-created_at').first()
-                    if invoice_record:
-                        payment_link = invoice_record.stripe_hosted_url
-            except Exception:
-                pass
+                        line_qs = line_qs.filter(invoice__tenant=self.tenant)
+                    if repair_ids:
+                        line_item = line_qs.filter(
+                            repair_id__in=repair_ids,
+                            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
+                        ).select_related('invoice').first()
+                        if line_item and line_item.invoice.stripe_hosted_url:
+                            payment_link = line_item.invoice.stripe_hosted_url
+                    else:
+                        # Fallback: find most recent invoice for this customer
+                        from apps.billing.models import Invoice
+                        inv_qs = Invoice.objects.filter(
+                            customer_id=customer_id,
+                            stripe_hosted_url__gt='',
+                        )
+                        if self.tenant:
+                            inv_qs = inv_qs.filter(tenant=self.tenant)
+                        invoice_record = inv_qs.order_by('-created_at').first()
+                        if invoice_record:
+                            payment_link = invoice_record.stripe_hosted_url
+                except Exception:
+                    pass
             
             # Build email
             subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
