@@ -496,13 +496,29 @@ def convert_to_batch(request, repair_id):
                     try:
                         override_cost_decimal = Decimal(override_cost)
 
-                        if user_is_admin:
+                        # Determine the *requesting user's* role (not the assigned
+                        # technician's).  Previously this checked
+                        # `request.user.technician.is_manager` which is wrong for two
+                        # reasons:
+                        # 1. The attribute is not tenant-scoped — a user who is Manager
+                        #    at Shop A but plain Technician at Shop B could have
+                        #    is_manager=True from the OneToOne Technician record for Shop A
+                        #    and bypass the price-override guard on Shop B repairs.
+                        # 2. Owners/superusers who have no Technician record would
+                        #    AttributeError at `request.user.technician` if user_is_admin
+                        #    were ever False (defensive fix).
+                        # (CODE-059)
+                        requesting_role = get_user_role(request.user, tenant=tenant)
+                        if requesting_role in ('superuser', 'owner'):
+                            # Owners/superusers can always override; no approval_limit.
                             cost = override_cost_decimal
-                        elif hasattr(request.user, 'technician') and request.user.technician.is_manager and request.user.technician.can_override_pricing:
-                            tech = request.user.technician
+                        elif requesting_role == 'manager':
+                            requesting_tech = getattr(request.user, 'technician', None)
+                            if not (requesting_tech and requesting_tech.can_override_pricing):
+                                raise ValueError("You don't have permission to override prices")
                             # approval_limit=None means unlimited; comparison requires non-None
-                            if tech.approval_limit is not None and override_cost_decimal > tech.approval_limit:
-                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${tech.approval_limit}")
+                            if requesting_tech.approval_limit is not None and override_cost_decimal > requesting_tech.approval_limit:
+                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${requesting_tech.approval_limit}")
                             cost = override_cost_decimal
                         else:
                             raise ValueError("Only managers with override pricing permission can override prices")
