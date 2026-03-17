@@ -186,7 +186,9 @@ def referral_tracking(request):
                 return JsonResponse({'success': False, 'message': 'Invalid referral code'})
                 
             customer_user = get_customer_user(request)
-            
+            if customer_user is None:
+                return JsonResponse({'success': False, 'message': 'Customer account required.'}, status=403)
+
             # Use the service to process the referral
             success = ReferralService.process_referral(referral_code, customer_user)
             
