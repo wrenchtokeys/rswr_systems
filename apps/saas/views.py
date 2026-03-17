@@ -858,19 +858,42 @@ def replacement_update_status(request, pk):
         return redirect('owner_dashboard')
 
     new_status = request.POST.get('status')
-    valid_statuses = ['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED']
-    
-    if new_status not in valid_statuses:
-        messages.error(request, 'Invalid status.')
-        return redirect('replacement_detail', pk=pk)
+
+    # Valid forward transitions only — no backward re-opening of closed replacements.
+    # COMPLETED replacements may already have invoice line items; re-opening them would
+    # cause the replacement to be invoiced again (double-billing).  DENIED replacements
+    # should require deliberate manual intervention, not an accidental status POST.
+    # (CODE-064: mirrors the CODE-061 guard applied to customer-portal repair views.)
+    ALLOWED_TRANSITIONS = {
+        'REQUESTED':   {'PENDING', 'APPROVED', 'DENIED'},
+        'PENDING':     {'APPROVED', 'DENIED'},
+        'APPROVED':    {'IN_PROGRESS', 'DENIED'},
+        'IN_PROGRESS': {'COMPLETED', 'DENIED'},
+        # COMPLETED and DENIED are terminal — no transitions allowed
+        'COMPLETED':   set(),
+        'DENIED':      set(),
+    }
 
     old_status = replacement.queue_status
+    allowed = ALLOWED_TRANSITIONS.get(old_status, set())
+
+    if new_status not in allowed:
+        if old_status in ('COMPLETED', 'DENIED'):
+            messages.error(
+                request,
+                f'This replacement is {replacement.get_queue_status_display()} and cannot be changed. '
+                f'Contact support if a correction is needed.'
+            )
+        else:
+            messages.error(request, f'Invalid status transition from {old_status} to {new_status}.')
+        return redirect('replacement_detail', pk=pk)
+
     replacement.queue_status = new_status
     replacement.save()
 
     status_display = replacement.get_queue_status_display()
     messages.success(request, f'Status updated to {status_display}.')
-    
+
     return redirect('replacement_detail', pk=pk)
 
 
