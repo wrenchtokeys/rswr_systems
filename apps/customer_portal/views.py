@@ -2501,10 +2501,9 @@ def customer_invoice_detail(request, invoice_id):
         line_items = invoice.line_items.all().order_by('id')
         payments = invoice.payments.all().order_by('-payment_date')
 
-        # Build PDF URL if s3_key exists
-        pdf_url = None
-        if invoice.s3_key:
-            pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+        # Build PDF URL if s3_key exists — use model method so bucket name is
+        # read from settings, not hardcoded.  Works correctly in dev/prod/staging.
+        pdf_url = invoice.get_pdf_url()
 
         return render(request, 'customer_portal/invoice_detail.html', {
             'invoice': invoice,

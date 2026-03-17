@@ -2049,10 +2049,9 @@ def owner_invoice_detail(request, invoice_id):
         if choice[0] != 'STRIPE'
     ]
 
-    # PDF download URL
-    pdf_url = None
-    if invoice.s3_key:
-        pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+    # PDF download URL — use model method so bucket name is read from settings,
+    # not hardcoded.  Works correctly in dev/prod/staging.
+    pdf_url = invoice.get_pdf_url()
 
     context = {
         'tenant': tenant,

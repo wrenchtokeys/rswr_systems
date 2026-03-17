@@ -460,6 +460,36 @@ class Invoice(models.Model):
             self.internal_notes += f"\n[Cancelled] {reason}"
         self.save()
 
+    def get_pdf_url(self):
+        """
+        Return the URL for the invoice PDF, or None if no PDF has been stored.
+
+        Reads the bucket/domain from Django settings so this works correctly in
+        every environment (dev, staging, prod) and survives bucket renames.
+
+        Priority order:
+        1. AWS_S3_CUSTOM_DOMAIN setting  (e.g. 'mybucket.s3.amazonaws.com')
+        2. AWS_STORAGE_BUCKET_NAME       (constructs domain from bucket name)
+        3. Falls back to None if neither is configured (local/dev without S3)
+        """
+        if not self.s3_key:
+            return None
+
+        from django.conf import settings
+
+        # Try AWS_S3_CUSTOM_DOMAIN first (set by production.py when USE_S3=True)
+        custom_domain = getattr(settings, 'AWS_S3_CUSTOM_DOMAIN', None)
+        if custom_domain:
+            return f"https://{custom_domain}/{self.s3_key}"
+
+        # Fallback: construct from bucket name
+        bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+        if bucket:
+            region = getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1')
+            return f"https://{bucket}.s3.{region}.amazonaws.com/{self.s3_key}"
+
+        return None
+
 
 class InvoiceLineItem(models.Model):
     """
