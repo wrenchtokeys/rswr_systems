@@ -1057,7 +1057,7 @@ def tech_collect_payment(request, repair_id):
 
         invoice = line_item.invoice
 
-        # Parse and validate amount
+        # Parse and validate amount (basic sanity checks before acquiring the lock)
         try:
             amount = Decimal(request.POST.get('amount', '0'))
         except (InvalidOperation, ValueError):
@@ -1066,10 +1066,6 @@ def tech_collect_payment(request, repair_id):
 
         if amount <= 0:
             messages.error(request, "Payment amount must be greater than zero.")
-            return redirect('repair_detail', repair_id=repair_id)
-
-        if amount > invoice.amount_due:
-            messages.error(request, f"Amount exceeds balance due (${invoice.amount_due:.2f}).")
             return redirect('repair_detail', repair_id=repair_id)
 
         payment_method = request.POST.get('payment_method', 'CASH')
@@ -1087,29 +1083,59 @@ def tech_collect_payment(request, repair_id):
         else:
             notes = f"Collected on-site by {tech_name}"
 
-        # Create the payment
-        payment = Payment.objects.create(
-            invoice=invoice,
-            amount=amount,
-            payment_method=payment_method,
-            reference_number=reference_number,
-            payment_date=timezone.now().date(),
-            notes=notes,
-            recorded_by=request.user,
-        )
-
-        # Send confirmation emails (best effort)
+        # NOTE: The amount_due check must happen INSIDE a transaction with a row-level
+        # lock to prevent a TOCTOU race where a concurrent Stripe webhook payment and
+        # an on-site cash payment both read the same stale amount_due, both pass
+        # validation, and both create payments — resulting in amount_paid > invoice.total.
+        # This is the same pattern used in owner_record_payment (CODE-056 / CODE-059).
+        payment = None
         try:
-            from apps.billing.services.payment_notification_service import PaymentNotificationService
-            notification_svc = PaymentNotificationService()
-            notification_svc.notify_payment(payment)
-        except Exception as e:
-            logger.warning(f"Payment notification failed for payment {payment.id}: {e}")
+            with transaction.atomic():
+                # Re-read the invoice under an exclusive row lock so our amount_due
+                # check reflects any payment that may have committed since we fetched
+                # the line_item above (e.g. a Stripe webhook payment_intent.succeeded).
+                from apps.billing.models import Invoice
+                invoice_locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
 
-        messages.success(
-            request,
-            f"Payment of ${amount:.2f} ({payment.get_payment_method_display()}) recorded for invoice {invoice.invoice_number}."
-        )
+                # Re-check status inside the lock (it could have become PAID concurrently)
+                if invoice_locked.status in ('PAID', 'CANCELLED'):
+                    raise ValueError(
+                        f"Cannot record payment — invoice is {invoice_locked.get_status_display()}."
+                    )
+
+                if amount > invoice_locked.amount_due:
+                    raise ValueError(
+                        f"Amount exceeds balance due (${invoice_locked.amount_due:.2f})."
+                    )
+
+                payment = Payment.objects.create(
+                    invoice=invoice_locked,
+                    amount=amount,
+                    payment_method=payment_method,
+                    reference_number=reference_number,
+                    payment_date=timezone.now().date(),
+                    notes=notes,
+                    recorded_by=request.user,
+                )
+                # Payment.save() already calls _update_invoice_totals() with its own lock
+
+        except ValueError as e:
+            messages.error(request, str(e))
+            return redirect('repair_detail', repair_id=repair_id)
+
+        # Send confirmation emails (best effort, outside the transaction)
+        if payment:
+            try:
+                from apps.billing.services.payment_notification_service import PaymentNotificationService
+                notification_svc = PaymentNotificationService()
+                notification_svc.notify_payment(payment)
+            except Exception as e:
+                logger.warning(f"Payment notification failed for payment {payment.id}: {e}")
+
+            messages.success(
+                request,
+                f"Payment of ${amount:.2f} ({payment.get_payment_method_display()}) recorded for invoice {invoice.invoice_number}."
+            )
 
     except Exception as e:
         logger.error(f"Error recording tech payment for repair {repair_id}: {e}", exc_info=True)
