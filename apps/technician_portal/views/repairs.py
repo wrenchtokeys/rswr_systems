@@ -434,7 +434,9 @@ def update_repair(request, repair_id):
         repair = get_object_or_404(qs, id=repair_id)
         logger.info(f"UPDATE_REPAIR: Got repair #{repair.id}, technician_id={repair.technician_id}")
 
-        user_is_manager = request.user.technician.is_manager if hasattr(request.user, 'technician') else False
+        # Scope Technician lookup to current tenant to prevent cross-tenant is_manager bypass (CODE-076)
+        _scoped_tech_ur = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+        user_is_manager = bool(_scoped_tech_ur and _scoped_tech_ur.is_manager)
         if repair.queue_status in ['COMPLETED', 'DENIED'] and not user_is_manager:
             messages.error(request, "This repair is closed and cannot be edited. Contact a manager if photos need to be added.")
             return redirect('repair_detail', repair_id=repair.id)
@@ -517,8 +519,9 @@ def update_repair(request, repair_id):
         form = RepairForm(instance=repair, user=request.user, tenant=getattr(request, 'tenant', None))
 
         if repair.queue_status == 'COMPLETED':
-            user_is_manager = (user_is_admin or
-                             (hasattr(request.user, 'technician') and request.user.technician.is_manager))
+            # Scope Technician lookup to current tenant to prevent cross-tenant bypass (CODE-076)
+            _scoped_tech_ur2 = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+            user_is_manager = (user_is_admin or bool(_scoped_tech_ur2 and _scoped_tech_ur2.is_manager))
             if user_is_manager:
                 messages.info(request, "You're editing a completed repair. You can add or update photos for documentation/AI training purposes.")
 
