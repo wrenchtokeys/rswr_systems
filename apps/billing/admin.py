@@ -194,7 +194,12 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     def amount_due_display(self, obj):
         due = obj.amount_due
         if due > 0:
-            return format_html('<span style="color: red;">${:,.2f}</span>', due)
+            # format_html wraps args with conditional_escape() before applying
+            # format specs, converting Decimal → SafeString first, which makes
+            # {:,.2f} fail with "Unknown format code 'f' for object of type
+            # 'SafeString'".  Pre-format the number so format_html gets a plain
+            # string to escape-and-insert. (CODE-076)
+            return format_html('<span style="color: red;">${}</span>', f'{due:,.2f}')
         return format_html('<span style="color: green;">$0.00</span>')
     amount_due_display.short_description = 'Due'
     

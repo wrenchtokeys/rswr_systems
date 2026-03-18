@@ -276,6 +276,31 @@ class InvoiceCSVExportTests(TestCase):
         self.assertEqual(rows[1][0], 'INV-0001')
         self.assertEqual(rows[1][1], 'Invoice Customer')
 
+    def test_invoice_changelist_with_amount_due(self):
+        """
+        Regression test for CODE-076.
+
+        InvoiceAdmin.amount_due_display() used format_html with a {:,.2f}
+        format spec directly on a Decimal.  format_html wraps all positional
+        args with conditional_escape() before applying the format, converting
+        the Decimal to a SafeString first, which raises:
+            ValueError: Unknown format code 'f' for object of type 'SafeString'
+
+        The fix: pre-format the number with f-string, then pass the result to
+        format_html so only a plain string is escaped-and-inserted.
+
+        This test ensures the Invoice changelist loads (200) when at least one
+        invoice has amount_due > 0 (i.e. total > amount_paid).
+        """
+        url = reverse('admin:billing_invoice_changelist')
+        response = self.client.get(url)
+        self.assertEqual(
+            response.status_code, 200,
+            "Invoice admin changelist crashed — likely amount_due_display format bug"
+        )
+        # Verify the amount-due cell was rendered with the red-span markup
+        self.assertContains(response, 'color: red;')
+
 
 class CustomerCSVExportTests(TestCase):
     """Test CSV export action on CustomerAdmin."""
