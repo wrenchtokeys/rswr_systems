@@ -94,6 +94,7 @@ def technician_batch_start_work(request, batch_id):
     # @technician_required but don't have a .technician reverse relation.
     technician = getattr(request.user, 'technician', None)
     tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
     batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
     if not batch_summary:
@@ -104,7 +105,11 @@ def technician_batch_start_work(request, batch_id):
     started_count = 0
 
     for repair in repairs:
-        if repair.queue_status == 'APPROVED' and repair.technician == technician:
+        if repair.queue_status != 'APPROVED':
+            continue
+        # Admins/owners can start any repair in the batch.
+        # Technicians (and managers) can only start repairs assigned to them.
+        if user_is_admin or repair.technician == technician:
             repair.queue_status = 'IN_PROGRESS'
             repair.save()
             started_count += 1
