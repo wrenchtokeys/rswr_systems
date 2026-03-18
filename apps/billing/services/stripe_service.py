@@ -266,6 +266,9 @@ class StripeService:
             return handler(data)
         
         # SaaS subscription handlers (delegated to tenants.webhooks)
+        # NOTE: These are also handled by the dedicated subscription webhook
+        # at /ap/tenants/webhooks/stripe/ with its own signing secret.
+        # We keep the delegation here as a fallback for existing single-endpoint setups.
         from apps.tenants.webhooks import handle_subscription_event
         sub_result = handle_subscription_event(event_type, data)
         if sub_result.get('handled'):

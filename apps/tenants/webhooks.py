@@ -41,13 +41,13 @@ def stripe_subscription_webhook(request):
     """
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
-    webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', None)
+    webhook_secret = getattr(settings, 'STRIPE_SUBSCRIPTION_WEBHOOK_SECRET', None) or getattr(settings, 'STRIPE_WEBHOOK_SECRET', None)
 
     # SECURITY: Require webhook secret in production
     if not webhook_secret:
         if not settings.DEBUG:
             logger.error(
-                "Stripe webhook: STRIPE_WEBHOOK_SECRET is required in production. "
+                "Stripe subscription webhook: STRIPE_SUBSCRIPTION_WEBHOOK_SECRET is required in production. "
                 "Configure this environment variable to enable webhook verification."
             )
             return HttpResponse(
@@ -64,7 +64,7 @@ def stripe_subscription_webhook(request):
                 logger.error("Stripe webhook: could not parse payload")
                 return HttpResponse("Invalid payload", status=400)
             logger.warning(
-                "Stripe webhook: STRIPE_WEBHOOK_SECRET not set — "
+                "Stripe subscription webhook: STRIPE_SUBSCRIPTION_WEBHOOK_SECRET not set — "
                 "signature verification skipped (dev mode only)"
             )
     else:
