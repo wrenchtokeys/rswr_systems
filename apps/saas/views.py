@@ -794,11 +794,11 @@ def replacement_create(request):
 def replacement_detail(request, pk):
     """View a glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    # Strict tenant check — deny if no tenant or tenant mismatch
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     # Build allowed status transitions for the UI
     status_transitions = []
@@ -824,11 +824,11 @@ def replacement_detail(request, pk):
 def replacement_edit(request, pk):
     """Edit an existing glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
@@ -851,11 +851,11 @@ def replacement_edit(request, pk):
 def replacement_update_status(request, pk):
     """Update the status of a glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     new_status = request.POST.get('status')
 
