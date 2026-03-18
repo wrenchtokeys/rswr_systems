@@ -1187,6 +1187,8 @@ def delete_repair(request, repair_id):
         return redirect('repair_detail', repair_id=repair_id)
 
     customer_id = repair.customer_id
+    repair_was_completed = repair.queue_status == 'COMPLETED'
+    repair_customer = repair.customer
 
     with transaction.atomic():
         now = timezone.now()
@@ -1197,6 +1199,18 @@ def delete_repair(request, repair_id):
         Invoice.objects.filter(
             line_items__repair=repair
         ).distinct().update(deleted_at=now)
+
+    # Rebuild UnitRepairCount for this customer if the deleted repair was
+    # COMPLETED and therefore affected progressive pricing.  Without this,
+    # the unit's repair count stays inflated by 1, and every subsequent
+    # repair on that unit is priced as if the deleted one still happened.
+    # (CODE-068)
+    if repair_was_completed and repair_customer:
+        try:
+            from apps.customer_portal.views import rebuild_unit_repair_counts
+            rebuild_unit_repair_counts(repair_customer)
+        except Exception:
+            pass  # Never block the delete; pricing rebuild is best-effort
 
     messages.success(request, f"Repair #{repair.id} has been deleted.")
     return redirect('customer_detail', customer_id=customer_id)
@@ -1234,6 +1248,9 @@ def restore_repair(request, repair_id):
         messages.error(request, "Cannot restore repairs deleted more than 30 days ago.")
         return redirect('archived_repairs')
 
+    repair_was_completed = repair.queue_status == 'COMPLETED'
+    repair_customer = repair.customer
+
     with transaction.atomic():
         repair.deleted_at = None
         repair.save(update_fields=['deleted_at'])
@@ -1243,6 +1260,17 @@ def restore_repair(request, repair_id):
             line_items__repair=repair,
             deleted_at__isnull=False
         ).distinct().update(deleted_at=None)
+
+    # Rebuild UnitRepairCount so the restored COMPLETED repair is counted
+    # again in progressive pricing.  Without this, the unit's count stays
+    # at the value it had after the delete (missing +1 for this repair),
+    # and the next repair on that unit is under-priced.  (CODE-068)
+    if repair_was_completed and repair_customer:
+        try:
+            from apps.customer_portal.views import rebuild_unit_repair_counts
+            rebuild_unit_repair_counts(repair_customer)
+        except Exception:
+            pass  # Never block the restore; pricing rebuild is best-effort
 
     messages.success(request, f"Repair #{repair.id} has been restored.")
     return redirect('repair_detail', repair_id=repair_id)
