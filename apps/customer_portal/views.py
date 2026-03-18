@@ -1886,12 +1886,17 @@ def customer_bulk_action(request):
 
         # Validate and process repairs with transaction safety
         with transaction.atomic():
-            # Get all repairs and ensure they belong to this customer (tenant-scoped)
+            # Get all repairs and ensure they belong to this customer (tenant-scoped).
+            # Include REQUESTED repairs — customer-initiated repairs start as REQUESTED
+            # and should be approvable via bulk action.  Consistent with single-repair
+            # customer_repair_approve() which also accepts {'PENDING', 'REQUESTED'}.
+            # (CODE-065: previously only 'PENDING', so REQUESTED repairs were silently
+            # dropped from bulk actions without any warning to the user.)
             repairs = Repair.objects.filter(
                 id__in=repair_ids,
                 customer=customer,
                 tenant=customer.tenant,
-                queue_status='PENDING'
+                queue_status__in=['PENDING', 'REQUESTED']
             ).select_related('technician')
 
             if not repairs.exists():
