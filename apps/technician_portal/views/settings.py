@@ -321,8 +321,13 @@ def team_overview(request):
     if tenant:
         recent_repairs_qs = recent_repairs_qs.filter(tenant=tenant)
 
-    # Annotate team members with repair stats to minimize queries
+    # Annotate team members with repair stats to minimize queries.
+    # NOTE: Count('repair') must include repair__tenant=tenant so we only count
+    # repairs that belong to the current shop.  Without this, a technician who
+    # somehow also has repairs in another tenant would show inflated counts —
+    # leaking cross-tenant data into the team dashboard.  (CODE-075)
     from django.db.models import Count, Q
+    tenant_filter = Q(repair__tenant=tenant) if tenant else Q(repair__tenant__isnull=False)
     team_members_annotated = (
         manager.managed_technicians
         .filter(is_active=True)
@@ -335,12 +340,14 @@ def team_overview(request):
             )
         )
         .annotate(
-            total_repairs=Count('repair'),
+            total_repairs=Count('repair', filter=tenant_filter),
             pending_repairs_count=Count(
-                'repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED'])
+                'repair',
+                filter=tenant_filter & Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED'])
             ),
             completed_repairs_count=Count(
-                'repair', filter=Q(repair__queue_status='COMPLETED')
+                'repair',
+                filter=tenant_filter & Q(repair__queue_status='COMPLETED')
             ),
         )
     )
