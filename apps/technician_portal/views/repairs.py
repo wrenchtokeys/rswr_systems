@@ -37,7 +37,17 @@ def repair_list(request):
             messages.error(request, "You don't have a technician profile to view repairs.")
             return redirect('technician_dashboard')
 
-        technician = request.user.technician
+        # Use tenant-scoped Technician lookup so that a user who is a manager at
+        # Shop A (OneToOne Technician.tenant=Shop A) but a plain technician at
+        # Shop B cannot inherit is_manager=True on Shop B's repair list.
+        # This mirrors the CODE-076 fix applied to update_repair. (CODE-077)
+        technician = Technician.objects.filter(
+            user=request.user, tenant=tenant
+        ).first() if tenant else request.user.technician
+
+        if not technician:
+            messages.error(request, "You don't have a technician profile for this shop.")
+            return redirect('technician_dashboard')
 
         if technician.is_manager:
             managed_tech_ids = list(technician.managed_technicians.values_list('id', flat=True))
@@ -185,18 +195,24 @@ def repair_detail(request, repair_id):
     technician = None
 
     if hasattr(request.user, 'technician'):
-        technician = request.user.technician
-
-        # Auto-mark notifications as read when viewing repair
-        unread_notifications = TechnicianNotification.objects.filter(
-            technician=technician,
-            repair=repair,
-            read=False
+        # Use tenant-scoped lookup so a manager at Shop A doesn't pass
+        # is_manager checks when viewing Shop B's repairs. (CODE-077)
+        technician = (
+            Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if tenant else request.user.technician
         )
-        if unread_notifications.exists():
-            unread_count = unread_notifications.count()
-            unread_notifications.update(read=True)
-            logger.info(f"Auto-marked {unread_count} notification(s) as read for technician {technician.user.username} viewing repair #{repair.id}")
+
+        if technician:
+            # Auto-mark notifications as read when viewing repair
+            unread_notifications = TechnicianNotification.objects.filter(
+                technician=technician,
+                repair=repair,
+                read=False
+            )
+            if unread_notifications.exists():
+                unread_count = unread_notifications.count()
+                unread_notifications.update(read=True)
+                logger.info(f"Auto-marked {unread_count} notification(s) as read for technician {technician.user.username} viewing repair #{repair.id}")
 
     if not user_is_admin:
         if not technician:
