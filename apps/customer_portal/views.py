@@ -852,22 +852,34 @@ def customer_replacements(request):
         # Get filter parameters
         status_filter = request.GET.get('status', '')
 
-        # Get all replacements for this customer (tenant-scoped)
-        replacements = Replacement.objects.filter(customer=customer, tenant=customer.tenant).select_related(
-            'technician__user'
-        ).order_by('-service_date', '-id')
+        # Get all replacements for this customer (tenant-scoped) — unfiltered base
+        # queryset used for stats so filter badge counts are always global totals.
+        base_replacements = Replacement.objects.filter(
+            customer=customer, tenant=customer.tenant
+        )
 
-        # Apply status filter
+        # One aggregated query for all stat counts (avoids 4 separate COUNTs).
+        # pending = PENDING; in_progress = APPROVED + IN_PROGRESS; completed = COMPLETED.
+        from django.db.models import Case, When, IntegerField, Value
+        status_counts = base_replacements.aggregate(
+            total=Count('id'),
+            pending=Count(Case(When(queue_status='PENDING', then=1), output_field=IntegerField())),
+            in_progress=Count(Case(When(queue_status__in=['APPROVED', 'IN_PROGRESS'], then=1), output_field=IntegerField())),
+            completed=Count(Case(When(queue_status='COMPLETED', then=1), output_field=IntegerField())),
+        )
+        stats = {
+            'total': status_counts['total'],
+            'pending': status_counts['pending'],
+            'in_progress': status_counts['in_progress'],
+            'completed': status_counts['completed'],
+        }
+
+        # Build the display queryset (may be further filtered by status_filter)
+        replacements = base_replacements.select_related('technician__user').order_by('-service_date', '-id')
+
+        # Apply status filter for the list only — does NOT affect stats above
         if status_filter:
             replacements = replacements.filter(queue_status=status_filter)
-
-        # Calculate stats
-        stats = {
-            'total': replacements.count(),
-            'pending': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='PENDING').count(),
-            'in_progress': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
-            'completed': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='COMPLETED').count(),
-        }
 
         # Pagination
         paginator = Paginator(replacements, 25)
