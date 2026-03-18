@@ -713,7 +713,9 @@ def assign_repair(request, repair_id):
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
     if not user_is_admin:
-        tech = getattr(request.user, 'technician', None)
+        # Scope to current tenant — prevents a manager from Shop A from acting
+        # as manager in Shop B's portal context. (CODE-079)
+        tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
         if not tech or not tech.is_manager:
             messages.error(request, "Only managers can assign repairs.")
             return redirect('technician_dashboard')
@@ -748,8 +750,8 @@ def assign_repair(request, repair_id):
             assigned_tech = tech_qs.get()
 
             if not user_is_admin:
-                manager = request.user.technician
-                if assigned_tech.id != manager.id and not manager.manages_technician(assigned_tech):
+                manager = Technician.objects.filter(user=request.user, tenant=tenant).first()
+                if not manager or (assigned_tech.id != manager.id and not manager.manages_technician(assigned_tech)):
                     messages.error(request, "You can only assign repairs to yourself or technicians you manage.")
                     return redirect('assign_repair', repair_id=repair.id)
 
@@ -797,7 +799,10 @@ def assign_repair(request, repair_id):
             tech_qs = tech_qs.none()
         available_technicians = tech_qs.order_by('user__first_name')
     else:
-        manager = request.user.technician
+        manager = Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if not manager:
+            messages.error(request, "Only managers can assign repairs.")
+            return redirect('technician_dashboard')
         managed_techs = manager.managed_technicians.filter(is_active=True)
         # Always apply tenant filter as defense-in-depth so that even if a
         # cross-tenant tech somehow ended up in managed_technicians (e.g. via
@@ -826,7 +831,8 @@ def reassign_to_self(request, repair_id):
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
     if not user_is_admin:
-        tech = getattr(request.user, 'technician', None)
+        # Scope to current tenant — prevents cross-tenant is_manager bypass. (CODE-079)
+        tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
         if not tech or not tech.is_manager:
             messages.error(request, "Only managers can reassign repairs.")
             return redirect('technician_dashboard')
@@ -842,7 +848,10 @@ def reassign_to_self(request, repair_id):
     repair = get_object_or_404(qs, id=repair_id)
 
     if not user_is_admin:
-        manager = request.user.technician
+        manager = Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if not manager:
+            messages.error(request, "Only managers can reassign repairs.")
+            return redirect('technician_dashboard')
 
         if not repair.technician or not manager.manages_technician(repair.technician):
             messages.error(request, "You can only reassign repairs from your managed technicians.")
@@ -856,7 +865,11 @@ def reassign_to_self(request, repair_id):
         old_technician = repair.technician
 
         if not user_is_admin:
-            repair.technician = request.user.technician
+            manager = Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if not manager:
+                messages.error(request, "Only managers can reassign repairs.")
+                return redirect('technician_dashboard')
+            repair.technician = manager
             repair.save()
 
             messages.success(request, f"Repair reassigned from {old_technician.user.get_full_name()} to you.")
