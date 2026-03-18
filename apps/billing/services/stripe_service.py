@@ -349,9 +349,18 @@ class StripeService:
                 invoice = Invoice.objects.get(id=invoice_id)
                 if not PlatformFeeRecord.objects.filter(payment_intent_id=payment_intent_id).exists():
                     fee_amount = Decimal(str(application_fee_amount)) / 100
-                    # Calculate fee percent from metadata or derive from amounts
-                    fee_cents_meta = metadata.get('rs_fee_cents')
-                    if fee_cents_meta and amount > 0:
+                    # Derive fee percent directly from the actual amounts.
+                    # application_fee_amount is in cents; amount is in dollars.
+                    # fee_percent = (fee_cents / gross_cents) * 100
+                    #             = (application_fee_amount / (amount * 100)) * 100
+                    #             = application_fee_amount / amount
+                    #
+                    # NOTE: Do NOT gate this on metadata keys. The checkout
+                    # session may have been created via ConnectService (stores
+                    # 'rs_fee_percent') OR the module-level helper (stores
+                    # 'rs_fee_cents'). Computing from raw amounts is always
+                    # correct and avoids the key-name mismatch.
+                    if amount > 0:
                         fee_percent = (Decimal(str(application_fee_amount)) / (amount * 100) * 100).quantize(Decimal('0.01'))
                     else:
                         fee_percent = Decimal('0.00')
