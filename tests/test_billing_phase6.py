@@ -33,8 +33,9 @@ TEST_OVERRIDES = {
 
 
 def make_invoice(customer, tenant, status='SENT', days_overdue=0, amount=Decimal('500.00')):
-    """Helper to create an invoice."""
-    today = date.today()
+    """Helper to create an invoice. Uses timezone-aware 'today' to match aging report."""
+    from django.utils import timezone as tz
+    today = tz.now().date()
     due = today - timedelta(days=days_overdue)
     inv = Invoice.objects.create(
         customer=customer,
