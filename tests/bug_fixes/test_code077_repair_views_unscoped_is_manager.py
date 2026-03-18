@@ -193,9 +193,9 @@ class RepairListPlainTechTest(TestCase):
         self.tech = _make_tech(self.tech_user, self.shop, is_manager=False)
         self.customer = Customer.objects.create(name='Fleet Plain', tenant=self.shop)
         # Own repair (non-requested)
-        _make_repair(self.customer, self.shop, status='APPROVED', technician=self.tech)
+        self.approved_repair = _make_repair(self.customer, self.shop, status='APPROVED', technician=self.tech)
         # Requested repair (should be invisible to plain tech)
-        _make_repair(self.customer, self.shop, status='REQUESTED')
+        self.requested_repair = _make_repair(self.customer, self.shop, status='REQUESTED')
 
     def test_plain_tech_sees_own_repairs_only(self):
         from apps.technician_portal.views.repairs import repair_list
@@ -203,12 +203,13 @@ class RepairListPlainTechTest(TestCase):
         req = _make_request('GET', '/tech/repairs/', self.tech_user, self.shop)
         response = repair_list(req)
         self.assertEqual(response.status_code, 200)
-        # Plain technician repair list should show 1 repair (APPROVED, their own)
-        # The context's page_obj should not include the REQUESTED repair.
-        repairs_in_context = list(response.context['repairs'])
-        statuses = [r.queue_status for r in repairs_in_context]
-        self.assertNotIn('REQUESTED', statuses, "Plain tech must not see REQUESTED repairs")
-        self.assertIn('APPROVED', statuses, "Plain tech should see their own APPROVED repair")
+        # Plain technician should only see their own APPROVED repair, not REQUESTED.
+        # Use the repair URL link pattern (unambiguous — not found in CSS hex colors).
+        content = response.content.decode()
+        approved_url = f'/tech/repairs/{self.approved_repair.id}/'
+        requested_url = f'/tech/repairs/{self.requested_repair.id}/'
+        self.assertIn(approved_url, content, "Approved repair link should appear for plain tech")
+        self.assertNotIn(requested_url, content, "Requested repair link must not appear for plain tech")
 
 
 # ---------------------------------------------------------------------------

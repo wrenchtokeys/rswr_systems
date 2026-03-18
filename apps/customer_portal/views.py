@@ -1135,7 +1135,15 @@ def edit_company(request):
         
         if request.method == 'POST':
             # Update customer information
-            customer.name = request.POST.get('name', '').lower()
+            # NOTE: Do NOT lowercase the name — customer names must preserve case
+            # (e.g. "EOS Trucking" must not become "eos trucking"). The .lower()
+            # that was here previously was a copy-paste bug from username
+            # normalization logic.  (CODE-078)
+            new_name = request.POST.get('name', '').strip()
+            if not new_name:
+                messages.error(request, "Company name is required.")
+                return render(request, 'customer_portal/edit_company.html', {'customer': customer})
+            customer.name = new_name
             customer.email = request.POST.get('email', '')
             customer.phone = request.POST.get('phone', '')
             customer.address = request.POST.get('address', '')
