@@ -636,6 +636,7 @@ def customer_repair_deny(request, repair_id):
         })
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
 
 # Multi-Break Batch Views
 @customer_required
