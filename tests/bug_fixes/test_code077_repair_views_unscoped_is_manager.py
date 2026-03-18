@@ -76,6 +76,11 @@ def _make_membership(user, tenant, role='technician'):
 
 
 def _make_repair(customer, tenant, status='REQUESTED', technician=None):
+    """Create a Repair. If no technician provided, creates a dummy one (DB requires it)."""
+    if technician is None:
+        dummy_user = _make_user(f'dummy_tech_{Repair.objects.count()}_{tenant.slug}')
+        _make_membership(dummy_user, tenant, role='technician')
+        technician = _make_tech(dummy_user, tenant, is_manager=False)
     return Repair.objects.create(
         customer=customer,
         tenant=tenant,
@@ -198,10 +203,12 @@ class RepairListPlainTechTest(TestCase):
         req = _make_request('GET', '/tech/repairs/', self.tech_user, self.shop)
         response = repair_list(req)
         self.assertEqual(response.status_code, 200)
-        # The response should contain the plain tech's own repair but not REQUESTED
-        content = response.content.decode()
-        # Check that REQUESTED repairs are not visible; the approved repair should appear
-        self.assertNotIn('REQUESTED', content.upper().replace('queue_status', ''))
+        # Plain technician repair list should show 1 repair (APPROVED, their own)
+        # The context's page_obj should not include the REQUESTED repair.
+        repairs_in_context = list(response.context['repairs'])
+        statuses = [r.queue_status for r in repairs_in_context]
+        self.assertNotIn('REQUESTED', statuses, "Plain tech must not see REQUESTED repairs")
+        self.assertIn('APPROVED', statuses, "Plain tech should see their own APPROVED repair")
 
 
 # ---------------------------------------------------------------------------
