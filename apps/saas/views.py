@@ -1210,7 +1210,7 @@ def owner_settings_view(request):
 
                 config.save()
                 from django.core.cache import cache
-                cache.delete('billing_config_tax')
+                cache.delete(f'billing_config_tax_{tenant.pk}')
                 messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
             except Exception as e:
                 logger.error(f"Error updating billing config: {e}")
@@ -2333,8 +2333,8 @@ def owner_toggle_tax(request):
         config.tax_enabled = not config.tax_enabled
         config.save()
         from django.core.cache import cache
-        cache.delete('billing_config_tax')
-        
+        cache.delete(f'billing_config_tax_{tenant.pk}')
+
         status = 'enabled' if config.tax_enabled else 'disabled'
         messages.success(request, f'Sales tax calculation {status}.')
     except Exception as e:
