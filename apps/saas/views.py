@@ -794,11 +794,11 @@ def replacement_create(request):
 def replacement_detail(request, pk):
     """View a glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    # Strict tenant check — deny if no tenant or tenant mismatch
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     # Build allowed status transitions for the UI
     status_transitions = []
@@ -824,11 +824,11 @@ def replacement_detail(request, pk):
 def replacement_edit(request, pk):
     """Edit an existing glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
@@ -851,26 +851,49 @@ def replacement_edit(request, pk):
 def replacement_update_status(request, pk):
     """Update the status of a glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     new_status = request.POST.get('status')
-    valid_statuses = ['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED']
-    
-    if new_status not in valid_statuses:
-        messages.error(request, 'Invalid status.')
-        return redirect('replacement_detail', pk=pk)
+
+    # Valid forward transitions only — no backward re-opening of closed replacements.
+    # COMPLETED replacements may already have invoice line items; re-opening them would
+    # cause the replacement to be invoiced again (double-billing).  DENIED replacements
+    # should require deliberate manual intervention, not an accidental status POST.
+    # (CODE-064: mirrors the CODE-061 guard applied to customer-portal repair views.)
+    ALLOWED_TRANSITIONS = {
+        'REQUESTED':   {'PENDING', 'APPROVED', 'DENIED'},
+        'PENDING':     {'APPROVED', 'DENIED'},
+        'APPROVED':    {'IN_PROGRESS', 'DENIED'},
+        'IN_PROGRESS': {'COMPLETED', 'DENIED'},
+        # COMPLETED and DENIED are terminal — no transitions allowed
+        'COMPLETED':   set(),
+        'DENIED':      set(),
+    }
 
     old_status = replacement.queue_status
+    allowed = ALLOWED_TRANSITIONS.get(old_status, set())
+
+    if new_status not in allowed:
+        if old_status in ('COMPLETED', 'DENIED'):
+            messages.error(
+                request,
+                f'This replacement is {replacement.get_queue_status_display()} and cannot be changed. '
+                f'Contact support if a correction is needed.'
+            )
+        else:
+            messages.error(request, f'Invalid status transition from {old_status} to {new_status}.')
+        return redirect('replacement_detail', pk=pk)
+
     replacement.queue_status = new_status
     replacement.save()
 
     status_display = replacement.get_queue_status_display()
     messages.success(request, f'Status updated to {status_display}.')
-    
+
     return redirect('replacement_detail', pk=pk)
 
 
@@ -1187,7 +1210,7 @@ def owner_settings_view(request):
 
                 config.save()
                 from django.core.cache import cache
-                cache.delete('billing_config_tax')
+                cache.delete(f'billing_config_tax_{tenant.pk}')
                 messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
             except Exception as e:
                 logger.error(f"Error updating billing config: {e}")
@@ -2049,10 +2072,9 @@ def owner_invoice_detail(request, invoice_id):
         if choice[0] != 'STRIPE'
     ]
 
-    # PDF download URL
-    pdf_url = None
-    if invoice.s3_key:
-        pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+    # PDF download URL — use model method so bucket name is read from settings,
+    # not hardcoded.  Works correctly in dev/prod/staging.
+    pdf_url = invoice.get_pdf_url()
 
     context = {
         'tenant': tenant,
@@ -2096,13 +2118,6 @@ def owner_record_payment(request, invoice_id):
         messages.error(request, 'Payment amount must be greater than zero.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
-    if amount > invoice.amount_due:
-        messages.error(
-            request,
-            f'Payment amount (${amount}) exceeds the amount due (${invoice.amount_due}).'
-        )
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
-
     if invoice.status in ('PAID', 'CANCELLED'):
         messages.error(request, f'Cannot record payment — invoice is {invoice.get_status_display()}.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
@@ -2124,10 +2139,31 @@ def owner_record_payment(request, invoice_id):
             return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
     # Create the Payment record
+    # NOTE: The amount_due check must happen INSIDE the transaction with a row-level
+    # lock (select_for_update) to prevent a TOCTOU race where two concurrent payment
+    # submissions both read the same stale amount_due and both pass validation,
+    # resulting in overpayment. (CODE-056)
     try:
         with transaction.atomic():
+            # Re-read the invoice under an exclusive row lock so our amount_due
+            # check reflects any concurrent payment that may have just committed.
+            invoice_locked = Invoice.objects.select_for_update().get(pk=invoice.id)
+
+            # Re-check status inside the lock (it could have changed concurrently)
+            if invoice_locked.status in ('PAID', 'CANCELLED'):
+                raise ValueError(
+                    f'Cannot record payment — invoice is {invoice_locked.get_status_display()}.'
+                )
+
+            # Validate amount against the fresh, locked amount_due
+            if amount > invoice_locked.amount_due:
+                raise ValueError(
+                    f'Payment amount (${amount}) exceeds the remaining balance '
+                    f'(${invoice_locked.amount_due}).'
+                )
+
             payment = Payment.objects.create(
-                invoice=invoice,
+                invoice=invoice_locked,
                 amount=amount,
                 payment_date=payment_date,
                 payment_method=payment_method,
@@ -2135,7 +2171,7 @@ def owner_record_payment(request, invoice_id):
                 notes=notes,
                 recorded_by=request.user,
             )
-            # Payment.save() already calls _update_invoice_totals()
+            # Payment.save() already calls _update_invoice_totals() with its own lock
 
         # Send payment confirmation emails (best-effort, don't fail the request)
         try:
@@ -2151,6 +2187,10 @@ def owner_record_payment(request, invoice_id):
             f'{payment.get_payment_method_display()}.'
         )
 
+    except ValueError as e:
+        # Validation error raised inside the transaction (race condition guard,
+        # overpayment check, status check).  Surface the specific message to the user.
+        messages.error(request, str(e))
     except Exception as e:
         logger.error(f"Error recording payment for invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while recording the payment. Please try again.')
@@ -2293,8 +2333,8 @@ def owner_toggle_tax(request):
         config.tax_enabled = not config.tax_enabled
         config.save()
         from django.core.cache import cache
-        cache.delete('billing_config_tax')
-        
+        cache.delete(f'billing_config_tax_{tenant.pk}')
+
         status = 'enabled' if config.tax_enabled else 'disabled'
         messages.success(request, f'Sales tax calculation {status}.')
     except Exception as e:
@@ -2341,20 +2381,19 @@ def owner_send_invoice(request, invoice_id):
                 recipient = invoice.customer.email
             
             if recipient:
-                # Get repair IDs from line items
+                # Get repair IDs from line items (may be empty for replacement-only invoices).
+                # Pass None when empty so the service falls back to a time-window scan
+                # instead of silently skipping the email entirely (CODE-060 fix).
                 repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
                 
-                if repair_ids:
-                    success, msg = email_service.send_invoice_email(
-                        customer_id=invoice.customer.id,
-                        recipient_email=recipient,
-                        repair_ids=repair_ids,
-                    )
-                    email_sent = success
-                    if not success:
-                        logger.warning(f"Invoice email failed: {msg}")
-                else:
-                    logger.warning(f"No repair IDs found on invoice {invoice.invoice_number} for email")
+                success, msg = email_service.send_invoice_email(
+                    customer_id=invoice.customer.id,
+                    recipient_email=recipient,
+                    repair_ids=repair_ids if repair_ids else None,
+                )
+                email_sent = success
+                if not success:
+                    logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
         except Exception as e:
             logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
         

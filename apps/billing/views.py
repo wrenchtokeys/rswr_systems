@@ -350,19 +350,26 @@ def send_invoice_email(request, invoice_id):
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         email_svc = InvoiceEmailService(tenant=tenant)
         repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
-        email_svc.send_invoice_email(
+        success, msg = email_svc.send_invoice_email(
             customer_id=invoice.customer_id,
             recipient_email=recipient_email,
             repair_ids=repair_ids if repair_ids else None,
             cc_emails=cc_emails if cc_emails else None,
         )
-        
-        # Update invoice status to SENT if it was DRAFT
+
+        if not success:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Email send returned failure for {invoice.invoice_number}: {msg}"
+            )
+            return JsonResponse({'error': f'Email failed: {msg}'}, status=500)
+
+        # Update invoice status to SENT if it was DRAFT (only on confirmed delivery)
         if invoice.status == 'DRAFT':
             invoice.status = 'SENT'
             invoice.sent_at = timezone.now()
             invoice.save(update_fields=['status', 'sent_at'])
-        
+
         all_recipients = [recipient_email] + (cc_emails or [])
         return JsonResponse({'success': True, 'sent_to': ', '.join(all_recipients)})
     except Exception as e:
@@ -415,12 +422,15 @@ def send_invoice_email_batch(request):
                 results.append({'id': inv_id, 'success': False, 'error': 'No email'})
                 continue
             repair_ids = [item.repair_id for item in invoice.line_items.all()]
-            email_svc.send_invoice_email(
+            sent_ok, sent_msg = email_svc.send_invoice_email(
                 customer_id=invoice.customer_id,
                 recipient_email=invoice.customer.email,
                 repair_ids=repair_ids if repair_ids else None,
             )
-            results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
+            if sent_ok:
+                results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
+            else:
+                results.append({'id': inv_id, 'success': False, 'error': sent_msg})
         except Exception as e:
             results.append({'id': inv_id, 'success': False, 'error': str(e)})
 

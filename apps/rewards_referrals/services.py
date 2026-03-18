@@ -91,7 +91,21 @@ class ReferralService:
         # Ensure users can't refer themselves
         if referral_code_obj.customer_user == customer_user:
             return False
-        
+
+        # Ensure both parties belong to the same tenant (CODE-072).
+        # Without this check a customer from Shop A could use Shop B's referral
+        # code, creating a cross-tenant Referral record and awarding Shop B's
+        # customer 500 illegitimate points.  The fix: refuse to process the
+        # referral if the code owner's tenant != the referring customer's tenant.
+        try:
+            code_tenant = referral_code_obj.customer_user.customer.tenant_id
+            user_tenant = customer_user.customer.tenant_id
+            if code_tenant != user_tenant:
+                return False
+        except AttributeError:
+            # Defensive: if tenant resolution fails, block the referral.
+            return False
+
         # Check if this referral already exists
         if Referral.objects.filter(referral_code=referral_code_obj, customer_user=customer_user).exists():
             return False

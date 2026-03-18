@@ -7,7 +7,7 @@ Includes viscosity rule management and team overview.
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.db import models
 from django.db.models import Prefetch
 import json
@@ -20,12 +20,17 @@ logger = logging.getLogger(__name__)
 
 
 def _get_viscosity_rule_or_404(request, rule_id):
-    """Fetch a ViscosityRecommendation scoped to the request's tenant."""
+    """Fetch a ViscosityRecommendation scoped to the request's tenant.
+
+    Returns 404 when the tenant cannot be resolved from the request so we
+    never accidentally return a rule belonging to a different shop (IDOR
+    defence-in-depth: mirrors the qs.none() pattern used elsewhere).
+    """
     tenant = getattr(request, 'tenant', None)
-    lookup = {'id': rule_id}
-    if tenant:
-        lookup['tenant'] = tenant
-    return get_object_or_404(ViscosityRecommendation, **lookup)
+    if not tenant:
+        from django.http import Http404
+        raise Http404("Tenant not resolved for this request")
+    return get_object_or_404(ViscosityRecommendation, id=rule_id, tenant=tenant)
 
 
 def get_ordinal_suffix(n):
@@ -128,6 +133,8 @@ def get_viscosity_rule(request, rule_id):
             }
         })
 
+    except Http404:
+        raise
     except Exception as e:
         logger.error(f'Error fetching viscosity rule: {str(e)}')
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -240,6 +247,8 @@ def update_viscosity_rule(request, rule_id):
             }
         })
 
+    except Http404:
+        raise
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
     except Exception as e:
@@ -263,6 +272,8 @@ def delete_viscosity_rule(request, rule_id):
             'message': f'Viscosity rule "{rule_name}" deleted successfully'
         })
 
+    except Http404:
+        raise
     except Exception as e:
         logger.error(f'Error deleting viscosity rule: {str(e)}')
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
@@ -285,6 +296,8 @@ def toggle_viscosity_rule(request, rule_id):
             'is_active': rule.is_active
         })
 
+    except Http404:
+        raise
     except Exception as e:
         logger.error(f'Error toggling viscosity rule: {str(e)}')
         return JsonResponse({'success': False, 'error': str(e)}, status=500)

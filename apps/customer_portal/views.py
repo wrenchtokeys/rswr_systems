@@ -510,6 +510,14 @@ def customer_repair_approve(request, repair_id):
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: only PENDING or REQUESTED repairs can be approved by the customer.
+        # The template hides the button for other statuses but there is no server-side
+        # check, so a direct POST could corrupt COMPLETED, IN_PROGRESS, or DENIED
+        # repairs by overwriting queue_status → 'APPROVED'. (CODE-061)
+        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+            messages.warning(request, "This repair cannot be approved — it is not pending approval.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
         
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
@@ -573,6 +581,13 @@ def customer_repair_deny(request, repair_id):
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: only PENDING or REQUESTED repairs can be denied by the customer.
+        # Without this check, a direct POST could flip a COMPLETED repair to DENIED,
+        # breaking invoicing and losing data. (CODE-061)
+        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+            messages.warning(request, "This repair cannot be denied — it is not pending approval.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
         
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
@@ -621,6 +636,7 @@ def customer_repair_deny(request, repair_id):
         })
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
 
 # Multi-Break Batch Views
 @customer_required
@@ -660,6 +676,15 @@ def customer_batch_approve(request, batch_id):
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
+            return redirect('customer_dashboard')
+
+        # Guard: batch can only be approved when ALL repairs are pending approval.
+        # Without this, a direct POST on a COMPLETED or DENIED batch would overwrite
+        # every repair's queue_status back to APPROVED. (CODE-061)
+        approvable_statuses = {'PENDING', 'REQUESTED'}
+        batch_statuses = set(batch_summary.get('statuses', []))
+        if not batch_statuses.issubset(approvable_statuses):
+            messages.warning(request, "This batch cannot be approved — not all repairs are pending approval.")
             return redirect('customer_dashboard')
 
         if request.method == 'POST':
@@ -736,6 +761,15 @@ def customer_batch_deny(request, batch_id):
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
+            return redirect('customer_dashboard')
+
+        # Guard: only deny batches that are still in a pending state.
+        # Without this, a direct POST on a COMPLETED batch would overwrite every
+        # repair's queue_status back to DENIED. (CODE-061)
+        deniable_statuses = {'PENDING', 'REQUESTED'}
+        batch_statuses = set(batch_summary.get('statuses', []))
+        if not batch_statuses.issubset(deniable_statuses):
+            messages.warning(request, "This batch cannot be denied — not all repairs are pending approval.")
             return redirect('customer_dashboard')
 
         if request.method == 'POST':
@@ -818,22 +852,34 @@ def customer_replacements(request):
         # Get filter parameters
         status_filter = request.GET.get('status', '')
 
-        # Get all replacements for this customer (tenant-scoped)
-        replacements = Replacement.objects.filter(customer=customer, tenant=customer.tenant).select_related(
-            'technician__user'
-        ).order_by('-service_date', '-id')
+        # Get all replacements for this customer (tenant-scoped) — unfiltered base
+        # queryset used for stats so filter badge counts are always global totals.
+        base_replacements = Replacement.objects.filter(
+            customer=customer, tenant=customer.tenant
+        )
 
-        # Apply status filter
+        # One aggregated query for all stat counts (avoids 4 separate COUNTs).
+        # pending = PENDING; in_progress = APPROVED + IN_PROGRESS; completed = COMPLETED.
+        from django.db.models import Case, When, IntegerField, Value
+        status_counts = base_replacements.aggregate(
+            total=Count('id'),
+            pending=Count(Case(When(queue_status='PENDING', then=1), output_field=IntegerField())),
+            in_progress=Count(Case(When(queue_status__in=['APPROVED', 'IN_PROGRESS'], then=1), output_field=IntegerField())),
+            completed=Count(Case(When(queue_status='COMPLETED', then=1), output_field=IntegerField())),
+        )
+        stats = {
+            'total': status_counts['total'],
+            'pending': status_counts['pending'],
+            'in_progress': status_counts['in_progress'],
+            'completed': status_counts['completed'],
+        }
+
+        # Build the display queryset (may be further filtered by status_filter)
+        replacements = base_replacements.select_related('technician__user').order_by('-service_date', '-id')
+
+        # Apply status filter for the list only — does NOT affect stats above
         if status_filter:
             replacements = replacements.filter(queue_status=status_filter)
-
-        # Calculate stats
-        stats = {
-            'total': replacements.count(),
-            'pending': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='PENDING').count(),
-            'in_progress': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
-            'completed': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='COMPLETED').count(),
-        }
 
         # Pagination
         paginator = Paginator(replacements, 25)
@@ -1853,12 +1899,17 @@ def customer_bulk_action(request):
 
         # Validate and process repairs with transaction safety
         with transaction.atomic():
-            # Get all repairs and ensure they belong to this customer (tenant-scoped)
+            # Get all repairs and ensure they belong to this customer (tenant-scoped).
+            # Include REQUESTED repairs — customer-initiated repairs start as REQUESTED
+            # and should be approvable via bulk action.  Consistent with single-repair
+            # customer_repair_approve() which also accepts {'PENDING', 'REQUESTED'}.
+            # (CODE-065: previously only 'PENDING', so REQUESTED repairs were silently
+            # dropped from bulk actions without any warning to the user.)
             repairs = Repair.objects.filter(
                 id__in=repair_ids,
                 customer=customer,
                 tenant=customer.tenant,
-                queue_status='PENDING'
+                queue_status__in=['PENDING', 'REQUESTED']
             ).select_related('technician')
 
             if not repairs.exists():
@@ -2425,13 +2476,26 @@ def customer_invoices(request):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
 
-        invoices = Invoice.objects.filter(
-            customer=customer
-        ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
+        invoices = list(
+            Invoice.objects.filter(
+                customer=customer
+            ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
+        )
+
+        # Pre-compute summary counts for the template — Django templates cannot
+        # increment counters (|add in a loop just renders "1" each iteration).
+        paid_count = sum(1 for inv in invoices if inv.status == 'PAID')
+        outstanding_count = sum(
+            1 for inv in invoices if inv.status in ('SENT', 'PARTIAL', 'OVERDUE')
+        )
+        overdue_count = sum(1 for inv in invoices if inv.status == 'OVERDUE')
 
         return render(request, 'customer_portal/invoices.html', {
             'invoices': invoices,
             'customer': customer,
+            'paid_count': paid_count,
+            'outstanding_count': outstanding_count,
+            'overdue_count': overdue_count,
         })
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
@@ -2455,10 +2519,15 @@ def customer_invoice_detail(request, invoice_id):
         line_items = invoice.line_items.all().order_by('id')
         payments = invoice.payments.all().order_by('-payment_date')
 
-        # Build PDF URL if s3_key exists
-        pdf_url = None
-        if invoice.s3_key:
-            pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+        # Build PDF URL if s3_key exists — use model method so bucket name is
+        # read from settings, not hardcoded.  Works correctly in dev/prod/staging.
+        pdf_url = invoice.get_pdf_url()
+
+        # Determine if online payment is available (tenant has active Connect)
+        can_pay_online = (
+            invoice.tenant
+            and invoice.tenant.can_accept_payments
+        )
 
         return render(request, 'customer_portal/invoice_detail.html', {
             'invoice': invoice,
@@ -2466,6 +2535,7 @@ def customer_invoice_detail(request, invoice_id):
             'payments': payments,
             'pdf_url': pdf_url,
             'customer': customer,
+            'can_pay_online': can_pay_online,
         })
     except CustomerUser.DoesNotExist:
         messages.warning(request, "Please complete your profile first.")
@@ -2493,28 +2563,50 @@ def customer_invoice_pay(request, invoice_id):
             messages.info(request, "This invoice is already fully paid.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
+        # HARD GATE: No online payments unless shop has active Stripe Connect.
+        # This is the critical safety check — no Connect = no online payment.
+        tenant = getattr(invoice, 'tenant', None)
+        if not tenant or not tenant.can_accept_payments:
+            messages.error(
+                request,
+                "Online payments are not available for this shop. "
+                "Please contact them directly for payment options."
+            )
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
+
         # If there's already a Stripe hosted URL, redirect there
         if invoice.stripe_hosted_url:
             return redirect(invoice.stripe_hosted_url)
 
-        # Create a Stripe checkout session
-        from apps.billing.services.stripe_service import StripeService
+        # Create a direct charge checkout session on the shop's connected account
+        from apps.tenants.services.connect_service import ConnectService, ConnectError
 
-        stripe_svc = StripeService()
+        connect_svc = ConnectService()
 
-        if not stripe_svc.is_enabled():
-            messages.error(request, "Online payments are not currently available. Please contact us for payment options.")
+        if not connect_svc.is_enabled():
+            messages.error(request, "Online payments are not currently available. Please contact the shop for payment options.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
         base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         success_url = f"{base_url}/app/invoices/{invoice.id}/?payment=success"
         cancel_url = f"{base_url}/app/invoices/{invoice.id}/?payment=cancelled"
 
-        result = stripe_svc.create_checkout_session(
-            invoice,
-            success_url=success_url,
-            cancel_url=cancel_url,
-        )
+        try:
+            result = connect_svc.create_connected_checkout_session(
+                invoice,
+                success_url=success_url,
+                cancel_url=cancel_url,
+            )
+        except ConnectError as e:
+            logger.error(
+                f"Connected checkout hard-blocked for {invoice.invoice_number}: {e}"
+            )
+            messages.error(
+                request,
+                "This shop has not completed payment setup. "
+                "Please contact them directly for payment options."
+            )
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
         if result.get('success'):
             return redirect(result['checkout_url'])

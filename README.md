@@ -6,12 +6,12 @@ A multi-tenant SaaS platform for auto glass shops. Manage repairs, replacements,
 
 A shop owner signs up, gets a 30-day free trial, and immediately has access to:
 
-- **Repairs** — Track chip/crack repairs with configurable progressive pricing ($50→$40→$35→$30→$25 per unit, or flat rate)
+- **Repairs** — Track chip/crack repairs with configurable progressive pricing ($50→$40→$35→$30→$25 per unit, or flat rate); supports soft-delete with 30-day restore window
 - **Replacements** — Full glass swaps with parts + labor + ADAS calibration pricing
 - **Auto-Assignment** — Smart repair assignment: primary tech, workload balancing, round-robin, or manual
 - **Customers** — Fleet accounts (trucking companies), retail individuals, and walk-ins with primary contact management
 - **Technicians** — Team management with role-based access and configurable auto-assignment strategies
-- **Invoicing** — Auto-generated PDF invoices, email delivery, payment tracking
+- **Invoicing** — Auto-generated PDF invoices, email delivery, payment tracking; invoices cascade with repair soft-delete
 - **Billing** — Stripe subscriptions with 4 plan tiers, usage tracking, plan enforcement
 - **Customer Portal** — Fleet managers track repairs, approve work, request service, earn reward points
 - **Notifications** — 8 repair lifecycle email templates sent automatically as repairs move through the queue

@@ -398,6 +398,15 @@ class GlassService(models.Model):
 # REPAIR MODEL
 # =============================================================================
 
+class RepairSoftDeleteManager(TenantManager):
+    """
+    Default manager for Repair — automatically excludes soft-deleted records.
+    Use Repair.all_objects for unfiltered access (including deleted).
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class Repair(GlassService):
     """
     A windshield chip/crack repair job.
@@ -410,10 +419,12 @@ class Repair(GlassService):
     - Retail: identified by vehicle (year/make/model)
     - Walk-in: minimal info
     """
-    
-    # Tenant-aware manager
-    objects = TenantManager()
-    
+
+    # Soft-delete manager (default — excludes deleted records)
+    objects = RepairSoftDeleteManager()
+    # Unfiltered manager — use when you need deleted records too
+    all_objects = TenantManager()
+
     # Keep QUEUE_CHOICES as alias for backward compatibility
     QUEUE_CHOICES = GlassService.STATUS_CHOICES
     
@@ -484,6 +495,12 @@ class Repair(GlassService):
     skip_invoicing = models.BooleanField(
         default=False,
         help_text="Skip this repair when listing uninvoiced work (e.g., already paid outside system)"
+    )
+
+    # Soft-delete — set to a timestamp to mark as deleted (not visible in default queryset)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this repair is soft-deleted and excluded from normal querysets"
     )
 
     # =========================================================================

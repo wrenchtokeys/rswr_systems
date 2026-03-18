@@ -94,6 +94,7 @@ def technician_batch_start_work(request, batch_id):
     # @technician_required but don't have a .technician reverse relation.
     technician = getattr(request.user, 'technician', None)
     tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
     batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
     if not batch_summary:
@@ -104,7 +105,11 @@ def technician_batch_start_work(request, batch_id):
     started_count = 0
 
     for repair in repairs:
-        if repair.queue_status == 'APPROVED' and repair.technician == technician:
+        if repair.queue_status != 'APPROVED':
+            continue
+        # Admins/owners can start any repair in the batch.
+        # Technicians (and managers) can only start repairs assigned to them.
+        if user_is_admin or repair.technician == technician:
             repair.queue_status = 'IN_PROGRESS'
             repair.save()
             started_count += 1
@@ -264,13 +269,19 @@ def create_multi_break_repair(request):
                             # Previously this checked `technician.is_manager` which is wrong when an
                             # owner/admin assigns a repair to a plain tech: the assigned tech's
                             # permissions were checked instead of the submitter's. (CODE-042)
-                            requesting_role = get_user_role(request.user, tenant=getattr(request, 'tenant', None))
+                            _req_tenant = getattr(request, 'tenant', None)
+                            requesting_role = get_user_role(request.user, tenant=_req_tenant)
                             if requesting_role in ('superuser', 'owner'):
                                 # Owners/superusers can always override; no approval_limit applies.
                                 pass
                             elif requesting_role == 'manager':
                                 # Managers: must have override permission, reason, and stay within limit.
-                                requesting_tech = getattr(request.user, 'technician', None)
+                                # Use tenant-scoped Technician lookup so a manager from another
+                                # shop cannot bleed their can_override_pricing=True into this tenant.
+                                requesting_tech = (
+                                    Technician.objects.filter(user=request.user, tenant=_req_tenant).first()
+                                    if _req_tenant else None
+                                )
                                 if not (requesting_tech and requesting_tech.can_override_pricing):
                                     messages.error(request, f"Break {i+1}: You don't have permission to override prices.")
                                     return redirect('create_multi_break_repair')
@@ -496,13 +507,35 @@ def convert_to_batch(request, repair_id):
                     try:
                         override_cost_decimal = Decimal(override_cost)
 
-                        if user_is_admin:
+                        # Determine the *requesting user's* role (not the assigned
+                        # technician's).  Previously this checked
+                        # `request.user.technician.is_manager` which is wrong for two
+                        # reasons:
+                        # 1. The attribute is not tenant-scoped — a user who is Manager
+                        #    at Shop A but plain Technician at Shop B could have
+                        #    is_manager=True from the OneToOne Technician record for Shop A
+                        #    and bypass the price-override guard on Shop B repairs.
+                        # 2. Owners/superusers who have no Technician record would
+                        #    AttributeError at `request.user.technician` if user_is_admin
+                        #    were ever False (defensive fix).
+                        # (CODE-059)
+                        requesting_role = get_user_role(request.user, tenant=tenant)
+                        if requesting_role in ('superuser', 'owner'):
+                            # Owners/superusers can always override; no approval_limit.
                             cost = override_cost_decimal
-                        elif hasattr(request.user, 'technician') and request.user.technician.is_manager and request.user.technician.can_override_pricing:
-                            tech = request.user.technician
+                        elif requesting_role == 'manager':
+                            # Use tenant-scoped lookup so a manager from another shop
+                            # cannot bleed their can_override_pricing=True into this
+                            # tenant via the OneToOne Technician relation. (CODE-059)
+                            requesting_tech = (
+                                Technician.objects.filter(user=request.user, tenant=tenant).first()
+                                if tenant else None
+                            )
+                            if not (requesting_tech and requesting_tech.can_override_pricing):
+                                raise ValueError("You don't have permission to override prices")
                             # approval_limit=None means unlimited; comparison requires non-None
-                            if tech.approval_limit is not None and override_cost_decimal > tech.approval_limit:
-                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${tech.approval_limit}")
+                            if requesting_tech.approval_limit is not None and override_cost_decimal > requesting_tech.approval_limit:
+                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${requesting_tech.approval_limit}")
                             cost = override_cost_decimal
                         else:
                             raise ValueError("Only managers with override pricing permission can override prices")

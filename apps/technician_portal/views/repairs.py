@@ -17,6 +17,7 @@ from apps.customer_portal.models import RepairApproval, CustomerUser, CustomerRe
 from core.models import Customer
 from apps.technician_portal.forms import RepairForm
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
+from common.auth import get_user_role
 from common.utils import convert_heic_to_jpeg
 
 logger = logging.getLogger(__name__)
@@ -628,10 +629,42 @@ def update_queue_status(request, repair_id):
 
                     if cost_override:
                         try:
-                            repair.cost_override = float(cost_override)
-                            repair.override_reason = override_reason or "Manual price adjustment"
-                            messages.info(request, f"Custom price of ${cost_override} has been applied.")
-                        except (ValueError, TypeError):
+                            override_amount = Decimal(cost_override)
+                            # Permission check: only owners/superusers and authorised managers
+                            # may set a custom price.  Plain technicians cannot override pricing
+                            # regardless of what they POST. (CODE-058)
+                            requesting_role = get_user_role(request.user, tenant=tenant)
+                            override_allowed = False
+                            if requesting_role in ('superuser', 'owner'):
+                                override_allowed = True
+                            elif requesting_role == 'manager':
+                                # Use tenant-scoped lookup to prevent a cross-tenant
+                                # manager from bleeding their can_override_pricing=True
+                                # into a shop where they're only a plain technician.
+                                # (CODE-059 cross-tenant fix; see also batch.py)
+                                requesting_tech = (
+                                    Technician.objects.filter(user=request.user, tenant=tenant).first()
+                                    if tenant else None
+                                )
+                                if requesting_tech and requesting_tech.can_override_pricing:
+                                    if requesting_tech.approval_limit and override_amount > requesting_tech.approval_limit:
+                                        messages.warning(
+                                            request,
+                                            f"Override amount ${override_amount} exceeds your approval limit of "
+                                            f"${requesting_tech.approval_limit}. Price override was not applied."
+                                        )
+                                    else:
+                                        override_allowed = True
+                                else:
+                                    messages.warning(request, "You don't have permission to override prices. Price override was not applied.")
+                            else:
+                                messages.warning(request, "You don't have permission to override prices. Price override was not applied.")
+
+                            if override_allowed:
+                                repair.cost_override = override_amount
+                                repair.override_reason = override_reason or "Manual price adjustment"
+                                messages.info(request, f"Custom price of ${cost_override} has been applied.")
+                        except (ValueError, TypeError, InvalidOperation):
                             messages.warning(request, "Invalid custom price. Using automatic pricing.")
 
                 repair.save()
@@ -1031,7 +1064,7 @@ def tech_collect_payment(request, repair_id):
 
         invoice = line_item.invoice
 
-        # Parse and validate amount
+        # Parse and validate amount (basic sanity checks before acquiring the lock)
         try:
             amount = Decimal(request.POST.get('amount', '0'))
         except (InvalidOperation, ValueError):
@@ -1040,10 +1073,6 @@ def tech_collect_payment(request, repair_id):
 
         if amount <= 0:
             messages.error(request, "Payment amount must be greater than zero.")
-            return redirect('repair_detail', repair_id=repair_id)
-
-        if amount > invoice.amount_due:
-            messages.error(request, f"Amount exceeds balance due (${invoice.amount_due:.2f}).")
             return redirect('repair_detail', repair_id=repair_id)
 
         payment_method = request.POST.get('payment_method', 'CASH')
@@ -1061,32 +1090,225 @@ def tech_collect_payment(request, repair_id):
         else:
             notes = f"Collected on-site by {tech_name}"
 
-        # Create the payment
-        payment = Payment.objects.create(
-            invoice=invoice,
-            amount=amount,
-            payment_method=payment_method,
-            reference_number=reference_number,
-            payment_date=timezone.now().date(),
-            notes=notes,
-            recorded_by=request.user,
-        )
-
-        # Send confirmation emails (best effort)
+        # NOTE: The amount_due check must happen INSIDE a transaction with a row-level
+        # lock to prevent a TOCTOU race where a concurrent Stripe webhook payment and
+        # an on-site cash payment both read the same stale amount_due, both pass
+        # validation, and both create payments — resulting in amount_paid > invoice.total.
+        # This is the same pattern used in owner_record_payment (CODE-056 / CODE-059).
+        payment = None
         try:
-            from apps.billing.services.payment_notification_service import PaymentNotificationService
-            notification_svc = PaymentNotificationService()
-            notification_svc.notify_payment(payment)
-        except Exception as e:
-            logger.warning(f"Payment notification failed for payment {payment.id}: {e}")
+            with transaction.atomic():
+                # Re-read the invoice under an exclusive row lock so our amount_due
+                # check reflects any payment that may have committed since we fetched
+                # the line_item above (e.g. a Stripe webhook payment_intent.succeeded).
+                from apps.billing.models import Invoice
+                invoice_locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
 
-        messages.success(
-            request,
-            f"Payment of ${amount:.2f} ({payment.get_payment_method_display()}) recorded for invoice {invoice.invoice_number}."
-        )
+                # Re-check status inside the lock (it could have become PAID concurrently)
+                if invoice_locked.status in ('PAID', 'CANCELLED'):
+                    raise ValueError(
+                        f"Cannot record payment — invoice is {invoice_locked.get_status_display()}."
+                    )
+
+                if amount > invoice_locked.amount_due:
+                    raise ValueError(
+                        f"Amount exceeds balance due (${invoice_locked.amount_due:.2f})."
+                    )
+
+                payment = Payment.objects.create(
+                    invoice=invoice_locked,
+                    amount=amount,
+                    payment_method=payment_method,
+                    reference_number=reference_number,
+                    payment_date=timezone.now().date(),
+                    notes=notes,
+                    recorded_by=request.user,
+                )
+                # Payment.save() already calls _update_invoice_totals() with its own lock
+
+        except ValueError as e:
+            messages.error(request, str(e))
+            return redirect('repair_detail', repair_id=repair_id)
+
+        # Send confirmation emails (best effort, outside the transaction)
+        if payment:
+            try:
+                from apps.billing.services.payment_notification_service import PaymentNotificationService
+                notification_svc = PaymentNotificationService()
+                notification_svc.notify_payment(payment)
+            except Exception as e:
+                logger.warning(f"Payment notification failed for payment {payment.id}: {e}")
+
+            messages.success(
+                request,
+                f"Payment of ${amount:.2f} ({payment.get_payment_method_display()}) recorded for invoice {invoice.invoice_number}."
+            )
 
     except Exception as e:
         logger.error(f"Error recording tech payment for repair {repair_id}: {e}", exc_info=True)
         messages.error(request, "An error occurred recording the payment. Please try again.")
 
     return redirect('repair_detail', repair_id=repair_id)
+
+
+# =============================================================================
+# SOFT-DELETE / RESTORE / ARCHIVED VIEWS
+# =============================================================================
+
+@technician_required
+def delete_repair(request, repair_id):
+    """
+    Soft-delete a repair. Owner/manager only.
+    Blocks deletion if any invoice linked to this repair has payments.
+    Also soft-deletes all invoices that have line items pointing to this repair.
+    POST only.
+    """
+    from django.views.decorators.http import require_POST
+    from apps.billing.models import Invoice, Payment
+
+    if request.method != 'POST':
+        return redirect('repair_detail', repair_id=repair_id)
+
+    tenant = getattr(request, 'tenant', None)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        messages.error(request, "Only owners and managers can delete repairs.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    qs = Repair.objects.filter(tenant=tenant) if tenant else Repair.objects.none()
+    repair = get_object_or_404(qs, id=repair_id)
+
+    # Check for payments on any invoice that has a line item for this repair
+    has_payments = Payment.objects.filter(
+        invoice__line_items__repair=repair
+    ).exists()
+    if has_payments:
+        messages.error(request, "Cannot delete a repair with recorded payments.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    customer_id = repair.customer_id
+    repair_was_completed = repair.queue_status == 'COMPLETED'
+    repair_customer = repair.customer
+
+    with transaction.atomic():
+        now = timezone.now()
+        repair.deleted_at = now
+        repair.save(update_fields=['deleted_at'])
+
+        # Soft-delete invoices that have line items for this repair
+        Invoice.objects.filter(
+            line_items__repair=repair
+        ).distinct().update(deleted_at=now)
+
+    # Rebuild UnitRepairCount for this customer if the deleted repair was
+    # COMPLETED and therefore affected progressive pricing.  Without this,
+    # the unit's repair count stays inflated by 1, and every subsequent
+    # repair on that unit is priced as if the deleted one still happened.
+    # (CODE-068)
+    if repair_was_completed and repair_customer:
+        try:
+            from apps.customer_portal.views import rebuild_unit_repair_counts
+            rebuild_unit_repair_counts(repair_customer)
+        except Exception:
+            pass  # Never block the delete; pricing rebuild is best-effort
+
+    messages.success(request, f"Repair #{repair.id} has been deleted.")
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+def restore_repair(request, repair_id):
+    """
+    Restore a soft-deleted repair. Owner/manager only.
+    Clears deleted_at on the repair and its invoices.
+    Only available within 30 days of deletion.
+    POST only.
+    """
+    from apps.billing.models import Invoice
+
+    if request.method != 'POST':
+        return redirect('archived_repairs')
+
+    tenant = getattr(request, 'tenant', None)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        messages.error(request, "Only owners and managers can restore repairs.")
+        return redirect('archived_repairs')
+
+    # Use all_objects to find deleted repairs
+    qs = Repair.all_objects.filter(tenant=tenant) if tenant else Repair.all_objects.none()
+    repair = get_object_or_404(qs, id=repair_id)
+
+    if repair.deleted_at is None:
+        messages.info(request, "That repair is not deleted.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    cutoff = timezone.now() - timezone.timedelta(days=30)
+    if repair.deleted_at < cutoff:
+        messages.error(request, "Cannot restore repairs deleted more than 30 days ago.")
+        return redirect('archived_repairs')
+
+    repair_was_completed = repair.queue_status == 'COMPLETED'
+    repair_customer = repair.customer
+
+    with transaction.atomic():
+        repair.deleted_at = None
+        repair.save(update_fields=['deleted_at'])
+
+        # Restore invoices that were soft-deleted along with this repair
+        Invoice.all_objects.filter(
+            line_items__repair=repair,
+            deleted_at__isnull=False
+        ).distinct().update(deleted_at=None)
+
+    # Rebuild UnitRepairCount so the restored COMPLETED repair is counted
+    # again in progressive pricing.  Without this, the unit's count stays
+    # at the value it had after the delete (missing +1 for this repair),
+    # and the next repair on that unit is under-priced.  (CODE-068)
+    if repair_was_completed and repair_customer:
+        try:
+            from apps.customer_portal.views import rebuild_unit_repair_counts
+            rebuild_unit_repair_counts(repair_customer)
+        except Exception:
+            pass  # Never block the restore; pricing rebuild is best-effort
+
+    messages.success(request, f"Repair #{repair.id} has been restored.")
+    return redirect('repair_detail', repair_id=repair_id)
+
+
+@technician_required
+def archived_repairs(request):
+    """
+    Archived (soft-deleted) repairs — owner/manager only.
+    Shows repairs deleted in the last 30 days with option to restore.
+    """
+    from apps.billing.models import Invoice
+
+    tenant = getattr(request, 'tenant', None)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        messages.error(request, "Only owners and managers can view archived repairs.")
+        return redirect('repair_list')
+
+    cutoff = timezone.now() - timezone.timedelta(days=30)
+
+    # Deleted repairs (within 30-day restore window)
+    deleted_repairs = Repair.all_objects.filter(
+        tenant=tenant,
+        deleted_at__isnull=False,
+        deleted_at__gte=cutoff
+    ).select_related('customer', 'technician').order_by('-deleted_at')
+
+    # Deleted invoices (within 30-day window)
+    deleted_invoices = Invoice.all_objects.filter(
+        tenant=tenant,
+        deleted_at__isnull=False,
+        deleted_at__gte=cutoff
+    ).select_related('customer').order_by('-deleted_at')
+
+    context = {
+        'deleted_repairs': deleted_repairs,
+        'deleted_invoices': deleted_invoices,
+        'is_admin': True,
+    }
+    return render(request, 'technician_portal/archived_repairs.html', context)

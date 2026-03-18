@@ -12,7 +12,7 @@ Tracks:
 Author: Amelia (Clawdbot AI)
 """
 
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.core.validators import MinValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
@@ -270,6 +270,15 @@ class BillingConfig(models.Model):
 # INVOICE
 # =============================================================================
 
+class InvoiceSoftDeleteManager(TenantManager):
+    """
+    Default manager for Invoice — automatically excludes soft-deleted records.
+    Use Invoice.all_objects for unfiltered access (including deleted).
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class Invoice(models.Model):
     """
     Tracks invoices sent to customers.
@@ -389,16 +398,24 @@ class Invoice(models.Model):
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Soft-delete — set to a timestamp to mark as deleted (not visible in default queryset)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this invoice is soft-deleted and excluded from normal querysets"
+    )
+
     # Notes
     notes = models.TextField(blank=True)
     internal_notes = models.TextField(
         blank=True,
         help_text="Internal notes (not shown to customer)"
     )
-    
-    # Tenant-aware manager
-    objects = TenantManager()
+
+    # Soft-delete manager (default — excludes deleted records)
+    objects = InvoiceSoftDeleteManager()
+    # Unfiltered manager — use when you need deleted records too
+    all_objects = TenantManager()
     
     class Meta:
         ordering = ['-invoice_date', '-created_at']
@@ -459,6 +476,36 @@ class Invoice(models.Model):
         if reason:
             self.internal_notes += f"\n[Cancelled] {reason}"
         self.save()
+
+    def get_pdf_url(self):
+        """
+        Return the URL for the invoice PDF, or None if no PDF has been stored.
+
+        Reads the bucket/domain from Django settings so this works correctly in
+        every environment (dev, staging, prod) and survives bucket renames.
+
+        Priority order:
+        1. AWS_S3_CUSTOM_DOMAIN setting  (e.g. 'mybucket.s3.amazonaws.com')
+        2. AWS_STORAGE_BUCKET_NAME       (constructs domain from bucket name)
+        3. Falls back to None if neither is configured (local/dev without S3)
+        """
+        if not self.s3_key:
+            return None
+
+        from django.conf import settings
+
+        # Try AWS_S3_CUSTOM_DOMAIN first (set by production.py when USE_S3=True)
+        custom_domain = getattr(settings, 'AWS_S3_CUSTOM_DOMAIN', None)
+        if custom_domain:
+            return f"https://{custom_domain}/{self.s3_key}"
+
+        # Fallback: construct from bucket name
+        bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+        if bucket:
+            region = getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1')
+            return f"https://{bucket}.s3.{region}.amazonaws.com/{self.s3_key}"
+
+        return None
 
 
 class InvoiceLineItem(models.Model):
@@ -585,15 +632,28 @@ class Payment(models.Model):
         self._update_invoice_totals()
     
     def _update_invoice_totals(self):
-        """Update the invoice's amount_paid and status."""
-        invoice = self.invoice
-        total_paid = invoice.payments.aggregate(
-            total=models.Sum('amount')
-        )['total'] or Decimal('0.00')
-        
-        invoice.amount_paid = total_paid
-        invoice.update_status()
-        invoice.save()
+        """
+        Update the invoice's amount_paid and status.
+
+        Uses SELECT FOR UPDATE to prevent a race condition where two concurrent
+        payments both read the same stale aggregate and one overwrites the
+        other's work, leaving amount_paid under-counted.
+
+        Example: customer pays via Stripe webhook AND a technician records a
+        cash payment at the same moment. Without the lock both transactions
+        would read the same SUM and the final write would lose one payment.
+        """
+        with transaction.atomic():
+            # Lock the invoice row for the duration of the read-aggregate-write
+            # sequence so concurrent payments serialise here instead of racing.
+            invoice = Invoice.objects.select_for_update().get(pk=self.invoice_id)
+            total_paid = invoice.payments.aggregate(
+                total=models.Sum('amount')
+            )['total'] or Decimal('0.00')
+
+            invoice.amount_paid = total_paid
+            invoice.update_status()
+            invoice.save()
 
 
 # =============================================================================
@@ -660,3 +720,112 @@ class TaxRate(models.Model):
         if self.state:
             self.state = self.state.strip().upper()
         super().save(*args, **kwargs)
+
+
+# =============================================================================
+# PLATFORM CONFIG (Singleton)
+# =============================================================================
+
+class PlatformConfig(models.Model):
+    """
+    Singleton — global platform settings for Stripe Connect fee routing.
+
+    Use PlatformConfig.get() to fetch (creates with defaults if missing).
+    """
+    default_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        help_text="Default platform fee % on invoice payments (e.g. 2.50 = 2.5%)"
+    )
+    competition_pool_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the competition pool feature is active"
+    )
+    competition_pool_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        help_text="% of subscription payments routed to competition pool"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Platform Configuration'
+        verbose_name_plural = 'Platform Configuration'
+
+    def __str__(self):
+        return f'Platform Config (fee: {self.default_fee_percent}%)'
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton: always use pk=1
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Platform configuration cannot be deleted.')
+
+    @classmethod
+    def get(cls):
+        """Get (or create with defaults) the singleton PlatformConfig."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @classmethod
+    def get_solo(cls):
+        """Alias for get() — singleton accessor."""
+        return cls.get()
+
+
+# =============================================================================
+# PLATFORM FEE RECORDS
+# =============================================================================
+
+class PlatformFeeRecord(models.Model):
+    """
+    Tracks every platform fee collected on invoice payments.
+
+    Created when a connected charge succeeds. Used for reporting,
+    audit trail, and future competition pool calculations.
+    """
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='platform_fee_records',
+    )
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name='platform_fee_records',
+    )
+    payment_intent_id = models.CharField(
+        max_length=255, db_index=True,
+        help_text="Stripe PaymentIntent ID (pi_...)"
+    )
+    gross_amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Total payment amount in dollars"
+    )
+    fee_amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Platform fee collected in dollars"
+    )
+    fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        help_text="Fee rate at time of charge (percentage)"
+    )
+    stripe_account_id = models.CharField(
+        max_length=50,
+        help_text="Shop's connected account ID (acct_...)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Platform Fee Record'
+        verbose_name_plural = 'Platform Fee Records'
+        indexes = [
+            models.Index(fields=['tenant', 'created_at']),
+        ]
+
+    def __str__(self):
+        return (
+            f"Fee ${self.fee_amount} ({self.fee_percent}%) on "
+            f"{self.invoice.invoice_number} → {self.stripe_account_id}"
+        )

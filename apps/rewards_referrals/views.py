@@ -33,14 +33,37 @@ def generate_unique_code(length=8):
 def get_customer_user(request):
     """
     Helper function to get the CustomerUser for the current authenticated user.
-    
+
+    Returns None if the user does not have a CustomerUser record (e.g. shop
+    owners / technicians who are not customer portal users).  All callers must
+    guard against a None return value so they produce a user-friendly error
+    rather than an unhandled 500.
+
     Args:
         request: HTTP request object
-        
+
     Returns:
-        CustomerUser: The customer user object for the current user
+        CustomerUser or None
     """
-    return CustomerUser.objects.get(user=request.user)
+    return CustomerUser.objects.filter(user=request.user).first()
+
+
+def _customer_required_redirect(request):
+    """
+    Return an appropriate error response when the caller has no CustomerUser.
+
+    HTML requests: redirect to profile_creation with an info message.
+    JSON / AJAX requests: return a 403 JsonResponse.
+    """
+    from django.contrib import messages as _messages
+    is_ajax = (
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or request.headers.get('Accept', '').startswith('application/json')
+    )
+    if is_ajax:
+        return JsonResponse({'success': False, 'error': 'Customer account required.'}, status=403)
+    _messages.info(request, "Please complete your customer profile to access this feature.")
+    return redirect('profile_creation')
 
 def get_user_referral_code(customer_user):
     """
@@ -82,6 +105,8 @@ def generate_referral_code(request):
         HttpResponse: Rendered template or redirect
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     
     # Check if user already has a referral code
     existing_code = get_user_referral_code(customer_user)
@@ -119,6 +144,8 @@ def referral_code(request):
         JsonResponse: Contains the referral code or error message
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     referral_code = get_user_referral_code(customer_user)
     
     if referral_code:
@@ -159,7 +186,9 @@ def referral_tracking(request):
                 return JsonResponse({'success': False, 'message': 'Invalid referral code'})
                 
             customer_user = get_customer_user(request)
-            
+            if customer_user is None:
+                return JsonResponse({'success': False, 'message': 'Customer account required.'}, status=403)
+
             # Use the service to process the referral
             success = ReferralService.process_referral(referral_code, customer_user)
             
@@ -189,6 +218,8 @@ def referral_history(request):
         HttpResponse: Rendered template with referral history
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     
     # Get the user's referral code
     referral_code = get_user_referral_code(customer_user)
@@ -222,6 +253,8 @@ def referral_stats(request):
         JsonResponse: Referral statistics
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     referral_code = get_user_referral_code(customer_user)
     
     if not referral_code:
@@ -294,6 +327,8 @@ def reward_balance(request):
         JsonResponse: Current reward points
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     points = RewardService.get_reward_balance(customer_user)
     
     return JsonResponse({
@@ -315,6 +350,8 @@ def reward_history(request):
         HttpResponse: Rendered template with redemption history
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     redemptions = RewardService.get_reward_redemptions(customer_user)
     points = RewardService.get_reward_balance(customer_user)
     
@@ -396,7 +433,10 @@ def redeem_reward(request):
     
     try:
         customer_user = get_customer_user(request)
-        
+
+        if customer_user is None:
+            return _customer_required_redirect(request)
+
         # Use the reward service to handle the redemption
         success, result = RewardService.redeem_reward(customer_user, option_id)
         
@@ -445,6 +485,8 @@ def referral_rewards(request):
         HttpResponse: Rendered template with rewards dashboard
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     
     # Get reward points
     reward = get_user_reward(customer_user)
@@ -509,6 +551,8 @@ def referral_rewards_history(request):
         HttpResponse: Rendered template with full redemption history
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     redemptions = RewardRedemption.objects.filter(
         reward__customer_user=customer_user
     ).order_by('-created_at')
@@ -531,6 +575,8 @@ def referral_rewards_balance(request):
         JsonResponse: Current reward points
     """
     customer_user = get_customer_user(request)
+    if customer_user is None:
+        return _customer_required_redirect(request)
     reward = get_user_reward(customer_user)
     points = reward.points if reward else 0
     

@@ -453,8 +453,13 @@ def delete_customer(request, customer_id):
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
-    # Check for related repairs
-    repair_count = Repair.objects.filter(customer=customer, tenant=tenant).count()
+    # Check for related repairs — use all_objects to include soft-deleted repairs.
+    # Repair.objects uses RepairSoftDeleteManager which excludes deleted records.
+    # A customer with only soft-deleted repairs would pass the Repair.objects count
+    # check (count=0), allowing deletion and orphaning those archived repairs
+    # (customer FK becomes NULL since GlassService.customer is SET_NULL).
+    # We must block deletion whenever ANY repair — active OR archived — exists.
+    repair_count = Repair.all_objects.filter(customer=customer, tenant=tenant).count()
     
     if repair_count > 0:
         # Soft approach: don't delete, show error

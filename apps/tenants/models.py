@@ -196,9 +196,24 @@ class Tenant(models.Model):
     )
 
     # Stripe Connect — for receiving customer invoice payments
+    STRIPE_ONBOARDING_STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('pending', 'Onboarding Started'),
+        ('in_review', 'In Review'),
+        ('active', 'Active'),
+        ('restricted', 'Restricted'),
+        ('disabled', 'Disabled'),
+    ]
+
     stripe_connect_account_id = models.CharField(
         max_length=50, blank=True,
         help_text="Stripe Connect Account ID (acct_...) for receiving invoice payments"
+    )
+    stripe_onboarding_status = models.CharField(
+        max_length=20,
+        choices=STRIPE_ONBOARDING_STATUS_CHOICES,
+        default='not_started',
+        help_text="Current Stripe Connect onboarding status"
     )
     stripe_connect_onboarding_complete = models.BooleanField(
         default=False,
@@ -212,9 +227,13 @@ class Tenant(models.Model):
         default=False,
         help_text="Whether the connected account can receive payouts to their bank"
     )
+    stripe_connected_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the Stripe Connect account first became active"
+    )
     platform_fee_percent = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
-        help_text="Platform fee percentage on invoice payments (e.g., 2.00 for 2%)"
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Override global platform fee for this tenant. Null = use global default."
     )
 
     # Plan (for Phase 3 billing)
@@ -352,6 +371,7 @@ class Tenant(models.Model):
         """True if this tenant's Stripe Connect account can accept invoice payments."""
         return (
             bool(self.stripe_connect_account_id)
+            and self.stripe_onboarding_status == 'active'
             and self.stripe_connect_charges_enabled
         )
 
