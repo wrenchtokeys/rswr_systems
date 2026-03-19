@@ -162,15 +162,44 @@ class Command(BaseCommand):
                 
                 if len(uninvoiced) >= 10:  # Auto-batch at 10+ repairs
                     try:
+                        # CODE-096: Always create as DRAFT; attempt email and only
+                        # mark SENT on confirmed delivery (AGENTS.md gotcha).
                         invoice = tracking.create_invoice_from_repairs(
                             customer=pref.customer,
                             repairs=uninvoiced,
-                            auto_send=True,
                         )
                         invoiced_count += 1
+
+                        # Attempt to email the invoice if customer has an email
+                        emailed = False
+                        email_note = ''
+                        if pref.customer.email:
+                            try:
+                                from apps.billing.services.invoice_email_service import InvoiceEmailService
+                                email_svc = InvoiceEmailService(tenant=tenant)
+                                repair_ids = [r.id for r in uninvoiced]
+                                success, msg = email_svc.send_invoice_email(
+                                    customer_id=pref.customer.id,
+                                    recipient_email=pref.customer.email,
+                                    repair_ids=repair_ids,
+                                )
+                                if success:
+                                    from django.utils import timezone as _tz
+                                    invoice.status = 'SENT'
+                                    invoice.sent_at = _tz.now()
+                                    invoice.save(update_fields=['status', 'sent_at'])
+                                    emailed = True
+                                    email_note = ' ✉️ emailed'
+                                else:
+                                    email_note = f' ⚠️ email failed: {msg}'
+                            except Exception as email_exc:
+                                email_note = f' ⚠️ email error: {email_exc}'
+                        else:
+                            email_note = ' (no email on file)'
+
                         self.stdout.write(
                             f"   [{tenant.name}] 📄 {pref.customer.name}: "
-                            f"{len(uninvoiced)} repairs → {invoice.invoice_number} (${invoice.total})"
+                            f"{len(uninvoiced)} repairs → {invoice.invoice_number} (${invoice.total}){email_note}"
                         )
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(

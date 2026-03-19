@@ -355,3 +355,100 @@ class TaxRateModelTests(TestCase):
         )
         self.assertIn('Conway', str(tr))
         self.assertIn('AR', str(tr))
+
+
+@override_settings(**TEST_OVERRIDES)
+class InvoiceTrackingServiceAutoSendTests(TestCase):
+    """
+    CODE-096: InvoiceTrackingService.create_invoice_from_repairs must ALWAYS
+    create invoices as DRAFT, regardless of the (now-deprecated) auto_send arg.
+    Email + SENT status is the caller's responsibility after delivery is confirmed.
+    """
+
+    def setUp(self):
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial',
+            defaults={'name': 'Trial', 'monthly_price': Decimal('0.00'),
+                      'trial_days': 30, 'display_order': 0},
+        )
+        self.user = User.objects.create_user('track_owner', 'to@test.com', 'pass')
+        self.tenant = Tenant.objects.create(
+            name='Track Shop', slug='track-shop', subdomain='track-shop',
+            owner=self.user, subscription_plan=plan,
+        )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.user, role='owner')
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Track Fleet', email='tfleet@test.com',
+        )
+
+    def _make_repair(self, n=1):
+        """Create minimal Repair fixtures."""
+        from apps.technician_portal.models import Repair, Technician
+        from django.contrib.auth.models import User as _User
+        from apps.tenants.models import TenantMembership as _TM
+
+        # Ensure a technician exists for these repairs
+        tech_user, _ = _User.objects.get_or_create(
+            username='track_tech',
+            defaults={'email': 'tech@track.com'},
+        )
+        tech_user.set_password('pass')
+        tech_user.save()
+        _TM.objects.get_or_create(user=tech_user, tenant=self.tenant, defaults={'role': 'technician'})
+        technician, _ = Technician.objects.get_or_create(user=tech_user, tenant=self.tenant)
+
+        repairs = []
+        for i in range(n):
+            r = Repair.objects.create(
+                tenant=self.tenant,
+                customer=self.customer,
+                technician=technician,
+                unit_number=f'TRK-{i}',
+                queue_status='COMPLETED',
+                cost=Decimal('50.00'),
+            )
+            repairs.append(r)
+        return repairs
+
+    def test_create_invoice_from_repairs_auto_send_false_is_draft(self):
+        """With auto_send=False (default), invoice is DRAFT."""
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        repairs = self._make_repair(1)
+        svc = InvoiceTrackingService(tenant=self.tenant)
+        invoice = svc.create_invoice_from_repairs(self.customer, repairs)
+        self.assertEqual(invoice.status, 'DRAFT')
+        self.assertIsNone(invoice.sent_at)
+
+    def test_create_invoice_from_repairs_auto_send_true_still_draft(self):
+        """
+        auto_send=True must NOT skip email delivery and mark SENT prematurely.
+        The invoice must be created as DRAFT; callers mark SENT after email confirms.
+        """
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        repairs = self._make_repair(1)
+        svc = InvoiceTrackingService(tenant=self.tenant)
+        invoice = svc.create_invoice_from_repairs(self.customer, repairs, auto_send=True)
+        self.assertEqual(
+            invoice.status, 'DRAFT',
+            "auto_send=True should not mark invoice SENT — caller must confirm email delivery first"
+        )
+        self.assertIsNone(invoice.sent_at)
+
+    def test_create_invoice_from_repairs_prevents_double_billing(self):
+        """Same repair cannot be invoiced twice."""
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        repairs = self._make_repair(1)
+        svc = InvoiceTrackingService(tenant=self.tenant)
+        svc.create_invoice_from_repairs(self.customer, repairs)
+        with self.assertRaises(ValueError):
+            svc.create_invoice_from_repairs(self.customer, repairs)
+
+    def test_create_invoice_from_repairs_multi_repair(self):
+        """Multiple repairs produce one invoice with correct tenant."""
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        repairs = self._make_repair(3)
+        svc = InvoiceTrackingService(tenant=self.tenant)
+        invoice = svc.create_invoice_from_repairs(self.customer, repairs)
+        self.assertEqual(invoice.tenant, self.tenant)
+        self.assertEqual(invoice.line_items.count(), 3)
+        self.assertEqual(invoice.status, 'DRAFT')
