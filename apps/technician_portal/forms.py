@@ -320,13 +320,24 @@ class RepairForm(forms.ModelForm):
             self.fields['technician'].widget = forms.HiddenInput()
 
         # Hide pricing override fields for non-managers
-        if self.user and hasattr(self.user, 'technician'):
-            technician = self.user.technician
-            if not (technician.is_manager and technician.can_override_pricing):
-                self.fields['cost_override'].widget = forms.HiddenInput()
-                self.fields['override_reason'].widget = forms.HiddenInput()
+        # Use tenant-scoped lookup to avoid cross-tenant manager privilege leak
+        # (CODE-091: unscoped self.user.technician would return Shop A's Technician
+        # even when the form is rendered in Shop B's context).
+        _form_technician = None
+        if self.user and self.tenant:
+            _form_technician = Technician.objects.filter(
+                user=self.user, tenant=self.tenant
+            ).first()
+        elif self.user and hasattr(self.user, 'technician'):
+            # Fallback for superusers / dev (no tenant context)
+            try:
+                _form_technician = self.user.technician
+            except Technician.DoesNotExist:
+                pass
+
+        if _form_technician and _form_technician.is_manager and _form_technician.can_override_pricing:
+            pass  # Show override fields
         else:
-            # Hide for users without technician profiles
             self.fields['cost_override'].widget = forms.HiddenInput()
             self.fields['override_reason'].widget = forms.HiddenInput()
         
@@ -404,16 +415,30 @@ class RepairForm(forms.ModelForm):
         if hasattr(self, 'user') and self.user.is_staff and not technician:
             self.add_error('technician', 'Please select a technician to assign this repair to.')
 
-        # Validate pricing override permissions and limits
+        # Validate pricing override permissions and limits.
+        # Must use tenant-scoped Technician lookup — CODE-091: an unscoped
+        # self.user.technician resolves the OneToOneField globally and could
+        # return a manager record from another tenant, bypassing cost controls.
         if cost_override is not None:
-            if not (hasattr(self, 'user') and hasattr(self.user, 'technician')):
+            _clean_technician = None
+            if hasattr(self, 'user') and self.user:
+                if self.tenant:
+                    _clean_technician = Technician.objects.filter(
+                        user=self.user, tenant=self.tenant
+                    ).first()
+                elif hasattr(self.user, 'technician'):
+                    try:
+                        _clean_technician = self.user.technician
+                    except Technician.DoesNotExist:
+                        pass
+
+            if not _clean_technician:
                 self.add_error('cost_override', 'Only managers can override pricing.')
             else:
-                user_technician = self.user.technician
-                if not (user_technician.is_manager and user_technician.can_override_pricing):
+                if not (_clean_technician.is_manager and _clean_technician.can_override_pricing):
                     self.add_error('cost_override', 'You do not have permission to override pricing.')
-                elif user_technician.approval_limit and cost_override > user_technician.approval_limit:
-                    self.add_error('cost_override', f'Override amount exceeds your approval limit of ${user_technician.approval_limit}.')
+                elif _clean_technician.approval_limit and cost_override > _clean_technician.approval_limit:
+                    self.add_error('cost_override', f'Override amount exceeds your approval limit of ${_clean_technician.approval_limit}.')
                 elif not override_reason:
                     self.add_error('override_reason', 'Override reason is required when setting a custom price.')
 
@@ -436,13 +461,26 @@ class RepairForm(forms.ModelForm):
                 except Repair.DoesNotExist:
                     pass
 
-            # Determine if user is a manager who can override photo requirement
+            # Determine if user is a manager who can override photo requirement.
+            # Must use tenant-scoped lookup — same CODE-091 pattern: unscoped
+            # self.user.technician could return a manager from a different tenant,
+            # granting them the ability to skip after-photo requirements in any shop.
             is_manager = False
-            if hasattr(self, 'user'):
+            if hasattr(self, 'user') and self.user:
                 if self.user.is_staff:
                     is_manager = True
-                elif hasattr(self.user, 'technician') and self.user.technician.is_manager:
-                    is_manager = True
+                elif self.tenant:
+                    _photo_tech = Technician.objects.filter(
+                        user=self.user, tenant=self.tenant
+                    ).first()
+                    if _photo_tech and _photo_tech.is_manager:
+                        is_manager = True
+                elif hasattr(self.user, 'technician'):
+                    try:
+                        if self.user.technician.is_manager:
+                            is_manager = True
+                    except Technician.DoesNotExist:
+                        pass
 
             # Require after photo for non-managers only if no existing photo
             if not is_manager and not after_photo and not has_existing_after_photo:
