@@ -209,7 +209,12 @@ def invoice_preview(request, customer_id):
     days = int(request.GET.get('days', 30))
     start_date = timezone.now() - timedelta(days=days)
 
-    service = InvoiceService()
+    # Pass tenant so InvoiceService scopes repair queries to the current shop.
+    # Previously InvoiceService() was called without tenant, causing get_completed_repairs
+    # to fetch repairs with only customer_id filter (no tenant), which is fine in practice
+    # since customer_id was already tenant-validated, but is poor defense-in-depth.
+    # (CODE-090)
+    service = InvoiceService(tenant=tenant)
     try:
         invoice_data = service.build_invoice_data(
             customer_id=customer_id,
@@ -268,7 +273,9 @@ def generate_invoice(request, customer_id):
     days = int(request.GET.get('days', 30))
     start_date = timezone.now() - timedelta(days=days)
 
-    service = InvoiceService()
+    # Pass tenant so InvoiceService scopes all internal queries to the current shop.
+    # Same fix as invoice_preview above (CODE-090).
+    service = InvoiceService(tenant=tenant)
     try:
         pdf_bytes, invoice_data = service.generate_invoice(
             customer_id=customer_id,
