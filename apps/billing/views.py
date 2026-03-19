@@ -231,7 +231,8 @@ def create_invoice(request, customer_id):
     # Generate PDF and save to S3
     try:
         from apps.billing.services.invoice_service import InvoiceService
-        invoice_service = InvoiceService()
+        # Pass tenant so InvoiceService loads correct BillingConfig. (CODE-092)
+        invoice_service = InvoiceService(tenant=tenant)
         repair_ids = [r.id for r in repairs]
         pdf_bytes, invoice_data = invoice_service.generate_invoice(
             customer_id=customer_id,

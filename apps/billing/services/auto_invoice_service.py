@@ -86,8 +86,14 @@ class AutoInvoiceService:
         }
         
         try:
-            # Generate PDF
-            invoice_service = InvoiceService()
+            # Generate PDF — pass tenant so InvoiceService loads the correct
+            # BillingConfig (company name, address, payment terms).  Without
+            # tenant, InvoiceService() generates PDFs with blank company info.
+            # (CODE-092: mirrors reminder_service and clawdbot fixes)
+            repair_tenant = getattr(repair, 'tenant', None) or getattr(
+                getattr(repair, 'customer', None), 'tenant', None
+            )
+            invoice_service = InvoiceService(tenant=repair_tenant)
             pdf_bytes, invoice_data = invoice_service.generate_invoice(
                 customer_id=repair.customer.id,
                 repair_ids=[repair.id]

@@ -66,7 +66,14 @@ class ReminderService:
         pdf_bytes = None
         try:
             from apps.billing.services.invoice_service import InvoiceService
-            invoice_service = InvoiceService()
+            # Pass tenant so InvoiceService loads the correct BillingConfig (company name,
+            # address, payment terms).  Without tenant, InvoiceService() skips
+            # BillingConfig and generates PDFs with blank company info — same root
+            # cause as CODE-090 (clawdbot views).  (CODE-092)
+            invoice_tenant = getattr(invoice, 'tenant', None) or getattr(
+                getattr(invoice, 'customer', None), 'tenant', None
+            )
+            invoice_service = InvoiceService(tenant=invoice_tenant)
             repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
             pdf_bytes, _ = invoice_service.generate_invoice(
                 customer_id=invoice.customer_id,
