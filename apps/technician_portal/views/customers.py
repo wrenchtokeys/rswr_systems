@@ -316,12 +316,14 @@ def mark_unit_replaced(request, customer_id, unit_number):
         defaults={'repair_count': 0}
     )
     
-    # Get the technician (current user or fallback)
+    # Get the technician (current user or fallback).
+    # Scope to the current tenant to avoid cross-tenant Technician contamination
+    # on Replacement records (same pattern as CODE-076 through CODE-085).
     technician = None
-    if hasattr(request.user, 'technician'):
-        technician = request.user.technician
-    else:
-        # For admins without technician record, try to get customer's primary tech
+    if tenant:
+        technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    if technician is None:
+        # For admins without a technician record, fall back to customer's primary tech
         technician = customer.primary_technician
     
     if not technician:
