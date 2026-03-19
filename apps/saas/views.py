@@ -1578,7 +1578,48 @@ def invite_member(request):
 
 def shop_join_view(request, slug):
     """Public page: /join/<slug>/ — customer self-signup for a shop's portal."""
+    from apps.customer_portal.models import CustomerUser as CustomerUserModel
     tenant = get_object_or_404(Tenant, slug=slug, is_active=True)
+
+    # If the user is already authenticated, check if they already have a
+    # customer record at this tenant.  If so, redirect them to the portal.
+    # If not, create one automatically so they don't get stuck with a
+    # "please log in" error that leads nowhere.  (CODE-093)
+    if request.user.is_authenticated:
+        existing_cu = CustomerUserModel.objects.filter(
+            user=request.user, customer__tenant=tenant
+        ).first()
+        if existing_cu:
+            request.session['tenant_id'] = tenant.id
+            messages.info(request, f"You already have access to {tenant.name}.")
+            return redirect('customer_dashboard')
+        # Authenticated user, no customer record yet — create one automatically
+        with transaction.atomic():
+            customer_name = (
+                request.user.get_full_name() or request.user.email
+            )
+            # Avoid duplicate customer names within this tenant
+            if Customer.objects.filter(tenant=tenant, name=customer_name).exists():
+                customer_name = f"{customer_name} ({request.user.email})"
+            customer = Customer.objects.create(
+                tenant=tenant,
+                name=customer_name,
+                customer_type='RETAIL',
+                email=request.user.email,
+            )
+            CustomerUserModel.objects.create(
+                user=request.user,
+                customer=customer,
+                is_primary_contact=True,
+            )
+            TenantMembership.objects.get_or_create(
+                tenant=tenant,
+                user=request.user,
+                defaults={'role': 'viewer'},
+            )
+        request.session['tenant_id'] = tenant.id
+        messages.success(request, f"Welcome to {tenant.name}! Your portal account is ready.")
+        return redirect('customer_dashboard')
 
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
@@ -1608,9 +1649,15 @@ def shop_join_view(request, slug):
             except ValidationError as e:
                 errors.extend(e.messages)
 
-        # Check email uniqueness
+        # Check email uniqueness.  Note: if the user finds this error, they
+        # should log in at /login/?next=/join/<slug>/ — after login the view
+        # will detect their existing account and create a CustomerUser record
+        # automatically (see the is_authenticated branch at the top of this view).
         if email and User.objects.filter(email=email).exists():
-            errors.append('An account with this email already exists. Please log in instead.')
+            errors.append(
+                'An account with this email already exists. '
+                'Please log in to access this portal.'
+            )
 
         if errors:
             return render(request, 'saas/shop_join.html', {
