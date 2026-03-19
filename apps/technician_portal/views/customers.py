@@ -99,8 +99,24 @@ def customer_list(request):
             customers = customers.none()
         customers = customers.order_by('name')
     else:
-        if hasattr(request.user, 'technician'):
-            technician = request.user.technician
+        # Use tenant-scoped Technician lookup so that a user who is a Technician
+        # at Shop A but has a TenantMembership at Shop B (without a Technician record
+        # there) doesn't resolve to Shop A's Technician here. Unscoped
+        # request.user.technician would return the wrong shop's record — correct
+        # downstream tenant filtering masks the actual issue, but using the wrong
+        # Technician PK to filter repairs means a cross-tenant user sees no customers
+        # at Shop B even if they have repairs there (broken UX). (CODE-088)
+        if tenant:
+            technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+        elif hasattr(request.user, 'technician'):
+            try:
+                technician = request.user.technician
+            except Technician.DoesNotExist:
+                technician = None
+        else:
+            technician = None
+
+        if technician:
             repair_qs = Repair.objects.filter(technician=technician)
             if tenant:
                 repair_qs = repair_qs.filter(tenant=tenant)
