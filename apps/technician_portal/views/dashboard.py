@@ -35,17 +35,25 @@ def register_technician(request):
 @technician_required
 def technician_dashboard(request):
     """Main technician dashboard with work queues, notifications, and stats."""
-    # Get technician profile or None for admin users without a profile
+    # Tenant scoping first — needed to scope the Technician lookup below.
+    tenant = getattr(request, 'tenant', None)
+
+    # Get technician profile scoped to the current tenant.
+    # We deliberately avoid `request.user.technician` (unscoped OneToOneField)
+    # because it resolves to whichever Technician row exists for the user
+    # globally — a manager at Shop A would appear as manager on Shop B's dashboard
+    # and see REQUESTED repairs they shouldn't (CODE-081 / same pattern as CODE-077).
     technician = None
     if hasattr(request.user, 'technician'):
-        technician = request.user.technician
-
-    # Tenant scoping
-    tenant = getattr(request, 'tenant', None)
+        if tenant:
+            technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+        else:
+            technician = request.user.technician
 
     # Get customer-requested repairs (ONLY for managers)
     if technician:
-        # Only MANAGERS can see REQUESTED repairs (for assignment purposes)
+        # Only MANAGERS can see REQUESTED repairs (for assignment purposes).
+        # `technician` is already tenant-scoped above, so is_manager is correct.
         if technician.is_manager:
             qs = Repair.objects.filter(queue_status='REQUESTED')
             if tenant:
