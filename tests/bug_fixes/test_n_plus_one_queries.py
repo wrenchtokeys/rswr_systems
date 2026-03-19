@@ -833,3 +833,223 @@ class TestInvoiceListUninvoicedBulkQuery(TestCase):
             f"Query count grew too much: baseline={baseline_count}, scaled={scaled_count}, "
             f"delta={delta}. Likely N+1 still present."
         )
+
+
+# ---------------------------------------------------------------------------
+# CODE-097: UserAdmin N+1 — get_role() and get_tenant() issued 4 queries per
+# user in the admin changelist (2× exists() for role + 2× first() for tenant).
+# Fix: override get_queryset() to prefetch_related('technician', 'customeruser').
+# ---------------------------------------------------------------------------
+
+def _make_tenant_c097(slug_suffix):
+    """Helper: create a Tenant + owner User for CODE-097 tests."""
+    from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
+    plan, _ = SubscriptionPlan.objects.get_or_create(
+        slug='trial',
+        defaults={'name': 'Trial', 'monthly_price': 0, 'annual_price': 0},
+    )
+    tenant = Tenant.objects.create(
+        name=f'Shop {slug_suffix}',
+        slug=f'shop-{slug_suffix}',
+        plan='trial',
+        subscription_plan=plan,
+        is_active=True,
+    )
+    owner = User.objects.create_user(
+        username=f'owner_{slug_suffix}',
+        email=f'owner_{slug_suffix}@example.com',
+        password='pw',
+        is_staff=True,
+        is_superuser=True,
+    )
+    TenantMembership.objects.create(tenant=tenant, user=owner, role='owner', is_active=True)
+    return tenant, owner
+
+
+@override_settings(DEBUG=True)
+class UserAdminN1Test(TestCase):
+    """
+    CODE-097: UserAdmin.get_role() and get_tenant() N+1 fix.
+
+    Verifies that loading the admin changelist for N users does NOT issue
+    O(N) queries for Technician/CustomerUser lookups.
+    """
+
+    def setUp(self):
+        from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial',
+            defaults={'name': 'Trial', 'monthly_price': 0, 'annual_price': 0},
+        )
+        self.superuser = User.objects.create_user(
+            username='c097_super',
+            email='c097_super@test.com',
+            password='pw',
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.tenant = Tenant.objects.create(
+            name='C097 Shop',
+            slug='c097-shop',
+            plan='trial',
+            subscription_plan=plan,
+            is_active=True,
+            owner=self.superuser,
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.superuser, role='owner', is_active=True,
+        )
+
+        # Create a mix of technician and plain users for the changelist
+        from apps.technician_portal.models import Technician
+        self.tech_users = []
+        self.plain_users = []
+
+        for i in range(5):
+            u = User.objects.create_user(
+                username=f'c097_tech_{i}',
+                email=f'c097_tech_{i}@test.com',
+                password='pw',
+            )
+            Technician.objects.create(user=u, tenant=self.tenant, is_active=True)
+            TenantMembership.objects.create(tenant=self.tenant, user=u, role='technician', is_active=True)
+            self.tech_users.append(u)
+
+        for i in range(5):
+            u = User.objects.create_user(
+                username=f'c097_plain_{i}',
+                email=f'c097_plain_{i}@test.com',
+                password='pw',
+            )
+            self.plain_users.append(u)
+
+        self.client = Client()
+        self.client.force_login(self.superuser)
+
+    def test_get_queryset_uses_prefetch(self):
+        """
+        UserAdmin.get_queryset() should prefetch 'technician' and 'customeruser'
+        so display methods can read them without extra DB hits.
+        """
+        from rs_systems.admin import UserAdmin
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        site = AdminSite()
+        ua = UserAdmin(User, site)
+        factory = RequestFactory()
+        req = factory.get('/admin/auth/user/')
+        req.user = self.superuser
+
+        with CaptureQueriesContext(connection) as ctx:
+            qs = ua.get_queryset(req)
+            # Force evaluation — iterate to trigger prefetch
+            users = list(qs)
+
+        # Verify the queryset has prefetch_related_lookups attached.
+        # _prefetch_related_lookups contains Prefetch objects; extract their
+        # prefetch_to attribute (the accessor name, e.g. 'technician').
+        from django.db.models.query import Prefetch
+        lookup_names = [
+            p.prefetch_to if isinstance(p, Prefetch) else str(p)
+            for p in qs._prefetch_related_lookups
+        ]
+        self.assertIn(
+            'technician',
+            lookup_names,
+            f"Queryset should prefetch 'technician'; got {lookup_names}",
+        )
+        self.assertIn(
+            'customeruser',
+            lookup_names,
+            f"Queryset should prefetch 'customeruser'; got {lookup_names}",
+        )
+
+    def test_get_role_uses_prefetch_cache(self):
+        """
+        get_role() should read from the prefetch cache, not issue new queries.
+        After get_queryset(), each call to get_role() should use 0 DB queries.
+        """
+        from rs_systems.admin import UserAdmin
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        site = AdminSite()
+        ua = UserAdmin(User, site)
+        factory = RequestFactory()
+        req = factory.get('/admin/auth/user/')
+        req.user = self.superuser
+
+        qs = ua.get_queryset(req)
+        users = list(qs)  # populate prefetch cache
+
+        reset_queries()
+        with CaptureQueriesContext(connection) as ctx:
+            for u in users:
+                role = ua.get_role(u)
+        
+        # With prefetch, get_role should issue 0 extra queries for the cached users
+        self.assertEqual(
+            len(ctx), 0,
+            f"get_role() issued {len(ctx)} unexpected queries after prefetch: "
+            f"{[q['sql'][:80] for q in ctx.captured_queries[:3]]}"
+        )
+
+    def test_get_tenant_uses_prefetch_cache(self):
+        """
+        get_tenant() should read from the prefetch cache, not issue new queries.
+        """
+        from rs_systems.admin import UserAdmin
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        site = AdminSite()
+        ua = UserAdmin(User, site)
+        factory = RequestFactory()
+        req = factory.get('/admin/auth/user/')
+        req.user = self.superuser
+
+        qs = ua.get_queryset(req)
+        users = list(qs)  # populate prefetch cache
+
+        reset_queries()
+        with CaptureQueriesContext(connection) as ctx:
+            for u in users:
+                tenant_name = ua.get_tenant(u)
+
+        self.assertEqual(
+            len(ctx), 0,
+            f"get_tenant() issued {len(ctx)} unexpected queries after prefetch: "
+            f"{[q['sql'][:80] for q in ctx.captured_queries[:3]]}"
+        )
+
+    def test_get_role_correct_values(self):
+        """get_role() returns the right role string for each user type."""
+        from rs_systems.admin import UserAdmin
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        site = AdminSite()
+        ua = UserAdmin(User, site)
+        factory = RequestFactory()
+        req = factory.get('/admin/auth/user/')
+        req.user = self.superuser
+
+        qs = ua.get_queryset(req)
+        list(qs)  # populate cache
+
+        # Superuser should be 'Admin'
+        self.assertEqual(ua.get_role(self.superuser), 'Admin')
+
+        # Technician users
+        for u in self.tech_users:
+            # Refresh from cache
+            cached = next(x for x in qs if x.pk == u.pk)
+            self.assertEqual(ua.get_role(cached), 'Technician',
+                             f'Expected Technician for {u.username}')
+
+        # Plain users with no Technician/CustomerUser record
+        for u in self.plain_users:
+            cached = next(x for x in qs if x.pk == u.pk)
+            self.assertEqual(ua.get_role(cached), 'Unassigned',
+                             f'Expected Unassigned for {u.username}')
