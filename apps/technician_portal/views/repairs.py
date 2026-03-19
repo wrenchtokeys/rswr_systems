@@ -310,10 +310,14 @@ def create_repair(request):
 
     # Guard: non-admin user without a technician profile — redirect gracefully
     # instead of crashing on POST with an AttributeError (BUG-001).
+    # Use tenant-scoped lookup so a technician from Shop A visiting Shop B's portal
+    # doesn't slip through as if they belong here. (CODE-082)
     else:
-        try:
-            _tech_check = request.user.technician  # noqa: F841
-        except Exception:
+        _scoped_tech = (
+            Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if tenant else None
+        )
+        if not _scoped_tech:
             messages.error(
                 request,
                 "You don't have a technician profile yet. "
@@ -357,7 +361,9 @@ def create_repair(request):
             else:
                 try:
                     repair = form.save(commit=False)
-                    repair.technician = request.user.technician
+                    # Use the tenant-scoped Technician cached above — avoids assigning
+                    # a cross-tenant Technician (Shop A) to a Shop B repair. (CODE-082)
+                    repair.technician = _scoped_tech
                     repair.tenant = getattr(request, 'tenant', None)
 
                     # Check customer type and preferences for approval
@@ -461,7 +467,10 @@ def update_repair(request, repair_id):
             messages.error(request, "This repair has not been assigned yet and cannot be edited by technicians.")
             return redirect('repair_detail', repair_id=repair.id)
 
-        if repair.technician_id != request.user.technician.id:
+        # Use the tenant-scoped record computed above (_scoped_tech_ur) so that a
+        # technician from Shop A cannot pass this gate when editing Shop B repairs.
+        # request.user.technician would return Shop A's Technician (wrong shop). (CODE-082)
+        if not _scoped_tech_ur or repair.technician_id != _scoped_tech_ur.id:
             messages.error(request, "You can only edit repairs assigned to you.")
             return redirect('repair_detail', repair_id=repair.id)
     else:
@@ -580,11 +589,15 @@ def update_queue_status(request, repair_id):
     repair = get_object_or_404(qs, id=repair_id)
 
     if not user_is_admin:
-        if not hasattr(request.user, 'technician'):
+        # Use tenant-scoped lookup — prevents a technician from Shop A passing permission
+        # checks on Shop B repairs via the unscoped OneToOneField reverse relation. (CODE-082)
+        technician = (
+            Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if tenant else None
+        )
+        if not technician:
             messages.error(request, "You don't have a technician profile to update repairs.")
             return redirect('technician_dashboard')
-
-        technician = request.user.technician
 
         if repair.queue_status == 'PENDING':
             messages.error(request, "This repair is pending customer approval. Technicians cannot modify it.")
@@ -612,9 +625,11 @@ def update_queue_status(request, repair_id):
         new_status = request.POST.get('status')
         if new_status in dict(Repair.QUEUE_CHOICES):
             if old_status == 'REQUESTED':
-                # Auto-assign to the manager accepting the repair
-                if not user_is_admin and hasattr(request.user, 'technician'):
-                    repair.technician = request.user.technician
+                # Auto-assign to the manager accepting the repair.
+                # Use the tenant-scoped `technician` already resolved above so we
+                # don't accidentally assign a cross-tenant Technician record. (CODE-082)
+                if not user_is_admin and technician:
+                    repair.technician = technician
                     messages.info(request, "Repair assigned to you.")
 
                 repair.queue_status = new_status
