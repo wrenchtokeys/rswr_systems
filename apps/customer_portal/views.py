@@ -1733,30 +1733,38 @@ def unit_repair_data_api(request):
         customer_user = CustomerUser.objects.get(user=request.user)
         customer = customer_user.customer
         
-        # Get all unit repair counts for this customer
-        unit_repairs = UnitRepairCount.objects.filter(customer=customer)
-        
+        # Get all unit repair counts for this customer, scoped to the tenant.
+        # Always include tenant in the filter to prevent cross-tenant data leakage
+        # in edge cases where a user has CustomerUser records at multiple shops.
+        tenant = customer.tenant
+        unit_repairs = UnitRepairCount.objects.filter(customer=customer, tenant=tenant)
+
         # If no unit repair counts exist, create them from repairs data
         if not unit_repairs.exists():
             # Get counts directly from Repair model (tenant-scoped)
             repair_counts = Repair.objects.filter(
                 customer=customer,
-                tenant=customer.tenant,
+                tenant=tenant,
                 queue_status='COMPLETED'  # Only count completed repairs
             ).values('unit_number').annotate(
                 count=Count('id')
             ).order_by('-count')
-            
-            # Create UnitRepairCount records if needed
+
+            # Create UnitRepairCount records if needed.
+            # Include tenant in the lookup keys (not just defaults) so the lookup
+            # itself is tenant-scoped.  Omitting it would create NULL-tenant rows
+            # or silently match a NULL-tenant row left by an older codepath, so the
+            # correct tenant would never be set.  (Same pattern as customers.py mark_unit_replaced.)
             for repair in repair_counts:
                 UnitRepairCount.objects.update_or_create(
+                    tenant=tenant,
                     customer=customer,
                     unit_number=repair['unit_number'],
                     defaults={'repair_count': repair['count']}
                 )
-            
-            # Refresh the queryset
-            unit_repairs = UnitRepairCount.objects.filter(customer=customer)
+
+            # Refresh the queryset (tenant-scoped)
+            unit_repairs = UnitRepairCount.objects.filter(customer=customer, tenant=tenant)
         
         # Format the data for the chart
         data = [
