@@ -951,8 +951,19 @@ def bulk_repair_action(request):
         messages.error(request, "Invalid request method.")
         return redirect('repair_list')
 
-    technician = getattr(request.user, 'technician', None)
-    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
+    tenant = getattr(request, 'tenant', None)
+    is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    # Use tenant-scoped Technician lookup so that a user who is is_manager=True
+    # at Shop A cannot pass this gate while visiting Shop B's portal.
+    # request.user.technician (bare OneToOneField) resolves globally — it would
+    # return the Shop A Technician even on Shop B's request, allowing a cross-
+    # tenant manager to bulk-approve Shop B repairs and be assigned as their
+    # technician.  Fix: always scope to the current request tenant. (CODE-081)
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
 
     # Admins (owners/managers via TenantMembership) may not have a Technician record —
     # that's fine.  Plain technicians without is_manager must be blocked.
@@ -973,8 +984,6 @@ def bulk_repair_action(request):
     if not repair_ids:
         messages.error(request, "No repairs selected.")
         return redirect('repair_list')
-
-    tenant = getattr(request, 'tenant', None)
 
     with transaction.atomic():
         # Get repairs that are PENDING or REQUESTED
