@@ -206,6 +206,10 @@ class MarkNotificationReadTenantScopeTests(TestCase):
         self.tech_b = _make_technician(self.user_b, self.shop_b)
         _add_membership(self.user_a, self.shop_a)
         _add_membership(self.user_b, self.shop_b)
+        # user_a also has membership at shop_b (but NO Technician record there)
+        # This is the cross-tenant scenario: user passes @technician_required
+        # (they're a tech at shop_a) but have no Technician at shop_b.
+        _add_membership(self.user_a, self.shop_b, 'technician')
         # Create notifications for each tech
         self.notif_a = _make_notification(self.tech_a)
         self.notif_b = _make_notification(self.tech_b)
