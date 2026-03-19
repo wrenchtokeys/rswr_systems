@@ -188,14 +188,16 @@ def create_multi_break_repair(request):
             batch_id = uuid.uuid4()
             created_repairs = []
 
-            # Determine technician
+            # Determine technician — always use tenant-scoped lookup to prevent
+            # cross-tenant Technician assignment (CODE-084 / same family as CODE-082).
             if user_is_admin:
                 tech_id = request.POST.get('technician_id')
                 if not tech_id:
-                    # Admin who is also a technician — use their own profile
-                    if hasattr(request.user, 'technician'):
-                        technician = request.user.technician
-                    else:
+                    # Admin who is also a technician — look up their tenant-scoped record.
+                    technician = Technician.objects.filter(
+                        user=request.user, tenant=tenant
+                    ).first() if tenant else None
+                    if not technician:
                         error_msg = "As an admin, you must select a technician."
                         messages.error(request, error_msg)
                         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -216,9 +218,12 @@ def create_multi_break_repair(request):
                             return JsonResponse({'success': False, 'error': error_msg}, status=400)
                         return redirect('create_multi_break_repair')
             else:
-                try:
-                    technician = request.user.technician
-                except AttributeError:
+                # Non-admin: scope lookup to current tenant to avoid assigning a
+                # cross-tenant Technician record to this shop's repair.
+                technician = Technician.objects.filter(
+                    user=request.user, tenant=tenant
+                ).first() if tenant else None
+                if not technician:
                     error_msg = "You don't have a technician profile to create repairs."
                     messages.error(request, error_msg)
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -443,11 +448,17 @@ def convert_to_batch(request, repair_id):
     original_repair = get_object_or_404(qs, id=repair_id)
 
     if not user_is_admin:
-        if not hasattr(request.user, 'technician'):
+        # Scope the Technician lookup to the current tenant — unscoped
+        # request.user.technician resolves via OneToOneField and could return
+        # a record from a different shop (CODE-084 / same family as CODE-082).
+        current_tech = Technician.objects.filter(
+            user=request.user, tenant=tenant
+        ).first() if tenant else None
+        if not current_tech:
             messages.error(request, "You don't have permission to modify this repair.")
             return redirect('repair_detail', repair_id=repair_id)
 
-        if original_repair.technician_id != request.user.technician.id:
+        if original_repair.technician_id != current_tech.id:
             messages.error(request, "You can only modify repairs assigned to you.")
             return redirect('repair_detail', repair_id=repair_id)
 
