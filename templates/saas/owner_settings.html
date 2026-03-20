@@ -646,7 +646,7 @@
                     </div>
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900">Overdue Reminders</h3>
-                        <p class="text-sm text-gray-500">Automatically send reminder emails for overdue invoices</p>
+                        <p class="text-sm text-gray-500">Automatically send reminder emails when invoices are past due</p>
                     </div>
                 </div>
                 <form method="post" action="{% url 'owner_settings' %}">
@@ -667,35 +667,48 @@
         <form method="post" action="{% url 'owner_settings' %}" class="p-6">
             {% csrf_token %}
             <input type="hidden" name="form_type" value="overdue_reminder_settings">
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Reminder Days</label>
-                    <input type="text" name="overdue_reminder_days" 
-                        value="{{ billing_config.overdue_reminder_days|default:'7,14,30' }}"
-                        placeholder="7,14,30"
-                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
-                    <p class="text-xs text-gray-500 mt-1">Days after due date to send reminders (comma-separated)</p>
+            <!-- Hidden field populated by JS from checkboxes -->
+            <input type="hidden" name="overdue_reminder_days" id="reminder-days-hidden" value="{{ billing_config.overdue_reminder_days|default:'7,14,30' }}">
+
+            <div class="mb-5">
+                <label class="block text-sm font-medium text-gray-700 mb-3">Send reminders after invoice is overdue by:</label>
+                <div class="flex flex-wrap gap-3" id="reminder-day-options">
+                    {% for day_val, day_label in reminder_day_choices %}
+                    <label class="reminder-day-chip relative cursor-pointer">
+                        <input type="checkbox" name="reminder_day_check" value="{{ day_val }}"
+                            class="sr-only peer"
+                            {% if day_val in active_reminder_days %}checked{% endif %}>
+                        <div class="px-4 py-2 rounded-lg border text-sm font-medium transition-all
+                            peer-checked:bg-blue-50 peer-checked:border-blue-400 peer-checked:text-blue-700
+                            bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300">
+                            {{ day_label }}
+                        </div>
+                    </label>
+                    {% endfor %}
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Email Subject</label>
-                    <textarea name="overdue_reminder_subject" rows="2"
-                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none">{{ billing_config.overdue_reminder_subject|default:'Reminder: Invoice #{invoice_number} is overdue' }}</textarea>
-                    <p class="text-xs text-gray-500 mt-1">Use {invoice_number}, {customer_name}, {amount_due}, {days_overdue}</p>
-                </div>
+                <p class="text-xs text-gray-400 mt-2">Select when to send reminder emails after an invoice's due date has passed</p>
             </div>
-            
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email Subject Line</label>
+                <input type="text" name="overdue_reminder_subject"
+                    value="{{ billing_config.overdue_reminder_subject|default:'Reminder: Invoice #{invoice_number} is overdue' }}"
+                    class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    placeholder="Reminder: Invoice #{invoice_number} is overdue">
+                <p class="text-xs text-gray-400 mt-1">Variables: {invoice_number}, {customer_name}, {amount_due}, {days_overdue}</p>
+            </div>
+
             <div class="flex justify-end">
                 <button type="submit" class="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
                     <i class="fas fa-save mr-2"></i>Save Reminder Settings
                 </button>
             </div>
         </form>
-        
+
         {% if billing_config.overdue_reminder_enabled %}
         <div class="px-6 pb-6">
             <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> Reminders will be sent {{ billing_config.overdue_reminder_days }} days after invoice due date.</p>
+                <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> Reminders active — emails sent at {{ billing_config.overdue_reminder_days }} days past due.</p>
             </div>
         </div>
         {% endif %}
@@ -710,62 +723,85 @@
                 </div>
                 <div>
                     <h3 class="text-lg font-semibold text-gray-900">Batch Invoicing</h3>
-                    <p class="text-sm text-gray-500">Automatically generate consolidated invoices for fleet customers</p>
+                    <p class="text-sm text-gray-500">Group multiple repairs into one invoice on a schedule</p>
                 </div>
             </div>
         </div>
         <form method="post" action="{% url 'owner_settings' %}" class="p-6">
             {% csrf_token %}
             <input type="hidden" name="form_type" value="batch_invoice_settings">
-            
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Frequency</label>
-                    <select id="batch-frequency-select" name="batch_invoice_frequency" 
-                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
-                        <option value="disabled" {% if billing_config.batch_invoice_frequency == 'disabled' %}selected{% endif %}>Disabled</option>
-                        <option value="weekly" {% if billing_config.batch_invoice_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
-                        <option value="biweekly" {% if billing_config.batch_invoice_frequency == 'biweekly' %}selected{% endif %}>Bi-weekly</option>
-                        <option value="monthly" {% if billing_config.batch_invoice_frequency == 'monthly' %}selected{% endif %}>Monthly</option>
-                    </select>
-                </div>
-                <div id="batch-day-field">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Day</label>
-                    <input type="number" id="batch-day-input" name="batch_invoice_day" 
-                        value="{{ billing_config.batch_invoice_day|default:'1' }}"
-                        min="0" max="28"
-                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
-                    <p id="batch-day-hint" class="text-xs text-gray-500 mt-1">Weekly: 0=Mon, 6=Sun. Monthly: 1-28</p>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Auto-Send</label>
-                    <div class="flex items-center h-[42px]">
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" name="batch_invoice_auto_send" value="1"
-                                {% if billing_config.batch_invoice_auto_send %}checked{% endif %}
-                                class="sr-only peer">
-                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            <span class="ml-3 text-sm text-gray-600">Send immediately</span>
-                        </label>
+
+            <div class="space-y-5">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">How often?</label>
+                        <select id="batch-frequency-select" name="batch_invoice_frequency"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white">
+                            <option value="disabled" {% if billing_config.batch_invoice_frequency == 'disabled' %}selected{% endif %}>Off — I'll invoice manually</option>
+                            <option value="weekly" {% if billing_config.batch_invoice_frequency == 'weekly' %}selected{% endif %}>Every week</option>
+                            <option value="biweekly" {% if billing_config.batch_invoice_frequency == 'biweekly' %}selected{% endif %}>Every 2 weeks</option>
+                            <option value="monthly" {% if billing_config.batch_invoice_frequency == 'monthly' %}selected{% endif %}>Once a month</option>
+                        </select>
+                    </div>
+                    <div id="batch-day-field">
+                        <label class="block text-sm font-medium text-gray-700 mb-1" id="batch-day-label">Which day?</label>
+                        <!-- Weekly day picker -->
+                        <select id="batch-day-weekly" name="batch_invoice_day_weekly"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white hidden">
+                            <option value="0" {% if billing_config.batch_invoice_day == 0 %}selected{% endif %}>Monday</option>
+                            <option value="1" {% if billing_config.batch_invoice_day == 1 %}selected{% endif %}>Tuesday</option>
+                            <option value="2" {% if billing_config.batch_invoice_day == 2 %}selected{% endif %}>Wednesday</option>
+                            <option value="3" {% if billing_config.batch_invoice_day == 3 %}selected{% endif %}>Thursday</option>
+                            <option value="4" {% if billing_config.batch_invoice_day == 4 %}selected{% endif %}>Friday</option>
+                            <option value="5" {% if billing_config.batch_invoice_day == 5 %}selected{% endif %}>Saturday</option>
+                            <option value="6" {% if billing_config.batch_invoice_day == 6 %}selected{% endif %}>Sunday</option>
+                        </select>
+                        <!-- Monthly day picker -->
+                        <select id="batch-day-monthly" name="batch_invoice_day_monthly"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white hidden">
+                            {% for d in batch_month_days %}
+                            <option value="{{ d.value }}" {% if billing_config.batch_invoice_day == d.value %}selected{% endif %}>{{ d.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <!-- Hidden field that actually gets submitted -->
+                        <input type="hidden" name="batch_invoice_day" id="batch-day-hidden" value="{{ billing_config.batch_invoice_day|default:'1' }}">
                     </div>
                 </div>
+
+                <div class="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-lg" id="batch-auto-send-row">
+                    <div>
+                        <p class="text-sm font-medium text-gray-700">Auto-send to customers</p>
+                        <p class="text-xs text-gray-400">When off, invoices are created as drafts for you to review first</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" name="batch_invoice_auto_send" value="1"
+                            {% if billing_config.batch_invoice_auto_send %}checked{% endif %}
+                            class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
             </div>
-            
-            <div class="flex justify-end">
+
+            <div class="flex justify-end mt-5">
                 <button type="submit" class="inline-flex items-center justify-center px-5 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
                     <i class="fas fa-save mr-2"></i>Save Batch Settings
                 </button>
             </div>
         </form>
-        
+
         <div class="px-6 pb-6">
             {% if billing_config.batch_invoice_frequency != 'disabled' %}
             <div class="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                <p class="text-sm text-purple-700"><i class="fas fa-info-circle mr-1"></i> Batch invoices run {{ billing_config.batch_invoice_frequency }} for customers with "Batch" billing preference.</p>
+                <p class="text-sm text-purple-700">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Invoices will be generated {{ billing_config.batch_invoice_frequency }}
+                    for fleet customers with completed repairs.
+                    {% if billing_config.batch_invoice_auto_send %}They'll be emailed automatically.{% else %}You'll review them as drafts first.{% endif %}
+                </p>
             </div>
             {% else %}
             <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p class="text-sm text-gray-500"><i class="fas fa-info-circle mr-1"></i> Batch invoicing is disabled. Enable it to auto-generate consolidated invoices for fleet customers.</p>
+                <p class="text-sm text-gray-500"><i class="fas fa-info-circle mr-1"></i> Batch invoicing is off. You can still create invoices manually from the customer page.</p>
             </div>
             {% endif %}
         </div>
@@ -1027,33 +1063,54 @@ function copyJoinLink() {
     });
 }
 
-// Batch invoicing: hide/update Day field based on Frequency selection
+// === Overdue Reminder Checkboxes ===
+function updateReminderDaysHidden() {
+    const checks = document.querySelectorAll('input[name="reminder_day_check"]:checked');
+    const days = Array.from(checks).map(c => c.value).sort((a, b) => parseInt(a) - parseInt(b));
+    const hidden = document.getElementById('reminder-days-hidden');
+    if (hidden) hidden.value = days.join(',');
+}
+// Wire up checkbox changes
+document.addEventListener('change', function(e) {
+    if (e.target.name === 'reminder_day_check') updateReminderDaysHidden();
+});
+
+// === Batch Invoicing: smart day picker ===
 function updateBatchDayField() {
     const freqSelect = document.getElementById('batch-frequency-select');
     const dayField = document.getElementById('batch-day-field');
-    const dayInput = document.getElementById('batch-day-input');
-    const dayHint = document.getElementById('batch-day-hint');
+    const weeklySelect = document.getElementById('batch-day-weekly');
+    const monthlySelect = document.getElementById('batch-day-monthly');
+    const dayHidden = document.getElementById('batch-day-hidden');
+    const autoSendRow = document.getElementById('batch-auto-send-row');
     if (!freqSelect || !dayField) return;
 
     const freq = freqSelect.value;
     if (freq === 'disabled') {
         dayField.style.display = 'none';
-        if (dayInput) dayInput.disabled = true;
+        if (autoSendRow) autoSendRow.style.display = 'none';
     } else {
         dayField.style.display = '';
-        if (dayInput) dayInput.disabled = false;
-        if (dayHint) {
-            if (freq === 'monthly') {
-                dayHint.textContent = 'Day of month to run batch (1–28)';
-                if (dayInput) { dayInput.min = 1; dayInput.max = 28; dayInput.placeholder = '1'; }
-            } else {
-                // weekly / biweekly
-                dayHint.textContent = 'Day of week: 0 = Monday … 6 = Sunday';
-                if (dayInput) { dayInput.min = 0; dayInput.max = 6; dayInput.placeholder = '0'; }
-            }
+        if (autoSendRow) autoSendRow.style.display = '';
+        if (freq === 'monthly') {
+            if (weeklySelect) weeklySelect.classList.add('hidden');
+            if (monthlySelect) monthlySelect.classList.remove('hidden');
+            if (dayHidden) dayHidden.value = monthlySelect ? monthlySelect.value : '1';
+        } else {
+            // weekly or biweekly
+            if (monthlySelect) monthlySelect.classList.add('hidden');
+            if (weeklySelect) weeklySelect.classList.remove('hidden');
+            if (dayHidden) dayHidden.value = weeklySelect ? weeklySelect.value : '0';
         }
     }
 }
+// Sync hidden field when day dropdowns change
+document.addEventListener('change', function(e) {
+    if (e.target.id === 'batch-day-weekly' || e.target.id === 'batch-day-monthly') {
+        const hidden = document.getElementById('batch-day-hidden');
+        if (hidden) hidden.value = e.target.value;
+    }
+});
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', function() {

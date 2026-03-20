@@ -128,8 +128,8 @@ Please submit payment at your earliest convenience.
 If you have already sent payment, please disregard this notice.
 
 Thank you,
-{config.company_name}
-{config.company_phone}
+{config.company_name or (invoice.tenant.name if invoice.tenant else '')}
+{config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')}
 """
     
     try:
@@ -418,7 +418,11 @@ def _send_batch_invoice_email(invoice, config):
         )
         return False
 
-    subject = f"Invoice {invoice.invoice_number} from {config.company_name}"
+    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
+    _company_phone = config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')
+    _company_email = config.company_email or (invoice.tenant.business_email if invoice.tenant else '')
+
+    subject = f"Invoice {invoice.invoice_number} from {_company_name}"
     body = f"""Dear {customer.name},
 
 Please find attached your invoice for recent services.
@@ -430,9 +434,9 @@ Total Amount: ${invoice.total:.2f}
 
 Thank you for your business!
 
-{config.company_name}
-{config.company_phone}
-{config.company_email}
+{_company_name}
+{_company_phone}
+{_company_email}
 """
 
     try:

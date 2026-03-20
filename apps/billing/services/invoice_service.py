@@ -129,9 +129,9 @@ class InvoiceService:
             if billing_cfg is None:
                 raise ValueError("No tenant available")
             self.COMPANY_NAME = billing_cfg.company_name or (self.tenant.name if self.tenant else "")
-            self.COMPANY_ADDRESS = billing_cfg.full_address
-            self.COMPANY_PHONE = billing_cfg.company_phone or ""
-            self.COMPANY_EMAIL = billing_cfg.company_email or ""
+            self.COMPANY_ADDRESS = billing_cfg.full_address or (self.tenant.business_address if self.tenant else "")
+            self.COMPANY_PHONE = billing_cfg.company_phone or (self.tenant.business_phone if self.tenant else "")
+            self.COMPANY_EMAIL = billing_cfg.company_email or (self.tenant.business_email if self.tenant else "")
             self.COMPANY_WEBSITE = billing_cfg.company_website or ""
             self.DEFAULT_PAYMENT_TERMS = billing_cfg.default_payment_terms
             self.DEFAULT_DUE_DAYS = billing_cfg.due_days_for_terms

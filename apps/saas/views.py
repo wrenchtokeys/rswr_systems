@@ -545,12 +545,12 @@ def owner_dashboard(request):
     has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
     has_customers = Customer.objects.filter(tenant=tenant).exists()
     has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
-    has_business_info = bool(tenant.business_address or tenant.business_phone)
+    has_business_info = bool(tenant.business_phone and tenant.business_email)
 
     if not has_business_info:
         setup_steps.append({
             'label': 'Add your business info',
-            'desc': 'Address and phone number for invoices',
+            'desc': 'Phone number and email for invoices',
             'url': '/owner/settings/?tab=general',
             'icon': 'fas fa-building',
         })
@@ -1324,6 +1324,21 @@ def owner_settings_view(request):
         tenant=tenant, primary_technician__isnull=False
     ).exists()
 
+    # Overdue reminder day choices (checkboxes) and active selections
+    reminder_day_choices = [
+        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
+        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
+        ('60', '2 months'), ('90', '3 months'),
+    ]
+    active_reminder_days = []
+    if billing_config and billing_config.overdue_reminder_days:
+        active_reminder_days = [
+            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
+        ]
+
+    # Batch invoicing: month day choices for dropdown
+    batch_month_days = [{'value': d, 'label': f'{d}{"st" if d == 1 else "nd" if d == 2 else "rd" if d == 3 else "th"} of the month'} for d in range(1, 29)]
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1336,6 +1351,9 @@ def owner_settings_view(request):
         'billing_config': billing_config,
         'active_tab': active_tab,
         'any_customer_has_primary_tech': any_customer_has_primary_tech,
+        'reminder_day_choices': reminder_day_choices,
+        'active_reminder_days': active_reminder_days,
+        'batch_month_days': batch_month_days,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -2871,6 +2889,18 @@ def owner_setup_view(request):
 
     completion = _setup_completion(tenant)
 
+    # Overdue reminder day choices (checkboxes) and active selections
+    reminder_day_choices = [
+        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
+        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
+        ('60', '2 months'), ('90', '3 months'),
+    ]
+    active_reminder_days = []
+    if billing_config and billing_config.overdue_reminder_days:
+        active_reminder_days = [
+            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
+        ]
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -2879,6 +2909,8 @@ def owner_setup_view(request):
         'viscosity_rules': viscosity_rules,
         'completion': completion,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
+        'reminder_day_choices': reminder_day_choices,
+        'active_reminder_days': active_reminder_days,
     }
     return render(request, 'saas/owner_setup.html', context)
 
