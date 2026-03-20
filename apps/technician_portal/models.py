@@ -940,6 +940,17 @@ class Repair(GlassService):
             models.Index(fields=['customer', 'unit_number']),
             models.Index(fields=['technician']),
             models.Index(fields=['service_date']),
+            # Partial index for soft-delete filter: RepairSoftDeleteManager always
+            # appends deleted_at__isnull=True.  Without an index every query
+            # does a post-filter pass on an unindexed column.  The partial index
+            # covers only live (non-deleted) repairs — which is 99%+ of queries.
+            # The composite (tenant_id, queue_status) covers the most common
+            # portal filter pattern: tenant + status.  (CODE-109)
+            models.Index(
+                fields=['tenant', 'queue_status'],
+                condition=models.Q(deleted_at__isnull=True),
+                name='repair_live_tenant_status_idx',
+            ),
         ]
 
     def __str__(self):
