@@ -17,13 +17,12 @@ TaxService(tenant=tenant).calculate_tax(subtotal=subtotal, customer=customer).
 """
 
 from decimal import Decimal
-from unittest.mock import patch
 
 from django.test import TestCase
 from django.contrib.auth.models import User
 
 from apps.tenants.models import Tenant, TenantMembership
-from apps.billing.models import BillingConfig, Invoice, InvoiceLineItem, TaxRate
+from apps.billing.models import BillingConfig, Invoice, TaxRate
 from apps.billing.services.tax_service import TaxService
 from core.models import Customer
 from apps.technician_portal.models import Technician, Repair
@@ -38,7 +37,7 @@ def _make_tenant(slug, owner):
         plan='trial',
     )
     TenantMembership.objects.create(tenant=tenant, user=owner, role='owner', is_active=True)
-    BillingConfig.objects.create(
+    config = BillingConfig.objects.create(
         tenant=tenant,
         company_name=f"Shop {slug}",
         default_payment_terms='NET30',
@@ -47,7 +46,7 @@ def _make_tenant(slug, owner):
         company_state='AR',
         company_city='Little Rock',
     )
-    return tenant
+    return tenant, config
 
 
 def _make_customer(tenant, name, tax_exempt=False):
@@ -67,16 +66,21 @@ def _make_technician(tenant, owner):
     )
 
 
-def _make_repair(tenant, customer, technician, cost):
-    return Repair.objects.create(
+def _make_completed_repair(tenant, customer, technician, cost, unit='UNIT-001'):
+    """Create a COMPLETED repair with explicit cost_override so pricing service doesn't clobber it."""
+    repair = Repair.objects.create(
         tenant=tenant,
         customer=customer,
         technician=technician,
-        unit_number='UNIT-001',
+        unit_number=unit,
         damage_type='Chip',
         queue_status='COMPLETED',
-        cost=Decimal(str(cost)),
+        cost_override=Decimal(str(cost)),
+        skip_invoicing=False,
     )
+    # Force-set cost after save (cost_override is applied in save(), but refresh to confirm)
+    repair.refresh_from_db()
+    return repair
 
 
 class BatchInvoiceTaxServiceTest(TestCase):
@@ -90,18 +94,17 @@ class BatchInvoiceTaxServiceTest(TestCase):
             email='owner104@example.com',
             password='testpass123',
         )
-        self.tenant = _make_tenant('batch-tax-104', self.owner)
+        self.tenant, self.config = _make_tenant('batch-tax-104', self.owner)
         self.customer = _make_customer(self.tenant, 'Batch Tax Customer')
         self.tech = _make_technician(self.tenant, self.owner)
 
-    def _invoke_create_batch_invoice(self, tenant, customer, repairs, replacements=None):
-        """Call the private function directly."""
+    def _invoke(self):
+        """Call _create_batch_invoice with the correct signature."""
         from apps.billing.tasks import _create_batch_invoice
         return _create_batch_invoice(
-            tenant=tenant,
-            customer=customer,
-            repairs_list=repairs,
-            replacements_list=replacements or [],
+            tenant=self.tenant,
+            customer=self.customer,
+            config=self.config,
         )
 
     def test_no_taxrate_row_means_no_tax_even_if_config_tax_enabled(self):
@@ -115,12 +118,11 @@ class BatchInvoiceTaxServiceTest(TestCase):
         """
         # BillingConfig has tax_enabled=True + default_tax_rate=8.5%
         # But no TaxRate row → TaxService says disabled
-        assert not TaxRate.objects.filter(tenant=self.tenant, is_active=True).exists()
+        self.assertFalse(TaxRate.objects.filter(tenant=self.tenant, is_active=True).exists())
 
-        repair = _make_repair(self.tenant, self.customer, self.tech, '100.00')
-        invoice = self._invoke_create_batch_invoice(
-            self.tenant, self.customer, [repair]
-        )
+        # Use unique unit number per test to avoid UnitRepairCount cross-test contamination
+        _make_completed_repair(self.tenant, self.customer, self.tech, '100.00', unit='UNIT-T1')
+        invoice = self._invoke()
 
         self.assertIsNotNone(invoice)
         self.assertEqual(invoice.tax_amount, Decimal('0.00'))
@@ -132,32 +134,22 @@ class BatchInvoiceTaxServiceTest(TestCase):
         When a TaxRate row exists with is_active=True, TaxService uses it.
         Batch invoice should use TaxRate.total_rate, not config.default_tax_rate.
         """
-        # Create a TaxRate with a different rate than config.default_tax_rate
+        # Create a TaxRate with a clearly different rate than config.default_tax_rate (8.5%)
         TaxRate.objects.create(
             tenant=self.tenant,
             city='Little Rock',
             state='AR',
-            state_rate=Decimal('6.500'),
-            county_rate=Decimal('1.000'),
-            city_rate=Decimal('1.000'),
-            special_rate=Decimal('0.000'),
-            is_active=True,
-        )
-        # total_rate should be 8.5%, same as config here — but that's coincidence;
-        # what matters is TaxService is called, not config.default_tax_rate.
-        # Use a clearly different total to verify.
-        TaxRate.objects.filter(tenant=self.tenant).update(
             state_rate=Decimal('5.000'),
             county_rate=Decimal('0.500'),
             city_rate=Decimal('0.500'),
             special_rate=Decimal('0.000'),
+            is_active=True,
         )
         expected_rate = Decimal('6.000')  # 5.0 + 0.5 + 0.5
 
-        repair = _make_repair(self.tenant, self.customer, self.tech, '100.00')
-        invoice = self._invoke_create_batch_invoice(
-            self.tenant, self.customer, [repair]
-        )
+        # Use unique unit number per test to avoid UnitRepairCount cross-test contamination
+        _make_completed_repair(self.tenant, self.customer, self.tech, '100.00', unit='UNIT-T2')
+        invoice = self._invoke()
 
         self.assertIsNotNone(invoice)
         # TaxRate says 6.0%, config says 8.5% — should use TaxRate (6.0%)
@@ -177,10 +169,15 @@ class BatchInvoiceTaxServiceTest(TestCase):
             special_rate=Decimal('0.000'),
             is_active=True,
         )
-        exempt_customer = _make_customer(self.tenant, 'Exempt Fleet', tax_exempt=True)
-        repair = _make_repair(self.tenant, exempt_customer, self.tech, '200.00')
-        invoice = self._invoke_create_batch_invoice(
-            self.tenant, exempt_customer, [repair]
+        # Create a separate exempt customer / invoice for this test
+        from apps.billing.tasks import _create_batch_invoice
+        exempt_customer = _make_customer(self.tenant, 'Exempt Fleet 104', tax_exempt=True)
+        # Use unique unit per customer (separate customer, but unique unit still safe)
+        _make_completed_repair(self.tenant, exempt_customer, self.tech, '200.00', unit='UNIT-T3')
+        invoice = _create_batch_invoice(
+            tenant=self.tenant,
+            customer=exempt_customer,
+            config=self.config,
         )
 
         self.assertIsNotNone(invoice)
@@ -205,10 +202,9 @@ class BatchInvoiceTaxServiceTest(TestCase):
             is_active=True,
         )
 
-        repair = _make_repair(self.tenant, self.customer, self.tech, '100.00')
-        invoice = self._invoke_create_batch_invoice(
-            self.tenant, self.customer, [repair]
-        )
+        # Use unique unit number per test to avoid UnitRepairCount cross-test contamination
+        _make_completed_repair(self.tenant, self.customer, self.tech, '100.00', unit='UNIT-T4')
+        invoice = self._invoke()
 
         self.assertIsNotNone(invoice)
         # Reload from DB to ensure saved values
@@ -237,16 +233,14 @@ class BatchInvoiceTaxServiceTest(TestCase):
             is_active=False,  # Owner disabled tax
         )
         # BillingConfig.tax_enabled is still True (CODE-099 only flips TaxRate, not BillingConfig)
-        config = BillingConfig.get_for_tenant(self.tenant)
-        self.assertTrue(config.tax_enabled)
+        self.assertTrue(self.config.tax_enabled)
 
         # TaxService should report disabled
         self.assertFalse(TaxService(tenant=self.tenant).is_tax_enabled())
 
-        repair = _make_repair(self.tenant, self.customer, self.tech, '150.00')
-        invoice = self._invoke_create_batch_invoice(
-            self.tenant, self.customer, [repair]
-        )
+        # Use unique unit number per test to avoid UnitRepairCount cross-test contamination
+        _make_completed_repair(self.tenant, self.customer, self.tech, '150.00', unit='UNIT-T5')
+        invoice = self._invoke()
 
         self.assertIsNotNone(invoice)
         # Should NOT charge tax — the owner disabled it via TaxRate deactivation
