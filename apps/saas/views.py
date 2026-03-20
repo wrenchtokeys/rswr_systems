@@ -531,17 +531,9 @@ def owner_dashboard(request):
     billing_context = _get_billing_context(tenant)
 
     # Setup checklist for new users
-    from decimal import Decimal as D
     from apps.billing.models import TaxRate
 
     setup_steps = []
-    pricing_is_default = (
-        tenant.repair_price_1 == D('50.00') and
-        tenant.repair_price_2 == D('40.00') and
-        tenant.repair_price_3 == D('35.00') and
-        tenant.repair_price_4 == D('30.00') and
-        tenant.repair_price_5_plus == D('25.00')
-    )
     has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
     has_customers = Customer.objects.filter(tenant=tenant).exists()
     has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
@@ -554,13 +546,11 @@ def owner_dashboard(request):
             'url': '/owner/settings/?tab=general',
             'icon': 'fas fa-building',
         })
-    if pricing_is_default:
-        setup_steps.append({
-            'label': 'Set your repair pricing',
-            'desc': 'Default pricing is $50/$40/$35/$30/$25 — update to match your rates',
-            'url': '/owner/settings/?tab=billing',
-            'icon': 'fas fa-dollar-sign',
-        })
+    # NOTE: Pricing step intentionally removed. _setup_completion() treats pricing
+    # as always configured (sensible defaults exist), and checking for default values
+    # is ambiguous — a shop owner may legitimately charge $50 per repair.
+    # The "Finish setting up your shop" banner was persisting even after full setup
+    # because pricing_is_default was True even for correctly configured shops. (CODE-110)
     if not has_tax_rates:
         setup_steps.append({
             'label': 'Configure sales tax',
