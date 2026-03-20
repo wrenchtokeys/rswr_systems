@@ -143,7 +143,7 @@
 
                             <!-- Manager Assignment (REQUESTED repairs only) -->
                             {% if repair.queue_status == 'REQUESTED' %}
-                                {% if user.technician and user.technician.is_manager or is_admin %}
+                                {% if technician and technician.is_manager or is_admin %}
                                 <a href="{% url 'assign_repair' repair.id %}" class="inline-flex items-center px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors">
                                     <i class="fas fa-user-plus mr-1.5"></i>Assign
                                 </a>
@@ -155,21 +155,21 @@
                                 <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="inline-flex items-center px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                                     <i class="fas fa-edit mr-1.5"></i>Edit Repair
                                 </a>
-                            {% elif user.technician and user.technician.is_manager %}
+                            {% elif technician and technician.is_manager %}
                                 <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="inline-flex items-center px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                                     <i class="fas fa-edit mr-1.5"></i>Edit Repair
                                     {% if repair.queue_status == 'COMPLETED' or repair.queue_status == 'DENIED' %}
                                     <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Manager</span>
                                     {% endif %}
                                 </a>
-                            {% elif repair.queue_status not in 'COMPLETED,DENIED' and repair.technician and repair.technician == user.technician %}
+                            {% elif repair.queue_status not in 'COMPLETED,DENIED' and repair.technician and repair.technician == technician %}
                                 <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="inline-flex items-center px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
                                     <i class="fas fa-edit mr-1.5"></i>Edit Repair
                                 </a>
                             {% endif %}
 
                             <!-- Delete Repair (owner/manager only) -->
-                            {% if is_admin or user.technician and user.technician.is_manager %}
+                            {% if is_admin or technician and technician.is_manager %}
                             <button onclick="document.getElementById('deleteRepairModal').classList.remove('hidden')"
                                 class="inline-flex items-center px-3 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
                                 <i class="fas fa-trash mr-1.5"></i>Delete
@@ -567,7 +567,7 @@
                     <div class="ml-3">
                         <h3 class="text-sm font-medium text-purple-800">Customer Requested Repair</h3>
                         <div class="mt-2 text-sm text-purple-700">
-                            <p>This repair was requested directly by the customer. {% if user.technician and user.technician.is_manager or is_admin %}Please assign this repair to a technician to begin work.{% else %}This repair needs to be assigned by a manager before work can begin.{% endif %}</p>
+                            <p>This repair was requested directly by the customer. {% if technician and technician.is_manager or is_admin %}Please assign this repair to a technician to begin work.{% else %}This repair needs to be assigned by a manager before work can begin.{% endif %}</p>
                         </div>
                     </div>
                 </div>
@@ -730,7 +730,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- Delete Repair Confirmation Modal -->
-{% if is_admin or user.technician and user.technician.is_manager %}
+{% if is_admin or technician and technician.is_manager %}
 <div id="deleteRepairModal" class="hidden fixed inset-0 z-50 flex items-center justify-center px-4">
     <div class="fixed inset-0 bg-black bg-opacity-50" onclick="document.getElementById('deleteRepairModal').classList.add('hidden')"></div>
     <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">

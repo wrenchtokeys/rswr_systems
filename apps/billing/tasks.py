@@ -128,8 +128,8 @@ Please submit payment at your earliest convenience.
 If you have already sent payment, please disregard this notice.
 
 Thank you,
-{config.company_name}
-{config.company_phone}
+{config.company_name or (invoice.tenant.name if invoice.tenant else '')}
+{config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')}
 """
     
     try:
@@ -270,6 +270,10 @@ def _create_batch_invoice(tenant, customer, config):
             invoice_number = _generate_invoice_number(tenant, config)
             due_date = _calculate_due_date(config)
             
+            # Always create as DRAFT — status is promoted to SENT only AFTER
+            # email delivery is confirmed (see CODE-095 / AGENTS.md gotcha).
+            # Setting 'SENT' here and then failing the email would leave the
+            # invoice permanently SENT with the customer never having received it.
             invoice = Invoice.objects.create(
                 tenant=tenant,
                 customer=customer,
@@ -277,7 +281,7 @@ def _create_batch_invoice(tenant, customer, config):
                 invoice_date=timezone.now().date(),
                 due_date=due_date,
                 payment_terms=config.default_payment_terms,
-                status='DRAFT' if not config.batch_invoice_auto_send else 'SENT',
+                status='DRAFT',
                 notes=f'Batch invoice for {len(repairs_list)} repairs and {len(replacements_list)} replacements',
             )
             
@@ -313,23 +317,45 @@ def _create_batch_invoice(tenant, customer, config):
                     unit_number=replacement.unit_number or '',
                 )
             
-            # Calculate tax if enabled
-            tax_amount = Decimal('0.00')
-            if config.tax_enabled and not customer.tax_exempt:
-                tax_amount = (subtotal * config.default_tax_rate / 100).quantize(Decimal('0.01'))
-            
-            # Update invoice totals
+            # Calculate tax via TaxService — this is the single source of truth
+            # for whether tax is enabled (checks TaxRate rows, not BillingConfig.tax_enabled)
+            # and applies the correct per-tenant rate with component breakdown.
+            # Previously this used `config.tax_enabled + config.default_tax_rate` which
+            # bypassed TaxService entirely, causing batch invoices to charge tax when it
+            # was disabled (or vice-versa) and to miss per-customer city/state rate
+            # lookups. (CODE-104)
+            from apps.billing.services.tax_service import TaxService
+            tax_svc = TaxService(tenant=tenant)
+            tax_result = tax_svc.calculate_tax(subtotal=subtotal, customer=customer)
+
+            # Update invoice totals with TaxService results
             invoice.subtotal = subtotal
-            invoice.tax_rate = config.default_tax_rate if config.tax_enabled else Decimal('0.00')
-            invoice.tax_amount = tax_amount
-            invoice.total = subtotal + tax_amount
+            invoice.tax_rate = tax_result['rate']
+            invoice.state_tax_rate = tax_result['state_rate']
+            invoice.county_tax_rate = tax_result['county_rate']
+            invoice.city_tax_rate = tax_result['city_rate']
+            invoice.special_tax_rate = tax_result['special_rate']
+            invoice.tax_amount = tax_result['amount']
+            invoice.total = subtotal + tax_result['amount']
             invoice.save()
             
-            # Send if auto_send is enabled
+            # Send if auto_send is enabled — only mark SENT after email confirmed.
+            # (CODE-095: same pattern as CODE-094 for AutoInvoiceService.
+            # Do NOT stamp sent_at or set status='SENT' before the email attempt.)
             if config.batch_invoice_auto_send:
-                invoice.sent_at = timezone.now()
-                invoice.save(update_fields=['sent_at'])
-                _send_batch_invoice_email(invoice, config)
+                email_sent = _send_batch_invoice_email(invoice, config)
+                if email_sent:
+                    invoice.status = 'SENT'
+                    invoice.sent_at = timezone.now()
+                    invoice.save(update_fields=['status', 'sent_at'])
+                else:
+                    # Email failed — leave as DRAFT so the shop owner can see it
+                    # and retry manually. Log at WARNING level for visibility.
+                    logger.warning(
+                        f"Batch invoice {invoice.invoice_number} for {customer.name} "
+                        f"created as DRAFT — auto-send email delivery failed. "
+                        f"Owner must send manually."
+                    )
             
             logger.info(f"Created batch invoice {invoice.invoice_number} for {customer.name} - ${invoice.total}")
             return invoice
@@ -389,12 +415,24 @@ def _calculate_due_date(config):
 
 
 def _send_batch_invoice_email(invoice, config):
-    """Send batch invoice email to customer."""
+    """Send batch invoice email to customer.
+
+    Returns:
+        bool: True if email was sent successfully, False otherwise.
+    """
     customer = invoice.customer
     if not customer.email:
-        return
-    
-    subject = f"Invoice {invoice.invoice_number} from {config.company_name}"
+        logger.warning(
+            f"Cannot auto-send batch invoice {invoice.invoice_number}: "
+            f"customer {customer.name!r} has no email address."
+        )
+        return False
+
+    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
+    _company_phone = config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')
+    _company_email = config.company_email or (invoice.tenant.business_email if invoice.tenant else '')
+
+    subject = f"Invoice {invoice.invoice_number} from {_company_name}"
     body = f"""Dear {customer.name},
 
 Please find attached your invoice for recent services.
@@ -406,21 +444,27 @@ Total Amount: ${invoice.total:.2f}
 
 Thank you for your business!
 
-{config.company_name}
-{config.company_phone}
-{config.company_email}
+{_company_name}
+{_company_phone}
+{_company_email}
 """
-    
+
     try:
-        send_mail(
+        # fail_silently=False so that delivery errors surface as exceptions
+        # and we can return False to prevent a false 'SENT' status stamp.
+        sent_count = send_mail(
             subject=subject,
             message=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[customer.email],
-            fail_silently=True,
+            fail_silently=False,
         )
+        return sent_count > 0
     except Exception as e:
-        logger.error(f"Failed to send batch invoice email for {invoice.invoice_number}: {e}")
+        logger.error(
+            f"Failed to send batch invoice email for {invoice.invoice_number}: {e}"
+        )
+        return False
 
 
 # =============================================================================

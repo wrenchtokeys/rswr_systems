@@ -66,7 +66,14 @@ class ReminderService:
         pdf_bytes = None
         try:
             from apps.billing.services.invoice_service import InvoiceService
-            invoice_service = InvoiceService()
+            # Pass tenant so InvoiceService loads the correct BillingConfig (company name,
+            # address, payment terms).  Without tenant, InvoiceService() skips
+            # BillingConfig and generates PDFs with blank company info — same root
+            # cause as CODE-090 (clawdbot views).  (CODE-092)
+            invoice_tenant = getattr(invoice, 'tenant', None) or getattr(
+                getattr(invoice, 'customer', None), 'tenant', None
+            )
+            invoice_service = InvoiceService(tenant=invoice_tenant)
             repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
             pdf_bytes, _ = invoice_service.generate_invoice(
                 customer_id=invoice.customer_id,
@@ -217,7 +224,7 @@ Invoice Status: {invoice.get_status_display()}
                 from apps.billing.models import BillingConfig
                 _config = BillingConfig.get_for_tenant(_tenant)
                 if _config:
-                    _company_name = _config.company_name or ""
+                    _company_name = _config.company_name or _tenant.name or ""
             except Exception:
                 pass
             if not _company_name:
@@ -311,8 +318,8 @@ Please contact us to arrange payment or if you have any questions.
                 from apps.billing.models import BillingConfig
                 config = BillingConfig.get_for_tenant(_reminder_tenant)
                 if config:
-                    company_name = config.company_name or ""
-                    company_phone = config.company_phone or ""
+                    company_name = config.company_name or _reminder_tenant.name or ""
+                    company_phone = config.company_phone or _reminder_tenant.business_phone or ""
                     company_website = config.company_website or ""
             except Exception:
                 pass

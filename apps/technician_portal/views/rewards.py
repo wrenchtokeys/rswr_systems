@@ -21,7 +21,16 @@ logger = logging.getLogger(__name__)
 def reward_fulfillment_detail(request, redemption_id):
     """View details of a reward redemption and mark as fulfilled."""
     tenant = getattr(request, 'tenant', None)
-    technician = get_object_or_404(Technician, user=request.user)
+    # Scope to current tenant — unscoped get_object_or_404(Technician, user=request.user)
+    # would resolve to whichever Technician row exists for the user, which may belong to
+    # a different shop (same pattern as CODE-077 through CODE-082).
+    if tenant:
+        technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    else:
+        try:
+            technician = request.user.technician
+        except Technician.DoesNotExist:
+            technician = None
 
     # Scope redemption to the current tenant via the customer chain.
     # RewardRedemption has no direct tenant FK; path is
@@ -118,13 +127,15 @@ def apply_reward_to_repair(request, repair_id):
             qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
     else:
-        if not hasattr(request.user, 'technician'):
+        # Scope to current tenant; unscoped request.user.technician may resolve
+        # to a Technician from a different shop (same pattern as CODE-077/082).
+        scoped_tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+        if scoped_tech is None:
             messages.error(request, "You don't have a technician profile.")
             return redirect('technician_dashboard')
-        qs = Repair.objects.filter(technician=request.user.technician)
+        qs = Repair.objects.filter(technician=scoped_tech)
         if tenant:
             qs = qs.filter(tenant=tenant)
-
         else:
             qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
@@ -153,9 +164,11 @@ def apply_reward_to_repair(request, repair_id):
             messages.error(request, "This reward belongs to a different customer and cannot be applied to this repair.")
             return redirect('repair_detail', repair_id=repair.id)
 
+        # Resolve current-tenant technician for assignment — never unscoped.
+        acting_tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
         success, message = repair.apply_reward(
             redemption,
-            technician=getattr(request.user, 'technician', None),
+            technician=acting_tech,
             auto_fulfill=auto_fulfill
         )
 

@@ -1,4 +1,5 @@
 from rest_framework import viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from apps.technician_portal.models import Technician, Repair, Replacement
@@ -127,8 +128,25 @@ class RepairViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminUser]
 
     def perform_create(self, serializer):
-        """Associate the repair with the logged-in technician"""
-        serializer.save(technician=self.request.user.technician)
+        """Associate the repair with the current-tenant's Technician for the requesting user.
+
+        Uses a tenant-scoped lookup instead of the bare `request.user.technician`
+        OneToOneField accessor. The unscoped accessor would either:
+          1. Crash with RelatedObjectDoesNotExist (500) for superadmins without a
+             Technician profile, or
+          2. Assign the wrong shop's Technician for multi-tenant admin users.
+        (CODE-089)
+        """
+        tenant = getattr(self.request, 'tenant', None)
+        technician = Technician.objects.filter(
+            user=self.request.user, tenant=tenant
+        ).first() if tenant else None
+        if technician is None:
+            raise ValidationError(
+                "No Technician profile found for your account in the current tenant. "
+                "Please create a Technician record before creating repairs via the API."
+            )
+        serializer.save(technician=technician)
 
 
 @extend_schema_view(
@@ -172,5 +190,19 @@ class ReplacementViewSet(TenantQuerysetMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminUser]
 
     def perform_create(self, serializer):
-        """Associate the replacement with the logged-in technician"""
-        serializer.save(technician=self.request.user.technician)
+        """Associate the replacement with the current-tenant's Technician for the requesting user.
+
+        Same tenant-scoped lookup pattern as RepairViewSet.perform_create.
+        Prevents 500 crash for admins without a Technician profile and
+        cross-tenant contamination for multi-tenant admin users. (CODE-089)
+        """
+        tenant = getattr(self.request, 'tenant', None)
+        technician = Technician.objects.filter(
+            user=self.request.user, tenant=tenant
+        ).first() if tenant else None
+        if technician is None:
+            raise ValidationError(
+                "No Technician profile found for your account in the current tenant. "
+                "Please create a Technician record before creating replacements via the API."
+            )
+        serializer.save(technician=technician)

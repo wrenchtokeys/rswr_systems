@@ -231,7 +231,8 @@ def create_invoice(request, customer_id):
     # Generate PDF and save to S3
     try:
         from apps.billing.services.invoice_service import InvoiceService
-        invoice_service = InvoiceService()
+        # Pass tenant so InvoiceService loads correct BillingConfig. (CODE-092)
+        invoice_service = InvoiceService(tenant=tenant)
         repair_ids = [r.id for r in repairs]
         pdf_bytes, invoice_data = invoice_service.generate_invoice(
             customer_id=customer_id,
@@ -272,18 +273,33 @@ def create_invoice(request, customer_id):
         import logging
         logging.getLogger(__name__).warning(f"Stripe link failed for {invoice.invoice_number}: {e}")
 
-    # Optionally email
+    # Optionally email — mark SENT only after confirmed delivery (CODE-096)
     if send_email and customer.email:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         try:
             email_svc = InvoiceEmailService(tenant=tenant)
-            email_svc.send_invoice_email(
+            success, msg = email_svc.send_invoice_email(
                 customer_id=customer_id,
                 recipient_email=customer.email,
                 repair_ids=repair_ids
             )
-        except Exception:
-            pass
+            if success:
+                import django.utils.timezone as _tz
+                invoice.status = 'SENT'
+                invoice.sent_at = _tz.now()
+                invoice.save(update_fields=['status', 'sent_at'])
+            else:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    f"Invoice {invoice.invoice_number}: auto_email requested but "
+                    f"delivery failed — keeping DRAFT. Reason: {msg}"
+                )
+        except Exception as _e:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                f"Invoice {invoice.invoice_number}: email exception — keeping DRAFT. "
+                f"Error: {_e}"
+            )
 
     try:
         return JsonResponse({

@@ -24,12 +24,32 @@ from core.models import Notification, TechnicianNotificationPreference
 logger = logging.getLogger(__name__)
 
 
+def _get_technician_for_tenant(request):
+    """
+    Resolve the Technician record for the current user scoped to the current tenant.
+
+    Mirrors the pattern used throughout the technician portal (CODE-077 through CODE-086):
+    use Technician.objects.filter(user=..., tenant=...).first() so that a user who is a
+    Technician at Shop A but has a TenantMembership at Shop B gets None at Shop B, not
+    Shop A's record.
+
+    Falls back to request.user.technician only when there is no tenant context (e.g. tests
+    or admin-only environments with no middleware).
+    """
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        return Technician.objects.filter(user=request.user, tenant=tenant).first()
+    try:
+        return request.user.technician
+    except Technician.DoesNotExist:
+        return None
+
+
 @login_required
 def notification_preferences(request):
     """Technician notification preferences management page."""
-    try:
-        technician = request.user.technician
-    except Technician.DoesNotExist:
+    technician = _get_technician_for_tenant(request)
+    if technician is None:
         messages.error(request, "Technician profile not found.")
         return redirect('technician_dashboard')
 
@@ -72,9 +92,8 @@ def notification_preferences(request):
 @login_required
 def notification_history(request):
     """View all notifications for technician with pagination and filters."""
-    try:
-        technician = request.user.technician
-    except Technician.DoesNotExist:
+    technician = _get_technician_for_tenant(request)
+    if technician is None:
         messages.error(request, "Technician profile not found.")
         return redirect('technician_dashboard')
 
@@ -117,7 +136,12 @@ def notification_history(request):
 def mark_notification_read(request, notification_id):
     """Mark single notification as read."""
     try:
-        technician = request.user.technician
+        # Scope to current tenant — unscoped request.user.technician may resolve to a
+        # different shop's Technician record for cross-tenant users (CODE-087 pattern).
+        technician = _get_technician_for_tenant(request)
+        if technician is None:
+            return JsonResponse({'success': False, 'error': 'Technician profile not found'}, status=404)
+
         technician_ct = ContentType.objects.get_for_model(Technician)
 
         notification = Notification.objects.get(
@@ -140,7 +164,10 @@ def mark_notification_read(request, notification_id):
 def mark_all_read(request):
     """Mark all notifications as read for technician."""
     try:
-        technician = request.user.technician
+        technician = _get_technician_for_tenant(request)
+        if technician is None:
+            return JsonResponse({'success': False, 'error': 'Technician profile not found'}, status=404)
+
         technician_ct = ContentType.objects.get_for_model(Technician)
 
         updated = Notification.objects.filter(
@@ -160,10 +187,19 @@ def mark_all_read(request):
 def get_unread_count(request):
     """AJAX endpoint for notification bell polling with caching."""
     try:
-        technician = request.user.technician
+        # Scope to current tenant so cross-tenant users see the correct shop's
+        # notifications. Without this, a Shop A tech visiting Shop B would see Shop A's
+        # unread count (and the cache key would collide between shops).
+        technician = _get_technician_for_tenant(request)
+        if technician is None:
+            return JsonResponse({'success': True, 'count': 0, 'notifications': []})
+
         technician_ct = ContentType.objects.get_for_model(Technician)
 
-        cache_key = f'notif_unread_count:tech:{technician.id}'
+        # Cache key includes tenant to avoid cross-tenant cache collisions.
+        tenant = getattr(request, 'tenant', None)
+        tenant_suffix = f':{tenant.pk}' if tenant else ''
+        cache_key = f'notif_unread_count:tech:{technician.id}{tenant_suffix}'
         cached_data = cache.get(cache_key)
 
         if cached_data is not None:
@@ -207,10 +243,14 @@ def get_unread_count(request):
 @login_required
 def verify_email(request):
     """Send email verification link to technician."""
+    technician = _get_technician_for_tenant(request)
+    if technician is None:
+        messages.error(request, "Unable to verify email.")
+        return redirect('notification_preferences')
+
     try:
-        technician = request.user.technician
         preferences = technician.notification_preferences
-    except (Technician.DoesNotExist, TechnicianNotificationPreference.DoesNotExist):
+    except TechnicianNotificationPreference.DoesNotExist:
         messages.error(request, "Unable to verify email.")
         return redirect('notification_preferences')
 
@@ -247,10 +287,14 @@ def verify_email(request):
 @login_required
 def verify_phone(request):
     """Send SMS verification code to technician."""
+    technician = _get_technician_for_tenant(request)
+    if technician is None:
+        messages.error(request, "Unable to verify phone.")
+        return redirect('notification_preferences')
+
     try:
-        technician = request.user.technician
         preferences = technician.notification_preferences
-    except (Technician.DoesNotExist, TechnicianNotificationPreference.DoesNotExist):
+    except TechnicianNotificationPreference.DoesNotExist:
         messages.error(request, "Unable to verify phone.")
         return redirect('notification_preferences')
 
@@ -286,7 +330,14 @@ def verify_phone(request):
 
 
 def confirm_email_verification(request, uidb64, token):
-    """Process email verification token (no login required)."""
+    """Process email verification token (no login required).
+
+    Note: this view resolves the user from the token, not from request.user/tenant context.
+    The technician lookup here uses user.technician (unscoped) intentionally — the token was
+    generated for a specific user and we need to verify their Technician record directly.
+    If the user has multiple Technician records (edge case), we update all of them via a
+    queryset update to avoid the OneToOneField ambiguity.
+    """
     from django.contrib.auth.tokens import default_token_generator
     from django.utils.http import urlsafe_base64_decode
     from django.contrib.auth.models import User
@@ -298,21 +349,20 @@ def confirm_email_verification(request, uidb64, token):
         user = None
 
     if user is not None and default_token_generator.check_token(user, token):
-        try:
-            technician = user.technician
-            technician.email_verified = True
-            technician.email_verified_at = timezone.now()
-            technician.save()
-
-            prefs, created = TechnicianNotificationPreference.objects.get_or_create(
-                technician=technician
-            )
-            prefs.email_verified = True
-            prefs.email_verified_at = timezone.now()
-            prefs.save()
-
+        # Update all Technician records for this user (handles multi-tenant membership edge case)
+        updated = Technician.objects.filter(user=user).update(
+            email_verified=True,
+            email_verified_at=timezone.now(),
+        )
+        if updated > 0:
+            # Also update all preferences records linked to their technicians
+            for tech in Technician.objects.filter(user=user):
+                prefs, _ = TechnicianNotificationPreference.objects.get_or_create(technician=tech)
+                prefs.email_verified = True
+                prefs.email_verified_at = timezone.now()
+                prefs.save(update_fields=['email_verified', 'email_verified_at'])
             messages.success(request, "Email verified successfully! You can now receive email notifications.")
-        except Technician.DoesNotExist:
+        else:
             messages.error(request, "Technician profile not found.")
     else:
         messages.error(request, "Invalid or expired verification link. Please request a new verification email.")
@@ -346,21 +396,22 @@ def confirm_phone_verification(request):
             return redirect('notification_preferences')
 
         if code == stored_code:
-            try:
-                technician = request.user.technician
-                if technician.phone_number == stored_number:
-                    technician.phone_verified = True
-                    technician.phone_verified_at = timezone.now()
-                    technician.save()
-                    messages.success(request, "Phone number verified successfully!")
-
-                    request.session.pop('phone_verification_code', None)
-                    request.session.pop('phone_verification_number', None)
-                    request.session.pop('phone_verification_expires', None)
-                else:
-                    messages.error(request, "Phone number has changed. Please request a new verification code.")
-            except Technician.DoesNotExist:
+            # Use tenant-scoped lookup so the verification is applied to the correct
+            # shop's Technician record (not a different shop's record for cross-tenant users).
+            technician = _get_technician_for_tenant(request)
+            if technician is None:
                 messages.error(request, "Technician profile not found.")
+            elif technician.phone_number == stored_number:
+                technician.phone_verified = True
+                technician.phone_verified_at = timezone.now()
+                technician.save()
+                messages.success(request, "Phone number verified successfully!")
+
+                request.session.pop('phone_verification_code', None)
+                request.session.pop('phone_verification_number', None)
+                request.session.pop('phone_verification_expires', None)
+            else:
+                messages.error(request, "Phone number has changed. Please request a new verification code.")
         else:
             messages.error(request, "Invalid verification code. Please try again.")
 

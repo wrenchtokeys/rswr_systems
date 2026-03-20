@@ -48,9 +48,14 @@ def get_ordinal_suffix(n):
 @manager_required
 def manager_settings_dashboard(request):
     """Main manager settings dashboard with navigation tiles."""
-    manager = request.user.technician if hasattr(request.user, 'technician') else None
-
     tenant = getattr(request, 'tenant', None)
+    # Use tenant-scoped lookup so an owner/admin at Shop B who also has a
+    # Technician record at Shop A does not leak Shop A's team data here.
+    # (CODE-080 cross-tenant settings dashboard fix)
+    manager = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
     viscosity_qs = ViscosityRecommendation.objects.filter(is_active=True)
     if tenant:
         viscosity_qs = viscosity_qs.filter(tenant=tenant)
@@ -77,12 +82,15 @@ def manager_settings_dashboard(request):
 @ensure_csrf_cookie
 def manage_viscosity_rules(request):
     """Manage viscosity recommendation rules with card-based interface."""
+    tenant = getattr(request, 'tenant', None)
+    # Use tenant-scoped lookup to prevent cross-tenant Technician bleed. (CODE-080)
     try:
-        manager = request.user.technician if hasattr(request.user, 'technician') else None
+        manager = (
+            Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if tenant else None
+        )
     except Exception:
         manager = None
-
-    tenant = getattr(request, 'tenant', None)
     rules = ViscosityRecommendation.objects.all()
     if tenant:
         rules = rules.filter(tenant=tenant)
@@ -306,13 +314,18 @@ def toggle_viscosity_rule(request, rule_id):
 @manager_required
 def team_overview(request):
     """Team overview dashboard showing managed technicians and their stats."""
-    manager = request.user.technician if hasattr(request.user, 'technician') else None
+    tenant = getattr(request, 'tenant', None)
+    # Use tenant-scoped Technician lookup so an owner/admin at Shop B who also
+    # has a Technician record at Shop A cannot see Shop A's managed_technicians
+    # on Shop B's team overview. (CODE-080 cross-tenant settings dashboard fix)
+    manager = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
 
     if not manager:
         messages.warning(request, "Technician profile not found")
         return redirect('technician_dashboard')
-
-    tenant = getattr(request, 'tenant', None)
 
     # Build a Prefetch for the 5 most-recent repairs per technician so we avoid
     # firing one Repair query per tech inside the loop below (N+1).

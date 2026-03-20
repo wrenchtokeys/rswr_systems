@@ -545,12 +545,12 @@ def owner_dashboard(request):
     has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
     has_customers = Customer.objects.filter(tenant=tenant).exists()
     has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
-    has_business_info = bool(tenant.business_address or tenant.business_phone)
+    has_business_info = bool(tenant.business_phone and tenant.business_email)
 
     if not has_business_info:
         setup_steps.append({
             'label': 'Add your business info',
-            'desc': 'Address and phone number for invoices',
+            'desc': 'Phone number and email for invoices',
             'url': '/owner/settings/?tab=general',
             'icon': 'fas fa-building',
         })
@@ -1181,6 +1181,7 @@ def owner_settings_view(request):
             # Update shop location + tax rate breakdown
             try:
                 from decimal import Decimal, InvalidOperation
+                from apps.billing.models import TaxRate as _TaxRate
                 config = BillingConfig.get_for_tenant(tenant)
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
@@ -1211,6 +1212,40 @@ def owner_settings_view(request):
                 config.save()
                 from django.core.cache import cache
                 cache.delete(f'billing_config_tax_{tenant.pk}')
+
+                # CODE-103: sync TaxRate records so TaxService.is_tax_enabled() works.
+                # TaxService checks TaxRate.objects.filter(tenant=tenant, is_active=True)
+                # NOT BillingConfig.tax_enabled — so we MUST create/update a TaxRate row
+                # or tax will never actually be applied to invoices even when the rate is set.
+                if config.default_tax_rate > 0 and config.company_city and config.company_state:
+                    # Reactivate a previously deactivated rate or create a new one.
+                    existing = _TaxRate.objects.filter(
+                        tenant=tenant,
+                        city__iexact=config.company_city,
+                        state__iexact=config.company_state,
+                    ).first()
+                    if existing:
+                        existing.state_rate = config.state_tax_rate
+                        existing.county_rate = config.county_tax_rate
+                        existing.city_rate = config.city_tax_rate
+                        existing.special_rate = config.special_tax_rate
+                        existing.is_active = True
+                        existing.save()
+                    else:
+                        _TaxRate.objects.create(
+                            tenant=tenant,
+                            city=config.company_city,
+                            state=config.company_state,
+                            state_rate=config.state_tax_rate,
+                            county_rate=config.county_tax_rate,
+                            city_rate=config.city_tax_rate,
+                            special_rate=config.special_tax_rate,
+                            is_active=True,
+                        )
+                elif config.default_tax_rate <= 0:
+                    # No rate → deactivate all TaxRate rows for this tenant
+                    _TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+
                 messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
             except Exception as e:
                 logger.error(f"Error updating billing config: {e}")
@@ -1305,10 +1340,9 @@ def owner_settings_view(request):
     for cust in customers:
         cust.portal_user = customer_users.get(cust.id)
 
-    # Tax rates for Billing tab
-    tax_rates = TaxRate.objects.filter(
-        models.Q(tenant=tenant) | models.Q(tenant__isnull=True)
-    ).order_by('state', 'city')
+    # Tax rates were removed from owner_settings.html (billing tab now uses BillingConfig
+    # component rates directly).  This query was fetching 349+ shared AR reference rows
+    # on every settings page load for no reason — CODE-101.
     try:
         billing_config = BillingConfig.get_for_tenant(tenant)
         tax_enabled = billing_config.tax_enabled
@@ -1324,6 +1358,21 @@ def owner_settings_view(request):
         tenant=tenant, primary_technician__isnull=False
     ).exists()
 
+    # Overdue reminder day choices (checkboxes) and active selections
+    reminder_day_choices = [
+        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
+        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
+        ('60', '2 months'), ('90', '3 months'),
+    ]
+    active_reminder_days = []
+    if billing_config and billing_config.overdue_reminder_days:
+        active_reminder_days = [
+            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
+        ]
+
+    # Batch invoicing: month day choices for dropdown
+    batch_month_days = [{'value': d, 'label': f'{d}{"st" if d == 1 else "nd" if d == 2 else "rd" if d == 3 else "th"} of the month'} for d in range(1, 29)]
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1331,11 +1380,13 @@ def owner_settings_view(request):
         'shop_join_url': shop_join_url,
         'customers': customers,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
-        'tax_rates': tax_rates,
         'tax_enabled': tax_enabled,
         'billing_config': billing_config,
         'active_tab': active_tab,
         'any_customer_has_primary_tech': any_customer_has_primary_tech,
+        'reminder_day_choices': reminder_day_choices,
+        'active_reminder_days': active_reminder_days,
+        'batch_month_days': batch_month_days,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -1578,7 +1629,48 @@ def invite_member(request):
 
 def shop_join_view(request, slug):
     """Public page: /join/<slug>/ — customer self-signup for a shop's portal."""
+    from apps.customer_portal.models import CustomerUser as CustomerUserModel
     tenant = get_object_or_404(Tenant, slug=slug, is_active=True)
+
+    # If the user is already authenticated, check if they already have a
+    # customer record at this tenant.  If so, redirect them to the portal.
+    # If not, create one automatically so they don't get stuck with a
+    # "please log in" error that leads nowhere.  (CODE-093)
+    if request.user.is_authenticated:
+        existing_cu = CustomerUserModel.objects.filter(
+            user=request.user, customer__tenant=tenant
+        ).first()
+        if existing_cu:
+            request.session['tenant_id'] = tenant.id
+            messages.info(request, f"You already have access to {tenant.name}.")
+            return redirect('customer_dashboard')
+        # Authenticated user, no customer record yet — create one automatically
+        with transaction.atomic():
+            customer_name = (
+                request.user.get_full_name() or request.user.email
+            )
+            # Avoid duplicate customer names within this tenant
+            if Customer.objects.filter(tenant=tenant, name=customer_name).exists():
+                customer_name = f"{customer_name} ({request.user.email})"
+            customer = Customer.objects.create(
+                tenant=tenant,
+                name=customer_name,
+                customer_type='RETAIL',
+                email=request.user.email,
+            )
+            CustomerUserModel.objects.create(
+                user=request.user,
+                customer=customer,
+                is_primary_contact=True,
+            )
+            TenantMembership.objects.get_or_create(
+                tenant=tenant,
+                user=request.user,
+                defaults={'role': 'viewer'},
+            )
+        request.session['tenant_id'] = tenant.id
+        messages.success(request, f"Welcome to {tenant.name}! Your portal account is ready.")
+        return redirect('customer_dashboard')
 
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
@@ -1608,9 +1700,15 @@ def shop_join_view(request, slug):
             except ValidationError as e:
                 errors.extend(e.messages)
 
-        # Check email uniqueness
+        # Check email uniqueness.  Note: if the user finds this error, they
+        # should log in at /login/?next=/join/<slug>/ — after login the view
+        # will detect their existing account and create a CustomerUser record
+        # automatically (see the is_authenticated branch at the top of this view).
         if email and User.objects.filter(email=email).exists():
-            errors.append('An account with this email already exists. Please log in instead.')
+            errors.append(
+                'An account with this email already exists. '
+                'Please log in to access this portal.'
+            )
 
         if errors:
             return render(request, 'saas/shop_join.html', {
@@ -2329,11 +2427,28 @@ def owner_toggle_tax(request):
         return redirect('/owner/settings/?tab=billing')
 
     try:
+        from django.core.cache import cache
+        from apps.billing.models import TaxRate
+
         config = BillingConfig.get_for_tenant(tenant)
         config.tax_enabled = not config.tax_enabled
         config.save()
-        from django.core.cache import cache
         cache.delete(f'billing_config_tax_{tenant.pk}')
+
+        # CODE-099: Sync TaxRate.is_active with the new tax_enabled state.
+        # TaxService.is_tax_enabled() for tenant-aware paths checks
+        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() —
+        # it does NOT read BillingConfig.tax_enabled.  Without this sync,
+        # toggling tax off via this button leaves active TaxRate records so
+        # tax still gets charged on every invoice.  Toggling back on would
+        # then show no rates active (all still deactivated from the first
+        # disable), so it also needs to reactivate existing rates.
+        if not config.tax_enabled:
+            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+        else:
+            # Re-enable all rates for this tenant when tax is turned back on.
+            # The owner can fine-tune individual rates on the tax rates page.
+            TaxRate.objects.filter(tenant=tenant).update(is_active=True)
 
         status = 'enabled' if config.tax_enabled else 'disabled'
         messages.success(request, f'Sales tax calculation {status}.')
@@ -2361,17 +2476,15 @@ def owner_send_invoice(request, invoice_id):
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
     try:
-        # Update status to SENT
-        invoice.status = 'SENT'
-        invoice.sent_at = timezone.now()
-        invoice.save(update_fields=['status', 'sent_at'])
-        
-        # Try to email the invoice
+        # CODE-098: Do NOT mark invoice SENT before confirming email delivery.
+        # Previous code set status='SENT' + saved, then tried email — if SMTP was
+        # down the invoice showed SENT forever but the customer never received it.
+        # Now: attempt email first, only stamp SENT on success (mirrors CODE-094–096).
         email_sent = False
         try:
             from apps.billing.services.invoice_email_service import InvoiceEmailService
             email_service = InvoiceEmailService(tenant=tenant)
-            
+
             # Get recipient email
             recipient = None
             try:
@@ -2379,13 +2492,13 @@ def owner_send_invoice(request, invoice_id):
                 recipient = prefs.billing_email or invoice.customer.email
             except Exception:
                 recipient = invoice.customer.email
-            
+
             if recipient:
                 # Get repair IDs from line items (may be empty for replacement-only invoices).
                 # Pass None when empty so the service falls back to a time-window scan
                 # instead of silently skipping the email entirely (CODE-060 fix).
                 repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-                
+
                 success, msg = email_service.send_invoice_email(
                     customer_id=invoice.customer.id,
                     recipient_email=recipient,
@@ -2396,12 +2509,19 @@ def owner_send_invoice(request, invoice_id):
                     logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
         except Exception as e:
             logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
-        
+
+        # Only stamp status AFTER we know whether email succeeded.
+        # Either way we mark SENT so the owner can see it's been actioned,
+        # but surface a warning when email delivery failed so they know to follow up.
+        invoice.status = 'SENT'
+        invoice.sent_at = timezone.now()
+        invoice.save(update_fields=['status', 'sent_at'])
+
         if email_sent:
             messages.success(request, f'Invoice {invoice.invoice_number} sent and emailed to customer.')
         else:
-            messages.success(request, f'Invoice {invoice.invoice_number} marked as sent. (Email delivery may have failed - check customer email settings)')
-            
+            messages.warning(request, f'Invoice {invoice.invoice_number} marked as sent, but email delivery failed — check the customer\'s email address and try resending.')
+
     except Exception as e:
         logger.error(f"Error sending invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while sending the invoice.')
@@ -2819,6 +2939,18 @@ def owner_setup_view(request):
 
     completion = _setup_completion(tenant)
 
+    # Overdue reminder day choices (checkboxes) and active selections
+    reminder_day_choices = [
+        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
+        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
+        ('60', '2 months'), ('90', '3 months'),
+    ]
+    active_reminder_days = []
+    if billing_config and billing_config.overdue_reminder_days:
+        active_reminder_days = [
+            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
+        ]
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -2827,6 +2959,8 @@ def owner_setup_view(request):
         'viscosity_rules': viscosity_rules,
         'completion': completion,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
+        'reminder_day_choices': reminder_day_choices,
+        'active_reminder_days': active_reminder_days,
     }
     return render(request, 'saas/owner_setup.html', context)
 
@@ -2933,14 +3067,28 @@ def owner_setup_save_tax(request):
         else:
             config.save(update_fields=['tax_enabled'])
 
+        # Deactivate all TaxRates when tax is disabled.
+        # TaxService.calculate_tax() determines "tax enabled" by checking
+        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() — it
+        # does NOT consult BillingConfig.tax_enabled for tenant-aware paths.
+        # Without this, disabling tax via setup leaves active TaxRate records
+        # so tax keeps being charged on every invoice even when the owner
+        # toggled it off. (CODE-099)
+        if not tax_enabled:
+            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+
         # Create or update tenant TaxRate if enabled and we have location
         if tax_enabled and total > 0 and city and state:
+            # Include is_active=False rows in the lookup: if the owner is
+            # re-enabling a previously deactivated rate we reactivate it
+            # rather than creating a duplicate entry.
             existing = TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).first()
             if existing:
                 existing.state_rate = state_rate
                 existing.county_rate = county_rate
                 existing.city_rate = city_rate
                 existing.special_rate = special_rate
+                existing.is_active = True  # re-activate if it was deactivated
                 existing.save()
             else:
                 TaxRate.objects.create(
@@ -2951,6 +3099,7 @@ def owner_setup_save_tax(request):
                     county_rate=county_rate,
                     city_rate=city_rate,
                     special_rate=special_rate,
+                    is_active=True,
                 )
 
         return JsonResponse({'success': True, 'message': 'Tax settings saved!'})

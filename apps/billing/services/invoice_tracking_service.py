@@ -57,7 +57,10 @@ class InvoiceTrackingService:
             invoice_number: Optional invoice number (auto-generated if not provided)
             due_days: Days until due (default: 30)
             s3_key: S3 key where PDF is stored
-            auto_send: Mark as SENT immediately
+            auto_send: Deprecated – ignored. Invoice is always created as DRAFT.
+                       Callers must mark SENT only after email delivery is confirmed.
+                       (See AGENTS.md gotcha: "Don't mark invoices SENT before
+                       confirming email delivery")
             
         Returns:
             Invoice instance
@@ -103,8 +106,8 @@ class InvoiceTrackingService:
                 invoice_date=timezone.now().date(),
                 due_date=due_date,
                 payment_terms=payment_terms,
-                status='SENT' if auto_send else 'DRAFT',
-                sent_at=timezone.now() if auto_send else None,
+                status='DRAFT',
+                sent_at=None,
                 s3_key=s3_key or '',
             )
             

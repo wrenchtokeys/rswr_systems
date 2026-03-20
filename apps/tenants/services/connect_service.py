@@ -302,7 +302,7 @@ class ConnectService:
                         'product_data': {
                             'name': f'Invoice {invoice.invoice_number}',
                             'description': (
-                                f'{invoice.line_items.count()} windshield repair(s) '
+                                f'{invoice.line_items.count()} service(s) '
                                 f'for {invoice.customer.name}'
                             ),
                         },

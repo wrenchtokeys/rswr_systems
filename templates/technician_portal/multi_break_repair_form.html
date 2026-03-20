@@ -408,7 +408,7 @@
             </div>
 
             <!-- Manager Price Override Section -->
-            {% if user.technician.is_manager and user.technician.can_override_pricing %}
+            {% if current_technician and current_technician.is_manager and current_technician.can_override_pricing %}
             <div class="pt-4 border-t border-gray-200 bg-purple-50 -mx-6 px-6 py-4 rounded">
                 <h3 class="text-sm font-semibold text-purple-900 uppercase tracking-wide mb-3">
                     <i class="fas fa-shield-alt mr-1"></i> Price Override (Manager Only)
@@ -431,9 +431,9 @@
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                             placeholder="Leave blank for auto-pricing"
                         >
-                        {% if user.technician.approval_limit %}
+                        {% if current_technician and current_technician.approval_limit %}
                         <p class="mt-1 text-xs text-gray-600">
-                            Your approval limit: <span class="font-semibold">${{ user.technician.approval_limit }}</span>
+                            Your approval limit: <span class="font-semibold">${{ current_technician.approval_limit }}</span>
                         </p>
                         {% endif %}
                     </div>

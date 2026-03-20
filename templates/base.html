@@ -113,7 +113,7 @@
                             <a href="{% url 'technician_profile' %}">
                                 <i class="fas fa-cog me-2"></i> Profile Settings
                             </a>
-                            {% if request.user.is_staff or request.user.technician.is_manager %}
+                            {% if request.user.is_staff or user_role == 'manager' or user_role == 'owner' or user_role == 'superuser' %}
                             <a href="{% url 'manager_settings_dashboard' %}">
                                 <i class="fas fa-sliders-h me-2"></i> Manager Settings
                             </a>

@@ -86,8 +86,14 @@ class AutoInvoiceService:
         }
         
         try:
-            # Generate PDF
-            invoice_service = InvoiceService()
+            # Generate PDF — pass tenant so InvoiceService loads the correct
+            # BillingConfig (company name, address, payment terms).  Without
+            # tenant, InvoiceService() generates PDFs with blank company info.
+            # (CODE-092: mirrors reminder_service and clawdbot fixes)
+            repair_tenant = getattr(repair, 'tenant', None) or getattr(
+                getattr(repair, 'customer', None), 'tenant', None
+            )
+            invoice_service = InvoiceService(tenant=repair_tenant)
             pdf_bytes, invoice_data = invoice_service.generate_invoice(
                 customer_id=repair.customer.id,
                 repair_ids=[repair.id]
@@ -110,17 +116,25 @@ class AutoInvoiceService:
                 result['success'] = True
                 result['s3_key'] = s3_key
                 
-                # Create tracked Invoice record (prevents double-billing)
+                # Create tracked Invoice record (prevents double-billing).
+                # CODE-094 fixes:
+                #   1. Pass tenant= so InvoiceTrackingService loads the correct
+                #      BillingConfig (payment terms).  Without tenant, all
+                #      auto-invoices defaulted to COD regardless of shop settings.
+                #   2. Create as DRAFT first; only mark SENT after confirming email
+                #      delivery.  Previously auto_send=True marked SENT before the
+                #      email was even attempted — violating the invariant in AGENTS.md
+                #      ("Don't mark invoices SENT before confirming email delivery").
                 invoice_record = None
                 try:
                     from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-                    tracking_service = InvoiceTrackingService()
+                    tracking_service = InvoiceTrackingService(tenant=repair_tenant)
                     invoice_record = tracking_service.create_invoice_from_repairs(
                         customer=repair.customer,
                         repairs=[repair],
                         invoice_number=invoice_data.invoice_number,
                         s3_key=s3_key,
-                        auto_send=True  # Mark as sent since it's auto-generated
+                        auto_send=False  # Start as DRAFT; mark SENT after email confirms
                     )
                     result['invoice_id'] = invoice_record.id
                     logger.info(f"Created invoice record #{invoice_record.id}")
@@ -140,7 +154,7 @@ class AutoInvoiceService:
                 
                 logger.info(f"Auto-generated invoice {invoice_data.invoice_number} for repair #{repair.id} -> s3://{self.s3_bucket}/{s3_key}")
                 
-                # Check if we should email
+                # Check if we should email; mark invoice SENT only on success
                 try:
                     prefs = repair.customer.repair_preferences
                     if prefs.auto_email_invoices:
@@ -151,6 +165,14 @@ class AutoInvoiceService:
                             prefs=prefs
                         )
                         result['emailed'] = email_result
+
+                        # Mark SENT only after confirmed delivery (AGENTS.md gotcha)
+                        if email_result and invoice_record:
+                            from django.utils import timezone as _tz
+                            invoice_record.status = 'SENT'
+                            invoice_record.sent_at = _tz.now()
+                            invoice_record.save(update_fields=['status', 'sent_at'])
+                            logger.info(f"Invoice #{invoice_record.id} marked SENT after email delivery confirmed")
                 except Exception as e:
                     logger.warning(f"Could not check/send email for invoice: {e}")
             else:

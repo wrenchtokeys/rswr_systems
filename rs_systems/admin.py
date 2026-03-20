@@ -42,13 +42,52 @@ class UserAdmin(BaseUserAdmin):
     list_filter = ['is_staff', 'is_active', 'date_joined', 'groups', UserTenantFilter]
     actions = ['make_technician', 'make_customer', 'make_dual_role', 'deactivate_users', 'activate_users']
 
+    def get_queryset(self, request):
+        """
+        Prefetch Technician and CustomerUser reverse relations to eliminate N+1
+        queries in get_role() and get_tenant().
+
+        Without this fix, every row in the 25-user changelist issued up to 4 extra
+        queries (2× exists()/first() for role + 2× first() for tenant) — up to 100
+        queries per page load.  prefetch_related collapses all of those to 2 extra
+        bulk queries regardless of page size. (CODE-097 N+1 fix)
+
+        Both Technician and CustomerUser have OneToOneField → User, so Django's
+        prefetch_related works via the reverse descriptor names 'technician' and
+        'customeruser'.  After prefetching, accessing obj.technician or
+        obj.customeruser hits the in-process cache, not the database.
+        """
+        from django.db.models import Prefetch
+        qs = super().get_queryset(request)
+        return qs.prefetch_related(
+            Prefetch(
+                'technician',
+                queryset=Technician.objects.select_related('tenant'),
+            ),
+            Prefetch(
+                'customeruser',
+                queryset=CustomerUser.objects.select_related('customer__tenant'),
+            ),
+        )
+
     def get_role(self, obj):
-        """Display the user's role (Technician, Customer, or Admin)"""
+        """
+        Display the user's role (Technician, Customer, or Admin).
+
+        Uses the prefetch_related cache populated by get_queryset() — no extra
+        DB queries per row.
+        """
         if obj.is_staff and obj.is_superuser:
             return 'Admin'
 
-        is_technician = Technician.objects.filter(user=obj).exists()
-        is_customer = CustomerUser.objects.filter(user=obj).exists()
+        # Access reverse OneToOneField via prefetch cache.  Django raises
+        # RelatedObjectDoesNotExist (a subclass of AttributeError) when the
+        # related object doesn't exist — use getattr with a sentinel to detect.
+        _missing = object()
+        tech = getattr(obj, 'technician', _missing)
+        cu = getattr(obj, 'customeruser', _missing)
+        is_technician = tech is not _missing and tech is not None
+        is_customer = cu is not _missing and cu is not None
 
         if is_technician and is_customer:
             return 'Tech & Customer'
@@ -61,14 +100,18 @@ class UserAdmin(BaseUserAdmin):
     get_role.short_description = 'Role'
 
     def get_tenant(self, obj):
-        """Display the user's tenant/shop via Technician or CustomerUser."""
-        # Technician has a direct tenant FK
-        tech = Technician.objects.filter(user=obj).select_related('tenant').first()
-        if tech and tech.tenant:
+        """
+        Display the user's tenant/shop via Technician or CustomerUser.
+
+        Uses the prefetch_related cache populated by get_queryset() — no extra
+        DB queries per row.
+        """
+        _missing = object()
+        tech = getattr(obj, 'technician', _missing)
+        if tech is not _missing and tech is not None and tech.tenant:
             return tech.tenant.name
-        # CustomerUser reaches tenant via customer → tenant
-        cu = CustomerUser.objects.filter(user=obj).select_related('customer__tenant').first()
-        if cu and cu.customer and cu.customer.tenant:
+        cu = getattr(obj, 'customeruser', _missing)
+        if cu is not _missing and cu is not None and cu.customer and cu.customer.tenant:
             return cu.customer.tenant.name
         return '—'
     get_tenant.short_description = 'Tenant / Shop'
