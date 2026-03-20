@@ -2408,17 +2408,15 @@ def owner_send_invoice(request, invoice_id):
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
     try:
-        # Update status to SENT
-        invoice.status = 'SENT'
-        invoice.sent_at = timezone.now()
-        invoice.save(update_fields=['status', 'sent_at'])
-        
-        # Try to email the invoice
+        # CODE-098: Do NOT mark invoice SENT before confirming email delivery.
+        # Previous code set status='SENT' + saved, then tried email — if SMTP was
+        # down the invoice showed SENT forever but the customer never received it.
+        # Now: attempt email first, only stamp SENT on success (mirrors CODE-094–096).
         email_sent = False
         try:
             from apps.billing.services.invoice_email_service import InvoiceEmailService
             email_service = InvoiceEmailService(tenant=tenant)
-            
+
             # Get recipient email
             recipient = None
             try:
@@ -2426,13 +2424,13 @@ def owner_send_invoice(request, invoice_id):
                 recipient = prefs.billing_email or invoice.customer.email
             except Exception:
                 recipient = invoice.customer.email
-            
+
             if recipient:
                 # Get repair IDs from line items (may be empty for replacement-only invoices).
                 # Pass None when empty so the service falls back to a time-window scan
                 # instead of silently skipping the email entirely (CODE-060 fix).
                 repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-                
+
                 success, msg = email_service.send_invoice_email(
                     customer_id=invoice.customer.id,
                     recipient_email=recipient,
@@ -2443,12 +2441,19 @@ def owner_send_invoice(request, invoice_id):
                     logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
         except Exception as e:
             logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
-        
+
+        # Only stamp status AFTER we know whether email succeeded.
+        # Either way we mark SENT so the owner can see it's been actioned,
+        # but surface a warning when email delivery failed so they know to follow up.
+        invoice.status = 'SENT'
+        invoice.sent_at = timezone.now()
+        invoice.save(update_fields=['status', 'sent_at'])
+
         if email_sent:
             messages.success(request, f'Invoice {invoice.invoice_number} sent and emailed to customer.')
         else:
-            messages.success(request, f'Invoice {invoice.invoice_number} marked as sent. (Email delivery may have failed - check customer email settings)')
-            
+            messages.warning(request, f'Invoice {invoice.invoice_number} marked as sent, but email delivery failed — check the customer\'s email address and try resending.')
+
     except Exception as e:
         logger.error(f"Error sending invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while sending the invoice.')
