@@ -422,12 +422,21 @@ def create_repair(request):
     customer_types_json = json.dumps({
         str(c.id): c.customer_type for c in customers_qs
     })
+    # Tenant-scoped Technician for the current user — used by the template to
+    # check is_manager without falling back to the unscoped OneToOneField
+    # reverse accessor (user.technician) which could return a record from a
+    # different shop.  (CODE-108)
+    current_technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
     context = {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
         'is_admin': admin,
         'expected_cost': expected_cost,
         'customer_types_json': customer_types_json,
+        'current_technician': current_technician,
     }
     if admin:
         context['technicians'] = Technician.objects.filter(
@@ -560,6 +569,13 @@ def update_repair(request, repair_id):
         ).order_by('break_number')
 
     admin = user_is_admin  # reuse cached value
+    # Tenant-scoped Technician for the current user — prevents the template from
+    # using the bare user.technician OneToOneField which could resolve to a
+    # Technician from a different shop.  (CODE-108)
+    current_technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
     update_context = {
         'form': form,
         'repair': repair,
@@ -567,6 +583,7 @@ def update_repair(request, repair_id):
         'expected_cost': expected_cost,
         'batch_id': batch_id,
         'batch_repairs': batch_repairs,
+        'current_technician': current_technician,
     }
     if admin:
         update_context['technicians'] = Technician.objects.filter(
