@@ -40,6 +40,34 @@ from core.services.sms_service import SMSService
 logger = logging.getLogger(__name__)
 
 # Custom decorator to ensure only customers can access views
+def _get_customer_user_for_tenant(request):
+    """
+    Return the CustomerUser for the current user scoped to the current tenant.
+
+    CustomerUser.user is a OneToOneField so at most one CustomerUser record can
+    exist per user.  The per-tenant scope (customer__tenant=tenant) is still
+    important: it validates that the user's CustomerUser actually belongs to the
+    shop currently in the request context.  Without this check, a customer at
+    Shop A who navigates to Shop B's customer portal URL would get their
+    CustomerUser back (for Shop A) and the view would silently operate on the
+    wrong shop's data.  (CODE-102)
+
+    Returns None if:
+    - The user has no CustomerUser record at all, OR
+    - The user's CustomerUser belongs to a different tenant than the current one.
+
+    Falls back to a simple filter (no tenant scope) when there is no tenant
+    context on the request (tests, admin-only environments).
+    """
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        return CustomerUser.objects.filter(
+            user=request.user, customer__tenant=tenant
+        ).select_related('customer__tenant').first()
+    # No tenant context — fall back to unscoped lookup (tests / admin-only paths)
+    return CustomerUser.objects.filter(user=request.user).select_related('customer__tenant').first()
+
+
 def customer_required(view_func):
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
@@ -47,15 +75,16 @@ def customer_required(view_func):
         if not request.user.is_authenticated:
             messages.info(request, "Please log in to access the customer portal.")
             return redirect('login')
-            
-        # Check if user has a customer profile
-        try:
-            customer_user = CustomerUser.objects.get(user=request.user)
-            return view_func(request, *args, **kwargs)
-        except CustomerUser.DoesNotExist:
+
+        # Check if user has a customer profile scoped to the current tenant.
+        # Use the tenant-aware helper to avoid MultipleObjectsReturned for users
+        # who have joined more than one shop. (CODE-102)
+        customer_user = _get_customer_user_for_tenant(request)
+        if customer_user is None:
             # Redirect user to profile creation if they don't have a profile
             messages.info(request, "Please complete your profile setup to access customer features.")
             return redirect('profile_creation')
+        return view_func(request, *args, **kwargs)
     return _wrapped_view
 
 def rebuild_unit_repair_counts(customer):
@@ -88,7 +117,7 @@ def rebuild_unit_repair_counts(customer):
 @customer_required
 def customer_dashboard(request):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Check if we need to rebuild unit repair counts for this customer
@@ -209,7 +238,7 @@ def customer_dashboard(request):
         context.update(get_notification_context(customer))
 
         return render(request, 'customer_portal/dashboard.html', context)
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -296,7 +325,7 @@ def profile_creation(request):
 @customer_required
 def customer_repairs(request):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Get filter parameters
@@ -469,14 +498,14 @@ def customer_repairs(request):
             'batch_count': len(batch_summaries),
             'individual_count': len(individual_repairs_list),
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @customer_required
 def customer_repair_detail(request, repair_id):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
@@ -498,14 +527,14 @@ def customer_repair_detail(request, repair_id):
             'customer': customer,
             'approval': approval
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @customer_required
 def customer_repair_approve(request, repair_id):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
@@ -569,14 +598,14 @@ def customer_repair_approve(request, repair_id):
             'repair': repair,
             'customer': customer
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @customer_required
 def customer_repair_deny(request, repair_id):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
@@ -634,7 +663,7 @@ def customer_repair_deny(request, repair_id):
             'repair': repair,
             'customer': customer
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -643,7 +672,7 @@ def customer_repair_deny(request, repair_id):
 def customer_batch_detail(request, batch_id):
     """Display all repairs in a batch with batch approval options"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Scope batch lookup to this customer's tenant so cross-tenant batch
@@ -659,7 +688,7 @@ def customer_batch_detail(request, batch_id):
             'customer': customer,
             'repairs': batch_summary['all_repairs'],
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -668,7 +697,7 @@ def customer_batch_detail(request, batch_id):
 def customer_batch_approve(request, batch_id):
     """Approve all repairs in a batch (all-or-nothing transaction)"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Scope to tenant to prevent cross-tenant IDOR via batch UUID.
@@ -744,7 +773,7 @@ def customer_batch_approve(request, batch_id):
             'customer': customer,
         })
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -753,7 +782,7 @@ def customer_batch_approve(request, batch_id):
 def customer_batch_deny(request, batch_id):
     """Deny all repairs in a batch (all-or-nothing transaction)"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Scope to tenant to prevent cross-tenant IDOR via batch UUID.
@@ -833,7 +862,7 @@ def customer_batch_deny(request, batch_id):
             'customer': customer,
         })
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -846,7 +875,7 @@ def customer_batch_deny(request, batch_id):
 def customer_replacements(request):
     """List all glass replacements for this customer."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Get filter parameters
@@ -904,7 +933,7 @@ def customer_replacements(request):
             'status_filter': status_filter,
             'status_choices': status_choices,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -913,7 +942,7 @@ def customer_replacements(request):
 def customer_replacement_detail(request, replacement_id):
     """View details of a single replacement."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
@@ -922,7 +951,7 @@ def customer_replacement_detail(request, replacement_id):
             'replacement': replacement,
             'customer': customer,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -931,7 +960,7 @@ def customer_replacement_detail(request, replacement_id):
 def customer_replacement_approve(request, replacement_id):
     """Approve a pending replacement."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
@@ -963,7 +992,7 @@ def customer_replacement_approve(request, replacement_id):
             'replacement': replacement,
             'customer': customer,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -972,7 +1001,7 @@ def customer_replacement_approve(request, replacement_id):
 def customer_replacement_deny(request, replacement_id):
     """Deny a pending replacement."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
@@ -1007,7 +1036,7 @@ def customer_replacement_deny(request, replacement_id):
             'replacement': replacement,
             'customer': customer,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1130,7 +1159,7 @@ def customer_register(request):
 def edit_company(request):
     # Get the customer user record
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         if request.method == 'POST':
@@ -1162,7 +1191,7 @@ def edit_company(request):
         return render(request, 'customer_portal/edit_company.html', {
             'customer': customer
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1181,7 +1210,7 @@ def request_repair(request):
     """
     # Get the customer user record
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         if request.method == 'POST':
@@ -1196,7 +1225,7 @@ def request_repair(request):
 
         # Render the repair request form
         return render(request, 'customer_portal/request_repair.html')
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1489,7 +1518,7 @@ def repair_pricing_api(request):
         return JsonResponse({'error': 'POST request required'}, status=405)
 
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Parse request body
@@ -1588,7 +1617,7 @@ def repair_pricing_api(request):
             'uses_custom_pricing': uses_custom_pricing
         })
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
@@ -1604,7 +1633,7 @@ def repair_pricing_api(request):
 def account_settings(request):
     # Get the customer user record
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         user = request.user
         customer = customer_user.customer
 
@@ -1722,7 +1751,7 @@ def account_settings(request):
             'customer_user': customer_user,
             'repair_form': repair_form,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1730,7 +1759,7 @@ def account_settings(request):
 def unit_repair_data_api(request):
     """API endpoint to provide unit repair data for visualizations"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get all unit repair counts for this customer, scoped to the tenant.
@@ -1778,7 +1807,7 @@ def unit_repair_data_api(request):
         logger.debug(f"API Response (unit-repair-data): {len(data)} units")
 
         return JsonResponse(data, safe=False)
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
         logger.error(f"Error in unit_repair_data_api: {str(e)}")
@@ -1788,7 +1817,7 @@ def unit_repair_data_api(request):
 def repair_cost_data_api(request):
     """API endpoint to provide repair frequency data for visualizations"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get all repairs for this customer (tenant-scoped)
@@ -1834,7 +1863,7 @@ def repair_cost_data_api(request):
         logger.debug(f"API Response (repair-cost-data): {len(data)} months")
 
         return JsonResponse(data, safe=False)
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
         logger.error(f"Error in repair_cost_data_api: {str(e)}")
@@ -1885,7 +1914,7 @@ def customer_rewards_redirect(request):
         
         return render(request, 'customer_portal/referrals/dashboard.html', context)
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1897,7 +1926,7 @@ def customer_bulk_action(request):
         return redirect('customer_repairs')
 
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Get action type (approve or deny)
@@ -2010,7 +2039,7 @@ def customer_bulk_action(request):
 
         return redirect('customer_repairs')
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
     except Exception as e:
@@ -2068,9 +2097,9 @@ def customer_notification_preferences(request):
     - Enable batch mode for pending approvals
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Customer profile not found.")
         return redirect('customer_dashboard')
 
@@ -2125,9 +2154,9 @@ def customer_verify_email(request):
     Adapted from technician portal verify_email view.
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Unable to verify email.")
         return redirect('customer_notification_preferences')
 
@@ -2165,9 +2194,9 @@ def customer_verify_phone(request):
     Adapted from technician portal verify_phone view.
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Unable to verify phone.")
         return redirect('customer_notification_preferences')
 
@@ -2237,7 +2266,7 @@ def customer_confirm_email_verification(request, uidb64, token):
             prefs.save()
 
             messages.success(request, "Email verified successfully! You can now receive email notifications.")
-        except CustomerUser.DoesNotExist:
+        except (CustomerUser.DoesNotExist, AttributeError):
             messages.error(request, "Customer profile not found.")
     else:
         messages.error(request, "Invalid or expired verification link. Please request a new verification email.")
@@ -2277,7 +2306,7 @@ def customer_confirm_phone_verification(request):
         # Verify code
         if code == stored_code:
             try:
-                customer_user = CustomerUser.objects.get(user=request.user)
+                customer_user = _get_customer_user_for_tenant(request)
                 customer = customer_user.customer
 
                 if customer.phone == stored_number:
@@ -2302,7 +2331,7 @@ def customer_confirm_phone_verification(request):
                     request.session.pop('customer_phone_verification_expires', None)
                 else:
                     messages.error(request, "Phone number has changed. Please request a new verification code.")
-            except CustomerUser.DoesNotExist:
+            except (CustomerUser.DoesNotExist, AttributeError):
                 messages.error(request, "Customer profile not found.")
         else:
             messages.error(request, "Invalid verification code. Please try again.")
@@ -2319,9 +2348,9 @@ def customer_notification_history(request):
     Paginated list with filters (read/unread, category).
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Customer profile not found.")
         return redirect('customer_dashboard')
 
@@ -2369,7 +2398,7 @@ def customer_notification_history(request):
 def customer_mark_notification_read(request, notification_id):
     """Mark single notification as read (customer portal)"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         customer_ct = ContentType.objects.get_for_model(Customer)
 
@@ -2399,7 +2428,7 @@ def customer_mark_notification_read(request, notification_id):
 def customer_mark_all_read(request):
     """Mark all notifications as read for customer"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         customer_ct = ContentType.objects.get_for_model(Customer)
 
@@ -2430,7 +2459,7 @@ def customer_get_unread_count(request):
     Cache TTL: 2 minutes (same as technician portal).
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         customer_ct = ContentType.objects.get_for_model(Customer)
 
@@ -2489,7 +2518,7 @@ def customer_get_unread_count(request):
 def customer_invoices(request):
     """List all invoices for the logged-in customer (excluding drafts)."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         invoices = list(
@@ -2513,7 +2542,7 @@ def customer_invoices(request):
             'outstanding_count': outstanding_count,
             'overdue_count': overdue_count,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2522,7 +2551,7 @@ def customer_invoices(request):
 def customer_invoice_detail(request, invoice_id):
     """Full receipt view for a single invoice."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
@@ -2553,7 +2582,7 @@ def customer_invoice_detail(request, invoice_id):
             'customer': customer,
             'can_pay_online': can_pay_online,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2565,7 +2594,7 @@ def customer_invoice_pay(request, invoice_id):
         return redirect('customer_invoice_detail', invoice_id=invoice_id)
 
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
@@ -2632,7 +2661,7 @@ def customer_invoice_pay(request, invoice_id):
             messages.error(request, f"Could not initiate payment: {error_msg}")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2798,7 +2827,7 @@ def customer_team(request):
     Allows customers to invite their own team members (dispatchers, managers).
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get all team members (CustomerUser records for this customer)
@@ -2828,7 +2857,7 @@ def customer_team(request):
             'current_user': customer_user,
         })
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2842,7 +2871,7 @@ def customer_invite_team_member(request):
         return redirect('customer_team')
     
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         email = request.POST.get('email', '').strip().lower()
@@ -2902,7 +2931,7 @@ def customer_invite_team_member(request):
         
         return redirect('customer_team')
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
     except Exception as e:
@@ -2920,7 +2949,7 @@ def customer_cancel_invitation(request, invitation_id):
         return redirect('customer_team')
     
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         invitation = get_object_or_404(
@@ -2936,7 +2965,7 @@ def customer_cancel_invitation(request, invitation_id):
         messages.success(request, f"Invitation to {invitation.email} cancelled.")
         return redirect('customer_team')
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2950,7 +2979,7 @@ def customer_resend_invitation(request, invitation_id):
         return redirect('customer_team')
     
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         invitation = get_object_or_404(
@@ -2973,7 +3002,7 @@ def customer_resend_invitation(request, invitation_id):
         
         return redirect('customer_team')
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
