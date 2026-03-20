@@ -1181,6 +1181,7 @@ def owner_settings_view(request):
             # Update shop location + tax rate breakdown
             try:
                 from decimal import Decimal, InvalidOperation
+                from apps.billing.models import TaxRate as _TaxRate
                 config = BillingConfig.get_for_tenant(tenant)
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
@@ -1211,6 +1212,40 @@ def owner_settings_view(request):
                 config.save()
                 from django.core.cache import cache
                 cache.delete(f'billing_config_tax_{tenant.pk}')
+
+                # CODE-103: sync TaxRate records so TaxService.is_tax_enabled() works.
+                # TaxService checks TaxRate.objects.filter(tenant=tenant, is_active=True)
+                # NOT BillingConfig.tax_enabled — so we MUST create/update a TaxRate row
+                # or tax will never actually be applied to invoices even when the rate is set.
+                if config.default_tax_rate > 0 and config.company_city and config.company_state:
+                    # Reactivate a previously deactivated rate or create a new one.
+                    existing = _TaxRate.objects.filter(
+                        tenant=tenant,
+                        city__iexact=config.company_city,
+                        state__iexact=config.company_state,
+                    ).first()
+                    if existing:
+                        existing.state_rate = config.state_tax_rate
+                        existing.county_rate = config.county_tax_rate
+                        existing.city_rate = config.city_tax_rate
+                        existing.special_rate = config.special_tax_rate
+                        existing.is_active = True
+                        existing.save()
+                    else:
+                        _TaxRate.objects.create(
+                            tenant=tenant,
+                            city=config.company_city,
+                            state=config.company_state,
+                            state_rate=config.state_tax_rate,
+                            county_rate=config.county_tax_rate,
+                            city_rate=config.city_tax_rate,
+                            special_rate=config.special_tax_rate,
+                            is_active=True,
+                        )
+                elif config.default_tax_rate <= 0:
+                    # No rate → deactivate all TaxRate rows for this tenant
+                    _TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+
                 messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
             except Exception as e:
                 logger.error(f"Error updating billing config: {e}")
