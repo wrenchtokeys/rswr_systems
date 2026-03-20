@@ -244,11 +244,35 @@ def customer_dashboard(request):
 
 @login_required
 def profile_creation(request):
-    # Check if user already has a CustomerUser profile
-    if CustomerUser.objects.filter(user=request.user).exists():
-        return redirect('customer_dashboard')
-
+    # Check if user already has a CustomerUser profile scoped to THIS tenant.
+    # CustomerUser.user is a OneToOneField (one per User globally), so we must
+    # distinguish three cases to avoid an infinite redirect loop:
+    #
+    #   A) Already linked to this tenant → redirect to dashboard (setup done).
+    #   B) Linked to a *different* shop → cannot create a second CustomerUser;
+    #      show a clear message instead of looping dashboard ↔ profile_creation.
+    #   C) No CustomerUser yet → let them proceed with the form.
+    #
+    # The old code used an *unscoped* .exists() check: a user with a CustomerUser
+    # at Shop A visiting Shop B was redirected to customer_dashboard, which found
+    # no profile for Shop B, then redirected back here — causing an infinite loop.
+    # (CODE-107: fix redirect loop in profile_creation for cross-shop users)
     tenant = getattr(request, 'tenant', None)
+    existing_cu = CustomerUser.objects.filter(user=request.user).select_related('customer__tenant').first()
+    if existing_cu:
+        if tenant and existing_cu.customer.tenant_id == tenant.id:
+            # Case A — already set up for this shop.
+            return redirect('customer_dashboard')
+        # Case B — linked to a different shop; redirect with explanation.
+        other_shop = existing_cu.customer.tenant
+        messages.warning(
+            request,
+            f"Your account is already linked to {existing_cu.customer.name}"
+            + (f" ({other_shop.name})" if other_shop and other_shop != tenant else "")
+            + ". Customer portal accounts can only be linked to one shop. "
+            "If you need access here, please ask the shop to invite you."
+        )
+        return redirect('login')
     tenant_customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
 
     if request.method == 'POST':
