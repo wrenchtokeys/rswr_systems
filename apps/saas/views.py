@@ -1305,10 +1305,9 @@ def owner_settings_view(request):
     for cust in customers:
         cust.portal_user = customer_users.get(cust.id)
 
-    # Tax rates for Billing tab
-    tax_rates = TaxRate.objects.filter(
-        models.Q(tenant=tenant) | models.Q(tenant__isnull=True)
-    ).order_by('state', 'city')
+    # Tax rates were removed from owner_settings.html (billing tab now uses BillingConfig
+    # component rates directly).  This query was fetching 349+ shared AR reference rows
+    # on every settings page load for no reason — CODE-101.
     try:
         billing_config = BillingConfig.get_for_tenant(tenant)
         tax_enabled = billing_config.tax_enabled
@@ -1346,7 +1345,6 @@ def owner_settings_view(request):
         'shop_join_url': shop_join_url,
         'customers': customers,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
-        'tax_rates': tax_rates,
         'tax_enabled': tax_enabled,
         'billing_config': billing_config,
         'active_tab': active_tab,
