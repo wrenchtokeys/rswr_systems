@@ -27,11 +27,21 @@ logger = logging.getLogger(__name__)
 @technician_required
 def technician_batch_detail(request, batch_id):
     """Display all repairs in a batch with batch actions for technician."""
-    # Admins/owners without a Technician profile are allowed by @technician_required;
-    # guard with getattr to avoid RelatedObjectDoesNotExist for those users.
-    technician = getattr(request.user, 'technician', None)
     tenant = getattr(request, 'tenant', None)
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    # Use tenant-scoped Technician lookup so that a manager/tech from Shop A who
+    # visits Shop B's batch URL gets the Shop B Technician record (or None), NOT
+    # Shop A's record.  Using the unscoped OneToOneField reverse accessor
+    # (request.user.technician) would return Shop A's record, causing:
+    #   1. technician.is_manager evaluated with Shop A's flag in a Shop B context
+    #   2. manages_technician() called on Shop B repairs using Shop A's M2M table
+    #   3. TechnicianNotification auto-read logic tagging the wrong shop's notifications
+    # (Same family as CODE-077 through CODE-088.)
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
 
     # Pass tenant so cross-tenant batch access is blocked at the DB layer.
     batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
@@ -90,11 +100,20 @@ def technician_batch_detail(request, batch_id):
 @transaction.atomic
 def technician_batch_start_work(request, batch_id):
     """Start work on all repairs in a batch at once."""
-    # Guard: admin/owner users without a Technician record are allowed through
-    # @technician_required but don't have a .technician reverse relation.
-    technician = getattr(request.user, 'technician', None)
     tenant = getattr(request, 'tenant', None)
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    # Use tenant-scoped Technician lookup (same fix as technician_batch_detail above).
+    # The unscoped OneToOneField accessor (request.user.technician) would return the
+    # wrong shop's Technician record for cross-tenant users.  The guard
+    # `repair.technician == technician` would then never match Shop B repairs, causing
+    # legitimate technicians to see "No repairs were started" even for their own batches
+    # if their Technician record was somehow resolved via the wrong shop's context.
+    # (Same family as CODE-077 through CODE-088.)
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
 
     batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
     if not batch_summary:

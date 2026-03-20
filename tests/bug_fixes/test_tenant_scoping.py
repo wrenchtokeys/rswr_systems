@@ -1433,18 +1433,20 @@ class BatchDetailNoTechProfileTests(TestCase):
     def test_batch_start_work_owner_no_tech_profile_does_not_crash(self):
         """
         Owner without a Technician record should NOT crash in batch_start_work.
-        They just don't start any repairs (graceful no-op).
+        Owners are tenant admins (is_tenant_admin=True), so they CAN start repairs
+        even without a Technician profile — the admin branch bypasses the
+        `repair.technician == technician` check entirely.
         """
         from apps.technician_portal.views.batch import technician_batch_start_work
         req = self._make_request(self.owner_user, method='POST')
         response = technician_batch_start_work(req, batch_id=self.batch_id)
         # Should not raise — redirects back to batch detail
         self.assertEqual(response.status_code, 302)
-        # Repairs should NOT have been started (no matching technician)
+        # Owners ARE tenant admins → they start all APPROVED repairs in the batch
         self.repair_1.refresh_from_db()
         self.repair_2.refresh_from_db()
-        self.assertEqual(self.repair_1.queue_status, 'APPROVED')
-        self.assertEqual(self.repair_2.queue_status, 'APPROVED')
+        self.assertEqual(self.repair_1.queue_status, 'IN_PROGRESS')
+        self.assertEqual(self.repair_2.queue_status, 'IN_PROGRESS')
 
     def test_batch_start_work_superuser_no_tech_profile_does_not_crash(self):
         """
@@ -1582,3 +1584,175 @@ class BatchPricingTenantScopeTests(TestCase):
         })
         # Should return 404 (customer not found in tenant A) not 200 with Shop B's data
         self.assertEqual(response.status_code, 404)
+
+
+# ---------------------------------------------------------------------------
+# CODE-111: technician_batch_detail / technician_batch_start_work used
+#           unscoped getattr(request.user, 'technician', None) which resolves
+#           the OneToOneField without a tenant filter.  A manager at Shop A
+#           visiting Shop B's batch URL would have their Shop A is_manager flag
+#           evaluated in Shop B's context.
+# ---------------------------------------------------------------------------
+
+class BatchViewTenantScopeTests(TestCase):
+    """
+    CODE-111: Verify batch views resolve Technician record via tenant-scoped
+    lookup, not the bare OneToOneField reverse accessor.
+    """
+
+    def setUp(self):
+        from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
+        from decimal import Decimal
+
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial',
+            defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
+        )
+
+        # Shop A owner + manager
+        self.owner_a = User.objects.create_user('c111_owner_a', 'oa@ex.com', 'pw')
+        self.tenant_a = Tenant.objects.create(
+            name='Shop A 111', slug='shop-a-111', subdomain='shop-a-111',
+            owner=self.owner_a, plan='trial', subscription_plan=plan,
+        )
+        TenantMembership.objects.create(user=self.owner_a, tenant=self.tenant_a, role='owner', is_active=True)
+
+        # Manager at Shop A (is_manager=True, can_override_pricing=True)
+        self.mgr_user_a = User.objects.create_user('c111_mgr_a', 'mgra@ex.com', 'pw')
+        TenantMembership.objects.create(user=self.mgr_user_a, tenant=self.tenant_a, role='manager', is_active=True)
+        from django.contrib.auth.models import Group
+        grp, _ = Group.objects.get_or_create(name='Technicians')
+        self.mgr_user_a.groups.add(grp)
+        self.mgr_a = Technician.objects.create(
+            user=self.mgr_user_a, tenant=self.tenant_a,
+            is_manager=True, can_override_pricing=True, is_active=True,
+        )
+
+        # Shop B — the manager from A has NO membership or Technician record here
+        self.owner_b = User.objects.create_user('c111_owner_b', 'ob@ex.com', 'pw')
+        self.tenant_b = Tenant.objects.create(
+            name='Shop B 111', slug='shop-b-111', subdomain='shop-b-111',
+            owner=self.owner_b, plan='trial', subscription_plan=plan,
+        )
+        TenantMembership.objects.create(user=self.owner_b, tenant=self.tenant_b, role='owner', is_active=True)
+
+        # A technician who actually belongs to Shop B
+        self.tech_b_user = User.objects.create_user('c111_tech_b', 'tb@ex.com', 'pw')
+        TenantMembership.objects.create(user=self.tech_b_user, tenant=self.tenant_b, role='technician', is_active=True)
+        self.tech_b_user.groups.add(grp)
+        self.tech_b = Technician.objects.create(
+            user=self.tech_b_user, tenant=self.tenant_b, is_manager=False, is_active=True,
+        )
+
+        # Customer and batch in Shop B
+        self.customer_b = Customer.objects.create(
+            name='Fleet B', email='fleet_b@ex.com', tenant=self.tenant_b,
+        )
+        self.batch_id = uuid.uuid4()
+        self.repair_b1 = Repair.objects.create(
+            tenant=self.tenant_b, customer=self.customer_b, technician=self.tech_b,
+            service_date='2026-03-20', unit_number='T-099', damage_type='CHIP',
+            queue_status='APPROVED', cost=Decimal('75.00'),
+            repair_batch_id=self.batch_id, break_number=1, total_breaks_in_batch=2,
+        )
+        self.repair_b2 = Repair.objects.create(
+            tenant=self.tenant_b, customer=self.customer_b, technician=self.tech_b,
+            service_date='2026-03-20', unit_number='T-099', damage_type='CRACK',
+            queue_status='APPROVED', cost=Decimal('85.00'),
+            repair_batch_id=self.batch_id, break_number=2, total_breaks_in_batch=2,
+        )
+
+        self.factory = RequestFactory()
+
+    def _make_request(self, user, tenant, method='GET', data=None):
+        if method == 'POST':
+            req = self.factory.post(f'/tech/batch/{self.batch_id}/', data or {})
+        else:
+            req = self.factory.get(f'/tech/batch/{self.batch_id}/')
+        req.user = user
+        req.tenant = tenant
+        req.session = {}
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        req._messages = FallbackStorage(req)
+        return req
+
+    def test_manager_from_shop_a_cannot_view_shop_b_batch(self):
+        """
+        A manager at Shop A who visits a Shop B batch URL should be denied.
+        Two things protect Shop B:
+
+        1. The @technician_required decorator checks can_access(user, 'repairs', tenant_b).
+           Since mgr_user_a has NO membership at Shop B, it denies at the decorator level
+           (redirects to owner_dashboard because they're a global manager).
+
+        2. Even if they somehow bypassed the decorator (e.g. via direct function call),
+           the view uses a tenant-scoped Technician lookup which returns None for Shop B,
+           so can_view stays False → redirects to technician_dashboard.
+
+        This test verifies that accessing via the decorator chain results in a 302 redirect
+        (not a 200 with Shop B's batch data).
+        """
+        from apps.technician_portal.views.batch import technician_batch_detail
+        req = self._make_request(self.mgr_user_a, self.tenant_b)
+        response = technician_batch_detail(req, batch_id=self.batch_id)
+        # Must redirect (access denied at decorator or view level), not 200
+        self.assertEqual(response.status_code, 302)
+        # Location should NOT be the batch detail page itself
+        location = response.get('Location', '')
+        self.assertNotIn(str(self.batch_id), location,
+                         "Must not redirect to the batch detail page for cross-tenant manager")
+
+    def test_manager_from_shop_a_cannot_start_work_on_shop_b_batch(self):
+        """
+        A manager at Shop A should not be able to start work on Shop B batch
+        repairs, regardless of their global is_manager=True.
+
+        The @technician_required decorator denies access at the gate (redirects
+        before the view runs).  As a defence-in-depth check, even if someone
+        called the view function directly with tenant_b context, the
+        tenant-scoped Technician lookup returns None for Shop B (the fix), so
+        `repair.technician == None` never matches, and no repairs are started.
+        """
+        from apps.technician_portal.views.batch import technician_batch_start_work
+        req = self._make_request(self.mgr_user_a, self.tenant_b, method='POST')
+        response = technician_batch_start_work(req, batch_id=self.batch_id)
+        self.assertEqual(response.status_code, 302)
+        # Whether blocked by decorator or view, Shop B repairs must stay APPROVED
+        self.repair_b1.refresh_from_db()
+        self.repair_b2.refresh_from_db()
+        self.assertIn(self.repair_b1.queue_status, ['APPROVED'],
+                      "Cross-tenant manager must not start Shop B repairs")
+        self.assertIn(self.repair_b2.queue_status, ['APPROVED'],
+                      "Cross-tenant manager must not start Shop B repairs")
+
+    def test_shop_b_tech_can_still_view_own_batch(self):
+        """
+        After the fix, a real Shop B technician can still view their own batch.
+        """
+        from apps.technician_portal.views.batch import technician_batch_detail
+        req = self._make_request(self.tech_b_user, self.tenant_b)
+        response = technician_batch_detail(req, batch_id=self.batch_id)
+        # 200 (rendered) or 302 to batch detail — must NOT be a "permission denied" redirect
+        self.assertIn(response.status_code, [200, 302])
+        if response.status_code == 302:
+            # If it redirects, it should NOT be to technician_dashboard (access denied)
+            from django.urls import reverse
+            self.assertNotEqual(
+                response.get('Location', ''),
+                reverse('technician_dashboard'),
+            )
+
+    def test_shop_b_tech_can_still_start_work_on_own_batch(self):
+        """
+        After the fix, a real Shop B technician can still start work on their batch.
+        """
+        from apps.technician_portal.views.batch import technician_batch_start_work
+        req = self._make_request(self.tech_b_user, self.tenant_b, method='POST')
+        response = technician_batch_start_work(req, batch_id=self.batch_id)
+        self.assertEqual(response.status_code, 302)
+        self.repair_b1.refresh_from_db()
+        self.repair_b2.refresh_from_db()
+        self.assertEqual(self.repair_b1.queue_status, 'IN_PROGRESS',
+                         "Shop B tech must be able to start their own repairs")
+        self.assertEqual(self.repair_b2.queue_status, 'IN_PROGRESS',
+                         "Shop B tech must be able to start their own repairs")
