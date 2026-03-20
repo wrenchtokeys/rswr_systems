@@ -20,7 +20,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import models, transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.encoding import force_bytes
@@ -2164,6 +2164,14 @@ def owner_invoice_detail(request, invoice_id):
     # not hardcoded.  Works correctly in dev/prod/staging.
     pdf_url = invoice.get_pdf_url()
 
+    # Resolve recipient email for send confirmation preview (CODE-112)
+    recipient_email = None
+    try:
+        prefs = invoice.customer.repair_preferences
+        recipient_email = prefs.billing_email or invoice.customer.email
+    except Exception:
+        recipient_email = invoice.customer.email
+
     context = {
         'tenant': tenant,
         'invoice': invoice,
@@ -2171,6 +2179,7 @@ def owner_invoice_detail(request, invoice_id):
         'payments': payments,
         'payment_methods': payment_methods,
         'pdf_url': pdf_url,
+        'recipient_email': recipient_email,
         'today': timezone.now().date(),
     }
     return render(request, 'saas/owner_invoice_detail.html', context)
@@ -2466,51 +2475,55 @@ def owner_send_invoice(request, invoice_id):
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
     try:
-        # CODE-098: Do NOT mark invoice SENT before confirming email delivery.
-        # Previous code set status='SENT' + saved, then tried email — if SMTP was
-        # down the invoice showed SENT forever but the customer never received it.
-        # Now: attempt email first, only stamp SENT on success (mirrors CODE-094–096).
+        # Resolve recipient email
+        recipient = None
+        try:
+            prefs = invoice.customer.repair_preferences
+            recipient = prefs.billing_email or invoice.customer.email
+        except Exception:
+            recipient = invoice.customer.email
+
+        # CODE-112: Block send entirely if no email on file
+        if not recipient:
+            messages.error(
+                request,
+                f'Cannot send invoice — no email address on file for {invoice.customer.name}. '
+                f'Add an email in the customer\'s settings first.'
+            )
+            return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+        # Attempt email delivery
         email_sent = False
         try:
             from apps.billing.services.invoice_email_service import InvoiceEmailService
             email_service = InvoiceEmailService(tenant=tenant)
 
-            # Get recipient email
-            recipient = None
-            try:
-                prefs = invoice.customer.repair_preferences
-                recipient = prefs.billing_email or invoice.customer.email
-            except Exception:
-                recipient = invoice.customer.email
+            repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
 
-            if recipient:
-                # Get repair IDs from line items (may be empty for replacement-only invoices).
-                # Pass None when empty so the service falls back to a time-window scan
-                # instead of silently skipping the email entirely (CODE-060 fix).
-                repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-
-                success, msg = email_service.send_invoice_email(
-                    customer_id=invoice.customer.id,
-                    recipient_email=recipient,
-                    repair_ids=repair_ids if repair_ids else None,
-                )
-                email_sent = success
-                if not success:
-                    logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
+            success, msg = email_service.send_invoice_email(
+                customer_id=invoice.customer.id,
+                recipient_email=recipient,
+                repair_ids=repair_ids if repair_ids else None,
+            )
+            email_sent = success
+            if not success:
+                logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
         except Exception as e:
             logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
 
-        # Only stamp status AFTER we know whether email succeeded.
-        # Either way we mark SENT so the owner can see it's been actioned,
-        # but surface a warning when email delivery failed so they know to follow up.
-        invoice.status = 'SENT'
-        invoice.sent_at = timezone.now()
-        invoice.save(update_fields=['status', 'sent_at'])
-
+        # CODE-112: Only mark SENT if email actually delivered.
+        # If email fails, leave as DRAFT so the owner knows it didn't go out.
         if email_sent:
-            messages.success(request, f'Invoice {invoice.invoice_number} sent and emailed to customer.')
+            invoice.status = 'SENT'
+            invoice.sent_at = timezone.now()
+            invoice.save(update_fields=['status', 'sent_at'])
+            messages.success(request, f'Invoice {invoice.invoice_number} sent to {recipient}.')
         else:
-            messages.warning(request, f'Invoice {invoice.invoice_number} marked as sent, but email delivery failed — check the customer\'s email address and try resending.')
+            messages.error(
+                request,
+                f'Invoice {invoice.invoice_number} could NOT be sent — email delivery to {recipient} failed. '
+                f'The invoice remains as a draft. Please check the email address and try again.'
+            )
 
     except Exception as e:
         logger.error(f"Error sending invoice {invoice.invoice_number}: {e}")
@@ -3230,3 +3243,92 @@ def owner_setup_save_assignment(request):
     except Exception as e:
         logger.error(f"Setup save assignment error: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# =====================================================================
+# Invoice Bulk Actions & PDF Download (CODE-112)
+# =====================================================================
+
+@owner_or_manager_required
+@require_POST
+def owner_invoice_bulk_action(request):
+    """POST /owner/invoices/bulk/ — bulk mark-paid or delete invoices."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+
+    import json
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid request.'}, status=400)
+
+    action = data.get('action')
+    invoice_ids = data.get('invoice_ids', [])
+
+    if not invoice_ids:
+        return JsonResponse({'success': False, 'error': 'No invoices selected.'}, status=400)
+
+    # Always scope to tenant
+    invoices = Invoice.objects.filter(id__in=invoice_ids, customer__tenant=tenant)
+
+    if action == 'mark_paid':
+        updated = 0
+        for inv in invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT']):
+            inv.amount_paid = inv.total
+            inv.status = 'PAID'
+            inv.save(update_fields=['amount_paid', 'status'])
+            updated += 1
+        return JsonResponse({
+            'success': True,
+            'message': f'{updated} invoice(s) marked as paid.',
+        })
+
+    elif action == 'delete':
+        # Only allow deleting DRAFT invoices
+        drafts = invoices.filter(status='DRAFT')
+        deleted_count = drafts.count()
+        skipped = invoices.exclude(status='DRAFT').count()
+        drafts.delete()
+        msg = f'{deleted_count} draft invoice(s) deleted.'
+        if skipped:
+            msg += f' {skipped} non-draft invoice(s) were skipped.'
+        return JsonResponse({'success': True, 'message': msg})
+
+    else:
+        return JsonResponse({'success': False, 'error': f'Unknown action: {action}'}, status=400)
+
+
+@owner_or_manager_required
+def owner_invoice_pdf(request, invoice_id):
+    """GET /owner/invoices/<id>/pdf/ — generate and download invoice PDF on demand."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+
+    try:
+        from apps.billing.services.invoice_service import InvoiceService
+
+        service = InvoiceService(tenant=tenant)
+        repair_ids = list(
+            invoice.line_items
+            .exclude(repair_id__isnull=True)
+            .values_list('repair_id', flat=True)
+        )
+
+        pdf_bytes, invoice_data = service.generate_invoice(
+            customer_id=invoice.customer.id,
+            repair_ids=repair_ids if repair_ids else None,
+        )
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="invoice_{invoice.invoice_number}.pdf"'
+        return response
+
+    except Exception as e:
+        logger.error(f"PDF generation failed for invoice {invoice.invoice_number}: {e}")
+        messages.error(request, f'Could not generate PDF: {e}')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)

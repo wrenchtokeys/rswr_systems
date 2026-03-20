@@ -162,6 +162,12 @@
         <button onclick="sendSelectedEmails()" class="inline-flex items-center px-4 py-1.5 bg-white text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors">
             <i class="fas fa-envelope mr-1.5"></i>Send Email
         </button>
+        <button onclick="markSelectedPaid()" class="inline-flex items-center px-4 py-1.5 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors">
+            <i class="fas fa-check-circle mr-1.5"></i>Mark Paid
+        </button>
+        <button onclick="deleteSelectedDrafts()" class="inline-flex items-center px-4 py-1.5 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors">
+            <i class="fas fa-trash mr-1.5"></i>Delete Drafts
+        </button>
         <button onclick="clearSelection()" class="inline-flex items-center px-3 py-1.5 text-blue-200 text-sm hover:text-white transition-colors">
             <i class="fas fa-times mr-1"></i>Clear
         </button>
@@ -656,6 +662,58 @@ function sendSelectedEmails() {
             window.location.reload();
         } else {
             alert(data.error || 'Failed to send emails');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+function markSelectedPaid() {
+    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (!ids.length) return;
+    if (!confirm(`Mark ${ids.length} invoice(s) as fully paid?`)) return;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+    fetch('{% url "owner_invoice_bulk_action" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ action: 'mark_paid', invoice_ids: ids }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            clearSelection();
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to mark invoices as paid');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+function deleteSelectedDrafts() {
+    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} selected invoice(s)?\n\nOnly DRAFT invoices will be deleted. Sent/Paid/Overdue invoices will be skipped.`)) return;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+    fetch('{% url "owner_invoice_bulk_action" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ action: 'delete', invoice_ids: ids }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            clearSelection();
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to delete invoices');
         }
     })
     .catch(err => alert('Error: ' + err.message));
