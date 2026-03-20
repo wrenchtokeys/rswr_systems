@@ -2699,20 +2699,48 @@ def accept_customer_invitation(request, token):
             )
             return redirect('owner_dashboard')
         
-        # Check if they already have a CustomerUser record
+        # Check if they already have a CustomerUser record.
+        # CustomerUser.user is a OneToOneField — one CustomerUser per User globally.
+        # We must check what shop they're already linked to:
+        #   - Same customer → they're already set up here, redirect.
+        #   - Different customer, same tenant → portal access at this shop (different account).
+        #   - Different tenant → current schema doesn't support multi-shop customers;
+        #     show a clear, actionable message instead of "Contact support".
+        # (CODE-106: replaced unscoped .first() with explicit checks to surface the right
+        # message in each case, and avoid the misleading "Contact support" dead-end.)
         existing = CustomerUser.objects.filter(user=request.user).first()
+        invite_tenant = invitation.customer.tenant
+
         if existing:
             if existing.customer == invitation.customer:
+                # Already linked to exactly this customer — nothing to do.
                 messages.info(request, f"You're already set up for {invitation.customer.name}.")
-            else:
-                messages.warning(
-                    request, 
-                    f"You're already linked to {existing.customer.name}. "
-                    f"Contact support if you need access to {invitation.customer.name}."
+                return redirect('customer_dashboard')
+
+            if existing.customer.tenant == invite_tenant:
+                # Linked to a *different* customer at the same shop — redirect with context.
+                messages.info(
+                    request,
+                    f"You already have portal access to {invite_tenant.name} "
+                    f"under {existing.customer.name}. Contact your shop admin to update your account."
                 )
+                return redirect('customer_dashboard')
+
+            # Linked to a customer at a different shop.  The CustomerUser model uses a
+            # OneToOneField to User, so a second CustomerUser row isn't possible.
+            # Give a clear explanation instead of the unhelpful "Contact support" dead-end.
+            messages.warning(
+                request,
+                f"Your account is currently linked to {existing.customer.name} "
+                f"({existing.customer.tenant.name if existing.customer.tenant else 'another shop'}). "
+                f"Customer portal accounts can only be linked to one shop. "
+                f"If you need access to {invitation.customer.name}, please contact "
+                f"{invite_tenant.name} and ask them to set up a new account for you."
+            )
             return redirect('customer_dashboard')
-        
-        # Link existing user to customer
+
+        # No existing CustomerUser — safe to create one.
+        # Link existing user to this invitation's customer.
         # Primary status is set explicitly by the owner when sending the invite.
         # No auto-promotion — the owner decides who is primary.
         if invitation.is_primary_contact:
