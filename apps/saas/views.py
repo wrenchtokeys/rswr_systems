@@ -2394,11 +2394,28 @@ def owner_toggle_tax(request):
         return redirect('/owner/settings/?tab=billing')
 
     try:
+        from django.core.cache import cache
+        from apps.billing.models import TaxRate
+
         config = BillingConfig.get_for_tenant(tenant)
         config.tax_enabled = not config.tax_enabled
         config.save()
-        from django.core.cache import cache
         cache.delete(f'billing_config_tax_{tenant.pk}')
+
+        # CODE-099: Sync TaxRate.is_active with the new tax_enabled state.
+        # TaxService.is_tax_enabled() for tenant-aware paths checks
+        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() —
+        # it does NOT read BillingConfig.tax_enabled.  Without this sync,
+        # toggling tax off via this button leaves active TaxRate records so
+        # tax still gets charged on every invoice.  Toggling back on would
+        # then show no rates active (all still deactivated from the first
+        # disable), so it also needs to reactivate existing rates.
+        if not config.tax_enabled:
+            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+        else:
+            # Re-enable all rates for this tenant when tax is turned back on.
+            # The owner can fine-tune individual rates on the tax rates page.
+            TaxRate.objects.filter(tenant=tenant).update(is_active=True)
 
         status = 'enabled' if config.tax_enabled else 'disabled'
         messages.success(request, f'Sales tax calculation {status}.')
@@ -3017,14 +3034,28 @@ def owner_setup_save_tax(request):
         else:
             config.save(update_fields=['tax_enabled'])
 
+        # Deactivate all TaxRates when tax is disabled.
+        # TaxService.calculate_tax() determines "tax enabled" by checking
+        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() — it
+        # does NOT consult BillingConfig.tax_enabled for tenant-aware paths.
+        # Without this, disabling tax via setup leaves active TaxRate records
+        # so tax keeps being charged on every invoice even when the owner
+        # toggled it off. (CODE-099)
+        if not tax_enabled:
+            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+
         # Create or update tenant TaxRate if enabled and we have location
         if tax_enabled and total > 0 and city and state:
+            # Include is_active=False rows in the lookup: if the owner is
+            # re-enabling a previously deactivated rate we reactivate it
+            # rather than creating a duplicate entry.
             existing = TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).first()
             if existing:
                 existing.state_rate = state_rate
                 existing.county_rate = county_rate
                 existing.city_rate = city_rate
                 existing.special_rate = special_rate
+                existing.is_active = True  # re-activate if it was deactivated
                 existing.save()
             else:
                 TaxRate.objects.create(
@@ -3035,6 +3066,7 @@ def owner_setup_save_tax(request):
                     county_rate=county_rate,
                     city_rate=city_rate,
                     special_rate=special_rate,
+                    is_active=True,
                 )
 
         return JsonResponse({'success': True, 'message': 'Tax settings saved!'})
