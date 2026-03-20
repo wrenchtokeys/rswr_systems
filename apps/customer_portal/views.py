@@ -2724,6 +2724,20 @@ def accept_customer_invitation(request, token):
             customer=invitation.customer,
             is_primary_contact=invitation.is_primary_contact,
         )
+        # Create a TenantMembership so the middleware can resolve this tenant
+        # via session-based lookup (_get_tenant_by_id).  Without this, every
+        # request falls back to _get_customer_tenant().first() — non-deterministic
+        # for multi-shop customers and an extra DB round-trip per request.
+        # Matches the pattern used in shop_join_view() (CODE-104).
+        from apps.tenants.models import TenantMembership as _TM
+        tenant_for_invite = invitation.customer.tenant
+        if tenant_for_invite:
+            _TM.objects.get_or_create(
+                tenant=tenant_for_invite,
+                user=request.user,
+                defaults={'role': 'viewer', 'is_active': True},
+            )
+            request.session['tenant_id'] = tenant_for_invite.id
         invitation.mark_accepted(request.user)
         messages.success(request, f"Welcome! You now have access to {invitation.customer.name}.")
         return redirect('customer_dashboard')
@@ -2783,7 +2797,23 @@ def accept_customer_invitation(request, token):
                     customer=invitation.customer,
                     is_primary_contact=invitation.is_primary_contact,
                 )
-                
+
+                # Create a TenantMembership so the middleware can resolve this
+                # tenant via session-based lookup (_get_tenant_by_id).
+                # Without this, every request falls back to _get_customer_tenant()
+                # which uses .first() — non-deterministic for multi-shop users
+                # and an extra DB round-trip per request.
+                # Matches the pattern used in shop_join_view() (CODE-104).
+                from apps.tenants.models import TenantMembership as _TM
+                tenant_for_invite = invitation.customer.tenant
+                if tenant_for_invite:
+                    _TM.objects.get_or_create(
+                        tenant=tenant_for_invite,
+                        user=user,
+                        defaults={'role': 'viewer', 'is_active': True},
+                    )
+                    request.session['tenant_id'] = tenant_for_invite.id
+
                 # Mark invitation as accepted
                 invitation.mark_accepted(user)
                 

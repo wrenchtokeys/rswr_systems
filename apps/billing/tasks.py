@@ -317,16 +317,26 @@ def _create_batch_invoice(tenant, customer, config):
                     unit_number=replacement.unit_number or '',
                 )
             
-            # Calculate tax if enabled
-            tax_amount = Decimal('0.00')
-            if config.tax_enabled and not customer.tax_exempt:
-                tax_amount = (subtotal * config.default_tax_rate / 100).quantize(Decimal('0.01'))
-            
-            # Update invoice totals
+            # Calculate tax via TaxService — this is the single source of truth
+            # for whether tax is enabled (checks TaxRate rows, not BillingConfig.tax_enabled)
+            # and applies the correct per-tenant rate with component breakdown.
+            # Previously this used `config.tax_enabled + config.default_tax_rate` which
+            # bypassed TaxService entirely, causing batch invoices to charge tax when it
+            # was disabled (or vice-versa) and to miss per-customer city/state rate
+            # lookups. (CODE-104)
+            from apps.billing.services.tax_service import TaxService
+            tax_svc = TaxService(tenant=tenant)
+            tax_result = tax_svc.calculate_tax(subtotal=subtotal, customer=customer)
+
+            # Update invoice totals with TaxService results
             invoice.subtotal = subtotal
-            invoice.tax_rate = config.default_tax_rate if config.tax_enabled else Decimal('0.00')
-            invoice.tax_amount = tax_amount
-            invoice.total = subtotal + tax_amount
+            invoice.tax_rate = tax_result['rate']
+            invoice.state_tax_rate = tax_result['state_rate']
+            invoice.county_tax_rate = tax_result['county_rate']
+            invoice.city_tax_rate = tax_result['city_rate']
+            invoice.special_tax_rate = tax_result['special_rate']
+            invoice.tax_amount = tax_result['amount']
+            invoice.total = subtotal + tax_result['amount']
             invoice.save()
             
             # Send if auto_send is enabled — only mark SENT after email confirmed.
