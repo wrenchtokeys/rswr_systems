@@ -425,11 +425,20 @@ def create_multi_break_repair(request):
                 tech_qs = tech_qs.filter(tenant=tenant)
             technicians = tech_qs.order_by('user__first_name')
 
+        # Use tenant-scoped Technician lookup so that a user who is a manager at
+        # Shop A but a plain technician at Shop B sees the correct override fields.
+        # `user.technician` (bare OneToOneField) resolves globally and would expose
+        # Shop A's manager privileges in Shop B's form.  (CODE-100)
+        current_technician = (
+            Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if tenant else None
+        )
         return render(request, 'technician_portal/multi_break_repair_form.html', {
             'is_admin': user_is_admin,
             'customers': customer_qs.order_by('name'),
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
             'technicians': technicians,
+            'current_technician': current_technician,
         })
 
 
