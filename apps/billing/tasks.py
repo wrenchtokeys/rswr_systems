@@ -78,9 +78,17 @@ def process_overdue_invoices():
                 
                 # Check if we should send a reminder today
                 if days_overdue in reminder_days:
-                    sent = _send_overdue_reminder(invoice, config, days_overdue)
-                    if sent:
-                        reminder_count += 1
+                    try:
+                        sent = _send_overdue_reminder(invoice, config, days_overdue)
+                        if sent:
+                            reminder_count += 1
+                    except Exception as inv_exc:
+                        # Log and continue — one broken invoice/template must not
+                        # prevent reminders for the rest of the tenant's invoices.
+                        logger.error(
+                            f"_send_overdue_reminder failed for invoice "
+                            f"{invoice.invoice_number} (id={invoice.id}): {inv_exc}"
+                        )
     
     logger.info(
         f"process_overdue_invoices: Updated {processed_count} invoices to OVERDUE, "
@@ -104,13 +112,31 @@ def _send_overdue_reminder(invoice, config, days_overdue):
         logger.warning(f"Cannot send reminder for invoice {invoice.invoice_number}: no customer email")
         return False
     
-    # Format subject with template variables
-    subject = config.overdue_reminder_subject.format(
-        invoice_number=invoice.invoice_number,
-        customer_name=customer.name,
-        amount_due=f"${invoice.amount_due:.2f}",
-        days_overdue=days_overdue,
-    )
+    # Format subject with all documented template variables.
+    # Use a safe mapping so that unknown placeholders in a custom subject
+    # template produce an empty string rather than a KeyError that would
+    # abort the entire reminder loop.  (CODE-117)
+    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
+    _due_date_str = invoice.due_date.strftime('%m/%d/%Y') if invoice.due_date else ''
+    try:
+        subject = config.overdue_reminder_subject.format(
+            invoice_number=invoice.invoice_number,
+            customer_name=customer.name,
+            amount_due=f"${invoice.amount_due:.2f}",
+            total=f"${invoice.total:.2f}",
+            days_overdue=days_overdue,
+            due_date=_due_date_str,
+            company_name=_company_name,
+        )
+    except (KeyError, ValueError):
+        # Malformed template — fall back to the system default subject so we
+        # still send the reminder rather than silently dropping it.
+        logger.warning(
+            f"Malformed overdue_reminder_subject template for tenant "
+            f"{invoice.tenant_id}: {config.overdue_reminder_subject!r}. "
+            f"Using default subject."
+        )
+        subject = f"Reminder: Invoice #{invoice.invoice_number} is overdue"
     
     # Build email body
     body = f"""Dear {customer.name},
