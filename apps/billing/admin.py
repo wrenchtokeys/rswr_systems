@@ -312,6 +312,24 @@ class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
     amount_display.short_description = 'Amount'
     amount_display.admin_order_field = 'amount'
 
+    def delete_queryset(self, request, queryset):
+        """
+        Override admin bulk-delete to call Payment.delete() on each instance.
+
+        Django's default QuerySet.delete() fires a SQL DELETE directly, bypassing
+        Python-level model .delete() overrides.  Payment.delete() (added in
+        CODE-118) reconciles invoice.amount_paid / status after each payment is
+        removed — without this override, bulk deletion via the admin changelist
+        would leave invoices stuck as PAID with $0 payments, or with stale
+        amount_paid balances.
+
+        We iterate instance-by-instance here to ensure the reconciliation logic
+        fires for every deleted row.  This is safe because admin bulk-delete is
+        low-frequency (it's a manual superuser action) and the dataset is small.
+        """
+        for payment in queryset:
+            payment.delete()
+
 
 # =============================================================================
 # TAX RATES
