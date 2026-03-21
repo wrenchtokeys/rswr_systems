@@ -36,6 +36,7 @@ ALERT_SUB_EXPIRED = 'subscription_expired'
 ALERT_GRACE_15_DAYS = 'grace_period_15_days'
 ALERT_GRACE_5_DAYS = 'grace_period_5_days'
 ALERT_GRACE_ENDED = 'grace_period_ended'
+ALERT_TRIAL_PLAN_NUDGE = 'trial_plan_nudge'
 
 
 def _get_recipient_emails(tenant):
@@ -172,6 +173,27 @@ class Command(BaseCommand):
                         f"({tenant.trial_expiry.strftime('%B %d, %Y')}).\n\n"
                         f"Don't lose access to your shop data! Upgrade today:\n"
                         f"https://rssystems.io/owner/billing/\n\n"
+                        f"— RS Systems"
+                    ),
+                    dry_run=dry_run,
+                ):
+                    sent += 1
+
+        # --- Nudge email for 'not sure' signups around day 20 ---
+        if (tenant.plan == 'trial' and tenant.trial_expiry and not tenant.is_trial_expired
+                and not tenant.intended_plan):
+            days_until_expiry = (tenant.trial_expiry.date() - today).days
+            if 0 < days_until_expiry <= 10:
+                if _send_alert(
+                    tenant, ALERT_TRIAL_PLAN_NUDGE,
+                    subject=f"Which plan is right for {tenant.name}?",
+                    body=(
+                        f"Hi {_owner_name(tenant)},\n\n"
+                        f"Your trial has {days_until_expiry} day{'s' if days_until_expiry != 1 else ''} left. "
+                        f"Browse our plans to find the right fit for your shop:\n"
+                        f"https://rssystems.io/pricing/\n\n"
+                        f"We have options for shops of all sizes — from solo techs to "
+                        f"large fleets. Take a look and pick the plan that works for you.\n\n"
                         f"— RS Systems"
                     ),
                     dry_run=dry_run,
