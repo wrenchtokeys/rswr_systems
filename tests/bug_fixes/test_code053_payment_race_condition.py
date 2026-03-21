@@ -9,15 +9,21 @@ last write would lose one payment, leaving amount_paid under-counted.
 Fix: _update_invoice_totals() now wraps the read-aggregate-write in
 transaction.atomic() + select_for_update() on the Invoice row, serialising
 concurrent saves.
+
+CODE-127: TransactionTestCase.serialized_rollback = True must be set on all
+TransactionTestCase classes to prevent them from flushing migration-seeded
+NotificationTemplate rows, which would cause subsequent TestCase runs to emit
+spurious 'Template not found' errors from notification signals.
 """
 import threading
 import uuid
 from decimal import Decimal
 
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, TestCase
 from django.contrib.auth.models import User
 
 from apps.billing.models import Invoice, Payment
+from core.models.notification_template import NotificationTemplate
 from apps.customer_portal.models import Customer
 from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 
@@ -199,3 +205,39 @@ class PaymentRaceConditionTestCase(TransactionTestCase):
             len(called) > 0,
             "select_for_update() was not called — race condition fix not active",
         )
+
+
+class NotificationTemplatesSurviveTransactionCaseFlushTest(TestCase):
+    """
+    CODE-127: Verify that migration-seeded NotificationTemplate rows are
+    present after a TransactionTestCase has run.
+
+    TransactionTestCase flushes the DB between tests.  Without
+    ``serialized_rollback = True``, the migration-seeded templates are
+    destroyed, and subsequent signal calls log ERROR 'Template not found'.
+    This test confirms the templates are visible to regular TestCase runs.
+    """
+
+    REQUIRED_TEMPLATES = [
+        'repair_assigned',
+        'repair_approved',
+        'repair_denied',
+        'repair_pending_approval',
+        'repair_completed',
+        'repair_in_progress',
+        'repair_reassigned_away',
+        'repair_request_received',
+        'repair_request_submitted',
+        'batch_approved',
+    ]
+
+    def test_seeded_notification_templates_are_present(self):
+        """All migration-seeded NotificationTemplates must be active after suite runs."""
+        for name in self.REQUIRED_TEMPLATES:
+            self.assertTrue(
+                NotificationTemplate.objects.filter(name=name, active=True).exists(),
+                f"NotificationTemplate '{name}' is missing or inactive. "
+                f"TransactionTestCase may have flushed migration-seeded data. "
+                f"Ensure all TransactionTestCase subclasses set serialized_rollback = True. "
+                f"(CODE-127)"
+            )

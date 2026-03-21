@@ -78,6 +78,10 @@
                         <a href="{% url 'owner_invoice_list' %}" class="text-sm font-medium {% if 'invoice' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Invoices</a>
                         {% endif %}
 
+                        {% if is_owner_or_manager %}
+                        <a href="{% url 'billing_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'billing_settings' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Billing</a>
+                        {% endif %}
+
                         {% if user_can_settings %}
                         <a href="{% url 'owner_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'owner_settings' or request.resolver_match.url_name == 'manager_settings_dashboard' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Settings</a>
                         {% endif %}
@@ -154,6 +158,9 @@
                 {% endif %}
                 {% if user_can_invoices %}
                 <a href="{% url 'owner_invoice_list' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Invoices</a>
+                {% endif %}
+                {% if is_owner_or_manager %}
+                <a href="{% url 'billing_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Billing</a>
                 {% endif %}
                 {% if user_can_settings %}
                 <a href="{% url 'owner_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Settings</a>

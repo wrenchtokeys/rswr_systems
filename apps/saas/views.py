@@ -9,6 +9,7 @@ Author: Amelia (Clawdbot AI)
 """
 
 import logging
+import os
 import secrets
 from django.conf import settings
 from django.contrib import messages
@@ -234,12 +235,14 @@ def signup_view(request):
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
 
+    turnstile_site_key = os.environ.get('TURNSTILE_SITE_KEY', '')
+
     if request.method == 'POST':
         # Turnstile CAPTCHA check (skipped if env var not set)
         if not _verify_turnstile(request):
             messages.error(request, 'CAPTCHA verification failed. Please try again.')
             form = SignupForm(request.POST)
-            return render(request, 'saas/signup.html', {'form': form})
+            return render(request, 'saas/signup.html', {'form': form, 'turnstile_site_key': turnstile_site_key})
 
         form = SignupForm(request.POST)
         if form.is_valid():
@@ -256,6 +259,11 @@ def signup_view(request):
                 )
                 user = result['user']
                 tenant = result['tenant']
+
+                # Save intended plan if selected
+                if cd.get('plan'):
+                    tenant.intended_plan = cd['plan']
+                    tenant.save(update_fields=['intended_plan'])
 
                 # Set account inactive until email is confirmed
                 user.is_active = False
@@ -298,7 +306,7 @@ def signup_view(request):
     else:
         form = SignupForm()
 
-    return render(request, 'saas/signup.html', {'form': form})
+    return render(request, 'saas/signup.html', {'form': form, 'turnstile_site_key': turnstile_site_key})
 
 
 # ------------------------------------------------------------------
@@ -686,6 +694,14 @@ def owner_dashboard(request):
 
     setup_completion = _setup_completion(tenant)
 
+    # Resolve intended plan name for trial banner
+    intended_plan_name = ''
+    if tenant.intended_plan:
+        try:
+            intended_plan_name = SubscriptionPlan.objects.get(slug=tenant.intended_plan).name
+        except SubscriptionPlan.DoesNotExist:
+            pass
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -696,6 +712,8 @@ def owner_dashboard(request):
         'is_trial_expired': tenant.is_trial_expired,
         'setup_steps': setup_steps,
         'setup_completion': setup_completion,
+        'intended_plan': tenant.intended_plan,
+        'intended_plan_name': intended_plan_name,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)

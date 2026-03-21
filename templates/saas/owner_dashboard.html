@@ -30,13 +30,17 @@
                 </div>
                 <div>
                     <p class="font-semibold text-blue-800">Free trial — {{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} remaining</p>
+                    {% if intended_plan_name %}
+                    <p class="text-sm text-blue-600">Upgrade to {{ intended_plan_name }} — the plan you chose at signup.</p>
+                    {% else %}
                     <p class="text-sm text-blue-600">You're on the free trial. Upgrade anytime for more features.</p>
+                    {% endif %}
                 </div>
             {% endif %}
         </div>
         <div class="flex items-center gap-2">
-            <a href="{% url 'billing_settings' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0">
-                <i class="fas fa-arrow-up mr-2"></i>Upgrade Now
+            <a href="{% url 'billing_settings' %}{% if intended_plan %}?plan={{ intended_plan }}{% endif %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0">
+                <i class="fas fa-arrow-up mr-2"></i>{% if intended_plan_name %}Upgrade to {{ intended_plan_name }}{% else %}Upgrade Now{% endif %}
             </a>
             <button onclick="document.getElementById('trialBanner').style.display='none'" class="text-gray-400 hover:text-gray-600 p-1">
                 <i class="fas fa-times"></i>

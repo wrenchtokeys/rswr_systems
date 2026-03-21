@@ -11,6 +11,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
+from apps.tenants.models import SubscriptionPlan
 from apps.technician_portal.models import Replacement, Technician
 from core.models import Customer
 
@@ -64,6 +65,23 @@ class SignupForm(forms.Form):
         }),
         label='Confirm password',
     )
+
+    plan = forms.ChoiceField(
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white',
+        }),
+        label='Which plan interests you?',
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        plan_choices = [('', '--- Select a plan ---')]
+        plan_choices += [
+            (p.slug, p.name)
+            for p in SubscriptionPlan.objects.filter(is_active=True).exclude(slug='trial').order_by('display_order')
+        ]
+        self.fields['plan'].choices = plan_choices
 
     def clean_email(self):
         email = self.cleaned_data['email'].strip().lower()

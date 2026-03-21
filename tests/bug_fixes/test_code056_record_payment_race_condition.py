@@ -194,6 +194,12 @@ class RecordPaymentConcurrentRaceTest(TransactionTestCase):
     After the fix: the second thread acquires the row lock AFTER the first
     commits, re-reads amount_due = $100 (only $100 left), $400 > $100 → rejected.
     """
+    # Restore migration-seeded data (e.g. NotificationTemplate rows) after each
+    # test.  TransactionTestCase flushes the DB between tests, destroying rows
+    # created by data migrations.  Without this flag those templates are gone
+    # for every subsequent TestCase run, causing spurious "Template not found"
+    # ERRORs in notification signals.  (CODE-127)
+    serialized_rollback = True
 
     def test_concurrent_payments_cannot_overpay(self):
         tenant, owner = _make_tenant_with_owner()
