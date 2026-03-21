@@ -171,6 +171,12 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssyste
 DEFAULT_FROM_NAME = os.environ.get('DEFAULT_FROM_NAME', 'RS Systems')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
+# Site admins — receive new signup notifications and error reports
+ADMINS = [
+    ('Drake', os.environ.get('ADMIN_EMAIL', 'wdrakeduncan@gmail.com')),
+]
+MANAGERS = ADMINS
+
 # =========================================
 # SMS CONFIGURATION (AWS SNS)
 # =========================================

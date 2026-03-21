@@ -264,6 +264,23 @@ def signup_view(request):
                 # Send confirmation email
                 _send_confirmation_email(request, user, tenant)
 
+                # Notify site admins of new signup
+                try:
+                    from django.core.mail import mail_admins
+                    mail_admins(
+                        subject=f"New signup: {cd['first_name']} {cd['last_name']} ({tenant.name})",
+                        message=(
+                            f"New user signed up for RS Systems:\n\n"
+                            f"Name: {cd['first_name']} {cd['last_name']}\n"
+                            f"Email: {cd['email']}\n"
+                            f"Shop: {tenant.name}\n"
+                            f"Plan: {tenant.subscription_plan}\n"
+                            f"Pending email confirmation."
+                        ),
+                    )
+                except Exception:
+                    pass  # Non-fatal — don't block signup
+
                 # Don't log in yet — redirect to "check your email" page
                 return render(request, 'saas/email_confirmation_sent.html', {
                     'email': cd['email'],
