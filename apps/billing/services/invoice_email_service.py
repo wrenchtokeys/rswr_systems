@@ -223,6 +223,13 @@ class InvoiceEmailService:
             "",
         ])
         
+        # Portal link — always include so customer can view/pay invoice online
+        lines.extend([
+            "📄 View & Pay Invoice Online:",
+            "https://rssystems.io/app/invoices/",
+            "",
+        ])
+
         # Stripe payment link
         if payment_link:
             lines.extend([
