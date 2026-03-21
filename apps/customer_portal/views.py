@@ -309,10 +309,24 @@ def profile_creation(request):
         
         # Create CustomerUser record
         try:
+            is_primary = request.POST.get('is_primary_contact') == 'True'
+            # If this user wants to be the primary contact, demote any existing
+            # primary first.  Without this step, two CustomerUsers for the same
+            # company can simultaneously hold is_primary_contact=True, making
+            # notification routing non-deterministic.
+            # This mirrors the demotion logic in:
+            #   - account_settings() (CODE-116)
+            #   - accept_customer_invitation() and set_primary_contact()
+            # Only applies when joining an EXISTING company; new companies have
+            # no existing primary to demote.
+            if is_primary and not is_new_company:
+                CustomerUser.objects.filter(
+                    customer=customer, is_primary_contact=True
+                ).update(is_primary_contact=False)
             customer_user = CustomerUser.objects.create(
                 user=request.user,
                 customer=customer,
-                is_primary_contact=request.POST.get('is_primary_contact') == 'True'
+                is_primary_contact=is_primary,
             )
             
             # Process referral code if it exists in the session
