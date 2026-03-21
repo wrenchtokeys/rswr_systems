@@ -312,7 +312,9 @@ def create_multi_break_repair(request):
                                 if not override_reason:
                                     messages.error(request, f"Break {i+1}: Override reason is required when setting a custom price.")
                                     return redirect('create_multi_break_repair')
-                                if requesting_tech.approval_limit and override_amount > requesting_tech.approval_limit:
+                                # Use `is not None` so approval_limit=0 still enforces the
+                                # limit; a truthy check treats 0 as "no limit". (CODE-114)
+                                if requesting_tech.approval_limit is not None and override_amount > requesting_tech.approval_limit:
                                     messages.error(
                                         request,
                                         f"Break {i+1}: Override amount ${override_amount} exceeds your approval limit of ${requesting_tech.approval_limit}."

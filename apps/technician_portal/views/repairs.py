@@ -698,7 +698,9 @@ def update_queue_status(request, repair_id):
                                     if tenant else None
                                 )
                                 if requesting_tech and requesting_tech.can_override_pricing:
-                                    if requesting_tech.approval_limit and override_amount > requesting_tech.approval_limit:
+                                    # Use `is not None` so approval_limit=0 still enforces the
+                                    # limit; a truthy check would treat 0 as "no limit". (CODE-114)
+                                    if requesting_tech.approval_limit is not None and override_amount > requesting_tech.approval_limit:
                                         messages.warning(
                                             request,
                                             f"Override amount ${override_amount} exceeds your approval limit of "
