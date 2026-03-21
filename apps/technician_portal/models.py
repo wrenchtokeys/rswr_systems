@@ -173,9 +173,17 @@ class Technician(models.Model):
         return self.managed_technicians.count()
 
     def can_approve_amount(self, amount):
-        """Check if this manager can override pricing up to a given amount"""
-        if not self.is_manager or not self.approval_limit:
+        """Check if this manager can override pricing up to a given amount.
+
+        ``approval_limit=None`` means no cap (unlimited).  A truthy check would
+        also block managers with approval_limit=0, but 0 is a valid "zero cap"
+        value so we use an explicit ``is None`` test instead.  (CODE-114)
+        """
+        if not self.is_manager:
             return False
+        if self.approval_limit is None:
+            # No cap set — any amount is allowed.
+            return True
         return amount <= self.approval_limit
 
     def manages_technician(self, technician):

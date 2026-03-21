@@ -2,7 +2,53 @@
 
 All notable changes to RS Systems are documented here.
 
-## [Unreleased] — 2026-03-17 (Stripe Connect)
+## [Unreleased] — 2026-03-21
+
+### Added
+- **Void invoice action** — owners can void invoices from both the bulk action bar (invoice list) and individual invoice detail page. Voiding sets status to CANCELLED. Paid and already-voided invoices are skipped.
+- **Delete voided invoices** — the delete action now accepts both DRAFT and CANCELLED (voided) invoices. Active invoices must be voided first before deletion.
+- New URL: `POST /owner/invoices/<id>/void/` for single-invoice void
+
+### Changed
+- Bulk action bar: "Delete Drafts" renamed to "Delete" with updated confirmation text explaining void-first workflow
+- Street address field added to billing location settings (owner Settings → Billing tab)
+
+---
+
+## [2.7] — 2026-03-19 (Tenant Isolation Sweep)
+
+### Fixed (CODE-077 through CODE-093)
+- Systematic fix for unscoped `request.user.technician` OneToOneField across entire technician portal
+- DRF API ViewSets tenant-scoped
+- Clawdbot invoice views tenant-scoped
+- Reminder/auto-invoice services tenant-scoped
+- Billing API tenant-scoped
+- `shop_join_view` blocking existing users (CODE-093)
+- `InvoiceService` missing tenant in 3 billing call sites (CODE-092)
+- ~70+ regression tests added
+
+---
+
+## [2.6] — 2026-03-18 (Security Hardening Continued)
+
+### Fixed (CODE-049 through CODE-061)
+- Race conditions: payment concurrency, TOCTOU
+- Financial bugs: Stripe Connect routing, double-billing via unpaid sessions
+- IDOR fixes, price override permission escalation
+- Replacement-only invoice email skip
+- Customer approve/deny status guards
+- ~103 new regression tests
+
+---
+
+## [2.5] — 2026-03-15 (Security Hardening Sprint)
+
+### Fixed (CODE-005 through CODE-035)
+- 35 bugs fixed: tenant isolation gaps, cross-tenant IDORs, broken permission decorators, N+1 queries
+
+---
+
+## [Stripe Connect] — 2026-03-17
 
 ### Added (Stripe Connect Phases 1-3 — Online Invoice Payments)
 

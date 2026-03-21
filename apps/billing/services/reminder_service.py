@@ -57,7 +57,17 @@ class ReminderService:
         Returns:
             dict: Send result
         """
-        if not invoice.customer.email:
+        # Prefer billing_email from CustomerRepairPreference when set — fleet customers
+        # often have a dedicated AP email that differs from their general contact email.
+        # Consistent with the manual invoice send flow in saas/views.py. (CODE-127)
+        _recipient_email = None
+        try:
+            _prefs = invoice.customer.repair_preferences
+            _recipient_email = _prefs.billing_email or invoice.customer.email
+        except Exception:
+            _recipient_email = invoice.customer.email
+
+        if not _recipient_email:
             return {'success': False, 'error': 'Customer has no email address'}
         
         # Build email content — use custom body if provided (CODE-113)
@@ -98,7 +108,7 @@ class ReminderService:
         # Send via SendGrid or Django's email backend
         try:
             success = self._send_email(
-                to_email=invoice.customer.email,
+                to_email=_recipient_email,
                 subject=subject,
                 body=body,
                 invoice=invoice,
@@ -204,7 +214,16 @@ class ReminderService:
         Returns:
             dict: Send result
         """
-        if not invoice.customer.email:
+        # Prefer billing_email from CustomerRepairPreference when set — same logic
+        # as send_reminder() above.  (CODE-127)
+        _pc_recipient = None
+        try:
+            _pc_prefs = invoice.customer.repair_preferences
+            _pc_recipient = _pc_prefs.billing_email or invoice.customer.email
+        except Exception:
+            _pc_recipient = invoice.customer.email
+
+        if not _pc_recipient:
             return {'success': False, 'error': 'Customer has no email address'}
         
         subject = f"Payment Received - Invoice {invoice.invoice_number}"
@@ -252,7 +271,7 @@ Best regards,
         
         try:
             success = self._send_email(
-                to_email=invoice.customer.email,
+                to_email=_pc_recipient,
                 subject=subject,
                 body=body,
                 invoice=invoice

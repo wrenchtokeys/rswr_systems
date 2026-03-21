@@ -2,6 +2,12 @@
 
 {% block title %}Start Your Free Trial | RS Systems{% endblock %}
 
+{% block extra_head %}
+{% if turnstile_site_key %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="flex min-h-screen bg-gray-50">
     <!-- Left: Brand panel -->
@@ -135,6 +141,11 @@
                         <p class="text-sm text-red-700">{{ error }}</p>
                         {% endfor %}
                     </div>
+                    {% endif %}
+
+                    {% if turnstile_site_key %}
+                    <!-- Cloudflare Turnstile CAPTCHA -->
+                    <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                     {% endif %}
 
                     <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">

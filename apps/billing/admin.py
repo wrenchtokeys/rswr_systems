@@ -12,7 +12,7 @@ Author: Amelia (Clawdbot AI)
 
 import csv
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db.models import Count
 from django.http import HttpResponse
 from django.utils.html import format_html
@@ -231,7 +231,7 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     line_item_count.short_description = 'Items'
     line_item_count.admin_order_field = '_line_items_count'
     
-    actions = ['mark_as_sent', 'mark_as_overdue', 'export_csv']
+    actions = ['mark_as_sent', 'mark_as_overdue', 'bulk_mark_as_paid', 'bulk_void', 'bulk_delete_invoices', 'export_csv']
 
     @admin.action(description='📥 Export selected invoices as CSV')
     def export_csv(self, request, queryset):
@@ -274,6 +274,94 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
         ).update(status='OVERDUE')
         self.message_user(request, f'{updated} invoice(s) marked as overdue.')
 
+    @admin.action(description='✅ Bulk mark selected invoices as Paid')
+    def bulk_mark_as_paid(self, request, queryset):
+        """
+        Create a Payment record for each unpaid invoice so payment history and
+        paid_at are correctly set.  Mirrors the logic in owner_invoice_bulk_action.
+        """
+        from django.utils import timezone as _tz
+        from django.db import transaction
+
+        payable = queryset.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT'])
+        updated = 0
+        for inv in payable:
+            remaining = inv.amount_due
+            if remaining <= 0:
+                continue
+            try:
+                with transaction.atomic():
+                    Payment.objects.create(
+                        invoice=inv,
+                        amount=remaining,
+                        payment_method='OTHER',
+                        notes='Bulk marked as paid via admin',
+                        recorded_by=request.user,
+                        payment_date=_tz.now().date(),
+                    )
+                updated += 1
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Admin bulk_mark_as_paid: could not create payment for invoice {inv.id}: {e}"
+                )
+        self.message_user(request, f'✅ {updated} invoice(s) marked as paid.')
+
+    @admin.action(description='🚫 Bulk void (cancel) selected invoices')
+    def bulk_void(self, request, queryset):
+        """
+        Void invoices that aren't already PAID, CANCELLED, or PARTIAL.
+        PARTIAL invoices are skipped — they have recorded payments that would be
+        orphaned.  Owners must remove payments first.
+        """
+        voidable = queryset.exclude(status__in=['PAID', 'PARTIAL', 'CANCELLED'])
+        voided = voidable.count()
+        skipped_paid = queryset.filter(status__in=['PAID', 'CANCELLED']).count()
+        skipped_partial = queryset.filter(status='PARTIAL').count()
+        voidable.update(status='CANCELLED')
+        msg = f'🚫 {voided} invoice(s) voided.'
+        if skipped_paid:
+            msg += f' {skipped_paid} already-paid/voided invoice(s) skipped.'
+        if skipped_partial:
+            msg += f' {skipped_partial} partially-paid invoice(s) skipped — remove payments first.'
+        self.message_user(request, msg)
+
+    @admin.action(description='🗑️ Bulk delete DRAFT and CANCELLED invoices')
+    def bulk_delete_invoices(self, request, queryset):
+        """
+        Delete draft and voided (cancelled) invoices that have no payments.
+        Active/paid invoices and invoices with payment records are skipped.
+        """
+        from django.db.models import ProtectedError
+
+        candidates = queryset.filter(status__in=['DRAFT', 'CANCELLED'])
+        has_payments_ids = set(
+            Payment.objects.filter(invoice__in=candidates)
+            .values_list('invoice_id', flat=True)
+            .distinct()
+        )
+        safe = candidates.exclude(id__in=has_payments_ids)
+        skipped_active = queryset.exclude(status__in=['DRAFT', 'CANCELLED']).count()
+        skipped_payments = len(has_payments_ids)
+        deleted = safe.count()
+
+        try:
+            safe.delete()
+        except ProtectedError:
+            self.message_user(
+                request,
+                '❌ Delete failed: one or more invoices have payment records.',
+                level=messages.ERROR,
+            )
+            return
+
+        msg = f'🗑️ {deleted} invoice(s) deleted.'
+        if skipped_active:
+            msg += f' {skipped_active} active invoice(s) skipped (void first).'
+        if skipped_payments:
+            msg += f' {skipped_payments} voided invoice(s) with payments skipped.'
+        self.message_user(request, msg)
+
 
 @admin.register(Payment)
 class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
@@ -311,6 +399,24 @@ class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
         return f"${obj.amount:,.2f}"
     amount_display.short_description = 'Amount'
     amount_display.admin_order_field = 'amount'
+
+    def delete_queryset(self, request, queryset):
+        """
+        Override admin bulk-delete to call Payment.delete() on each instance.
+
+        Django's default QuerySet.delete() fires a SQL DELETE directly, bypassing
+        Python-level model .delete() overrides.  Payment.delete() (added in
+        CODE-118) reconciles invoice.amount_paid / status after each payment is
+        removed — without this override, bulk deletion via the admin changelist
+        would leave invoices stuck as PAID with $0 payments, or with stale
+        amount_paid balances.
+
+        We iterate instance-by-instance here to ensure the reconciliation logic
+        fires for every deleted row.  This is safe because admin bulk-delete is
+        low-frequency (it's a manual superuser action) and the dataset is small.
+        """
+        for payment in queryset:
+            payment.delete()
 
 
 # =============================================================================

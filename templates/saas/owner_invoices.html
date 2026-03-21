@@ -166,8 +166,11 @@
         <button onclick="markSelectedPaid()" class="inline-flex items-center px-4 py-1.5 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors">
             <i class="fas fa-check-circle mr-1.5"></i>Mark Paid
         </button>
-        <button onclick="deleteSelectedDrafts()" class="inline-flex items-center px-4 py-1.5 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors">
-            <i class="fas fa-trash mr-1.5"></i>Delete Drafts
+        <button onclick="voidSelectedInvoices()" class="inline-flex items-center px-4 py-1.5 bg-yellow-500 text-white text-sm font-medium rounded-lg hover:bg-yellow-600 transition-colors">
+            <i class="fas fa-ban mr-1.5"></i>Void
+        </button>
+        <button onclick="deleteSelectedInvoices()" class="inline-flex items-center px-4 py-1.5 bg-red-500 text-white text-sm font-medium rounded-lg hover:bg-red-600 transition-colors">
+            <i class="fas fa-trash mr-1.5"></i>Delete
         </button>
         <button onclick="clearSelection()" class="inline-flex items-center px-3 py-1.5 text-blue-200 text-sm hover:text-white transition-colors">
             <i class="fas fa-times mr-1"></i>Clear
@@ -694,10 +697,36 @@ function markSelectedPaid() {
     .catch(err => alert('Error: ' + err.message));
 }
 
-function deleteSelectedDrafts() {
+function voidSelectedInvoices() {
     const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
     if (!ids.length) return;
-    if (!confirm(`Delete ${ids.length} selected invoice(s)?\n\nOnly DRAFT invoices will be deleted. Sent/Paid/Overdue invoices will be skipped.`)) return;
+    if (!confirm(`Void ${ids.length} selected invoice(s)?\n\nPaid and already-voided invoices will be skipped.`)) return;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+
+    fetch('{% url "owner_invoice_bulk_action" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+        body: JSON.stringify({ action: 'void', invoice_ids: ids }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            clearSelection();
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to void invoices');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+
+function deleteSelectedInvoices() {
+    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} selected invoice(s)?\n\nOnly draft and voided invoices can be deleted. Active invoices will be skipped — void them first.`)) return;
 
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];

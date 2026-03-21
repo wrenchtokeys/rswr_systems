@@ -309,10 +309,24 @@ def profile_creation(request):
         
         # Create CustomerUser record
         try:
+            is_primary = request.POST.get('is_primary_contact') == 'True'
+            # If this user wants to be the primary contact, demote any existing
+            # primary first.  Without this step, two CustomerUsers for the same
+            # company can simultaneously hold is_primary_contact=True, making
+            # notification routing non-deterministic.
+            # This mirrors the demotion logic in:
+            #   - account_settings() (CODE-116)
+            #   - accept_customer_invitation() and set_primary_contact()
+            # Only applies when joining an EXISTING company; new companies have
+            # no existing primary to demote.
+            if is_primary and not is_new_company:
+                CustomerUser.objects.filter(
+                    customer=customer, is_primary_contact=True
+                ).update(is_primary_contact=False)
             customer_user = CustomerUser.objects.create(
                 user=request.user,
                 customer=customer,
-                is_primary_contact=request.POST.get('is_primary_contact') == 'True'
+                is_primary_contact=is_primary,
             )
             
             # Process referral code if it exists in the session
@@ -1755,9 +1769,20 @@ def account_settings(request):
                 user.set_password(new_password)
                 update_session_auth_hash(request, user)  # Keep user logged in
             
-            # Update primary contact status
+            # Update primary contact status.
+            # If this user is claiming primary contact, first demote any existing
+            # primary for this customer — mirrors the pattern used in the owner
+            # portal's set_primary_contact() and accept_customer_invitation().
+            # Without this demotion, multiple CustomerUsers can have
+            # is_primary_contact=True simultaneously, causing ambiguous notification
+            # routing (repairs.py filters to primary for approval records).
+            # (CODE-116)
+            if is_primary_contact and not customer_user.is_primary_contact:
+                CustomerUser.objects.filter(
+                    customer=customer, is_primary_contact=True
+                ).exclude(pk=customer_user.pk).update(is_primary_contact=False)
             customer_user.is_primary_contact = is_primary_contact
-            
+
             try:
                 user.save()
                 customer_user.save()

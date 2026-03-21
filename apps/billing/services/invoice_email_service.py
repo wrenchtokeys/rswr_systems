@@ -142,6 +142,37 @@ class InvoiceEmailService:
         
         return attachments
     
+    def _render_invoice_template(self, template_str, invoice_data) -> str:
+        """Render a shop-defined invoice email template.
+
+        Supports the same placeholders documented in BillingConfig.invoice_email_template
+        help_text:
+          {customer_name}, {invoice_number}, {total}, {invoice_date}, {company_name}
+
+        Falls back to the original hardcoded body if rendering fails (e.g. unknown
+        placeholder in a legacy template).
+        """
+        company_name = ''
+        if self.tenant:
+            try:
+                from apps.billing.models import BillingConfig
+                config = BillingConfig.get_for_tenant(self.tenant)
+                company_name = config.company_name or self.tenant.name
+            except Exception:
+                company_name = self.tenant.name
+
+        try:
+            return template_str.format(
+                customer_name=invoice_data.customer_name,
+                invoice_number=invoice_data.invoice_number,
+                total=f'${invoice_data.total:,.2f}',
+                invoice_date=invoice_data.invoice_date.strftime('%B %d, %Y') if invoice_data.invoice_date else 'N/A',
+                company_name=company_name,
+            )
+        except (KeyError, IndexError, ValueError):
+            # Unknown placeholder or malformed template — fall back to default body.
+            return ''
+
     def _build_email_body(self, invoice_data, include_photos: bool,
                           payment_link: str = None) -> str:
         """Build the email body text"""
@@ -192,6 +223,13 @@ class InvoiceEmailService:
             "",
         ])
         
+        # Portal link — always include so customer can view invoice online
+        lines.extend([
+            "📄 View Invoice Online:",
+            "https://rssystems.io/app/invoices/",
+            "",
+        ])
+
         # Stripe payment link
         if payment_link:
             lines.extend([
@@ -229,7 +267,9 @@ class InvoiceEmailService:
         days: int = 30,
         include_photos: bool = True,
         cc_emails: Optional[List[str]] = None,
-        subject_prefix: str = "[RS Systems]"
+        subject_prefix: str = "[RS Systems]",
+        invoice_number: Optional[str] = None,
+        invoice_date=None,
     ) -> Tuple[bool, str]:
         """
         Send an invoice email with PDF and photo attachments.
@@ -242,6 +282,11 @@ class InvoiceEmailService:
             include_photos: Whether to attach repair photos
             cc_emails: Optional CC recipients
             subject_prefix: Email subject prefix
+            invoice_number: Stored invoice number to embed in PDF (CODE-120).
+                Pass Invoice.invoice_number when re-sending for an existing invoice
+                so the PDF content matches the record. When None a new number is
+                generated (used during initial invoice creation).
+            invoice_date: Stored invoice date to embed in PDF (CODE-120).
             
         Returns:
             Tuple of (success: bool, message: str)
@@ -252,7 +297,9 @@ class InvoiceEmailService:
             pdf_bytes, invoice_data = self.invoice_service.generate_invoice(
                 customer_id=customer_id,
                 repair_ids=repair_ids,
-                start_date=start_date
+                start_date=start_date,
+                invoice_number=invoice_number,
+                invoice_date=invoice_date,
             )
             
             if not invoice_data.line_items:
@@ -304,12 +351,22 @@ class InvoiceEmailService:
                 except Exception:
                     pass
             
-            # Build email
+            # Build email — use shop-defined template if configured (CODE-119)
             subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
-            body = self._build_email_body(
-                invoice_data, include_photos=len(photos) > 0,
-                payment_link=payment_link
-            )
+            body = ''
+            if self.tenant:
+                try:
+                    from apps.billing.models import BillingConfig
+                    cfg = BillingConfig.get_for_tenant(self.tenant)
+                    if cfg.invoice_email_template:
+                        body = self._render_invoice_template(cfg.invoice_email_template, invoice_data)
+                except Exception:
+                    pass
+            if not body:
+                body = self._build_email_body(
+                    invoice_data, include_photos=len(photos) > 0,
+                    payment_link=payment_link
+                )
             
             email = EmailMessage(
                 subject=subject,

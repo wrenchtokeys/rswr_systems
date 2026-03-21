@@ -184,3 +184,178 @@ class ViewImportTest(TestCase):
         from apps.billing import views
         self.assertTrue(callable(views.send_invoice_email))
         self.assertTrue(callable(views.send_invoice_email_batch))
+
+
+# ---------------------------------------------------------------------------
+# CODE-120: PDF downloads use wrong (regenerated) invoice number and date
+# ---------------------------------------------------------------------------
+
+class InvoiceServiceInvoiceNumberOverrideTest(TestCase):
+    """CODE-120: build_invoice_data and generate_invoice accept invoice_number/invoice_date overrides."""
+
+    def setUp(self):
+        from apps.tenants.models import SubscriptionPlan, Tenant
+        from core.models import Customer
+        from django.contrib.auth.models import User
+
+        self.plan = SubscriptionPlan.objects.create(
+            name='Plan120', slug='plan-120',
+            monthly_price=Decimal('29.99'),
+            max_repairs_per_month=100, max_technicians=5,
+            max_customers=50, max_storage_mb=500,
+        )
+        self.user = User.objects.create_user('user_120', 'u120@test.com', 'pass')
+        self.tenant = Tenant.objects.create(
+            name='Shop 120', slug='shop-120',
+            subscription_plan=self.plan, is_active=True, owner=self.user,
+        )
+        self.customer = Customer.objects.create(name='Cust 120', tenant=self.tenant)
+
+    def test_build_invoice_data_uses_supplied_invoice_number(self):
+        """build_invoice_data should embed the supplied invoice_number, not a fresh one."""
+        from apps.billing.services.invoice_service import InvoiceService
+        from datetime import datetime
+
+        svc = InvoiceService(tenant=self.tenant)
+        stored_number = 'INV-5-20260101080000'
+        stored_date = datetime(2026, 1, 1, 8, 0, 0)
+
+        data = svc.build_invoice_data(
+            customer_id=self.customer.id,
+            invoice_number=stored_number,
+            invoice_date=stored_date,
+        )
+
+        self.assertEqual(data.invoice_number, stored_number,
+                         "PDF must show stored invoice number, not a freshly generated one")
+        self.assertEqual(data.invoice_date, stored_date,
+                         "PDF must show stored invoice date, not today's date")
+
+    def test_build_invoice_data_generates_number_when_not_supplied(self):
+        """Without override, build_invoice_data still generates a number automatically."""
+        from apps.billing.services.invoice_service import InvoiceService
+
+        svc = InvoiceService(tenant=self.tenant)
+        data = svc.build_invoice_data(customer_id=self.customer.id)
+
+        self.assertIsNotNone(data.invoice_number)
+        self.assertTrue(len(data.invoice_number) > 0,
+                        "Auto-generated invoice number must not be empty")
+
+    def test_generate_invoice_passes_through_overrides(self):
+        """generate_invoice should pass invoice_number/invoice_date down to build_invoice_data."""
+        from apps.billing.services.invoice_service import InvoiceService
+        from datetime import datetime
+
+        svc = InvoiceService(tenant=self.tenant)
+        stored_number = 'INV-ORIG-001'
+        stored_date = datetime(2026, 2, 15, 12, 0, 0)
+
+        pdf_bytes, invoice_data = svc.generate_invoice(
+            customer_id=self.customer.id,
+            invoice_number=stored_number,
+            invoice_date=stored_date,
+        )
+
+        self.assertIsInstance(pdf_bytes, bytes)
+        self.assertTrue(len(pdf_bytes) > 0, "PDF must not be empty")
+        self.assertEqual(invoice_data.invoice_number, stored_number)
+        self.assertEqual(invoice_data.invoice_date, stored_date)
+
+    def test_pdf_download_view_uses_stored_invoice_number(self):
+        """owner_invoice_pdf should call generate_invoice with the stored invoice_number."""
+        from apps.billing.models import Invoice
+        from apps.tenants.models import TenantMembership
+        from unittest.mock import patch
+        from django.test import RequestFactory
+        from django.utils import timezone as tz
+        import datetime
+
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.user, role='owner', is_active=True,
+        )
+
+        stored_inv_number = 'INV-STORED-9999'
+        stored_date = datetime.date(2026, 1, 1)
+
+        invoice = Invoice.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            invoice_number=stored_inv_number,
+            invoice_date=stored_date,
+            due_date=stored_date,
+            status='SENT',
+            subtotal=Decimal('0.00'),
+            total=Decimal('0.00'),
+        )
+
+        dummy_pdf = b'%PDF fake content'
+
+        class FakeInvoiceData:
+            invoice_number = stored_inv_number
+
+        with patch('apps.billing.services.invoice_service.InvoiceService.generate_invoice',
+                   return_value=(dummy_pdf, FakeInvoiceData())) as mock_gen:
+            factory = RequestFactory()
+            request = factory.get(f'/owner/invoices/{invoice.id}/pdf/')
+            request.user = self.user
+            request.tenant = self.tenant
+
+            from apps.saas.views import owner_invoice_pdf
+            response = owner_invoice_pdf(request, invoice_id=invoice.id)
+
+        call_kwargs = mock_gen.call_args[1]
+        self.assertEqual(call_kwargs.get('invoice_number'), stored_inv_number,
+                         "view must pass stored invoice_number to generate_invoice")
+        # invoice_date should be passed as a datetime (date → datetime conversion)
+        self.assertIsNotNone(call_kwargs.get('invoice_date'),
+                             "view must pass stored invoice_date to generate_invoice")
+
+    def test_email_invoice_view_uses_stored_invoice_number(self):
+        """owner_email_invoice should pass stored invoice_number to send_invoice_email."""
+        from apps.billing.models import Invoice
+        from apps.tenants.models import TenantMembership
+        from unittest.mock import patch
+        from django.test import RequestFactory
+        from django.contrib.messages.storage.cookie import CookieStorage
+        import datetime
+
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.user, role='owner', is_active=True,
+        )
+
+        stored_inv_number = 'INV-EMAIL-0042'
+        stored_date = datetime.date(2026, 2, 1)
+
+        invoice = Invoice.objects.create(
+            tenant=self.tenant,
+            customer=self.customer,
+            invoice_number=stored_inv_number,
+            invoice_date=stored_date,
+            due_date=stored_date,
+            status='SENT',
+            subtotal=Decimal('0.00'),
+            total=Decimal('0.00'),
+        )
+        # Add email so view doesn't short-circuit
+        self.customer.email = 'cust120@test.com'
+        self.customer.save()
+
+        with patch('apps.billing.services.invoice_email_service.InvoiceEmailService.send_invoice_email',
+                   return_value=(True, 'sent')) as mock_send:
+            factory = RequestFactory()
+            request = factory.post(f'/owner/invoices/{invoice.id}/email/')
+            request.user = self.user
+            request.tenant = self.tenant
+            # Attach message storage so messages.success/error don't raise MessageFailure
+            request._messages = CookieStorage(request)
+            request.session = {}
+
+            from apps.saas.views import owner_email_invoice
+            owner_email_invoice(request, invoice_id=invoice.id)
+
+        call_kwargs = mock_send.call_args[1]
+        self.assertEqual(call_kwargs.get('invoice_number'), stored_inv_number,
+                         "view must pass stored invoice_number to send_invoice_email")
+        self.assertIsNotNone(call_kwargs.get('invoice_date'),
+                             "view must pass stored invoice_date to send_invoice_email")

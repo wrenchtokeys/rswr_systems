@@ -11,7 +11,11 @@ urlpatterns = [
     # Subscription blocked (role-aware)
     path('subscription-blocked/', views.subscription_blocked_view, name='subscription_blocked'),
 
-    # Email verification for shop owners
+    # Email confirmation for new shop owner accounts (is_active=False until clicked)
+    path('confirm-email/<str:uidb64>/<str:token>/', views.owner_confirm_email, name='owner_confirm_email'),
+    path('confirm-email/<str:uidb64>/resend/', views.resend_confirmation_email, name='resend_confirmation_email'),
+
+    # Email verification for shop owners (already-active accounts, e.g. shop_join flow)
     path('verify-email/<str:uidb64>/<str:token>/', views.owner_confirm_email_verification, name='owner_confirm_email_verification'),
 
     # Public pages
@@ -54,6 +58,7 @@ urlpatterns = [
     path('owner/invoices/<int:invoice_id>/send/', views.owner_send_invoice, name='owner_send_invoice'),
     path('owner/invoices/<int:invoice_id>/email/', views.owner_email_invoice, name='owner_email_invoice'),
     path('owner/invoices/<int:invoice_id>/reminder/', views.owner_send_reminder, name='owner_send_reminder'),
+    path('owner/invoices/<int:invoice_id>/void/', views.owner_invoice_void, name='owner_invoice_void'),
 
     # Aging report (Phase 6)
     path('owner/billing/aging/', views.owner_aging_report_json, name='owner_aging_report'),

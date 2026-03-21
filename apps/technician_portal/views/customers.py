@@ -205,7 +205,7 @@ def customer_details(request, customer_id):
     if unit_search:
         repairs = repairs.filter(unit_number__icontains=unit_search)
 
-    units = repairs.values_list('unit_number', flat=True).distinct()
+    units = repairs.exclude(unit_number__in=['', None]).values_list('unit_number', flat=True).distinct()
 
     # Determine if user can edit primary technician (admin, owner, or manager)
     can_edit_customer = is_admin or is_mgr

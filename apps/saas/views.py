@@ -86,14 +86,17 @@ def _get_owner_tenant(request):
 def _send_verification_email(request, user):
     """
     Send email verification link to a user after signup.
-    
+
+    Used for shop-join (customer portal) signups where the user IS immediately
+    logged in, and email verification is for notification preferences only.
+
     Uses Django's token generator for secure verification links.
     Fails silently to never block the signup flow.
     """
     try:
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        
+
         # Check if user is a CustomerUser or shop owner
         try:
             from apps.customer_portal.models import CustomerUser
@@ -107,7 +110,7 @@ def _send_verification_email(request, user):
             verification_url = request.build_absolute_uri(
                 reverse('owner_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
-        
+
         send_mail(
             subject='Verify your email address - RS Systems',
             message=f'''Welcome to RS Systems!
@@ -132,16 +135,112 @@ If you didn't create an account, you can safely ignore this email.
         logger.warning(f"Failed to send verification email to {user.email}: {e}")
 
 
+def _send_confirmation_email(request, user, tenant):
+    """
+    Send email confirmation link to a new shop owner whose account is inactive.
+
+    Unlike _send_verification_email, this email is required — the user CANNOT
+    log in until they click the link. Uses Django's built-in token generator
+    (same one as password reset) for secure one-time tokens.
+
+    Fails silently so a transient email outage never breaks signup entirely —
+    the admin can manually activate accounts if needed.
+    """
+    try:
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        confirm_url = request.build_absolute_uri(
+            reverse('owner_confirm_email', kwargs={'uidb64': uid, 'token': token})
+        )
+
+        send_mail(
+            subject='Confirm your email address — RS Systems',
+            message=f'''Hi {user.first_name or user.email},
+
+Thanks for signing up for RS Systems!
+
+To activate your account and start your 30-day free trial, please confirm your
+email address by clicking the link below:
+
+{confirm_url}
+
+This link expires in 24 hours. If you didn't create an account, you can safely
+ignore this email.
+
+— The RS Systems Team
+''',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        logger.info(f"Confirmation email sent to {user.email} (account inactive, tenant={tenant.slug})")
+    except Exception as e:
+        logger.warning(f"Failed to send confirmation email to {user.email}: {e}")
+
+
 # ------------------------------------------------------------------
 # 1. Signup
 # ------------------------------------------------------------------
 
+def _verify_turnstile(request) -> bool:
+    """
+    Verify Cloudflare Turnstile CAPTCHA token server-side.
+
+    Returns True if verification passes OR if Turnstile is not configured
+    (TURNSTILE_SECRET_KEY not set — so dev/test works without keys).
+    Returns False only when keys are configured but verification fails.
+    """
+    import os
+    import urllib.request
+    import urllib.parse
+    import json
+
+    secret_key = os.environ.get('TURNSTILE_SECRET_KEY', '')
+    if not secret_key:
+        # Not configured — skip validation (dev/CI mode)
+        return True
+
+    token = request.POST.get('cf-turnstile-response', '')
+    if not token:
+        return False
+
+    try:
+        data = urllib.parse.urlencode({
+            'secret': secret_key,
+            'response': token,
+            'remoteip': request.META.get('REMOTE_ADDR', ''),
+        }).encode()
+        req = urllib.request.Request(
+            'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+            data=data,
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read())
+        return result.get('success', False)
+    except Exception as e:
+        logger.warning(f"Turnstile verification error: {e}")
+        # Fail open on network errors to avoid blocking legitimate signups
+        return True
+
+
 def signup_view(request):
-    """Public signup page — creates user, tenant, membership, logs in."""
+    """
+    Public signup page — creates user, tenant, membership.
+
+    The user account is created with is_active=False. A confirmation email
+    is sent. The user is NOT logged in until they click the link.
+    """
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
 
     if request.method == 'POST':
+        # Turnstile CAPTCHA check (skipped if env var not set)
+        if not _verify_turnstile(request):
+            messages.error(request, 'CAPTCHA verification failed. Please try again.')
+            form = SignupForm(request.POST)
+            return render(request, 'saas/signup.html', {'form': form})
+
         form = SignupForm(request.POST)
         if form.is_valid():
             try:
@@ -158,23 +257,35 @@ def signup_view(request):
                 user = result['user']
                 tenant = result['tenant']
 
-                # Log the user in
-                auth_user = authenticate(
-                    request, username=user.username, password=cd['password']
-                )
-                if auth_user:
-                    login(request, auth_user)
-                    request.session['tenant_id'] = tenant.id
+                # Set account inactive until email is confirmed
+                user.is_active = False
+                user.save(update_fields=['is_active'])
 
-                # Send verification email (fails silently)
-                _send_verification_email(request, user)
+                # Send confirmation email
+                _send_confirmation_email(request, user, tenant)
 
-                messages.success(
-                    request,
-                    f'Welcome to RS Systems, {cd["first_name"]}! '
-                    f'Your 30-day free trial has started. Check your email to verify your address.',
-                )
-                return redirect('onboarding')
+                # Notify site admins of new signup
+                try:
+                    from django.core.mail import mail_admins
+                    mail_admins(
+                        subject=f"New signup: {cd['first_name']} {cd['last_name']} ({tenant.name})",
+                        message=(
+                            f"New user signed up for RS Systems:\n\n"
+                            f"Name: {cd['first_name']} {cd['last_name']}\n"
+                            f"Email: {cd['email']}\n"
+                            f"Shop: {tenant.name}\n"
+                            f"Plan: {tenant.subscription_plan}\n"
+                            f"Pending email confirmation."
+                        ),
+                    )
+                except Exception:
+                    pass  # Non-fatal — don't block signup
+
+                # Don't log in yet — redirect to "check your email" page
+                return render(request, 'saas/email_confirmation_sent.html', {
+                    'email': cd['email'],
+                    'first_name': cd['first_name'],
+                })
 
             except SignupError as e:
                 messages.error(request, str(e))
@@ -2542,10 +2653,21 @@ def owner_send_invoice(request, invoice_id):
 
             repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
 
+            # Pass stored invoice metadata so the emailed PDF matches the owner's records (CODE-120).
+            from datetime import datetime as _dt2
+            _sd2 = invoice.invoice_date
+            if _sd2 and not isinstance(_sd2, _dt2):
+                from django.utils import timezone as _tz2
+                _stored_dt2 = _tz2.make_aware(_dt2.combine(_sd2, _dt2.min.time()))
+            else:
+                _stored_dt2 = _sd2
+
             success, msg = email_service.send_invoice_email(
                 customer_id=invoice.customer.id,
                 recipient_email=recipient,
                 repair_ids=repair_ids if repair_ids else None,
+                invoice_number=invoice.invoice_number,
+                invoice_date=_stored_dt2,
             )
             email_sent = success
             if not success:
@@ -2607,11 +2729,23 @@ def owner_email_invoice(request, invoice_id):
             return redirect('owner_invoice_detail', invoice_id=invoice.id)
         
         repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-        
+
+        # Pass stored invoice metadata so the PDF attached to the email shows the
+        # same invoice number and date that the owner sees in the portal (CODE-120).
+        from datetime import datetime as _dt
+        _stored_date = invoice.invoice_date
+        if _stored_date and not isinstance(_stored_date, _dt):
+            from django.utils import timezone as _tz
+            _stored_dt = _tz.make_aware(_dt.combine(_stored_date, _dt.min.time()))
+        else:
+            _stored_dt = _stored_date
+
         success, msg = email_service.send_invoice_email(
             customer_id=invoice.customer.id,
             recipient_email=recipient,
             repair_ids=repair_ids if repair_ids else None,
+            invoice_number=invoice.invoice_number,
+            invoice_date=_stored_dt,
         )
         
         if success:
@@ -3275,13 +3409,59 @@ def owner_setup_save_viscosity(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+def owner_confirm_email(request, uidb64, token):
+    """
+    GET /confirm-email/<uidb64>/<token>/
+
+    Activate a shop owner account that was created with is_active=False.
+
+    This is the link from the confirmation email sent at signup.  On success:
+      - Sets user.is_active = True
+      - Logs the user in
+      - Redirects to onboarding
+
+    On failure (bad/expired token): shows an error and a link to resend.
+    """
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        # Activate the account
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=['is_active'])
+
+        # Log the user in (bypass password check — token is the credential here)
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+        # Find their tenant to set the session
+        from apps.tenants.models import TenantMembership
+        membership = TenantMembership.objects.filter(
+            user=user, role='owner'
+        ).select_related('tenant').first()
+        if membership:
+            request.session['tenant_id'] = membership.tenant.id
+
+        messages.success(request, "Email confirmed! Welcome to RS Systems. Let's get your shop set up.")
+        return redirect('onboarding')
+    else:
+        return render(request, 'saas/email_confirmation_invalid.html', {
+            'uidb64': uidb64,
+        })
+
+
 def owner_confirm_email_verification(request, uidb64, token):
     """
     GET /owner/verify-email/<uidb64>/<token>/
 
-    Process email verification token for a shop owner.  No login required —
-    the link is sent immediately after signup, before the session is fully
-    established on all devices.  The token itself authenticates the action.
+    Process email verification token for a shop owner who is already active.
+    This endpoint is used when the owner clicks the verification link from
+    the old-style _send_verification_email() helper (e.g. shop_join flow).
 
     Unlike customer/technician verification there is no email_verified flag
     to persist for owners (email verification doesn't gate any owner feature).
@@ -3304,6 +3484,39 @@ def owner_confirm_email_verification(request, uidb64, token):
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
     return redirect('signup')
+
+
+def resend_confirmation_email(request, uidb64):
+    """
+    GET /confirm-email/<uidb64>/resend/
+
+    Resend the account confirmation email for an inactive account.
+    The user must not yet be active (prevents abuse by active users).
+    """
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is None or user.is_active:
+        messages.error(request, 'Invalid request or account already active.')
+        return redirect('signup')
+
+    # Find tenant for the email helper
+    from apps.tenants.models import TenantMembership
+    membership = TenantMembership.objects.filter(user=user).select_related('tenant').first()
+    tenant = membership.tenant if membership else None
+
+    _send_confirmation_email(request, user, tenant)
+
+    return render(request, 'saas/email_confirmation_sent.html', {
+        'email': user.email,
+        'first_name': user.first_name,
+        'resent': True,
+    })
 
 
 @owner_or_manager_required
@@ -3355,26 +3568,102 @@ def owner_invoice_bulk_action(request):
     invoices = Invoice.objects.filter(id__in=invoice_ids, customer__tenant=tenant)
 
     if action == 'mark_paid':
+        # CODE-115: Create a Payment record for each invoice so payment history
+        # is complete and paid_at is correctly set via Payment.save() →
+        # _update_invoice_totals() → invoice.update_status().
+        # Previously this action wrote amount_paid/status directly with no
+        # Payment row and no paid_at stamp — payment history tab was empty and
+        # the paid_at field was always NULL for bulk-paid invoices.
         updated = 0
-        for inv in invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT']):
-            inv.amount_paid = inv.total
-            inv.status = 'PAID'
-            inv.save(update_fields=['amount_paid', 'status'])
-            updated += 1
+        from django.utils import timezone as _tz
+        payable = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT'])
+        for inv in payable.select_related('customer'):
+            remaining = inv.amount_due
+            if remaining <= 0:
+                continue
+            try:
+                with transaction.atomic():
+                    Payment.objects.create(
+                        invoice=inv,
+                        amount=remaining,
+                        payment_method='OTHER',
+                        notes='Bulk marked as paid by shop owner',
+                        recorded_by=request.user,
+                        payment_date=_tz.now().date(),
+                    )
+                    # Payment.save() → _update_invoice_totals() sets paid_at
+                    # and status='PAID' via invoice.update_status(). No manual
+                    # status/amount_paid overwrite needed.
+            except Exception as e:
+                logger.warning(f"Bulk mark_paid: could not create payment for invoice {inv.id}: {e}")
+            else:
+                updated += 1
         return JsonResponse({
             'success': True,
             'message': f'{updated} invoice(s) marked as paid.',
         })
 
+    elif action == 'void':
+        # Void invoices that aren't already PAID, CANCELLED, or PARTIAL.
+        # (CODE-123) PARTIAL invoices have recorded payments — voiding them
+        # silently orphans those Payment records and prevents future deletion
+        # (Payment.invoice uses on_delete=PROTECT).  Owners must remove
+        # payments first, which demotes the invoice to SENT/OVERDUE, and then
+        # they can void it.
+        voidable = invoices.exclude(status__in=['PAID', 'PARTIAL', 'CANCELLED'])
+        voided_count = voidable.count()
+        skipped_paid = invoices.filter(status__in=['PAID', 'CANCELLED']).count()
+        skipped_partial = invoices.filter(status='PARTIAL').count()
+        voidable.update(status='CANCELLED')
+        msg = f'{voided_count} invoice(s) voided.'
+        if skipped_paid:
+            msg += f' {skipped_paid} paid/already-voided invoice(s) were skipped.'
+        if skipped_partial:
+            msg += (
+                f' {skipped_partial} partially-paid invoice(s) were skipped — '
+                'remove the payments first, then void.'
+            )
+        return JsonResponse({'success': True, 'message': msg})
+
     elif action == 'delete':
-        # Only allow deleting DRAFT invoices
-        drafts = invoices.filter(status='DRAFT')
-        deleted_count = drafts.count()
-        skipped = invoices.exclude(status='DRAFT').count()
-        drafts.delete()
-        msg = f'{deleted_count} draft invoice(s) deleted.'
-        if skipped:
-            msg += f' {skipped} non-draft invoice(s) were skipped.'
+        # Allow deleting DRAFT and CANCELLED (voided) invoices.
+        # (CODE-123) Payment.invoice uses on_delete=PROTECT, so we must skip
+        # any invoice that still has payment records — deleting it would raise
+        # a ProtectedError and crash with a 500.  Collect safe-to-delete IDs
+        # by excluding invoices that have any associated payments.
+        from django.db.models import ProtectedError as _ProtectedError
+        from apps.billing.models import Payment as _Payment
+
+        candidate_qs = invoices.filter(status__in=['DRAFT', 'CANCELLED'])
+        # IDs of candidates that still have payments attached
+        has_payments_ids = set(
+            _Payment.objects.filter(invoice__in=candidate_qs)
+            .values_list('invoice_id', flat=True)
+            .distinct()
+        )
+        safe_to_delete = candidate_qs.exclude(id__in=has_payments_ids)
+        payment_blocked = len(has_payments_ids)
+
+        deleted_count = safe_to_delete.count()
+        skipped_active = invoices.exclude(status__in=['DRAFT', 'CANCELLED']).count()
+
+        # Perform the delete inside a try/except as a last-resort safety net.
+        try:
+            safe_to_delete.delete()
+        except _ProtectedError:
+            return JsonResponse(
+                {'success': False, 'error': 'Delete failed: one or more invoices have payment records.'},
+                status=400,
+            )
+
+        msg = f'{deleted_count} invoice(s) deleted.'
+        if skipped_active:
+            msg += f' {skipped_active} active invoice(s) were skipped (void first, then delete).'
+        if payment_blocked:
+            msg += (
+                f' {payment_blocked} voided invoice(s) with recorded payments were skipped — '
+                'remove the payments first.'
+            )
         return JsonResponse({'success': True, 'message': msg})
 
     else:
@@ -3401,9 +3690,24 @@ def owner_invoice_pdf(request, invoice_id):
             .values_list('repair_id', flat=True)
         )
 
+        # Pass the stored invoice_number and invoice_date so the PDF content matches
+        # what the owner sees in the portal and what was emailed to the customer.
+        # Without this, each download regenerates a brand-new invoice number
+        # (e.g. INV-5-20260321123456) that doesn't match the record (CODE-120).
+        from datetime import datetime as dt
+        stored_date = invoice.invoice_date
+        if stored_date and not isinstance(stored_date, dt):
+            # invoice_date is a date; convert to datetime for InvoiceData
+            from django.utils import timezone as tz_util
+            stored_dt = tz_util.make_aware(dt.combine(stored_date, dt.min.time()))
+        else:
+            stored_dt = stored_date
+
         pdf_bytes, invoice_data = service.generate_invoice(
             customer_id=invoice.customer.id,
             repair_ids=repair_ids if repair_ids else None,
+            invoice_number=invoice.invoice_number,
+            invoice_date=stored_dt,
         )
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -3414,3 +3718,44 @@ def owner_invoice_pdf(request, invoice_id):
         logger.error(f"PDF generation failed for invoice {invoice.invoice_number}: {e}")
         messages.error(request, f'Could not generate PDF: {e}')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_invoice_void(request, invoice_id):
+    """POST /owner/invoices/<id>/void/ — void a single invoice."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+
+    if invoice.status == 'PAID':
+        return JsonResponse({'success': False, 'error': 'Cannot void a paid invoice.'}, status=400)
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'success': False, 'error': 'Invoice is already voided.'}, status=400)
+
+    # (CODE-123) Block voiding partially-paid invoices.  A PARTIAL invoice has
+    # real money recorded against it; voiding without removing those payments
+    # leaves orphaned Payment records that prevent the invoice from ever being
+    # deleted and misrepresent the shop's financials.  The owner must delete or
+    # reverse the payments first, at which point the invoice reverts to
+    # SENT/OVERDUE and can then be voided normally.
+    if invoice.status == 'PARTIAL':
+        payment_count = invoice.payments.count()
+        return JsonResponse(
+            {
+                'success': False,
+                'error': (
+                    f'Cannot void a partially-paid invoice. '
+                    f'{payment_count} payment(s) are recorded against it. '
+                    'Please remove or reverse the payment(s) first, '
+                    'then void the invoice.'
+                ),
+            },
+            status=400,
+        )
+
+    invoice.status = 'CANCELLED'
+    invoice.save(update_fields=['status'])
+    return JsonResponse({'success': True, 'message': f'Invoice {invoice.invoice_number} voided.'})
