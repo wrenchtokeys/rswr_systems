@@ -1755,9 +1755,20 @@ def account_settings(request):
                 user.set_password(new_password)
                 update_session_auth_hash(request, user)  # Keep user logged in
             
-            # Update primary contact status
+            # Update primary contact status.
+            # If this user is claiming primary contact, first demote any existing
+            # primary for this customer — mirrors the pattern used in the owner
+            # portal's set_primary_contact() and accept_customer_invitation().
+            # Without this demotion, multiple CustomerUsers can have
+            # is_primary_contact=True simultaneously, causing ambiguous notification
+            # routing (repairs.py filters to primary for approval records).
+            # (CODE-116)
+            if is_primary_contact and not customer_user.is_primary_contact:
+                CustomerUser.objects.filter(
+                    customer=customer, is_primary_contact=True
+                ).exclude(pk=customer_user.pk).update(is_primary_contact=False)
             customer_user.is_primary_contact = is_primary_contact
-            
+
             try:
                 user.save()
                 customer_user.save()
