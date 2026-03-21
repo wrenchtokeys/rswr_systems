@@ -1286,6 +1286,18 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not update batch invoice settings.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'email_templates':
+            try:
+                config = BillingConfig.get_for_tenant(tenant)
+                config.invoice_email_template = request.POST.get('invoice_email_template', '').strip()
+                config.reminder_email_template = request.POST.get('reminder_email_template', '').strip()
+                config.save(update_fields=['invoice_email_template', 'reminder_email_template'])
+                messages.success(request, 'Email templates saved.')
+            except Exception as e:
+                logger.error(f"Error saving email templates: {e}")
+                messages.error(request, 'Could not save email templates.')
+            return redirect('/owner/settings/?tab=billing')
+
         # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
         tenant.business_phone = request.POST.get('business_phone', '').strip()
@@ -2189,6 +2201,17 @@ def owner_invoice_detail(request, invoice_id):
     except Exception:
         recipient_email = invoice.customer.email
 
+    # Render saved reminder template if one exists (CODE-113)
+    rendered_reminder_default = ''
+    try:
+        config = BillingConfig.get_for_tenant(tenant)
+        if config.reminder_email_template:
+            from apps.billing.services.reminder_service import ReminderService
+            svc = ReminderService(tenant=tenant)
+            rendered_reminder_default = svc._render_template(config.reminder_email_template, invoice)
+    except Exception:
+        pass
+
     context = {
         'tenant': tenant,
         'invoice': invoice,
@@ -2197,6 +2220,7 @@ def owner_invoice_detail(request, invoice_id):
         'payment_methods': payment_methods,
         'pdf_url': pdf_url,
         'recipient_email': recipient_email,
+        'rendered_reminder_default': rendered_reminder_default,
         'today': timezone.now().date(),
     }
     return render(request, 'saas/owner_invoice_detail.html', context)

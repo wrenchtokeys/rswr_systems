@@ -64,6 +64,15 @@ class ReminderService:
         subject, body = self._build_reminder_email(invoice, reminder_type)
         if custom_body:
             body = custom_body
+        elif self.tenant:
+            # Check for saved template in BillingConfig
+            try:
+                from apps.billing.models import BillingConfig
+                config = BillingConfig.get_for_tenant(self.tenant)
+                if config.reminder_email_template:
+                    body = self._render_template(config.reminder_email_template, invoice)
+            except Exception:
+                pass  # Fall back to default
         
         # Generate PDF attachment
         pdf_bytes = None
@@ -253,6 +262,31 @@ Best regards,
             logger.error(f"Error sending payment confirmation: {e}")
             return {'success': False, 'error': str(e)}
     
+    def _render_template(self, template_str, invoice):
+        """Render a user-defined email template with invoice placeholders."""
+        from django.utils import timezone
+        today = timezone.now().date()
+        days_overdue = max(0, (today - invoice.due_date).days) if invoice.due_date else 0
+
+        company_name = ''
+        if self.tenant:
+            try:
+                from apps.billing.models import BillingConfig
+                config = BillingConfig.get_for_tenant(self.tenant)
+                company_name = config.company_name or self.tenant.name
+            except Exception:
+                company_name = self.tenant.name
+
+        return template_str.format(
+            customer_name=invoice.customer.name,
+            invoice_number=invoice.invoice_number,
+            total=f'${invoice.total:,.2f}',
+            amount_due=f'${invoice.amount_due:,.2f}',
+            due_date=invoice.due_date.strftime('%B %d, %Y') if invoice.due_date else 'N/A',
+            days_overdue=days_overdue,
+            company_name=company_name,
+        )
+
     def _build_reminder_email(self, invoice, reminder_type):
         """Build reminder email subject and body."""
         

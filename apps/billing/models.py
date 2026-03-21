@@ -117,6 +117,22 @@ class BillingConfig(models.Model):
         help_text='Prefix for auto-generated invoice numbers (e.g., INV → INV-1-20260131...)',
     )
 
+    # === EMAIL TEMPLATES (editable defaults) ===
+    invoice_email_template = models.TextField(
+        blank=True,
+        default='',
+        help_text='Default email body when sending an invoice. '
+                  'Use {customer_name}, {invoice_number}, {total}, {due_date}, {company_name} as placeholders. '
+                  'Leave blank to use the system default.',
+    )
+    reminder_email_template = models.TextField(
+        blank=True,
+        default='',
+        help_text='Default email body for payment reminders. '
+                  'Use {customer_name}, {invoice_number}, {total}, {amount_due}, {due_date}, {days_overdue}, {company_name} as placeholders. '
+                  'Leave blank to use the system default.',
+    )
+
     # === SALES TAX ===
     tax_enabled = models.BooleanField(
         default=False,
