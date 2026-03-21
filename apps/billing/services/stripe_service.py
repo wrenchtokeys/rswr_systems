@@ -145,6 +145,12 @@ class StripeService:
                     'rs_invoice_id': str(invoice.id),
                     'rs_invoice_number': invoice.invoice_number,
                 },
+                payment_intent_data={
+                    'metadata': {
+                        'rs_invoice_id': str(invoice.id),
+                        'rs_invoice_number': invoice.invoice_number,
+                    },
+                },
                 after_completion={
                     'type': 'redirect',
                     'redirect': {
