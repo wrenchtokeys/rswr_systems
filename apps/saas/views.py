@@ -2542,10 +2542,21 @@ def owner_send_invoice(request, invoice_id):
 
             repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
 
+            # Pass stored invoice metadata so the emailed PDF matches the owner's records (CODE-120).
+            from datetime import datetime as _dt2
+            _sd2 = invoice.invoice_date
+            if _sd2 and not isinstance(_sd2, _dt2):
+                from django.utils import timezone as _tz2
+                _stored_dt2 = _tz2.make_aware(_dt2.combine(_sd2, _dt2.min.time()))
+            else:
+                _stored_dt2 = _sd2
+
             success, msg = email_service.send_invoice_email(
                 customer_id=invoice.customer.id,
                 recipient_email=recipient,
                 repair_ids=repair_ids if repair_ids else None,
+                invoice_number=invoice.invoice_number,
+                invoice_date=_stored_dt2,
             )
             email_sent = success
             if not success:
@@ -2607,11 +2618,23 @@ def owner_email_invoice(request, invoice_id):
             return redirect('owner_invoice_detail', invoice_id=invoice.id)
         
         repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-        
+
+        # Pass stored invoice metadata so the PDF attached to the email shows the
+        # same invoice number and date that the owner sees in the portal (CODE-120).
+        from datetime import datetime as _dt
+        _stored_date = invoice.invoice_date
+        if _stored_date and not isinstance(_stored_date, _dt):
+            from django.utils import timezone as _tz
+            _stored_dt = _tz.make_aware(_dt.combine(_stored_date, _dt.min.time()))
+        else:
+            _stored_dt = _stored_date
+
         success, msg = email_service.send_invoice_email(
             customer_id=invoice.customer.id,
             recipient_email=recipient,
             repair_ids=repair_ids if repair_ids else None,
+            invoice_number=invoice.invoice_number,
+            invoice_date=_stored_dt,
         )
         
         if success:
@@ -3436,9 +3459,24 @@ def owner_invoice_pdf(request, invoice_id):
             .values_list('repair_id', flat=True)
         )
 
+        # Pass the stored invoice_number and invoice_date so the PDF content matches
+        # what the owner sees in the portal and what was emailed to the customer.
+        # Without this, each download regenerates a brand-new invoice number
+        # (e.g. INV-5-20260321123456) that doesn't match the record (CODE-120).
+        from datetime import datetime as dt
+        stored_date = invoice.invoice_date
+        if stored_date and not isinstance(stored_date, dt):
+            # invoice_date is a date; convert to datetime for InvoiceData
+            from django.utils import timezone as tz_util
+            stored_dt = tz_util.make_aware(dt.combine(stored_date, dt.min.time()))
+        else:
+            stored_dt = stored_date
+
         pdf_bytes, invoice_data = service.generate_invoice(
             customer_id=invoice.customer.id,
             repair_ids=repair_ids if repair_ids else None,
+            invoice_number=invoice.invoice_number,
+            invoice_date=stored_dt,
         )
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')

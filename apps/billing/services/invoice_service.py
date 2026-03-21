@@ -366,7 +366,9 @@ class InvoiceService:
         customer_id: int,
         repair_ids: Optional[List[int]] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        invoice_number: Optional[str] = None,
+        invoice_date: Optional[datetime] = None,
     ) -> InvoiceData:
         """
         Build complete invoice data structure from repairs.
@@ -376,6 +378,9 @@ class InvoiceService:
             repair_ids: Optional specific repairs to include
             start_date: Optional date range start
             end_date: Optional date range end
+            invoice_number: Override invoice number (use stored value when re-generating PDF
+                for an existing invoice so the number in the PDF matches records).
+            invoice_date: Override invoice date (use stored value when re-generating PDF).
             
         Returns:
             InvoiceData object ready for PDF generation
@@ -451,9 +456,16 @@ class InvoiceService:
             'NET60': 'Net 60',
         }
         
+        # Use caller-supplied values when re-generating a PDF for an existing invoice
+        # so the number and date in the PDF match the stored Invoice record.
+        # Without this, every PDF download shows a brand-new number like
+        # INV-5-20260321123456 instead of the original INV-5-20260101080000.
+        resolved_invoice_number = invoice_number or self._generate_invoice_number(customer_id)
+        resolved_invoice_date = invoice_date if invoice_date is not None else timezone.now()
+
         return InvoiceData(
-            invoice_number=self._generate_invoice_number(customer_id),
-            invoice_date=timezone.now(),
+            invoice_number=resolved_invoice_number,
+            invoice_date=resolved_invoice_date,
             customer_name=customer.name,  # Preserve original casing
             customer_email=customer.email,
             customer_address='\n'.join(address_parts) if address_parts else None,
@@ -762,7 +774,9 @@ class InvoiceService:
         repair_ids: Optional[List[int]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        include_photos: bool = False  # Photos disabled by default for now
+        include_photos: bool = False,  # Photos disabled by default for now
+        invoice_number: Optional[str] = None,
+        invoice_date: Optional[datetime] = None,
     ) -> Tuple[bytes, InvoiceData]:
         """
         Generate a complete invoice PDF.
@@ -773,6 +787,10 @@ class InvoiceService:
             start_date: Optional date range start  
             end_date: Optional date range end
             include_photos: Whether to embed photos (increases file size)
+            invoice_number: Override invoice number (pass the stored Invoice.invoice_number
+                when re-generating a PDF for an existing invoice so the PDF content matches
+                the number shown in the owner portal and emailed to the customer).
+            invoice_date: Override invoice date (pass Invoice.invoice_date for same reason).
             
         Returns:
             Tuple of (PDF bytes, InvoiceData)
@@ -781,7 +799,9 @@ class InvoiceService:
             customer_id=customer_id,
             repair_ids=repair_ids,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
         )
         
         pdf_bytes = self.generate_pdf(invoice_data, include_photos=include_photos)

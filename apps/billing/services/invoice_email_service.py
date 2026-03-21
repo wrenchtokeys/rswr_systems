@@ -260,7 +260,9 @@ class InvoiceEmailService:
         days: int = 30,
         include_photos: bool = True,
         cc_emails: Optional[List[str]] = None,
-        subject_prefix: str = "[RS Systems]"
+        subject_prefix: str = "[RS Systems]",
+        invoice_number: Optional[str] = None,
+        invoice_date=None,
     ) -> Tuple[bool, str]:
         """
         Send an invoice email with PDF and photo attachments.
@@ -273,6 +275,11 @@ class InvoiceEmailService:
             include_photos: Whether to attach repair photos
             cc_emails: Optional CC recipients
             subject_prefix: Email subject prefix
+            invoice_number: Stored invoice number to embed in PDF (CODE-120).
+                Pass Invoice.invoice_number when re-sending for an existing invoice
+                so the PDF content matches the record. When None a new number is
+                generated (used during initial invoice creation).
+            invoice_date: Stored invoice date to embed in PDF (CODE-120).
             
         Returns:
             Tuple of (success: bool, message: str)
@@ -283,7 +290,9 @@ class InvoiceEmailService:
             pdf_bytes, invoice_data = self.invoice_service.generate_invoice(
                 customer_id=customer_id,
                 repair_ids=repair_ids,
-                start_date=start_date
+                start_date=start_date,
+                invoice_number=invoice_number,
+                invoice_date=invoice_date,
             )
             
             if not invoice_data.line_items:
