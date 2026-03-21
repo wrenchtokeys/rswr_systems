@@ -287,6 +287,7 @@
                 {% if units %}
                 <div class="divide-y divide-gray-100">
                     {% for unit in units %}
+                    {% if unit %}
                     <a href="{% url 'unit_details' customer.id unit %}" class="block px-6 py-4 hover:bg-gray-50 transition-colors">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-3">
@@ -300,6 +301,7 @@
                             <i class="fas fa-chevron-right text-gray-400 text-sm"></i>
                         </div>
                     </a>
+                    {% endif %}
                     {% endfor %}
                 </div>
                 {% else %}
