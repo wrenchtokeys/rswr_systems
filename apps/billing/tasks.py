@@ -459,7 +459,24 @@ def _send_batch_invoice_email(invoice, config):
     _company_email = config.company_email or (invoice.tenant.business_email if invoice.tenant else '')
 
     subject = f"Invoice {invoice.invoice_number} from {_company_name}"
-    body = f"""Dear {customer.name},
+
+    # CODE-119: Apply shop-defined invoice email template if one is configured.
+    body = ''
+    if config.invoice_email_template:
+        try:
+            body = config.invoice_email_template.format(
+                customer_name=customer.name,
+                invoice_number=invoice.invoice_number,
+                total=f'${invoice.total:,.2f}',
+                invoice_date=invoice.invoice_date.strftime('%B %d, %Y') if invoice.invoice_date else 'N/A',
+                company_name=_company_name,
+            )
+        except (KeyError, IndexError, ValueError):
+            # Unknown placeholder in template — fall back to default body.
+            body = ''
+
+    if not body:
+        body = f"""Dear {customer.name},
 
 Please find attached your invoice for recent services.
 

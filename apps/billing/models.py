@@ -122,7 +122,7 @@ class BillingConfig(models.Model):
         blank=True,
         default='',
         help_text='Default email body when sending an invoice. '
-                  'Use {customer_name}, {invoice_number}, {total}, {due_date}, {company_name} as placeholders. '
+                  'Use {customer_name}, {invoice_number}, {total}, {invoice_date}, {company_name} as placeholders. '
                   'Leave blank to use the system default.',
     )
     reminder_email_template = models.TextField(
