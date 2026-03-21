@@ -223,9 +223,9 @@ class InvoiceEmailService:
             "",
         ])
         
-        # Portal link — always include so customer can view/pay invoice online
+        # Portal link — always include so customer can view invoice online
         lines.extend([
-            "📄 View & Pay Invoice Online:",
+            "📄 View Invoice Online:",
             "https://rssystems.io/app/invoices/",
             "",
         ])
