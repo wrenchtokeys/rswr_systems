@@ -86,14 +86,17 @@ def _get_owner_tenant(request):
 def _send_verification_email(request, user):
     """
     Send email verification link to a user after signup.
-    
+
+    Used for shop-join (customer portal) signups where the user IS immediately
+    logged in, and email verification is for notification preferences only.
+
     Uses Django's token generator for secure verification links.
     Fails silently to never block the signup flow.
     """
     try:
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        
+
         # Check if user is a CustomerUser or shop owner
         try:
             from apps.customer_portal.models import CustomerUser
@@ -107,7 +110,7 @@ def _send_verification_email(request, user):
             verification_url = request.build_absolute_uri(
                 reverse('owner_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
-        
+
         send_mail(
             subject='Verify your email address - RS Systems',
             message=f'''Welcome to RS Systems!
@@ -132,16 +135,112 @@ If you didn't create an account, you can safely ignore this email.
         logger.warning(f"Failed to send verification email to {user.email}: {e}")
 
 
+def _send_confirmation_email(request, user, tenant):
+    """
+    Send email confirmation link to a new shop owner whose account is inactive.
+
+    Unlike _send_verification_email, this email is required — the user CANNOT
+    log in until they click the link. Uses Django's built-in token generator
+    (same one as password reset) for secure one-time tokens.
+
+    Fails silently so a transient email outage never breaks signup entirely —
+    the admin can manually activate accounts if needed.
+    """
+    try:
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        confirm_url = request.build_absolute_uri(
+            reverse('owner_confirm_email', kwargs={'uidb64': uid, 'token': token})
+        )
+
+        send_mail(
+            subject='Confirm your email address — RS Systems',
+            message=f'''Hi {user.first_name or user.email},
+
+Thanks for signing up for RS Systems!
+
+To activate your account and start your 30-day free trial, please confirm your
+email address by clicking the link below:
+
+{confirm_url}
+
+This link expires in 24 hours. If you didn't create an account, you can safely
+ignore this email.
+
+— The RS Systems Team
+''',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=True,
+        )
+        logger.info(f"Confirmation email sent to {user.email} (account inactive, tenant={tenant.slug})")
+    except Exception as e:
+        logger.warning(f"Failed to send confirmation email to {user.email}: {e}")
+
+
 # ------------------------------------------------------------------
 # 1. Signup
 # ------------------------------------------------------------------
 
+def _verify_turnstile(request) -> bool:
+    """
+    Verify Cloudflare Turnstile CAPTCHA token server-side.
+
+    Returns True if verification passes OR if Turnstile is not configured
+    (TURNSTILE_SECRET_KEY not set — so dev/test works without keys).
+    Returns False only when keys are configured but verification fails.
+    """
+    import os
+    import urllib.request
+    import urllib.parse
+    import json
+
+    secret_key = os.environ.get('TURNSTILE_SECRET_KEY', '')
+    if not secret_key:
+        # Not configured — skip validation (dev/CI mode)
+        return True
+
+    token = request.POST.get('cf-turnstile-response', '')
+    if not token:
+        return False
+
+    try:
+        data = urllib.parse.urlencode({
+            'secret': secret_key,
+            'response': token,
+            'remoteip': request.META.get('REMOTE_ADDR', ''),
+        }).encode()
+        req = urllib.request.Request(
+            'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+            data=data,
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read())
+        return result.get('success', False)
+    except Exception as e:
+        logger.warning(f"Turnstile verification error: {e}")
+        # Fail open on network errors to avoid blocking legitimate signups
+        return True
+
+
 def signup_view(request):
-    """Public signup page — creates user, tenant, membership, logs in."""
+    """
+    Public signup page — creates user, tenant, membership.
+
+    The user account is created with is_active=False. A confirmation email
+    is sent. The user is NOT logged in until they click the link.
+    """
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
 
     if request.method == 'POST':
+        # Turnstile CAPTCHA check (skipped if env var not set)
+        if not _verify_turnstile(request):
+            messages.error(request, 'CAPTCHA verification failed. Please try again.')
+            form = SignupForm(request.POST)
+            return render(request, 'saas/signup.html', {'form': form})
+
         form = SignupForm(request.POST)
         if form.is_valid():
             try:
@@ -158,23 +257,18 @@ def signup_view(request):
                 user = result['user']
                 tenant = result['tenant']
 
-                # Log the user in
-                auth_user = authenticate(
-                    request, username=user.username, password=cd['password']
-                )
-                if auth_user:
-                    login(request, auth_user)
-                    request.session['tenant_id'] = tenant.id
+                # Set account inactive until email is confirmed
+                user.is_active = False
+                user.save(update_fields=['is_active'])
 
-                # Send verification email (fails silently)
-                _send_verification_email(request, user)
+                # Send confirmation email
+                _send_confirmation_email(request, user, tenant)
 
-                messages.success(
-                    request,
-                    f'Welcome to RS Systems, {cd["first_name"]}! '
-                    f'Your 30-day free trial has started. Check your email to verify your address.',
-                )
-                return redirect('onboarding')
+                # Don't log in yet — redirect to "check your email" page
+                return render(request, 'saas/email_confirmation_sent.html', {
+                    'email': cd['email'],
+                    'first_name': cd['first_name'],
+                })
 
             except SignupError as e:
                 messages.error(request, str(e))
@@ -3298,13 +3392,59 @@ def owner_setup_save_viscosity(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+def owner_confirm_email(request, uidb64, token):
+    """
+    GET /confirm-email/<uidb64>/<token>/
+
+    Activate a shop owner account that was created with is_active=False.
+
+    This is the link from the confirmation email sent at signup.  On success:
+      - Sets user.is_active = True
+      - Logs the user in
+      - Redirects to onboarding
+
+    On failure (bad/expired token): shows an error and a link to resend.
+    """
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        # Activate the account
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=['is_active'])
+
+        # Log the user in (bypass password check — token is the credential here)
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+        # Find their tenant to set the session
+        from apps.tenants.models import TenantMembership
+        membership = TenantMembership.objects.filter(
+            user=user, role='owner'
+        ).select_related('tenant').first()
+        if membership:
+            request.session['tenant_id'] = membership.tenant.id
+
+        messages.success(request, "Email confirmed! Welcome to RS Systems. Let's get your shop set up.")
+        return redirect('onboarding')
+    else:
+        return render(request, 'saas/email_confirmation_invalid.html', {
+            'uidb64': uidb64,
+        })
+
+
 def owner_confirm_email_verification(request, uidb64, token):
     """
     GET /owner/verify-email/<uidb64>/<token>/
 
-    Process email verification token for a shop owner.  No login required —
-    the link is sent immediately after signup, before the session is fully
-    established on all devices.  The token itself authenticates the action.
+    Process email verification token for a shop owner who is already active.
+    This endpoint is used when the owner clicks the verification link from
+    the old-style _send_verification_email() helper (e.g. shop_join flow).
 
     Unlike customer/technician verification there is no email_verified flag
     to persist for owners (email verification doesn't gate any owner feature).
@@ -3327,6 +3467,39 @@ def owner_confirm_email_verification(request, uidb64, token):
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
     return redirect('signup')
+
+
+def resend_confirmation_email(request, uidb64):
+    """
+    GET /confirm-email/<uidb64>/resend/
+
+    Resend the account confirmation email for an inactive account.
+    The user must not yet be active (prevents abuse by active users).
+    """
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is None or user.is_active:
+        messages.error(request, 'Invalid request or account already active.')
+        return redirect('signup')
+
+    # Find tenant for the email helper
+    from apps.tenants.models import TenantMembership
+    membership = TenantMembership.objects.filter(user=user).select_related('tenant').first()
+    tenant = membership.tenant if membership else None
+
+    _send_confirmation_email(request, user, tenant)
+
+    return render(request, 'saas/email_confirmation_sent.html', {
+        'email': user.email,
+        'first_name': user.first_name,
+        'resent': True,
+    })
 
 
 @owner_or_manager_required

@@ -109,7 +109,7 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
     date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user', 'tenant']
     list_per_page = 25
-    actions = ['export_csv']
+    actions = ['export_csv', 'bulk_delete_repairs']
 
     def get_status_badge(self, obj):
         status_colors = {
@@ -175,6 +175,34 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
                 repair.service_date,
             ])
         return response
+
+    @admin.action(description='🗑️ Bulk delete selected repairs (hard delete)')
+    def bulk_delete_repairs(self, request, queryset):
+        """
+        Hard-delete selected repairs.
+
+        This bypasses Django's default soft-delete manager because we're in the
+        admin and superusers sometimes need to permanently remove test or bad data.
+        Invoiced repairs (linked to InvoiceLineItems on active invoices) are skipped
+        to avoid orphaning billing records.
+        """
+        from apps.billing.models import InvoiceLineItem
+
+        invoiced_ids = set(
+            InvoiceLineItem.objects
+            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'])
+            .values_list('repair_id', flat=True)
+        )
+        safe_to_delete = queryset.exclude(id__in=invoiced_ids)
+        deleted_count = safe_to_delete.count()
+        skipped_count = len(invoiced_ids)
+
+        safe_to_delete.delete()
+
+        msg = f'✅ Deleted {deleted_count} repair(s).'
+        if skipped_count:
+            msg += f' ⚠️ {skipped_count} repair(s) skipped — linked to active invoices.'
+        self.message_user(request, msg)
 
 
 @admin.register(Replacement)

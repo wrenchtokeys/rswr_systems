@@ -60,6 +60,7 @@ class TenantAdmin(admin.ModelAdmin):
         'extend_trial_30_days',
         'activate_subscription',
         'deactivate_subscription',
+        'bulk_delete_tenants',
     ]
     fieldsets = (
         (None, {
@@ -158,6 +159,41 @@ class TenantAdmin(admin.ModelAdmin):
             tenant.save(update_fields=['subscription_status', 'grace_period_end'])
             updated += 1
         self.message_user(request, f'{updated} tenant(s) deactivated with 30-day grace period.')
+
+    @admin.action(description='🗑️ Bulk delete selected tenants (irreversible — test shops only)')
+    def bulk_delete_tenants(self, request, queryset):
+        """
+        Hard-delete selected tenants and all related data (CASCADE).
+
+        This is a superuser-only safety valve for removing test shops.
+        Real production shops should be deactivated, not deleted.
+        Only tenants with no active Stripe subscription are eligible.
+        """
+        from django.contrib import messages as _msgs
+
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                '❌ Only superusers can bulk-delete tenants.',
+                level=_msgs.ERROR,
+            )
+            return
+
+        # Skip tenants with active Stripe subscriptions to prevent billing orphans
+        skipped_stripe = queryset.exclude(stripe_subscription_id='').exclude(
+            stripe_subscription_id__isnull=True
+        ).count()
+        safe = queryset.filter(
+            stripe_subscription_id__in=['', None]
+        )
+
+        deleted = safe.count()
+        safe.delete()
+
+        msg = f'🗑️ {deleted} tenant(s) deleted.'
+        if skipped_stripe:
+            msg += f' ⚠️ {skipped_stripe} tenant(s) skipped — active Stripe subscription. Cancel in Stripe first.'
+        self.message_user(request, msg)
 
 
 @admin.register(TenantMembership)

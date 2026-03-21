@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 from django.contrib.admin.models import LogEntry, ADDITION, CHANGE, DELETION
@@ -40,7 +40,7 @@ class UserTenantFilter(admin.SimpleListFilter):
 class UserAdmin(BaseUserAdmin):
     list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'get_role', 'get_tenant', 'is_active', 'date_joined']
     list_filter = ['is_staff', 'is_active', 'date_joined', 'groups', UserTenantFilter]
-    actions = ['make_technician', 'make_customer', 'make_dual_role', 'deactivate_users', 'activate_users']
+    actions = ['make_technician', 'make_customer', 'make_dual_role', 'deactivate_users', 'activate_users', 'bulk_delete_users']
 
     def get_queryset(self, request):
         """
@@ -169,6 +169,48 @@ class UserAdmin(BaseUserAdmin):
         count = queryset.update(is_active=True)
         self.message_user(request, f'{count} users were successfully activated.')
     activate_users.short_description = 'Activate selected users'
+
+    @admin.action(description='🗑️ Bulk delete selected users (superuser only)')
+    def bulk_delete_users(self, request, queryset):
+        """
+        Hard-delete selected users.
+
+        Superuser-only. Protects against accidental deletion by skipping:
+        - The requesting user themselves
+        - Superusers and staff users
+        - Tenant owners (deleting an owner would orphan the tenant)
+        """
+        from apps.tenants.models import Tenant
+
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                '❌ Only superusers can bulk-delete users.',
+                level=messages.ERROR,
+            )
+            return
+
+        owner_ids = set(Tenant.objects.values_list('owner_id', flat=True))
+
+        # Build safe set: exclude self, staff/superusers, and tenant owners
+        safe = queryset.exclude(
+            id=request.user.id
+        ).exclude(
+            is_staff=True
+        ).exclude(
+            is_superuser=True
+        ).exclude(
+            id__in=owner_ids
+        )
+
+        skipped = queryset.count() - safe.count()
+        deleted = safe.count()
+        safe.delete()
+
+        msg = f'🗑️ {deleted} user(s) deleted.'
+        if skipped:
+            msg += f' ⚠️ {skipped} user(s) skipped (self, staff, superusers, or tenant owners).'
+        self.message_user(request, msg)
     
     def get_urls(self):
         urls = super().get_urls()

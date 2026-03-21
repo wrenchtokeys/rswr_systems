@@ -3,6 +3,8 @@ Common context processors for templates.
 
 Provides portal access flags and per-area permission flags to all templates.
 """
+import os
+
 from common.auth import can_access, get_user_role
 
 
@@ -59,4 +61,7 @@ def portal_access(request):
         # Subscription grace period info
         'subscription_grace_period': in_grace_period,
         'grace_days_remaining': grace_days,
+
+        # Cloudflare Turnstile CAPTCHA site key (empty string = disabled in dev)
+        'turnstile_site_key': os.environ.get('TURNSTILE_SITE_KEY', ''),
     }
