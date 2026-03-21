@@ -108,7 +108,19 @@ def _parse_reminder_days(days_str):
 def _send_overdue_reminder(invoice, config, days_overdue):
     """Send overdue reminder email for an invoice."""
     customer = invoice.customer
-    if not customer.email:
+
+    # Prefer billing_email from CustomerRepairPreference when set — fleet customers
+    # often have a dedicated AP email that is different from their general contact
+    # email.  All manual invoice-send paths already do this; the automated reminder
+    # task must be consistent.  (CODE-127)
+    recipient_email = None
+    try:
+        prefs = customer.repair_preferences
+        recipient_email = prefs.billing_email or customer.email
+    except Exception:
+        recipient_email = customer.email
+
+    if not recipient_email:
         logger.warning(f"Cannot send reminder for invoice {invoice.invoice_number}: no customer email")
         return False
     
@@ -163,7 +175,7 @@ Thank you,
             subject=subject,
             message=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[customer.email],
+            recipient_list=[recipient_email],
             fail_silently=False,
         )
         
@@ -171,7 +183,7 @@ Thank you,
         invoice.internal_notes = (invoice.internal_notes or '') + f"\n[{timezone.now().strftime('%Y-%m-%d')}] Reminder sent ({days_overdue} days overdue)"
         invoice.save(update_fields=['internal_notes'])
         
-        logger.info(f"Sent overdue reminder for invoice {invoice.invoice_number} to {customer.email}")
+        logger.info(f"Sent overdue reminder for invoice {invoice.invoice_number} to {recipient_email}")
         return True
         
     except Exception as e:
