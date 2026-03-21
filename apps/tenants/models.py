@@ -185,6 +185,12 @@ class Tenant(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    # Plan intent (chosen at signup, used to pre-select on upgrade)
+    intended_plan = models.CharField(
+        max_length=20, blank=True,
+        help_text='Plan slug chosen during signup, used to pre-select on upgrade'
+    )
+
     # Stripe billing
     stripe_customer_id = models.CharField(
         max_length=50, blank=True,
