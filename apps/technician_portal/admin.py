@@ -310,14 +310,22 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
         """
         For each selected customer, find completed repairs not yet on any invoice
         and create a single DRAFT invoice containing all of them.
+
+        Delegates to InvoiceTrackingService.create_invoice_from_repairs() so
+        that discounts (reward redemptions) and tax (TaxService) are applied
+        correctly — matching the normal billing flow.  The previous inline
+        implementation hardcoded tax_rate=0, tax_amount=0 and skipped
+        get_discounted_cost(), so admin-generated invoices always had $0 tax
+        and wrong totals for customers with reward discounts. (CODE-121)
         """
-        from django.utils import timezone
-        from apps.billing.models import Invoice, InvoiceLineItem, BillingConfig
+        from apps.billing.models import InvoiceLineItem
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
         from apps.technician_portal.models import Repair
 
         invoices_created = 0
         repairs_billed = 0
         skipped = 0
+        errors = 0
 
         for customer in queryset.select_related('tenant'):
             # Find completed repairs not yet on any active (non-cancelled) invoice.
@@ -331,74 +339,54 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
                 invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
             ).values_list('repair_id', flat=True)
 
-            unbilled_repairs = (
+            unbilled_repairs = list(
                 Repair.objects
                 .filter(customer=customer, queue_status='COMPLETED', skip_invoicing=False)
                 .exclude(id__in=invoiced_repair_ids)
                 .order_by('service_date')
             )
 
-            if not unbilled_repairs.exists():
+            if not unbilled_repairs:
                 skipped += 1
                 continue
 
-            # Get per-tenant billing config for prefix and payment terms
             try:
-                config = BillingConfig.get_for_tenant(customer.tenant)
-            except Exception:
-                config = None
-
-            # Generate a unique invoice number
-            prefix = (config.invoice_number_prefix if config else None) or 'INV'
-            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-            invoice_number = f"{prefix}-{customer.id}-{timestamp}"
-
-            total = sum(r.cost for r in unbilled_repairs)
-
-            invoice = Invoice.objects.create(
-                tenant=customer.tenant,
-                customer=customer,
-                invoice_number=invoice_number,
-                status='DRAFT',
-                invoice_date=timezone.now().date(),
-                subtotal=total,
-                discount=0,
-                tax_rate=0,
-                tax_amount=0,
-                total=total,
-                amount_paid=0,
-                payment_terms=(config.default_payment_terms if config else 'NET30'),
-            )
-
-            for repair in unbilled_repairs:
-                InvoiceLineItem.objects.create(
-                    invoice=invoice,
-                    repair=repair,
-                    description=f"Windshield repair — Unit #{repair.unit_number}" if repair.unit_number else "Windshield repair",
-                    quantity=1,
-                    unit_price=repair.cost,
-                    discount=0,
-                    amount=repair.cost,
-                    repair_date=repair.service_date,
-                    unit_number=repair.unit_number or '',
+                # InvoiceTrackingService handles:
+                #   - invoice number generation (race-condition-safe loop)
+                #   - payment terms from BillingConfig
+                #   - get_discounted_cost() for reward-based line-item discounts
+                #   - TaxService for correct tax_rate / tax_amount / component fields
+                #   - atomic creation of invoice + line items
+                svc = InvoiceTrackingService(tenant=customer.tenant)
+                invoice = svc.create_invoice_from_repairs(
+                    customer=customer,
+                    repairs=unbilled_repairs,
                 )
-                repairs_billed += 1
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(
+                    f"Admin generate_invoices: failed for customer {customer.id} "
+                    f"({customer.name}): {e}"
+                )
+                errors += 1
+                continue
 
+            repairs_billed += len(unbilled_repairs)
             invoices_created += 1
 
         if invoices_created:
-            self.message_user(
-                request,
+            msg = (
                 f"✅ Created {invoices_created} draft invoice(s) covering {repairs_billed} repair(s). "
-                f"{skipped} customer(s) had no unbilled completed repairs.",
-                level='success',
+                f"{skipped} customer(s) had no unbilled completed repairs."
             )
+            if errors:
+                msg += f" ⚠️ {errors} customer(s) failed — check server logs."
+            self.message_user(request, msg, level='success')
         else:
-            self.message_user(
-                request,
-                f"No new invoices created — {skipped} customer(s) had no unbilled completed repairs.",
-                level='warning',
-            )
+            msg = f"No new invoices created — {skipped} customer(s) had no unbilled completed repairs."
+            if errors:
+                msg += f" ⚠️ {errors} customer(s) failed — check server logs."
+            self.message_user(request, msg, level='warning')
 
 
 @admin.register(UnitRepairCount)
