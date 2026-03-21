@@ -74,12 +74,61 @@ def _make_invoice(tenant, customer, total=Decimal("200.00"), status="SENT"):
     )
 
 
+_NOTIFICATION_TEMPLATE_NAMES = [
+    'repair_pending_approval', 'repair_approved', 'repair_denied',
+    'repair_assigned', 'repair_reassigned_away', 'repair_in_progress',
+    'repair_completed', 'batch_approved', 'repair_request_received',
+    'repair_request_submitted',
+]
+
+
+def _reseed_notification_templates():
+    """
+    Re-seed migration-seeded NotificationTemplate rows.
+
+    TransactionTestCase flushes all DB rows between tests (unlike TestCase
+    which wraps each test in a rolled-back transaction). This helper must be
+    called in _post_teardown() so that migration-seeded data — specifically
+    NotificationTemplate rows — are restored before the next TestCase run.
+    Without this, signals fire and log ERROR 'Template not found'.  (CODE-127)
+    """
+    import importlib.util
+    import os
+    import django
+    from core.models.notification_template import NotificationTemplate
+
+    # Load TEMPLATES constant from the data migration without importing it as
+    # a regular module (migrations directory has no __init__ and numeric names).
+    migration_path = os.path.join(
+        os.path.dirname(__file__),
+        '..', '..', 'core', 'migrations',
+        '0018_seed_repair_notification_templates.py',
+    )
+    spec = importlib.util.spec_from_file_location('migration_0018', migration_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    for data in mod.TEMPLATES:
+        NotificationTemplate.objects.get_or_create(name=data['name'], defaults=data)
+
+
 class PaymentRaceConditionTestCase(TransactionTestCase):
     """
     TransactionTestCase is required so that database transactions are actually
     committed — regular TestCase wraps everything in one outer transaction that
     prevents select_for_update from working across threads.
     """
+
+    def _post_teardown(self):
+        # Re-seed notification templates destroyed by the TransactionTestCase
+        # flush.  Must run before super()._post_teardown() does its final
+        # cleanup so that subsequent TestCase classes see the templates.
+        # (CODE-127)
+        try:
+            _reseed_notification_templates()
+        except Exception:
+            pass  # Don't block teardown on re-seed failures
+        super()._post_teardown()
 
     def setUp(self):
         self.tenant, self.owner = _make_tenant()

@@ -183,6 +183,28 @@ class RecordPaymentValidationTests(TestCase):
 # Concurrency test (TransactionTestCase — no test-transaction wrapping)
 # ---------------------------------------------------------------------------
 
+def _reseed_notification_templates():
+    """
+    Re-seed migration-seeded NotificationTemplate rows destroyed by the
+    TransactionTestCase flush.  (CODE-127)
+    """
+    import importlib.util
+    import os
+    from core.models.notification_template import NotificationTemplate
+
+    migration_path = os.path.join(
+        os.path.dirname(__file__),
+        '..', '..', 'core', 'migrations',
+        '0018_seed_repair_notification_templates.py',
+    )
+    spec = importlib.util.spec_from_file_location('migration_0018', migration_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    for data in mod.TEMPLATES:
+        NotificationTemplate.objects.get_or_create(name=data['name'], defaults=data)
+
+
 class RecordPaymentConcurrentRaceTest(TransactionTestCase):
     """
     Threading test: two concurrent payment POSTs on the same invoice must
@@ -194,12 +216,16 @@ class RecordPaymentConcurrentRaceTest(TransactionTestCase):
     After the fix: the second thread acquires the row lock AFTER the first
     commits, re-reads amount_due = $100 (only $100 left), $400 > $100 → rejected.
     """
-    # Restore migration-seeded data (e.g. NotificationTemplate rows) after each
-    # test.  TransactionTestCase flushes the DB between tests, destroying rows
-    # created by data migrations.  Without this flag those templates are gone
-    # for every subsequent TestCase run, causing spurious "Template not found"
-    # ERRORs in notification signals.  (CODE-127)
-    serialized_rollback = True
+
+    def _post_teardown(self):
+        # Re-seed notification templates destroyed by the TransactionTestCase
+        # flush so subsequent TestCase runs don't see spurious 'Template not
+        # found' ERRORs in notification signals.  (CODE-127)
+        try:
+            _reseed_notification_templates()
+        except Exception:
+            pass
+        super()._post_teardown()
 
     def test_concurrent_payments_cannot_overpay(self):
         tenant, owner = _make_tenant_with_owner()
