@@ -81,6 +81,8 @@ class SignupForm(forms.Form):
             (p.slug, p.name)
             for p in SubscriptionPlan.objects.filter(is_active=True).exclude(slug='trial').order_by('display_order')
         ]
+        plan_choices.append(('not_sure', "Not sure yet"))
+
         self.fields['plan'].choices = plan_choices
 
     def clean_email(self):

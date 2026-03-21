@@ -261,7 +261,7 @@ def signup_view(request):
                 tenant = result['tenant']
 
                 # Save intended plan if selected
-                if cd.get('plan'):
+                if cd.get('plan') and cd['plan'] != 'not_sure':
                     tenant.intended_plan = cd['plan']
                     tenant.save(update_fields=['intended_plan'])
 
