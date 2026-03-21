@@ -182,11 +182,19 @@ SMS_ENABLED = os.environ.get('SMS_ENABLED', 'False').lower() == 'true'
 # STRIPE CONFIGURATION
 # =========================================
 
-STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+# STRIPE_MODE: set to 'test' or 'live' to switch between key sets
+STRIPE_MODE = os.environ.get('STRIPE_MODE', 'live')
+
+if STRIPE_MODE == 'test':
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('TEST_STRIPE_PUBLISHABLE_KEY', '')
+    STRIPE_SECRET_KEY = os.environ.get('TEST_STRIPE_SECRET_KEY', '')
+else:
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+    STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')  # Billing/invoice webhooks
 STRIPE_SUBSCRIPTION_WEBHOOK_SECRET = os.environ.get('STRIPE_SUBSCRIPTION_WEBHOOK_SECRET', '')  # SaaS subscription webhooks
-STRIPE_TEST_MODE = STRIPE_SECRET_KEY.startswith('sk_test_') if STRIPE_SECRET_KEY else True
+STRIPE_TEST_MODE = STRIPE_MODE == 'test'
 
 # =========================================
 # INVOICE DEFAULTS
