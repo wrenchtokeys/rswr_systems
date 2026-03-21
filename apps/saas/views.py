@@ -1634,7 +1634,24 @@ def shop_join_view(request, slug):
             request.session['tenant_id'] = tenant.id
             messages.info(request, f"You already have access to {tenant.name}.")
             return redirect('customer_dashboard')
-        # Authenticated user, no customer record yet — create one automatically
+
+        # Check if user already has a CustomerUser at a DIFFERENT shop.
+        # CustomerUser.user is a OneToOneField — only one CustomerUser record
+        # per Django User globally. Creating a second one would crash with
+        # IntegrityError. (CODE-113)
+        any_cu = CustomerUserModel.objects.filter(user=request.user).select_related('customer__tenant').first()
+        if any_cu:
+            other_shop = any_cu.customer.tenant.name if any_cu.customer and any_cu.customer.tenant else 'another shop'
+            messages.warning(
+                request,
+                f"Your account is already linked to {other_shop}. "
+                f"Customer portal accounts are tied to a single shop. "
+                f"To access {tenant.name}'s portal, please ask the shop admin "
+                f"to invite you using a different email address."
+            )
+            return redirect('customer_dashboard')
+
+        # Authenticated user, no customer record at any shop — create one automatically
         with transaction.atomic():
             customer_name = (
                 request.user.get_full_name() or request.user.email
