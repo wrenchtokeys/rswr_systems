@@ -45,13 +45,14 @@ class ReminderService:
             return qs.filter(tenant=self.tenant)
         return qs.none()
     
-    def send_reminder(self, invoice, reminder_type='overdue'):
+    def send_reminder(self, invoice, reminder_type='overdue', custom_body=None):
         """
         Send a payment reminder for an invoice with PDF attached.
         
         Args:
             invoice: Invoice model instance
             reminder_type: 'overdue', 'due_soon', 'payment_received'
+            custom_body: Optional custom message body (overrides default template)
             
         Returns:
             dict: Send result
@@ -59,8 +60,10 @@ class ReminderService:
         if not invoice.customer.email:
             return {'success': False, 'error': 'Customer has no email address'}
         
-        # Build email content
+        # Build email content — use custom body if provided (CODE-113)
         subject, body = self._build_reminder_email(invoice, reminder_type)
+        if custom_body:
+            body = custom_body
         
         # Generate PDF attachment
         pdf_bytes = None

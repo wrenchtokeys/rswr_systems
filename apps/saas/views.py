@@ -2619,6 +2619,9 @@ def owner_send_reminder(request, invoice_id):
         messages.error(request, 'No email address found for this customer.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
+    # CODE-113: Accept optional custom message from editable textarea
+    custom_message = request.POST.get('custom_message', '').strip()
+
     try:
         from apps.billing.services.reminder_service import ReminderService
         reminder_service = ReminderService(tenant=tenant)
@@ -2629,7 +2632,10 @@ def owner_send_reminder(request, invoice_id):
         else:
             reminder_type = 'due_soon'
         
-        result = reminder_service.send_reminder(invoice, reminder_type)
+        result = reminder_service.send_reminder(
+            invoice, reminder_type,
+            custom_body=custom_message if custom_message else None,
+        )
         
         if result.get('success'):
             messages.success(request, f'Payment reminder sent to {invoice.customer.email}.')

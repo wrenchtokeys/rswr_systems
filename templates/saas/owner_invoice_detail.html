@@ -437,29 +437,32 @@
                                 </span>
                             </div>
                         </div>
-                        <div class="px-4 py-3 text-sm text-gray-600">
-                            <p class="mb-2">Dear {{ invoice.customer.name }},</p>
-                            {% if invoice.status == 'OVERDUE' %}
-                            <p class="text-red-700">This is a reminder that invoice {{ invoice.invoice_number }} was due on {{ invoice.due_date|date:"F d, Y" }} and remains unpaid.</p>
-                            {% else %}
-                            <p>This is a friendly reminder that invoice {{ invoice.invoice_number }} is due on {{ invoice.due_date|date:"F d, Y" }}.</p>
-                            {% endif %}
-                            <p class="mt-2 text-gray-400 text-xs">+ Invoice details, payment link, and PDF attachment</p>
-                        </div>
                     </div>
                 </div>
 
-                <!-- What's Included -->
-                <div class="flex items-start gap-3 text-sm text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <i class="fas fa-paperclip text-blue-500 mt-0.5"></i>
-                    <div>
-                        <span class="font-medium text-blue-900">Email includes:</span>
-                        <ul class="mt-1 space-y-0.5 text-blue-800">
-                            <li>• PDF invoice attached</li>
-                            <li>• Payment link (if Stripe enabled)</li>
-                            <li>• Full invoice details</li>
-                        </ul>
-                    </div>
+                <!-- Editable Message -->
+                <div>
+                    <label for="reminder-message" class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <textarea id="reminder-message" name="custom_message" rows="10"
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-mono">Dear {{ invoice.customer.name }},
+{% if invoice.status == 'OVERDUE' %}
+This is a reminder that invoice {{ invoice.invoice_number }} was due on {{ invoice.due_date|date:"F d, Y" }} and remains unpaid.{% else %}
+This is a friendly reminder that invoice {{ invoice.invoice_number }} is due on {{ invoice.due_date|date:"F d, Y" }}.{% endif %}
+
+Invoice Details:
+- Invoice Number: {{ invoice.invoice_number }}
+- Due Date: {{ invoice.due_date|date:"F d, Y" }}
+- Total Amount: ${{ invoice.total|floatformat:2 }}
+- Amount Paid: ${{ invoice.amount_paid|floatformat:2 }}
+- Amount Due: ${{ invoice.amount_due|floatformat:2 }}
+
+Please contact us to arrange payment or if you have any questions.
+
+Thank you for your business.
+
+Best regards,
+{{ tenant.name }}</textarea>
+                    <p class="mt-1 text-xs text-gray-400">Edit the message or leave the default. PDF invoice and payment link are attached automatically.</p>
                 </div>
 
                 {% if not invoice.customer.email %}
@@ -478,8 +481,9 @@
                 <button onclick="closeReminderModal()" class="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                     Cancel
                 </button>
-                <form method="post" action="{% url 'owner_send_reminder' invoice_id=invoice.id %}" class="w-full sm:w-auto">
+                <form method="post" action="{% url 'owner_send_reminder' invoice_id=invoice.id %}" class="w-full sm:w-auto" onsubmit="document.getElementById('form-custom-message').value = document.getElementById('reminder-message').value;">
                     {% csrf_token %}
+                    <input type="hidden" name="custom_message" id="form-custom-message" value="">
                     <button type="submit" {% if not invoice.customer.email %}disabled{% endif %}
                         class="w-full px-5 py-2.5 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                         <i class="fas fa-paper-plane"></i>
