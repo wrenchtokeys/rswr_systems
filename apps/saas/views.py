@@ -754,7 +754,7 @@ def billing_view(request):
 
         try:
             if action == 'upgrade':
-                plan_slug = request.POST.get('plan')
+                plan_slug = request.POST.get('plan') or tenant.intended_plan
                 if plan_slug:
                     base_url = request.build_absolute_uri('/').rstrip('/')
                     result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
@@ -813,6 +813,7 @@ def billing_view(request):
         'current_plan': tenant.subscription_plan,
         'is_trial': tenant.plan == 'trial',
         'trial_days_remaining': tenant.trial_days_remaining,
+        'intended_plan': tenant.intended_plan if tenant.intended_plan and tenant.intended_plan != tenant.plan else '',
     }
     return render(request, 'saas/billing.html', context)
 

@@ -5,9 +5,14 @@ All notable changes to RS Systems are documented here.
 ## [Unreleased] — 2026-03-21
 
 ### Added
+- **"Not sure yet" plan option at signup** — users who don't know which plan they want can skip the decision and explore during trial
+- **Intended plan pre-selection on billing page** — if a user chose a plan at signup, it's highlighted with a "Recommended for you" badge and pulsing border on the billing/upgrade page
+- **Stripe Checkout plan default** — the Upgrade button falls back to the user's intended plan from signup, reducing friction at checkout
+- **Day 20 nudge email for undecided signups** — tenants who chose "Not sure yet" get a friendly email when 10 days remain on trial, linking to the pricing page
 - **Void invoice action** — owners can void invoices from both the bulk action bar (invoice list) and individual invoice detail page. Voiding sets status to CANCELLED. Paid and already-voided invoices are skipped.
 - **Delete voided invoices** — the delete action now accepts both DRAFT and CANCELLED (voided) invoices. Active invoices must be voided first before deletion.
 - New URL: `POST /owner/invoices/<id>/void/` for single-invoice void
+- Proposal: AI-powered plan recommendation based on shop usage data (`docs/proposals/ai-plan-recommendation.md`)
 
 ### Changed
 - Bulk action bar: "Delete Drafts" renamed to "Delete" with updated confirmation text explaining void-first workflow

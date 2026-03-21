@@ -4,6 +4,14 @@
 
 {% block content %}
 
+<style>
+@keyframes pulse-border {
+    0%, 100% { border-color: rgb(168 85 247); box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
+    50% { border-color: rgb(147 51 234); box-shadow: 0 0 0 4px rgba(168, 85, 247, 0); }
+}
+.animate-pulse-border { animation: pulse-border 2s ease-in-out infinite; }
+</style>
+
 <div class="mb-8">
     <h1 class="text-3xl font-bold text-gray-900">Billing & Plans</h1>
     <p class="text-gray-500 mt-1">Manage your subscription and payment method</p>
@@ -195,12 +203,18 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-{{ plans|length }} gap-4">
         {% for plan in plans %}
         <div class="bg-white rounded-xl border-2 p-6 shadow-sm relative
-            {% if plan.slug == tenant.plan %}border-blue-500{% elif plan.slug == 'pro' %}border-green-400{% else %}border-gray-200{% endif %}">
+            {% if plan.slug == tenant.plan %}border-blue-500{% elif intended_plan and plan.slug == intended_plan %}border-purple-500 animate-pulse-border{% elif plan.slug == 'pro' %}border-green-400{% else %}border-gray-200{% endif %}">
 
             {% if plan.slug == tenant.plan %}
             <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-blue-600 text-white">
                     Current Plan
+                </span>
+            </div>
+            {% elif intended_plan and plan.slug == intended_plan %}
+            <div class="absolute -top-3 left-1/2 transform -translate-x-1/2">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-purple-600 text-white">
+                    Recommended for you
                 </span>
             </div>
             {% elif plan.slug == 'pro' %}
