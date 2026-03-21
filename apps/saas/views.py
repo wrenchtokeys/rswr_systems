@@ -3355,12 +3355,36 @@ def owner_invoice_bulk_action(request):
     invoices = Invoice.objects.filter(id__in=invoice_ids, customer__tenant=tenant)
 
     if action == 'mark_paid':
+        # CODE-115: Create a Payment record for each invoice so payment history
+        # is complete and paid_at is correctly set via Payment.save() →
+        # _update_invoice_totals() → invoice.update_status().
+        # Previously this action wrote amount_paid/status directly with no
+        # Payment row and no paid_at stamp — payment history tab was empty and
+        # the paid_at field was always NULL for bulk-paid invoices.
         updated = 0
-        for inv in invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT']):
-            inv.amount_paid = inv.total
-            inv.status = 'PAID'
-            inv.save(update_fields=['amount_paid', 'status'])
-            updated += 1
+        from django.utils import timezone as _tz
+        payable = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT'])
+        for inv in payable.select_related('customer'):
+            remaining = inv.amount_due
+            if remaining <= 0:
+                continue
+            try:
+                with transaction.atomic():
+                    Payment.objects.create(
+                        invoice=inv,
+                        amount=remaining,
+                        payment_method='OTHER',
+                        notes='Bulk marked as paid by shop owner',
+                        recorded_by=request.user,
+                        payment_date=_tz.now().date(),
+                    )
+                    # Payment.save() → _update_invoice_totals() sets paid_at
+                    # and status='PAID' via invoice.update_status(). No manual
+                    # status/amount_paid overwrite needed.
+            except Exception as e:
+                logger.warning(f"Bulk mark_paid: could not create payment for invoice {inv.id}: {e}")
+            else:
+                updated += 1
         return JsonResponse({
             'success': True,
             'message': f'{updated} invoice(s) marked as paid.',
