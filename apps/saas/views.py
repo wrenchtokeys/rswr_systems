@@ -3366,15 +3366,26 @@ def owner_invoice_bulk_action(request):
             'message': f'{updated} invoice(s) marked as paid.',
         })
 
-    elif action == 'delete':
-        # Only allow deleting DRAFT invoices
-        drafts = invoices.filter(status='DRAFT')
-        deleted_count = drafts.count()
-        skipped = invoices.exclude(status='DRAFT').count()
-        drafts.delete()
-        msg = f'{deleted_count} draft invoice(s) deleted.'
+    elif action == 'void':
+        # Void invoices that aren't already PAID or CANCELLED
+        voidable = invoices.exclude(status__in=['PAID', 'CANCELLED'])
+        voided_count = voidable.count()
+        skipped = invoices.filter(status__in=['PAID', 'CANCELLED']).count()
+        voidable.update(status='CANCELLED')
+        msg = f'{voided_count} invoice(s) voided.'
         if skipped:
-            msg += f' {skipped} non-draft invoice(s) were skipped.'
+            msg += f' {skipped} paid/already-voided invoice(s) were skipped.'
+        return JsonResponse({'success': True, 'message': msg})
+
+    elif action == 'delete':
+        # Allow deleting DRAFT and CANCELLED (voided) invoices
+        deletable = invoices.filter(status__in=['DRAFT', 'CANCELLED'])
+        deleted_count = deletable.count()
+        skipped = invoices.exclude(status__in=['DRAFT', 'CANCELLED']).count()
+        deletable.delete()
+        msg = f'{deleted_count} invoice(s) deleted.'
+        if skipped:
+            msg += f' {skipped} active invoice(s) were skipped (void first, then delete).'
         return JsonResponse({'success': True, 'message': msg})
 
     else:
@@ -3414,3 +3425,23 @@ def owner_invoice_pdf(request, invoice_id):
         logger.error(f"PDF generation failed for invoice {invoice.invoice_number}: {e}")
         messages.error(request, f'Could not generate PDF: {e}')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_invoice_void(request, invoice_id):
+    """POST /owner/invoices/<id>/void/ — void a single invoice."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+
+    if invoice.status == 'PAID':
+        return JsonResponse({'success': False, 'error': 'Cannot void a paid invoice.'}, status=400)
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'success': False, 'error': 'Invoice is already voided.'}, status=400)
+
+    invoice.status = 'CANCELLED'
+    invoice.save(update_fields=['status'])
+    return JsonResponse({'success': True, 'message': f'Invoice {invoice.invoice_number} voided.'})

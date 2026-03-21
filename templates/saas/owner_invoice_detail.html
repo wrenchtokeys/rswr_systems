@@ -48,6 +48,11 @@
             <i class="fas fa-bell mr-2"></i>Send Reminder
         </button>
         {% endif %}
+        {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+        <button onclick="voidInvoice()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-lg hover:bg-red-100 transition-colors">
+            <i class="fas fa-ban mr-2"></i>Void Invoice
+        </button>
+        {% endif %}
         {% endif %}
     </div>
 </div>
@@ -576,5 +581,29 @@ document.addEventListener('keydown', function(e) {
         </div>
     </div>
 </div>
+{% endif %}
+
+{% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+<script>
+function voidInvoice() {
+    if (!confirm('Void invoice {{ invoice.invoice_number }}?\n\nThis will mark it as cancelled. You can delete it afterwards.')) return;
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+    fetch('{% url "owner_invoice_void" invoice_id=invoice.id %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to void invoice');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+</script>
 {% endif %}
 {% endblock %}

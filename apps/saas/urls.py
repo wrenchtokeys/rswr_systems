@@ -54,6 +54,7 @@ urlpatterns = [
     path('owner/invoices/<int:invoice_id>/send/', views.owner_send_invoice, name='owner_send_invoice'),
     path('owner/invoices/<int:invoice_id>/email/', views.owner_email_invoice, name='owner_email_invoice'),
     path('owner/invoices/<int:invoice_id>/reminder/', views.owner_send_reminder, name='owner_send_reminder'),
+    path('owner/invoices/<int:invoice_id>/void/', views.owner_invoice_void, name='owner_invoice_void'),
 
     # Aging report (Phase 6)
     path('owner/billing/aging/', views.owner_aging_report_json, name='owner_aging_report'),
