@@ -646,7 +646,55 @@ class Payment(models.Model):
         super().save(*args, **kwargs)
         # Update invoice payment total and status
         self._update_invoice_totals()
-    
+
+    def delete(self, *args, **kwargs):
+        # Capture invoice_id before deletion so we can reconcile after.
+        # Payment.invoice FK uses on_delete=PROTECT so the invoice row
+        # will still exist after this payment is removed.
+        invoice_id = self.invoice_id
+        super().delete(*args, **kwargs)
+        # Recompute invoice totals now that this payment is gone.
+        # Uses the same SELECT FOR UPDATE pattern as _update_invoice_totals to
+        # be safe under concurrent operations.
+        # (CODE-118: without this, deleting a payment left invoice.amount_paid
+        # stale — a PAID invoice would remain PAID even with $0 payments.)
+        with transaction.atomic():
+            try:
+                invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+            except Invoice.DoesNotExist:
+                return
+            total_paid = invoice.payments.aggregate(
+                total=models.Sum('amount')
+            )['total'] or Decimal('0.00')
+            invoice.amount_paid = total_paid
+            # Recompute status — must handle PAID demotion here since
+            # update_status() never demotes an already-PAID invoice back to
+            # SENT/PARTIAL (it was designed for forward-only transitions).
+            if invoice.status != 'CANCELLED':
+                if total_paid >= invoice.total:
+                    invoice.status = 'PAID'
+                    if not invoice.paid_at:
+                        invoice.paid_at = timezone.now()
+                elif total_paid > 0:
+                    invoice.status = 'PARTIAL'
+                    invoice.paid_at = None
+                else:
+                    # No money received — revert to SENT or OVERDUE.
+                    # Check due_date directly (not invoice.is_overdue which
+                    # short-circuits on PAID/CANCELLED status).
+                    invoice.paid_at = None
+                    is_past_due = (
+                        invoice.due_date is not None
+                        and timezone.now().date() > invoice.due_date
+                    )
+                    if is_past_due:
+                        invoice.status = 'OVERDUE'
+                    elif invoice.status in ('PAID', 'PARTIAL'):
+                        # Revert to SENT — no money received any more
+                        invoice.status = 'SENT'
+                    # DRAFT stays DRAFT, OVERDUE stays OVERDUE if already set
+            invoice.save()
+
     def _update_invoice_totals(self):
         """
         Update the invoice's amount_paid and status.
