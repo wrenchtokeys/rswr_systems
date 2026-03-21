@@ -2734,18 +2734,35 @@ def owner_aging_report_csv(request):
         status__in=['SENT', 'PARTIAL', 'OVERDUE'],
     ).select_related('customer').order_by('due_date')
 
+    from decimal import Decimal
+
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="aging_report_{today}.csv"'
+    response['Content-Disposition'] = f'attachment; filename="{tenant.name.replace(" ", "_")}_AR_Aging_{today}.csv"'
     writer = csv.writer(response)
-    writer.writerow(['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Amount Due', 'Days Overdue', 'Bucket'])
+
+    # Header with report info
+    writer.writerow([f'AR Aging Report — {tenant.name}'])
+    writer.writerow([f'Generated: {today.strftime("%B %d, %Y")}'])
+    writer.writerow([])
+
+    # Column headers
+    writer.writerow([
+        'Customer', 'Invoice #', 'Invoice Date', 'Due Date',
+        'Total', 'Paid', 'Amount Due', 'Status',
+        'Days Overdue', 'Aging Bucket', 'Customer Email', 'Customer Phone',
+    ])
 
     bucket_label = {
         'current': 'Current',
-        '1_30': '1-30 days',
-        '31_60': '31-60 days',
-        '61_90': '61-90 days',
-        '90_plus': '90+ days',
+        '1_30': '1-30 Days',
+        '31_60': '31-60 Days',
+        '61_90': '61-90 Days',
+        '90_plus': '90+ Days',
     }
+
+    # Track bucket totals
+    bucket_totals = {k: Decimal('0.00') for k in bucket_label}
+    grand_total = Decimal('0.00')
 
     for inv in outstanding:
         days_old = (today - inv.due_date).days if inv.due_date else 0
@@ -2760,15 +2777,32 @@ def owner_aging_report_csv(request):
         else:
             bucket = '90_plus'
 
+        amount_due = inv.amount_due
+        bucket_totals[bucket] += amount_due
+        grand_total += amount_due
+
         writer.writerow([
-            inv.invoice_number,
             inv.customer.name,
-            inv.invoice_date.strftime('%Y-%m-%d'),
-            inv.due_date.strftime('%Y-%m-%d') if inv.due_date else '',
-            f'{float(inv.amount_due):.2f}',
+            inv.invoice_number,
+            inv.invoice_date.strftime('%m/%d/%Y'),
+            inv.due_date.strftime('%m/%d/%Y') if inv.due_date else '',
+            f'{float(inv.total):.2f}',
+            f'{float(inv.amount_paid):.2f}',
+            f'{float(amount_due):.2f}',
+            inv.get_status_display(),
             max(0, days_old),
             bucket_label[bucket],
+            inv.customer.email or '',
+            inv.customer.phone or '',
         ])
+
+    # Summary section
+    writer.writerow([])
+    writer.writerow(['SUMMARY'])
+    for key, label in bucket_label.items():
+        writer.writerow([label, '', '', '', '', '', f'{float(bucket_totals[key]):.2f}'])
+    writer.writerow([])
+    writer.writerow(['Total Outstanding', '', '', '', '', '', f'{float(grand_total):.2f}'])
 
     return response
 
