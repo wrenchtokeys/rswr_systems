@@ -312,17 +312,28 @@ def _create_batch_invoice(tenant, customer, config):
             )
             
             # Add repair line items
+            # CODE-122: Use get_discounted_cost() so reward-based discounts
+            # (REPAIR_DISCOUNT, FREE_SERVICE redemptions) are reflected in the
+            # line item amount and the invoice discount/subtotal totals.
+            # Previously repair.cost was used directly, causing customers with
+            # earned rewards to be overbilled on all batch invoices.
+            total_discount = Decimal('0.00')
             for repair in repairs_list:
-                amount = repair.cost or Decimal('0.00')
-                subtotal += amount
-                
+                discounted = repair.get_discounted_cost()
+                original = discounted['original_cost'] or Decimal('0.00')
+                final_amt = discounted['final_cost'] or Decimal('0.00')
+                savings = discounted['savings'] or Decimal('0.00')
+                subtotal += original
+                total_discount += savings
+
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     repair=repair,
                     description=f"Windshield Repair - {repair.damage_type} - Unit {repair.unit_number or 'N/A'}",
                     quantity=1,
-                    unit_price=amount,
-                    amount=amount,
+                    unit_price=original,
+                    discount=savings,
+                    amount=final_amt,
                     repair_date=repair.service_date,
                     unit_number=repair.unit_number or '',
                 )
@@ -350,19 +361,22 @@ def _create_batch_invoice(tenant, customer, config):
             # bypassed TaxService entirely, causing batch invoices to charge tax when it
             # was disabled (or vice-versa) and to miss per-customer city/state rate
             # lookups. (CODE-104)
+            #
+            # CODE-122: Tax is calculated on the discounted net (subtotal − discounts)
+            # so customers are not charged tax on reward savings they have already earned.
             from apps.billing.services.tax_service import TaxService
             tax_svc = TaxService(tenant=tenant)
-            tax_result = tax_svc.calculate_tax(subtotal=subtotal, customer=customer)
-
-            # Update invoice totals with TaxService results
+            discounted_subtotal = subtotal - total_discount
+            tax_result = tax_svc.calculate_tax(subtotal=discounted_subtotal, customer=customer)
             invoice.subtotal = subtotal
+            invoice.discount = total_discount
             invoice.tax_rate = tax_result['rate']
             invoice.state_tax_rate = tax_result['state_rate']
             invoice.county_tax_rate = tax_result['county_rate']
             invoice.city_tax_rate = tax_result['city_rate']
             invoice.special_tax_rate = tax_result['special_rate']
             invoice.tax_amount = tax_result['amount']
-            invoice.total = subtotal + tax_result['amount']
+            invoice.total = discounted_subtotal + tax_result['amount']
             invoice.save()
             
             # Send if auto_send is enabled — only mark SENT after email confirmed.
