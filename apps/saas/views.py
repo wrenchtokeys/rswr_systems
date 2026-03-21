@@ -1173,6 +1173,7 @@ def owner_settings_view(request):
                 from decimal import Decimal, InvalidOperation
                 from apps.billing.models import TaxRate as _TaxRate
                 config = BillingConfig.get_for_tenant(tenant)
+                config.company_address = request.POST.get('company_address', '').strip()
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
                 config.company_zip = request.POST.get('company_zip', '').strip()
