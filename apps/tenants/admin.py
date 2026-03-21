@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from .models import Tenant, TenantMembership, SubscriptionPlan
 from apps.technician_portal.models import ViscosityRecommendation
 from apps.billing.models import BillingConfig
+from rs_systems.admin_mixins import TenantFilterMixin
 
 
 class TenantMembershipInline(admin.TabularInline):
@@ -160,8 +161,19 @@ class TenantAdmin(admin.ModelAdmin):
 
 
 @admin.register(TenantMembership)
-class TenantMembershipAdmin(admin.ModelAdmin):
+class TenantMembershipAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Admin for TenantMembership.
+
+    Uses TenantFilterMixin so that non-superuser staff only see memberships
+    for their own shop(s). Without this, a staff-level admin user at Shop A
+    could read (and modify) Shop B's team roster — a tenant data leak.
+    (CODE-125)
+    """
+
     list_display = ['user', 'tenant', 'role', 'is_active', 'joined_at']
+    # 'tenant' is intentionally omitted here — TenantFilterMixin.get_list_filter()
+    # adds it automatically for superusers and strips it for non-superusers.
     list_filter = ['role', 'is_active']
     search_fields = ['user__username', 'user__email', 'tenant__name']
     autocomplete_fields = ['user', 'tenant']
