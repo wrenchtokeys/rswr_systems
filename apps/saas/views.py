@@ -3414,25 +3414,66 @@ def owner_invoice_bulk_action(request):
         })
 
     elif action == 'void':
-        # Void invoices that aren't already PAID or CANCELLED
-        voidable = invoices.exclude(status__in=['PAID', 'CANCELLED'])
+        # Void invoices that aren't already PAID, CANCELLED, or PARTIAL.
+        # (CODE-123) PARTIAL invoices have recorded payments — voiding them
+        # silently orphans those Payment records and prevents future deletion
+        # (Payment.invoice uses on_delete=PROTECT).  Owners must remove
+        # payments first, which demotes the invoice to SENT/OVERDUE, and then
+        # they can void it.
+        voidable = invoices.exclude(status__in=['PAID', 'PARTIAL', 'CANCELLED'])
         voided_count = voidable.count()
-        skipped = invoices.filter(status__in=['PAID', 'CANCELLED']).count()
+        skipped_paid = invoices.filter(status__in=['PAID', 'CANCELLED']).count()
+        skipped_partial = invoices.filter(status='PARTIAL').count()
         voidable.update(status='CANCELLED')
         msg = f'{voided_count} invoice(s) voided.'
-        if skipped:
-            msg += f' {skipped} paid/already-voided invoice(s) were skipped.'
+        if skipped_paid:
+            msg += f' {skipped_paid} paid/already-voided invoice(s) were skipped.'
+        if skipped_partial:
+            msg += (
+                f' {skipped_partial} partially-paid invoice(s) were skipped — '
+                'remove the payments first, then void.'
+            )
         return JsonResponse({'success': True, 'message': msg})
 
     elif action == 'delete':
-        # Allow deleting DRAFT and CANCELLED (voided) invoices
-        deletable = invoices.filter(status__in=['DRAFT', 'CANCELLED'])
-        deleted_count = deletable.count()
-        skipped = invoices.exclude(status__in=['DRAFT', 'CANCELLED']).count()
-        deletable.delete()
+        # Allow deleting DRAFT and CANCELLED (voided) invoices.
+        # (CODE-123) Payment.invoice uses on_delete=PROTECT, so we must skip
+        # any invoice that still has payment records — deleting it would raise
+        # a ProtectedError and crash with a 500.  Collect safe-to-delete IDs
+        # by excluding invoices that have any associated payments.
+        from django.db.models import ProtectedError as _ProtectedError
+        from apps.billing.models import Payment as _Payment
+
+        candidate_qs = invoices.filter(status__in=['DRAFT', 'CANCELLED'])
+        # IDs of candidates that still have payments attached
+        has_payments_ids = set(
+            _Payment.objects.filter(invoice__in=candidate_qs)
+            .values_list('invoice_id', flat=True)
+            .distinct()
+        )
+        safe_to_delete = candidate_qs.exclude(id__in=has_payments_ids)
+        payment_blocked = len(has_payments_ids)
+
+        deleted_count = safe_to_delete.count()
+        skipped_active = invoices.exclude(status__in=['DRAFT', 'CANCELLED']).count()
+
+        # Perform the delete inside a try/except as a last-resort safety net.
+        try:
+            safe_to_delete.delete()
+        except _ProtectedError:
+            return JsonResponse(
+                {'success': False, 'error': 'Delete failed: one or more invoices have payment records.'},
+                status=400,
+            )
+
         msg = f'{deleted_count} invoice(s) deleted.'
-        if skipped:
-            msg += f' {skipped} active invoice(s) were skipped (void first, then delete).'
+        if skipped_active:
+            msg += f' {skipped_active} active invoice(s) were skipped (void first, then delete).'
+        if payment_blocked:
+            msg += (
+                f' {payment_blocked} voided invoice(s) with recorded payments were skipped — '
+                'remove the payments first.'
+            )
         return JsonResponse({'success': True, 'message': msg})
 
     else:
@@ -3503,6 +3544,27 @@ def owner_invoice_void(request, invoice_id):
         return JsonResponse({'success': False, 'error': 'Cannot void a paid invoice.'}, status=400)
     if invoice.status == 'CANCELLED':
         return JsonResponse({'success': False, 'error': 'Invoice is already voided.'}, status=400)
+
+    # (CODE-123) Block voiding partially-paid invoices.  A PARTIAL invoice has
+    # real money recorded against it; voiding without removing those payments
+    # leaves orphaned Payment records that prevent the invoice from ever being
+    # deleted and misrepresent the shop's financials.  The owner must delete or
+    # reverse the payments first, at which point the invoice reverts to
+    # SENT/OVERDUE and can then be voided normally.
+    if invoice.status == 'PARTIAL':
+        payment_count = invoice.payments.count()
+        return JsonResponse(
+            {
+                'success': False,
+                'error': (
+                    f'Cannot void a partially-paid invoice. '
+                    f'{payment_count} payment(s) are recorded against it. '
+                    'Please remove or reverse the payment(s) first, '
+                    'then void the invoice.'
+                ),
+            },
+            status=400,
+        )
 
     invoice.status = 'CANCELLED'
     invoice.save(update_fields=['status'])
