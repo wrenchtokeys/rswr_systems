@@ -830,7 +830,7 @@ function confirmSendEmail() {
         
         if (data.success) {
             closeSendEmailModal();
-            alert(`Invoice sent to ${emails.join(', ')}`);
+            alert(`Invoice sent to ${toEmails.join(', ')}`);
             window.location.reload();
         } else {
             alert(data.error || 'Failed to send email');
