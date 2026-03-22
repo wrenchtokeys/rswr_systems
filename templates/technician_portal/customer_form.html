@@ -218,6 +218,24 @@
                             </p>
                         </div>
                     </div>
+
+                    <!-- Primary Contact Checkbox -->
+                    <div class="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
+                        <input
+                            type="checkbox"
+                            class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            id="{{ form.is_primary_contact.id_for_label }}"
+                            name="{{ form.is_primary_contact.name }}"
+                            {% if form.is_primary_contact.value %}checked{% endif %}>
+                        <div>
+                            <label for="{{ form.is_primary_contact.id_for_label }}" class="text-sm font-medium text-gray-900">
+                                Set as primary contact
+                            </label>
+                            <p class="text-xs text-gray-500 mt-1">
+                                Primary contacts receive repair lifecycle notifications by default
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- What Happens Next -->
