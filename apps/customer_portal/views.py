@@ -132,12 +132,31 @@ def customer_dashboard(request):
         # Filter by both customer AND tenant to prevent cross-tenant leakage
         tenant = customer.tenant
         base_qs = Repair.objects.filter(customer=customer, tenant=tenant)
-        active_repairs = base_qs.exclude(queue_status='COMPLETED').exclude(queue_status='DENIED').count()
-        completed_repairs = base_qs.filter(queue_status='COMPLETED').count()
-        pending_approval = base_qs.filter(queue_status='PENDING').count()
-        
-        # Get total spent on completed repairs
-        total_spent = base_qs.filter(queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
+
+        # CODE-141: Collapse 7 individual COUNT/SUM queries into one aggregate() call.
+        # Each separate .count()/.filter().count()/.aggregate() hit the DB independently.
+        # A single annotated aggregate eliminates 6 round-trips per dashboard load.
+        from decimal import Decimal as _Decimal
+        from django.db.models import DecimalField as _DecimalField
+        from django.db.models.functions import Coalesce
+        agg = base_qs.aggregate(
+            _requested=Count('id', filter=Q(queue_status='REQUESTED')),
+            _pending=Count('id', filter=Q(queue_status='PENDING')),
+            _approved=Count('id', filter=Q(queue_status='APPROVED')),
+            _in_progress=Count('id', filter=Q(queue_status='IN_PROGRESS')),
+            _completed=Count('id', filter=Q(queue_status='COMPLETED')),
+            _denied=Count('id', filter=Q(queue_status='DENIED')),
+            # Coalesce default must be Decimal to match Sum(DecimalField) output type.
+            _total_spent=Coalesce(
+                Sum('cost', filter=Q(queue_status='COMPLETED')),
+                _Decimal('0'),
+                output_field=_DecimalField(),
+            ),
+        )
+        completed_repairs = agg['_completed']
+        pending_approval = agg['_pending']
+        active_repairs = agg['_requested'] + agg['_pending'] + agg['_approved'] + agg['_in_progress']
+        total_spent = agg['_total_spent']
         
         # Get recent repairs (limited to 5) for the customer
         recent_repairs = base_qs.select_related('technician__user').order_by('-service_date')[:5]
@@ -178,13 +197,13 @@ def customer_dashboard(request):
             'completed_repairs': completed_repairs,
             'pending_approval': pending_approval,
             'total_spent': total_spent,
-            # Detailed repair status counts for the visualization
-            'repairs_requested': base_qs.filter(queue_status='REQUESTED').count(),
+            # Detailed repair status counts for the visualization (from single aggregate — CODE-141)
+            'repairs_requested': agg['_requested'],
             'repairs_pending': pending_approval,
-            'repairs_approved': base_qs.filter(queue_status='APPROVED').count(),
-            'repairs_in_progress': base_qs.filter(queue_status='IN_PROGRESS').count(),
+            'repairs_approved': agg['_approved'],
+            'repairs_in_progress': agg['_in_progress'],
             'repairs_completed': completed_repairs,
-            'repairs_denied': base_qs.filter(queue_status='DENIED').count(),
+            'repairs_denied': agg['_denied'],
         }
         
         # Get referral and reward information
