@@ -364,3 +364,213 @@ class InviteAcceptancePrimaryFlagTests(TestCase):
             customer=self.customer, is_primary_contact=True
         ).count()
         self.assertEqual(primary_count, 1)
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 regression: is_primary_contact on CustomerForm (create_customer view)
+# ---------------------------------------------------------------------------
+
+@override_settings(**TEST_SETTINGS)
+class CreateCustomerPrimaryContactTests(TestCase):
+    """Regression tests for the is_primary_contact checkbox on the customer
+    creation form (create_customer view)."""
+
+    def setUp(self):
+        self.owner, self.tenant, self.tech = make_tenant('Create Glass', 'create_owner')
+        self.url = '/tech/customers/create/'
+
+    def _login(self):
+        c = Client()
+        c.force_login(self.owner)
+        session = c.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+        return c
+
+    def test_form_has_is_primary_contact_field(self):
+        """CustomerForm should expose is_primary_contact field."""
+        from apps.technician_portal.forms import CustomerForm
+        form = CustomerForm(tenant=self.tenant)
+        self.assertIn('is_primary_contact', form.fields)
+
+    def test_is_primary_contact_defaults_to_true(self):
+        """is_primary_contact should default to True (first contact is usually primary)."""
+        from apps.technician_portal.forms import CustomerForm
+        form = CustomerForm(tenant=self.tenant)
+        self.assertTrue(form.fields['is_primary_contact'].initial)
+
+    def test_create_customer_with_primary_invitation(self):
+        """Creating a customer with invitation and is_primary_contact checked
+        should set is_primary_contact=True on the invitation."""
+        c = self._login()
+        r = c.post(self.url, {
+            'name': 'Primary Fleet',
+            'invite_email': 'primary@fleet.com',
+            'invite_first_name': 'John',
+            'invite_last_name': 'Fleet',
+            'send_invitation': 'on',
+            'is_primary_contact': 'on',
+        })
+        self.assertEqual(r.status_code, 302)
+        inv = CustomerInvitation.objects.get(email='primary@fleet.com')
+        self.assertTrue(inv.is_primary_contact)
+
+    def test_create_customer_without_primary_flag(self):
+        """Creating a customer with invitation but is_primary_contact unchecked
+        should set is_primary_contact=False on the invitation."""
+        c = self._login()
+        r = c.post(self.url, {
+            'name': 'Non-Primary Fleet',
+            'invite_email': 'nonprimary@fleet.com',
+            'invite_first_name': 'Jane',
+            'invite_last_name': 'Fleet',
+            'send_invitation': 'on',
+            # is_primary_contact NOT submitted (unchecked)
+        })
+        self.assertEqual(r.status_code, 302)
+        inv = CustomerInvitation.objects.get(email='nonprimary@fleet.com')
+        self.assertFalse(inv.is_primary_contact)
+
+    def test_create_customer_template_renders_primary_checkbox(self):
+        """GET on create_customer should render the is_primary_contact checkbox."""
+        c = self._login()
+        r = c.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'is_primary_contact')
+        self.assertContains(r, 'Set as primary contact')
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 regression: default technician from customer.primary_technician
+# ---------------------------------------------------------------------------
+
+@override_settings(**TEST_SETTINGS)
+class DefaultTechnicianOnRepairFormTests(TestCase):
+    """Regression tests for pre-selecting the customer's primary_technician
+    on the repair creation form."""
+
+    def setUp(self):
+        self.owner, self.tenant, self.tech = make_tenant('Tech Glass', 'tech_owner')
+        # Make owner a staff user to see the technician dropdown
+        self.owner.is_staff = True
+        self.owner.save()
+        self.tech2_user = User.objects.create_user(
+            'tech2', 'tech2@test.com', 'testpass123',
+            first_name='Second', last_name='Tech'
+        )
+        TenantMembership.objects.create(user=self.tech2_user, tenant=self.tenant, role='technician')
+        self.tech2 = Technician.objects.create(
+            user=self.tech2_user, tenant=self.tenant, is_manager=False, can_repair=True
+        )
+        self.customer = Customer.objects.create(
+            name='Fleet Co', tenant=self.tenant, primary_technician=self.tech2
+        )
+
+    def _login(self):
+        c = Client()
+        c.force_login(self.owner)
+        session = c.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+        return c
+
+    def test_repair_form_preselects_primary_technician(self):
+        """GET /tech/repairs/create/?customer_id=X should pre-select
+        the customer's primary_technician."""
+        c = self._login()
+        r = c.get(f'/tech/repairs/create/?customer_id={self.customer.id}')
+        self.assertEqual(r.status_code, 200)
+        form = r.context['form']
+        self.assertEqual(form.initial.get('technician'), self.tech2.id)
+
+    def test_repair_form_preselects_customer(self):
+        """GET /tech/repairs/create/?customer_id=X should pre-select the customer."""
+        c = self._login()
+        r = c.get(f'/tech/repairs/create/?customer_id={self.customer.id}')
+        self.assertEqual(r.status_code, 200)
+        form = r.context['form']
+        self.assertEqual(form.initial.get('customer'), self.customer.id)
+
+    def test_repair_form_no_customer_id_no_initial(self):
+        """GET /tech/repairs/create/ without customer_id should have no initial values."""
+        c = self._login()
+        r = c.get('/tech/repairs/create/')
+        self.assertEqual(r.status_code, 200)
+        form = r.context['form']
+        self.assertFalse(form.initial.get('technician'))
+
+    def test_repair_form_invalid_customer_id_ignored(self):
+        """GET with non-existent customer_id should not crash."""
+        c = self._login()
+        r = c.get('/tech/repairs/create/?customer_id=99999')
+        self.assertEqual(r.status_code, 200)
+        form = r.context['form']
+        self.assertFalse(form.initial.get('technician'))
+
+    def test_repair_form_customer_without_primary_tech(self):
+        """Customer with no primary_technician should not pre-select technician."""
+        customer2 = Customer.objects.create(name='No Tech Fleet', tenant=self.tenant)
+        c = self._login()
+        r = c.get(f'/tech/repairs/create/?customer_id={customer2.id}')
+        self.assertEqual(r.status_code, 200)
+        form = r.context['form']
+        self.assertEqual(form.initial.get('customer'), customer2.id)
+        self.assertIsNone(form.initial.get('technician'))
+
+
+# ---------------------------------------------------------------------------
+# Fix 3 regression: notification preference links in email templates
+# ---------------------------------------------------------------------------
+
+class NotificationPreferenceLinksTests(TestCase):
+    """Regression tests verifying email templates use correct notification
+    preference URLs."""
+
+    def test_customer_facing_templates_use_app_preferences_url(self):
+        """Customer-facing email templates should link to /app/notifications/preferences/."""
+        from django.template.loader import render_to_string
+        customer_templates = [
+            'emails/notifications/repair_approved.html',
+            'emails/notifications/repair_denied.html',
+            'emails/notifications/repair_completed.html',
+            'emails/notifications/repair_pending_approval.html',
+            'emails/notifications/repair_in_progress.html',
+            'emails/notifications/repair_request_received.html',
+            'emails/notifications/batch_approved.html',
+            'emails/notifications/payment_received.html',
+        ]
+        for template_name in customer_templates:
+            rendered = render_to_string(template_name, {
+                'branding': type('obj', (object,), {
+                    'primary_color': '#000', 'text_color': '#000',
+                    'heading_font': 'Arial', 'body_font': 'Arial',
+                    'warning_color': '#f00', 'button_border_radius': 4,
+                    'logo_url': '', 'company_name': 'Test',
+                })(),
+            })
+            self.assertIn('/app/notifications/preferences/', rendered,
+                          f'{template_name} should link to /app/notifications/preferences/')
+            self.assertNotIn('/app/settings/notifications/', rendered,
+                             f'{template_name} should NOT use old /app/settings/notifications/ URL')
+
+    def test_tech_facing_templates_use_tech_preferences_url(self):
+        """Tech-facing email templates should link to /tech/notifications/preferences/."""
+        from django.template.loader import render_to_string
+        tech_templates = [
+            'emails/notifications/repair_assigned.html',
+            'emails/notifications/repair_request_submitted.html',
+            'emails/notifications/repair_reassigned_away.html',
+        ]
+        for template_name in tech_templates:
+            rendered = render_to_string(template_name, {
+                'branding': type('obj', (object,), {
+                    'primary_color': '#000', 'text_color': '#000',
+                    'heading_font': 'Arial', 'body_font': 'Arial',
+                    'warning_color': '#f00', 'button_border_radius': 4,
+                    'logo_url': '', 'company_name': 'Test',
+                })(),
+            })
+            self.assertIn('/tech/notifications/preferences/', rendered,
+                          f'{template_name} should link to /tech/notifications/preferences/')
+            self.assertNotIn('/tech/settings/notifications/', rendered,
+                             f'{template_name} should NOT use old /tech/settings/notifications/ URL')
