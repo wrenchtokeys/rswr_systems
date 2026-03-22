@@ -1347,25 +1347,35 @@ def owner_settings_view(request):
                 # TaxService checks TaxRate.objects.filter(tenant=tenant, is_active=True)
                 # NOT BillingConfig.tax_enabled — so we MUST create/update a TaxRate row
                 # or tax will never actually be applied to invoices even when the rate is set.
-                if config.default_tax_rate > 0 and config.company_city and config.company_state:
-                    # Reactivate a previously deactivated rate or create a new one.
-                    existing = _TaxRate.objects.filter(
-                        tenant=tenant,
-                        city__iexact=config.company_city,
-                        state__iexact=config.company_state,
-                    ).first()
+                if config.default_tax_rate > 0:
+                    # CODE-131: Create TaxRate even without city/state.
+                    # TaxService checks TaxRate rows, not BillingConfig — without
+                    # a row, tax is silently never applied.
+                    _city = config.company_city or ''
+                    _state = config.company_state or ''
+
+                    # Try to find existing row for this tenant
+                    existing = _TaxRate.objects.filter(tenant=tenant).first()
+                    if not existing and _city and _state:
+                        existing = _TaxRate.objects.filter(
+                            tenant=tenant, city__iexact=_city, state__iexact=_state
+                        ).first()
                     if existing:
                         existing.state_rate = config.state_tax_rate
                         existing.county_rate = config.county_tax_rate
                         existing.city_rate = config.city_tax_rate
                         existing.special_rate = config.special_tax_rate
                         existing.is_active = True
+                        if _city:
+                            existing.city = _city
+                        if _state:
+                            existing.state = _state
                         existing.save()
                     else:
                         _TaxRate.objects.create(
                             tenant=tenant,
-                            city=config.company_city,
-                            state=config.company_state,
+                            city=_city,
+                            state=_state,
                             state_rate=config.state_tax_rate,
                             county_rate=config.county_tax_rate,
                             city_rate=config.city_tax_rate,
@@ -3337,23 +3347,38 @@ def owner_setup_save_tax(request):
             TaxRate.objects.filter(tenant=tenant).update(is_active=False)
 
         # Create or update tenant TaxRate if enabled and we have location
-        if tax_enabled and total > 0 and city and state:
+        if tax_enabled and total > 0:
+            # CODE-131: Create TaxRate even without city/state.
+            # TaxService checks TaxRate.objects.filter(tenant, is_active=True) —
+            # without a row, tax is silently never applied despite UI showing "Enabled".
+            # Use empty strings for city/state if not provided; owner can update later.
+            lookup_city = city or ''
+            lookup_state = state or ''
+
             # Include is_active=False rows in the lookup: if the owner is
             # re-enabling a previously deactivated rate we reactivate it
             # rather than creating a duplicate entry.
-            existing = TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).first()
+            existing = TaxRate.objects.filter(tenant=tenant).first()
+            if not existing and lookup_city and lookup_state:
+                existing = TaxRate.objects.filter(
+                    tenant=tenant, city__iexact=lookup_city, state__iexact=lookup_state
+                ).first()
             if existing:
                 existing.state_rate = state_rate
                 existing.county_rate = county_rate
                 existing.city_rate = city_rate
                 existing.special_rate = special_rate
                 existing.is_active = True  # re-activate if it was deactivated
+                if lookup_city:
+                    existing.city = lookup_city
+                if lookup_state:
+                    existing.state = lookup_state
                 existing.save()
             else:
                 TaxRate.objects.create(
                     tenant=tenant,
-                    city=city,
-                    state=state,
+                    city=lookup_city,
+                    state=lookup_state,
                     state_rate=state_rate,
                     county_rate=county_rate,
                     city_rate=city_rate,
