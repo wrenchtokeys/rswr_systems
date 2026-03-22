@@ -1522,8 +1522,17 @@ def owner_settings_view(request):
             d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
         ]
 
-    # Batch invoicing: month day choices for dropdown
-    batch_month_days = [{'value': d, 'label': f'{d}{"st" if d == 1 else "nd" if d == 2 else "rd" if d == 3 else "th"} of the month'} for d in range(1, 29)]
+    # Batch invoicing: month day choices for dropdown.
+    # Use proper ordinal logic: 11/12/13 are always "th" (not "st"/"nd"/"rd"),
+    # then cycle by last digit.  The inline ternary chain previously used
+    # `d == 1`, `d == 2`, `d == 3` which produced "11st", "12nd", "21th", etc.
+    # (CODE-148)
+    def _ordinal_suffix(n):
+        if 10 <= n % 100 <= 20:
+            return 'th'
+        return {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+    batch_month_days = [{'value': d, 'label': f'{d}{_ordinal_suffix(d)} of the month'} for d in range(1, 29)]
 
     context = {
         'tenant': tenant,
