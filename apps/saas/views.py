@@ -3833,3 +3833,63 @@ def owner_invoice_void(request, invoice_id):
     invoice.status = 'CANCELLED'
     invoice.save(update_fields=['status'])
     return JsonResponse({'success': True, 'message': f'Invoice {invoice.invoice_number} voided.'})
+
+
+@owner_or_manager_required
+def owner_generate_invoice_from_repair(request, repair_id):
+    """
+    POST /owner/invoices/generate-from-repair/<repair_id>/
+    
+    One-click invoice generation from the repair detail page.
+    Creates a draft invoice for the repair, then redirects to the invoice
+    detail page where the owner can review, edit, and send.
+    """
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request.')
+        return redirect('technician_dashboard')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('technician_dashboard')
+
+    from apps.technician_portal.models import Repair
+    repair = get_object_or_404(Repair, id=repair_id, tenant=tenant)
+
+    # Validate: must be completed
+    if repair.queue_status != 'COMPLETED':
+        messages.error(request, 'Only completed repairs can be invoiced.')
+        return redirect('repair_detail', repair_id=repair.id)
+
+    # Validate: not already invoiced
+    from apps.billing.models import InvoiceLineItem
+    if InvoiceLineItem.objects.filter(
+        repair=repair,
+        invoice__tenant=tenant,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+    ).exists():
+        messages.info(request, 'This repair has already been invoiced.')
+        line_item = InvoiceLineItem.objects.filter(
+            repair=repair,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).select_related('invoice').first()
+        return redirect('owner_invoice_detail', invoice_id=line_item.invoice_id)
+
+    # Generate the invoice
+    try:
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        tracking_svc = InvoiceTrackingService(tenant=tenant)
+        invoice = tracking_svc.create_invoice_from_repairs(
+            customer=repair.customer,
+            repairs=[repair],
+        )
+        messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('repair_detail', repair_id=repair.id)
+    except Exception as e:
+        logger.error(f"Error generating invoice from repair {repair_id}: {e}", exc_info=True)
+        messages.error(request, 'Could not generate invoice. Please try again.')
+        return redirect('repair_detail', repair_id=repair.id)

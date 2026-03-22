@@ -118,9 +118,12 @@
                                     <i class="fas fa-file-invoice-dollar mr-2"></i>View Invoice
                                 </a>
                                 {% else %}
-                                <a href="{% url 'owner_invoice_list' %}?customer={{ repair.customer.id }}" class="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                                    <i class="fas fa-file-invoice-dollar mr-2"></i>Generate Invoice
-                                </a>
+                                <form action="{% url 'owner_generate_invoice_from_repair' repair.id %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                                        <i class="fas fa-file-invoice-dollar mr-2"></i>Generate Invoice
+                                    </button>
+                                </form>
                                 {% endif %}
 
                             {% elif repair.queue_status == 'REQUESTED' %}
