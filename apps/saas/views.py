@@ -684,13 +684,8 @@ def owner_dashboard(request):
     # is ambiguous — a shop owner may legitimately charge $50 per repair.
     # The "Finish setting up your shop" banner was persisting even after full setup
     # because pricing_is_default was True even for correctly configured shops. (CODE-110)
-    if not has_tax_rates:
-        setup_steps.append({
-            'label': 'Configure sales tax',
-            'desc': 'Tax is disabled until you add a tax rate for your area',
-            'url': '/owner/settings/?tab=billing',
-            'icon': 'fas fa-receipt',
-        })
+    # Tax step intentionally removed from setup checklist — tax is optional
+    # and many shops don't charge tax. Owners can configure it in Settings → Billing.
     if not has_customers:
         setup_steps.append({
             'label': 'Add your first customer',
@@ -1329,7 +1324,7 @@ def owner_settings_view(request):
                     except (InvalidOperation, ValueError):
                         return Decimal(default)
 
-                config.state_tax_rate = _dec('state_tax_rate', '6.500')
+                config.state_tax_rate = _dec('state_tax_rate', '0')
                 config.county_tax_rate = _dec('county_tax_rate', '0')
                 config.city_tax_rate = _dec('city_tax_rate', '0')
                 config.special_tax_rate = _dec('special_tax_rate', '0')
