@@ -204,11 +204,14 @@ def can_manager_override_price(technician, proposed_amount: Decimal) -> bool:
     if not technician.is_manager:
         return False
 
-    # If technician has approval limit, check against it
-    if technician.approval_limit:
+    # If technician has approval limit, check against it.
+    # Use `is not None` — approval_limit=Decimal('0.00') is a valid "zero cap"
+    # that blocks all overrides, but a bare truthiness check treats 0.00 as
+    # "no limit" (Decimal falsy bug documented in AGENTS.md).
+    if technician.approval_limit is not None:
         return proposed_amount <= technician.approval_limit
 
-    # If no limit set, allow override (for senior managers)
+    # approval_limit is None → unlimited (senior managers)
     return True
 
 
