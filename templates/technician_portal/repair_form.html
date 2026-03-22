@@ -683,6 +683,27 @@
         customerSelect.addEventListener('change', updateFieldsForCustomerType);
     }
 })();
+
+// Auto-select primary technician when customer changes
+(function() {
+    const customerSelect = document.getElementById('id_customer');
+    const techSelect = document.getElementById('id_technician');
+    const primaryTechMap = JSON.parse('{{ customer_primary_tech_json|escapejs }}' || '{}');
+
+    if (customerSelect && techSelect && Object.keys(primaryTechMap).length > 0) {
+        customerSelect.addEventListener('change', function() {
+            const customerId = this.value;
+            const primaryTechId = primaryTechMap[customerId];
+            if (primaryTechId) {
+                // Only auto-select if user hasn't manually chosen a different tech
+                const currentVal = techSelect.value;
+                if (!currentVal || currentVal === '' || currentVal === techSelect.options[0]?.value) {
+                    techSelect.value = String(primaryTechId);
+                }
+            }
+        });
+    }
+})();
 </script>
 
 {% endblock %}
