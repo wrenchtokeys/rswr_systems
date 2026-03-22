@@ -473,22 +473,55 @@ def redeem_reward(request):
             return redirect('referral_rewards')
             
         redemption = result  # Result contains the redemption object
-        
+
+        # For physical rewards, save scheduling preferences
+        reward_type = getattr(redemption.reward_option, 'reward_type', None)
+        category = getattr(reward_type, 'category', '') if reward_type else ''
+        is_physical = category in ('MERCHANDISE', 'OTHER', 'GIFT_CARD')
+
+        if is_physical:
+            preferred_date = request.POST.get('preferred_date', '')
+            preferred_time = request.POST.get('preferred_time', '')
+            customer_notes = request.POST.get('customer_notes', '')
+            if preferred_date:
+                try:
+                    from datetime import datetime as dt
+                    redemption.preferred_date = dt.strptime(preferred_date, '%Y-%m-%d').date()
+                except (ValueError, TypeError):
+                    pass
+            if preferred_time:
+                try:
+                    from datetime import datetime as dt
+                    redemption.preferred_time = dt.strptime(preferred_time, '%H:%M').time()
+                except (ValueError, TypeError):
+                    pass
+            if customer_notes:
+                redemption.customer_notes = customer_notes
+            redemption.save()
+
+            # Notify manager/owner about physical reward fulfillment request
+            _notify_manager_physical_reward(request, redemption)
+
         # Assign a technician to fulfill this redemption
         assigned_technician = RewardFulfillmentService.assign_technician(redemption)
-        
+
         reward_option = redemption.reward_option
-        if assigned_technician:
+        if is_physical:
             messages.success(
-                request, 
+                request,
+                f'Successfully redeemed {reward_option.name}. The shop has been notified and will coordinate fulfillment.'
+            )
+        elif assigned_technician:
+            messages.success(
+                request,
                 f'Successfully redeemed {reward_option.name}. A technician will be assigned to fulfill your reward.'
             )
         else:
             messages.success(
-                request, 
+                request,
                 f'Successfully redeemed {reward_option.name}. Your request is pending technician assignment.'
             )
-        
+
         return redirect('referral_rewards')
         
     except RewardOption.DoesNotExist:
@@ -619,8 +652,52 @@ def referral_rewards_balance(request):
         return _customer_required_redirect(request)
     reward = get_user_reward(customer_user)
     points = reward.points if reward else 0
-    
+
     return JsonResponse({
         'success': True,
         'points': points
     })
+
+
+def _notify_manager_physical_reward(request, redemption):
+    """Send notification to manager/owner about a physical reward fulfillment request."""
+    try:
+        from core.services.notification_service import NotificationService
+        from core.models.notification import Notification
+        from apps.technician_portal.models import Technician
+
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return
+
+        # Find manager/owner technicians for this tenant
+        managers = Technician.objects.filter(
+            tenant=tenant, is_manager=True, is_active=True
+        ).select_related('user')
+
+        customer_name = redemption.reward.customer_user.user.get_full_name() or redemption.reward.customer_user.user.email
+        reward_name = redemption.reward_option.name
+        date_str = redemption.preferred_date.strftime('%B %d, %Y') if redemption.preferred_date else 'No date specified'
+        time_str = redemption.preferred_time.strftime('%I:%M %p') if redemption.preferred_time else ''
+        schedule_info = date_str
+        if time_str:
+            schedule_info += f' at {time_str}'
+
+        for manager in managers:
+            NotificationService.create_notification(
+                recipient=manager,
+                template_name='reward_fulfillment_request',
+                context={
+                    'customer_name': customer_name,
+                    'reward_name': reward_name,
+                    'schedule_info': schedule_info,
+                    'customer_notes': redemption.customer_notes or '',
+                    'redemption_id': redemption.id,
+                },
+                priority=Notification.PRIORITY_NORMAL,
+                category=Notification.CATEGORY_REWARD,
+            )
+    except Exception:
+        # Don't fail the redemption if notification fails
+        import logging
+        logging.getLogger(__name__).exception("Failed to notify manager about physical reward")

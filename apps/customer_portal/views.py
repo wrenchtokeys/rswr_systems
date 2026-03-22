@@ -217,14 +217,19 @@ def customer_dashboard(request):
         # Get reward points balance
         reward_points = RewardService.get_reward_balance(customer_user)
         
-        # Get outstanding invoices for the customer
-        outstanding_invoices = Invoice.objects.filter(
+        # Get outstanding invoices for the customer.
+        # CODE-149: aggregate on the FULL queryset BEFORE slicing so outstanding_total
+        # reflects ALL unpaid invoices, not just the first 5 shown on the dashboard.
+        # Slicing (`[:5]`) causes Django to wrap the queryset in a subquery, so
+        # aggregate() on the sliced version only sums the limited rows, not all of them.
+        _outstanding_qs = Invoice.objects.filter(
             customer=customer,
             status__in=['SENT', 'OVERDUE', 'PARTIAL']
-        ).order_by('due_date')[:5]
-        outstanding_total = outstanding_invoices.aggregate(
+        ).order_by('due_date')
+        outstanding_total = _outstanding_qs.aggregate(
             total=Sum('total')
         )['total'] or 0
+        outstanding_invoices = _outstanding_qs[:5]  # Display slice AFTER aggregate
         overdue_count = Invoice.objects.filter(
             customer=customer,
             status='OVERDUE'
@@ -586,15 +591,81 @@ def customer_repair_detail(request, repair_id):
         
         # Mark if this was a customer-initiated repair
         repair.customer_initiated = customer_initiated
-        
+
+        # Available monetary rewards the customer can apply (before invoicing)
+        available_rewards = []
+        is_invoiced = repair.invoice_line_items.exists()
+        if not is_invoiced and repair.queue_status not in ('COMPLETED', 'DENIED'):
+            available_rewards = RewardRedemption.objects.filter(
+                reward__customer_user=customer_user,
+                status__in=['PENDING', 'FULFILLED'],
+                applied_to_repair__isnull=True,
+                reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
+            ).select_related('reward_option', 'reward_option__reward_type')
+
         return render(request, 'customer_portal/repair_detail.html', {
             'repair': repair,
             'customer': customer,
-            'approval': approval
+            'approval': approval,
+            'available_rewards': available_rewards,
+            'is_invoiced': is_invoiced,
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+@customer_required
+def customer_apply_reward(request, repair_id):
+    """POST-only: customer applies a monetary reward to a repair before invoicing."""
+    if request.method != 'POST':
+        return redirect('customer_repair_detail', repair_id=repair_id)
+
+    try:
+        customer_user = _get_customer_user_for_tenant(request)
+        customer = customer_user.customer
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: cannot apply after invoicing
+        if repair.invoice_line_items.exists():
+            messages.error(request, "This repair has already been invoiced. Rewards cannot be applied.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        # Guard: cannot apply to denied/completed repairs
+        if repair.queue_status in ('COMPLETED', 'DENIED'):
+            messages.error(request, "Rewards cannot be applied to completed or denied repairs.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        redemption_id = request.POST.get('redemption_id')
+        if not redemption_id:
+            messages.error(request, "No reward selected.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        # Verify the redemption belongs to this customer and is available
+        redemption = get_object_or_404(
+            RewardRedemption,
+            id=redemption_id,
+            reward__customer_user=customer_user,
+            applied_to_repair__isnull=True,
+            reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
+        )
+
+        # Check this repair doesn't already have a reward applied
+        if repair.applied_rewards.exists():
+            messages.error(request, "This repair already has a reward applied. Only one reward per repair.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        # Apply the reward
+        redemption.applied_to_repair = repair
+        redemption.save()
+
+        messages.success(request, f'Reward "{redemption.reward_option.name}" applied to Repair #{repair.id}.')
+        return redirect('customer_repair_detail', repair_id=repair_id)
+
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
 
 @customer_required
 def customer_repair_approve(request, repair_id):

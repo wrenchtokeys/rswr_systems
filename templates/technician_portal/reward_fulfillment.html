@@ -107,6 +107,35 @@
                         </div>
                         {% endif %}
 
+                        {% if redemption.preferred_date or redemption.preferred_time or redemption.customer_notes %}
+                        <div class="mt-6 pt-6 border-t border-gray-200">
+                            <h3 class="text-sm font-medium text-gray-900 mb-3">
+                                <svg class="inline-block w-4 h-4 mr-1 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                Customer Scheduling Preferences
+                            </h3>
+                            <div class="bg-blue-50 rounded-lg p-4 space-y-2">
+                                {% if redemption.preferred_date %}
+                                <div class="flex items-center text-sm">
+                                    <span class="text-gray-500 w-28 flex-shrink-0">Preferred Date:</span>
+                                    <span class="font-medium text-gray-900">{{ redemption.preferred_date|date:"F d, Y" }}</span>
+                                </div>
+                                {% endif %}
+                                {% if redemption.preferred_time %}
+                                <div class="flex items-center text-sm">
+                                    <span class="text-gray-500 w-28 flex-shrink-0">Preferred Time:</span>
+                                    <span class="font-medium text-gray-900">{{ redemption.preferred_time|time:"g:i A" }}</span>
+                                </div>
+                                {% endif %}
+                                {% if redemption.customer_notes %}
+                                <div class="text-sm">
+                                    <span class="text-gray-500">Customer Notes:</span>
+                                    <p class="font-medium text-gray-900 mt-1">{{ redemption.customer_notes }}</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+
                         {% if redemption.notes %}
                         <div class="mt-6 pt-6 border-t border-gray-200">
                             <h3 class="text-sm font-medium text-gray-900 mb-2">Notes</h3>
