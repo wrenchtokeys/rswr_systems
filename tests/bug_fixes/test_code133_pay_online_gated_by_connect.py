@@ -38,7 +38,7 @@ from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from apps.billing.models import Invoice, InvoiceLineItem
 from apps.billing.templatetags.billing_tags import get_invoice_status
 from core.models import Customer
-from apps.technician_portal.models import Repair
+from apps.technician_portal.models import Repair, Technician
 
 User = get_user_model()
 
@@ -69,11 +69,22 @@ class BillingTagCanPayOnlineTest(TestCase):
             name='Fleet Corp 133',
             tenant=self.tenant,
         )
+        # Repair requires a technician (not-null FK)
+        tech_user = User.objects.create_user(
+            username='tech_133', password='test', email='tech133@example.com'
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=tech_user, role='technician', is_active=True
+        )
+        self.technician = Technician.objects.create(
+            user=tech_user, tenant=self.tenant
+        )
         self.repair = Repair.objects.create(
             customer=self.customer,
             tenant=self.tenant,
-            description='Test crack',
-            cost=Decimal('150.00'),
+            technician=self.technician,
+            unit_number='U-133',
+            damage_type='CHIP',
             queue_status='COMPLETED',
         )
         self.invoice = Invoice.objects.create(
@@ -131,8 +142,9 @@ class BillingTagCanPayOnlineTest(TestCase):
         repair2 = Repair.objects.create(
             customer=self.customer,
             tenant=self.tenant,
-            description='No invoice repair',
-            cost=Decimal('75.00'),
+            technician=self.technician,
+            unit_number='U-133-2',
+            damage_type='CHIP',
             queue_status='COMPLETED',
         )
         result = get_invoice_status(repair2)
@@ -172,6 +184,7 @@ class InvoiceDetailTemplateGateTest(TestCase):
         )
         # Customer user setup for portal login
         from apps.customer_portal.models import CustomerUser
+        from apps.technician_portal.models import Technician
         self.customer = Customer.objects.create(
             name='Fleet 133b', tenant=self.tenant
         )
