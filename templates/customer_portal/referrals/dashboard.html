@@ -2,283 +2,335 @@
 {% load static %}
 {% load reward_tags %}
 
-{% block title %}Referrals & Rewards Dashboard{% endblock %}
+{% block title %}Referrals & Rewards | Customer Portal{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <!-- Header -->
-        <div class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">Referrals & Rewards</h1>
-            <p class="text-gray-600 mt-2">Invite friends and earn rewards for your business</p>
-        </div>
+<!-- Page Header -->
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
+    <div>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Referrals & Rewards</h1>
+        <p class="text-sm text-gray-500 mt-0.5">Earn points by referring other businesses</p>
+    </div>
+    <a href="{% url 'reward_redemptions' %}" class="inline-flex items-center px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+        <i class="fas fa-history mr-2 text-xs"></i> Redemption History
+    </a>
+</div>
 
-        <!-- Stats Overview -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div class="bg-blue-600 rounded-lg p-6 text-white shadow-lg">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-sm font-medium text-blue-100 uppercase tracking-wider">Reward Points</h3>
-                        <p class="text-3xl font-bold mt-2">{{ points|default:"0" }}</p>
-                        <p class="text-sm text-blue-100 mt-1">Available to redeem</p>
-                    </div>
-                    <div class="bg-blue-500 p-3 rounded-full">
-                        <i class="fas fa-star text-2xl text-white"></i>
-                    </div>
-                </div>
-                {% if reward_options %}
-                    <div class="mt-4">
-                        <a href="#rewards-section" class="inline-flex items-center px-3 py-2 bg-blue-700 text-white text-sm font-medium rounded-lg hover:bg-blue-800 transition-colors">
-                            <i class="fas fa-gift mr-2"></i> View Rewards
-                        </a>
-                    </div>
-                {% endif %}
+<!-- Stats Cards -->
+<div class="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+    <!-- Points Balance -->
+    <div class="bg-gradient-to-br from-brand-500 to-brand-600 rounded-2xl p-5 sm:p-6 text-white relative overflow-hidden">
+        <div class="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -translate-y-6 translate-x-6"></div>
+        <div class="relative">
+            <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center mb-3">
+                <i class="fas fa-star text-lg"></i>
             </div>
-            <div class="bg-green-600 rounded-lg p-6 text-white shadow-lg">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-sm font-medium text-green-100 uppercase tracking-wider">Successful Referrals</h3>
-                        <p class="text-3xl font-bold mt-2">{{ referral_count|default:"0" }}</p>
-                        <p class="text-sm text-green-100 mt-1">Each earns 500 points</p>
-                    </div>
-                    <div class="bg-green-500 p-3 rounded-full">
-                        <i class="fas fa-users text-2xl text-white"></i>
-                    </div>
-                </div>
-            </div>
+            <p class="text-3xl sm:text-4xl font-bold">{{ points|default:"0" }}</p>
+            <p class="text-sm text-brand-100 mt-0.5">Reward Points</p>
+            {% if reward_options %}
+            <a href="#rewards-section" class="inline-flex items-center mt-3 text-sm font-medium text-white/80 hover:text-white transition-colors">
+                Redeem points <i class="fas fa-arrow-right ml-1.5 text-xs"></i>
+            </a>
+            {% endif %}
         </div>
+    </div>
 
-        <!-- Referral Code Section -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-8">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-lg font-semibold text-gray-900">Your Referral Code</h2>
+    <!-- Referrals Count -->
+    <div class="bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 relative overflow-hidden">
+        <div class="absolute top-0 right-0 w-24 h-24 bg-green-50 rounded-full -translate-y-6 translate-x-6"></div>
+        <div class="relative">
+            <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center mb-3">
+                <i class="fas fa-users text-green-600 text-lg"></i>
             </div>
-            <div class="p-6">
-                {% if referral_code %}
-                    <div class="text-center mb-6">
-                        <div class="inline-block bg-gray-100 px-6 py-4 rounded-lg border border-gray-200">
-                            <div class="text-2xl font-bold text-gray-900 tracking-wider">{{ referral_code }}</div>
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap justify-center gap-3 mb-6">
-                        <button class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors" id="copyCode" data-code="{{ referral_code }}">
-                            <i class="fas fa-copy mr-2"></i> Copy Code
-                        </button>
-                        <a href="#" class="inline-flex items-center px-4 py-2 border border-blue-600 text-blue-600 text-sm font-medium rounded-lg hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors" id="shareEmail">
-                            <i class="fas fa-envelope mr-2"></i> Share via Email
-                        </a>
-                        <a href="https://twitter.com/intent/tweet?text=Use%20my%20referral%20code%20{{ referral_code }}%20to%20join!" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors" target="_blank">
-                            <i class="fab fa-twitter mr-2"></i> Tweet
-                        </a>
-                    </div>
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div class="flex items-start">
-                            <div class="flex-shrink-0">
-                                <i class="fas fa-info-circle text-blue-400 text-lg"></i>
-                            </div>
-                            <div class="ml-3">
-                                <h3 class="text-sm font-medium text-blue-800">How it works</h3>
-                                <p class="text-sm text-blue-700 mt-1">Share your referral code with other businesses. When they sign up using your code, you'll earn 500 points and they'll receive 100 bonus points!</p>
-                            </div>
-                        </div>
-                    </div>
-                {% else %}
-                    <div class="text-center py-8">
-                        <div class="mb-4">
-                            <i class="fas fa-ticket-alt text-4xl text-gray-400"></i>
-                        </div>
-                        <h3 class="text-lg font-medium text-gray-900 mb-2">No Referral Code Yet</h3>
-                        <p class="text-gray-600 mb-6">Generate your unique referral code to start earning rewards</p>
-                        <form action="{% url 'generate_referral_code' %}" method="post">
-                            {% csrf_token %}
-                            <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                                <i class="fas fa-plus mr-2"></i> Generate Referral Code
-                            </button>
-                        </form>
-                    </div>
-                {% endif %}
+            <p class="text-3xl sm:text-4xl font-bold text-gray-900">{{ referral_count|default:"0" }}</p>
+            <p class="text-sm text-gray-500 mt-0.5">Successful Referrals</p>
+            <p class="text-xs text-green-600 font-medium mt-1">500 pts each</p>
+        </div>
+    </div>
+</div>
+
+<!-- Referral Code Section -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <div class="px-5 py-4 border-b border-gray-100">
+        <h2 class="text-base font-semibold text-gray-900">
+            <i class="fas fa-ticket-alt text-brand-500 mr-2"></i>Your Referral Code
+        </h2>
+    </div>
+    <div class="p-5 sm:p-6">
+        {% if referral_code %}
+        <!-- Code Display — big, shareable -->
+        <div class="text-center mb-6">
+            <div class="inline-block bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl px-8 sm:px-12 py-5">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Share this code</p>
+                <p class="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-[0.15em] font-mono" id="referralCodeText">{{ referral_code }}</p>
             </div>
         </div>
 
-        <!-- Recent Referrals -->
-        {% if referrals %}
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-8">
-            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-gray-900">Recent Referrals</h2>
-                <a href="{% url 'referral_history' %}" class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
-                    View All
-                </a>
-            </div>
-            <div class="overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            {% for referral in referrals %}
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ referral.customer_user.user.email }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ referral.created_at|date:"M d, Y" }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">+500</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+        <!-- Share Actions -->
+        <div class="flex flex-wrap justify-center gap-2 mb-6">
+            <button id="copyCode" data-code="{{ referral_code }}"
+                    class="inline-flex items-center px-5 py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors shadow-sm">
+                <i class="fas fa-copy mr-2"></i> Copy Code
+            </button>
+            <button id="shareEmail"
+                    class="inline-flex items-center px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-envelope mr-2 text-gray-400"></i> Email
+            </button>
+            <a href="https://twitter.com/intent/tweet?text=Use%20my%20referral%20code%20{{ referral_code }}%20to%20join!" target="_blank"
+               class="inline-flex items-center px-5 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fab fa-twitter mr-2 text-gray-400"></i> Tweet
+            </a>
+        </div>
+
+        <!-- How it Works -->
+        <div class="bg-brand-50 border border-brand-100 rounded-xl p-4">
+            <div class="flex items-start">
+                <div class="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
+                    <i class="fas fa-lightbulb text-brand-600 text-sm"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-brand-800">How referrals work</p>
+                    <p class="text-sm text-brand-700 mt-0.5">Share your code with other businesses. When they sign up using your code, you earn <strong>500 points</strong> and they get <strong>100 bonus points</strong>!</p>
                 </div>
             </div>
         </div>
-        {% endif %}
-
-        <!-- Rewards Section -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-8" id="rewards-section">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h2 class="text-lg font-semibold text-gray-900">Available Rewards</h2>
+        {% else %}
+        <!-- No Code Yet -->
+        <div class="text-center py-6">
+            <div class="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-ticket-alt text-brand-500 text-2xl"></i>
             </div>
-            <div class="p-6">
-                <!-- Info Banner -->
-                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
-                    <div class="flex">
-                        <div class="flex-shrink-0">
-                            <i class="fas fa-info-circle text-blue-400"></i>
-                        </div>
-                        <div class="ml-3">
-                            <p class="text-sm text-blue-700">
-                                <strong>Reward Limitation:</strong> Only one reward can be applied per repair. Choose the best reward for each repair.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                {% if reward_options %}
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {% for option in reward_options %}
-                        <div class="bg-gray-50 rounded-lg border border-gray-200 p-6 {% if points < option.points_required %}opacity-75{% endif %}">
-                            <div class="flex items-start justify-between mb-4">
-                                <div class="flex-1">
-                                    <h3 class="text-lg font-semibold text-gray-900 mb-2">{{ option.name }}</h3>
-                                    <p class="text-gray-600 mb-3">{{ option.description }}</p>
-                                    <div class="flex items-center">
-                                        <span class="text-2xl font-bold text-blue-600">{{ option.points_required }}</span>
-                                        <span class="text-sm text-gray-500 ml-2">points</span>
-                                    </div>
-                                </div>
-                                <div class="flex-shrink-0 ml-4">
-                                    {% if 'Pizza' in option.name %}
-                                        <i class="fas fa-pizza-slice text-3xl text-orange-500"></i>
-                                    {% elif 'Donut' in option.name %}
-                                        <i class="fas fa-cookie-bite text-3xl text-yellow-500"></i>
-                                    {% elif 'Free' in option.name %}
-                                        <i class="fas fa-gift text-3xl text-green-500"></i>
-                                    {% else %}
-                                        <i class="fas fa-percentage text-3xl text-blue-500"></i>
-                                    {% endif %}
-                                </div>
-                            </div>
-                            <form action="{% url 'redeem_reward' %}" method="post">
-                                {% csrf_token %}
-                                <input type="hidden" name="option_id" value="{{ option.id }}">
-                                {% if points >= option.points_required %}
-                                    <button type="submit" class="w-full inline-flex justify-center items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                                        <i class="fas fa-gift mr-2"></i> Redeem Reward
-                                    </button>
-                                {% else %}
-                                    <button type="button" disabled class="w-full inline-flex justify-center items-center px-4 py-2 bg-gray-300 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed">
-                                        <i class="fas fa-lock mr-2"></i> Need {{ option.points_required|sub:points }} more points
-                                    </button>
-                                {% endif %}
-                            </form>
-                        </div>
-                        {% endfor %}
-                    </div>
-                {% else %}
-                    <div class="text-center py-12">
-                        <div class="mb-4">
-                            <i class="fas fa-gift text-4xl text-gray-400"></i>
-                        </div>
-                        <h3 class="text-lg font-medium text-gray-900 mb-2">No Rewards Available</h3>
-                        <p class="text-gray-600">Check back later for new reward options</p>
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Redemption History -->
-        {% if redemptions %}
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-gray-900">Recent Redemptions</h2>
-                <a href="{% url 'reward_history' %}" class="inline-flex items-center px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
-                    View All
-                </a>
-            </div>
-            <div class="overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reward</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            {% for redemption in redemptions %}
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ redemption.reward_option.name }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ redemption.created_at|date:"M d, Y" }}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">-{{ redemption.reward_option.points_required }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <h3 class="text-lg font-bold text-gray-900 mb-1">Start Earning Rewards</h3>
+            <p class="text-sm text-gray-500 mb-5 max-w-sm mx-auto">Generate your unique referral code to share with other businesses and earn points.</p>
+            <form action="{% url 'generate_referral_code' %}" method="post">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-brand-500 text-white text-sm font-bold rounded-xl hover:bg-brand-600 transition-colors shadow-sm">
+                    <i class="fas fa-magic mr-2"></i> Generate My Referral Code
+                </button>
+            </form>
         </div>
         {% endif %}
     </div>
 </div>
+
+<!-- Recent Referrals -->
+{% if referrals %}
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900">
+            <i class="fas fa-user-check text-green-500 mr-2"></i>Recent Referrals
+        </h2>
+        <a href="{% url 'referral_history' %}" class="text-sm text-brand-500 font-medium hover:text-brand-700 transition-colors">
+            View all <i class="fas fa-arrow-right ml-1 text-xs"></i>
+        </a>
+    </div>
+
+    <!-- Desktop table -->
+    <div class="hidden sm:block">
+        <table class="min-w-full">
+            <thead>
+                <tr class="bg-gray-50">
+                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Referred User</th>
+                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                    <th class="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Points Earned</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for referral in referrals %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-5 py-3.5 text-sm text-gray-900">{{ referral.customer_user.user.email }}</td>
+                    <td class="px-5 py-3.5 text-sm text-gray-500">{{ referral.created_at|date:"M d, Y" }}</td>
+                    <td class="px-5 py-3.5 text-right">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">+500</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="sm:hidden divide-y divide-gray-100">
+        {% for referral in referrals %}
+        <div class="flex items-center justify-between px-4 py-3.5">
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-gray-900 truncate">{{ referral.customer_user.user.email }}</p>
+                <p class="text-xs text-gray-500 mt-0.5">{{ referral.created_at|date:"M d, Y" }}</p>
+            </div>
+            <span class="ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">+500</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Available Rewards -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6" id="rewards-section">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900">
+            <i class="fas fa-gift text-brand-500 mr-2"></i>Available Rewards
+        </h2>
+        <p class="text-xs text-gray-500">One reward per repair</p>
+    </div>
+    <div class="p-5">
+        {% if reward_options %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% for option in reward_options %}
+            <div class="rounded-xl border {% if points >= option.points_required %}border-brand-200 bg-brand-50/30{% else %}border-gray-200 bg-gray-50{% endif %} p-5 flex flex-col">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex-1">
+                        <h3 class="text-sm font-bold text-gray-900">{{ option.name }}</h3>
+                        <p class="text-xs text-gray-500 mt-0.5">{{ option.description }}</p>
+                    </div>
+                    <div class="ml-3 flex-shrink-0">
+                        {% if 'Pizza' in option.name %}
+                        <div class="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-pizza-slice text-orange-500"></i>
+                        </div>
+                        {% elif 'Donut' in option.name %}
+                        <div class="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-cookie-bite text-yellow-500"></i>
+                        </div>
+                        {% elif 'Free' in option.name %}
+                        <div class="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-gift text-green-500"></i>
+                        </div>
+                        {% else %}
+                        <div class="w-10 h-10 bg-brand-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-percentage text-brand-500"></i>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="flex items-center mb-4">
+                    <span class="text-lg font-bold text-brand-600">{{ option.points_required }}</span>
+                    <span class="text-xs text-gray-500 ml-1.5">points</span>
+                </div>
+                <form action="{% url 'redeem_reward' %}" method="post" class="mt-auto">
+                    {% csrf_token %}
+                    <input type="hidden" name="option_id" value="{{ option.id }}">
+                    {% if points >= option.points_required %}
+                    <button type="submit" class="w-full py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                        <i class="fas fa-gift mr-1.5"></i> Redeem
+                    </button>
+                    {% else %}
+                    <button type="button" disabled class="w-full py-2.5 bg-gray-200 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed">
+                        <i class="fas fa-lock mr-1.5 text-xs"></i> {{ option.points_required|sub:points }} more pts needed
+                    </button>
+                    {% endif %}
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-8">
+            <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-gift text-gray-400 text-xl"></i>
+            </div>
+            <h3 class="text-base font-semibold text-gray-900 mb-1">No rewards available</h3>
+            <p class="text-sm text-gray-500">Check back later for new reward options.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Redemption History -->
+{% if redemptions %}
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-gray-900">
+            <i class="fas fa-receipt text-gray-400 mr-2"></i>Recent Redemptions
+        </h2>
+        <a href="{% url 'reward_history' %}" class="text-sm text-brand-500 font-medium hover:text-brand-700 transition-colors">
+            View all <i class="fas fa-arrow-right ml-1 text-xs"></i>
+        </a>
+    </div>
+
+    <!-- Desktop table -->
+    <div class="hidden sm:block">
+        <table class="min-w-full">
+            <thead>
+                <tr class="bg-gray-50">
+                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Reward</th>
+                    <th class="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                    <th class="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Points</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for redemption in redemptions %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                    <td class="px-5 py-3.5 text-sm font-medium text-gray-900">{{ redemption.reward_option.name }}</td>
+                    <td class="px-5 py-3.5 text-sm text-gray-500">{{ redemption.created_at|date:"M d, Y" }}</td>
+                    <td class="px-5 py-3.5 text-right">
+                        <span class="text-sm font-semibold text-red-600">-{{ redemption.reward_option.points_required }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="sm:hidden divide-y divide-gray-100">
+        {% for redemption in redemptions %}
+        <div class="flex items-center justify-between px-4 py-3.5">
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-gray-900 truncate">{{ redemption.reward_option.name }}</p>
+                <p class="text-xs text-gray-500 mt-0.5">{{ redemption.created_at|date:"M d, Y" }}</p>
+            </div>
+            <span class="ml-3 text-sm font-semibold text-red-600">-{{ redemption.reward_option.points_required }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Copy referral code to clipboard
-        const copyBtn = document.getElementById('copyCode');
-        if (copyBtn) {
-            copyBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                const code = this.getAttribute('data-code');
-                navigator.clipboard.writeText(code).then(() => {
-                    // Show success message
-                    const originalText = this.innerHTML;
-                    this.innerHTML = '<i class="fas fa-check mr-1"></i> Copied!';
-                    this.classList.remove('btn-primary');
-                    this.classList.add('btn-success');
-                    
-                    setTimeout(() => {
-                        this.innerHTML = originalText;
-                        this.classList.remove('btn-success');
-                        this.classList.add('btn-primary');
-                    }, 2000);
-                });
+document.addEventListener('DOMContentLoaded', function() {
+    // Copy referral code
+    const copyBtn = document.getElementById('copyCode');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const code = this.getAttribute('data-code');
+            navigator.clipboard.writeText(code).then(() => {
+                const icon = this.querySelector('i');
+                const originalHTML = this.innerHTML;
+                this.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
+                this.classList.remove('bg-brand-500', 'hover:bg-brand-600');
+                this.classList.add('bg-green-600');
+                setTimeout(() => {
+                    this.innerHTML = originalHTML;
+                    this.classList.remove('bg-green-600');
+                    this.classList.add('bg-brand-500', 'hover:bg-brand-600');
+                }, 2000);
             });
-        }
-        
-        // Email sharing
-        const shareEmailBtn = document.getElementById('shareEmail');
-        if (shareEmailBtn) {
-            shareEmailBtn.addEventListener('click', function(e) {
+        });
+    }
+
+    // Email sharing
+    const shareEmailBtn = document.getElementById('shareEmail');
+    if (shareEmailBtn) {
+        shareEmailBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const code = document.getElementById('copyCode').getAttribute('data-code');
+            const subject = 'Join using my referral code!';
+            const body = `I think you'll like this service. Use my referral code ${code} when you sign up!`;
+            window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        });
+    }
+
+    // Confirm redemption
+    document.querySelectorAll('form[action="{% url "redeem_reward" %}"]').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (!confirm('Redeem this reward? This cannot be undone.')) {
                 e.preventDefault();
-                const code = document.getElementById('copyCode').getAttribute('data-code');
-                const subject = 'Join using my referral code!';
-                const body = `I think you'll like this service. Use my referral code ${code} when you sign up!`;
-                window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-            });
-        }
+            }
+        });
     });
+});
 </script>
-{% endblock %} 
+{% endblock %}

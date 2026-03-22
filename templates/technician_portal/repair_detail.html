@@ -150,6 +150,19 @@
                                 {% endif %}
                             {% endif %}
 
+                            <!-- Generate/View Invoice (completed repairs) -->
+                            {% if repair.queue_status == 'COMPLETED' %}
+                                {% if is_invoiced %}
+                                <a href="{% url 'owner_invoice_detail' invoice_id %}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded hover:bg-green-700 transition-colors">
+                                    <i class="fas fa-file-invoice-dollar mr-1.5"></i>View Invoice
+                                </a>
+                                {% else %}
+                                <a href="{% url 'owner_invoice_list' %}?customer={{ repair.customer.id }}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded hover:bg-blue-700 transition-colors">
+                                    <i class="fas fa-file-invoice-dollar mr-1.5"></i>Generate Invoice
+                                </a>
+                                {% endif %}
+                            {% endif %}
+
                             <!-- Edit Repair Button -->
                             {% if is_admin %}
                                 <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="inline-flex items-center px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
@@ -275,8 +288,8 @@
                         </h4>
                         <div class="space-y-2 text-sm">
                             <div><span class="font-medium text-blue-700">Customer:</span> <span class="text-blue-900">{{ repair.customer.name }}</span></div>
-                            <div><span class="font-medium text-blue-700">Contact:</span> <span class="text-blue-900">{{ repair.customer.email }}</span></div>
-                            <div><span class="font-medium text-blue-700">Phone:</span> <span class="text-blue-900">{{ repair.customer.phone }}</span></div>
+                            {% if repair.customer.email %}<div><span class="font-medium text-blue-700">Contact:</span> <span class="text-blue-900">{{ repair.customer.email }}</span></div>{% endif %}
+                            {% if repair.customer.phone %}<div><span class="font-medium text-blue-700">Phone:</span> <span class="text-blue-900">{{ repair.customer.phone }}</span></div>{% endif %}
                             <div><span class="font-medium text-blue-700">Unit Number:</span> <span class="text-blue-900">{{ repair.unit_number }}</span></div>
                         </div>
                     </div>

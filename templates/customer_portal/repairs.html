@@ -1,1042 +1,674 @@
 {% extends 'customer_portal/base_customer.html' %}
 
 {% block extra_css %}
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
-    /* Skeleton loading animation */
-    @keyframes shimmer {
-        0% { background-position: -1000px 0; }
-        100% { background-position: 1000px 0; }
-    }
-
-    .skeleton {
-        animation: shimmer 2s infinite linear;
-        background: linear-gradient(to right, #f0f0f0 4%, #e0e0e0 25%, #f0f0f0 36%);
-        background-size: 1000px 100%;
-    }
-
-    /* Sticky header */
-    .sticky-header {
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        background: white;
-    }
-
-    /* Custom scrollbar */
-    .custom-scrollbar::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-
-    .custom-scrollbar::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 4px;
-    }
-
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #888;
-        border-radius: 4px;
-    }
-
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
-
-    /* Active filter chips */
-    .filter-chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 0.25rem 0.75rem;
-        background: #3b82f6;
-        color: white;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        margin-right: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-
-    /* Table row hover effect */
-    .table-row:hover {
-        background-color: #f9fafb;
-        transition: background-color 0.15s ease;
-    }
-
-    /* Batch summary row styles */
-    .batch-summary-row {
-        cursor: pointer;
-    }
-
-    .batch-summary-row:hover {
-        background-color: #f3f4f6;
-        transition: background-color 0.15s ease;
-    }
-
-    /* Individual break row styles */
-    .break-row {
-        cursor: pointer;
-        transition: all 0.2s ease;
-    }
-
-    .break-row:hover {
-        transform: translateY(-1px);
-    }
-
-    /* Photo indicator pulse */
-    @keyframes pulse-blue {
-        0%, 100% { opacity: 1; }
-        50% { opacity: .7; }
-    }
-
-    .has-photos {
-        animation: pulse-blue 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
+    .status-pill { transition: all 0.15s ease; }
+    .status-pill.active { box-shadow: 0 0 0 2px white, 0 0 0 4px currentColor; }
+    .batch-details { transition: all 0.2s ease; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50">
-    <div class="max-w-full px-4 sm:px-6 lg:px-8 py-8">
-        <!-- Page Header -->
-        <div class="mb-6">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-900">Your Repairs</h1>
-                    <p class="mt-1 text-sm text-gray-500">
-                        Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ total_repairs }} repair{{ total_repairs|pluralize }}
-                    </p>
-                </div>
-                <div class="flex space-x-3">
-                    <button onclick="exportToCSV()" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                        Export CSV
-                    </button>
-                    <a href="{% url 'customer_dashboard' %}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-                        </svg>
-                        Back to Dashboard
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Bulk Action Toolbar (Hidden by default, shown via JavaScript) -->
-        <div id="bulk-toolbar" class="hidden fixed bottom-0 left-0 right-0 bg-blue-600 shadow-lg border-t-4 border-blue-700 z-50 transition-all">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center space-x-4">
-                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                        <span class="text-white font-medium">
-                            <span id="selected-count">0</span> repair<span id="plural-s">s</span> selected
-                        </span>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <button onclick="bulkApprove()" class="inline-flex items-center px-6 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors shadow-md">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                            </svg>
-                            Approve Selected (<span id="approve-count">0</span>)
-                        </button>
-                        <button onclick="bulkDeny()" class="inline-flex items-center px-6 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors shadow-md">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                            </svg>
-                            Deny Selected (<span id="deny-count">0</span>)
-                        </button>
-                        <button onclick="deselectAll()" class="inline-flex items-center px-4 py-2.5 bg-white text-gray-700 font-medium rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
-                            Deselect All
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Messages -->
-        {% if messages %}
-        <div class="mb-6 space-y-4">
-            {% for message in messages %}
-            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}blue-50 border-l-4 border-blue-400{% endif %} p-4 rounded">
-                <div class="flex">
-                    <div class="flex-shrink-0">
-                        {% if message.tags == 'error' %}
-                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                        </svg>
-                        {% elif message.tags == 'success' %}
-                        <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                        </svg>
-                        {% else %}
-                        <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-                        </svg>
-                        {% endif %}
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-blue-700{% endif %}">{{ message }}</p>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-
-        <!-- Summary Stats Dashboard -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <!-- Total Repairs -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="filterByStatus('all')">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Total Repairs</p>
-                        <p class="text-3xl font-bold text-gray-900 mt-1">{{ stats.total_repairs }}</p>
-                    </div>
-                    <div class="bg-blue-100 rounded-full p-3">
-                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Pending Approval -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="filterByStatus('PENDING')">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Awaiting Approval</p>
-                        <p class="text-3xl font-bold text-yellow-600 mt-1">{{ stats.pending_approval }}</p>
-                    </div>
-                    <div class="bg-yellow-100 rounded-full p-3">
-                        <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-
-            <!-- In Progress -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="filterByStatus('APPROVED,IN_PROGRESS')">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">In Progress</p>
-                        <p class="text-3xl font-bold text-indigo-600 mt-1">{{ stats.in_progress }}</p>
-                    </div>
-                    <div class="bg-indigo-100 rounded-full p-3">
-                        <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Completed This Month -->
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow cursor-pointer" onclick="filterByStatus('COMPLETED')">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-600">Completed This Month</p>
-                        <p class="text-3xl font-bold text-green-600 mt-1">{{ stats.completed_this_month }}</p>
-                        <p class="text-xs text-gray-500 mt-1">${{ stats.total_cost|floatformat:2 }} total</p>
-                    </div>
-                    <div class="bg-green-100 rounded-full p-3">
-                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Advanced Filter Panel -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="border-b border-gray-200 px-6 py-4">
-                <div class="flex items-center justify-between">
-                    <h2 class="text-lg font-medium text-gray-900">Filters</h2>
-                    <button onclick="toggleFilters()" class="text-sm text-blue-600 hover:text-blue-700 font-medium">
-                        <span id="filter-toggle-text">Show Filters</span>
-                        <svg id="filter-toggle-icon" class="inline w-4 h-4 ml-1 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-
-            <div id="filter-panel" class="hidden px-6 py-4">
-                <form method="get" id="filter-form">
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <!-- Unit Number Search -->
-                        <div>
-                            <label for="unit_search" class="block text-sm font-medium text-gray-700 mb-1">
-                                Unit Number
-                            </label>
-                            <input type="text"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                id="unit_search"
-                                name="unit_search"
-                                value="{{ unit_search }}"
-                                placeholder="Search unit...">
-                        </div>
-
-                        <!-- Status Filter -->
-                        <div>
-                            <label for="status" class="block text-sm font-medium text-gray-700 mb-1">
-                                Status
-                            </label>
-                            <select class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                id="status"
-                                name="status">
-                                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Statuses</option>
-                                <option value="REQUESTED" {% if status_filter == 'REQUESTED' %}selected{% endif %}>Submitted</option>
-                                <option value="PENDING" {% if status_filter == 'PENDING' %}selected{% endif %}>Pending Approval</option>
-                                <option value="APPROVED" {% if status_filter == 'APPROVED' %}selected{% endif %}>Approved</option>
-                                <option value="IN_PROGRESS" {% if status_filter == 'IN_PROGRESS' %}selected{% endif %}>In Progress</option>
-                                <option value="COMPLETED" {% if status_filter == 'COMPLETED' %}selected{% endif %}>Completed</option>
-                                <option value="DENIED" {% if status_filter == 'DENIED' %}selected{% endif %}>Denied</option>
-                            </select>
-                        </div>
-
-                        <!-- Damage Type Filter -->
-                        <div>
-                            <label for="damage_type" class="block text-sm font-medium text-gray-700 mb-1">
-                                Damage Type
-                            </label>
-                            <select class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                id="damage_type"
-                                name="damage_type">
-                                <option value="all" {% if damage_type_filter == 'all' %}selected{% endif %}>All Types</option>
-                                {% for damage_code, damage_label in damage_types %}
-                                <option value="{{ damage_code }}" {% if damage_type_filter == damage_code %}selected{% endif %}>{{ damage_label }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <!-- Date From -->
-                        <div>
-                            <label for="date_from" class="block text-sm font-medium text-gray-700 mb-1">
-                                Date From
-                            </label>
-                            <input type="date"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                id="date_from"
-                                name="date_from"
-                                value="{{ date_from }}">
-                        </div>
-
-                        <!-- Date To -->
-                        <div>
-                            <label for="date_to" class="block text-sm font-medium text-gray-700 mb-1">
-                                Date To
-                            </label>
-                            <input type="date"
-                                class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                                id="date_to"
-                                name="date_to"
-                                value="{{ date_to }}">
-                        </div>
-                    </div>
-
-                    <!-- Filter Actions -->
-                    <div class="mt-4 flex items-center justify-between">
-                        <button type="button" onclick="clearFilters()" class="text-sm text-gray-600 hover:text-gray-800">
-                            Clear all filters
-                        </button>
-                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
-                            </svg>
-                            Apply Filters
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Active Filter Chips -->
-            {% if unit_search or status_filter != 'all' or damage_type_filter != 'all' or date_from or date_to %}
-            <div class="border-t border-gray-200 px-6 py-3 bg-gray-50">
-                <div class="flex items-center flex-wrap">
-                    <span class="text-sm text-gray-600 mr-2">Active filters:</span>
-                    {% if unit_search %}
-                    <span class="filter-chip">Unit: {{ unit_search }}</span>
-                    {% endif %}
-                    {% if status_filter != 'all' %}
-                    <span class="filter-chip">Status: {{ status_filter }}</span>
-                    {% endif %}
-                    {% if damage_type_filter != 'all' %}
-                    <span class="filter-chip">Type: {{ damage_type_filter }}</span>
-                    {% endif %}
-                    {% if date_from %}
-                    <span class="filter-chip">From: {{ date_from }}</span>
-                    {% endif %}
-                    {% if date_to %}
-                    <span class="filter-chip">To: {{ date_to }}</span>
-                    {% endif %}
-                </div>
-            </div>
-            {% endif %}
-        </div>
-
-        <!-- Repairs Table -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="overflow-hidden">
-                <!-- Table Controls -->
-                <div class="border-b border-gray-200 px-6 py-4 bg-gray-50">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center space-x-4">
-                            <label for="page_size" class="text-sm text-gray-700">Show:</label>
-                            <select id="page_size" name="page_size" onchange="changePageSize(this.value)" class="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                <option value="20" {% if page_size == 20 %}selected{% endif %}>20</option>
-                                <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
-                                <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
-                            </select>
-                            <span class="text-sm text-gray-500">per page</span>
-                        </div>
-
-                        <div class="flex items-center space-x-2">
-                            <label for="sort_by" class="text-sm text-gray-700">Sort by:</label>
-                            <select id="sort_by" name="sort" onchange="changeSort(this.value)" class="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                <option value="-repair_date" {% if sort_by == '-repair_date' %}selected{% endif %}>Newest First</option>
-                                <option value="repair_date" {% if sort_by == 'repair_date' %}selected{% endif %}>Oldest First</option>
-                                <option value="unit_number" {% if sort_by == 'unit_number' %}selected{% endif %}>Unit Asc</option>
-                                <option value="-unit_number" {% if sort_by == '-unit_number' %}selected{% endif %}>Unit Desc</option>
-                                <option value="-cost" {% if sort_by == '-cost' %}selected{% endif %}>Cost High-Low</option>
-                                <option value="cost" {% if sort_by == 'cost' %}selected{% endif %}>Cost Low-High</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Scrollable Table Container -->
-                <div class="overflow-x-auto custom-scrollbar">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50 sticky-header">
-                            <tr>
-                                <th scope="col" class="px-4 py-3 text-left">
-                                    <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    ID
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Date
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Unit #
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Damage Type
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Technician
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Description
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Status
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Cost
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Photos
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            {% for item in items %}
-                                {% if 'batch_id' in item %}
-                                    {# This is a batch summary row #}
-                                    <tr class="batch-summary-row cursor-pointer hover:bg-gray-100 {% if item.overall_status == 'PENDING' %}bg-yellow-50{% endif %}" onclick="toggleBatchExpand('{{ item.batch_id }}')">
-                                        <td class="px-4 py-4 whitespace-nowrap" onclick="event.stopPropagation()">
-                                            {% if item.overall_status == 'PENDING' %}
-                                            <input type="checkbox" class="repair-checkbox batch-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" data-batch-id="{{ item.batch_id }}" data-repair-ids="{{ item.repair_ids }}" onchange="updateBulkToolbar()">
-                                            {% else %}
-                                            <span class="text-gray-300">—</span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            <div class="flex items-center">
-                                                <svg id="expand-icon-{{ item.batch_id }}" class="w-4 h-4 mr-2 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                                                </svg>
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 mr-2">
-                                                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path>
-                                                    </svg>
-                                                    BATCH
-                                                </span>
-                                                <span class="font-semibold">{{ item.break_count }} Break{{ item.break_count|pluralize }}</span>
-                                            </div>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                            {{ item.repair_date|date:"M d, Y" }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            Unit #{{ item.unit_number }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700" colspan="3">
-                                            <span class="text-gray-600 italic">{{ item.completed_count }} of {{ item.break_count }} complete</span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                                {% if item.overall_status == 'COMPLETED' %}bg-green-100 text-green-800
-                                                {% elif item.overall_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-800
-                                                {% elif item.overall_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                                                {% elif item.overall_status == 'APPROVED' %}bg-indigo-100 text-indigo-800
-                                                {% elif item.overall_status == 'DENIED' %}bg-red-100 text-red-800
-                                                {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                                {{ item.overall_status|title }}
-                                            </span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            <span class="text-gray-900 font-medium">${{ item.total_cost|floatformat:2 }}</span>
-                                            <span class="text-xs text-gray-500 ml-1">total</span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            <span class="text-gray-400">—</span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <div class="flex justify-end space-x-2">
-                                                {% if item.can_approve_all %}
-                                                <button onclick="event.stopPropagation(); approveBatch('{{ item.batch_id }}')" class="text-green-600 hover:text-green-900 transition-colors">
-                                                    Approve All
-                                                </button>
-                                                <span class="text-gray-300">|</span>
-                                                <button onclick="event.stopPropagation(); denyBatch('{{ item.batch_id }}')" class="text-red-600 hover:text-red-900 transition-colors">
-                                                    Deny All
-                                                </button>
-                                                <span class="text-gray-300">|</span>
-                                                {% endif %}
-                                                <span class="text-blue-600">Expand ↓</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {# Expandable batch details (hidden by default) #}
-                                    <tr id="batch-details-{{ item.batch_id }}" class="hidden batch-details bg-gray-50">
-                                        <td colspan="11" class="px-6 py-4">
-                                            <div class="space-y-2">
-                                                <h4 class="text-sm font-medium text-gray-700 mb-3">Individual Breaks:</h4>
-                                                {% for repair in item.repairs %}
-                                                <div class="flex items-center justify-between py-3 px-4 bg-white rounded border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer break-row group" onclick="window.location.href='{% url 'customer_repair_detail' repair.id %}'">
-                                                    <div class="flex-1 grid grid-cols-6 gap-4 items-center">
-                                                        <div>
-                                                            <span class="text-xs text-gray-500">Break</span>
-                                                            <p class="text-sm font-medium text-gray-900">#{{ repair.break_number }}</p>
-                                                        </div>
-                                                        <div>
-                                                            <span class="text-xs text-gray-500">Damage Type</span>
-                                                            <p class="text-sm text-gray-700">{{ repair.get_damage_type_display|default:"Unknown" }}</p>
-                                                        </div>
-                                                        <div class="col-span-2">
-                                                            <span class="text-xs text-gray-500">Description</span>
-                                                            <p class="text-sm text-gray-700">{{ repair.description|truncatechars:40 }}</p>
-                                                        </div>
-                                                        <div>
-                                                            <span class="text-xs text-gray-500">Status</span>
-                                                            <p>
-                                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                                                    {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                                                                    {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-800
-                                                                    {% elif repair.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                                                                    {% elif repair.queue_status == 'APPROVED' %}bg-indigo-100 text-indigo-800
-                                                                    {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-800
-                                                                    {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                                                    {{ repair.get_queue_status_display }}
-                                                                </span>
-                                                            </p>
-                                                        </div>
-                                                        <div>
-                                                            <span class="text-xs text-gray-500">Cost</span>
-                                                            <p class="text-sm font-medium text-gray-900">${{ repair.cost|floatformat:2 }}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="ml-6 flex items-center space-x-2">
-                                                        {% if repair.queue_status == 'PENDING' %}
-                                                        <button onclick="event.stopPropagation(); approveRepair({{ repair.id }})" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
-                                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                                                            </svg>
-                                                            Approve
-                                                        </button>
-                                                        <button onclick="event.stopPropagation(); denyRepair({{ repair.id }})" class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition-colors">
-                                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                                            </svg>
-                                                            Deny
-                                                        </button>
-                                                        {% endif %}
-                                                        <button onclick="event.stopPropagation(); window.location.href='{% url 'customer_repair_detail' repair.id %}'" class="inline-flex items-center px-3 py-1.5 border border-blue-600 text-blue-600 text-xs font-medium rounded hover:bg-blue-50 transition-colors group-hover:border-blue-700 group-hover:text-blue-700">
-                                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                                            </svg>
-                                                            View Details
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {% endfor %}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                {% else %}
-                                    {# This is an individual repair row #}
-                                    {% with repair=item.repair %}
-                                    <tr class="table-row cursor-pointer {% if repair.queue_status == 'PENDING' %}bg-yellow-50{% endif %}" onclick="window.location.href='{% url 'customer_repair_detail' repair.id %}'">
-                                        <td class="px-4 py-4 whitespace-nowrap" onclick="event.stopPropagation()">
-                                            {% if repair.queue_status == 'PENDING' %}
-                                            <input type="checkbox" class="repair-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" data-repair-id="{{ repair.id }}" onchange="updateBulkToolbar()">
-                                            {% else %}
-                                            <span class="text-gray-300">—</span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            #{{ repair.id }}
-                                            {% if repair.customer_initiated %}
-                                            <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800" title="Customer Initiated">
-                                                CI
-                                            </span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                            {{ repair.repair_date|date:"M d, Y" }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            {{ repair.unit_number }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                            {{ repair.get_damage_type_display|default:"Unknown" }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                            {% if repair.technician %}
-                                                <span class="text-gray-900" title="Contact: {{ repair.technician.user.email }}{% if repair.technician.phone %} | {{ repair.technician.phone }}{% endif %}">
-                                                    {{ repair.technician.user.get_full_name }}
-                                                </span>
-                                            {% else %}
-                                                <span class="text-gray-400 italic">Unassigned</span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-6 py-4 text-sm text-gray-700">
-                                            {{ repair.description|truncatechars:50 }}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap">
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                                {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                                                {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-800
-                                                {% elif repair.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                                                {% elif repair.queue_status == 'APPROVED' %}bg-indigo-100 text-indigo-800
-                                                {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-800
-                                                {% elif repair.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-800
-                                                {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                                {% if repair.queue_status == 'REQUESTED' %}
-                                                Submitted
-                                                {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}
-                                                Scheduled
-                                                {% else %}
-                                                {{ repair.get_queue_status_display }}
-                                                {% endif %}
-                                            </span>
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            {% if repair.queue_status == 'COMPLETED' %}
-                                                <span class="text-green-600 font-bold">${{ repair.cost|floatformat:2 }}</span>
-                                            {% elif repair.queue_status == 'PENDING' %}
-                                                <span class="text-blue-600 font-bold">${{ repair.cost|floatformat:2 }}</span>
-                                            {% elif repair.queue_status == 'APPROVED' or repair.queue_status == 'IN_PROGRESS' %}
-                                                <span class="text-gray-500">${{ repair.cost|floatformat:2 }} <span class="text-xs">(Est.)</span></span>
-                                            {% elif repair.queue_status == 'REQUESTED' %}
-                                                <span class="text-gray-400 italic text-xs">Pending estimate</span>
-                                            {% elif repair.queue_status == 'DENIED' %}
-                                                <span class="text-gray-400 line-through">${{ repair.cost|floatformat:2 }}</span>
-                                            {% else %}
-                                                <span class="text-gray-400">—</span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                            {% if repair.damage_photo_before or repair.damage_photo_after or repair.additional_photos or repair.customer_submitted_photo %}
-                                            <svg class="w-5 h-5 text-blue-600 has-photos" fill="currentColor" viewBox="0 0 20 20" title="Has photos">
-                                                <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"></path>
-                                            </svg>
-                                            {% else %}
-                                            <span class="text-gray-300">—</span>
-                                            {% endif %}
-                                        </td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium" onclick="event.stopPropagation()">
-                                            <div class="flex justify-end space-x-2">
-                                                <a href="{% url 'customer_repair_detail' repair.id %}" class="text-blue-600 hover:text-blue-900 transition-colors">
-                                                    View
-                                                </a>
-                                                {% if repair.queue_status == 'PENDING' %}
-                                                <span class="text-gray-300">|</span>
-                                                <button onclick="approveRepair({{ repair.id }})" class="text-green-600 hover:text-green-900 transition-colors">
-                                                    Approve
-                                                </button>
-                                                <span class="text-gray-300">|</span>
-                                                <button onclick="denyRepair({{ repair.id }})" class="text-red-600 hover:text-red-900 transition-colors">
-                                                    Deny
-                                                </button>
-                                                {% endif %}
-                                            </div>
-                                        </td>
-                            </tr>
-                            {% endwith %}
-                            {% endif %}
-                            {% empty %}
-                            <tr>
-                                <td colspan="11" class="px-6 py-12 text-center">
-                                    <div class="text-gray-500">
-                                        <svg class="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                        </svg>
-                                        <h3 class="text-lg font-medium text-gray-900 mb-2">No repairs found</h3>
-                                        <p class="text-gray-500 mb-4">Try adjusting your filters or request a new repair.</p>
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Pagination -->
-        {% if page_obj.has_other_pages %}
-        <nav aria-label="Page navigation" class="flex justify-center mb-6">
-            <div class="flex space-x-1">
-                {% if page_obj.has_previous %}
-                <a href="?page=1&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
-                   class="px-3 py-2 text-gray-500 bg-white border border-gray-300 rounded-l-md hover:bg-gray-50 hover:text-gray-700 transition-colors">
-                    First
-                </a>
-                <a href="?page={{ page_obj.previous_page_number }}&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
-                   class="px-3 py-2 text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700 transition-colors">
-                    Previous
-                </a>
-                {% endif %}
-
-                {% for i in page_obj.paginator.page_range %}
-                    {% if page_obj.number == i %}
-                    <span class="px-3 py-2 text-blue-600 bg-blue-50 border border-blue-300 font-medium">{{ i }}</span>
-                    {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
-                    <a href="?page={{ i }}&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
-                       class="px-3 py-2 text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700 transition-colors">{{ i }}</a>
-                    {% endif %}
-                {% endfor %}
-
-                {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
-                   class="px-3 py-2 text-gray-500 bg-white border border-gray-300 hover:bg-gray-50 hover:text-gray-700 transition-colors">
-                    Next
-                </a>
-                <a href="?page={{ page_obj.paginator.num_pages }}&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
-                   class="px-3 py-2 text-gray-500 bg-white border border-gray-300 rounded-r-md hover:bg-gray-50 hover:text-gray-700 transition-colors">
-                    Last
-                </a>
-                {% endif %}
-            </div>
-        </nav>
-        {% endif %}
+<!-- Page Header -->
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-5 gap-3">
+    <div>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Your Repairs</h1>
+        <p class="text-sm text-gray-500 mt-0.5">
+            {{ total_repairs }} repair{{ total_repairs|pluralize }} total
+            {% if page_obj.paginator.num_pages > 1 %}&middot; Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}{% endif %}
+        </p>
+    </div>
+    <div class="flex items-center gap-2">
+        <button onclick="exportToCSV()" class="inline-flex items-center px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-download mr-2 text-xs"></i> Export
+        </button>
+        <a href="{% url 'customer_request_repair' %}" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+            <i class="fas fa-plus mr-2"></i> New Request
+        </a>
     </div>
 </div>
 
+<!-- Stats Row -->
+<div class="grid grid-cols-4 gap-2 sm:gap-3 mb-5">
+    <button onclick="filterByStatus('all')" class="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center hover:shadow-md transition-all {% if status_filter == 'all' %}ring-2 ring-brand-500{% endif %}">
+        <p class="text-xl sm:text-2xl font-bold text-gray-900">{{ stats.total_repairs }}</p>
+        <p class="text-[10px] sm:text-xs text-gray-500 font-medium mt-0.5">All</p>
+    </button>
+    <button onclick="filterByStatus('PENDING')" class="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center hover:shadow-md transition-all {% if status_filter == 'PENDING' %}ring-2 ring-amber-400{% endif %}">
+        <p class="text-xl sm:text-2xl font-bold text-amber-600">{{ stats.pending_approval }}</p>
+        <p class="text-[10px] sm:text-xs text-gray-500 font-medium mt-0.5">Pending</p>
+    </button>
+    <button onclick="filterByStatus('APPROVED,IN_PROGRESS')" class="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center hover:shadow-md transition-all {% if status_filter == 'APPROVED,IN_PROGRESS' or status_filter == 'IN_PROGRESS' or status_filter == 'APPROVED' %}ring-2 ring-blue-400{% endif %}">
+        <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ stats.in_progress }}</p>
+        <p class="text-[10px] sm:text-xs text-gray-500 font-medium mt-0.5">Active</p>
+    </button>
+    <button onclick="filterByStatus('COMPLETED')" class="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center hover:shadow-md transition-all {% if status_filter == 'COMPLETED' %}ring-2 ring-green-400{% endif %}">
+        <p class="text-xl sm:text-2xl font-bold text-green-600">{{ stats.completed_this_month }}</p>
+        <p class="text-[10px] sm:text-xs text-gray-500 font-medium mt-0.5">Done</p>
+    </button>
+</div>
+
+<!-- Status Pill Filters -->
+<div class="flex items-center gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
+    <button onclick="filterByStatus('all')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'all' %}bg-gray-900 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+        All
+    </button>
+    <button onclick="filterByStatus('REQUESTED')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'REQUESTED' %}bg-gray-700 text-white{% else %}bg-gray-100 text-gray-600 hover:bg-gray-200{% endif %}">
+        Submitted
+    </button>
+    <button onclick="filterByStatus('PENDING')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'PENDING' %}bg-amber-500 text-white{% else %}bg-amber-50 text-amber-700 hover:bg-amber-100{% endif %}">
+        <span class="w-1.5 h-1.5 bg-current rounded-full mr-1.5"></span> Pending
+    </button>
+    <button onclick="filterByStatus('APPROVED')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'APPROVED' %}bg-blue-600 text-white{% else %}bg-blue-50 text-blue-700 hover:bg-blue-100{% endif %}">
+        Approved
+    </button>
+    <button onclick="filterByStatus('IN_PROGRESS')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'IN_PROGRESS' %}bg-blue-600 text-white{% else %}bg-blue-50 text-blue-700 hover:bg-blue-100{% endif %}">
+        In Progress
+    </button>
+    <button onclick="filterByStatus('COMPLETED')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'COMPLETED' %}bg-green-600 text-white{% else %}bg-green-50 text-green-700 hover:bg-green-100{% endif %}">
+        Completed
+    </button>
+    <button onclick="filterByStatus('DENIED')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'DENIED' %}bg-red-600 text-white{% else %}bg-red-50 text-red-700 hover:bg-red-100{% endif %}">
+        Denied
+    </button>
+</div>
+
+<!-- Advanced Filters (collapsible) -->
+<div class="mb-5">
+    <button onclick="toggleFilters()" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">
+        <i class="fas fa-sliders-h mr-2 text-xs"></i>
+        <span id="filter-toggle-text">More filters</span>
+        <i id="filter-toggle-icon" class="fas fa-chevron-down ml-1.5 text-[10px] transition-transform"></i>
+    </button>
+
+    <div id="filter-panel" class="hidden mt-3 bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
+        <form method="get" id="filter-form">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div>
+                    <label for="unit_search" class="block text-xs font-semibold text-gray-500 uppercase mb-1">Unit Number</label>
+                    <input type="text" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="unit_search" name="unit_search" value="{{ unit_search }}" placeholder="Search unit...">
+                </div>
+                <div>
+                    <label for="damage_type" class="block text-xs font-semibold text-gray-500 uppercase mb-1">Damage Type</label>
+                    <select class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="damage_type" name="damage_type">
+                        <option value="all" {% if damage_type_filter == 'all' %}selected{% endif %}>All Types</option>
+                        {% for damage_code, damage_label in damage_types %}
+                        <option value="{{ damage_code }}" {% if damage_type_filter == damage_code %}selected{% endif %}>{{ damage_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="date_from" class="block text-xs font-semibold text-gray-500 uppercase mb-1">Date From</label>
+                    <input type="date" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="date_from" name="date_from" value="{{ date_from }}">
+                </div>
+                <div>
+                    <label for="date_to" class="block text-xs font-semibold text-gray-500 uppercase mb-1">Date To</label>
+                    <input type="date" class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="date_to" name="date_to" value="{{ date_to }}">
+                </div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+                <button type="button" onclick="clearFilters()" class="text-sm text-gray-500 hover:text-gray-700 font-medium">Clear all</button>
+                <button type="submit" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                    <i class="fas fa-filter mr-2 text-xs"></i> Apply
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Active Filter Chips -->
+    {% if unit_search or damage_type_filter != 'all' or date_from or date_to %}
+    <div class="flex items-center flex-wrap gap-1.5 mt-2">
+        {% if unit_search %}
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-700">
+            Unit: {{ unit_search }} <button onclick="removeFilter('unit_search')" class="ml-1 hover:text-brand-900">&times;</button>
+        </span>
+        {% endif %}
+        {% if damage_type_filter != 'all' %}
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-700">
+            Type: {{ damage_type_filter }} <button onclick="removeFilter('damage_type')" class="ml-1 hover:text-brand-900">&times;</button>
+        </span>
+        {% endif %}
+        {% if date_from %}
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-700">
+            From: {{ date_from }} <button onclick="removeFilter('date_from')" class="ml-1 hover:text-brand-900">&times;</button>
+        </span>
+        {% endif %}
+        {% if date_to %}
+        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-700">
+            To: {{ date_to }} <button onclick="removeFilter('date_to')" class="ml-1 hover:text-brand-900">&times;</button>
+        </span>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Sort & Page Size Controls -->
+<div class="flex items-center justify-between mb-3">
+    <div class="flex items-center gap-2">
+        <select id="sort_by" onchange="changeSort(this.value)" class="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <option value="-repair_date" {% if sort_by == '-repair_date' %}selected{% endif %}>Newest</option>
+            <option value="repair_date" {% if sort_by == 'repair_date' %}selected{% endif %}>Oldest</option>
+            <option value="unit_number" {% if sort_by == 'unit_number' %}selected{% endif %}>Unit A-Z</option>
+            <option value="-unit_number" {% if sort_by == '-unit_number' %}selected{% endif %}>Unit Z-A</option>
+            <option value="-cost" {% if sort_by == '-cost' %}selected{% endif %}>Cost High-Low</option>
+            <option value="cost" {% if sort_by == 'cost' %}selected{% endif %}>Cost Low-High</option>
+        </select>
+    </div>
+    <select id="page_size" onchange="changePageSize(this.value)" class="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-500">
+        <option value="20" {% if page_size == 20 %}selected{% endif %}>20 / page</option>
+        <option value="50" {% if page_size == 50 %}selected{% endif %}>50 / page</option>
+        <option value="100" {% if page_size == 100 %}selected{% endif %}>100 / page</option>
+    </select>
+</div>
+
+<!-- Bulk Action Toolbar -->
+<div id="bulk-toolbar" class="hidden fixed bottom-16 md:bottom-0 left-0 right-0 bg-brand-600 shadow-2xl border-t-2 border-brand-700 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        <div class="flex items-center justify-between">
+            <span class="text-white font-medium text-sm">
+                <span id="selected-count">0</span> selected
+            </span>
+            <div class="flex items-center gap-2">
+                <button onclick="bulkApprove()" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                    <i class="fas fa-check mr-1.5"></i> Approve (<span id="approve-count">0</span>)
+                </button>
+                <button onclick="bulkDeny()" class="inline-flex items-center px-4 py-2 bg-red-500 text-white text-sm font-semibold rounded-lg hover:bg-red-600 transition-colors">
+                    <i class="fas fa-times mr-1.5"></i> Deny (<span id="deny-count">0</span>)
+                </button>
+                <button onclick="deselectAll()" class="inline-flex items-center px-3 py-2 bg-white/20 text-white text-sm font-medium rounded-lg hover:bg-white/30 transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DESKTOP TABLE -->
+<div class="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+    <div class="overflow-x-auto">
+        <table class="min-w-full">
+            <thead>
+                <tr class="bg-gray-50 border-b border-gray-200">
+                    <th class="px-4 py-3 text-left w-10">
+                        <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)" class="w-4 h-4 text-brand-500 border-gray-300 rounded focus:ring-brand-500">
+                    </th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Cost</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase w-32">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for item in items %}
+                    {% if 'batch_id' in item %}
+                    <!-- Batch summary row -->
+                    <tr class="cursor-pointer hover:bg-gray-50 transition-colors {% if item.overall_status == 'PENDING' %}bg-amber-50/50{% endif %}" onclick="toggleBatchExpand('{{ item.batch_id }}')">
+                        <td class="px-4 py-3" onclick="event.stopPropagation()">
+                            {% if item.overall_status == 'PENDING' %}
+                            <input type="checkbox" class="repair-checkbox batch-checkbox w-4 h-4 text-brand-500 border-gray-300 rounded focus:ring-brand-500" data-batch-id="{{ item.batch_id }}" data-repair-ids="{{ item.repair_ids }}" onchange="updateBulkToolbar()">
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ item.repair_date|date:"M d, Y" }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="text-sm font-semibold text-gray-900">{{ item.unit_number }}</span>
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-brand-100 text-brand-700">
+                                <i class="fas fa-layer-group mr-1 text-[10px]"></i> {{ item.break_count }} breaks
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500 italic">{{ item.completed_count }} of {{ item.break_count }} complete</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+                                {% if item.overall_status == 'COMPLETED' %}bg-green-100 text-green-700
+                                {% elif item.overall_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
+                                {% elif item.overall_status == 'PENDING' %}bg-amber-100 text-amber-700
+                                {% elif item.overall_status == 'APPROVED' %}bg-blue-100 text-blue-700
+                                {% elif item.overall_status == 'DENIED' %}bg-red-100 text-red-700
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {{ item.overall_status|title }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm font-semibold text-gray-900 text-right whitespace-nowrap">${{ item.total_cost|floatformat:2 }}</td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                            <div class="flex justify-end gap-1.5">
+                                {% if item.can_approve_all %}
+                                <button onclick="approveBatch('{{ item.batch_id }}')" class="px-2.5 py-1 bg-brand-500 text-white text-xs font-semibold rounded-md hover:bg-brand-600 transition-colors">Approve</button>
+                                <button onclick="denyBatch('{{ item.batch_id }}')" class="px-2.5 py-1 border border-red-300 text-red-600 text-xs font-semibold rounded-md hover:bg-red-50 transition-colors">Deny</button>
+                                {% endif %}
+                                <button class="text-brand-500 hover:text-brand-700 text-xs font-medium">
+                                    <i id="expand-icon-{{ item.batch_id }}" class="fas fa-chevron-down transition-transform"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    <!-- Batch detail rows -->
+                    <tr id="batch-details-{{ item.batch_id }}" class="hidden batch-details">
+                        <td colspan="8" class="p-0">
+                            <div class="bg-gray-50 border-t border-gray-200 px-8 py-3 space-y-2">
+                                {% for repair in item.repairs %}
+                                <a href="{% url 'customer_repair_detail' repair.id %}" class="flex items-center justify-between py-2.5 px-4 bg-white rounded-lg border border-gray-200 hover:border-brand-300 hover:shadow-sm transition-all">
+                                    <div class="flex items-center gap-4">
+                                        <span class="text-xs font-semibold text-gray-400">Break #{{ repair.break_number }}</span>
+                                        <span class="text-sm text-gray-700">{{ repair.get_damage_type_display|default:"Damage" }}</span>
+                                        <span class="text-sm text-gray-500 hidden lg:inline">{{ repair.description|truncatechars:40 }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-3">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                            {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
+                                            {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
+                                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
+                                            {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
+                                            {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
+                                            {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                            {{ repair.get_queue_status_display }}
+                                        </span>
+                                        <span class="text-sm font-medium text-gray-900">${{ repair.cost|floatformat:2 }}</span>
+                                        {% if repair.queue_status == 'PENDING' %}
+                                        <button onclick="event.preventDefault(); approveRepair({{ repair.id }})" class="px-2 py-1 bg-brand-500 text-white text-[10px] font-semibold rounded hover:bg-brand-600">Approve</button>
+                                        <button onclick="event.preventDefault(); denyRepair({{ repair.id }})" class="px-2 py-1 border border-red-300 text-red-600 text-[10px] font-semibold rounded hover:bg-red-50">Deny</button>
+                                        {% endif %}
+                                        <i class="fas fa-chevron-right text-gray-300 text-[10px]"></i>
+                                    </div>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <!-- Individual repair row -->
+                    {% with repair=item.repair %}
+                    <tr class="cursor-pointer hover:bg-gray-50 transition-colors {% if repair.queue_status == 'PENDING' %}bg-amber-50/50{% endif %}" onclick="window.location.href='{% url 'customer_repair_detail' repair.id %}'">
+                        <td class="px-4 py-3" onclick="event.stopPropagation()">
+                            {% if repair.queue_status == 'PENDING' %}
+                            <input type="checkbox" class="repair-checkbox w-4 h-4 text-brand-500 border-gray-300 rounded focus:ring-brand-500" data-repair-id="{{ repair.id }}" onchange="updateBulkToolbar()">
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ repair.repair_date|date:"M d, Y" }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="text-sm font-semibold text-gray-900">{{ repair.unit_number }}</span>
+                            {% if repair.customer_initiated %}
+                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700">SELF</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ repair.get_damage_type_display|default:"&mdash;" }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ repair.description|truncatechars:45 }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
+                                {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
+                                {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
+                                {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
+                                {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
+                                {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
+                                {% elif repair.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-700
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {% if repair.queue_status == 'REQUESTED' %}Submitted
+                                {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}Scheduled
+                                {% else %}{{ repair.get_queue_status_display }}{% endif %}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap text-sm">
+                            {% if repair.queue_status == 'REQUESTED' %}
+                                <span class="text-gray-400 italic text-xs">TBD</span>
+                            {% elif repair.queue_status == 'DENIED' %}
+                                <span class="text-gray-400 line-through">${{ repair.cost|floatformat:2 }}</span>
+                            {% else %}
+                                <span class="font-semibold text-gray-900">${{ repair.cost|floatformat:2 }}</span>
+                                {% if repair.queue_status == 'APPROVED' or repair.queue_status == 'IN_PROGRESS' %}
+                                <span class="text-[10px] text-gray-400 ml-0.5">est.</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap" onclick="event.stopPropagation()">
+                            <div class="flex justify-end gap-1.5">
+                                {% if repair.queue_status == 'PENDING' %}
+                                <button onclick="approveRepair({{ repair.id }})" class="px-2.5 py-1 bg-brand-500 text-white text-xs font-semibold rounded-md hover:bg-brand-600 transition-colors">Approve</button>
+                                <button onclick="denyRepair({{ repair.id }})" class="px-2.5 py-1 border border-red-300 text-red-600 text-xs font-semibold rounded-md hover:bg-red-50 transition-colors">Deny</button>
+                                {% else %}
+                                <a href="{% url 'customer_repair_detail' repair.id %}" class="text-brand-500 hover:text-brand-700 text-xs font-medium">View</a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endwith %}
+                    {% endif %}
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="px-4 py-16 text-center">
+                        <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i class="fas fa-search text-gray-400 text-xl"></i>
+                        </div>
+                        <h3 class="text-base font-semibold text-gray-900 mb-1">No repairs found</h3>
+                        <p class="text-sm text-gray-500">Try adjusting your filters or request a new repair.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MOBILE CARDS -->
+<div class="md:hidden space-y-3 mb-6">
+    {% for item in items %}
+        {% if 'batch_id' in item %}
+        <!-- Batch card -->
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden {% if item.overall_status == 'PENDING' %}border-amber-300{% endif %}">
+            <div class="p-4" onclick="toggleBatchExpand('{{ item.batch_id }}')">
+                <div class="flex items-start justify-between mb-2">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-100 text-brand-700">
+                                <i class="fas fa-layer-group mr-1"></i> BATCH
+                            </span>
+                            <span class="text-sm font-bold text-gray-900">Unit {{ item.unit_number }}</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">{{ item.break_count }} breaks &middot; {{ item.repair_date|date:"M d, Y" }}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold
+                            {% if item.overall_status == 'COMPLETED' %}bg-green-100 text-green-700
+                            {% elif item.overall_status == 'PENDING' %}bg-amber-100 text-amber-700
+                            {% elif item.overall_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
+                            {% elif item.overall_status == 'APPROVED' %}bg-blue-100 text-blue-700
+                            {% elif item.overall_status == 'DENIED' %}bg-red-100 text-red-700
+                            {% else %}bg-gray-100 text-gray-700{% endif %}">
+                            {{ item.overall_status|title }}
+                        </span>
+                        <p class="text-sm font-bold text-gray-900 mt-1">${{ item.total_cost|floatformat:2 }}</p>
+                    </div>
+                </div>
+                {% if item.can_approve_all %}
+                <div class="flex gap-2 mt-3" onclick="event.stopPropagation()">
+                    <button onclick="approveBatch('{{ item.batch_id }}')" class="flex-1 py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                        <i class="fas fa-check mr-1"></i> Approve All
+                    </button>
+                    <button onclick="denyBatch('{{ item.batch_id }}')" class="py-2.5 px-4 border-2 border-red-300 text-red-600 text-sm font-semibold rounded-lg hover:bg-red-50 transition-colors">
+                        Deny
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+            <!-- Expandable breaks -->
+            <div id="batch-details-mobile-{{ item.batch_id }}" class="hidden border-t border-gray-100 divide-y divide-gray-100">
+                {% for repair in item.repairs %}
+                <a href="{% url 'customer_repair_detail' repair.id %}" class="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+                    <div>
+                        <p class="text-xs text-gray-500">Break #{{ repair.break_number }}</p>
+                        <p class="text-sm text-gray-700">{{ repair.get_damage_type_display|default:"Damage" }}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-gray-900">${{ repair.cost|floatformat:2 }}</span>
+                        <i class="fas fa-chevron-right text-gray-300 text-[10px]"></i>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <!-- Individual repair card -->
+        {% with repair=item.repair %}
+        <a href="{% url 'customer_repair_detail' repair.id %}" class="block bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-shadow {% if repair.queue_status == 'PENDING' %}border-amber-300{% endif %}">
+            <div class="p-4">
+                <div class="flex items-start justify-between mb-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-bold text-gray-900">Unit {{ repair.unit_number }}</span>
+                            {% if repair.customer_initiated %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700">SELF</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-xs text-gray-500 mt-0.5">
+                            {{ repair.get_damage_type_display|default:"Repair" }} &middot; {{ repair.repair_date|date:"M d, Y" }}
+                        </p>
+                        {% if repair.description %}
+                        <p class="text-sm text-gray-600 mt-1 line-clamp-2">{{ repair.description|truncatechars:80 }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="text-right ml-3 flex-shrink-0">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold
+                            {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
+                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
+                            {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
+                            {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
+                            {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
+                            {% elif repair.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-700
+                            {% else %}bg-gray-100 text-gray-700{% endif %}">
+                            {% if repair.queue_status == 'REQUESTED' %}Submitted
+                            {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}Scheduled
+                            {% else %}{{ repair.get_queue_status_display }}{% endif %}
+                        </span>
+                        {% if repair.queue_status != 'REQUESTED' %}
+                        <p class="text-sm font-bold text-gray-900 mt-1">${{ repair.cost|floatformat:2 }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if repair.queue_status == 'PENDING' %}
+                <div class="flex gap-2 mt-3" onclick="event.preventDefault(); event.stopPropagation();">
+                    <button onclick="approveRepair({{ repair.id }})" class="flex-1 py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                        <i class="fas fa-check mr-1"></i> Approve
+                    </button>
+                    <button onclick="denyRepair({{ repair.id }})" class="py-2.5 px-4 border-2 border-red-300 text-red-600 text-sm font-semibold rounded-lg hover:bg-red-50 transition-colors">
+                        Deny
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </a>
+        {% endwith %}
+        {% endif %}
+    {% empty %}
+    <div class="bg-white rounded-xl border border-gray-200 p-10 text-center">
+        <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-search text-gray-400 text-xl"></i>
+        </div>
+        <h3 class="text-base font-semibold text-gray-900 mb-1">No repairs found</h3>
+        <p class="text-sm text-gray-500 mb-4">Try adjusting your filters or request a new repair.</p>
+        <a href="{% url 'customer_request_repair' %}" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600">
+            <i class="fas fa-plus mr-2"></i> New Request
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<nav class="flex justify-center mb-6">
+    <div class="inline-flex items-center gap-1 bg-white rounded-xl border border-gray-200 px-2 py-1.5">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+           class="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            <i class="fas fa-chevron-left text-xs"></i>
+        </a>
+        {% endif %}
+
+        {% for i in page_obj.paginator.page_range %}
+            {% if page_obj.number == i %}
+            <span class="px-3 py-1.5 text-sm font-semibold bg-brand-500 text-white rounded-lg">{{ i }}</span>
+            {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+            <a href="?page={{ i }}&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+               class="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">{{ i }}</a>
+            {% endif %}
+        {% endfor %}
+
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&page_size={{ page_size }}&sort={{ sort_by }}{% if unit_search %}&unit_search={{ unit_search }}{% endif %}{% if status_filter and status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if damage_type_filter and damage_type_filter != 'all' %}&damage_type={{ damage_type_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+           class="px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            <i class="fas fa-chevron-right text-xs"></i>
+        </a>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}
+
+{% block extra_js %}
 <script>
-// Toggle filter panel
+// Filter panel toggle
 function toggleFilters() {
     const panel = document.getElementById('filter-panel');
-    const toggleText = document.getElementById('filter-toggle-text');
-    const toggleIcon = document.getElementById('filter-toggle-icon');
-
-    if (panel.classList.contains('hidden')) {
-        panel.classList.remove('hidden');
-        toggleText.textContent = 'Hide Filters';
-        toggleIcon.style.transform = 'rotate(180deg)';
-        localStorage.setItem('customerFilterPanelOpen', 'true');
-    } else {
-        panel.classList.add('hidden');
-        toggleText.textContent = 'Show Filters';
-        toggleIcon.style.transform = 'rotate(0deg)';
-        localStorage.setItem('customerFilterPanelOpen', 'false');
-    }
+    const text = document.getElementById('filter-toggle-text');
+    const icon = document.getElementById('filter-toggle-icon');
+    const isOpen = !panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+    text.textContent = isOpen ? 'More filters' : 'Hide filters';
+    icon.style.transform = isOpen ? '' : 'rotate(180deg)';
+    localStorage.setItem('customerFilterPanelOpen', isOpen ? 'false' : 'true');
 }
 
-// Restore filter panel state from localStorage
 document.addEventListener('DOMContentLoaded', function() {
-    const filterPanelOpen = localStorage.getItem('customerFilterPanelOpen');
-    if (filterPanelOpen === 'true') {
-        toggleFilters();
-    }
+    if (localStorage.getItem('customerFilterPanelOpen') === 'true') toggleFilters();
 });
 
-// Clear all filters
-function clearFilters() {
-    window.location.href = '{% url "customer_repairs" %}';
-}
+function clearFilters() { window.location.href = '{% url "customer_repairs" %}'; }
 
-// Filter by status (from stats cards)
 function filterByStatus(status) {
     const url = new URL(window.location.href);
-    if (status === 'all') {
-        url.searchParams.delete('status');
-    } else {
-        url.searchParams.set('status', status);
-    }
-    url.searchParams.set('page', '1'); // Reset to first page
+    if (status === 'all') { url.searchParams.delete('status'); }
+    else { url.searchParams.set('status', status); }
+    url.searchParams.set('page', '1');
     window.location.href = url.toString();
 }
 
-// Change page size
+function removeFilter(name) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(name);
+    url.searchParams.set('page', '1');
+    window.location.href = url.toString();
+}
+
 function changePageSize(size) {
     const url = new URL(window.location.href);
     url.searchParams.set('page_size', size);
-    url.searchParams.set('page', '1'); // Reset to first page
+    url.searchParams.set('page', '1');
     window.location.href = url.toString();
 }
 
-// Change sort
 function changeSort(sortBy) {
     const url = new URL(window.location.href);
     url.searchParams.set('sort', sortBy);
-    url.searchParams.set('page', '1'); // Reset to first page
+    url.searchParams.set('page', '1');
     window.location.href = url.toString();
 }
 
-// Approve repair
-function approveRepair(repairId) {
-    if (confirm('Are you sure you want to approve this repair?')) {
-        window.location.href = `/app/repairs/${repairId}/approve/`;
-    }
+function approveRepair(id) {
+    if (confirm('Approve this repair?')) window.location.href = `/app/repairs/${id}/approve/`;
 }
 
-// Deny repair
-function denyRepair(repairId) {
-    if (confirm('Are you sure you want to deny this repair?')) {
-        window.location.href = `/app/repairs/${repairId}/deny/`;
-    }
+function denyRepair(id) {
+    if (confirm('Deny this repair?')) window.location.href = `/app/repairs/${id}/deny/`;
 }
 
-// Batch expand/collapse functionality
+function approveBatch(id) {
+    if (confirm('Approve all repairs in this batch?')) window.location.href = `/app/batch/${id}/approve/`;
+}
+
+function denyBatch(id) {
+    if (confirm('Deny all repairs in this batch?')) window.location.href = `/app/batch/${id}/deny/`;
+}
+
+// Batch expand/collapse (handles both desktop and mobile)
 function toggleBatchExpand(batchId) {
-    const detailsRow = document.getElementById(`batch-details-${batchId}`);
-    const expandIcon = document.getElementById(`expand-icon-${batchId}`);
-
-    if (detailsRow.classList.contains('hidden')) {
-        // Expand
-        detailsRow.classList.remove('hidden');
-        expandIcon.style.transform = 'rotate(180deg)';
-        localStorage.setItem(`batch-expanded-${batchId}`, 'true');
-    } else {
-        // Collapse
-        detailsRow.classList.add('hidden');
-        expandIcon.style.transform = 'rotate(0deg)';
-        localStorage.setItem(`batch-expanded-${batchId}`, 'false');
-    }
-}
-
-// Restore expanded state on page load
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.batch-details').forEach(detailsRow => {
-        const batchId = detailsRow.id.replace('batch-details-', '');
-        const isExpanded = localStorage.getItem(`batch-expanded-${batchId}`) === 'true';
-
-        if (isExpanded) {
-            detailsRow.classList.remove('hidden');
-            const expandIcon = document.getElementById(`expand-icon-${batchId}`);
-            if (expandIcon) {
-                expandIcon.style.transform = 'rotate(180deg)';
-            }
-        }
+    ['batch-details-', 'batch-details-mobile-'].forEach(prefix => {
+        const el = document.getElementById(prefix + batchId);
+        if (el) el.classList.toggle('hidden');
     });
-});
-
-// Approve entire batch
-function approveBatch(batchId) {
-    if (confirm('Are you sure you want to approve all repairs in this batch?')) {
-        window.location.href = `/app/batch/${batchId}/approve/`;
+    const icon = document.getElementById('expand-icon-' + batchId);
+    if (icon) {
+        const isExpanded = !document.getElementById('batch-details-' + batchId)?.classList.contains('hidden');
+        icon.style.transform = isExpanded ? 'rotate(180deg)' : '';
     }
 }
 
-// Deny entire batch
-function denyBatch(batchId) {
-    if (confirm('Are you sure you want to deny all repairs in this batch?')) {
-        window.location.href = `/app/batch/${batchId}/deny/`;
-    }
-}
-
-// Bulk selection management
+// Bulk selection
 function toggleSelectAll(checkbox) {
-    const checkboxes = document.querySelectorAll('.repair-checkbox');
-    checkboxes.forEach(cb => {
-        cb.checked = checkbox.checked;
-    });
+    document.querySelectorAll('.repair-checkbox').forEach(cb => { cb.checked = checkbox.checked; });
     updateBulkToolbar();
 }
 
 function updateBulkToolbar() {
-    const checkboxes = document.querySelectorAll('.repair-checkbox:checked');
-    const count = checkboxes.length;
+    const checked = document.querySelectorAll('.repair-checkbox:checked');
+    const count = checked.length;
     const toolbar = document.getElementById('bulk-toolbar');
-
     if (count > 0) {
         toolbar.classList.remove('hidden');
         document.getElementById('selected-count').textContent = count;
         document.getElementById('approve-count').textContent = count;
         document.getElementById('deny-count').textContent = count;
-        document.getElementById('plural-s').textContent = count === 1 ? '' : 's';
     } else {
         toolbar.classList.add('hidden');
     }
-
-    // Update select-all checkbox state
-    const allCheckboxes = document.querySelectorAll('.repair-checkbox');
-    const selectAllCheckbox = document.getElementById('select-all');
-    if (selectAllCheckbox) {
-        selectAllCheckbox.checked = allCheckboxes.length > 0 && count === allCheckboxes.length;
-        selectAllCheckbox.indeterminate = count > 0 && count < allCheckboxes.length;
+    const all = document.querySelectorAll('.repair-checkbox');
+    const selectAll = document.getElementById('select-all');
+    if (selectAll) {
+        selectAll.checked = all.length > 0 && count === all.length;
+        selectAll.indeterminate = count > 0 && count < all.length;
     }
 }
 
 function deselectAll() {
-    const checkboxes = document.querySelectorAll('.repair-checkbox');
-    checkboxes.forEach(cb => {
-        cb.checked = false;
-    });
+    document.querySelectorAll('.repair-checkbox').forEach(cb => { cb.checked = false; });
     document.getElementById('select-all').checked = false;
     updateBulkToolbar();
 }
 
 function getSelectedRepairIds() {
-    const repairIds = [];
-    const checkboxes = document.querySelectorAll('.repair-checkbox:checked');
-
-    checkboxes.forEach(cb => {
-        if (cb.dataset.repairId) {
-            // Individual repair
-            repairIds.push(cb.dataset.repairId);
-        } else if (cb.dataset.repairIds) {
-            // Batch - split the comma-separated list
-            const batchIds = cb.dataset.repairIds.split(',');
-            repairIds.push(...batchIds);
-        }
+    const ids = [];
+    document.querySelectorAll('.repair-checkbox:checked').forEach(cb => {
+        if (cb.dataset.repairId) ids.push(cb.dataset.repairId);
+        else if (cb.dataset.repairIds) ids.push(...cb.dataset.repairIds.split(','));
     });
-
-    return repairIds;
+    return ids;
 }
 
 function bulkApprove() {
-    const repairIds = getSelectedRepairIds();
-    if (repairIds.length === 0) return;
-
-    if (confirm(`Are you sure you want to approve ${repairIds.length} repair${repairIds.length === 1 ? '' : 's'}?`)) {
-        // Create form and submit
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '{% url "customer_bulk_action" %}';
-
-        // Add CSRF token
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
-        const csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = 'csrfmiddlewaretoken';
-        csrfInput.value = csrfToken;
-        form.appendChild(csrfInput);
-
-        // Add action
-        const actionInput = document.createElement('input');
-        actionInput.type = 'hidden';
-        actionInput.name = 'action';
-        actionInput.value = 'approve';
-        form.appendChild(actionInput);
-
-        // Add repair IDs
-        repairIds.forEach(id => {
-            const idInput = document.createElement('input');
-            idInput.type = 'hidden';
-            idInput.name = 'repair_ids';
-            idInput.value = id;
-            form.appendChild(idInput);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
+    const ids = getSelectedRepairIds();
+    if (!ids.length) return;
+    if (confirm(`Approve ${ids.length} repair${ids.length === 1 ? '' : 's'}?`)) {
+        submitBulkAction('approve', ids);
     }
 }
 
 function bulkDeny() {
-    const repairIds = getSelectedRepairIds();
-    if (repairIds.length === 0) return;
-
-    if (confirm(`Are you sure you want to deny ${repairIds.length} repair${repairIds.length === 1 ? '' : 's'}?`)) {
-        // Create form and submit
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '{% url "customer_bulk_action" %}';
-
-        // Add CSRF token
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
-        const csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = 'csrfmiddlewaretoken';
-        csrfInput.value = csrfToken;
-        form.appendChild(csrfInput);
-
-        // Add action
-        const actionInput = document.createElement('input');
-        actionInput.type = 'hidden';
-        actionInput.name = 'action';
-        actionInput.value = 'deny';
-        form.appendChild(actionInput);
-
-        // Add repair IDs
-        repairIds.forEach(id => {
-            const idInput = document.createElement('input');
-            idInput.type = 'hidden';
-            idInput.name = 'repair_ids';
-            idInput.value = id;
-            form.appendChild(idInput);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
+    const ids = getSelectedRepairIds();
+    if (!ids.length) return;
+    if (confirm(`Deny ${ids.length} repair${ids.length === 1 ? '' : 's'}?`)) {
+        submitBulkAction('deny', ids);
     }
 }
 
-// Export to CSV
+function submitBulkAction(action, ids) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '{% url "customer_bulk_action" %}';
+    const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
+    form.innerHTML = `<input type="hidden" name="csrfmiddlewaretoken" value="${csrf}"><input type="hidden" name="action" value="${action}">`;
+    ids.forEach(id => { form.innerHTML += `<input type="hidden" name="repair_ids" value="${id}">`; });
+    document.body.appendChild(form);
+    form.submit();
+}
+
 function exportToCSV() {
     const table = document.querySelector('table');
+    if (!table) return;
     let csv = [];
-
-    // Get headers
     const headers = [];
-    table.querySelectorAll('thead th').forEach(th => {
-        headers.push(th.textContent.trim());
-    });
+    table.querySelectorAll('thead th').forEach(th => headers.push(th.textContent.trim()));
     csv.push(headers.join(','));
-
-    // Get rows
     table.querySelectorAll('tbody tr').forEach(tr => {
-        if (tr.querySelector('td[colspan]')) return; // Skip empty state row
-        if (tr.classList.contains('batch-details')) return; // Skip expanded details
+        if (tr.querySelector('td[colspan]')) return;
+        if (tr.classList.contains('batch-details')) return;
         const row = [];
         tr.querySelectorAll('td').forEach(td => {
             let text = td.textContent.trim().replace(/\n/g, ' ').replace(/\s+/g, ' ');
-            // Escape commas
-            if (text.includes(',')) {
-                text = '"' + text + '"';
-            }
+            if (text.includes(',')) text = '"' + text + '"';
             row.push(text);
         });
         csv.push(row.join(','));
     });
-
-    // Create download
-    const csvContent = csv.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -1047,4 +679,5 @@ function exportToCSV() {
     window.URL.revokeObjectURL(url);
 }
 </script>
+{% endblock %}
 {% endblock %}
