@@ -65,11 +65,25 @@ def _get_owner_tenant(request):
     """
     tenant = getattr(request, 'tenant', None)
     if not tenant:
+        # Use explicit priority ordering so 'owner' always beats 'manager' —
+        # alphabetical order_by('role') puts 'manager' first (m < o), which
+        # would return a manager membership at Shop B rather than an owner
+        # membership at Shop A for users who belong to multiple shops.
+        # Mirrors the annotation pattern in common/auth._get_membership. (CODE-129)
+        from django.db.models import Case, When, IntegerField, Value
         membership = (
             TenantMembership.objects
             .filter(user=request.user, is_active=True, role__in=['owner', 'manager'])
             .select_related('tenant')
-            .order_by('role')
+            .annotate(
+                role_priority=Case(
+                    When(role='owner', then=Value(0)),
+                    When(role='manager', then=Value(1)),
+                    default=Value(99),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by('role_priority')
             .first()
         )
         if membership:
