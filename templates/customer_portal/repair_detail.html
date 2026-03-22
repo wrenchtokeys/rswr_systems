@@ -63,10 +63,12 @@
                         <div class="col-md-8">{{ repair.damage_type }}</div>
                     </div>
                     
+                    {% if repair.description %}
                     <div class="row mb-3">
                         <div class="col-md-4 fw-bold">Description:</div>
                         <div class="col-md-8">{{ repair.description }}</div>
                     </div>
+                    {% endif %}
                     
                     {% if repair.cost %}
                     <div class="row mb-3">
