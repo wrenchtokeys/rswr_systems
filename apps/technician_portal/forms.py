@@ -437,7 +437,9 @@ class RepairForm(forms.ModelForm):
             else:
                 if not (_clean_technician.is_manager and _clean_technician.can_override_pricing):
                     self.add_error('cost_override', 'You do not have permission to override pricing.')
-                elif _clean_technician.approval_limit and cost_override > _clean_technician.approval_limit:
+                # Use `is not None` so approval_limit=Decimal('0.00') is a valid
+                # "zero cap" — bare truthiness would treat 0.00 as "no limit" (AGENTS.md).
+                elif _clean_technician.approval_limit is not None and cost_override > _clean_technician.approval_limit:
                     self.add_error('cost_override', f'Override amount exceeds your approval limit of ${_clean_technician.approval_limit}.')
                 elif not override_reason:
                     self.add_error('override_reason', 'Override reason is required when setting a custom price.')

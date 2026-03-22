@@ -80,6 +80,18 @@ class TenantAdmin(admin.ModelAdmin):
                 'grace_days_remaining_display',
             ),
         }),
+        ('Stripe Connect (Payment Processing)', {
+            'fields': (
+                'stripe_connect_account_id',
+                'stripe_onboarding_status',
+                'stripe_connect_charges_enabled',
+                'stripe_connect_payouts_enabled',
+                'stripe_connect_onboarding_complete',
+                'stripe_connected_at',
+                'platform_fee_percent',
+            ),
+            'classes': ('collapse',),
+        }),
         ('Alerts', {
             'fields': ('subscription_alerts_sent',),
             'classes': ('collapse',),
