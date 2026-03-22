@@ -439,20 +439,28 @@ def customer_repairs(request):
         if sort_by in valid_sorts:
             repairs = repairs.order_by(sort_by)
 
-        # Calculate summary statistics
-        total_repairs = repairs.count()
+        # Calculate summary statistics — all in ONE aggregate query instead of 5
+        # separate .count()/.aggregate() calls. (CODE-143)
+        from decimal import Decimal
+        month_start = timezone.now().date().replace(day=1)
+        stats_agg = repairs.aggregate(
+            total_repairs=Count('id'),
+            pending_approval=Count('id', filter=Q(queue_status='PENDING')),
+            in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
+            completed_this_month=Count(
+                'id',
+                filter=Q(queue_status='COMPLETED', service_date__gte=month_start),
+            ),
+            total_cost=Sum('cost', filter=Q(queue_status='COMPLETED')),
+        )
         stats = {
-            'total_repairs': total_repairs,
-            'pending_approval': repairs.filter(queue_status='PENDING').count(),
-            'in_progress': repairs.filter(queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
-            'completed_this_month': repairs.filter(
-                queue_status='COMPLETED',
-                service_date__gte=timezone.now().date().replace(day=1)
-            ).count(),
-            'total_cost': repairs.filter(queue_status='COMPLETED').aggregate(
-                total=models.Sum('cost')
-            )['total'] or 0
+            'total_repairs': stats_agg['total_repairs'] or 0,
+            'pending_approval': stats_agg['pending_approval'] or 0,
+            'in_progress': stats_agg['in_progress'] or 0,
+            'completed_this_month': stats_agg['completed_this_month'] or 0,
+            'total_cost': stats_agg['total_cost'] or Decimal('0.00'),
         }
+        total_repairs = stats['total_repairs']
 
         # Check which repairs were customer-initiated and mark them
         repair_ids = list(repairs.values_list('id', flat=True))
