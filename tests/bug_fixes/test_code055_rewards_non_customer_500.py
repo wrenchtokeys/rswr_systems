@@ -280,7 +280,7 @@ class ReferralHistoryFullContextTestCase(TestCase):
         customer2 = Customer.objects.create(tenant=self.tenant, name="Fleet2", email="f2@example.com")
         cust2 = CustomerUser.objects.create(user=cust2_user, customer=customer2)
 
-        Referral.objects.create(referral_code=code_obj, customer_user=cust2, status='COMPLETED')
+        Referral.objects.create(referral_code=code_obj, customer_user=cust2)
 
         self._login()
         resp = self.client.get(reverse("referral_history"))
