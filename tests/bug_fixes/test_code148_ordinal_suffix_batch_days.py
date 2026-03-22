@@ -141,14 +141,9 @@ class BatchMonthDaysContextTest(TestCase):
 
     def setUp(self):
         self.client.force_login(self.owner)
-        # Simulate tenant middleware
-        session = self.client.session
-        session['tenant_id'] = self.tenant.id
-        session.save()
 
     def _get_settings_response(self):
         """GET owner settings and return response, patching tenant on request."""
-        from django.test import RequestFactory
         from apps.saas import views as saas_views
         from unittest.mock import patch
 
@@ -165,15 +160,12 @@ class BatchMonthDaysContextTest(TestCase):
 
     def test_batch_month_days_has_28_entries(self):
         response = self._get_settings_response()
-        # Response is a TemplateResponse — access context via context_data or render
         if hasattr(response, 'context_data'):
             ctx = response.context_data
         elif hasattr(response, 'context'):
             ctx = response.context
         else:
-            # Render to force context evaluation
-            response.accepted_renderer = None
-            return  # Skip if context not available in this response type
+            return
 
         batch_days = ctx.get('batch_month_days', [])
         self.assertEqual(len(batch_days), 28, f"Expected 28 entries, got {len(batch_days)}")
