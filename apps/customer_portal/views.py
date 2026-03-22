@@ -2973,13 +2973,17 @@ def customer_team(request):
             status='pending'
         ).order_by('-created_at')
         
-        # Mark expired invitations
-        for inv in pending_invitations:
-            if not inv.is_valid:
-                inv.status = 'expired'
-                inv.save(update_fields=['status'])
-        
-        # Refresh to get updated statuses
+        # Bulk-expire stale invitations in a single UPDATE — avoids per-row
+        # double-write caused by the old loop pattern where CustomerInvitation.is_valid
+        # already saves when it detects expiry, and then the loop body saved a second
+        # time.  (CODE-146)
+        CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending',
+            expires_at__lt=timezone.now(),
+        ).update(status='expired')
+
+        # Refresh to get non-expired pending invitations only
         pending_invitations = CustomerInvitation.objects.filter(
             customer=customer,
             status='pending'
