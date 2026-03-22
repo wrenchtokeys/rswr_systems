@@ -2788,12 +2788,23 @@ def owner_send_reminder(request, invoice_id):
         return redirect('signup')
 
     invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
-    
+
     if invoice.status in ['PAID', 'CANCELLED', 'DRAFT']:
         messages.error(request, f'Cannot send reminder for {invoice.get_status_display().lower()} invoice.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
-    if not invoice.customer.email:
+    # Resolve the actual recipient — prefer CustomerRepairPreference.billing_email
+    # over customer.email so fleet customers with a dedicated AP address receive the
+    # reminder at the right inbox.  (CODE-128: guard was checking customer.email only,
+    # which blocked reminders for customers whose *only* email is billing_email.)
+    _reminder_recipient = None
+    try:
+        _reminder_prefs = invoice.customer.repair_preferences
+        _reminder_recipient = _reminder_prefs.billing_email or invoice.customer.email
+    except Exception:
+        _reminder_recipient = invoice.customer.email
+
+    if not _reminder_recipient:
         messages.error(request, 'No email address found for this customer.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
@@ -2803,23 +2814,24 @@ def owner_send_reminder(request, invoice_id):
     try:
         from apps.billing.services.reminder_service import ReminderService
         reminder_service = ReminderService(tenant=tenant)
-        
+
         # Determine reminder type based on invoice status
         if invoice.status == 'OVERDUE' or (invoice.due_date and invoice.due_date < timezone.now().date()):
             reminder_type = 'overdue'
         else:
             reminder_type = 'due_soon'
-        
+
         result = reminder_service.send_reminder(
             invoice, reminder_type,
             custom_body=custom_message if custom_message else None,
         )
-        
+
         if result.get('success'):
-            messages.success(request, f'Payment reminder sent to {invoice.customer.email}.')
+            # Show the actual recipient address so the owner knows where it went
+            messages.success(request, f'Payment reminder sent to {_reminder_recipient}.')
         else:
             messages.error(request, f'Failed to send reminder: {result.get("error", "Unknown error")}')
-            
+
     except Exception as e:
         logger.error(f"Error sending reminder for invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while sending the reminder.')
