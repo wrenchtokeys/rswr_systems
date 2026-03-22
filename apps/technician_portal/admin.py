@@ -9,7 +9,7 @@ from django.shortcuts import render
 from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django import forms
-from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation
+from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation, TechnicianNotification
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -476,3 +476,103 @@ class ViscosityRecommendationAdmin(TenantFilterMixin, admin.ModelAdmin):
         super().save_model(request, obj, form, change)
         if not change:
             self.message_user(request, f'Created viscosity rule: {obj.name}', level='success')
+
+
+# =============================================================================
+# TECHNICIAN NOTIFICATIONS (Debugging / Audit)
+# =============================================================================
+
+class TechnicianTenantFilterMixin:
+    """
+    Mixin for models that reach tenant through technician → tenant.
+    TechnicianNotification has no direct tenant FK but is scoped
+    via technician → tenant.
+    """
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        from apps.tenants.models import TenantMembership
+        tenant_ids = (
+            TenantMembership.objects
+            .filter(user=request.user, is_active=True)
+            .values_list('tenant_id', flat=True)
+        )
+        return qs.filter(technician__tenant__in=tenant_ids)
+
+    def get_list_filter(self, request):
+        filters = list(super().get_list_filter(request))
+        if request.user.is_superuser and 'technician__tenant' not in filters:
+            filters = ['technician__tenant'] + filters
+        return filters
+
+
+@admin.register(TechnicianNotification)
+class TechnicianNotificationAdmin(TechnicianTenantFilterMixin, admin.ModelAdmin):
+    """
+    Read-only admin for in-app technician notifications.
+
+    Useful for debugging notification delivery issues, auditing what
+    messages were sent, and bulk-clearing stale unread notifications.
+    Notifications are created programmatically — add is disabled.
+    """
+    list_display = [
+        'id', 'get_tenant', 'technician', 'message_preview',
+        'read', 'get_notification_type', 'created_at',
+    ]
+    list_filter = ['read', 'created_at']
+    search_fields = ['technician__user__username', 'technician__user__email', 'message']
+    readonly_fields = [
+        'technician', 'message', 'read', 'created_at',
+        'redemption', 'repair', 'repair_batch_id',
+    ]
+    date_hierarchy = 'created_at'
+    list_select_related = ['technician', 'technician__user', 'technician__tenant']
+    list_per_page = 50
+    ordering = ['-created_at']
+    actions = ['mark_as_read', 'mark_as_unread']
+
+    def has_add_permission(self, request):
+        # Notifications are created by business logic, not manually.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Content is immutable — only read/unread status via actions.
+        return False
+
+    def get_tenant(self, obj):
+        try:
+            return obj.technician.tenant.name
+        except AttributeError:
+            return '—'
+    get_tenant.short_description = 'Tenant'
+    get_tenant.admin_order_field = 'technician__tenant__name'
+
+    def message_preview(self, obj):
+        """Truncate long messages for the list view."""
+        if len(obj.message) > 80:
+            return obj.message[:80] + '…'
+        return obj.message
+    message_preview.short_description = 'Message'
+
+    def get_notification_type(self, obj):
+        """Show what kind of notification this is (batch / repair / reward / general)."""
+        if obj.repair_batch_id:
+            return '📦 Batch'
+        if obj.repair_id:
+            return '🔧 Repair'
+        if obj.redemption_id:
+            return '🎁 Reward'
+        return '📣 General'
+    get_notification_type.short_description = 'Type'
+
+    @admin.action(description='✅ Mark selected notifications as read')
+    def mark_as_read(self, request, queryset):
+        updated = queryset.filter(read=False).update(read=True)
+        self.message_user(request, f'✅ {updated} notification(s) marked as read.')
+
+    @admin.action(description='🔔 Mark selected notifications as unread')
+    def mark_as_unread(self, request, queryset):
+        updated = queryset.filter(read=True).update(read=False)
+        self.message_user(request, f'🔔 {updated} notification(s) marked as unread.')
