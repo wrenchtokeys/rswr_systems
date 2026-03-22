@@ -123,6 +123,13 @@ class NotificationTemplate(models.Model):
             dict: Rendered content for all channels
         """
         from django.template.loader import render_to_string
+        from django.conf import settings
+
+        # Inject base_url for absolute links in email templates
+        if 'base_url' not in context_dict:
+            context_dict['base_url'] = getattr(
+                settings, 'SITE_URL', 'https://rssystems.io'
+            ).rstrip('/')
 
         context = Context(context_dict)
 

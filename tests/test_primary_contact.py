@@ -523,11 +523,18 @@ class DefaultTechnicianOnRepairFormTests(TestCase):
 # ---------------------------------------------------------------------------
 
 class NotificationPreferenceLinksTests(TestCase):
-    """Regression tests verifying email templates use correct notification
+    """Regression tests verifying email templates use absolute notification
     preference URLs."""
 
-    def test_customer_facing_templates_use_app_preferences_url(self):
-        """Customer-facing email templates should link to /app/notifications/preferences/."""
+    MOCK_BRANDING = type('obj', (object,), {
+        'primary_color': '#000', 'text_color': '#000',
+        'heading_font': 'Arial', 'body_font': 'Arial',
+        'warning_color': '#f00', 'button_border_radius': 4,
+        'logo_url': '', 'company_name': 'Test',
+    })()
+
+    def test_customer_facing_templates_use_absolute_app_preferences_url(self):
+        """Customer-facing email templates should use absolute URL for preferences."""
         from django.template.loader import render_to_string
         customer_templates = [
             'emails/notifications/repair_approved.html',
@@ -541,20 +548,17 @@ class NotificationPreferenceLinksTests(TestCase):
         ]
         for template_name in customer_templates:
             rendered = render_to_string(template_name, {
-                'branding': type('obj', (object,), {
-                    'primary_color': '#000', 'text_color': '#000',
-                    'heading_font': 'Arial', 'body_font': 'Arial',
-                    'warning_color': '#f00', 'button_border_radius': 4,
-                    'logo_url': '', 'company_name': 'Test',
-                })(),
+                'branding': self.MOCK_BRANDING,
+                'base_url': 'https://rssystems.io',
             })
-            self.assertIn('/app/notifications/preferences/', rendered,
-                          f'{template_name} should link to /app/notifications/preferences/')
-            self.assertNotIn('/app/settings/notifications/', rendered,
-                             f'{template_name} should NOT use old /app/settings/notifications/ URL')
+            self.assertIn(
+                'https://rssystems.io/app/notifications/preferences/',
+                rendered,
+                f'{template_name} should use absolute URL for preferences',
+            )
 
-    def test_tech_facing_templates_use_tech_preferences_url(self):
-        """Tech-facing email templates should link to /tech/notifications/preferences/."""
+    def test_tech_facing_templates_use_absolute_tech_preferences_url(self):
+        """Tech-facing email templates should use absolute URL for preferences."""
         from django.template.loader import render_to_string
         tech_templates = [
             'emails/notifications/repair_assigned.html',
@@ -563,14 +567,35 @@ class NotificationPreferenceLinksTests(TestCase):
         ]
         for template_name in tech_templates:
             rendered = render_to_string(template_name, {
-                'branding': type('obj', (object,), {
-                    'primary_color': '#000', 'text_color': '#000',
-                    'heading_font': 'Arial', 'body_font': 'Arial',
-                    'warning_color': '#f00', 'button_border_radius': 4,
-                    'logo_url': '', 'company_name': 'Test',
-                })(),
+                'branding': self.MOCK_BRANDING,
+                'base_url': 'https://rssystems.io',
             })
-            self.assertIn('/tech/notifications/preferences/', rendered,
-                          f'{template_name} should link to /tech/notifications/preferences/')
-            self.assertNotIn('/tech/settings/notifications/', rendered,
-                             f'{template_name} should NOT use old /tech/settings/notifications/ URL')
+            self.assertIn(
+                'https://rssystems.io/tech/notifications/preferences/',
+                rendered,
+                f'{template_name} should use absolute URL for preferences',
+            )
+
+    def test_base_url_fallback_when_not_provided(self):
+        """When base_url is not in context, should fall back to https://rssystems.io."""
+        from django.template.loader import render_to_string
+        rendered = render_to_string('emails/notifications/repair_approved.html', {
+            'branding': self.MOCK_BRANDING,
+        })
+        self.assertIn(
+            'https://rssystems.io/app/notifications/preferences/',
+            rendered,
+        )
+
+    def test_notification_template_render_injects_base_url(self):
+        """NotificationTemplate.render() should inject base_url into context."""
+        from core.models.notification_template import NotificationTemplate
+        template = NotificationTemplate(
+            name='test',
+            title_template='Test',
+            message_template='Test msg',
+        )
+        context = {'foo': 'bar'}
+        template.render(context)
+        self.assertIn('base_url', context)
+        self.assertEqual(context['base_url'], 'https://rssystems.io')
