@@ -333,17 +333,22 @@ def _handle_subscription_updated(subscription):
                     f"subscription.updated: Tenant {tenant.slug} plan changed to {plan.name}"
                 )
     
-    # Handle cancel_at_period_end
+    # Handle cancel_at_period_end: subscription is scheduled to cancel but is still
+    # active.  Keep the status as 'canceled' (matching cancel_subscription() which
+    # sets it when the owner clicks "Cancel").  The middleware now treats 'canceled'
+    # without a grace_period_end as still-active, so no access loss occurs here.
+    # The customer.subscription.deleted webhook fires when it truly expires, setting
+    # status='expired' and grace_period_end at that point.  (CODE-130)
     if subscription.get('cancel_at_period_end'):
         new_status = 'canceled'
-    
+
     tenant.subscription_status = new_status
     tenant.stripe_subscription_id = subscription_id
     tenant.save(update_fields=[
         'subscription_status', 'stripe_subscription_id',
         'plan', 'subscription_plan',
     ])
-    
+
     logger.info(
         f"subscription.updated: Tenant {tenant.slug} status={new_status}"
     )
