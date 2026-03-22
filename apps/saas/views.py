@@ -2808,6 +2808,7 @@ def owner_email_invoice(request, invoice_id):
 
 
 @owner_or_manager_required
+@require_POST
 def owner_send_reminder(request, invoice_id):
     """POST /owner/invoices/<id>/reminder/ — send payment reminder to customer."""
     tenant, membership = _get_owner_tenant(request)
