@@ -37,8 +37,8 @@
                     This replacement is waiting for your approval before work can begin.
                 </p>
                 <div class="flex flex-wrap gap-3">
-                    <a href="{% url 'customer_replacement_approve' replacement_id=replacement.id %}" 
-                       class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                    <a href="{% url 'customer_replacement_approve' replacement_id=replacement.id %}"
+                       class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-medium rounded-lg hover:bg-brand-600 transition-colors">
                         <i class="fas fa-check mr-2"></i> Approve
                     </a>
                     <a href="{% url 'customer_replacement_deny' replacement_id=replacement.id %}" 
