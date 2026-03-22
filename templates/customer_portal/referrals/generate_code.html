@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends 'customer_portal/base_customer.html' %}
 {% load static %}
 
 {% block title %}Generate Referral Code{% endblock %}
@@ -20,8 +20,8 @@
                 </div>
                 <div class="card-body">
                     {% if existing_code %}
-                        <div class="alert alert-warning">
-                            <strong>Note:</strong> You already have an existing referral code.
+                        <div class="alert alert-success">
+                            <strong>Your referral code is ready!</strong> Share it with friends to earn rewards.
                         </div>
                         
                         <div class="mb-4 text-center">
