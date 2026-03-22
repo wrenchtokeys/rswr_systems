@@ -38,8 +38,8 @@
         <p class="text-xl sm:text-2xl font-bold text-amber-600">{{ stats.pending_approval }}</p>
         <p class="text-[10px] sm:text-xs text-gray-500 font-medium mt-0.5">Pending</p>
     </button>
-    <button onclick="filterByStatus('APPROVED,IN_PROGRESS')" class="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center hover:shadow-md transition-all {% if status_filter == 'APPROVED,IN_PROGRESS' or status_filter == 'IN_PROGRESS' or status_filter == 'APPROVED' %}ring-2 ring-indigo-400{% endif %}">
-        <p class="text-xl sm:text-2xl font-bold text-indigo-600">{{ stats.in_progress }}</p>
+    <button onclick="filterByStatus('APPROVED,IN_PROGRESS')" class="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center hover:shadow-md transition-all {% if status_filter == 'APPROVED,IN_PROGRESS' or status_filter == 'IN_PROGRESS' or status_filter == 'APPROVED' %}ring-2 ring-blue-400{% endif %}">
+        <p class="text-xl sm:text-2xl font-bold text-blue-600">{{ stats.in_progress }}</p>
         <p class="text-[10px] sm:text-xs text-gray-500 font-medium mt-0.5">Active</p>
     </button>
     <button onclick="filterByStatus('COMPLETED')" class="bg-white rounded-xl border border-gray-200 p-3 sm:p-4 text-center hover:shadow-md transition-all {% if status_filter == 'COMPLETED' %}ring-2 ring-green-400{% endif %}">
@@ -62,7 +62,7 @@
     <button onclick="filterByStatus('APPROVED')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'APPROVED' %}bg-blue-600 text-white{% else %}bg-blue-50 text-blue-700 hover:bg-blue-100{% endif %}">
         Approved
     </button>
-    <button onclick="filterByStatus('IN_PROGRESS')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'IN_PROGRESS' %}bg-indigo-600 text-white{% else %}bg-indigo-50 text-indigo-700 hover:bg-indigo-100{% endif %}">
+    <button onclick="filterByStatus('IN_PROGRESS')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'IN_PROGRESS' %}bg-blue-600 text-white{% else %}bg-blue-50 text-blue-700 hover:bg-blue-100{% endif %}">
         In Progress
     </button>
     <button onclick="filterByStatus('COMPLETED')" class="status-pill flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {% if status_filter == 'COMPLETED' %}bg-green-600 text-white{% else %}bg-green-50 text-green-700 hover:bg-green-100{% endif %}">
@@ -169,7 +169,7 @@
                 <span id="selected-count">0</span> selected
             </span>
             <div class="flex items-center gap-2">
-                <button onclick="bulkApprove()" class="inline-flex items-center px-4 py-2 bg-green-500 text-white text-sm font-semibold rounded-lg hover:bg-green-600 transition-colors">
+                <button onclick="bulkApprove()" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
                     <i class="fas fa-check mr-1.5"></i> Approve (<span id="approve-count">0</span>)
                 </button>
                 <button onclick="bulkDeny()" class="inline-flex items-center px-4 py-2 bg-red-500 text-white text-sm font-semibold rounded-lg hover:bg-red-600 transition-colors">
@@ -216,7 +216,7 @@
                             <span class="text-sm font-semibold text-gray-900">{{ item.unit_number }}</span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-purple-100 text-purple-700">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-brand-100 text-brand-700">
                                 <i class="fas fa-layer-group mr-1 text-[10px]"></i> {{ item.break_count }} breaks
                             </span>
                         </td>
@@ -224,7 +224,7 @@
                         <td class="px-4 py-3 whitespace-nowrap">
                             <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
                                 {% if item.overall_status == 'COMPLETED' %}bg-green-100 text-green-700
-                                {% elif item.overall_status == 'IN_PROGRESS' %}bg-indigo-100 text-indigo-700
+                                {% elif item.overall_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
                                 {% elif item.overall_status == 'PENDING' %}bg-amber-100 text-amber-700
                                 {% elif item.overall_status == 'APPROVED' %}bg-blue-100 text-blue-700
                                 {% elif item.overall_status == 'DENIED' %}bg-red-100 text-red-700
@@ -236,7 +236,7 @@
                         <td class="px-4 py-3 text-right whitespace-nowrap" onclick="event.stopPropagation()">
                             <div class="flex justify-end gap-1.5">
                                 {% if item.can_approve_all %}
-                                <button onclick="approveBatch('{{ item.batch_id }}')" class="px-2.5 py-1 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">Approve</button>
+                                <button onclick="approveBatch('{{ item.batch_id }}')" class="px-2.5 py-1 bg-brand-500 text-white text-xs font-semibold rounded-md hover:bg-brand-600 transition-colors">Approve</button>
                                 <button onclick="denyBatch('{{ item.batch_id }}')" class="px-2.5 py-1 border border-red-300 text-red-600 text-xs font-semibold rounded-md hover:bg-red-50 transition-colors">Deny</button>
                                 {% endif %}
                                 <button class="text-brand-500 hover:text-brand-700 text-xs font-medium">
@@ -260,7 +260,7 @@
                                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold
                                             {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
                                             {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
-                                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-indigo-100 text-indigo-700
+                                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
                                             {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
                                             {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
                                             {% else %}bg-gray-100 text-gray-700{% endif %}">
@@ -268,7 +268,7 @@
                                         </span>
                                         <span class="text-sm font-medium text-gray-900">${{ repair.cost|floatformat:2 }}</span>
                                         {% if repair.queue_status == 'PENDING' %}
-                                        <button onclick="event.preventDefault(); approveRepair({{ repair.id }})" class="px-2 py-1 bg-green-600 text-white text-[10px] font-semibold rounded hover:bg-green-700">Approve</button>
+                                        <button onclick="event.preventDefault(); approveRepair({{ repair.id }})" class="px-2 py-1 bg-brand-500 text-white text-[10px] font-semibold rounded hover:bg-brand-600">Approve</button>
                                         <button onclick="event.preventDefault(); denyRepair({{ repair.id }})" class="px-2 py-1 border border-red-300 text-red-600 text-[10px] font-semibold rounded hover:bg-red-50">Deny</button>
                                         {% endif %}
                                         <i class="fas fa-chevron-right text-gray-300 text-[10px]"></i>
@@ -299,7 +299,7 @@
                         <td class="px-4 py-3 whitespace-nowrap">
                             <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
                                 {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
-                                {% elif repair.queue_status == 'IN_PROGRESS' %}bg-indigo-100 text-indigo-700
+                                {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
                                 {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
                                 {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
                                 {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
@@ -325,7 +325,7 @@
                         <td class="px-4 py-3 text-right whitespace-nowrap" onclick="event.stopPropagation()">
                             <div class="flex justify-end gap-1.5">
                                 {% if repair.queue_status == 'PENDING' %}
-                                <button onclick="approveRepair({{ repair.id }})" class="px-2.5 py-1 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">Approve</button>
+                                <button onclick="approveRepair({{ repair.id }})" class="px-2.5 py-1 bg-brand-500 text-white text-xs font-semibold rounded-md hover:bg-brand-600 transition-colors">Approve</button>
                                 <button onclick="denyRepair({{ repair.id }})" class="px-2.5 py-1 border border-red-300 text-red-600 text-xs font-semibold rounded-md hover:bg-red-50 transition-colors">Deny</button>
                                 {% else %}
                                 <a href="{% url 'customer_repair_detail' repair.id %}" class="text-brand-500 hover:text-brand-700 text-xs font-medium">View</a>
@@ -361,7 +361,7 @@
                 <div class="flex items-start justify-between mb-2">
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-700">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-100 text-brand-700">
                                 <i class="fas fa-layer-group mr-1"></i> BATCH
                             </span>
                             <span class="text-sm font-bold text-gray-900">Unit {{ item.unit_number }}</span>
@@ -372,7 +372,7 @@
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold
                             {% if item.overall_status == 'COMPLETED' %}bg-green-100 text-green-700
                             {% elif item.overall_status == 'PENDING' %}bg-amber-100 text-amber-700
-                            {% elif item.overall_status == 'IN_PROGRESS' %}bg-indigo-100 text-indigo-700
+                            {% elif item.overall_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
                             {% elif item.overall_status == 'APPROVED' %}bg-blue-100 text-blue-700
                             {% elif item.overall_status == 'DENIED' %}bg-red-100 text-red-700
                             {% else %}bg-gray-100 text-gray-700{% endif %}">
@@ -383,7 +383,7 @@
                 </div>
                 {% if item.can_approve_all %}
                 <div class="flex gap-2 mt-3" onclick="event.stopPropagation()">
-                    <button onclick="approveBatch('{{ item.batch_id }}')" class="flex-1 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors">
+                    <button onclick="approveBatch('{{ item.batch_id }}')" class="flex-1 py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
                         <i class="fas fa-check mr-1"></i> Approve All
                     </button>
                     <button onclick="denyBatch('{{ item.batch_id }}')" class="py-2.5 px-4 border-2 border-red-300 text-red-600 text-sm font-semibold rounded-lg hover:bg-red-50 transition-colors">
@@ -431,7 +431,7 @@
                     <div class="text-right ml-3 flex-shrink-0">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold
                             {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
-                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-indigo-100 text-indigo-700
+                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
                             {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
                             {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
                             {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
@@ -448,7 +448,7 @@
                 </div>
                 {% if repair.queue_status == 'PENDING' %}
                 <div class="flex gap-2 mt-3" onclick="event.preventDefault(); event.stopPropagation();">
-                    <button onclick="approveRepair({{ repair.id }})" class="flex-1 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors">
+                    <button onclick="approveRepair({{ repair.id }})" class="flex-1 py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
                         <i class="fas fa-check mr-1"></i> Approve
                     </button>
                     <button onclick="denyRepair({{ repair.id }})" class="py-2.5 px-4 border-2 border-red-300 text-red-600 text-sm font-semibold rounded-lg hover:bg-red-50 transition-colors">
