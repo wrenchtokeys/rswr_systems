@@ -266,6 +266,20 @@ def repair_detail(request, repair_id):
         except Exception as e:
             logger.error(f"Error getting batch summary for repair {repair.id} in batch {repair.repair_batch_id}: {e}", exc_info=True)
 
+    # Check if this repair has already been invoiced (for Generate Invoice button)
+    is_invoiced = False
+    invoice_id = None
+    if repair.queue_status == 'COMPLETED':
+        from apps.billing.models import InvoiceLineItem
+        line_item = InvoiceLineItem.objects.filter(
+            repair=repair,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).select_related('invoice').first()
+        if line_item:
+            is_invoiced = True
+            invoice_id = line_item.invoice_id
+
     return render(request, 'technician_portal/repair_detail.html', {
         'repair': repair,
         'TIME_ZONE': timezone.get_current_timezone_name(),
@@ -276,6 +290,8 @@ def repair_detail(request, repair_id):
         'technician': technician,
         'batch_info': batch_info,
         'next_break': next_break,
+        'is_invoiced': is_invoiced,
+        'invoice_id': invoice_id,
     })
 
 

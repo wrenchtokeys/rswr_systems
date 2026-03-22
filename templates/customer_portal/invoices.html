@@ -71,7 +71,7 @@
                         </span>
                     {% elif invoice.status == 'SENT' %}
                         <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                            <i class="fas fa-paper-plane mr-1 text-[10px]"></i> Sent
+                            <i class="fas fa-clock mr-1 text-[10px]"></i> Awaiting Payment
                         </span>
                     {% elif invoice.status == 'PARTIAL' %}
                         <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
@@ -132,7 +132,7 @@
                     </span>
                 {% elif invoice.status == 'SENT' %}
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                        <i class="fas fa-paper-plane mr-1 text-[10px]"></i> Sent
+                        <i class="fas fa-clock mr-1 text-[10px]"></i> Awaiting Payment
                     </span>
                 {% elif invoice.status == 'PARTIAL' %}
                     <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
