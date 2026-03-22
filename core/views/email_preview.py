@@ -153,7 +153,7 @@ def create_repair_approved_context(branding_context):
         'branding': type('obj', (object,), branding_context),
         'repair': repair,
         'view_repair_url': 'https://example.com/app/repairs/12345/',
-        'unsubscribe_url': 'https://example.com/app/settings/notifications/',
+        'unsubscribe_url': 'https://example.com/app/notifications/preferences/',
     }
 
 
@@ -166,7 +166,7 @@ def create_repair_denied_context(branding_context):
         'branding': type('obj', (object,), branding_context),
         'repair': repair,
         'view_repair_url': 'https://example.com/app/repairs/12345/',
-        'unsubscribe_url': 'https://example.com/app/settings/notifications/',
+        'unsubscribe_url': 'https://example.com/app/notifications/preferences/',
     }
 
 
@@ -178,7 +178,7 @@ def create_repair_assigned_context(branding_context):
         'branding': type('obj', (object,), branding_context),
         'repair': repair,
         'view_repair_url': 'https://example.com/tech/repairs/12345/',
-        'unsubscribe_url': 'https://example.com/tech/settings/notifications/',
+        'unsubscribe_url': 'https://example.com/tech/notifications/preferences/',
     }
 
 
@@ -190,7 +190,7 @@ def create_repair_completed_context(branding_context):
         'branding': type('obj', (object,), branding_context),
         'repair': repair,
         'view_repair_url': 'https://example.com/app/repairs/12345/',
-        'unsubscribe_url': 'https://example.com/app/settings/notifications/',
+        'unsubscribe_url': 'https://example.com/app/notifications/preferences/',
     }
 
 
@@ -224,5 +224,5 @@ def create_batch_approved_context(branding_context):
         'total_cost': total_cost,
         'pricing_note': 'Progressive pricing applied: Break #1 priced as 4th repair ($75), Break #2 as 5th repair ($150), Break #3 as 6th repair ($225). Volume discount saves you $50 compared to individual repairs.',
         'view_repairs_url': 'https://example.com/app/repairs/?unit=TRK-789',
-        'unsubscribe_url': 'https://example.com/app/settings/notifications/',
+        'unsubscribe_url': 'https://example.com/app/notifications/preferences/',
     }
