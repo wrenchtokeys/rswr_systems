@@ -208,35 +208,63 @@ def referral_tracking(request):
 def referral_history(request):
     """
     Get referral history for the current user.
-    
+
     Displays all successful referrals made using the user's referral code.
-    
+    Renders dashboard.html, which requires the full context (points,
+    referral_count, reward_options, redemptions) so that the stat cards and
+    reward sections display real data instead of zeros/blanks.  (CODE-144)
+
     Args:
         request: HTTP request object
-        
+
     Returns:
         HttpResponse: Rendered template with referral history
     """
     customer_user = get_customer_user(request)
     if customer_user is None:
         return _customer_required_redirect(request)
-    
+
     # Get the user's referral code
-    referral_code = get_user_referral_code(customer_user)
-    
-    if referral_code:
-        # Get all referrals using this code
-        referrals = Referral.objects.filter(referral_code=referral_code).order_by('-created_at')
-        
+    referral_code_obj = get_user_referral_code(customer_user)
+
+    # Reward points
+    points = RewardService.get_reward_balance(customer_user)
+
+    # Tenant-scoped reward options
+    tenant = getattr(request, 'tenant', None)
+    reward_options_qs = RewardOption.objects.none()
+    if tenant:
+        reward_options_qs = RewardOption.objects.filter(tenant=tenant, is_active=True).order_by('points_required')
+
+    # Recent redemptions
+    redemptions = RewardRedemption.objects.filter(
+        reward__customer_user=customer_user
+    ).order_by('-created_at')[:5]
+
+    if referral_code_obj:
+        # All referrals for this code (no limit — this is the "View All" page)
+        referrals = Referral.objects.filter(referral_code=referral_code_obj).order_by('-created_at')
+        referral_count = referrals.count()
+
         context = {
+            'referral_code': referral_code_obj.code,
+            'referral_count': referral_count,
             'referrals': referrals,
-            'referral_code': referral_code.code
+            'points': points,
+            'reward_options': reward_options_qs,
+            'redemptions': redemptions,
         }
-        
-        return render(request, 'customer_portal/referrals/dashboard.html', context)
     else:
-        # User doesn't have a referral code yet
-        return render(request, 'customer_portal/referrals/dashboard.html', {'has_code': False})
+        context = {
+            'referral_code': None,
+            'referral_count': 0,
+            'referrals': [],
+            'points': points,
+            'reward_options': reward_options_qs,
+            'redemptions': redemptions,
+        }
+
+    return render(request, 'customer_portal/referrals/dashboard.html', context)
 
 @login_required
 def referral_stats(request):
@@ -540,25 +568,37 @@ def referral_rewards(request):
 def referral_rewards_history(request):
     """
     View complete redemption history.
-    
-    Displays a complete history of the user's reward redemptions
-    with their current status.
-    
+
+    Displays a complete history of the user's reward redemptions with their
+    current status.  Also passes `points` and tenant-scoped `reward_options`
+    so the "Current Balance" card and the "Available Rewards" section in
+    rewards.html render real data instead of empty/zero values.  (CODE-144)
+
     Args:
         request: HTTP request object
-        
+
     Returns:
         HttpResponse: Rendered template with full redemption history
     """
     customer_user = get_customer_user(request)
     if customer_user is None:
         return _customer_required_redirect(request)
+
     redemptions = RewardRedemption.objects.filter(
         reward__customer_user=customer_user
     ).order_by('-created_at')
-    
+
+    points = RewardService.get_reward_balance(customer_user)
+
+    tenant = getattr(request, 'tenant', None)
+    reward_options_qs = RewardOption.objects.none()
+    if tenant:
+        reward_options_qs = RewardOption.objects.filter(tenant=tenant, is_active=True).order_by('points_required')
+
     return render(request, 'customer_portal/referrals/rewards.html', {
-        'redemptions': redemptions
+        'redemptions': redemptions,
+        'points': points,
+        'reward_options': reward_options_qs,
     })
 
 @login_required

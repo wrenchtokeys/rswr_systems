@@ -454,7 +454,35 @@ class Invoice(models.Model):
     def amount_due(self):
         """Amount still owed on this invoice."""
         return self.total - self.amount_paid
-    
+
+    @property
+    def state_tax_amount(self):
+        """Calculated state tax amount from rate × subtotal."""
+        if not self.state_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.state_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def county_tax_amount(self):
+        """Calculated county tax amount from rate × subtotal."""
+        if not self.county_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.county_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def city_tax_amount(self):
+        """Calculated city tax amount from rate × subtotal."""
+        if not self.city_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.city_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def special_tax_amount(self):
+        """Calculated special district tax amount from rate × subtotal."""
+        if not self.special_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.special_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
     @property
     def is_overdue(self):
         """Check if invoice is past due."""

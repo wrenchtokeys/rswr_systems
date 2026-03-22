@@ -406,7 +406,17 @@ def create_repair(request):
                 for error in errors:
                     messages.error(request, f"{field}: {error}")
     else:
-        form = RepairForm(user=request.user, tenant=getattr(request, 'tenant', None))
+        initial = {}
+        customer_id = request.GET.get('customer_id')
+        if customer_id and tenant:
+            try:
+                customer = Customer.objects.get(id=customer_id, tenant=tenant)
+                initial['customer'] = customer.id
+                if customer.primary_technician_id:
+                    initial['technician'] = customer.primary_technician_id
+            except Customer.DoesNotExist:
+                pass
+        form = RepairForm(user=request.user, tenant=getattr(request, 'tenant', None), initial=initial)
 
     pending_repair_warning = form.errors.get('__all__')
 
@@ -422,6 +432,11 @@ def create_repair(request):
     customer_types_json = json.dumps({
         str(c.id): c.customer_type for c in customers_qs
     })
+    # Map customer → primary technician ID for JS auto-selection on repair form
+    customer_primary_tech_json = json.dumps({
+        str(c.id): c.primary_technician_id
+        for c in customers_qs if c.primary_technician_id
+    })
     # Tenant-scoped Technician for the current user — used by the template to
     # check is_manager without falling back to the unscoped OneToOneField
     # reverse accessor (user.technician) which could return a record from a
@@ -436,6 +451,7 @@ def create_repair(request):
         'is_admin': admin,
         'expected_cost': expected_cost,
         'customer_types_json': customer_types_json,
+        'customer_primary_tech_json': customer_primary_tech_json,
         'current_technician': current_technician,
     }
     if admin:

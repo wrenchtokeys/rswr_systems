@@ -98,15 +98,66 @@ def technician_dashboard(request):
             queue_status='APPROVED'
         ).select_related('customer').order_by('-service_date')
 
-        # Group batch repairs and separate individual repairs
+        # Get active work (IN_PROGRESS and APPROVED)
+        repairs_active = Repair.objects.filter(
+            technician=technician,
+            queue_status__in=['IN_PROGRESS', 'APPROVED']
+        ).select_related('customer').order_by('-service_date')
+
+        # Get recently completed batch repairs (completed in last 7 days)
+        recent_completions = Repair.objects.filter(
+            technician=technician,
+            queue_status='COMPLETED',
+            service_date__gte=timezone.now() - timedelta(days=7)
+        ).select_related('customer').order_by('-service_date')
+
+        # --- Bulk-fetch all batch repairs in a SINGLE query (CODE-142 N+1 fix) ---
+        # Previously: get_batch_summary() was called once per batch inside each of
+        # the three loops below, issuing ~4 DB queries per call (exists, first, list,
+        # values_list).  With up to 60 unique batches across 3 sections that's
+        # potentially ~240 DB queries per dashboard load.
+        # Fix: collect all unique batch IDs from the three repair sets, fetch their
+        # sibling repairs in one query, group in Python, then build summaries via
+        # build_batch_summary_from_repairs() which does zero additional DB work.
+        _approved_slice = list(repairs_recently_approved[:10])
+        _active_slice = list(repairs_active[:30])
+        _completed_slice = list(recent_completions[:20])
+
+        _all_dashboard_repairs = _approved_slice + _active_slice + _completed_slice
+        _batch_ids_needed = {
+            r.repair_batch_id
+            for r in _all_dashboard_repairs
+            if r.is_part_of_batch and r.repair_batch_id
+        }
+
+        # One query for all sibling repairs across all batches on this dashboard
+        _prefetched_batches: dict = {}  # batch_id → sorted list of repairs
+        if _batch_ids_needed:
+            sibling_qs = Repair.objects.filter(
+                repair_batch_id__in=_batch_ids_needed,
+            ).select_related('customer').order_by('break_number')
+            if tenant:
+                sibling_qs = sibling_qs.filter(tenant=tenant)
+            for r in sibling_qs:
+                _prefetched_batches.setdefault(r.repair_batch_id, []).append(r)
+
+        def _batch_summary(batch_id):
+            """Build summary from pre-fetched data; falls back to DB if not cached."""
+            repairs_for_batch = _prefetched_batches.get(batch_id)
+            if repairs_for_batch:
+                return Repair.build_batch_summary_from_repairs(batch_id, repairs_for_batch)
+            # Fallback (should not normally be hit after the bulk-fetch above)
+            return Repair.get_batch_summary(batch_id, tenant=tenant)
+
+        # Group recently-approved repairs and separate individual repairs
         batch_repairs_approved = {}
         individual_repairs_approved = []
 
-        for repair in repairs_recently_approved[:10]:
+        for repair in _approved_slice:
             if repair.is_part_of_batch:
                 if repair.repair_batch_id not in batch_repairs_approved:
                     try:
-                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
+                        batch_summary = _batch_summary(repair.repair_batch_id)
                         if batch_summary:
                             batch_repairs_approved[repair.repair_batch_id] = batch_summary
                     except Exception as e:
@@ -116,20 +167,14 @@ def technician_dashboard(request):
 
         individual_repairs_approved = individual_repairs_approved[:5]
 
-        # Get active work (IN_PROGRESS and APPROVED)
-        repairs_active = Repair.objects.filter(
-            technician=technician,
-            queue_status__in=['IN_PROGRESS', 'APPROVED']
-        ).select_related('customer').order_by('-service_date')
-
         batch_repairs_in_progress = {}
         individual_repairs_in_progress = []
 
-        for repair in repairs_active[:30]:
+        for repair in _active_slice:
             if repair.is_part_of_batch:
                 if repair.repair_batch_id not in batch_repairs_in_progress:
                     try:
-                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
+                        batch_summary = _batch_summary(repair.repair_batch_id)
                         if batch_summary:
                             incomplete_count = batch_summary.get('in_progress_count', 0) + batch_summary.get('approved_count', 0)
                             if incomplete_count > 0 and repair.repair_batch_id not in batch_repairs_approved:
@@ -142,21 +187,14 @@ def technician_dashboard(request):
 
         individual_repairs_in_progress = individual_repairs_in_progress[:5]
 
-        # Get recently completed batch repairs (completed in last 7 days)
-        recent_completions = Repair.objects.filter(
-            technician=technician,
-            queue_status='COMPLETED',
-            service_date__gte=timezone.now() - timedelta(days=7)
-        ).select_related('customer').order_by('-service_date')
-
         batch_repairs_completed = {}
         individual_repairs_completed = []
 
-        for repair in recent_completions[:20]:
+        for repair in _completed_slice:
             if repair.is_part_of_batch:
                 if repair.repair_batch_id not in batch_repairs_completed:
                     try:
-                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
+                        batch_summary = _batch_summary(repair.repair_batch_id)
                         if batch_summary:
                             if batch_summary.get('completed_count', 0) == batch_summary.get('break_count', 0):
                                 batch_repairs_completed[repair.repair_batch_id] = batch_summary

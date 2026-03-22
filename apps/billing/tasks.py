@@ -473,7 +473,20 @@ def _send_batch_invoice_email(invoice, config):
         bool: True if email was sent successfully, False otherwise.
     """
     customer = invoice.customer
-    if not customer.email:
+
+    # Prefer billing_email from CustomerRepairPreference when set — fleet customers
+    # often have a dedicated AP email that is different from their general contact
+    # email.  All other invoice-send paths (owner_send_invoice, owner_email_invoice,
+    # owner_send_reminder, _send_overdue_reminder) already do this; the batch
+    # invoice task must be consistent.  (CODE-139)
+    recipient_email = None
+    try:
+        prefs = customer.repair_preferences
+        recipient_email = prefs.billing_email or customer.email
+    except Exception:
+        recipient_email = customer.email
+
+    if not recipient_email:
         logger.warning(
             f"Cannot auto-send batch invoice {invoice.invoice_number}: "
             f"customer {customer.name!r} has no email address."
@@ -525,7 +538,7 @@ Thank you for your business!
             subject=subject,
             message=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[customer.email],
+            recipient_list=[recipient_email],
             fail_silently=False,
         )
         return sent_count > 0

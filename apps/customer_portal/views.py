@@ -132,12 +132,31 @@ def customer_dashboard(request):
         # Filter by both customer AND tenant to prevent cross-tenant leakage
         tenant = customer.tenant
         base_qs = Repair.objects.filter(customer=customer, tenant=tenant)
-        active_repairs = base_qs.exclude(queue_status='COMPLETED').exclude(queue_status='DENIED').count()
-        completed_repairs = base_qs.filter(queue_status='COMPLETED').count()
-        pending_approval = base_qs.filter(queue_status='PENDING').count()
-        
-        # Get total spent on completed repairs
-        total_spent = base_qs.filter(queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
+
+        # CODE-141: Collapse 7 individual COUNT/SUM queries into one aggregate() call.
+        # Each separate .count()/.filter().count()/.aggregate() hit the DB independently.
+        # A single annotated aggregate eliminates 6 round-trips per dashboard load.
+        from decimal import Decimal as _Decimal
+        from django.db.models import DecimalField as _DecimalField
+        from django.db.models.functions import Coalesce
+        agg = base_qs.aggregate(
+            _requested=Count('id', filter=Q(queue_status='REQUESTED')),
+            _pending=Count('id', filter=Q(queue_status='PENDING')),
+            _approved=Count('id', filter=Q(queue_status='APPROVED')),
+            _in_progress=Count('id', filter=Q(queue_status='IN_PROGRESS')),
+            _completed=Count('id', filter=Q(queue_status='COMPLETED')),
+            _denied=Count('id', filter=Q(queue_status='DENIED')),
+            # Coalesce default must be Decimal to match Sum(DecimalField) output type.
+            _total_spent=Coalesce(
+                Sum('cost', filter=Q(queue_status='COMPLETED')),
+                _Decimal('0'),
+                output_field=_DecimalField(),
+            ),
+        )
+        completed_repairs = agg['_completed']
+        pending_approval = agg['_pending']
+        active_repairs = agg['_requested'] + agg['_pending'] + agg['_approved'] + agg['_in_progress']
+        total_spent = agg['_total_spent']
         
         # Get recent repairs (limited to 5) for the customer
         recent_repairs = base_qs.select_related('technician__user').order_by('-service_date')[:5]
@@ -178,13 +197,13 @@ def customer_dashboard(request):
             'completed_repairs': completed_repairs,
             'pending_approval': pending_approval,
             'total_spent': total_spent,
-            # Detailed repair status counts for the visualization
-            'repairs_requested': base_qs.filter(queue_status='REQUESTED').count(),
+            # Detailed repair status counts for the visualization (from single aggregate — CODE-141)
+            'repairs_requested': agg['_requested'],
             'repairs_pending': pending_approval,
-            'repairs_approved': base_qs.filter(queue_status='APPROVED').count(),
-            'repairs_in_progress': base_qs.filter(queue_status='IN_PROGRESS').count(),
+            'repairs_approved': agg['_approved'],
+            'repairs_in_progress': agg['_in_progress'],
             'repairs_completed': completed_repairs,
-            'repairs_denied': base_qs.filter(queue_status='DENIED').count(),
+            'repairs_denied': agg['_denied'],
         }
         
         # Get referral and reward information
@@ -420,20 +439,28 @@ def customer_repairs(request):
         if sort_by in valid_sorts:
             repairs = repairs.order_by(sort_by)
 
-        # Calculate summary statistics
-        total_repairs = repairs.count()
+        # Calculate summary statistics — all in ONE aggregate query instead of 5
+        # separate .count()/.aggregate() calls. (CODE-143)
+        from decimal import Decimal
+        month_start = timezone.now().date().replace(day=1)
+        stats_agg = repairs.aggregate(
+            total_repairs=Count('id'),
+            pending_approval=Count('id', filter=Q(queue_status='PENDING')),
+            in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
+            completed_this_month=Count(
+                'id',
+                filter=Q(queue_status='COMPLETED', service_date__gte=month_start),
+            ),
+            total_cost=Sum('cost', filter=Q(queue_status='COMPLETED')),
+        )
         stats = {
-            'total_repairs': total_repairs,
-            'pending_approval': repairs.filter(queue_status='PENDING').count(),
-            'in_progress': repairs.filter(queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
-            'completed_this_month': repairs.filter(
-                queue_status='COMPLETED',
-                service_date__gte=timezone.now().date().replace(day=1)
-            ).count(),
-            'total_cost': repairs.filter(queue_status='COMPLETED').aggregate(
-                total=models.Sum('cost')
-            )['total'] or 0
+            'total_repairs': stats_agg['total_repairs'] or 0,
+            'pending_approval': stats_agg['pending_approval'] or 0,
+            'in_progress': stats_agg['in_progress'] or 0,
+            'completed_this_month': stats_agg['completed_this_month'] or 0,
+            'total_cost': stats_agg['total_cost'] or Decimal('0.00'),
         }
+        total_repairs = stats['total_repairs']
 
         # Check which repairs were customer-initiated and mark them
         repair_ids = list(repairs.values_list('id', flat=True))
@@ -2946,13 +2973,17 @@ def customer_team(request):
             status='pending'
         ).order_by('-created_at')
         
-        # Mark expired invitations
-        for inv in pending_invitations:
-            if not inv.is_valid:
-                inv.status = 'expired'
-                inv.save(update_fields=['status'])
-        
-        # Refresh to get updated statuses
+        # Bulk-expire stale invitations in a single UPDATE — avoids per-row
+        # double-write caused by the old loop pattern where CustomerInvitation.is_valid
+        # already saves when it detects expiry, and then the loop body saved a second
+        # time.  (CODE-146)
+        CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending',
+            expires_at__lt=timezone.now(),
+        ).update(status='expired')
+
+        # Refresh to get non-expired pending invitations only
         pending_invitations = CustomerInvitation.objects.filter(
             customer=customer,
             status='pending'

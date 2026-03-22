@@ -196,3 +196,108 @@ class RewardsNonCustomer500TestCase(TestCase):
         resp = self.client.get(reverse("referral_rewards"))
         self.assertEqual(resp.status_code, 302)
         self.assertIn("login", resp["Location"])
+
+
+# ---------------------------------------------------------------------------
+# CODE-144 — referral_history and referral_rewards_history missing context
+# ---------------------------------------------------------------------------
+
+class ReferralHistoryFullContextTestCase(TestCase):
+    """
+    CODE-144: referral_history rendered dashboard.html with only 'referrals'
+    and 'referral_code' in context, so the stat cards (points, referral_count)
+    and the rewards/redemptions sections always showed zeros/blanks.
+
+    referral_rewards_history rendered rewards.html without 'points', so the
+    "Current Balance" card was always empty.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        self.tenant, self.owner = _make_tenant("CtxShop")
+
+        self.plan = self.tenant.subscription_plan
+
+        self.cust_user = User.objects.create_user(
+            username="ctx_cust",
+            email="ctx@fleet.com",
+            password="pass1234",
+        )
+        self.customer = Customer.objects.create(
+            tenant=self.tenant,
+            name="CtxFleet",
+            email="ctxfleet@example.com",
+        )
+        self.customer_user = CustomerUser.objects.create(
+            user=self.cust_user,
+            customer=self.customer,
+        )
+
+    def _login(self):
+        self.client.force_login(self.cust_user)
+        session = self.client.session
+        session["tenant_id"] = self.tenant.id
+        session.save()
+
+    def test_referral_history_has_points_in_context(self):
+        """referral_history must include 'points' key in template context."""
+        self._login()
+        resp = self.client.get(reverse("referral_history"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("points", resp.context, "Missing 'points' in referral_history context")
+
+    def test_referral_history_has_referral_count_in_context(self):
+        """referral_history must include 'referral_count' in template context."""
+        self._login()
+        resp = self.client.get(reverse("referral_history"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("referral_count", resp.context, "Missing 'referral_count' in referral_history context")
+
+    def test_referral_history_has_reward_options_in_context(self):
+        """referral_history must include 'reward_options' in template context."""
+        self._login()
+        resp = self.client.get(reverse("referral_history"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("reward_options", resp.context, "Missing 'reward_options' in referral_history context")
+
+    def test_referral_history_has_redemptions_in_context(self):
+        """referral_history must include 'redemptions' in template context."""
+        self._login()
+        resp = self.client.get(reverse("referral_history"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("redemptions", resp.context, "Missing 'redemptions' in referral_history context")
+
+    def test_referral_history_shows_real_referral_count(self):
+        """referral_history must report the real number of referrals, not 0."""
+        from apps.rewards_referrals.models import ReferralCode, Referral, Reward
+        from apps.rewards_referrals.services import ReferralService
+
+        # Give the customer a referral code
+        code_obj = ReferralService.generate_code_for_user(self.customer_user)
+
+        # Simulate a second customer using the code
+        cust2_user = User.objects.create_user(username="ctx_cust2", email="c2@fleet.com", password="pass")
+        customer2 = Customer.objects.create(tenant=self.tenant, name="Fleet2", email="f2@example.com")
+        cust2 = CustomerUser.objects.create(user=cust2_user, customer=customer2)
+
+        Referral.objects.create(referral_code=code_obj, customer_user=cust2)
+
+        self._login()
+        resp = self.client.get(reverse("referral_history"))
+        self.assertEqual(resp.status_code, 200)
+        # The real count is 1, not 0
+        self.assertEqual(resp.context["referral_count"], 1)
+
+    def test_referral_rewards_history_has_points_in_context(self):
+        """referral_rewards_history must include 'points' in context so balance card renders."""
+        self._login()
+        resp = self.client.get(reverse("referral_rewards_history"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("points", resp.context, "Missing 'points' in referral_rewards_history context")
+
+    def test_referral_rewards_history_has_reward_options_in_context(self):
+        """referral_rewards_history must include 'reward_options' in context."""
+        self._login()
+        resp = self.client.get(reverse("referral_rewards_history"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("reward_options", resp.context, "Missing 'reward_options' in referral_rewards_history context")

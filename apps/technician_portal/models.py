@@ -825,7 +825,12 @@ class Repair(GlassService):
         # CRITICAL FIX: Use Decimal('0') as start value to avoid int + Decimal TypeError
         # Previously: sum(repair.cost for repair in repairs) defaulted to int 0
         total_cost = sum((repair.cost for repair in repairs), Decimal('0'))
-        statuses = list(repairs.values_list('queue_status', flat=True).distinct())
+        # Use order_by() to clear the queryset ordering before calling .distinct() so
+        # that PostgreSQL doesn't include break_number in the SELECT alongside
+        # queue_status.  Without this, DISTINCT ON (queue_status, break_number) returns
+        # one row per repair even when all have the same status — making all_same_status
+        # always False for normal batches (pre-existing bug; also fixed in CODE-142).
+        statuses = list(repairs.order_by().values_list('queue_status', flat=True).distinct())
 
         # Calculate progress
         repairs_list = list(repairs)
@@ -861,7 +866,68 @@ class Repair(GlassService):
             'approved_count': approved_count,
             'progress_percentage': progress_percentage,
         }
-            
+
+    @classmethod
+    def build_batch_summary_from_repairs(cls, batch_id, repairs_list):
+        """
+        Build the same summary dict as ``get_batch_summary()`` from a pre-fetched list
+        of repairs (already loaded from the DB).  Avoids any additional DB queries.
+
+        Used by the technician dashboard to bulk-fetch all batch repairs in a single
+        query and then compute summaries in Python — eliminating the N+1 that occurred
+        when ``get_batch_summary()`` was called once per batch inside a loop (CODE-142).
+
+        Args:
+            batch_id: UUID of the batch (used as the 'batch_id' key in the result).
+            repairs_list: Iterable of Repair instances belonging to this batch.
+                          Must be non-empty. Caller is responsible for pre-loading
+                          'customer' via select_related if the customer attribute is used.
+
+        Returns:
+            dict matching the shape returned by ``get_batch_summary()``, or None if
+            ``repairs_list`` is empty.
+        """
+        if not repairs_list:
+            return None
+
+        first_repair = repairs_list[0]
+
+        total_cost = sum((r.cost for r in repairs_list), Decimal('0'))
+
+        # Collect distinct statuses preserving insertion order (dict trick keeps order in Python 3.7+).
+        # Using a set would work for the count but loses the deterministic first-element needed
+        # for current_status when all_same_status is True.
+        statuses_set = list(dict.fromkeys(r.queue_status for r in repairs_list))
+        completed_count = sum(1 for r in repairs_list if r.queue_status == 'COMPLETED')
+        in_progress_count = sum(1 for r in repairs_list if r.queue_status == 'IN_PROGRESS')
+        approved_count = sum(1 for r in repairs_list if r.queue_status == 'APPROVED')
+        total_count = len(repairs_list)
+        progress_percentage = int((completed_count / total_count * 100)) if total_count > 0 else 0
+
+        max_break_number = max((r.break_number for r in repairs_list if r.break_number), default=None)
+        if max_break_number:
+            break_count = max_break_number
+        else:
+            break_count = first_repair.total_breaks_in_batch if first_repair.total_breaks_in_batch else total_count
+
+        return {
+            'batch_id': batch_id,
+            'customer': first_repair.customer,
+            'unit_number': first_repair.unit_number,
+            'service_date': first_repair.service_date,
+            'break_count': break_count,
+            'total_cost': total_cost,
+            'statuses': statuses_set,
+            'all_same_status': len(statuses_set) == 1,
+            'current_status': statuses_set[0] if len(statuses_set) == 1 else 'MIXED',
+            'all_repairs': repairs_list,
+            'repairs': repairs_list,
+            'completed_count': completed_count,
+            'in_progress_count': in_progress_count,
+            'approved_count': approved_count,
+            'progress_percentage': progress_percentage,
+        }
+
     def get_discounted_cost(self):
         """Calculate the final cost with any applied rewards/discounts"""
         from decimal import Decimal

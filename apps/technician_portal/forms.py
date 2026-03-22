@@ -157,6 +157,18 @@ class CustomerForm(forms.ModelForm):
         label="Send portal invitation",
         help_text="Send an email invitation to access the customer portal"
     )
+    is_primary_contact = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Set as primary contact",
+        help_text="Primary contact receives approval requests and billing notifications"
+    )
+    is_primary_contact = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Set as primary contact",
+        help_text="Primary contacts receive repair lifecycle notifications by default"
+    )
 
     class Meta:
         model = Customer

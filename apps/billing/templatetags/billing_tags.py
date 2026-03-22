@@ -38,6 +38,10 @@ def get_invoice_status(repair):
             return None
 
         invoice = line_item.invoice
+        # Determine if online payment is available for the shop.
+        # invoice.tenant must have active Stripe Connect, otherwise the Pay
+        # Online button must be hidden — shop can't process the payment.
+        can_pay_online = bool(invoice.tenant and invoice.tenant.can_accept_payments)
         return {
             'invoice_id': invoice.id,
             'status': invoice.status,
@@ -48,6 +52,7 @@ def get_invoice_status(repair):
             'due_date': invoice.due_date,
             'stripe_url': invoice.stripe_hosted_url or '',
             'payment_terms': invoice.get_payment_terms_display(),
+            'can_pay_online': can_pay_online,
         }
     except Exception:
         return None

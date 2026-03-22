@@ -19,7 +19,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from decimal import Decimal
 
-from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate
+from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate, PlatformConfig, PlatformFeeRecord
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -447,3 +447,109 @@ class TaxRateAdmin(TenantFilterMixin, admin.ModelAdmin):
             'fields': ('effective_date', 'is_active'),
         }),
     )
+
+
+# =============================================================================
+# PLATFORM CONFIGURATION (Singleton)
+# =============================================================================
+
+@admin.register(PlatformConfig)
+class PlatformConfigAdmin(admin.ModelAdmin):
+    """
+    Admin for the global platform Stripe Connect fee configuration.
+    This is a singleton model — only one record ever exists (pk=1).
+    Only superusers should edit this.
+    """
+    list_display = ['default_fee_percent', 'competition_pool_enabled', 'competition_pool_fee_percent', 'updated_at']
+    readonly_fields = ['updated_at']
+
+    fieldsets = (
+        ('Stripe Connect Fees', {
+            'fields': ('default_fee_percent',),
+            'description': (
+                'Platform fee percentage charged on each connected-account invoice payment '
+                '(e.g. 2.50 = 2.5%). Set to 0.00 to disable.'
+            ),
+        }),
+        ('Competition Pool', {
+            'fields': ('competition_pool_enabled', 'competition_pool_fee_percent'),
+            'description': (
+                'When enabled, a portion of subscription revenue is routed to a competition prize pool.'
+            ),
+        }),
+        ('Metadata', {
+            'fields': ('updated_at',),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        # Prevent manual creation via admin — singleton is auto-created on first access.
+        # Allow add only if no record exists yet (e.g. fresh DB).
+        return request.user.is_superuser and not PlatformConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        # PlatformConfig.delete() raises ValidationError — reflect that in admin.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+# =============================================================================
+# PLATFORM FEE RECORDS (Audit Log)
+# =============================================================================
+
+@admin.register(PlatformFeeRecord)
+class PlatformFeeRecordAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Read-only admin for platform fee collection records.
+
+    PlatformFeeRecord is created automatically when a connected-account Stripe
+    payment succeeds. This admin provides superusers with an audit trail and
+    lets shop owners see their own fee history.
+    """
+    list_display = [
+        'id', 'tenant', 'invoice_link', 'fee_amount_display', 'fee_percent',
+        'gross_amount_display', 'stripe_account_id', 'created_at',
+    ]
+    list_filter = ['tenant', 'created_at']
+    search_fields = ['tenant__name', 'payment_intent_id', 'invoice__invoice_number', 'stripe_account_id']
+    readonly_fields = [
+        'tenant', 'invoice', 'payment_intent_id', 'gross_amount', 'fee_amount',
+        'fee_percent', 'stripe_account_id', 'created_at',
+    ]
+    date_hierarchy = 'created_at'
+    list_select_related = ['tenant', 'invoice']
+    list_per_page = 50
+    ordering = ['-created_at']
+
+    def has_add_permission(self, request):
+        # Fee records are created programmatically — never manually.
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Fee records are audit trail — superusers only.
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        # Read-only — fee records must not be edited.
+        return False
+
+    def invoice_link(self, obj):
+        if obj.invoice:
+            url = reverse('admin:billing_invoice_change', args=[obj.invoice.id])
+            return format_html('<a href="{}">{}</a>', url, obj.invoice.invoice_number)
+        return '—'
+    invoice_link.short_description = 'Invoice'
+    invoice_link.admin_order_field = 'invoice__invoice_number'
+
+    def fee_amount_display(self, obj):
+        return f"${obj.fee_amount:,.2f}"
+    fee_amount_display.short_description = 'Fee'
+    fee_amount_display.admin_order_field = 'fee_amount'
+
+    def gross_amount_display(self, obj):
+        return f"${obj.gross_amount:,.2f}"
+    gross_amount_display.short_description = 'Gross'
+    gross_amount_display.admin_order_field = 'gross_amount'

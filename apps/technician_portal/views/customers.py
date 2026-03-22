@@ -50,7 +50,8 @@ def create_customer(request):
                         email=invite_email,
                         invited_by=request.user,
                         first_name=form.cleaned_data.get('invite_first_name', ''),
-                        last_name=form.cleaned_data.get('invite_last_name', '')
+                        last_name=form.cleaned_data.get('invite_last_name', ''),
+                        is_primary_contact=form.cleaned_data.get('is_primary_contact', True),
                     )
                     if CustomerInvitationService.send_invitation_email(invitation, request):
                         messages.success(
