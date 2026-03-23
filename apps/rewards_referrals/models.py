@@ -172,6 +172,18 @@ class RewardRedemption(models.Model):
     fulfilled_at = models.DateTimeField(null=True, blank=True)
     applied_to_repair = models.ForeignKey('technician_portal.Repair', on_delete=models.SET_NULL,
                                        null=True, blank=True, related_name='applied_rewards')
+    preferred_date = models.DateField(
+        null=True, blank=True,
+        help_text="Customer's preferred delivery/fulfillment date"
+    )
+    preferred_time = models.TimeField(
+        null=True, blank=True,
+        help_text="Customer's preferred time"
+    )
+    customer_notes = models.TextField(
+        blank=True,
+        help_text="Special requests from customer"
+    )
 
     class Meta:
         """
