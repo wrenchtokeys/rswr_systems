@@ -71,6 +71,7 @@ class TenantAdmin(admin.ModelAdmin):
         }),
         ('Subscription', {
             'fields': (
+                'is_platform_owner',
                 'plan', 'subscription_plan', 'subscription_status',
                 'trial_started_at',
                 'grace_period_end',

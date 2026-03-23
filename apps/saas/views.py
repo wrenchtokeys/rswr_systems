@@ -1113,6 +1113,10 @@ def billing_portal_redirect(request):
         messages.error(request, 'Access denied.')
         return redirect('billing_settings')
 
+    if tenant.is_platform_owner:
+        messages.info(request, 'Platform owner accounts have a permanent plan — no billing portal needed.')
+        return redirect('billing_settings')
+
     svc = SubscriptionService()
     try:
         return_url = request.build_absolute_uri('/owner/billing/')
