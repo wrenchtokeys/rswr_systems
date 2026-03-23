@@ -497,7 +497,14 @@ def create_repair(request):
         context['technicians'] = Technician.objects.filter(
             tenant=tenant, can_repair=True, is_active=True
         ) if tenant else Technician.objects.filter(can_repair=True, is_active=True)
-    return render(request, 'technician_portal/repair_form.html', context)
+    try:
+        return render(request, 'technician_portal/repair_form.html', context)
+    except Exception as e:
+        logger.error(f"[REPAIR-FORM] Template render error: {e}", exc_info=True)
+        from django.http import HttpResponse
+        if settings.DEBUG:
+            raise
+        return HttpResponse(f"<h1>Repair Form Error</h1><pre>{e}</pre>", status=500)
 
 
 @technician_required
