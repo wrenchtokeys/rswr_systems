@@ -18,15 +18,7 @@
         transform: scale(0.98);
     }
 
-    /* FAB */
-    .fab {
-        box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-    }
-    .fab:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(22, 163, 74, 0.5);
-    }
+    /* FAB styles now in includes/fab_quick_actions.html */
 
     /* Bulk toolbar slide-up */
     .bulk-toolbar {
@@ -41,6 +33,7 @@
     .pill-scroll::-webkit-scrollbar { display: none; }
     .pill-scroll { -ms-overflow-style: none; scrollbar-width: none; }
 </style>
+
 {% endblock %}
 
 {% block content %}
@@ -441,10 +434,7 @@
         </div>
     </div>
 
-    <!-- Mobile FAB: New Repair -->
-    <a href="{% url 'create_repair' %}" class="fab sm:hidden fixed bottom-6 right-6 z-40 w-14 h-14 bg-green-600 text-white rounded-full flex items-center justify-center text-xl">
-        <i class="fas fa-plus"></i>
-    </a>
+    <!-- Mobile FAB replaced by fab_quick_actions.html include -->
 
     <!-- Bulk Action Toolbar -->
     <div id="bulk-toolbar" class="bulk-toolbar fixed bottom-0 left-0 right-0 bg-gray-900 z-50">
@@ -541,11 +531,11 @@ function updateBulkToolbar() {
         toolbar.classList.add('visible');
         document.getElementById('selected-count').textContent = count;
         // Hide FAB when bulk toolbar is shown
-        const fab = document.querySelector('.fab');
+        const fab = document.getElementById('fabContainer');
         if (fab) fab.style.display = 'none';
     } else {
         toolbar.classList.remove('visible');
-        const fab = document.querySelector('.fab');
+        const fab = document.getElementById('fabContainer');
         if (fab) fab.style.display = '';
     }
     const all = document.querySelectorAll('.repair-checkbox');
@@ -628,4 +618,5 @@ function exportToCSV() {
     window.URL.revokeObjectURL(url);
 }
 </script>
+{% include "includes/fab_quick_actions.html" with fab_role="tech" %}
 {% endblock %}
