@@ -1631,6 +1631,12 @@ def get_available_technician(tenant=None):
     Get an available technician using round-robin assignment.
     Scoped to tenant if provided.
 
+    Only returns technicians that are active and can perform repairs.
+    Without these filters, deactivated technicians or managers with
+    can_repair=False could be assigned to customer-requested repairs —
+    invisible to the correct technicians and alarming to the ones who
+    no longer work at the shop. (CODE-160)
+
     Returns:
         Technician object or None if no technicians available
     """
@@ -1639,6 +1645,10 @@ def get_available_technician(tenant=None):
         technicians = technicians.filter(tenant=tenant)
     else:
         technicians = technicians.none()
+    # Only assign to technicians who are active and able to do repairs.
+    # Previously missing — could assign to deactivated staff or managers
+    # with can_repair=False.
+    technicians = technicians.filter(is_active=True, can_repair=True)
     technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')
@@ -2055,7 +2065,15 @@ def repair_cost_data_api(request):
 def customer_rewards_redirect(request):
     """Customer rewards and referrals dashboard"""
     try:
-        customer_user = CustomerUser.objects.select_related('customer__tenant').get(user=request.user)
+        # Use tenant-scoped helper to prevent cross-tenant data leakage.
+        # The old code used an unscoped CustomerUser.objects.get(user=request.user),
+        # which bypassed tenant isolation: a user linked to Shop A visiting Shop B's
+        # portal URL would have @customer_required deny them access, but if that
+        # guard ever changes or has an edge case, the unscoped lookup could return
+        # Shop A's CustomerUser and render Shop B's rewards page with Shop A data.
+        # Using _get_customer_user_for_tenant() is the consistent, safe pattern
+        # used throughout this file. (CODE-162)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         tenant = customer.tenant
 

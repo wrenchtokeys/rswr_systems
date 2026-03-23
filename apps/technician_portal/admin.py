@@ -185,8 +185,15 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
         admin and superusers sometimes need to permanently remove test or bad data.
         Invoiced repairs (linked to InvoiceLineItems on active invoices) are skipped
         to avoid orphaning billing records.
+
+        IMPORTANT: For each COMPLETED repair deleted, we must decrement the
+        UnitRepairCount.repair_count for that (tenant, customer, unit_number) tuple.
+        Without this, future repairs to that unit are priced as though the deleted
+        repairs still happened — giving incorrect progressive pricing discounts.
+        (CODE-161)
         """
         from apps.billing.models import InvoiceLineItem
+        from collections import defaultdict
 
         invoiced_ids = set(
             InvoiceLineItem.objects
@@ -194,10 +201,42 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
             .values_list('repair_id', flat=True)
         )
         safe_to_delete = queryset.exclude(id__in=invoiced_ids)
+
+        # Before deletion, tally how many COMPLETED repairs we're removing per
+        # (tenant, customer, unit_number) so we can decrement UnitRepairCount.
+        # Only COMPLETED repairs incremented the count (see Repair.save() logic),
+        # and only when progressive pricing was active (non-retail, use_progressive=True).
+        # We conservatively decrement for any deleted COMPLETED repair to avoid
+        # leaving inflated counts that produce incorrect future pricing.
+        completed_repairs = (
+            safe_to_delete
+            .filter(queue_status='COMPLETED')
+            .select_related('tenant', 'customer')
+            .values('tenant_id', 'customer_id', 'unit_number')
+        )
+        decrement_map = defaultdict(int)
+        for r in completed_repairs:
+            key = (r['tenant_id'], r['customer_id'], r['unit_number'])
+            decrement_map[key] += 1
+
         deleted_count = safe_to_delete.count()
         skipped_count = len(invoiced_ids)
 
         safe_to_delete.delete()
+
+        # Decrement UnitRepairCount for all affected (tenant, customer, unit) combos.
+        # Clamp at 0 to avoid negative counts.
+        for (tenant_id, customer_id, unit_number), count in decrement_map.items():
+            try:
+                urc = UnitRepairCount.objects.get(
+                    tenant_id=tenant_id,
+                    customer_id=customer_id,
+                    unit_number=unit_number,
+                )
+                urc.repair_count = max(0, urc.repair_count - count)
+                urc.save(update_fields=['repair_count'])
+            except UnitRepairCount.DoesNotExist:
+                pass  # Already missing — nothing to decrement
 
         msg = f'✅ Deleted {deleted_count} repair(s).'
         if skipped_count:
