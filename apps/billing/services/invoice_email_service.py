@@ -19,7 +19,7 @@ from typing import List, Optional, Tuple, Dict
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.utils import timezone
 
 from apps.technician_portal.models import Repair
@@ -379,13 +379,18 @@ class InvoiceEmailService:
                     payment_link=payment_link
                 )
             
-            email = EmailMessage(
+            # Build HTML version of the email
+            html_body = self._build_html_email(invoice_data, payment_link=payment_link,
+                                                include_photos=len(photos) > 0)
+
+            email = EmailMultiAlternatives(
                 subject=subject,
-                body=body,
+                body=body,  # plain text fallback
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 to=[recipient_email],
                 cc=cc_emails or [],
             )
+            email.attach_alternative(html_body, 'text/html')
             
             # Attach PDF
             pdf_filename = f"Invoice_{invoice_data.customer_name.replace(' ', '_')}_{invoice_data.invoice_number}.pdf"
@@ -416,6 +421,130 @@ class InvoiceEmailService:
         except Exception as e:
             return False, f"Error sending email: {str(e)}"
     
+    def _build_html_email(self, invoice_data, payment_link=None, include_photos=False) -> str:
+        """Build an HTML email with clickable buttons."""
+        invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
+        portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/" if invoice_id else "https://rssystems.io/app/invoices/"
+
+        # Company info
+        company_name = 'RS Systems'
+        company_address = ''
+        company_phone = ''
+        if self.tenant:
+            company_name = self.tenant.name or company_name
+            company_address = self.tenant.business_address or ''
+            company_phone = self.tenant.business_phone or ''
+
+        # Line items HTML
+        items_html = ''
+        for item in invoice_data.line_items:
+            items_html += f'''
+            <tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">Unit {item.unit_number}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{item.damage_type}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;text-align:right;">${item.final_cost:.2f}</td>
+            </tr>'''
+
+        # Tax info
+        tax_html = ''
+        if hasattr(invoice_data, 'tax_amount') and invoice_data.tax_amount > 0:
+            rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
+            tax_html = f'''
+            <tr>
+                <td colspan="2" style="padding:6px 12px;font-size:14px;color:#6b7280;text-align:right;">Tax ({rate_display}%)</td>
+                <td style="padding:6px 12px;font-size:14px;color:#374151;text-align:right;">${invoice_data.tax_amount:.2f}</td>
+            </tr>'''
+
+        # Discount info
+        discount_html = ''
+        if invoice_data.total_discount > 0:
+            discount_html = f'''
+            <tr>
+                <td colspan="2" style="padding:6px 12px;font-size:14px;color:#059669;text-align:right;">Discount</td>
+                <td style="padding:6px 12px;font-size:14px;color:#059669;text-align:right;">-${invoice_data.total_discount:.2f}</td>
+            </tr>'''
+
+        # Payment button
+        pay_button_html = ''
+        if payment_link:
+            pay_button_html = f'''
+            <div style="text-align:center;margin:24px 0;">
+                <a href="{payment_link}" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
+                    💳 Pay Invoice — ${invoice_data.total:.2f}
+                </a>
+            </div>'''
+
+        html = f'''<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+
+<!-- Header -->
+<div style="background-color:#1e40af;padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">{company_name}</h1>
+    <p style="margin:4px 0 0;color:#93c5fd;font-size:14px;">Invoice #{invoice_data.invoice_number}</p>
+</div>
+
+<!-- Body -->
+<div style="background-color:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+
+    <p style="font-size:15px;color:#374151;margin:0 0 16px;">
+        Hi {invoice_data.customer_name},<br><br>
+        Here's your invoice for recent windshield repair services.
+    </p>
+
+    <!-- Invoice Details -->
+    <div style="background-color:#f9fafb;border-radius:8px;padding:16px;margin-bottom:20px;">
+        <table style="width:100%;font-size:14px;color:#6b7280;">
+            <tr><td style="padding:4px 0;">Invoice #</td><td style="text-align:right;font-weight:600;color:#111827;">{invoice_data.invoice_number}</td></tr>
+            <tr><td style="padding:4px 0;">Date</td><td style="text-align:right;">{invoice_data.invoice_date.strftime('%B %d, %Y')}</td></tr>
+            <tr><td style="padding:4px 0;">Payment Terms</td><td style="text-align:right;">{invoice_data.payment_terms_display}</td></tr>
+        </table>
+    </div>
+
+    <!-- Line Items -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr style="background-color:#f3f4f6;">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Unit</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Service</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Amount</th>
+        </tr>
+        {items_html}
+        {discount_html}
+        {tax_html}
+        <tr style="background-color:#eff6ff;">
+            <td colspan="2" style="padding:12px;font-size:16px;font-weight:700;color:#1e40af;text-align:right;">Total Due</td>
+            <td style="padding:12px;font-size:16px;font-weight:700;color:#1e40af;text-align:right;">${invoice_data.total:.2f}</td>
+        </tr>
+    </table>
+
+    {pay_button_html}
+
+    <!-- View Online Link -->
+    <div style="text-align:center;margin:16px 0;">
+        <a href="{portal_url}" style="display:inline-block;padding:10px 24px;background-color:#ffffff;color:#2563eb;text-decoration:none;font-size:14px;font-weight:500;border:2px solid #2563eb;border-radius:8px;">
+            📄 View Invoice Online
+        </a>
+    </div>
+
+    <p style="font-size:13px;color:#9ca3af;text-align:center;margin:20px 0 0;">
+        A PDF copy of this invoice is attached to this email.
+    </p>
+</div>
+
+<!-- Footer -->
+<div style="padding:16px 24px;text-align:center;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;background-color:#f9fafb;">
+    <p style="margin:0;font-size:13px;color:#6b7280;font-weight:600;">{company_name}</p>
+    {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_address + "</p>" if company_address else ""}
+    {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_phone + "</p>" if company_phone else ""}
+</div>
+
+</div>
+</body>
+</html>'''
+        return html
+
     def preview_invoice_email(
         self,
         customer_id: int,
