@@ -265,16 +265,20 @@ def verify_email(request):
         reverse('confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
     )
 
-    from django.core.mail import send_mail
-    from django.conf import settings
+    from core.email_utils import send_branded_email
 
     try:
-        send_mail(
-            subject='Verify your email address - RS Systems',
-            message=f'Click this link to verify your email address: {verification_url}',
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        send_branded_email(
+            subject='Verify your email address — RS Systems',
             recipient_list=[request.user.email],
-            fail_silently=False,
+            headline='Verify Your Email',
+            body_paragraphs=[
+                f'Hi {request.user.first_name or request.user.email},',
+                'Please verify your email address by clicking the button below so you can receive notifications.',
+                'This link will expire in 24 hours.',
+            ],
+            button_text='✅ Verify Email',
+            button_url=verification_url,
         )
         messages.success(request, f"Verification email sent to {request.user.email}")
     except Exception as e:

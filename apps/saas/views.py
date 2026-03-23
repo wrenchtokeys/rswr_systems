@@ -126,23 +126,19 @@ def _send_verification_email(request, user):
                 reverse('owner_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
 
-        send_mail(
-            subject='Verify your email address - RS Systems',
-            message=f'''Welcome to RS Systems!
-
-Please verify your email address by clicking the link below:
-
-{verification_url}
-
-This link will expire in 24 hours.
-
-If you didn't create an account, you can safely ignore this email.
-
-— The RS Systems Team
-''',
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject='Verify your email address — RS Systems',
             recipient_list=[user.email],
-            fail_silently=True,  # Never block signup on email failure
+            headline='Verify Your Email',
+            body_paragraphs=[
+                'Welcome to RS Systems!',
+                'Please verify your email address by clicking the button below. This link will expire in 24 hours.',
+                "If you didn't create an account, you can safely ignore this email.",
+            ],
+            button_text='✅ Verify Email',
+            button_url=verification_url,
+            fail_silently=True,
         )
         logger.info(f"Verification email sent to {user.email}")
     except Exception as e:
@@ -168,24 +164,19 @@ def _send_confirmation_email(request, user, tenant):
             reverse('owner_confirm_email', kwargs={'uidb64': uid, 'token': token})
         )
 
-        send_mail(
+        from core.email_utils import send_branded_email
+        send_branded_email(
             subject='Confirm your email address — RS Systems',
-            message=f'''Hi {user.first_name or user.email},
-
-Thanks for signing up for RS Systems!
-
-To activate your account and start your 30-day free trial, please confirm your
-email address by clicking the link below:
-
-{confirm_url}
-
-This link expires in 24 hours. If you didn't create an account, you can safely
-ignore this email.
-
-— The RS Systems Team
-''',
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
+            headline='Confirm Your Email',
+            body_paragraphs=[
+                f'Hi {user.first_name or user.email},',
+                'Thanks for signing up for RS Systems!',
+                'To activate your account and start your 30-day free trial, please confirm your email address by clicking the button below.',
+                "This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.",
+            ],
+            button_text='🚀 Activate My Account',
+            button_url=confirm_url,
             fail_silently=True,
         )
         logger.info(f"Confirmation email sent to {user.email} (account inactive, tenant={tenant.slug})")
@@ -1681,20 +1672,19 @@ def invite_member(request):
 
                 inviter_name = request.user.get_full_name() or request.user.email
                 subject = f"You've been re-added to {tenant.name} on RS Systems"
-                body = (
-                    f"Hi {user.first_name or user.email},\n\n"
-                    f"{inviter_name} has re-added you to {tenant.name} as a {role}.\n\n"
-                    f"Use this link to set your password and get back in:\n"
-                    f"{invite_url}\n\n"
-                    f"This link expires in 7 days.\n\n"
-                    f"— RS Systems"
-                )
-                send_mail(
+                from core.email_utils import send_branded_email
+                send_branded_email(
                     subject=subject,
-                    message=body,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[email],
-                    fail_silently=False,
+                    headline=f"Welcome Back to {tenant.name}!",
+                    body_paragraphs=[
+                        f"Hi {user.first_name or user.email},",
+                        f"{inviter_name} has re-added you to {tenant.name} as a {role}.",
+                        "Click the button below to set your password and get back in. This link expires in 7 days.",
+                    ],
+                    button_text='🔑 Set Password & Log In',
+                    button_url=invite_url,
+                    tenant=tenant,
                 )
                 email_sent = True
             except Exception as e:
@@ -1753,21 +1743,20 @@ def invite_member(request):
 
         inviter_name = request.user.get_full_name() or request.user.email
         subject = f"You're invited to join {tenant.name} on RS Systems"
-        body = (
-            f"Hi {first_name},\n\n"
-            f"{inviter_name} has invited you to join {tenant.name} as a {role}.\n\n"
-            f"Click here to set your password and get started:\n"
-            f"{invite_url}\n\n"
-            f"This link expires in 7 days.\n\n"
-            f"— RS Systems"
-        )
 
-        send_mail(
+        from core.email_utils import send_branded_email
+        send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
-            fail_silently=False,
+            headline=f"You're Invited to {tenant.name}!",
+            body_paragraphs=[
+                f"Hi {first_name},",
+                f"{inviter_name} has invited you to join {tenant.name} as a {role}.",
+                "Click the button below to set your password and get started. This link expires in 7 days.",
+            ],
+            button_text='🚀 Accept Invitation',
+            button_url=invite_url,
+            tenant=tenant,
         )
         email_sent = True
     except Exception as e:
@@ -2160,21 +2149,20 @@ def resend_invite(request, membership_id):
 
         inviter_name = request.user.get_full_name() or request.user.email
         subject = f"Reminder: You're invited to join {tenant.name} on RS Systems"
-        body = (
-            f"Hi {target.user.first_name},\n\n"
-            f"{inviter_name} has re-sent your invitation to join {tenant.name} as a {target.get_role_display()}.\n\n"
-            f"Click here to set your password and get started:\n"
-            f"{invite_url}\n\n"
-            f"This link expires in 7 days.\n\n"
-            f"— RS Systems"
-        )
 
-        send_mail(
+        from core.email_utils import send_branded_email
+        send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[target.user.email],
-            fail_silently=False,
+            headline=f"Reminder: Join {tenant.name}",
+            body_paragraphs=[
+                f"Hi {target.user.first_name},",
+                f"{inviter_name} has re-sent your invitation to join {tenant.name} as a {target.get_role_display()}.",
+                "Click the button below to set your password and get started. This link expires in 7 days.",
+            ],
+            button_text='🚀 Accept Invitation',
+            button_url=invite_url,
+            tenant=tenant,
         )
         email_sent = True
     except Exception as e:

@@ -545,15 +545,36 @@ Thank you for your business!
 {_company_email}
 """
 
+    # Generate public payment link
+    pay_url = None
     try:
-        # fail_silently=False so that delivery errors surface as exceptions
-        # and we can return False to prevent a false 'SENT' status stamp.
-        sent_count = send_mail(
+        from rs_systems.views import generate_payment_token
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+        token = generate_payment_token(invoice.id)
+        pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
+    except Exception:
+        pass
+
+    try:
+        from core.email_utils import send_branded_email
+        sent_count = send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[recipient_email],
-            fail_silently=False,
+            headline=f'Invoice {invoice.invoice_number}',
+            body_paragraphs=[
+                f"Dear {customer.name},",
+                "Please find your invoice for recent services below.",
+            ],
+            detail_rows=[
+                ('Invoice #', invoice.invoice_number),
+                ('Date', invoice.invoice_date.strftime('%B %d, %Y')),
+                ('Due Date', invoice.due_date.strftime('%B %d, %Y')),
+                ('Total', f'${invoice.total:,.2f}'),
+            ],
+            button_text='💳 Pay Invoice' if pay_url else None,
+            button_url=pay_url,
+            tenant=invoice.tenant,
+            plain_text=body,
         )
         return sent_count > 0
     except Exception as e:
