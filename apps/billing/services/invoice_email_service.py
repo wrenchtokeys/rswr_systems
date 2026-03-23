@@ -224,9 +224,14 @@ class InvoiceEmailService:
         ])
         
         # Portal link — always include so customer can view invoice online
+        invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
+        if invoice_id:
+            portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/"
+        else:
+            portal_url = "https://rssystems.io/app/invoices/"
         lines.extend([
             "📄 View Invoice Online:",
-            "https://rssystems.io/app/invoices/",
+            portal_url,
             "",
         ])
 
@@ -325,7 +330,8 @@ class InvoiceEmailService:
 
             if tenant_can_pay:
                 try:
-                    from apps.billing.models import InvoiceLineItem
+                    from apps.billing.models import InvoiceLineItem, Invoice
+                    # First try: Stripe hosted URL on the invoice
                     line_qs = InvoiceLineItem.objects.all()
                     if self.tenant:
                         line_qs = line_qs.filter(invoice__tenant=self.tenant)
@@ -334,20 +340,25 @@ class InvoiceEmailService:
                             repair_id__in=repair_ids,
                             invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
                         ).select_related('invoice').first()
-                        if line_item and line_item.invoice.stripe_hosted_url:
-                            payment_link = line_item.invoice.stripe_hosted_url
+                        if line_item:
+                            if line_item.invoice.stripe_hosted_url:
+                                payment_link = line_item.invoice.stripe_hosted_url
+                            else:
+                                # No Stripe URL — use customer portal link with Pay Now button
+                                payment_link = f"https://rssystems.io/app/invoices/{line_item.invoice.id}/"
                     else:
-                        # Fallback: find most recent invoice for this customer
-                        from apps.billing.models import Invoice
                         inv_qs = Invoice.objects.filter(
                             customer_id=customer_id,
-                            stripe_hosted_url__gt='',
+                            status__in=['SENT', 'PARTIAL'],
                         )
                         if self.tenant:
                             inv_qs = inv_qs.filter(tenant=self.tenant)
                         invoice_record = inv_qs.order_by('-created_at').first()
                         if invoice_record:
-                            payment_link = invoice_record.stripe_hosted_url
+                            if invoice_record.stripe_hosted_url:
+                                payment_link = invoice_record.stripe_hosted_url
+                            else:
+                                payment_link = f"https://rssystems.io/app/invoices/{invoice_record.id}/"
                 except Exception:
                     pass
             
