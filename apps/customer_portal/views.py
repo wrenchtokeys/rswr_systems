@@ -1631,6 +1631,12 @@ def get_available_technician(tenant=None):
     Get an available technician using round-robin assignment.
     Scoped to tenant if provided.
 
+    Only returns technicians that are active and can perform repairs.
+    Without these filters, deactivated technicians or managers with
+    can_repair=False could be assigned to customer-requested repairs —
+    invisible to the correct technicians and alarming to the ones who
+    no longer work at the shop. (CODE-160)
+
     Returns:
         Technician object or None if no technicians available
     """
@@ -1639,6 +1645,10 @@ def get_available_technician(tenant=None):
         technicians = technicians.filter(tenant=tenant)
     else:
         technicians = technicians.none()
+    # Only assign to technicians who are active and able to do repairs.
+    # Previously missing — could assign to deactivated staff or managers
+    # with can_repair=False.
+    technicians = technicians.filter(is_active=True, can_repair=True)
     technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')
