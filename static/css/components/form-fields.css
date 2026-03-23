@@ -526,8 +526,8 @@
 /* ================== RESPONSIVE ADJUSTMENTS ================== */
 @media (max-width: 640px) {
     .form-section {
-        padding: 1rem;
-        margin-bottom: 1.5rem;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
     }
 
     .form-section-header {

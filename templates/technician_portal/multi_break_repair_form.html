@@ -60,7 +60,7 @@
 
 {% block content %}
 <div class="min-h-screen bg-gray-50">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-5xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <!-- Header -->
             <div class="px-6 py-4 border-b border-gray-200 bg-green-600 text-white rounded-t-lg">
@@ -68,7 +68,7 @@
                 <p class="text-green-100 text-sm mt-1">Create multiple repairs for the same unit in one session</p>
             </div>
 
-            <div class="p-6">
+            <div class="p-3 sm:p-6">
                 <form id="multiBreakForm" method="post" enctype="multipart/form-data">
                     {% csrf_token %}
 

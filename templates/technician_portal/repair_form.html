@@ -31,10 +31,10 @@
 
 {% block content %}
 <div class="min-h-screen bg-gray-50">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-5xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <!-- Header -->
-            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-t-lg">
+            <div class="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-t-lg">
                 <div class="flex items-center justify-between">
                     <div>
                         <h1 class="text-2xl font-bold">{% if repair %}Edit{% else %}Create New{% endif %} Repair</h1>
@@ -46,7 +46,7 @@
                 </div>
             </div>
 
-            <div class="p-6">
+            <div class="p-3 sm:p-6">
                 <!-- Batch Context Banner -->
                 {% if repair.repair_batch_id %}
                 <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg fade-in">
