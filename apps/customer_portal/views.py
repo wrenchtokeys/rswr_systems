@@ -1461,6 +1461,12 @@ def handle_batch_repair_request(request, customer):
                 has_multiple_breaks = unit_data.get('hasMultipleBreaks', False)
                 break_count = unit_data.get('breakCount')
 
+                # Get damage location (optional)
+                damage_loc_x = unit_data.get('damageLocationX')
+                damage_loc_y = unit_data.get('damageLocationY')
+                damage_location_x = float(damage_loc_x) if damage_loc_x else None
+                damage_location_y = float(damage_loc_y) if damage_loc_y else None
+
                 if not unit_number:
                     continue  # Skip invalid entries
 
@@ -1496,7 +1502,9 @@ def handle_batch_repair_request(request, customer):
                             queue_status='REQUESTED',
                             repair_batch_id=batch_id,
                             break_number=break_num,
-                            total_breaks_in_batch=break_count
+                            total_breaks_in_batch=break_count,
+                            damage_location_x=damage_location_x if break_num == 1 else None,
+                            damage_location_y=damage_location_y if break_num == 1 else None,
                         )
                         created_repairs.append(repair)
                 elif has_multiple_breaks:
@@ -1511,7 +1519,9 @@ def handle_batch_repair_request(request, customer):
                         customer_submitted_photo=photo_file,
                         customer_notes=notes,
                         queue_status='REQUESTED',
-                        is_multi_break_estimate=True
+                        is_multi_break_estimate=True,
+                        damage_location_x=damage_location_x,
+                        damage_location_y=damage_location_y,
                     )
                     created_repairs.append(repair)
                 else:
@@ -1525,7 +1535,9 @@ def handle_batch_repair_request(request, customer):
                         damage_type=damage_type,
                         customer_submitted_photo=photo_file,
                         customer_notes=notes,
-                        queue_status='REQUESTED'
+                        queue_status='REQUESTED',
+                        damage_location_x=damage_location_x,
+                        damage_location_y=damage_location_y,
                     )
                     created_repairs.append(repair)
 

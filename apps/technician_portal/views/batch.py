@@ -270,6 +270,10 @@ def create_multi_break_repair(request):
                     windshield_temp = request.POST.get(f'breaks[{i}][windshield_temperature]', '')
                     resin_viscosity = request.POST.get(f'breaks[{i}][resin_viscosity]', '')
 
+                    # Damage location
+                    damage_loc_x = request.POST.get(f'breaks[{i}][damage_location_x]', '')
+                    damage_loc_y = request.POST.get(f'breaks[{i}][damage_location_y]', '')
+
                     # Manager override fields
                     cost_override = request.POST.get(f'breaks[{i}][cost_override]', '')
                     override_reason = request.POST.get(f'breaks[{i}][override_reason]', '')
@@ -348,7 +352,9 @@ def create_multi_break_repair(request):
                         break_number=i + 1,
                         total_breaks_in_batch=breaks_count,
                         cost=break_price,
-                        queue_status='PENDING'
+                        queue_status='PENDING',
+                        damage_location_x=float(damage_loc_x) if damage_loc_x else None,
+                        damage_location_y=float(damage_loc_y) if damage_loc_y else None,
                     )
 
                     # Check customer preferences for auto-approval

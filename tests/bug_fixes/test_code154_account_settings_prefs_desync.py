@@ -43,7 +43,19 @@ from apps.tenants.models import Tenant, TenantMembership
 
 
 def _make_tenant(name='Test Shop'):
-    return Tenant.objects.create(name=name, slug=name.lower().replace(' ', '-'))
+    """Create a minimal tenant with a required owner."""
+    slug = name.lower().replace(' ', '-')
+    owner = User.objects.create_user(
+        username=f"towner_{slug[:15]}",
+        password='ownerpass123',
+        email=f"towner_{slug[:15]}@example.com",
+    )
+    return Tenant.objects.create(
+        name=name,
+        slug=slug,
+        owner=owner,
+        subscription_status='active',
+    )
 
 
 def _make_user(email, password='testpass123', first='Test', last='User'):
@@ -81,12 +93,12 @@ class AccountSettingsPrefsDesyncTest(TestCase):
         self.customer = _make_customer(self.tenant, phone='555-0100')
         self.customer_user = _make_customer_user(self.user, self.customer)
 
-        # Create notification prefs with verified state
-        self.prefs = CustomerNotificationPreference.objects.create(
-            customer=self.customer,
-            phone_verified=True,
-            email_verified=True,
-        )
+        # The Customer post_save signal auto-creates CustomerNotificationPreference.
+        # Fetch it and set verified=True so tests can confirm it gets reset.
+        self.prefs = CustomerNotificationPreference.objects.get(customer=self.customer)
+        self.prefs.phone_verified = True
+        self.prefs.email_verified = True
+        self.prefs.save(update_fields=['phone_verified', 'email_verified'])
 
         self.client = Client()
         self.client.login(username='synctest@example.com', password='OldPass123!')
