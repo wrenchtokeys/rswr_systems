@@ -118,36 +118,22 @@ def _send_welcome_email(user, tenant, trial_days=30):
         return
 
     try:
-        from django.core.mail import send_mail
-        from django.conf import settings
+        from core.email_utils import send_branded_email
 
-        subject = f"Welcome to RS Systems, {user.first_name}! 🎉"
-        message = (
-            f"Hi {user.first_name},\n\n"
-            f"Welcome to RS Systems! Your shop \"{tenant.name}\" is set up and "
-            f"your 30-day free trial has started.\n\n"
-            f"YOUR TRIAL INCLUDES:\n"
-            f"  • Up to 50 repairs per month\n"
-            f"  • 2 technician seats\n"
-            f"  • 10 customer accounts\n"
-            f"  • Full invoicing & billing\n"
-            f"  • 100 MB photo storage\n\n"
-            f"QUICK START:\n"
-            f"  1. Log in and add your first customer\n"
-            f"  2. Create a repair record\n"
-            f"  3. Generate an invoice in one click\n\n"
-            f"Your trial expires in {trial_days} days. Upgrade anytime at "
-            f"/api/tenants/subscribe/ to keep your data.\n\n"
-            f"Need help? Reply to this email or visit our docs.\n\n"
-            f"— The RS Systems Team\n"
-            f"   Built for glass shops, by glass shops."
-        )
-
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        send_branded_email(
+            subject=f"Welcome to RS Systems, {user.first_name}! 🎉",
             recipient_list=[user.email],
+            headline=f'Welcome to RS Systems!',
+            body_paragraphs=[
+                f"Hi {user.first_name},",
+                f'Your shop "{tenant.name}" is set up and your {trial_days}-day free trial has started.',
+                "Your trial includes up to 50 repairs/month, 2 technician seats, 10 customer accounts, full invoicing & billing, and 100 MB photo storage.",
+                "Quick start: Log in, add your first customer, create a repair record, and generate an invoice in one click.",
+                f"Your trial expires in {trial_days} days. Upgrade anytime to keep your data.",
+            ],
+            button_text='🚀 Get Started',
+            button_url='https://rssystems.io/login/',
+            tenant=tenant,
             fail_silently=True,
         )
         logger.info(f"Welcome email sent to {user.email}")

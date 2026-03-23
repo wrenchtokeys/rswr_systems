@@ -185,12 +185,26 @@ Thank you,
 """
     
     try:
-        send_mail(
+        from core.email_utils import send_branded_email
+        send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[recipient_email],
-            fail_silently=False,
+            headline=f'Payment Reminder — Invoice {invoice.invoice_number}',
+            body_paragraphs=[
+                f"Dear {customer.name},",
+                f"This is a friendly reminder that invoice {invoice.invoice_number} is now {days_overdue} days overdue.",
+                "If you have already sent payment, please disregard this notice.",
+            ],
+            detail_rows=[
+                ('Invoice #', invoice.invoice_number),
+                ('Invoice Date', invoice.invoice_date.strftime('%B %d, %Y')),
+                ('Due Date', invoice.due_date.strftime('%B %d, %Y')),
+                ('Amount Due', f'${invoice.amount_due:.2f}'),
+            ],
+            button_text='💳 Pay Now' if pay_url else None,
+            button_url=pay_url if pay_url else None,
+            tenant=invoice.tenant,
+            plain_text=body,
         )
         
         # Log that we sent a reminder

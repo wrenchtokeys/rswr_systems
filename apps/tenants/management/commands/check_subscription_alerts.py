@@ -93,13 +93,14 @@ def _send_alert(tenant, alert_key, subject, body, dry_run=False,
                 tenant=tenant,
             )
         else:
-            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
-            send_mail(
+            # Fallback: wrap plain-text body in branded template
+            from core.email_utils import send_branded_email
+            send_branded_email(
                 subject=subject,
-                message=body,
-                from_email=from_email,
                 recipient_list=recipients,
-                fail_silently=False,
+                headline=subject,
+                body_paragraphs=[body] if body else ['A subscription event occurred.'],
+                tenant=tenant,
             )
     except Exception as e:
         logger.error(
