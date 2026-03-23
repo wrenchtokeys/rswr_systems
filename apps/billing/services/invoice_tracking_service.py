@@ -341,9 +341,38 @@ class InvoiceTrackingService:
         }
     
     def _generate_invoice_number(self, customer):
-        """Generate a unique invoice number using configurable prefix."""
+        """Generate a unique invoice number using configurable prefix.
+
+        The old approach appended a timestamp (seconds precision):
+        ``{prefix}-{customer.id}-{timestamp}``.  Two concurrent invoice
+        creations for the same customer within the same second would produce
+        an identical candidate, and one would crash on the
+        UniqueConstraint(tenant, invoice_number).  (Same class of race
+        condition fixed for the tasks.py batch path in CODE-036, but that
+        fix was not carried back to this service method.)
+
+        Fix (CODE-156): Iterate from today's count upward until a free slot
+        is found — matching the safe retry-loop pattern in tasks.py.
+        """
         prefix = 'INV'
         if self.billing_config:
             prefix = self.billing_config.invoice_number_prefix or 'INV'
-        timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-        return f"{prefix}-{customer.id}-{timestamp}"
+
+        date_str = timezone.now().strftime('%Y%m%d')
+        tenant = self.tenant or customer.tenant
+
+        # Start from today's existing count + 1 and walk upward until free.
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        base_count = Invoice.objects.filter(
+            tenant=tenant,
+            created_at__gte=today_start,
+        ).count() + 1
+
+        for attempt in range(base_count, base_count + 500):
+            candidate = f"{prefix}-{tenant.id}-{date_str}-{attempt:03d}"
+            if not Invoice.objects.filter(tenant=tenant, invoice_number=candidate).exists():
+                return candidate
+
+        # Fallback: append microseconds for guaranteed uniqueness
+        import time
+        return f"{prefix}-{tenant.id}-{date_str}-{int(time.time() * 1000) % 1000000:06d}"
