@@ -1,17 +1,23 @@
-# Proposal: Repair Form Efficiency Overhaul
+# Proposal: Form Efficiency Overhaul — Repair, Replacement, Multi-Break
 
 **Author:** Amelia  
 **Date:** 2026-03-23  
 **Status:** Draft — awaiting Drake's review  
-**Priority:** High (this is the most-used form in the entire app)
+**Priority:** High (these are the most-used forms in the entire app)
 
 ---
 
 ## Problem
 
-The repair form currently has 12+ fields spread across 5 sections. A technician in the field — standing next to a truck, phone in one hand — has to scroll through the entire form for every single repair. Most of the time they're logging the same customer, same damage type, over and over.
+All three creation forms have friction that slows down field work:
 
-For a tool designed to replace paper, the form needs to be *faster* than paper.
+**Repair Form** — 12+ fields across 5 sections. A tech standing next to a truck has to scroll through the entire form for every repair. Most of the time it's the same customer, same damage type, over and over.
+
+**Replacement Form** — 15+ fields across 5 cards (Assignment, Vehicle, Pricing, Insurance, Photos). Better organized with toggleable sections (ADAS, insurance), but pricing requires manual entry every time and there's no way to save common configs.
+
+**Multi-Break Form** — Good concept (base info + modal per break) but each break modal still has 6+ fields, and there's no way to carry over damage type/viscosity/temp from the previous break (they're usually the same).
+
+For a tool designed to replace paper, these forms need to be *faster* than paper.
 
 ---
 
@@ -185,10 +191,218 @@ For a tool designed to replace paper, the form needs to be *faster* than paper.
 
 ---
 
+---
+
+## Replacement Form Ideas
+
+### R1. NAGS Number Autocomplete / Lookup
+
+**What:** When the tech types a NAGS number (e.g., "FW04567"), show the matching glass description (year/make/model, glass type, features). If they select a customer + unit first, suggest the NAGS number from the last replacement on that unit.
+
+**Why:** NAGS numbers are cryptic. Auto-lookup eliminates transcription errors and helps the tech confirm they've got the right glass. For repeat vehicles, it's one tap instead of looking it up again.
+
+**Effort:** Medium — need a NAGS lookup data source or partner API. Could start with a local cache of previously-used NAGS numbers per tenant.  
+**Risk:** Low. Additive. NAGS database licensing could be a cost consideration for the full lookup. Local cache (from past replacements) is free.
+
+---
+
+### R2. Insurance Company Autocomplete
+
+**What:** When insurance claim is toggled on, the insurance company field should show autocomplete from previously entered values (per tenant). "State Farm", "Geico", "Progressive" etc.
+
+**Why:** Techs misspell insurance company names, creating duplicates in reports. Autocomplete standardizes entries and saves typing.
+
+**Effort:** Low — JS autocomplete from a distinct values API endpoint.  
+**Risk:** None.
+
+---
+
+### R3. Saved Pricing Templates
+
+**What:** Let shop owners define pricing templates: "Standard Windshield" ($350 parts, $150 labor), "Back Glass" ($200, $100), "ADAS Required" ($350, $150, +$250 ADAS). When creating a replacement, the tech picks a template and costs auto-fill. Can still override.
+
+**Why:** Most shops have 5-10 common job types. Typing $350.00 and $150.00 every time is tedious and error-prone.
+
+**Effort:** Medium — new PricingTemplate model, owner settings page to manage templates, dropdown on replacement form.  
+**Risk:** Low. Templates are suggestions, not constraints. Tech can always override.
+
+---
+
+### R4. Insurance Claim Flow Shortcut
+
+**What:** Add a "Quick Insurance Claim" button on the replacement form. When tapped, it toggles insurance ON, expands the fields, and focuses the insurance company input. On the dashboard, add a "New Insurance Replacement" quick action separate from "New Replacement."
+
+**Why:** Insurance replacements are a different workflow mentally. Having a dedicated entry point signals "this is for insurance work" and pre-expands the right fields.
+
+**Effort:** Low — JS toggle + new dashboard button routing to `replacement_create?insurance=1`.  
+**Risk:** None.
+
+---
+
+### R5. Glass Position as Visual Picker
+
+**What:** Replace the glass position dropdown with a visual car diagram. Tap the windshield, rear glass, or side windows to select. Highlighted selection shows which glass is being replaced.
+
+**Why:** More intuitive than a text dropdown, especially for techs who think visually. Also reduces errors — "REAR_QUARTER_LEFT" vs "REAR_QUARTER_RIGHT" confusion goes away when you tap the actual position.
+
+**Effort:** Medium-High — SVG car diagram, click handlers, responsive layout.  
+**Risk:** Low-Medium. Needs to look good on mobile. Accessibility: keep the dropdown as a fallback or add ARIA labels.
+
+---
+
+### R6. Auto-Calculate Total with Live Display
+
+**What:** Already partially done ✅ — the form calculates parts + labor + ADAS. Improve by: showing the total prominently at the top (sticky on mobile), showing per-item breakdown, and including deductible in the calculation (total to customer = total - deductible, or total to insurance = total - deductible).
+
+**Effort:** Low — JS enhancement to existing calculation.  
+**Risk:** None.
+
+---
+
+### R7. Save & New for Replacements
+
+**What:** Same as repair form — add a "Save & Create Another" button. Pre-fills customer (and optionally technician) from the previous replacement.
+
+**Why:** When a shop is doing a fleet of replacements (10 trucks, all getting windshields), re-selecting the customer each time wastes effort.
+
+**Effort:** Low — same pattern as repair Save & New.  
+**Risk:** None.
+
+---
+
+## Multi-Break Form Ideas
+
+### M1. Carry Forward Break Details
+
+**What:** When adding break #2, #3, etc., pre-fill damage type, windshield temp, and resin viscosity from the previous break. Tech just changes what's different (usually just damage type, sometimes nothing).
+
+**Why:** If you're repairing 4 breaks on one windshield, the temp and viscosity are the same for all of them. Making the tech re-enter them 4 times is pointless.
+
+**Effort:** Low — JS: when opening the break modal, copy values from the last break in the array.  
+**Risk:** None. Pre-filled fields can be changed.
+
+---
+
+### M2. Quick-Add Break (One-Tap)
+
+**What:** Add a "Quick Add" button that creates a break with just the damage type (selected from icon cards, not a modal). No modal, no scrolling. Temp/viscosity/notes inherit from break #1. Tech taps ⭐ Star Break → break added to the list instantly.
+
+**Why:** The current modal is overkill for break #3 and #4 when everything except damage type is the same. The modal has 6 fields, but usually only 1 changes.
+
+**Effort:** Medium — new inline UI alongside the existing modal flow. Keep modal as "detailed add" option.  
+**Risk:** Low. Additive. Detailed modal stays available.
+
+---
+
+### M3. Batch Photo Upload
+
+**What:** Instead of per-break photos in the modal, add a single photo upload zone at the bottom. Tech takes all their photos, uploads them as a batch, then optionally assigns each photo to a specific break (or leaves them as "batch photos"). AI could auto-match photos to breaks by analyzing damage type.
+
+**Why:** Taking a photo, going back to the modal, selecting it, saving, opening a new modal, taking another photo — this interrupts the flow. Let the tech take all photos first, organize later.
+
+**Effort:** High — multi-file upload, photo assignment UI, optional AI matching.  
+**Risk:** Medium. Photo-to-break assignment needs a clear UI or techs will skip it. MVP: just upload batch, don't require assignment.
+
+---
+
+### M4. Live Break Counter + Summary Bar
+
+**What:** Sticky bar at the bottom showing: "4 breaks · $180 total · [Submit All]". Updates live as breaks are added/removed. Shows progressive pricing breakdown (break 1: $55, break 2: $50, break 3: $40, break 4: $35).
+
+**Why:** Currently the total and submit button are hidden until breaks are added, and the pricing preview is a separate section. A sticky bar gives constant feedback and a persistent submit target.
+
+**Effort:** Low — CSS sticky + JS updates. Pricing data already available.  
+**Risk:** None.
+
+---
+
+### M5. Duplicate to New Unit
+
+**What:** After submitting a multi-break batch for TRUCK-1045, show a "Same customer, different unit?" button. Clears unit number, keeps customer + date + technician. Resets breaks list but remembers damage type defaults.
+
+**Why:** A tech doing fleet work might repair 3 trucks in a row, each with 2-3 breaks. This bridges the gap between multi-break (same unit) and Save & New (different unit).
+
+**Effort:** Low — post-submit redirect with pre-filled query params.  
+**Risk:** None.
+
+---
+
+## Cross-Form Ideas (Apply to All Three)
+
+### X1. Form Analytics
+
+**What:** Track time from form open to submit, fields filled vs skipped, abandonment rate. Simple JS timestamps stored via a lightweight API endpoint. Dashboard in owner settings.
+
+**Why:** Without data, we're guessing which fields matter. With data, we can prune unused fields and optimize the common path.
+
+**Effort:** Medium — new API endpoint, JS instrumentation, simple analytics view.  
+**Risk:** Low. Non-invasive.
+
+---
+
+### X2. Persistent Draft Recovery
+
+**What:** The repair form already has autosave (FormAutosave). Extend this to the replacement and multi-break forms. If the tech closes the tab mid-form, they get a "Restore draft?" prompt when they come back.
+
+**Why:** Losing a half-filled form to an accidental tap or phone call is infuriating. Autosave prevents data loss.
+
+**Effort:** Low for replacement (same JS library). Medium for multi-break (need to serialize break array).  
+**Risk:** Low. Autosave already proven on repair form.
+
+---
+
+### X3. Unified "New Job" Entry Point
+
+**What:** Instead of separate "New Repair" / "New Replacement" / "Multi-Break" buttons, show a single "New Job" button that asks: "What are you doing?" → Repair (single break) / Repair (multiple breaks) / Glass Replacement. One entry point, three paths.
+
+**Why:** New techs don't know the difference between the three forms. A guided entry point reduces confusion.
+
+**Effort:** Low — modal or intermediate page with 3 cards.  
+**Risk:** Low. Power users can bookmark specific form URLs to skip the picker.
+
+---
+
+## Updated Implementation Order
+
+**Phase 1 — Quick Wins (1-2 days, all forms):**
+- Save & New (repair + replacement) [#2, R7]
+- Smart Defaults (status = COMPLETED, remember customer) [#5]
+- Reorder Fields for speed [#7]
+- Collapsible Sections on mobile [#3]
+- Carry Forward break details in multi-break [M1]
+- Live summary bar in multi-break [M4]
+
+**Phase 2 — UX Polish (2-3 days):**
+- Damage Type Tap Cards (repair + multi-break) [#4]
+- Unit Number Autocomplete [#8]
+- Quick Repair Mode [#1]
+- Insurance Company Autocomplete [R2]
+- Quick-Add Break (one-tap) [M2]
+- Duplicate to New Unit [M5]
+
+**Phase 3 — Differentiators (1-2 weeks):**
+- Auto-fill Temperature from weather [#6]
+- Voice Notes [#11]
+- Saved Pricing Templates [R3]
+- Glass Position Visual Picker [R5]
+- Form Analytics [X1]
+- Autosave for replacement + multi-break [X2]
+
+**Phase 4 — Big Bets (future):**
+- Barcode/QR Scan for unit number [#9]
+- Offline Mode [#12]
+- NAGS Lookup [R1]
+- Batch Photo Upload + AI matching [M3]
+- Unified "New Job" entry point [X3]
+
+---
+
 ## Success Metrics
 
 - **Time to log a repair** — measure from form open to submit (JS timestamp). Target: under 30 seconds for a quick repair, under 60 seconds for a full one.
-- **Form abandonment rate** — track how often the form is opened but not submitted.
-- **Fields filled per repair** — are techs actually using optional fields, or skipping them?
+- **Time to log a replacement** — target: under 90 seconds including pricing.
+- **Multi-break entry speed** — target: under 15 seconds per additional break after break #1.
+- **Form abandonment rate** — track how often forms are opened but not submitted.
+- **Fields filled per job** — are techs actually using optional fields, or skipping them?
 
 These can be tracked with simple JS event logging, no analytics SDK needed.
