@@ -456,22 +456,26 @@ Please contact us to arrange payment or if you have any questions.
                 logger.error(f"SendGrid error: {e}")
                 # Fall through to Django email
         
-        # Fallback to Django's email backend
+        # Fallback to Django's email backend (branded HTML)
         try:
-            from django.core.mail import EmailMessage
-            
-            email = EmailMessage(
-                subject=subject,
-                body=body,
-                from_email=self.from_email,
-                to=[to_email],
-            )
-            
-            # Attach PDF if provided
+            from core.email_utils import send_branded_email
+
+            attachments = []
             if pdf_attachment and invoice:
-                email.attach(f"Invoice_{invoice.invoice_number}.pdf", pdf_attachment, 'application/pdf')
-            
-            email.send(fail_silently=False)
+                attachments.append(
+                    (f"Invoice_{invoice.invoice_number}.pdf", pdf_attachment, 'application/pdf')
+                )
+
+            tenant = getattr(invoice, 'tenant', None) if invoice else None
+            send_branded_email(
+                subject=subject,
+                recipient_list=[to_email],
+                headline=subject,
+                body_paragraphs=[body],
+                tenant=tenant,
+                attachments=attachments,
+                from_email=self.from_email,
+            )
             return True
             
         except Exception as e:
