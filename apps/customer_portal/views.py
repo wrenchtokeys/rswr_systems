@@ -1801,44 +1801,13 @@ def account_settings(request):
             new_password = request.POST.get('new_password', '')
             confirm_password = request.POST.get('confirm_password', '')
             
-            # Validate and save user info
-            if email and email != user.email:
-                if User.objects.filter(email=email).exclude(id=user.id).exists():
-                    messages.error(request, "This email is already in use by another account.")
-                    repair_form = RepairPreferenceForm(instance=repair_prefs)
-                    return render(request, 'customer_portal/account_settings.html', {
-                        'customer_user': customer_user,
-                        'repair_form': repair_form,
-                    })
-                user.email = email
-                # Reset email verification when email changes
-                if customer.email_verified:
-                    messages.info(request, "Email address changed. Please verify your new email address.")
-                customer.email_verified = False
-                customer.email_verified_at = None
-                # Also update notification preferences
-                prefs, created = CustomerNotificationPreference.objects.get_or_create(customer=customer)
-                prefs.email_verified = False
-                prefs.email_verified_at = None
-                prefs.save()
-            
-            user.first_name = first_name
-            user.last_name = last_name
-
-            # Handle phone number update
-            if phone != customer.phone:
-                if customer.phone_verified:
-                    messages.info(request, "Phone number changed. Please verify your new phone number.")
-                customer.phone = phone
-                customer.phone_verified = False
-                customer.phone_verified_at = None
-                # Also update notification preferences
-                prefs, created = CustomerNotificationPreference.objects.get_or_create(customer=customer)
-                prefs.phone_verified = False
-                prefs.phone_verified_at = None
-                prefs.save()
-
-            # Handle password change if provided
+            # --- PASSWORD VALIDATION FIRST ---
+            # Must validate the password change BEFORE mutating and saving any
+            # contact-verification state (prefs.email_verified, prefs.phone_verified).
+            # Previously, prefs.save() was called eagerly inside the email/phone
+            # change blocks, then the password check returned early — leaving
+            # CustomerNotificationPreference.phone_verified=False while
+            # Customer.phone_verified stayed True (desync). (CODE-154)
             if current_password and new_password and confirm_password:
                 if not user.check_password(current_password):
                     messages.error(request, "Current password is incorrect.")
@@ -1863,9 +1832,45 @@ def account_settings(request):
                         'customer_user': customer_user,
                         'repair_form': repair_form,
                     })
-                
+
                 user.set_password(new_password)
                 update_session_auth_hash(request, user)  # Keep user logged in
+
+            # --- VALIDATE AND STAGE all contact/user changes ---
+            # Collect any notification-preference mutations into a pending dict so
+            # we can save them together with customer/user at the very end.
+            # This prevents partial state if a later step raises an exception.
+            prefs_updates = {}  # field → value
+
+            if email and email != user.email:
+                if User.objects.filter(email=email).exclude(id=user.id).exists():
+                    messages.error(request, "This email is already in use by another account.")
+                    repair_form = RepairPreferenceForm(instance=repair_prefs)
+                    return render(request, 'customer_portal/account_settings.html', {
+                        'customer_user': customer_user,
+                        'repair_form': repair_form,
+                    })
+                user.email = email
+                # Reset email verification when email changes
+                if customer.email_verified:
+                    messages.info(request, "Email address changed. Please verify your new email address.")
+                customer.email_verified = False
+                customer.email_verified_at = None
+                prefs_updates['email_verified'] = False
+                prefs_updates['email_verified_at'] = None
+            
+            user.first_name = first_name
+            user.last_name = last_name
+
+            # Handle phone number update
+            if phone != customer.phone:
+                if customer.phone_verified:
+                    messages.info(request, "Phone number changed. Please verify your new phone number.")
+                customer.phone = phone
+                customer.phone_verified = False
+                customer.phone_verified_at = None
+                prefs_updates['phone_verified'] = False
+                prefs_updates['phone_verified_at'] = None
             
             # Update primary contact status.
             # If this user is claiming primary contact, first demote any existing
@@ -1884,7 +1889,16 @@ def account_settings(request):
             try:
                 user.save()
                 customer_user.save()
-                customer.save()  # Save phone changes and verification status
+                customer.save()  # Save phone/email verification status changes
+                # Apply notification-preference verification resets (collected above)
+                # in one update so they are always in sync with the Customer row.
+                if prefs_updates:
+                    prefs_obj, _ = CustomerNotificationPreference.objects.get_or_create(
+                        customer=customer
+                    )
+                    for field, value in prefs_updates.items():
+                        setattr(prefs_obj, field, value)
+                    prefs_obj.save(update_fields=list(prefs_updates.keys()))
                 messages.success(request, "Account settings updated successfully!")
                 return redirect('customer_dashboard')
             except Exception as e:
