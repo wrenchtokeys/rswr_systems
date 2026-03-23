@@ -149,6 +149,11 @@ function openEditUnitModal(index) {
         showPhotoPreview(unit.photoDataUrl, unit.photoName);
     }
 
+    // Restore damage location if exists
+    if (unit.damageLocationX && unit.damageLocationY) {
+        placeModalDamageMarker(parseFloat(unit.damageLocationX), parseFloat(unit.damageLocationY));
+    }
+
     document.getElementById('modalTitle').textContent = 'Edit Unit Repair';
     document.getElementById('addUnitModal').classList.remove('hidden');
 
@@ -172,6 +177,9 @@ function clearModalForm() {
     document.getElementById('modalBreakCountContainer').classList.add('hidden');
     document.getElementById('photoPreviewContainer').classList.add('hidden');
     clearFieldError('modalUnitNumber');
+
+    // Clear damage location
+    clearModalDamageMarker();
 
     // Clear modal pricing preview
     const previewElement = document.getElementById('modalPricingPreview');
@@ -395,6 +403,10 @@ function saveUnit() {
         return;
     }
 
+    // Get damage location
+    const damageLocationX = document.getElementById('modalDamageLocationX').value;
+    const damageLocationY = document.getElementById('modalDamageLocationY').value;
+
     // Create unit object
     const unit = {
         unitNumber: unitNumber,
@@ -402,6 +414,8 @@ function saveUnit() {
         notes: notes || '',
         hasMultipleBreaks: hasMultipleBreaks,
         breakCount: breakCount ? parseInt(breakCount) : null,
+        damageLocationX: damageLocationX || null,
+        damageLocationY: damageLocationY || null,
         photoDataUrl: null,
         photoName: null,
         photoFile: null
@@ -505,6 +519,11 @@ function renderUnitCards() {
                     <div class="mt-2 mb-2">
                         <img src="${unit.photoDataUrl}" alt="Damage photo"
                             class="h-24 w-auto rounded border border-gray-300 object-cover">
+                    </div>
+                ` : ''}
+                ${unit.damageLocationX ? `
+                    <div class="mt-2 text-xs text-blue-600">
+                        <i class="fas fa-crosshairs"></i> Location marked on windshield
                     </div>
                 ` : ''}
                 ${unit.notes ? `
@@ -815,7 +834,9 @@ async function confirmAndSubmit() {
             notes: u.notes,
             hasPhoto: !!u.photoFile,
             hasMultipleBreaks: u.hasMultipleBreaks || false,
-            breakCount: u.breakCount || null
+            breakCount: u.breakCount || null,
+            damageLocationX: u.damageLocationX || null,
+            damageLocationY: u.damageLocationY || null
         }))));
 
         // Add photo files
@@ -1018,3 +1039,62 @@ function clearFieldError(fieldId) {
         field.classList.remove('border-red-500');
     }
 }
+
+// ================ DAMAGE LOCATION DIAGRAM ================
+function placeModalDamageMarker(xPercent, yPercent) {
+    const marker = document.getElementById('modalDamageMarker');
+    const xInput = document.getElementById('modalDamageLocationX');
+    const yInput = document.getElementById('modalDamageLocationY');
+    const locationText = document.getElementById('modalLocationText');
+    const clearBtn = document.getElementById('modalClearLocationBtn');
+    if (!marker) return;
+
+    marker.style.left = xPercent + '%';
+    marker.style.top = yPercent + '%';
+    marker.style.display = 'block';
+    xInput.value = xPercent.toFixed(1);
+    yInput.value = yPercent.toFixed(1);
+
+    const side = xPercent < 50 ? 'driver' : 'passenger';
+    const vertical = yPercent < 33 ? 'upper' : (yPercent > 66 ? 'lower' : 'middle');
+    locationText.textContent = 'Marked: ' + vertical + ' ' + side + ' side';
+    clearBtn.style.display = 'inline';
+}
+
+function clearModalDamageMarker() {
+    const marker = document.getElementById('modalDamageMarker');
+    const xInput = document.getElementById('modalDamageLocationX');
+    const yInput = document.getElementById('modalDamageLocationY');
+    const locationText = document.getElementById('modalLocationText');
+    const clearBtn = document.getElementById('modalClearLocationBtn');
+    if (!marker) return;
+
+    marker.style.display = 'none';
+    xInput.value = '';
+    yInput.value = '';
+    locationText.textContent = 'Tap where the damage is on the windshield';
+    clearBtn.style.display = 'none';
+}
+
+(function() {
+    const diagram = document.getElementById('modalWindshieldDiagram');
+    const clearBtn = document.getElementById('modalClearLocationBtn');
+    if (!diagram) return;
+
+    function handleInteraction(e) {
+        e.preventDefault();
+        const rect = diagram.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = ((clientX - rect.left) / rect.width) * 100;
+        const y = ((clientY - rect.top) / rect.height) * 100;
+        placeModalDamageMarker(
+            Math.max(2, Math.min(98, x)),
+            Math.max(2, Math.min(98, y))
+        );
+    }
+
+    diagram.addEventListener('click', handleInteraction);
+    diagram.addEventListener('touchstart', handleInteraction, { passive: false });
+    if (clearBtn) clearBtn.addEventListener('click', clearModalDamageMarker);
+})();
