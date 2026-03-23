@@ -199,6 +199,7 @@ else:
     STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')  # Billing/invoice webhooks
+STRIPE_CONNECT_WEBHOOK_SECRET = os.environ.get('STRIPE_CONNECT_WEBHOOK_SECRET', '')  # Connect account webhooks
 STRIPE_SUBSCRIPTION_WEBHOOK_SECRET = os.environ.get('STRIPE_SUBSCRIPTION_WEBHOOK_SECRET', '')  # SaaS subscription webhooks
 STRIPE_TEST_MODE = STRIPE_MODE == 'test'
 

@@ -43,6 +43,7 @@ class StripeService:
     def __init__(self):
         self.api_key = getattr(settings, 'STRIPE_SECRET_KEY', None)
         self.webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', None)
+        self.connect_webhook_secret = getattr(settings, 'STRIPE_CONNECT_WEBHOOK_SECRET', None)
         
         if STRIPE_AVAILABLE and self.api_key:
             stripe.api_key = self.api_key
@@ -252,13 +253,24 @@ class StripeService:
         if not self.webhook_secret:
             return {'success': False, 'error': 'Webhook secret not configured'}
         
-        try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, self.webhook_secret
-            )
-        except ValueError:
-            return {'success': False, 'error': 'Invalid payload'}
-        except stripe.error.SignatureVerificationError:
+        # Try platform webhook secret first, then Connect webhook secret.
+        # Connect events arrive on the same URL but are signed with the
+        # Connect endpoint's secret.
+        event = None
+        secrets_to_try = [self.webhook_secret]
+        if self.connect_webhook_secret:
+            secrets_to_try.append(self.connect_webhook_secret)
+
+        for secret in secrets_to_try:
+            try:
+                event = stripe.Webhook.construct_event(payload, sig_header, secret)
+                break
+            except stripe.error.SignatureVerificationError:
+                continue
+            except ValueError:
+                return {'success': False, 'error': 'Invalid payload'}
+
+        if event is None:
             return {'success': False, 'error': 'Invalid signature'}
         
         event_type = event['type']
