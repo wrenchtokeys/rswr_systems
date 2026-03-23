@@ -717,7 +717,7 @@ def owner_dashboard(request):
         'usage': usage,
         'recent_activity': recent_activity,
         'trial_days_remaining': tenant.trial_days_remaining,
-        'is_trial': tenant.plan == 'trial',
+        'is_trial': tenant.plan == 'trial' and not tenant.is_platform_owner,
         'is_trial_expired': tenant.is_trial_expired,
         'setup_steps': setup_steps,
         'setup_completion': setup_completion,
@@ -820,7 +820,8 @@ def billing_view(request):
         'usage': usage,
         'plans': plans,
         'current_plan': tenant.subscription_plan,
-        'is_trial': tenant.plan == 'trial',
+        'is_trial': tenant.plan == 'trial' and not tenant.is_platform_owner,
+        'is_platform_owner': tenant.is_platform_owner,
         'trial_days_remaining': tenant.trial_days_remaining,
         'intended_plan': tenant.intended_plan if tenant.intended_plan and tenant.intended_plan != tenant.plan else '',
     }

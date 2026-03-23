@@ -115,6 +115,8 @@ class UsageService:
         Check if the tenant can create another repair this month.
         Returns (allowed: bool, message: str).
         """
+        if self.tenant.is_platform_owner:
+            return True, ""
         if not self.plan:
             return True, ""
         

@@ -222,13 +222,22 @@ def customer_dashboard(request):
         # reflects ALL unpaid invoices, not just the first 5 shown on the dashboard.
         # Slicing (`[:5]`) causes Django to wrap the queryset in a subquery, so
         # aggregate() on the sliced version only sums the limited rows, not all of them.
+        # CODE-159: Use Sum('total') - Sum('amount_paid') to correctly reflect the
+        # remaining balance for PARTIAL invoices.  Using Sum('total') alone overstates
+        # the outstanding amount — a $500 invoice with $300 already paid would be
+        # counted as $500 owed instead of $200.  Mirrors the correct formula used in
+        # the owner invoice list (owner_invoice_list in saas/views.py).
         _outstanding_qs = Invoice.objects.filter(
             customer=customer,
             status__in=['SENT', 'OVERDUE', 'PARTIAL']
         ).order_by('due_date')
-        outstanding_total = _outstanding_qs.aggregate(
-            total=Sum('total')
-        )['total'] or 0
+        _outstanding_agg = _outstanding_qs.aggregate(
+            _total=Sum('total'),
+            _paid=Sum('amount_paid'),
+        )
+        outstanding_total = (
+            (_outstanding_agg['_total'] or 0) - (_outstanding_agg['_paid'] or 0)
+        )
         outstanding_invoices = _outstanding_qs[:5]  # Display slice AFTER aggregate
         overdue_count = Invoice.objects.filter(
             customer=customer,

@@ -345,8 +345,13 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
         skipped_payments = len(has_payments_ids)
         deleted = safe.count()
 
+        # Use instance loop so Invoice.delete() fires and S3 cleanup runs.
+        # QuerySet.delete() bypasses model overrides (see AGENTS.md gotcha).
+        # (CODE-158: mirrors the same fix applied to owner_invoice_bulk_action
+        # in saas/views.py via CODE-152; the admin action was missed then.)
         try:
-            safe.delete()
+            for inv in safe:
+                inv.delete()
         except ProtectedError:
             self.message_user(
                 request,

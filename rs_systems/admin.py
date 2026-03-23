@@ -393,6 +393,13 @@ def _global_search_view(request):
     Search across Customers, Repairs, Invoices, and Users in one shot.
     Results are grouped by model type.
     Accessible at /admin/search/
+
+    Tenant scoping (CODE-157):
+    - Superusers see all data across all tenants.
+    - Non-superuser staff see only data belonging to their own tenant(s)
+      (via TenantMembership). Without this restriction a staff user from
+      Shop A could discover customers, repairs, invoices, and user accounts
+      from Shop B simply by searching.
     """
     query = request.GET.get('q', '').strip()
     results = {}
@@ -402,22 +409,66 @@ def _global_search_view(request):
         from apps.technician_portal.models import Repair
         from django.db.models import Q
 
-        customers = Customer.objects.filter(
-            Q(name__icontains=query) | Q(email__icontains=query)
-        ).select_related('tenant')[:20]
+        if request.user.is_superuser:
+            # Superusers: unrestricted access across all tenants.
+            tenant_ids = None
+        else:
+            # Non-superuser staff: restrict to their own tenant(s).
+            from apps.tenants.models import TenantMembership
+            tenant_ids = list(
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
 
-        repairs = Repair.objects.filter(
-            Q(unit_number__icontains=query) | Q(customer__name__icontains=query)
-        ).select_related('customer', 'tenant')[:20]
+        def _scope_qs(qs, tenant_field):
+            """Apply tenant filter to queryset unless user is superuser."""
+            if tenant_ids is None:
+                return qs
+            return qs.filter(**{f"{tenant_field}__in": tenant_ids})
 
-        invoices = Invoice.objects.filter(
-            Q(invoice_number__icontains=query) | Q(customer__name__icontains=query)
-        ).select_related('customer', 'tenant')[:20]
-
-        users = User.objects.filter(
-            Q(username__icontains=query) | Q(email__icontains=query) |
-            Q(first_name__icontains=query) | Q(last_name__icontains=query)
+        customers = _scope_qs(
+            Customer.objects.filter(
+                Q(name__icontains=query) | Q(email__icontains=query)
+            ).select_related('tenant'),
+            'tenant',
         )[:20]
+
+        repairs = _scope_qs(
+            Repair.objects.filter(
+                Q(unit_number__icontains=query) | Q(customer__name__icontains=query)
+            ).select_related('customer', 'tenant'),
+            'tenant',
+        )[:20]
+
+        invoices = _scope_qs(
+            Invoice.objects.filter(
+                Q(invoice_number__icontains=query) | Q(customer__name__icontains=query)
+            ).select_related('customer', 'tenant'),
+            'tenant',
+        )[:20]
+
+        # Users: superusers see all; non-superusers see only users in their tenant(s)
+        # (technicians and customer users belonging to the same shop).
+        if tenant_ids is None:
+            users = User.objects.filter(
+                Q(username__icontains=query) | Q(email__icontains=query) |
+                Q(first_name__icontains=query) | Q(last_name__icontains=query)
+            )[:20]
+        else:
+            from apps.customer_portal.models import CustomerUser as _CU
+            tech_user_ids = Technician.objects.filter(
+                tenant_id__in=tenant_ids
+            ).values_list('user_id', flat=True)
+            cu_user_ids = _CU.objects.filter(
+                customer__tenant_id__in=tenant_ids
+            ).values_list('user_id', flat=True)
+            users = User.objects.filter(
+                Q(id__in=tech_user_ids) | Q(id__in=cu_user_ids)
+            ).filter(
+                Q(username__icontains=query) | Q(email__icontains=query) |
+                Q(first_name__icontains=query) | Q(last_name__icontains=query)
+            )[:20]
 
         results = {
             'customers': customers,
