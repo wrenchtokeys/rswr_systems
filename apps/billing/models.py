@@ -602,8 +602,20 @@ class InvoiceLineItem(models.Model):
         return f"{self.description} - ${self.amount}"
     
     def save(self, *args, **kwargs):
-        # Auto-calculate amount if not set
-        if not self.amount:
+        # Auto-calculate amount only when it has not been explicitly set (None).
+        #
+        # BUG (CODE-151): The old guard was `if not self.amount:` which is True for
+        # both None AND Decimal('0.00').  This caused line items with a deliberately
+        # computed amount of $0.00 — e.g. FREE_SERVICE reward redemptions where
+        # get_discounted_cost() returns final_cost=Decimal(0) — to have their amount
+        # overridden to (unit_price × quantity - discount) on every save().
+        # For a free repair (discount=0, unit_price=50) that means $0 becomes $50,
+        # effectively silently dropping the customer's reward discount from invoices.
+        #
+        # Fix: use `is None` so only genuinely unset amounts are auto-computed.
+        # Callers that explicitly pass amount=Decimal('0.00') (e.g. FREE rewards,
+        # fully-discounted line items) now retain that value.
+        if self.amount is None:
             self.amount = (self.unit_price * self.quantity) - self.discount
         super().save(*args, **kwargs)
 
