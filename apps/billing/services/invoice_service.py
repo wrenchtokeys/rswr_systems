@@ -483,6 +483,71 @@ class InvoiceService:
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
         )
     
+    def _apply_watermark(self, pdf_buffer, status_text, color_hex, diagonal=True):
+        """Overlay a watermark ON TOP of an existing PDF."""
+        from reportlab.lib import colors as rl_colors
+        from reportlab.pdfgen import canvas as rl_canvas
+        try:
+            from PyPDF2 import PdfReader, PdfWriter
+        except ImportError:
+            # PyPDF2 not available — fall back to no watermark
+            logger.warning("PyPDF2 not installed — cannot apply watermark")
+            return pdf_buffer
+
+        # Create watermark PDF
+        watermark_buffer = io.BytesIO()
+        c = rl_canvas.Canvas(watermark_buffer, pagesize=letter)
+        stamp_color = rl_colors.HexColor(color_hex)
+
+        if diagonal:
+            c.saveState()
+            c.translate(letter[0] / 2, letter[1] / 2)
+            c.rotate(45)
+            c.setFont('Helvetica-Bold', 120)
+            c.setFillColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.25
+            ))
+            c.drawCentredString(0, 0, status_text)
+            c.restoreState()
+        else:
+            # Top-right corner badge
+            badge_w, badge_h = 120, 28
+            x = letter[0] - badge_w - 36
+            y = letter[1] - badge_h - 36
+            c.saveState()
+            c.setFillColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.12
+            ))
+            c.roundRect(x, y, badge_w, badge_h, 6, fill=1, stroke=0)
+            c.setStrokeColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.4
+            ))
+            c.setLineWidth(1)
+            c.roundRect(x, y, badge_w, badge_h, 6, fill=0, stroke=1)
+            c.setFont('Helvetica-Bold', 14)
+            c.setFillColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.7
+            ))
+            c.drawCentredString(x + badge_w / 2, y + 8, status_text)
+            c.restoreState()
+
+        c.save()
+        watermark_buffer.seek(0)
+
+        # Merge watermark on top of each page
+        reader = PdfReader(pdf_buffer)
+        watermark_reader = PdfReader(watermark_buffer)
+        watermark_page = watermark_reader.pages[0]
+        writer = PdfWriter()
+
+        for page in reader.pages:
+            page.merge_page(watermark_page)
+            writer.add_page(page)
+
+        output = io.BytesIO()
+        writer.write(output)
+        return output
+
     def _make_status_stamp_callback(self, status_text, color_hex, diagonal=True):
         """Create an onPage callback that draws a watermark stamp.
         
@@ -501,12 +566,12 @@ class InvoiceService:
             stamp_color = rl_colors.HexColor(color_hex)
 
             if diagonal:
-                # Big diagonal watermark (PAID, VOID)
+                # Big diagonal watermark (PAID, VOID) — drawn OVER content
                 canvas.translate(letter[0] / 2, letter[1] / 2)
                 canvas.rotate(45)
-                canvas.setFont('Helvetica-Bold', 72)
+                canvas.setFont('Helvetica-Bold', 120)
                 canvas.setFillColor(rl_colors.Color(
-                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.15
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.25
                 ))
                 canvas.drawCentredString(0, 0, status_text)
             else:
@@ -827,10 +892,14 @@ class InvoiceService:
             label, color, diagonal = stamp_map[invoice_status]
             stamp_callback = self._make_status_stamp_callback(label, color, diagonal=diagonal)
 
-        if stamp_callback:
-            doc.build(story, onFirstPage=stamp_callback, onLaterPages=stamp_callback)
-        else:
-            doc.build(story)
+        doc.build(story)
+
+        # Apply watermark AFTER building — draws on top of content
+        if invoice_status in stamp_map:
+            label, color, diagonal = stamp_map[invoice_status]
+            buffer.seek(0)
+            buffer = self._apply_watermark(buffer, label, color, diagonal)
+            buffer.seek(0)
         
         # Get the PDF bytes
         pdf_bytes = buffer.getvalue()
