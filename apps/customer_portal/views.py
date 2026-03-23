@@ -2371,12 +2371,18 @@ def customer_verify_email(request):
 
     # Send verification email
     try:
-        send_mail(
-            subject='Verify your email address - RS Systems',
-            message=f'Click this link to verify your email address: {verification_url}',
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject='Verify your email address — RS Systems',
             recipient_list=[request.user.email],
-            fail_silently=False,
+            headline='Verify Your Email',
+            body_paragraphs=[
+                f'Hi {request.user.first_name or request.user.email},',
+                'Please verify your email address by clicking the button below so you can receive invoices and notifications.',
+                'This link will expire in 24 hours.',
+            ],
+            button_text='✅ Verify Email',
+            button_url=verification_url,
         )
         messages.success(request, f"Verification email sent to {request.user.email}")
     except Exception as e:

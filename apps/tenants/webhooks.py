@@ -456,8 +456,8 @@ def _notify_owners_and_managers(tenant, event_type, context):
     Uses SendGrid if configured, otherwise logs a warning.
     """
     try:
-        from django.core.mail import send_mail
         from django.conf import settings as django_settings
+        from core.email_utils import send_branded_email
 
         recipient_list = _get_owner_and_manager_emails(tenant)
         if not recipient_list:
@@ -466,43 +466,52 @@ def _notify_owners_and_managers(tenant, event_type, context):
 
         owner = tenant.owner
         owner_name = (owner.first_name or 'there') if owner else 'there'
+        base_url = getattr(django_settings, 'BASE_URL', 'https://rssystems.io')
 
-        subjects = {
-            'payment_failed': f'⚠️ Payment failed for {tenant.name}',
-            'subscription_ended': f'Your {tenant.name} subscription has ended',
-        }
+        if event_type == 'payment_failed':
+            send_branded_email(
+                subject=f'⚠️ Payment failed for {tenant.name}',
+                recipient_list=recipient_list,
+                headline='Payment Failed',
+                body_paragraphs=[
+                    f"Hi {owner_name},",
+                    f"We were unable to process your payment for {tenant.name} (attempt #{context.get('attempt_count', 1)}).",
+                    "Please update your payment method to avoid service interruption.",
+                ],
+                button_text='💳 Update Payment Method',
+                button_url=f'{base_url}/owner/billing/',
+                tenant=tenant,
+                fail_silently=True,
+            )
+        elif event_type == 'subscription_ended':
+            send_branded_email(
+                subject=f'Your {tenant.name} subscription has ended',
+                recipient_list=recipient_list,
+                headline='Subscription Ended',
+                body_paragraphs=[
+                    f"Hi {owner_name},",
+                    f"Your subscription for {tenant.name} has ended.",
+                    "Your account has been moved to read-only mode for 30 days. During this time you can view your data but cannot make changes.",
+                    "Resubscribe anytime to restore full access.",
+                ],
+                button_text='🔄 Resubscribe Now',
+                button_url=f'{base_url}/owner/billing/',
+                tenant=tenant,
+                fail_silently=True,
+            )
+        else:
+            send_branded_email(
+                subject=f'RS Systems notification for {tenant.name}',
+                recipient_list=recipient_list,
+                headline='Account Notification',
+                body_paragraphs=[
+                    f"Hi {owner_name},",
+                    f"A subscription event occurred for {tenant.name}.",
+                ],
+                tenant=tenant,
+                fail_silently=True,
+            )
 
-        email_bodies = {
-            'payment_failed': (
-                f"Hi {owner_name},\n\n"
-                f"We were unable to process your payment for {tenant.name}.\n"
-                f"Attempt #{context.get('attempt_count', 1)}.\n\n"
-                f"Please update your payment method to avoid service interruption.\n"
-                f"Go to your billing settings to update: /owner/billing/\n\n"
-                f"— RS Systems"
-            ),
-            'subscription_ended': (
-                f"Hi {owner_name},\n\n"
-                f"Your subscription for {tenant.name} has ended.\n"
-                f"Your account has been moved to read-only mode for 30 days.\n\n"
-                f"During this time you can view your data but cannot make changes.\n"
-                f"Resubscribe anytime from your billing settings: /owner/billing/\n\n"
-                f"— RS Systems"
-            ),
-        }
-
-        subject = subjects.get(event_type, f'RS Systems notification for {tenant.name}')
-        body = email_bodies.get(event_type, f'A subscription event occurred for {tenant.name}.')
-
-        from_email = getattr(django_settings, 'DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
-
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=from_email,
-            recipient_list=recipient_list,
-            fail_silently=True,
-        )
         logger.info(
             f"Sent {event_type} notification to {recipient_list} for tenant {tenant.slug}"
         )
