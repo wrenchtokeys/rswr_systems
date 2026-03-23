@@ -242,6 +242,12 @@ class Tenant(models.Model):
         help_text="Override global platform fee for this tenant. Null = use global default."
     )
 
+    # Platform owner flag — exempt from subscription billing
+    is_platform_owner = models.BooleanField(
+        default=False,
+        help_text="Platform owner tenant — permanent pro plan, no subscription required"
+    )
+
     # Plan (for Phase 3 billing)
     plan = models.CharField(
         max_length=20,
@@ -321,6 +327,8 @@ class Tenant(models.Model):
     @property
     def is_trial_expired(self):
         """Check if the free trial period has ended."""
+        if self.is_platform_owner:
+            return False
         expiry = self.trial_expiry
         if expiry is None:
             return False
