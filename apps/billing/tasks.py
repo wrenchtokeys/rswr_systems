@@ -150,6 +150,20 @@ def _send_overdue_reminder(invoice, config, days_overdue):
         )
         subject = f"Reminder: Invoice #{invoice.invoice_number} is overdue"
     
+    # Generate public payment link
+    pay_link_text = ''
+    try:
+        from rs_systems.views import generate_payment_token
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+        token = generate_payment_token(invoice.id)
+        pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
+        pay_link_text = f"\nPay online: {pay_url}\n"
+    except Exception:
+        pass
+
+    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
+    _company_phone = config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')
+
     # Build email body
     body = f"""Dear {customer.name},
 
@@ -160,14 +174,14 @@ Invoice Details:
   Invoice Date: {invoice.invoice_date.strftime('%B %d, %Y')}
   Due Date: {invoice.due_date.strftime('%B %d, %Y')}
   Amount Due: ${invoice.amount_due:.2f}
-
+{pay_link_text}
 Please submit payment at your earliest convenience.
 
 If you have already sent payment, please disregard this notice.
 
 Thank you,
-{config.company_name or (invoice.tenant.name if invoice.tenant else '')}
-{config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')}
+{_company_name}
+{_company_phone}
 """
     
     try:

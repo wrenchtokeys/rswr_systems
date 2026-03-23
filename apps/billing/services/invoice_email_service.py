@@ -354,29 +354,17 @@ class InvoiceEmailService:
                         invoice_record = inv_qs.order_by('-created_at').first()
 
                     if invoice_record:
-                        # Use existing Stripe URL if available
-                        if invoice_record.stripe_hosted_url:
-                            payment_link = invoice_record.stripe_hosted_url
-                        else:
-                            # Generate a fresh Stripe Checkout session
-                            try:
-                                from apps.tenants.services.connect_service import ConnectService
-                                connect_svc = ConnectService()
-                                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
-                                result = connect_svc.create_connected_checkout_session(
-                                    invoice_record,
-                                    success_url=f"{base_url}/app/invoices/{invoice_record.id}/?payment=success",
-                                    cancel_url=f"{base_url}/app/invoices/{invoice_record.id}/?payment=cancelled",
-                                )
-                                if result.get('checkout_url'):
-                                    payment_link = result['checkout_url']
-                                    # Save for reuse
-                                    invoice_record.stripe_hosted_url = payment_link
-                                    invoice_record.save(update_fields=['stripe_hosted_url'])
-                            except Exception as e:
-                                logger.warning(f"Could not create Stripe checkout for email: {e}")
-                                # Fall back to portal link
-                                payment_link = f"https://rssystems.io/app/invoices/{invoice_record.id}/"
+                        # Generate public payment URL (HMAC-token based, no login needed)
+                        # This URL will redirect to Stripe Checkout if available,
+                        # or show a fallback page with contact info.
+                        try:
+                            from rs_systems.views import generate_payment_token
+                            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                            token = generate_payment_token(invoice_record.id)
+                            payment_link = f"{base_url}/pay/{invoice_record.id}/{token}/"
+                        except Exception as e:
+                            logger.warning(f"Could not generate payment URL: {e}")
+                            payment_link = f"https://rssystems.io/app/invoices/{invoice_record.id}/"
                 except Exception:
                     pass
             
@@ -442,7 +430,19 @@ class InvoiceEmailService:
     def _build_html_email(self, invoice_data, payment_link=None, include_photos=False) -> str:
         """Build an HTML email with clickable buttons."""
         invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
-        portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/" if invoice_id else "https://rssystems.io/app/invoices/"
+        # Use the same public pay URL for "View Invoice" (no login required)
+        if payment_link:
+            portal_url = payment_link
+        elif invoice_id:
+            try:
+                from rs_systems.views import generate_payment_token
+                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                token = generate_payment_token(invoice_id)
+                portal_url = f"{base_url}/pay/{invoice_id}/{token}/"
+            except Exception:
+                portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/"
+        else:
+            portal_url = "https://rssystems.io/app/invoices/"
 
         # Company info
         company_name = 'RS Systems'

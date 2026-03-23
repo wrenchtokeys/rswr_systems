@@ -416,6 +416,88 @@ def setup_database(request):
     """)
 
 
+def generate_payment_token(invoice_id):
+    """Generate an HMAC token for public invoice payment links."""
+    import hmac, hashlib
+    secret = settings.SECRET_KEY
+    message = f"pay-invoice-{invoice_id}"
+    return hmac.new(secret.encode(), message.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def public_pay_invoice(request, invoice_id, token):
+    """
+    Public payment page — no login required.
+    Token is HMAC-derived from invoice ID + SECRET_KEY, so URLs are unforgeable.
+    """
+    import hmac as hmac_mod
+    expected = generate_payment_token(invoice_id)
+    if not hmac_mod.compare_digest(token, expected):
+        return render(request, '404.html', status=404)
+
+    from apps.billing.models import Invoice
+    try:
+        invoice = Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return render(request, '404.html', status=404)
+
+    if invoice.status == 'PAID':
+        return render(request, 'billing/payment_complete.html')
+
+    if invoice.amount_due <= 0:
+        return render(request, 'billing/payment_complete.html')
+
+    # Try to create a Stripe Checkout session
+    checkout_url = None
+    error_msg = None
+    tenant = invoice.tenant
+
+    if tenant and tenant.can_accept_payments:
+        try:
+            from apps.tenants.services.connect_service import ConnectService
+            connect_svc = ConnectService()
+            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+            result = connect_svc.create_connected_checkout_session(
+                invoice,
+                success_url=f"{base_url}/payment-complete?session={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{base_url}/pay/{invoice_id}/{token}/",
+            )
+            if result.get('checkout_url'):
+                checkout_url = result['checkout_url']
+        except Exception as e:
+            logger.warning(f"Could not create checkout for public pay page: {e}")
+            error_msg = "Online payments are temporarily unavailable. Please contact the shop directly."
+    else:
+        # Try platform Stripe (non-Connect)
+        try:
+            from apps.billing.services.stripe_service import StripeService
+            svc = StripeService()
+            if svc.is_enabled():
+                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                result = svc.create_checkout_session(
+                    invoice,
+                    success_url=f"{base_url}/payment-complete?session={{CHECKOUT_SESSION_ID}}",
+                    cancel_url=f"{base_url}/pay/{invoice_id}/{token}/",
+                )
+                if result.get('checkout_url'):
+                    checkout_url = result['checkout_url']
+        except Exception as e:
+            logger.warning(f"Could not create platform checkout: {e}")
+            error_msg = "Online payments are temporarily unavailable. Please contact the shop directly."
+
+    # If we got a checkout URL, redirect immediately
+    if checkout_url:
+        return redirect(checkout_url)
+
+    # Otherwise show an info page
+    context = {
+        'invoice': invoice,
+        'error_msg': error_msg or "Online payments are not yet available for this shop. Please contact them directly to arrange payment.",
+        'company_name': tenant.name if tenant else 'RS Systems',
+        'company_phone': tenant.business_phone if tenant else '',
+    }
+    return render(request, 'billing/public_pay_unavailable.html', context)
+
+
 def payment_complete(request):
     """Landing page after successful Stripe checkout."""
     session_id = request.GET.get('session')
