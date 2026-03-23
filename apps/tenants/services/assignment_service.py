@@ -130,10 +130,14 @@ def _assign_smart(service, tenant, service_type='repair'):
         return None
 
     active_statuses = ['PENDING', 'APPROVED', 'IN_PROGRESS', 'REQUESTED']
+    # The reverse relation from Technician → Repair/Replacement uses Django's
+    # default lowercase model name ('repair', 'replacement'), NOT 'repairs'/'replacements'.
+    # Using 'repairs' raises FieldError at runtime; fixed to 'repair'/'replacement'. (CODE-163)
+    count_field = 'replacement' if service_type == 'replacement' else 'repair'
     tech_with_load = eligible.annotate(
         active_repairs=Count(
-            'repairs',
-            filter=Q(repairs__queue_status__in=active_statuses),
+            count_field,
+            filter=Q(**{f'{count_field}__queue_status__in': active_statuses}),
         )
     ).order_by('active_repairs', 'id')
 
