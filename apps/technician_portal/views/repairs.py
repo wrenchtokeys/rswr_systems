@@ -292,6 +292,16 @@ def repair_detail(request, repair_id):
             is_invoiced = True
             invoice_id = line_item.invoice_id
 
+    # Default payment terms for generate-invoice dropdown (CODE-153)
+    default_payment_terms = 'COD'
+    if tenant:
+        try:
+            from apps.billing.models import BillingConfig
+            bc = BillingConfig.get_for_tenant(tenant)
+            default_payment_terms = bc.default_payment_terms
+        except Exception:
+            pass
+
     return render(request, 'technician_portal/repair_detail.html', {
         'repair': repair,
         'TIME_ZONE': timezone.get_current_timezone_name(),
@@ -304,6 +314,7 @@ def repair_detail(request, repair_id):
         'next_break': next_break,
         'is_invoiced': is_invoiced,
         'invoice_id': invoice_id,
+        'default_payment_terms': default_payment_terms,
     })
 
 

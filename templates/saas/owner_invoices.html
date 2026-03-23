@@ -399,6 +399,20 @@
                     <span class="text-sm text-gray-600">Selected Total:</span>
                     <span class="text-lg font-bold text-gray-900">$<span id="modal-total">0.00</span></span>
                 </div>
+
+                <!-- Payment Terms Override (CODE-153) -->
+                <div class="px-6 py-3 border-t border-gray-100">
+                    <label for="modal-payment-terms" class="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                    <select id="modal-payment-terms" class="w-full rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500">
+                        <option value="COD"{% if default_payment_terms == 'COD' %} selected{% endif %}>Cash on Delivery (COD)</option>
+                        <option value="DUE_ON_RECEIPT"{% if default_payment_terms == 'DUE_ON_RECEIPT' %} selected{% endif %}>Due on Receipt</option>
+                        <option value="NET15"{% if default_payment_terms == 'NET15' %} selected{% endif %}>Net 15</option>
+                        <option value="NET30"{% if default_payment_terms == 'NET30' %} selected{% endif %}>Net 30</option>
+                        <option value="NET45"{% if default_payment_terms == 'NET45' %} selected{% endif %}>Net 45</option>
+                        <option value="NET60"{% if default_payment_terms == 'NET60' %} selected{% endif %}>Net 60</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Default: {{ default_payment_terms_display }}. Change for this invoice only.</p>
+                </div>
             </div>
 
             <!-- Empty state -->
@@ -594,11 +608,12 @@ function createInvoiceAndSend() {
 function submitInvoice(repairIds, sendEmail) {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+    const paymentTerms = document.getElementById('modal-payment-terms')?.value || null;
 
     fetch(`/api/billing/invoices/create/${modalCustomerId}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({ repair_ids: repairIds, auto_email: sendEmail }),
+        body: JSON.stringify({ repair_ids: repairIds, auto_email: sendEmail, payment_terms: paymentTerms }),
     })
     .then(r => r.json())
     .then(data => {
@@ -884,10 +899,12 @@ function submitInvoiceForSend(repairIds) {
     btnSend.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Creating...';
     btnSend.disabled = true;
 
+    const paymentTerms = document.getElementById('modal-payment-terms')?.value || null;
+
     fetch(`/api/billing/invoices/create/${modalCustomerId}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({ repair_ids: repairIds, auto_email: false }),
+        body: JSON.stringify({ repair_ids: repairIds, auto_email: false, payment_terms: paymentTerms }),
     })
     .then(r => r.json())
     .then(data => {
