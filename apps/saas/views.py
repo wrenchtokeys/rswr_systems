@@ -3783,6 +3783,7 @@ def owner_invoice_pdf(request, invoice_id):
             repair_ids=repair_ids if repair_ids else None,
             invoice_number=invoice.invoice_number,
             invoice_date=stored_dt,
+            invoice_status=invoice.status,
         )
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')

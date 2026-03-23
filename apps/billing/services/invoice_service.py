@@ -483,13 +483,69 @@ class InvoiceService:
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
         )
     
-    def generate_pdf(self, invoice_data: InvoiceData, include_photos: bool = True) -> bytes:
+    def _make_status_stamp_callback(self, status_text, color_hex, diagonal=True):
+        """Create an onPage callback that draws a watermark stamp.
+        
+        Args:
+            status_text: Text to display (e.g. 'PAID', 'VOID', 'OVERDUE')
+            color_hex: Color for the stamp
+            diagonal: If True, draw at 45° across the page. If False, draw as
+                a subtle banner at the top right corner.
+        """
+        from reportlab.lib import colors as rl_colors
+
+        def _stamp(canvas, doc):
+            if not status_text:
+                return
+            canvas.saveState()
+            stamp_color = rl_colors.HexColor(color_hex)
+
+            if diagonal:
+                # Big diagonal watermark (PAID, VOID)
+                canvas.translate(letter[0] / 2, letter[1] / 2)
+                canvas.rotate(45)
+                canvas.setFont('Helvetica-Bold', 72)
+                canvas.setFillColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.15
+                ))
+                canvas.drawCentredString(0, 0, status_text)
+            else:
+                # Top-right corner badge (OVERDUE — visible but not aggressive)
+                badge_w, badge_h = 120, 28
+                x = letter[0] - badge_w - 36  # 0.5" from right edge
+                y = letter[1] - badge_h - 36  # 0.5" from top
+                # Background pill
+                canvas.setFillColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.12
+                ))
+                canvas.roundRect(x, y, badge_w, badge_h, 6, fill=1, stroke=0)
+                # Border
+                canvas.setStrokeColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.4
+                ))
+                canvas.setLineWidth(1)
+                canvas.roundRect(x, y, badge_w, badge_h, 6, fill=0, stroke=1)
+                # Text
+                canvas.setFont('Helvetica-Bold', 14)
+                canvas.setFillColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.7
+                ))
+                canvas.drawCentredString(x + badge_w / 2, y + 8, status_text)
+
+            canvas.restoreState()
+
+        return _stamp
+
+    def generate_pdf(self, invoice_data: InvoiceData, include_photos: bool = True,
+                     invoice_status: str = '') -> bytes:
         """
         Generate PDF invoice from InvoiceData.
         
         Args:
             invoice_data: Complete invoice data
             include_photos: Whether to include repair photos
+            invoice_status: Optional invoice status (PAID, OVERDUE, CANCELLED)
+                to stamp on the PDF as a diagonal watermark.
             
         Returns:
             PDF file as bytes
@@ -759,8 +815,22 @@ class InvoiceService:
             )
         ))
         
-        # Build PDF
-        doc.build(story)
+        # Build PDF — add status watermark stamp if applicable
+        # (label, color, diagonal?)
+        stamp_map = {
+            'PAID': ('PAID', '#22C55E', True),         # green diagonal
+            'OVERDUE': ('OVERDUE', '#EF4444', False),   # red corner badge (not aggressive)
+            'CANCELLED': ('VOID', '#991B1B', True),     # dark red diagonal
+        }
+        stamp_callback = None
+        if invoice_status in stamp_map:
+            label, color, diagonal = stamp_map[invoice_status]
+            stamp_callback = self._make_status_stamp_callback(label, color, diagonal=diagonal)
+
+        if stamp_callback:
+            doc.build(story, onFirstPage=stamp_callback, onLaterPages=stamp_callback)
+        else:
+            doc.build(story)
         
         # Get the PDF bytes
         pdf_bytes = buffer.getvalue()
@@ -777,6 +847,7 @@ class InvoiceService:
         include_photos: bool = False,  # Photos disabled by default for now
         invoice_number: Optional[str] = None,
         invoice_date: Optional[datetime] = None,
+        invoice_status: str = '',
     ) -> Tuple[bytes, InvoiceData]:
         """
         Generate a complete invoice PDF.
@@ -804,7 +875,8 @@ class InvoiceService:
             invoice_date=invoice_date,
         )
         
-        pdf_bytes = self.generate_pdf(invoice_data, include_photos=include_photos)
+        pdf_bytes = self.generate_pdf(invoice_data, include_photos=include_photos,
+                                       invoice_status=invoice_status)
         
         return pdf_bytes, invoice_data
 
