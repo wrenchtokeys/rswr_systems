@@ -47,7 +47,8 @@ class InvoiceTrackingService:
         return self._billing_config
     
     def create_invoice_from_repairs(self, customer, repairs, invoice_number=None, 
-                                     due_days=None, s3_key=None, auto_send=False):
+                                     due_days=None, s3_key=None, auto_send=False,
+                                     payment_terms=None):
         """
         Create a tracked Invoice from a list of repairs.
         
@@ -61,6 +62,8 @@ class InvoiceTrackingService:
                        Callers must mark SENT only after email delivery is confirmed.
                        (See AGENTS.md gotcha: "Don't mark invoices SENT before
                        confirming email delivery")
+            payment_terms: Override payment terms for this invoice (e.g. 'NET30').
+                          If None, uses BillingConfig.default_payment_terms.
             
         Returns:
             Invoice instance
@@ -86,13 +89,27 @@ class InvoiceTrackingService:
         if not invoice_number:
             invoice_number = self._generate_invoice_number(customer)
         
-        # Get payment terms from BillingConfig
-        payment_terms = 'COD'
-        if self.billing_config:
-            payment_terms = self.billing_config.default_payment_terms
-            # Use config-based due days if caller didn't specify
+        # Get payment terms — caller override takes priority over BillingConfig
+        if payment_terms is None:
+            payment_terms = 'COD'
+            if self.billing_config:
+                payment_terms = self.billing_config.default_payment_terms
+                # Use config-based due days if caller didn't specify
+                if due_days is None:
+                    due_days = self.billing_config.due_days_for_terms
+        else:
+            # Caller specified payment_terms — derive due_days from it if not
+            # explicitly provided.  (CODE-153)
             if due_days is None:
-                due_days = self.billing_config.due_days_for_terms
+                terms_days = {
+                    'COD': 0,
+                    'DUE_ON_RECEIPT': 0,
+                    'NET15': 15,
+                    'NET30': 30,
+                    'NET45': 45,
+                    'NET60': 60,
+                }
+                due_days = terms_days.get(payment_terms, 0)
         
         due_days = due_days or 0
         due_date = timezone.now().date() + timedelta(days=due_days) if due_days > 0 else timezone.now().date()

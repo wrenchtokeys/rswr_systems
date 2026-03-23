@@ -2314,6 +2314,17 @@ def owner_invoice_list(request):
                 'total': info['total'],
             })
 
+    # Default payment terms for invoice creation modal (CODE-153)
+    from apps.billing.models import BillingConfig
+    try:
+        billing_config = BillingConfig.get_for_tenant(tenant)
+        default_payment_terms = billing_config.default_payment_terms
+    except Exception:
+        default_payment_terms = 'COD'
+    terms_display = dict(BillingConfig.PAYMENT_TERMS_CHOICES).get(
+        default_payment_terms, default_payment_terms
+    )
+
     context = {
         'tenant': tenant,
         'invoices': invoices,
@@ -2326,6 +2337,8 @@ def owner_invoice_list(request):
         'payments_month_amount': payments_month_amount,
         'invoices_this_month': invoices_this_month,
         'uninvoiced_customers': uninvoiced_customers,
+        'default_payment_terms': default_payment_terms,
+        'default_payment_terms_display': terms_display,
     }
     return render(request, 'saas/owner_invoices.html', context)
 
@@ -3722,9 +3735,12 @@ def owner_invoice_bulk_action(request):
         deleted_count = safe_to_delete.count()
         skipped_active = invoices.exclude(status__in=['DRAFT', 'CANCELLED']).count()
 
-        # Perform the delete inside a try/except as a last-resort safety net.
+        # Perform the delete via instance loop so Invoice.delete() fires
+        # (which cleans up S3 objects).  QuerySet.delete() bypasses model
+        # overrides — see AGENTS.md gotcha.  (CODE-152)
         try:
-            safe_to_delete.delete()
+            for inv in safe_to_delete:
+                inv.delete()
         except _ProtectedError:
             return JsonResponse(
                 {'success': False, 'error': 'Delete failed: one or more invoices have payment records.'},
@@ -3878,13 +3894,21 @@ def owner_generate_invoice_from_repair(request, repair_id):
         ).select_related('invoice').first()
         return redirect('owner_invoice_detail', invoice_id=line_item.invoice_id)
 
-    # Generate the invoice
+    # Generate the invoice — accept optional payment_terms override (CODE-153)
+    req_payment_terms = request.POST.get('payment_terms') or None
+    if req_payment_terms:
+        from apps.billing.models import BillingConfig
+        valid_terms = {code for code, _label in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if req_payment_terms not in valid_terms:
+            req_payment_terms = None  # fall back to default
+
     try:
         from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
         tracking_svc = InvoiceTrackingService(tenant=tenant)
         invoice = tracking_svc.create_invoice_from_repairs(
             customer=repair.customer,
             repairs=[repair],
+            payment_terms=req_payment_terms,
         )
         messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)

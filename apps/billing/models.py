@@ -12,12 +12,15 @@ Tracks:
 Author: Amelia (Clawdbot AI)
 """
 
+import logging
 from django.db import models, transaction
 from django.utils import timezone
 from django.core.validators import MinValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from apps.tenants.managers import TenantManager
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -449,7 +452,39 @@ class Invoice(models.Model):
     
     def __str__(self):
         return f"{self.invoice_number} - {self.customer.name} - ${self.total}"
-    
+
+    # ------------------------------------------------------------------
+    # S3 cleanup on delete (CODE-152)
+    # ------------------------------------------------------------------
+    def delete(self, *args, **kwargs):
+        """Delete the invoice and its S3 PDF object (if any).
+
+        Voided (CANCELLED) invoices keep their PDF for audit trail — the S3
+        object is only removed when the record is actually deleted (DRAFT or
+        already-voided invoices).
+        """
+        self._delete_s3_object()
+        super().delete(*args, **kwargs)
+
+    def _delete_s3_object(self):
+        """Remove the S3 object for this invoice's PDF, if one exists."""
+        if not self.s3_key:
+            return
+        try:
+            from django.conf import settings
+            bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+            if not bucket:
+                return
+            import boto3
+            from botocore.exceptions import ClientError
+            s3_client = boto3.client('s3')
+            s3_client.delete_object(Bucket=bucket, Key=self.s3_key)
+            logger.info(f"Deleted S3 object: s3://{bucket}/{self.s3_key}")
+        except Exception as e:
+            # Log but don't block deletion — orphaned S3 objects are
+            # preferable to a stuck invoice that can't be deleted.
+            logger.warning(f"Failed to delete S3 object {self.s3_key}: {e}")
+
     @property
     def amount_due(self):
         """Amount still owed on this invoice."""

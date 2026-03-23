@@ -85,19 +85,31 @@ class CustomerPricing(models.Model):
         return f"{self.customer.name} - {status} Pricing"
 
     def get_repair_price(self, repair_count):
-        """Get the price for a repair based on repair count"""
+        """Get the price for a repair based on repair count.
+
+        Returns the custom price for the given tier, or None if the tier has not
+        been configured (field is NULL) — signalling the caller to fall back to
+        default/tenant pricing.
+
+        Important: use ``is not None`` to test whether a tier is configured.
+        ``Decimal('0.00')`` is falsy in Python, so a bare truthiness check like
+        ``if self.repair_1_price:`` would treat an intentional $0 custom price
+        (free service, warranty account, etc.) as "not configured" and silently
+        fall back to the standard rate.  This is the same Decimal-falsy bug
+        documented in AGENTS.md and previously fixed in CODE-132 / CODE-151.
+        """
         if not self.use_custom_pricing:
             return None  # Use default pricing
 
-        if repair_count == 1 and self.repair_1_price:
+        if repair_count == 1 and self.repair_1_price is not None:
             return self.repair_1_price
-        elif repair_count == 2 and self.repair_2_price:
+        elif repair_count == 2 and self.repair_2_price is not None:
             return self.repair_2_price
-        elif repair_count == 3 and self.repair_3_price:
+        elif repair_count == 3 and self.repair_3_price is not None:
             return self.repair_3_price
-        elif repair_count == 4 and self.repair_4_price:
+        elif repair_count == 4 and self.repair_4_price is not None:
             return self.repair_4_price
-        elif repair_count >= 5 and self.repair_5_plus_price:
+        elif repair_count >= 5 and self.repair_5_plus_price is not None:
             return self.repair_5_plus_price
 
         # If specific tier not set, return None to use default

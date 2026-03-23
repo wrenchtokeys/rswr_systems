@@ -35,19 +35,32 @@ def get_tenant_repair_price(tenant, repair_count: int) -> Decimal:
 
     Returns:
         Decimal: The repair cost based on tenant configuration
+
+    Note: Tenant repair_price fields are non-nullable DecimalFields with a
+    positive default, so they are never None.  However we must NOT use a bare
+    truthiness check (``tenant.repair_price_1 or DEFAULT_PRICING[1]``) because
+    ``Decimal('0.00')`` is falsy — a tenant that deliberately sets a $0 price
+    tier (e.g. for free-service or warranty accounts) would silently receive
+    the $50 system default instead.  Checking ``is not None`` is the correct
+    pattern (documented in AGENTS.md: "Decimal('0.00') is falsy in Python").
     """
     if tenant:
         if repair_count == 1:
-            return tenant.repair_price_1 or DEFAULT_PRICING[1]
+            val = tenant.repair_price_1
+            return val if val is not None else DEFAULT_PRICING[1]
         elif repair_count == 2:
-            return tenant.repair_price_2 or DEFAULT_PRICING[2]
+            val = tenant.repair_price_2
+            return val if val is not None else DEFAULT_PRICING[2]
         elif repair_count == 3:
-            return tenant.repair_price_3 or DEFAULT_PRICING[3]
+            val = tenant.repair_price_3
+            return val if val is not None else DEFAULT_PRICING[3]
         elif repair_count == 4:
-            return tenant.repair_price_4 or DEFAULT_PRICING[4]
+            val = tenant.repair_price_4
+            return val if val is not None else DEFAULT_PRICING[4]
         else:
-            return tenant.repair_price_5_plus or DEFAULT_PRICE_5_PLUS
-    
+            val = tenant.repair_price_5_plus
+            return val if val is not None else DEFAULT_PRICE_5_PLUS
+
     return DEFAULT_PRICING.get(repair_count, DEFAULT_PRICE_5_PLUS)
 
 

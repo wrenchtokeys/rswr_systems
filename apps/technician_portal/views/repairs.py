@@ -6,7 +6,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.http import JsonResponse
 from django.core.paginator import Paginator
 from decimal import Decimal, InvalidOperation
@@ -119,16 +119,28 @@ def repair_list(request):
             managed_tech_ids = list(technician.managed_technicians.values_list('id', flat=True))
             repairs = repairs.filter(technician_id__in=managed_tech_ids)
 
-    # Summary statistics
-    total_repairs = repairs.count()
+    # Summary statistics — computed in one aggregate query instead of 5 separate
+    # COUNT queries.  This is the same N+1 fix applied to customer_dashboard (CODE-141)
+    # and customer_repairs (CODE-143), now applied to the technician repair list.
+    # Each conditional Count(filter=Q(...)) becomes a CASE WHEN in a single SQL
+    # SELECT, eliminating 4 extra DB round-trips per page load.  (CODE-151)
+    _week_start = timezone.now().date() - timezone.timedelta(days=7)
+    _stats_agg = repairs.aggregate(
+        total_count=Count('id'),
+        total_active=Count('id', filter=~Q(queue_status='COMPLETED')),
+        pending_approval=Count('id', filter=Q(queue_status='REQUESTED')),
+        in_progress=Count('id', filter=Q(queue_status='IN_PROGRESS')),
+        completed_this_week=Count(
+            'id',
+            filter=Q(queue_status='COMPLETED', service_date__gte=_week_start),
+        ),
+    )
+    total_repairs = _stats_agg['total_count']
     stats = {
-        'total_active': repairs.exclude(queue_status='COMPLETED').count(),
-        'pending_approval': repairs.filter(queue_status='REQUESTED').count(),
-        'in_progress': repairs.filter(queue_status='IN_PROGRESS').count(),
-        'completed_this_week': repairs.filter(
-            queue_status='COMPLETED',
-            service_date__gte=timezone.now().date() - timezone.timedelta(days=7)
-        ).count()
+        'total_active': _stats_agg['total_active'],
+        'pending_approval': _stats_agg['pending_approval'],
+        'in_progress': _stats_agg['in_progress'],
+        'completed_this_week': _stats_agg['completed_this_week'],
     }
 
     # Sorting
@@ -280,6 +292,16 @@ def repair_detail(request, repair_id):
             is_invoiced = True
             invoice_id = line_item.invoice_id
 
+    # Default payment terms for generate-invoice dropdown (CODE-153)
+    default_payment_terms = 'COD'
+    if tenant:
+        try:
+            from apps.billing.models import BillingConfig
+            bc = BillingConfig.get_for_tenant(tenant)
+            default_payment_terms = bc.default_payment_terms
+        except Exception:
+            pass
+
     return render(request, 'technician_portal/repair_detail.html', {
         'repair': repair,
         'TIME_ZONE': timezone.get_current_timezone_name(),
@@ -292,6 +314,7 @@ def repair_detail(request, repair_id):
         'next_break': next_break,
         'is_invoiced': is_invoiced,
         'invoice_id': invoice_id,
+        'default_payment_terms': default_payment_terms,
     })
 
 

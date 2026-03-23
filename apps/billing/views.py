@@ -211,11 +211,24 @@ def create_invoice(request, customer_id):
     try:
         due_days = data.get('due_days', 30)
         send_email = data.get('auto_email', False)
+
+        # Optional payment-terms override (CODE-153).  Validate against
+        # the canonical choices list to prevent arbitrary values.
+        from apps.billing.models import BillingConfig
+        req_payment_terms = data.get('payment_terms')  # None = use default
+        valid_terms = {code for code, _label in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if req_payment_terms and req_payment_terms not in valid_terms:
+            return JsonResponse(
+                {'error': f'Invalid payment_terms: {req_payment_terms}'},
+                status=400,
+            )
+
         invoice = tracking.create_invoice_from_repairs(
             customer=customer,
             repairs=repairs,
-            due_days=due_days,
-            auto_send=send_email,  # SENT if emailing, DRAFT otherwise
+            due_days=due_days if req_payment_terms is None else None,
+            auto_send=send_email,
+            payment_terms=req_payment_terms,
         )
         # Ensure invoice is associated with the tenant
         if not invoice.tenant_id:

@@ -12,45 +12,45 @@
         <span class="text-gray-400">/</span>
         <span class="text-gray-600">{{ invoice.invoice_number }}</span>
     </div>
-    <div class="flex items-center gap-2 flex-wrap">
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
         {% if invoice.status == 'DRAFT' %}
         <!-- Draft Actions -->
         <button onclick="document.getElementById('send-confirm-modal').classList.remove('hidden')"
-            class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-            <i class="fas fa-paper-plane mr-2"></i>Send Invoice
+            class="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+            <i class="fas fa-paper-plane sm:mr-2"></i><span class="hidden sm:inline">Send Invoice</span>
         </button>
         {% if pdf_url %}
-        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <i class="fas fa-download mr-2"></i>Download PDF
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
         </a>
         {% endif %}
-        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <i class="fas fa-file-pdf mr-2"></i>{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
         </a>
         {% else %}
         <!-- Sent/Active Invoice Actions -->
         {% if pdf_url %}
-        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <i class="fas fa-download mr-2"></i>Download PDF
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
         </a>
         {% endif %}
-        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <i class="fas fa-file-pdf mr-2"></i>{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
         </a>
         <form method="post" action="{% url 'owner_email_invoice' invoice_id=invoice.id %}" class="inline">
             {% csrf_token %}
-            <button type="submit" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                <i class="fas fa-envelope mr-2"></i>Email Invoice
+            <button type="submit" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-envelope sm:mr-2"></i><span class="hidden sm:inline">Email Invoice</span>
             </button>
         </form>
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' and invoice.status != 'DRAFT' %}
-        <button onclick="openReminderModal()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
-            <i class="fas fa-bell mr-2"></i>Send Reminder
+        <button onclick="openReminderModal()" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
+            <i class="fas fa-bell sm:mr-2"></i><span class="hidden sm:inline">Send Reminder</span>
         </button>
         {% endif %}
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
-        <button onclick="voidInvoice()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-lg hover:bg-red-100 transition-colors">
-            <i class="fas fa-ban mr-2"></i>Void Invoice
+        <button onclick="voidInvoice()" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-lg hover:bg-red-100 transition-colors">
+            <i class="fas fa-ban sm:mr-2"></i><span class="hidden sm:inline">Void Invoice</span>
         </button>
         {% endif %}
         {% endif %}
