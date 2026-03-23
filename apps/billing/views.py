@@ -566,15 +566,55 @@ def record_payment(request, invoice_id):
             return JsonResponse({'error': 'Invalid date. Use YYYY-MM-DD'}, status=400)
 
     try:
-        service = InvoiceTrackingService(tenant=tenant)
-        payment = service.record_payment(
-            invoice=invoice,
-            amount=data['amount'],
-            payment_method=data.get('payment_method', 'OTHER').upper(),
-            reference_number=data.get('reference_number', ''),
-            notes=data.get('notes', ''),
-            payment_date=payment_date,
-        )
+        from decimal import Decimal as _Decimal, InvalidOperation as _InvalidOperation
+        from django.db import transaction as _transaction
+
+        # Parse and validate amount up front before acquiring any lock
+        try:
+            payment_amount = _Decimal(str(data['amount']))
+        except (_InvalidOperation, TypeError, ValueError):
+            return JsonResponse({'error': 'Invalid amount value'}, status=400)
+
+        if payment_amount <= _Decimal('0'):
+            return JsonResponse({'error': 'Payment amount must be greater than zero'}, status=400)
+
+        # Guard: cannot pay a cancelled or already-paid invoice
+        if invoice.status in ('PAID', 'CANCELLED'):
+            return JsonResponse(
+                {'error': f'Cannot record payment — invoice is {invoice.get_status_display()}.'},
+                status=400,
+            )
+
+        # Use a row-level lock (SELECT FOR UPDATE) to prevent a TOCTOU race
+        # where two concurrent API requests both read the same stale amount_due
+        # and both pass the overpayment check, resulting in amount_paid > total.
+        # The UI endpoint (owner_record_payment in saas/views.py) already uses
+        # this pattern; the API must be consistent.  (CODE-155)
+        with _transaction.atomic():
+            invoice_locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
+
+            # Re-check status inside the lock
+            if invoice_locked.status in ('PAID', 'CANCELLED'):
+                raise ValueError(
+                    f'Cannot record payment — invoice is {invoice_locked.get_status_display()}.'
+                )
+
+            # Validate against the fresh, locked amount_due to prevent overpayment
+            if payment_amount > invoice_locked.amount_due:
+                raise ValueError(
+                    f'Payment amount (${payment_amount}) exceeds the remaining balance '
+                    f'(${invoice_locked.amount_due}).'
+                )
+
+            service = InvoiceTrackingService(tenant=tenant)
+            payment = service.record_payment(
+                invoice=invoice_locked,
+                amount=payment_amount,
+                payment_method=data.get('payment_method', 'OTHER').upper(),
+                reference_number=data.get('reference_number', ''),
+                notes=data.get('notes', ''),
+                payment_date=payment_date,
+            )
 
         invoice.refresh_from_db()
 
