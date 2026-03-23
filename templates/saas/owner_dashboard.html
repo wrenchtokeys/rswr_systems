@@ -294,32 +294,7 @@
 {% endif %}
 
 <!-- Mobile FAB — Quick Actions -->
-<div class="sm:hidden fixed bottom-6 right-6 z-40" x-data="{ open: false }">
-    <!-- Expanded actions -->
-    <div id="fab-menu" class="hidden mb-3 space-y-2">
-        <a href="{% url 'create_repair' %}" class="flex items-center gap-3 justify-end">
-            <span class="px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg">New Repair</span>
-            <div class="w-11 h-11 bg-green-600 text-white rounded-full flex items-center justify-center shadow-lg">
-                <i class="fas fa-tools text-sm"></i>
-            </div>
-        </a>
-        <a href="{% url 'replacement_create' %}" class="flex items-center gap-3 justify-end">
-            <span class="px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg">New Replacement</span>
-            <div class="w-11 h-11 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-lg">
-                <i class="fas fa-car-crash text-sm"></i>
-            </div>
-        </a>
-        <a href="{% url 'create_customer' %}" class="flex items-center gap-3 justify-end">
-            <span class="px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg shadow-lg">New Customer</span>
-            <div class="w-11 h-11 bg-purple-600 text-white rounded-full flex items-center justify-center shadow-lg">
-                <i class="fas fa-user-plus text-sm"></i>
-            </div>
-        </a>
-    </div>
-    <button onclick="toggleFab()" id="fab-btn" class="w-14 h-14 bg-green-600 text-white rounded-full flex items-center justify-center text-xl shadow-lg transition-transform" style="box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);">
-        <i class="fas fa-plus" id="fab-icon"></i>
-    </button>
-</div>
+{% include "includes/fab_quick_actions.html" %}
 
 <!-- Desktop Quick Actions — compact row -->
 <div class="hidden sm:flex items-center justify-center gap-3 mt-6">
@@ -343,38 +318,5 @@
 
 </div>
 
-<script>
-function toggleFab() {
-    const menu = document.getElementById('fab-menu');
-    const icon = document.getElementById('fab-icon');
-    const btn = document.getElementById('fab-btn');
-    if (menu.classList.contains('hidden')) {
-        menu.classList.remove('hidden');
-        icon.classList.remove('fa-plus');
-        icon.classList.add('fa-times');
-        btn.style.transform = 'rotate(45deg)';
-    } else {
-        menu.classList.add('hidden');
-        icon.classList.remove('fa-times');
-        icon.classList.add('fa-plus');
-        btn.style.transform = 'rotate(0deg)';
-    }
-}
 
-// Close FAB menu on outside click
-document.addEventListener('click', function(e) {
-    const fabArea = document.querySelector('[x-data]');
-    if (fabArea && !fabArea.contains(e.target)) {
-        const menu = document.getElementById('fab-menu');
-        const icon = document.getElementById('fab-icon');
-        const btn = document.getElementById('fab-btn');
-        if (menu && !menu.classList.contains('hidden')) {
-            menu.classList.add('hidden');
-            icon.classList.remove('fa-times');
-            icon.classList.add('fa-plus');
-            btn.style.transform = 'rotate(0deg)';
-        }
-    }
-});
-</script>
 {% endblock %}

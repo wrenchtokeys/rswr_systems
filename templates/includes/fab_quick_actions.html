@@ -1,0 +1,158 @@
+{% comment %}
+FAB Quick Action Button — auto-detects portal from user role.
+Just {% include "includes/fab_quick_actions.html" %} on any page.
+Override items by passing fab_role="owner"|"tech"|"customer".
+{% endcomment %}
+
+<style>
+.fab-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0); z-index: 39;
+    pointer-events: none; transition: background 0.25s ease;
+}
+.fab-overlay.active { background: rgba(0,0,0,0.3); pointer-events: auto; }
+
+.fab-container {
+    position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 40;
+    display: flex; flex-direction: column; align-items: flex-end;
+}
+.fab-menu {
+    display: flex; flex-direction: column; gap: 0.625rem;
+    margin-bottom: 0.75rem; pointer-events: none;
+}
+.fab-menu-item {
+    display: flex; align-items: center; gap: 0.75rem; justify-content: flex-end;
+    opacity: 0; transform: translateY(12px) scale(0.9); pointer-events: none;
+    text-decoration: none;
+    transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.fab-container.open .fab-menu { pointer-events: auto; }
+.fab-container.open .fab-menu-item {
+    opacity: 1; transform: translateY(0) scale(1); pointer-events: auto;
+}
+/* Stagger open */
+.fab-container.open .fab-menu-item:nth-child(1) { transition-delay: 0.05s; }
+.fab-container.open .fab-menu-item:nth-child(2) { transition-delay: 0.1s; }
+.fab-container.open .fab-menu-item:nth-child(3) { transition-delay: 0.15s; }
+.fab-container.open .fab-menu-item:nth-child(4) { transition-delay: 0.2s; }
+.fab-container.open .fab-menu-item:nth-child(5) { transition-delay: 0.25s; }
+/* Stagger close (reverse) */
+.fab-container:not(.open) .fab-menu-item:nth-child(5) { transition-delay: 0s; }
+.fab-container:not(.open) .fab-menu-item:nth-child(4) { transition-delay: 0.03s; }
+.fab-container:not(.open) .fab-menu-item:nth-child(3) { transition-delay: 0.06s; }
+.fab-container:not(.open) .fab-menu-item:nth-child(2) { transition-delay: 0.09s; }
+.fab-container:not(.open) .fab-menu-item:nth-child(1) { transition-delay: 0.12s; }
+
+.fab-menu-label {
+    padding: 0.375rem 0.75rem; background: #1f2937; color: #fff;
+    font-size: 0.75rem; font-weight: 500; border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15); white-space: nowrap;
+}
+.fab-menu-circle {
+    width: 2.75rem; height: 2.75rem; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.2); flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+.fab-menu-item:active .fab-menu-circle { transform: scale(0.92); }
+
+.fab-main-btn {
+    width: 3.5rem; height: 3.5rem; border-radius: 50%; background: #16a34a;
+    color: #fff; border: none; display: flex; align-items: center;
+    justify-content: center; font-size: 1.25rem; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s ease, box-shadow 0.2s ease;
+}
+.fab-main-btn:hover {
+    box-shadow: 0 6px 20px rgba(22, 163, 74, 0.5);
+    transform: translateY(-2px);
+}
+.fab-container.open .fab-main-btn {
+    transform: rotate(45deg);
+    background: #ef4444;
+    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+}
+
+@media (min-width: 640px) {
+    .fab-container, .fab-overlay { display: none; }
+}
+</style>
+
+<div class="fab-overlay" id="fabOverlay"></div>
+<div class="fab-container" id="fabContainer">
+    <div class="fab-menu">
+        {% if fab_role == "customer" %}
+        {# Customer Portal FAB #}
+        <a href="{% url 'customer_request_repair' %}" class="fab-menu-item">
+            <span class="fab-menu-label">Request Repair</span>
+            <div class="fab-menu-circle" style="background:#16a34a;"><i class="fas fa-tools"></i></div>
+        </a>
+        <a href="{% url 'customer_repairs' %}" class="fab-menu-item">
+            <span class="fab-menu-label">My Repairs</span>
+            <div class="fab-menu-circle" style="background:#2563eb;"><i class="fas fa-list"></i></div>
+        </a>
+        <a href="{% url 'customer_invoices' %}" class="fab-menu-item">
+            <span class="fab-menu-label">My Invoices</span>
+            <div class="fab-menu-circle" style="background:#7c3aed;"><i class="fas fa-file-invoice-dollar"></i></div>
+        </a>
+        {% elif fab_role == "tech" %}
+        {# Technician Portal FAB #}
+        <a href="{% url 'create_repair' %}" class="fab-menu-item">
+            <span class="fab-menu-label">New Repair</span>
+            <div class="fab-menu-circle" style="background:#16a34a;"><i class="fas fa-tools"></i></div>
+        </a>
+        <a href="{% url 'create_multi_break_repair' %}" class="fab-menu-item">
+            <span class="fab-menu-label">Multi-Break</span>
+            <div class="fab-menu-circle" style="background:#0d9488;"><i class="fas fa-layer-group"></i></div>
+        </a>
+        <a href="{% url 'create_customer' %}" class="fab-menu-item">
+            <span class="fab-menu-label">New Customer</span>
+            <div class="fab-menu-circle" style="background:#7c3aed;"><i class="fas fa-user-plus"></i></div>
+        </a>
+        {% else %}
+        {# Owner / Manager Portal FAB (default) #}
+        <a href="{% url 'create_repair' %}" class="fab-menu-item">
+            <span class="fab-menu-label">New Repair</span>
+            <div class="fab-menu-circle" style="background:#16a34a;"><i class="fas fa-tools"></i></div>
+        </a>
+        <a href="{% url 'replacement_create' %}" class="fab-menu-item">
+            <span class="fab-menu-label">New Replacement</span>
+            <div class="fab-menu-circle" style="background:#2563eb;"><i class="fas fa-car-crash"></i></div>
+        </a>
+        <a href="{% url 'create_customer' %}" class="fab-menu-item">
+            <span class="fab-menu-label">New Customer</span>
+            <div class="fab-menu-circle" style="background:#7c3aed;"><i class="fas fa-user-plus"></i></div>
+        </a>
+        <a href="{% url 'create_multi_break_repair' %}" class="fab-menu-item">
+            <span class="fab-menu-label">Multi-Break</span>
+            <div class="fab-menu-circle" style="background:#0d9488;"><i class="fas fa-layer-group"></i></div>
+        </a>
+        {% endif %}
+    </div>
+    <button type="button" class="fab-main-btn" id="fabMainBtn" onclick="toggleFabMenu()">
+        <i class="fas fa-plus"></i>
+    </button>
+</div>
+
+<script>
+function toggleFabMenu() {
+    const c = document.getElementById('fabContainer');
+    const o = document.getElementById('fabOverlay');
+    if (c.classList.contains('open')) {
+        c.classList.remove('open');
+        o.classList.remove('active');
+    } else {
+        c.classList.add('open');
+        o.classList.add('active');
+    }
+}
+document.getElementById('fabOverlay')?.addEventListener('click', function() {
+    document.getElementById('fabContainer')?.classList.remove('open');
+    this.classList.remove('active');
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.getElementById('fabContainer')?.classList.remove('open');
+        document.getElementById('fabOverlay')?.classList.remove('active');
+    }
+});
+</script>
