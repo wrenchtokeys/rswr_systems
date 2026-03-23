@@ -331,21 +331,19 @@ class InvoiceEmailService:
             if tenant_can_pay:
                 try:
                     from apps.billing.models import InvoiceLineItem, Invoice
-                    # First try: Stripe hosted URL on the invoice
-                    line_qs = InvoiceLineItem.objects.all()
-                    if self.tenant:
-                        line_qs = line_qs.filter(invoice__tenant=self.tenant)
+
+                    # Find the invoice record
+                    invoice_record = None
                     if repair_ids:
+                        line_qs = InvoiceLineItem.objects.all()
+                        if self.tenant:
+                            line_qs = line_qs.filter(invoice__tenant=self.tenant)
                         line_item = line_qs.filter(
                             repair_id__in=repair_ids,
                             invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
                         ).select_related('invoice').first()
                         if line_item:
-                            if line_item.invoice.stripe_hosted_url:
-                                payment_link = line_item.invoice.stripe_hosted_url
-                            else:
-                                # No Stripe URL — use customer portal link with Pay Now button
-                                payment_link = f"https://rssystems.io/app/invoices/{line_item.invoice.id}/"
+                            invoice_record = line_item.invoice
                     else:
                         inv_qs = Invoice.objects.filter(
                             customer_id=customer_id,
@@ -354,10 +352,30 @@ class InvoiceEmailService:
                         if self.tenant:
                             inv_qs = inv_qs.filter(tenant=self.tenant)
                         invoice_record = inv_qs.order_by('-created_at').first()
-                        if invoice_record:
-                            if invoice_record.stripe_hosted_url:
-                                payment_link = invoice_record.stripe_hosted_url
-                            else:
+
+                    if invoice_record:
+                        # Use existing Stripe URL if available
+                        if invoice_record.stripe_hosted_url:
+                            payment_link = invoice_record.stripe_hosted_url
+                        else:
+                            # Generate a fresh Stripe Checkout session
+                            try:
+                                from apps.tenants.services.connect_service import ConnectService
+                                connect_svc = ConnectService()
+                                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                                result = connect_svc.create_connected_checkout_session(
+                                    invoice_record,
+                                    success_url=f"{base_url}/app/invoices/{invoice_record.id}/?payment=success",
+                                    cancel_url=f"{base_url}/app/invoices/{invoice_record.id}/?payment=cancelled",
+                                )
+                                if result.get('checkout_url'):
+                                    payment_link = result['checkout_url']
+                                    # Save for reuse
+                                    invoice_record.stripe_hosted_url = payment_link
+                                    invoice_record.save(update_fields=['stripe_hosted_url'])
+                            except Exception as e:
+                                logger.warning(f"Could not create Stripe checkout for email: {e}")
+                                # Fall back to portal link
                                 payment_link = f"https://rssystems.io/app/invoices/{invoice_record.id}/"
                 except Exception:
                     pass
