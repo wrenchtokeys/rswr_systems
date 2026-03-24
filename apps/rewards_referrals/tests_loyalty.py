@@ -587,3 +587,100 @@ class RewardUniqueConstraintTest(TestCase):
         # After the failed savepoint, we should still be able to fetch the original
         reward = Reward.objects.get(customer_user=self.cu)
         self.assertEqual(reward.points, 0)
+
+
+# ---------------------------------------------------------------------------
+# CODE-175 regression tests — RewardService.redeem_reward() with inactive
+# loyalty program
+# ---------------------------------------------------------------------------
+
+class RedeemRewardInactiveLoyaltyTest(TestCase):
+    """
+    CODE-175: RewardService.redeem_reward() must block redemptions when the
+    loyalty program is inactive.
+
+    Previously LoyaltyService.award_points() short-circuited on
+    config.is_active=False without raising, leaving the RewardRedemption row
+    committed but the point balance un-decremented — a free-redemption loophole.
+    """
+
+    def setUp(self):
+        self.tenant, _ = _make_tenant('FixTenant', 'fix-tenant')
+        self.user = User.objects.create_user(
+            username='cx_fix', password='pass', email='cx_fix@example.com'
+        )
+        self.customer = Customer.objects.create(
+            name='FixCo', tenant=self.tenant
+        )
+        self.cu = CustomerUser.objects.create(
+            user=self.user, customer=self.customer, is_primary_contact=True
+        )
+        self.reward_type = RewardType.objects.create(
+            name='Discount', category='REPAIR_DISCOUNT', discount_type='NONE'
+        )
+        self.option = RewardOption.objects.create(
+            tenant=self.tenant,
+            name='$5 Off',
+            description='5 bucks off',
+            points_required=200,
+            reward_type=self.reward_type,
+            is_active=True,
+        )
+        # Give the user a generous balance
+        Reward.objects.create(
+            customer_user=self.cu, tenant=self.tenant, points=500
+        )
+
+    def _set_loyalty_active(self, active):
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        config.is_active = active
+        config.save()
+
+    def test_redemption_blocked_when_loyalty_inactive(self):
+        """redeem_reward() must return failure when the loyalty program is off."""
+        self._set_loyalty_active(False)
+        success, result = RewardService.redeem_reward(self.cu, self.option.id)
+        self.assertFalse(success)
+        self.assertIn('not currently active', result)
+
+    def test_no_redemption_row_created_when_loyalty_inactive(self):
+        """No RewardRedemption row must be persisted if the program is inactive."""
+        self._set_loyalty_active(False)
+        RewardService.redeem_reward(self.cu, self.option.id)
+        self.assertEqual(
+            RewardRedemption.objects.filter(reward__customer_user=self.cu).count(), 0,
+            "RewardRedemption must NOT be committed when loyalty is inactive"
+        )
+
+    def test_points_unchanged_when_loyalty_inactive(self):
+        """Point balance must remain untouched when redemption is blocked."""
+        self._set_loyalty_active(False)
+        RewardService.redeem_reward(self.cu, self.option.id)
+        reward = Reward.objects.get(customer_user=self.cu)
+        self.assertEqual(reward.points, 500, "Balance must not change on blocked redemption")
+
+    def test_no_point_transaction_when_loyalty_inactive(self):
+        """No PointTransaction row must be created for a blocked redemption."""
+        self._set_loyalty_active(False)
+        RewardService.redeem_reward(self.cu, self.option.id)
+        self.assertEqual(
+            PointTransaction.objects.filter(customer_user=self.cu).count(), 0
+        )
+
+    def test_redemption_succeeds_and_deducts_when_active(self):
+        """Sanity check: normal redemption still works with active program."""
+        self._set_loyalty_active(True)
+        success, result = RewardService.redeem_reward(self.cu, self.option.id)
+        self.assertTrue(success)
+        self.assertIsInstance(result, RewardRedemption)
+        # Points should be deducted
+        reward = Reward.objects.get(customer_user=self.cu)
+        self.assertEqual(reward.points, 500 - self.option.points_required)
+
+    def test_point_transaction_created_on_successful_redemption(self):
+        """A negative PointTransaction row must exist after a successful redemption."""
+        self._set_loyalty_active(True)
+        RewardService.redeem_reward(self.cu, self.option.id)
+        txns = PointTransaction.objects.filter(customer_user=self.cu, transaction_type='redemption')
+        self.assertEqual(txns.count(), 1)
+        self.assertEqual(txns.first().amount, -self.option.points_required)

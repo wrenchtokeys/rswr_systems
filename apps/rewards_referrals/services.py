@@ -286,6 +286,15 @@ class RewardService:
             if not reward_option.is_active:
                 return False, "This reward option is not currently available."
 
+            # Guard: if the loyalty program is inactive, redemptions are blocked.
+            # LoyaltyService.award_points() returns None (no deduction) when
+            # config.is_active is False — creating a free-redemption loophole
+            # where the RewardRedemption row would be committed but the point
+            # balance never decremented (CODE-175).
+            config = LoyaltyConfig.get_for_tenant(tenant)
+            if not config.is_active:
+                return False, "The loyalty program is not currently active."
+
             # Lock the Reward row (CODE-165 / CODE-173 pattern).
             # Use get_or_create() to avoid the race that produces duplicate rows.
             reward, _created = Reward.objects.get_or_create(
@@ -304,8 +313,11 @@ class RewardService:
                 status='PENDING'
             )
 
-            # Deduct via LoyaltyService (updates Reward.points + creates PointTransaction)
-            LoyaltyService.award_points(
+            # Deduct via LoyaltyService (updates Reward.points + creates PointTransaction).
+            # We have already verified config.is_active above, so award_points() will
+            # not short-circuit.  Use the already-fetched config to avoid a second
+            # get_or_create inside award_points().
+            pt = LoyaltyService.award_points(
                 customer_user=customer_user,
                 amount=-reward_option.points_required,
                 transaction_type='redemption',
@@ -313,6 +325,12 @@ class RewardService:
                 tenant=tenant,
                 related_redemption=redemption,
             )
+
+            # Defensive check: if award_points() still returned None for any
+            # reason, roll back by raising an exception (the @transaction.atomic
+            # wrapper will abort the redemption and the RewardRedemption row).
+            if pt is None:
+                raise RuntimeError("award_points() returned None during redemption — aborting to protect point balance.")
 
             return True, redemption
 
