@@ -738,13 +738,21 @@ class Repair(GlassService):
             if hasattr(self, 'original_status') and self.original_status == 'COMPLETED':
                 return
             
-            # Find the customer user associated with this repair
+            # Find the customer user associated with this repair.
+            # Prefer the primary contact — they are the account manager who
+            # should accumulate reward points.  A customer can have multiple
+            # CustomerUsers (e.g. owner + dispatcher); `.first()` with no
+            # ordering returns whoever was created first, which may be a
+            # secondary contact.  (CODE-169)
             customer_users = CustomerUser.objects.filter(customer=self.customer)
-            
+
             if not customer_users.exists():
                 return
-                
-            customer_user = customer_users.first()
+
+            customer_user = (
+                customer_users.filter(is_primary_contact=True).first()
+                or customer_users.first()
+            )
             
             # Get or create reward record for this customer
             reward, created = Reward.objects.get_or_create(
