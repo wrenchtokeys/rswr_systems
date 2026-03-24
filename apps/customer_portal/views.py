@@ -177,15 +177,49 @@ def customer_dashboard(request):
             queue_status='PENDING'
         ).select_related('technician__user').order_by('-service_date')
 
-        # Group batched repairs and separate individual repairs
+        # Group batched repairs and separate individual repairs.
+        # CODE-168: Bulk-fetch all batch siblings in ONE query to avoid ~4 DB
+        # queries per unique batch ID (same N+1 fixed for technician dashboard
+        # in CODE-142).  Strategy mirrors the technician dashboard fix:
+        #   1. Collect all unique batch IDs from the PENDING repairs list.
+        #   2. Fetch every sibling repair for those batches in a single queryset.
+        #   3. Group in Python by batch_id.
+        #   4. Build summaries via build_batch_summary_from_repairs() — zero
+        #      additional DB queries.
+        # Without this fix, a customer with N unique pending batches causes ~4N
+        # DB queries on every dashboard load.
+        _awaiting_list = list(repairs_awaiting_approval)
+        _pending_batch_ids = {
+            r.repair_batch_id
+            for r in _awaiting_list
+            if r.is_part_of_batch and r.repair_batch_id
+        }
+
+        _prefetched_pending_batches: dict = {}
+        if _pending_batch_ids:
+            _sibling_qs = Repair.objects.filter(
+                repair_batch_id__in=_pending_batch_ids,
+            ).select_related('customer', 'technician__user').order_by('break_number')
+            if tenant:
+                _sibling_qs = _sibling_qs.filter(tenant=tenant)
+            for _r in _sibling_qs:
+                _prefetched_pending_batches.setdefault(_r.repair_batch_id, []).append(_r)
+
         batch_repairs = {}  # Dictionary: batch_id -> batch_summary
         individual_repairs = []  # List of non-batched repairs
 
-        for repair in repairs_awaiting_approval:
+        for repair in _awaiting_list:
             if repair.is_part_of_batch:
                 # Only add batch summary once (for the first repair in batch we encounter)
                 if repair.repair_batch_id not in batch_repairs:
-                    batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
+                    _siblings = _prefetched_pending_batches.get(repair.repair_batch_id)
+                    if _siblings:
+                        batch_summary = Repair.build_batch_summary_from_repairs(
+                            repair.repair_batch_id, _siblings
+                        )
+                    else:
+                        # Fallback to legacy path (should not be hit after bulk-fetch)
+                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
                     if batch_summary:
                         batch_repairs[repair.repair_batch_id] = batch_summary
             else:
