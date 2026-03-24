@@ -151,6 +151,11 @@ def _send_overdue_reminder(invoice, config, days_overdue):
         subject = f"Reminder: Invoice #{invoice.invoice_number} is overdue"
     
     # Generate public payment link
+    # NOTE: pay_url must be initialised to None BEFORE the try block.
+    # If the import or generate_payment_token call raises, pay_url would
+    # otherwise be undefined and the send_branded_email call below would
+    # raise NameError, silently aborting the reminder. (CODE-179)
+    pay_url = None
     pay_link_text = ''
     try:
         from rs_systems.views import generate_payment_token
