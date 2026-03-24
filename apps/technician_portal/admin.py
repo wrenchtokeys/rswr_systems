@@ -243,6 +243,59 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
             msg += f' ⚠️ {skipped_count} repair(s) skipped — linked to active invoices.'
         self.message_user(request, msg)
 
+    def delete_queryset(self, request, queryset):
+        """
+        Override the default admin 'Delete selected' action so it applies the
+        same safety logic as bulk_delete_repairs:
+
+          1. Skip repairs linked to active invoices (DRAFT/SENT/PARTIAL/PAID)
+             to avoid orphaning billing records.
+          2. Decrement UnitRepairCount for each COMPLETED repair deleted, so
+             future repairs to that unit are priced correctly.
+
+        Without this override, Django's default QuerySet.delete() would:
+          - Delete invoiced repairs (data-integrity violation)
+          - Leave UnitRepairCount inflated (progressive-pricing bug, CODE-161)
+
+        (CODE-167)
+        """
+        from apps.billing.models import InvoiceLineItem
+        from collections import defaultdict
+
+        invoiced_ids = set(
+            InvoiceLineItem.objects
+            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'])
+            .values_list('repair_id', flat=True)
+        )
+        safe_to_delete = queryset.exclude(id__in=invoiced_ids)
+
+        # Tally COMPLETED repairs to decrement UnitRepairCount after deletion.
+        completed_repairs = (
+            safe_to_delete
+            .filter(queue_status='COMPLETED')
+            .select_related('tenant', 'customer')
+            .values('tenant_id', 'customer_id', 'unit_number')
+        )
+        decrement_map = defaultdict(int)
+        for r in completed_repairs:
+            key = (r['tenant_id'], r['customer_id'], r['unit_number'])
+            decrement_map[key] += 1
+
+        safe_to_delete.delete()
+
+        # Decrement UnitRepairCount, clamped at 0.
+        for (tenant_id, customer_id, unit_number), count in decrement_map.items():
+            try:
+                urc = UnitRepairCount.objects.get(
+                    tenant_id=tenant_id,
+                    customer_id=customer_id,
+                    unit_number=unit_number,
+                )
+                urc.repair_count = max(0, urc.repair_count - count)
+                urc.save(update_fields=['repair_count'])
+            except UnitRepairCount.DoesNotExist:
+                pass
+
 
 @admin.register(Replacement)
 class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
