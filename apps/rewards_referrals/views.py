@@ -32,20 +32,31 @@ def generate_unique_code(length=8):
 
 def get_customer_user(request):
     """
-    Helper function to get the CustomerUser for the current authenticated user.
+    Return the CustomerUser for the current user scoped to the current tenant.
 
-    Returns None if the user does not have a CustomerUser record (e.g. shop
-    owners / technicians who are not customer portal users).  All callers must
-    guard against a None return value so they produce a user-friendly error
-    rather than an unhandled 500.
+    Mirrors the tenant-aware `_get_customer_user_for_tenant()` helper in
+    `customer_portal/views.py` (CODE-102 / CODE-162).
 
-    Args:
-        request: HTTP request object
+    Without the tenant scope, a user who is a customer at multiple shops would
+    receive whichever CustomerUser Django happens to return first — which may
+    belong to a different shop than the one being visited.  This would cause
+    reward balances, referral codes, and redemption history to silently pull
+    data from the wrong tenant.
 
-    Returns:
-        CustomerUser or None
+    Falls back to an unscoped lookup only when there is no tenant context on
+    the request (unit tests, admin-only paths).
+
+    Returns None if:
+    - The user has no CustomerUser record at all, OR
+    - The user's CustomerUser belongs to a different tenant than the current one.
     """
-    return CustomerUser.objects.filter(user=request.user).first()
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        return CustomerUser.objects.filter(
+            user=request.user, customer__tenant=tenant
+        ).select_related('customer__tenant').first()
+    # No tenant context — fall back to unscoped lookup (tests / admin paths)
+    return CustomerUser.objects.filter(user=request.user).select_related('customer__tenant').first()
 
 
 def _customer_required_redirect(request):
