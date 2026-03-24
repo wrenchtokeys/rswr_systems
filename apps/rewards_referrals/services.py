@@ -301,10 +301,28 @@ class RewardService:
             # Check if reward option is active
             if not reward_option.is_active:
                 return False, "This reward option is not currently available."
-                
-            reward, created = Reward.objects.get_or_create(customer_user=customer_user)
+
+            # Use select_for_update() to acquire a row-level lock on the Reward
+            # record before checking and deducting points.  Without this lock, two
+            # concurrent requests inside the same @transaction.atomic block can both
+            # read the current balance, both pass the "enough points?" check, and both
+            # deduct — resulting in a negative balance (double-spend).  (CODE-165)
+            #
+            # get_or_create() doesn't support select_for_update(), so we do:
+            #   1. Try a locking SELECT (get).
+            #   2. If not found, create, then re-fetch with the lock.
+            # This is safe: two concurrent creates on the same customer_user will
+            # hit the DB's UNIQUE constraint; one will succeed, the other will
+            # re-raise and be caught.
+            try:
+                reward = Reward.objects.select_for_update().get(customer_user=customer_user)
+            except Reward.DoesNotExist:
+                reward = Reward.objects.create(customer_user=customer_user)
+                # Re-fetch with lock so the rest of this transaction sees the
+                # locked row (the newly-created row has points=0 by default).
+                reward = Reward.objects.select_for_update().get(customer_user=customer_user)
             
-            # Check if user has enough points
+            # Check if user has enough points (evaluated with the locked row)
             if reward.points < reward_option.points_required:
                 return False, f"Not enough points. You need {reward_option.points_required}, but have {reward.points}."
             
@@ -315,7 +333,7 @@ class RewardService:
                 status='PENDING'
             )
             
-            # Deduct points
+            # Deduct points (row is locked — no other transaction can interleave)
             reward.points -= reward_option.points_required
             reward.save()
             
