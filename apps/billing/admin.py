@@ -367,6 +367,39 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
             msg += f' {skipped_payments} voided invoice(s) with payments skipped.'
         self.message_user(request, msg)
 
+    def delete_queryset(self, request, queryset):
+        """
+        Override the default admin 'Delete selected' action to apply the same
+        safety logic as bulk_delete_invoices.
+
+        Django's default QuerySet.delete() bypasses Python-level model .delete()
+        overrides, so without this:
+          1. ANY invoice status could be deleted (including PAID/SENT/PARTIAL) —
+             not just DRAFT/CANCELLED.
+          2. Invoice.delete() (which calls _delete_s3_object()) never fires,
+             orphaning PDF objects in S3.
+          3. Payment records are NOT checked — invoices with payments could be
+             deleted, leaving orphaned Payment rows pointing at a ghost invoice.
+
+        This mirrors the same bug fixed for RepairAdmin (CODE-167) and
+        PaymentAdmin.  InvoiceAdmin was the last admin class with a bulk-delete
+        action that lacked a matching delete_queryset() override.
+
+        (CODE-168)
+        """
+        candidates = queryset.filter(status__in=['DRAFT', 'CANCELLED'])
+        has_payments_ids = set(
+            Payment.objects.filter(invoice__in=candidates)
+            .values_list('invoice_id', flat=True)
+            .distinct()
+        )
+        safe = candidates.exclude(id__in=has_payments_ids)
+
+        # Iterate instance-by-instance so Invoice.delete() fires for each row,
+        # which calls _delete_s3_object() to clean up PDF objects in S3.
+        for inv in safe:
+            inv.delete()
+
 
 @admin.register(Payment)
 class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
