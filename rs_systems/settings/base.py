@@ -71,6 +71,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'common.context_processors.portal_access',
+                'common.context_processors.customer_loyalty',
             ],
         },
     },

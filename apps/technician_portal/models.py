@@ -726,24 +726,22 @@ class Repair(GlassService):
     def award_completion_points(self):
         """
         Award points to customer when repair is completed.
-        
+
+        Reads point values from LoyaltyConfig and delegates to LoyaltyService.
         Awards base points per repair plus milestone bonuses for multiple repairs.
         Only awards points once per repair completion to prevent duplicate awards.
         """
         try:
-            from apps.rewards_referrals.models import Reward
+            from apps.rewards_referrals.models import LoyaltyConfig
+            from apps.rewards_referrals.services import LoyaltyService
             from apps.customer_portal.models import CustomerUser
-            
-            # Skip if already awarded points for this repair (check if this is a status change to COMPLETED)
+
+            # Skip if already awarded points for this repair
             if hasattr(self, 'original_status') and self.original_status == 'COMPLETED':
                 return
-            
+
             # Find the customer user associated with this repair.
-            # Prefer the primary contact — they are the account manager who
-            # should accumulate reward points.  A customer can have multiple
-            # CustomerUsers (e.g. owner + dispatcher); `.first()` with no
-            # ordering returns whoever was created first, which may be a
-            # secondary contact.  (CODE-169)
+            # Prefer the primary contact (CODE-169).
             customer_users = CustomerUser.objects.filter(customer=self.customer)
 
             if not customer_users.exists():
@@ -753,36 +751,48 @@ class Repair(GlassService):
                 customer_users.filter(is_primary_contact=True).first()
                 or customer_users.first()
             )
-            
-            # Get or create reward record for this customer
-            reward, created = Reward.objects.get_or_create(
+
+            tenant = self.customer.tenant
+            config = LoyaltyConfig.get_for_tenant(tenant)
+
+            # Base points from config
+            base_points = config.points_per_repair
+
+            # Award base points
+            LoyaltyService.award_points(
                 customer_user=customer_user,
-                defaults={'points': 0}
+                amount=base_points,
+                transaction_type='repair_complete',
+                description=f'Repair completed — Unit #{self.unit_number}',
+                tenant=tenant,
+                related_repair=self,
             )
-            
-            # Base points per repair completion
-            base_points = 50
-            
-            # Calculate milestone bonus based on total completed repairs for this customer
+
+            # Calculate milestone bonus based on total completed repairs
             completed_repairs_count = Repair.objects.filter(
                 customer=self.customer,
                 queue_status='COMPLETED'
             ).count()
-            
+
             milestone_bonus = 0
             if completed_repairs_count == 5:
-                milestone_bonus = 250  # 5th repair bonus
+                milestone_bonus = config.milestone_5_bonus
             elif completed_repairs_count == 10:
-                milestone_bonus = 500  # 10th repair bonus
-            elif completed_repairs_count % 25 == 0:  # Every 25th repair
-                milestone_bonus = 1000
-            
+                milestone_bonus = config.milestone_10_bonus
+            elif completed_repairs_count >= 25 and completed_repairs_count % 25 == 0:
+                milestone_bonus = config.milestone_25_bonus
+
+            if milestone_bonus > 0:
+                LoyaltyService.award_points(
+                    customer_user=customer_user,
+                    amount=milestone_bonus,
+                    transaction_type='milestone_bonus',
+                    description=f'Milestone bonus — {completed_repairs_count} repairs completed',
+                    tenant=tenant,
+                    related_repair=self,
+                )
+
             total_points = base_points + milestone_bonus
-            
-            # Award the points
-            reward.points += total_points
-            reward.save()
-            
             logger.info(f"Awarded {total_points} points to {customer_user.user.email} for repair completion")
             if milestone_bonus > 0:
                 logger.info(f"Milestone bonus of {milestone_bonus} points awarded!")

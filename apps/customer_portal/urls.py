@@ -50,6 +50,7 @@ urlpatterns = [
     
     # Rewards and referrals dashboard
     path('rewards/', views.customer_rewards_redirect, name='customer_rewards'),
+    path('rewards/points-history/', views.customer_points_history, name='customer_points_history'),
     
     # API endpoints for data visualization
     path('api/unit-repair-data/', views.unit_repair_data_api, name='unit_repair_data_api'),

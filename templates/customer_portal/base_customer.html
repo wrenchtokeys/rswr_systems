@@ -92,8 +92,9 @@
                     <a href="{% url 'customer_invoices' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'invoice' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         <i class="fas fa-file-invoice-dollar mr-1.5 text-xs"></i>Invoices
                     </a>
-                    <a href="{% url 'customer_rewards' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'reward' in request.resolver_match.url_name or 'referral' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
+                    <a href="{% url 'customer_rewards' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'reward' in request.resolver_match.url_name or 'referral' in request.resolver_match.url_name or 'points' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         <i class="fas fa-gift mr-1.5 text-xs"></i>Rewards
+                        {% if loyalty_points %}<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand-100 text-brand-700">{{ loyalty_points }}</span>{% endif %}
                     </a>
                     <a href="{% url 'customer_team' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'team' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         <i class="fas fa-users mr-1.5 text-xs"></i>Team
@@ -269,6 +270,7 @@
                 <a href="{% url 'customer_rewards' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i class="fas fa-gift w-6 text-gray-400"></i>
                     <span class="ml-3">Rewards</span>
+                    {% if loyalty_points %}<span class="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand-100 text-brand-700">{{ loyalty_points }} pts</span>{% endif %}
                 </a>
                 <a href="{% url 'customer_team' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i class="fas fa-users w-6 text-gray-400"></i>

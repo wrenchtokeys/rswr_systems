@@ -2,7 +2,16 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils import timezone
 from rs_systems.admin_mixins import TenantFilterMixin
-from .models import ReferralCode, Referral, Reward, RewardOption, RewardRedemption, RewardType
+from .models import (
+    LoyaltyConfig,
+    PointTransaction,
+    ReferralCode,
+    Referral,
+    Reward,
+    RewardOption,
+    RewardRedemption,
+    RewardType,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -366,3 +375,68 @@ class RewardTypeAdmin(admin.ModelAdmin):
             'fields': ['discount_type', 'discount_value']
         }),
     ]
+
+
+@admin.register(LoyaltyConfig)
+class LoyaltyConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """Admin for per-tenant loyalty program configuration."""
+    list_display = ['tenant', 'program_name', 'points_per_repair', 'is_active', 'updated_at']
+    list_filter = ['is_active']
+    search_fields = ['tenant__name', 'program_name']
+    list_select_related = ['tenant']
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = [
+        ('Tenant', {
+            'fields': ['tenant', 'program_name', 'is_active']
+        }),
+        ('Point Values', {
+            'fields': [
+                'points_per_repair',
+                'referral_bonus_referrer', 'referral_bonus_referred',
+                'milestone_5_bonus', 'milestone_10_bonus', 'milestone_25_bonus',
+                'points_for_review', 'points_for_early_payment',
+            ]
+        }),
+        ('Expiry', {
+            'fields': ['points_expiry_days', 'expiry_warning_days']
+        }),
+        ('Timestamps', {
+            'fields': ['created_at', 'updated_at'],
+            'classes': ['collapse']
+        }),
+    ]
+
+
+@admin.register(PointTransaction)
+class PointTransactionAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """Admin for the immutable point ledger."""
+    list_display = [
+        'tenant', 'get_customer_email', 'amount', 'balance_after',
+        'transaction_type', 'description', 'created_at',
+    ]
+    list_filter = ['tenant', 'transaction_type', 'created_at']
+    search_fields = ['customer_user__user__email', 'description']
+    list_select_related = ['tenant', 'customer_user__user']
+    readonly_fields = [
+        'tenant', 'customer_user', 'amount', 'balance_after',
+        'transaction_type', 'description', 'related_repair',
+        'related_redemption', 'related_payment', 'expires_at',
+        'expired', 'created_at', 'created_by',
+    ]
+    date_hierarchy = 'created_at'
+    list_per_page = 50
+
+    def get_customer_email(self, obj):
+        return obj.customer_user.user.email
+    get_customer_email.short_description = 'Customer'
+    get_customer_email.admin_order_field = 'customer_user__user__email'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

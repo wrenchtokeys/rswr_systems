@@ -7,7 +7,7 @@ from django.contrib.contenttypes.models import ContentType
 from core.models import Customer
 from apps.technician_portal.models import Repair, Replacement, UnitRepairCount, TechnicianNotification, Technician
 from apps.rewards_referrals.models import ReferralCode, RewardOption, RewardRedemption, Referral
-from apps.rewards_referrals.services import ReferralService, RewardService
+from apps.rewards_referrals.services import LoyaltyService, ReferralService, RewardService
 from apps.billing.models import Invoice
 from .forms import RepairPreferenceForm, CustomerNotificationPreferenceForm
 from .models import CustomerRepairPreference
@@ -2148,6 +2148,27 @@ def customer_rewards_redirect(request):
         
         return render(request, 'customer_portal/referrals/dashboard.html', context)
         
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+@customer_required
+def customer_points_history(request):
+    """Points transaction history for the current customer."""
+    try:
+        customer_user = _get_customer_user_for_tenant(request)
+        from apps.rewards_referrals.models import LoyaltyConfig
+        tenant = customer_user.customer.tenant
+        config = LoyaltyConfig.get_for_tenant(tenant)
+
+        transactions = LoyaltyService.get_transaction_history(customer_user, limit=50)
+        context = {
+            'transactions': transactions,
+            'points': LoyaltyService.get_balance(customer_user),
+            'lifetime_earned': LoyaltyService.get_lifetime_earned(customer_user),
+            'program_name': config.program_name,
+        }
+        return render(request, 'customer_portal/referrals/points_history.html', context)
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
