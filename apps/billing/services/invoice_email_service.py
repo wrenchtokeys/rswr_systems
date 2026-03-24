@@ -223,12 +223,17 @@ class InvoiceEmailService:
             "",
         ])
         
-        # Portal link — always include so customer can view invoice online
+        # Portal link — always include so customer can view invoice online.
+        # Use BASE_URL from settings so multi-tenant deployments with a custom
+        # domain get the correct link, not a hardcoded rssystems.io URL.
+        # (CODE-178: plain-text email body was missing the BASE_URL fallback that
+        # _build_html_email already had — caused wrong domain for non-RS tenants.)
         invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
+        _base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
         if invoice_id:
-            portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/"
+            portal_url = f"{_base_url}/app/invoices/{invoice_id}/"
         else:
-            portal_url = "https://rssystems.io/app/invoices/"
+            portal_url = f"{_base_url}/app/invoices/"
         lines.extend([
             "📄 View Invoice Online:",
             portal_url,
