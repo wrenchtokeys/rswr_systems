@@ -12,7 +12,7 @@ class ReferralCode(models.Model):
     receive reward points.
     """
     code = models.CharField(max_length=20, unique=True)
-    customer_user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE)
+    customer_user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

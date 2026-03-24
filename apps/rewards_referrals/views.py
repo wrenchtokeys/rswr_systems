@@ -445,8 +445,14 @@ def reward_options(request):
         })
     
     # Return HTML for direct browser requests
+    customer_user = get_customer_user(request)
+    points = 0
+    if customer_user:
+        reward = get_user_reward(customer_user)
+        points = reward.points if reward else 0
     return render(request, 'customer_portal/referrals/rewards.html', {
-        'reward_options': options
+        'reward_options': options,
+        'points': points,
     })
 
 @login_required
@@ -582,8 +588,7 @@ def referral_rewards(request):
     tenant = getattr(request, 'tenant', None)
     reward_options_qs = RewardOption.objects.all()
     if tenant:
-        reward_options_qs = reward_options_qs.filter(tenant=tenant)
-
+        reward_options_qs = reward_options_qs.filter(tenant=tenant, is_active=True)
     else:
         reward_options_qs = reward_options_qs.none()
     reward_options = reward_options_qs.order_by('points_required')[:6]
@@ -601,10 +606,6 @@ def referral_rewards(request):
         'reward_options': reward_options,
         'redemptions': redemptions
     }
-    
-    # Check if we should use a simplified template based on the URL
-    if request.path.endswith('/referral-rewards/'):
-        return render(request, 'customer_portal/referrals/rewards_compact.html', context)
     
     return render(request, 'customer_portal/referrals/dashboard.html', context)
 
