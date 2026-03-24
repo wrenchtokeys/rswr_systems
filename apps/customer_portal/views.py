@@ -510,12 +510,25 @@ def customer_repairs(request):
         }
         total_repairs = stats['total_repairs']
 
-        # Check which repairs were customer-initiated and mark them
-        repair_ids = list(repairs.values_list('id', flat=True))
-        customer_initiated_approvals = RepairApproval.objects.filter(
-            repair_id__in=repair_ids,
-            notes="Auto-approved as customer initiated the request"
-        ).values_list('repair_id', flat=True)
+        # Evaluate the queryset once into a list.
+        # The queryset is used in two consecutive loops (flag-setting, then
+        # batch-grouping).  If we iterate the unevaluated queryset twice, Django
+        # fires two separate DB queries AND the Python objects produced by loop 1
+        # are discarded — loop 2 creates fresh objects that never received the
+        # `.customer_initiated` attribute, so templates either raise AttributeError
+        # or silently show the wrong value. (CODE-176)
+        repairs = list(repairs)
+
+        # Check which repairs were customer-initiated and mark them.
+        # IDs are extracted in Python (free — list already in memory) instead of
+        # firing a third DB round-trip via .values_list('id', flat=True).
+        repair_ids = [r.id for r in repairs]
+        customer_initiated_approvals = set(
+            RepairApproval.objects.filter(
+                repair_id__in=repair_ids,
+                notes="Auto-approved as customer initiated the request"
+            ).values_list('repair_id', flat=True)
+        )
 
         # Add a flag to each repair indicating if it was customer initiated
         for repair in repairs:
