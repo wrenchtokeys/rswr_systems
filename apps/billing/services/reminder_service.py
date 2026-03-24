@@ -116,10 +116,15 @@ class ReminderService:
             )
             
             if success:
-                # Log the reminder
-                invoice.internal_notes += f"\n[Reminder] {reminder_type} sent at {timezone.now()}"
-                invoice.save()
-                
+                # Log the reminder — only update internal_notes so we never
+                # overwrite status/totals/paid_at with a stale in-memory value.
+                # PDF generation + SMTP can take a few seconds; a full save()
+                # could clobber a payment that arrived during that window.
+                # Matches the pattern used in tasks._send_overdue_reminder().
+                # (CODE-171)
+                invoice.internal_notes = (invoice.internal_notes or '') + f"\n[Reminder] {reminder_type} sent at {timezone.now()}"
+                invoice.save(update_fields=['internal_notes'])
+
                 logger.info(f"Sent {reminder_type} reminder for invoice {invoice.invoice_number}")
                 return {'success': True, 'reminder_type': reminder_type}
             else:
