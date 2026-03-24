@@ -45,7 +45,16 @@ def reward_fulfillment_detail(request, redemption_id):
         redemption_qs = RewardRedemption.objects.none()
     redemption = get_object_or_404(redemption_qs, id=redemption_id)
 
-    is_assigned_technician = (redemption.assigned_technician == technician)
+    # A technician without a profile (None) should never match the assigned
+    # technician slot — even when the redemption is also unassigned (None).
+    # Previously, None == None evaluated to True, making any admin/owner
+    # without a Technician row appear as "assigned" and then crashing in
+    # mark_as_fulfilled() with AttributeError on None.user.  (CODE-176)
+    is_assigned_technician = (
+        technician is not None
+        and redemption.assigned_technician is not None
+        and redemption.assigned_technician == technician
+    )
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     can_fulfill = is_assigned_technician or is_admin
 

@@ -433,9 +433,19 @@ class RewardFulfillmentService:
     @staticmethod
     @transaction.atomic
     def mark_as_fulfilled(redemption, technician, notes=None):
-        """Mark a redemption as fulfilled by a technician."""
+        """Mark a redemption as fulfilled by a technician.
+
+        ``technician`` may be a Technician instance or None.  When None (e.g.
+        an owner/manager fulfills via the admin without a Technician row),
+        ``processed_by`` is left as-is rather than crashing with AttributeError
+        on ``None.user``.  (CODE-176)
+        """
         redemption.status = 'FULFILLED'
-        redemption.processed_by = technician.user
+        # Only set processed_by if a Technician instance was provided.
+        # Owners and managers who reach this view without a Technician record
+        # pass technician=None; accessing .user on None raises AttributeError.
+        if technician is not None:
+            redemption.processed_by = technician.user
         redemption.processed_at = timezone.now()
         redemption.fulfilled_at = timezone.now()
 
