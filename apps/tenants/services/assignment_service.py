@@ -171,17 +171,20 @@ def _assign_round_robin(service, tenant, service_type='repair'):
     if not eligible.exists():
         return None
 
-    # Find the most recently assigned tech for the same service type
+    # Find the most recently assigned tech for the same service type.
+    # Both Repair and Replacement inherit service_date from GlassService (no
+    # created_at on either model).  Order by ('-service_date', '-id') so ties
+    # are broken deterministically.
     if service_type == 'replacement':
         last_service = Replacement.objects.filter(
             tenant=tenant,
             technician__isnull=False,
-        ).order_by('-created_at').first()
+        ).order_by('-service_date', '-id').first()
     else:
         last_service = Repair.objects.filter(
             tenant=tenant,
             technician__isnull=False,
-        ).order_by('-created_at').first()
+        ).order_by('-service_date', '-id').first()
 
     eligible_list = list(eligible.order_by('id'))
 
