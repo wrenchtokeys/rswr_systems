@@ -642,16 +642,24 @@ class Repair(GlassService):
             # Save after the cost calculation
             super().save(*args, **kwargs)
 
-            # Update the original status after saving
-            self.original_status = self.queue_status
-
-            # Apply rewards and award points AFTER save (requires pk to access relationships)
+            # Apply rewards and award points AFTER save (requires pk to access relationships).
+            # IMPORTANT: update original_status AFTER calling apply_available_rewards() and
+            # award_completion_points() so that those methods can still distinguish a
+            # first-time COMPLETED transition from a re-save of an already-COMPLETED repair.
+            # Previously, original_status was updated BEFORE the calls, so the guard inside
+            # award_completion_points() (`if self.original_status == 'COMPLETED': return`)
+            # always fired on first completion — customers never earned points. (CODE-166)
             if self.queue_status == 'COMPLETED':
                 # Check for available rewards to apply automatically
                 self.apply_available_rewards()
 
                 # Award points to customer for completed repair
                 self.award_completion_points()
+
+            # Update the original status AFTER rewards/points processing so that
+            # any subsequent save() on the same in-memory instance (e.g. in tests)
+            # correctly identifies it as already-COMPLETED and skips re-awarding.
+            self.original_status = self.queue_status
         else:
             # Just save without updating repair counts
             super().save(*args, **kwargs)
