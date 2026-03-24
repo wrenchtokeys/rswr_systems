@@ -49,16 +49,19 @@ class LoyaltyService:
         if not config.is_active:
             return None
 
-        # Lock the Reward row (CODE-165 pattern)
-        try:
-            reward = Reward.objects.select_for_update().get(
-                customer_user=customer_user,
-            )
-        except Reward.DoesNotExist:
-            reward = Reward.objects.create(
-                customer_user=customer_user, tenant=tenant, points=0,
-            )
-            reward = Reward.objects.select_for_update().get(pk=reward.pk)
+        # Lock the Reward row (CODE-165 / CODE-173 pattern).
+        # Use get_or_create() so concurrent calls don't race between a failed
+        # .get() and a subsequent .create() — which could produce two Reward rows
+        # for the same customer_user and cause MultipleObjectsReturned on the
+        # next call.  The unique_reward_per_customer_user DB constraint enforces
+        # this at the database level as a second line of defence.
+        reward, _created = Reward.objects.get_or_create(
+            customer_user=customer_user,
+            defaults={'tenant': tenant, 'points': 0},
+        )
+        # Re-fetch with select_for_update so the row is locked for the
+        # balance increment below (prevents concurrent double-spend).
+        reward = Reward.objects.select_for_update().get(pk=reward.pk)
 
         # Ensure tenant is set on legacy Reward rows
         if reward.tenant_id is None:
@@ -283,12 +286,13 @@ class RewardService:
             if not reward_option.is_active:
                 return False, "This reward option is not currently available."
 
-            # Lock the Reward row (CODE-165 pattern)
-            try:
-                reward = Reward.objects.select_for_update().get(customer_user=customer_user)
-            except Reward.DoesNotExist:
-                reward = Reward.objects.create(customer_user=customer_user, tenant=tenant)
-                reward = Reward.objects.select_for_update().get(customer_user=customer_user)
+            # Lock the Reward row (CODE-165 / CODE-173 pattern).
+            # Use get_or_create() to avoid the race that produces duplicate rows.
+            reward, _created = Reward.objects.get_or_create(
+                customer_user=customer_user,
+                defaults={'tenant': tenant, 'points': 0},
+            )
+            reward = Reward.objects.select_for_update().get(pk=reward.pk)
 
             if reward.points < reward_option.points_required:
                 return False, f"Not enough points. You need {reward_option.points_required}, but have {reward.points}."

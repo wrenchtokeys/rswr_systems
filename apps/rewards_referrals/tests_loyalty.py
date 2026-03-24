@@ -500,3 +500,90 @@ class BackfillLogicTest(TestCase):
         pt = PointTransaction.objects.get(customer_user=cu)
         self.assertEqual(pt.amount, 350)
         self.assertEqual(pt.description, 'Legacy balance migration')
+
+
+# ──────────────────────────────────────────────────────────────────────
+# CODE-173: Reward.customer_user must be unique — no duplicate rows
+# ──────────────────────────────────────────────────────────────────────
+
+class RewardUniqueConstraintTest(TestCase):
+    """
+    Regression tests for CODE-173: Reward.customer_user uniqueness.
+
+    Before the fix, LoyaltyService.award_points() and RewardService.redeem_reward()
+    used a create()-then-get() pattern that could produce two Reward rows for the
+    same customer_user under concurrent access.  A subsequent .get() call would
+    then raise MultipleObjectsReturned and crash the entire points pipeline.
+
+    Fix:
+      1. UniqueConstraint on Reward.customer_user at the DB level.
+      2. get_or_create() in award_points() and redeem_reward() so concurrent
+         calls converge safely on a single row.
+    """
+
+    def setUp(self):
+        self.tenant, _ = _make_tenant('Unique Shop', 'unique-shop')
+        self.cu = _make_customer_user(self.tenant, 'unique@test.com')
+
+    def test_duplicate_reward_row_violates_constraint(self):
+        """Two Reward rows for the same customer_user should be blocked by DB."""
+        from django.db import IntegrityError
+        Reward.objects.create(customer_user=self.cu, tenant=self.tenant, points=0)
+        with self.assertRaises(IntegrityError):
+            Reward.objects.create(customer_user=self.cu, tenant=self.tenant, points=0)
+
+    def test_award_points_creates_single_reward_row(self):
+        """award_points() called twice should not create duplicate Reward rows."""
+        LoyaltyService.award_points(self.cu, 50, 'repair_complete', 'First repair')
+        LoyaltyService.award_points(self.cu, 50, 'repair_complete', 'Second repair')
+
+        reward_count = Reward.objects.filter(customer_user=self.cu).count()
+        self.assertEqual(reward_count, 1, "award_points() must not create more than one Reward row")
+
+        reward = Reward.objects.get(customer_user=self.cu)
+        self.assertEqual(reward.points, 100)
+
+    def test_award_points_balance_accumulates_correctly(self):
+        """Multiple award_points() calls accumulate in the single Reward row."""
+        LoyaltyService.award_points(self.cu, 100, 'repair_complete', 'R1')
+        LoyaltyService.award_points(self.cu, 200, 'repair_complete', 'R2')
+        LoyaltyService.award_points(self.cu, -50, 'redemption', 'Spent some')
+
+        reward = Reward.objects.get(customer_user=self.cu)
+        self.assertEqual(reward.points, 250)
+
+        # PointTransaction ledger should have 3 rows
+        txn_count = PointTransaction.objects.filter(customer_user=self.cu).count()
+        self.assertEqual(txn_count, 3)
+
+    def test_award_points_idempotent_on_existing_reward(self):
+        """award_points() when a Reward already exists does not recreate it."""
+        # Pre-create the Reward row (simulates legacy data or prior call)
+        Reward.objects.create(customer_user=self.cu, tenant=self.tenant, points=75)
+
+        # award_points() must not raise and must update the existing row
+        LoyaltyService.award_points(self.cu, 25, 'repair_complete', 'R3')
+
+        reward = Reward.objects.get(customer_user=self.cu)
+        self.assertEqual(reward.points, 100)
+
+    def test_get_or_create_does_not_raise_multiple_objects(self):
+        """
+        Simulate the exact scenario that caused MultipleObjectsReturned before fix.
+
+        Without the UniqueConstraint + get_or_create fix, this test would be
+        impossible to write cleanly — the IntegrityError from step 2 is itself
+        the proof the constraint exists.
+        """
+        from django.db import IntegrityError, transaction as db_transaction
+
+        Reward.objects.create(customer_user=self.cu, tenant=self.tenant, points=0)
+
+        # Attempting to insert a second row must fail at the DB level
+        with self.assertRaises(IntegrityError):
+            with db_transaction.atomic():
+                Reward.objects.create(customer_user=self.cu, tenant=self.tenant, points=0)
+
+        # After the failed savepoint, we should still be able to fetch the original
+        reward = Reward.objects.get(customer_user=self.cu)
+        self.assertEqual(reward.points, 0)

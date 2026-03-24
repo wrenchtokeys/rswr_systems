@@ -101,6 +101,14 @@ class Reward(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['customer_user'],
+                name='unique_reward_per_customer_user',
+            )
+        ]
+
     def __str__(self):
         return f"{self.customer_user.user.email} - {self.points} points"
     
