@@ -349,6 +349,49 @@ class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
         }),
     )
 
+    def delete_queryset(self, request, queryset):
+        """
+        Override default 'Delete selected' to protect invoiced replacements.
+
+        Django's default delete_queryset() calls queryset.delete() which raises
+        ProtectedError for any Replacement with an InvoiceLineItem (replacement FK
+        is on_delete=PROTECT). This override mirrors the RepairAdmin pattern
+        (CODE-167) and InvoiceAdmin pattern (CODE-170):
+
+          - Skip replacements linked to active invoices (DRAFT/SENT/PARTIAL/PAID)
+          - Delete the rest instance-by-instance so any model-level signals or
+            overrides fire correctly
+          - Report counts so the admin user knows what was skipped and why
+
+        (CODE-174)
+        """
+        from apps.billing.models import InvoiceLineItem
+
+        # Protect replacements linked to ANY InvoiceLineItem — the FK is
+        # on_delete=PROTECT, so calling instance.delete() would raise
+        # ProtectedError regardless of invoice status.  Admins must remove
+        # the line item (or the invoice) before deleting the replacement.
+        invoiced_ids = set(
+            InvoiceLineItem.objects
+            .filter(replacement__in=queryset)
+            .values_list('replacement_id', flat=True)
+        )
+        safe_to_delete = queryset.exclude(id__in=invoiced_ids)
+
+        deleted_count = 0
+        for replacement in safe_to_delete:
+            replacement.delete()
+            deleted_count += 1
+
+        skipped_count = len(invoiced_ids)
+        msg = f'✅ Deleted {deleted_count} replacement(s).'
+        if skipped_count:
+            msg += (
+                f' ⚠️ {skipped_count} replacement(s) skipped — linked to active invoices. '
+                f'Remove the invoice line item(s) first before deleting.'
+            )
+        self.message_user(request, msg)
+
 
 @admin.register(Customer)
 class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
