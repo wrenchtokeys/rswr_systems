@@ -368,3 +368,56 @@ class TestConvertToBatchPriceOverride(TestCase):
             "reason" in combined or "permission" in combined or "override" in combined,
             f"Missing override_reason should cause an error. Got: {msgs}",
         )
+
+    # ----------------------------------------------------------------
+    # Test 9 (CODE-181): cost_override persisted on new batch repairs
+    # ----------------------------------------------------------------
+    def test_cost_override_persisted_on_new_batch_break(self):
+        """
+        CODE-181: convert_to_batch() must set cost_override on new Repair rows,
+        not just cost.
+
+        Bug: When a manager submitted an override price for additional batch breaks,
+        only `cost` was set on the Repair instance.  Repair.save() checks
+        `if self.cost_override is not None:` — since cost_override was None, it
+        fell through to the pricing service and recalculated cost, silently
+        discarding the manager's override.
+
+        Fix: Set cost_override=Decimal(override_cost) alongside cost so Repair.save()
+        preserves the manual price even when the repair is later COMPLETED.
+        """
+        self.repair.technician = self.mgr_tech
+        self.repair.save()
+
+        response, msgs = self._call_view(
+            self.mgr_user, self.repair,
+            override_cost="75.00", override_reason="Fleet rate",
+        )
+
+        # The view should succeed (redirect, not an error)
+        self.assertEqual(response.status_code, 302, f"Expected redirect, got {response.status_code}. Messages: {msgs}")
+
+        # Find the new batch break that was created
+        self.repair.refresh_from_db()
+        batch_id = self.repair.repair_batch_id
+        self.assertIsNotNone(batch_id, "Original repair should now have a batch ID")
+
+        # Get the additional break (break_number=2)
+        new_break = Repair.objects.filter(
+            repair_batch_id=batch_id,
+            break_number=2,
+        ).first()
+        self.assertIsNotNone(new_break, "A second break should have been created")
+
+        # cost_override must be set so future save() calls preserve the price
+        self.assertEqual(
+            new_break.cost_override, Decimal("75.00"),
+            f"cost_override should be 75.00, got {new_break.cost_override}. "
+            "Without this, Repair.save() recalculates price on COMPLETED, "
+            "wiping the manager's override."
+        )
+        self.assertEqual(
+            new_break.cost, Decimal("75.00"),
+            f"cost should also reflect the override, got {new_break.cost}"
+        )
+        self.assertEqual(new_break.override_reason, "Fleet rate")

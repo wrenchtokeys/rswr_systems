@@ -601,6 +601,15 @@ def convert_to_batch(request, repair_id):
                     damage_type=damage_type,
                     service_date=original_repair.service_date,
                     cost=cost,
+                    # CODE-181: Persist cost_override so Repair.save() doesn't
+                    # recalculate the price from the pricing service and silently
+                    # discard the manager's override.  Repair.save() checks
+                    # `if self.cost_override is not None` to use the manual price;
+                    # without this field set, the override was accepted, stored in
+                    # `cost` here, then wiped out on the next save() call (e.g. when
+                    # the repair is COMPLETED).  Mirrors the pattern used correctly in
+                    # create_multi_break_repair (line ~195 of this file).
+                    cost_override=Decimal(override_cost) if override_cost else None,
                     queue_status=original_repair.queue_status,
                     repair_batch_id=batch_id,
                     break_number=break_number,
