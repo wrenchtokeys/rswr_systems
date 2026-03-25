@@ -75,12 +75,24 @@ explaining each correction.
 
 | Suggestion | Plan | When |
 |-----------|------|------|
-| Review bonus fraud — tie to Review Request `status='reviewed'`, not a self-serve button | Wire into ReviewRequestService when both are built | Phase 2 |
+| Review bonus fraud — tie to Review Request `status='reviewed'`, not a self-serve button | Wire into ReviewRequestService when both are built | Phase 3 |
 | `select_for_update()` on balance reads | ✅ Already implemented in LOYALTY-001 (CODE-165 pattern) | Done |
-| `reconcile_balance()` nightly management command | Add `reconcile_loyalty_balances` command, run daily via cron | Phase 2 |
-| Move liability report from Phase 4 → Phase 2 | Agree — shops need to see outstanding points before scaling the program | Phase 2 |
+| `reconcile_balance()` nightly management command | ✅ `reconcile_loyalty_balances` command + `LoyaltyService.reconcile_balance()` — CODE-197 | Done |
+| Move liability report from Phase 4 → Phase 2 | ✅ `GET /owner/loyalty/liability/` + `LoyaltyService.get_point_liability_report()` — CODE-197 | Done |
 | Default expiry 365 → 730 days (or never) | Drake decided 365 days. Keep as-is unless he changes his mind | N/A |
 | Backfill migration note about synthetic data | Add comment to migration noting records are synthetic, not real transactions | Next commit |
+| Manual point adjustment endpoint | ✅ `POST /owner/loyalty/customers/<id>/adjust/` + `LoyaltyService.manual_adjustment()` — CODE-197 | Done |
+| `expire_loyalty_points` management command | ✅ Expire command with dry-run, tenant filter, balance clamp — CODE-197 | Done |
+
+**Phase 2 delivered (CODE-197, 2026-03-25):**
+- `reconcile_loyalty_balances` mgmt command — drift detection + --fix mode + --json
+- `expire_loyalty_points` mgmt command — batch expiration per customer, clamps to 0, dry-run
+- `LoyaltyService.reconcile_balance()` — read-only diagnostic method
+- `LoyaltyService.manual_adjustment()` — signed adjustment with reason + owner audit trail
+- `LoyaltyService.get_point_liability_report()` — full outstanding liability breakdown
+- `POST /owner/loyalty/customers/<id>/adjust/` — tenant-scoped, cross-tenant 404, JSON response
+- `GET /owner/loyalty/liability/` — tenant-scoped JSON liability report
+- 59 regression tests passing, all 47 Phase 1 tests still pass
 
 ---
 

@@ -2,7 +2,7 @@
 
 **Author:** Amelia  
 **Date:** 2026-03-24  
-**Status:** ✅ Phase 1 SHIPPED (LOYALTY-001, March 24 2026) — Phases 2-4 pending
+**Status:** ✅ Phase 1 SHIPPED (LOYALTY-001, March 24 2026) — ✅ Phase 2 SHIPPED (CODE-197, March 25 2026) — Phases 3-4 pending
 
 ---
 
@@ -352,12 +352,14 @@ Clicking opens the loyalty dashboard:
 **Goal:** More ways to earn + notifications.
 
 - [ ] Early payment bonus: hook into `Payment.save()`, check if `payment_date <= invoice.due_date`
-- [ ] Review bonus: simple endpoint, one-time flag per customer
-- [ ] Manual point adjustment: owner endpoint with required `reason` field
+- [ ] Review bonus: simple endpoint, one-time flag per customer (Phase 3: wire to Review Request `status='reviewed'`)
+- [x] Manual point adjustment: `POST /owner/loyalty/customers/<id>/adjust/` with required `reason` — CODE-197
 - [ ] Point earn notification email (branded HTML via `send_branded_email`)
-- [ ] Expiration management command (`expire_loyalty_points`), add to cron
-- [ ] Expiration warning email (X days before)
+- [x] Expiration management command (`expire_loyalty_points`) — CODE-197
+- [ ] Expiration warning email (X days before) — requires email infra
 - [ ] Owner settings page for LoyaltyConfig
+- [x] `reconcile_loyalty_balances` nightly management command — CODE-197
+- [x] `GET /owner/loyalty/liability/` point liability report — CODE-197
 
 ### Phase 3: Tiers (2-3 days)
 **Goal:** Status and recognition for loyal customers.
