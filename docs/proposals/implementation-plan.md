@@ -210,29 +210,39 @@ explaining each correction.
 
 **Ref:** [suggestions.md §14](#14-cross-cutting-themes)
 
-### 15. Repair Completion Hook Orchestrator
+### 15. Repair Completion Hook Orchestrator ✅ DONE (CODE-186)
 **Problem:** 4+ services all triggering independently on `Repair.save()` COMPLETED transition.
 
-**Plan:**
+**Implemented:** `apps/technician_portal/hooks.py` — shipped 2026-03-25.
+
 ```python
-# In Repair.save() or post_save signal:
+# In Repair.save():
+from apps.technician_portal.hooks import post_completion_hooks
 post_completion_hooks(self)
 
-# Orchestrator (new file: apps/technician_portal/hooks.py)
+# Orchestrator (apps/technician_portal/hooks.py)
+COMPLETION_HOOKS = [
+    ('loyalty', loyalty_hook),        # awards points via LoyaltyService
+    ('warranty', warranty_hook),       # no-op placeholder (WarrantyService pending)
+    ('review_request', review_request_hook),  # no-op placeholder (ReviewRequestService pending)
+]
+
 def post_completion_hooks(repair):
-    hooks = [
-        ('loyalty', LoyaltyService.award_completion_points),
-        ('warranty', WarrantyService.set_warranty_on_completion),
-        ('reviews', ReviewRequestService.on_repair_completed),
-    ]
-    for name, hook in hooks:
+    for name, hook in COMPLETION_HOOKS:
         try:
             hook(repair)
-        except Exception as e:
-            logger.error(f"Post-completion hook '{name}' failed for repair {repair.pk}: {e}", exc_info=True)
+        except Exception as exc:
+            logger.error(f"Orchestrator: unhandled exception in hook '{name}' for repair pk={repair.pk}: {exc}", exc_info=True)
 ```
 
-**When:** Build when the second hook (warranty or reviews) ships. Currently only loyalty is hooked in — one hook doesn't need an orchestrator.
+**Key properties:**
+- Each hook is isolated — failure in one does NOT block others or roll back the save
+- Hooks are idempotent — loyalty_hook guards via `original_status`
+- `Repair.award_completion_points()` deprecated (logic moved to `loyalty_hook`)
+- 7 regression tests in `PostCompletionHooksOrchestratorTests`
+- All 83 loyalty tests pass
+
+**To add a new hook:** define `def my_hook(repair) -> None`, append to `COMPLETION_HOOKS`.
 
 ---
 
