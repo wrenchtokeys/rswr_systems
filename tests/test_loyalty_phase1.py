@@ -2,9 +2,11 @@
 Tests for Loyalty System Phase 1 — LOYALTY-001
 PointTransaction ledger, LoyaltyConfig, LoyaltyService, refactored
 award_completion_points and ReferralService.
+Includes regression tests for CODE-186: post_completion_hooks orchestrator.
 """
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch, MagicMock
 
 from django.contrib.auth.models import User
 from django.test import TestCase, RequestFactory, override_settings
@@ -420,3 +422,210 @@ class PointTransactionModelTests(TestCase):
         pt2 = LoyaltyService.award_points(self.cu, 20, 'repair_complete', 'Second')
         txs = list(PointTransaction.objects.filter(customer_user=self.cu))
         self.assertEqual(txs[0].pk, pt2.pk)
+
+
+# ---------------------------------------------------------------------------
+# CODE-186: post_completion_hooks orchestrator regression tests
+# ---------------------------------------------------------------------------
+
+class PostCompletionHooksOrchestratorTests(TestCase):
+    """
+    Regression tests for apps/technician_portal/hooks.py — the post-completion
+    hook orchestrator introduced in CODE-186.
+
+    These tests verify:
+    1. The orchestrator runs and awards loyalty points (integration).
+    2. A failing hook does NOT roll back the repair save.
+    3. A failing hook does NOT block subsequent hooks.
+    4. Placeholder hooks (warranty, review_request) run without error.
+    5. post_completion_hooks() is called from Repair.save() on COMPLETED.
+    """
+
+    def setUp(self):
+        self.tenant = _make_tenant('Orchestrator Shop', 'orch-shop')
+        self.cu = _make_customer_user(self.tenant, 'orch@example.com')
+        tech_user = User.objects.create_user('orch_tech', password='x')
+        self.tech = Technician.objects.create(user=tech_user, tenant=self.tenant)
+        LoyaltyConfig.get_for_tenant(self.tenant)  # ensure config exists
+
+    def _make_repair(self, status='REQUESTED'):
+        return Repair.objects.create(
+            customer=self.cu.customer,
+            technician=self.tech,
+            tenant=self.tenant,
+            unit_number='ORCH-001',
+            queue_status=status,
+        )
+
+    # ------------------------------------------------------------------
+    # 1. Orchestrator integration: loyalty points awarded via hooks.py
+    # ------------------------------------------------------------------
+    def test_orchestrator_awards_loyalty_points(self):
+        """Completing a repair via save() triggers loyalty_hook and awards points."""
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        config.points_per_repair = 60
+        config.save()
+
+        repair = self._make_repair('REQUESTED')
+        repair.queue_status = 'COMPLETED'
+        repair.save()
+
+        balance = LoyaltyService.get_balance(self.cu)
+        self.assertEqual(balance, 60)
+
+        tx = PointTransaction.objects.filter(
+            customer_user=self.cu, transaction_type='repair_complete'
+        ).first()
+        self.assertIsNotNone(tx)
+        self.assertEqual(tx.amount, 60)
+
+    # ------------------------------------------------------------------
+    # 2. Failing hook does NOT roll back the repair save
+    # ------------------------------------------------------------------
+    def test_failing_hook_does_not_roll_back_repair_save(self):
+        """If a hook raises an exception, the repair save must still commit."""
+        from apps.technician_portal import hooks
+
+        original_hooks = hooks.COMPLETION_HOOKS[:]
+        try:
+            def exploding_hook(repair):
+                raise RuntimeError("Simulated hook failure")
+
+            hooks.COMPLETION_HOOKS = [('explode', exploding_hook)]
+
+            repair = self._make_repair('REQUESTED')
+            repair.queue_status = 'COMPLETED'
+            repair.save()  # must NOT raise
+
+            # Repair is saved despite the hook failing
+            repair.refresh_from_db()
+            self.assertEqual(repair.queue_status, 'COMPLETED')
+        finally:
+            hooks.COMPLETION_HOOKS = original_hooks
+
+    # ------------------------------------------------------------------
+    # 3. Failing hook does NOT block subsequent hooks
+    # ------------------------------------------------------------------
+    def test_failing_hook_does_not_block_subsequent_hooks(self):
+        """A hook failure is isolated; the next hook in the list still runs."""
+        from apps.technician_portal import hooks
+
+        execution_order = []
+
+        def first_hook(repair):
+            execution_order.append('first')
+            raise RuntimeError("First hook failed")
+
+        def second_hook(repair):
+            execution_order.append('second')
+
+        original_hooks = hooks.COMPLETION_HOOKS[:]
+        try:
+            hooks.COMPLETION_HOOKS = [
+                ('first', first_hook),
+                ('second', second_hook),
+            ]
+            repair = self._make_repair('REQUESTED')
+            repair.queue_status = 'COMPLETED'
+            repair.save()
+
+            self.assertIn('first', execution_order)
+            self.assertIn('second', execution_order)
+            self.assertEqual(execution_order.index('first'), 0)
+            self.assertEqual(execution_order.index('second'), 1)
+        finally:
+            hooks.COMPLETION_HOOKS = original_hooks
+
+    # ------------------------------------------------------------------
+    # 4. Placeholder hooks (warranty, review_request) run without error
+    # ------------------------------------------------------------------
+    def test_placeholder_hooks_do_not_raise(self):
+        """warranty_hook and review_request_hook are no-ops that must not raise."""
+        from apps.technician_portal.hooks import warranty_hook, review_request_hook
+
+        repair = self._make_repair('COMPLETED')
+        # Force original_status so idempotency guard doesn't skip the loyalty hook
+        repair.original_status = 'IN_PROGRESS'
+
+        # These should silently do nothing
+        try:
+            warranty_hook(repair)
+            review_request_hook(repair)
+        except Exception as exc:
+            self.fail(f"Placeholder hook raised unexpectedly: {exc}")
+
+    # ------------------------------------------------------------------
+    # 5. post_completion_hooks() called from Repair.save() on COMPLETED
+    # ------------------------------------------------------------------
+    def test_post_completion_hooks_called_on_completed_save(self):
+        """Verify Repair.save() calls post_completion_hooks when COMPLETED."""
+        from apps.technician_portal import hooks
+
+        called_with = []
+
+        def spy_hook(repair):
+            called_with.append(repair.pk)
+
+        original_hooks = hooks.COMPLETION_HOOKS[:]
+        try:
+            hooks.COMPLETION_HOOKS = [('spy', spy_hook)]
+
+            repair = self._make_repair('REQUESTED')
+            repair.queue_status = 'COMPLETED'
+            repair.save()
+
+            self.assertEqual(len(called_with), 1)
+            self.assertEqual(called_with[0], repair.pk)
+        finally:
+            hooks.COMPLETION_HOOKS = original_hooks
+
+    # ------------------------------------------------------------------
+    # 6. post_completion_hooks() NOT called for non-COMPLETED saves
+    # ------------------------------------------------------------------
+    def test_post_completion_hooks_not_called_on_non_completed_save(self):
+        """Hooks must NOT run when repair transitions to APPROVED or IN_PROGRESS."""
+        from apps.technician_portal import hooks
+
+        called_with = []
+
+        def spy_hook(repair):
+            called_with.append(repair.queue_status)
+
+        original_hooks = hooks.COMPLETION_HOOKS[:]
+        try:
+            hooks.COMPLETION_HOOKS = [('spy', spy_hook)]
+
+            repair = self._make_repair('REQUESTED')
+            repair.queue_status = 'APPROVED'
+            repair.save()
+
+            repair.queue_status = 'IN_PROGRESS'
+            repair.save()
+
+            self.assertEqual(called_with, [],
+                             "Hooks fired on non-COMPLETED status transition")
+        finally:
+            hooks.COMPLETION_HOOKS = original_hooks
+
+    # ------------------------------------------------------------------
+    # 7. Idempotency: hooks not called twice on re-save of COMPLETED repair
+    # ------------------------------------------------------------------
+    def test_hooks_not_called_on_resave_of_completed_repair(self):
+        """Re-saving an already-COMPLETED repair must not run hooks again."""
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        config.points_per_repair = 50
+        config.save()
+
+        repair = self._make_repair('REQUESTED')
+        repair.queue_status = 'COMPLETED'
+        repair.save()
+
+        balance_after_first = LoyaltyService.get_balance(self.cu)
+        self.assertEqual(balance_after_first, 50)
+
+        # Re-save without changing status
+        repair.save()
+
+        balance_after_resave = LoyaltyService.get_balance(self.cu)
+        self.assertEqual(balance_after_resave, 50,
+                         "Double award detected on re-save of already-COMPLETED repair")

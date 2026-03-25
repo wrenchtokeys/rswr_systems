@@ -642,19 +642,26 @@ class Repair(GlassService):
             # Save after the cost calculation
             super().save(*args, **kwargs)
 
-            # Apply rewards and award points AFTER save (requires pk to access relationships).
-            # IMPORTANT: update original_status AFTER calling apply_available_rewards() and
-            # award_completion_points() so that those methods can still distinguish a
-            # first-time COMPLETED transition from a re-save of an already-COMPLETED repair.
-            # Previously, original_status was updated BEFORE the calls, so the guard inside
-            # award_completion_points() (`if self.original_status == 'COMPLETED': return`)
+            # Apply rewards and run post-completion hooks AFTER save (requires
+            # pk to access relationships).
+            # IMPORTANT: update original_status AFTER calling apply_available_rewards()
+            # and post_completion_hooks() so that hooks can distinguish a first-time
+            # COMPLETED transition from a re-save of an already-COMPLETED repair.
+            # Previously, original_status was updated BEFORE the calls, so the guard
+            # inside loyalty_hook (`if original_status == 'COMPLETED': return`)
             # always fired on first completion — customers never earned points. (CODE-166)
             if self.queue_status == 'COMPLETED':
-                # Check for available rewards to apply automatically
+                # Check for available rewards to apply automatically.
                 self.apply_available_rewards()
 
-                # Award points to customer for completed repair
-                self.award_completion_points()
+                # Run all post-completion hooks (loyalty, warranty, review
+                # requests, etc.) via the orchestrator.  Each hook is isolated —
+                # a failure in one does NOT block the others.
+                # original_status is intentionally still set to the PRE-save
+                # status here so hooks can detect a first-time COMPLETED
+                # transition. It is updated below, after hooks complete.
+                from apps.technician_portal.hooks import post_completion_hooks
+                post_completion_hooks(self)
 
             # Update the original status AFTER rewards/points processing so that
             # any subsequent save() on the same in-memory instance (e.g. in tests)
@@ -725,7 +732,18 @@ class Repair(GlassService):
     
     def award_completion_points(self):
         """
+        [DEPRECATED — superseded by apps.technician_portal.hooks.loyalty_hook]
+
         Award points to customer when repair is completed.
+
+        This method is no longer called from Repair.save(). The loyalty logic
+        has been extracted to hooks.loyalty_hook() and is invoked via the
+        post_completion_hooks() orchestrator in hooks.py.
+
+        Kept for backwards compatibility (tests reference it via comments and
+        the method may be called directly in custom management commands).  Do
+        NOT add new callers — use post_completion_hooks() or loyalty_hook()
+        directly instead.
 
         Reads point values from LoyaltyConfig and delegates to LoyaltyService.
         Awards base points per repair plus milestone bonuses for multiple repairs.
