@@ -646,3 +646,319 @@ class WarrantyServiceQueryTests(TestCase):
         from apps.technician_portal.models import GlassService
         GlassService.save(repair)
         self.assertIsNone(WarrantyService.get_active_warranty(repair))
+
+
+@override_settings(**TEST_SETTINGS)
+class WarrantyUITests(TestCase):
+    """Tests for Sprint 5 — Warranty UI layer."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('UI Shop', 'ui_owner')
+        # Second tenant for isolation tests
+        self.user2, self.tenant2, self.tech2 = make_tenant('Other Shop', 'other_owner')
+
+        self.customer = Customer.objects.create(
+            tenant=self.tenant,
+            name='Test Fleet',
+            email='fleet@test.com',
+        )
+
+        self.policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant,
+            name='UI Warranty',
+            applies_to='all_repairs',
+            duration_type='custom_days',
+            duration_days=365,
+            is_default=True,
+            is_active=True,
+        )
+
+        self.client.force_login(self.user)
+        # Inject tenant onto every request via session middleware workaround
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+    def _make_completed_repair_with_warranty(self):
+        """Create a completed repair with an active warranty."""
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant,
+            customer=self.customer,
+            technician=self.tech,
+            unit_number='UI-001',
+            damage_type='Chip',
+            queue_status='COMPLETED',
+        )
+        GlassService.save(repair)
+        WarrantyService.assign_warranty(repair)
+        repair.refresh_from_db()
+        return repair
+
+    def _get_authed_client_for_tenant(self, user, tenant):
+        """Return a test client logged in as user with tenant in session."""
+        from django.test import Client
+        c = Client(SERVER_NAME=f'{tenant.subdomain}.testserver')
+        c.force_login(user)
+        return c
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 1. Create warranty claim — happy path
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_create_warranty_claim_happy_path(self):
+        repair = self._make_completed_repair_with_warranty()
+        self.assertTrue(repair.has_warranty)
+
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.post(
+            f'/tech/repairs/{repair.id}/warranty-claim/',
+            data={'claim_reason': 'Crack spread', 'technician_id': self.tech.id},
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        # Should redirect to the new repair
+        self.assertEqual(response.status_code, 302)
+        # A new repair should have been created
+        claim = Repair.objects.filter(
+            tenant=self.tenant, override_reason__contains=f'#{repair.pk}'
+        ).first()
+        self.assertIsNotNone(claim)
+        self.assertEqual(claim.cost, Decimal('0.00'))
+        self.assertTrue(claim.skip_invoicing)
+        self.assertIn('WARRANTY CLAIM', claim.description)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 2. Warranty claim — expired warranty rejected
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_create_warranty_claim_expired_rejected(self):
+        repair = self._make_completed_repair_with_warranty()
+        # Force expiry in the past
+        Repair.objects.filter(pk=repair.pk).update(
+            warranty_expires_at=timezone.now() - timedelta(days=10)
+        )
+        repair.refresh_from_db()
+        self.assertFalse(repair.has_warranty)
+
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        before_count = Repair.objects.filter(tenant=self.tenant).count()
+        response = client.post(
+            f'/tech/repairs/{repair.id}/warranty-claim/',
+            data={'claim_reason': 'Expired attempt'},
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        after_count = Repair.objects.filter(tenant=self.tenant).count()
+        self.assertEqual(before_count, after_count, "No new repair should be created for expired warranty")
+        self.assertEqual(response.status_code, 302)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 3. Warranty claim — voided warranty rejected
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_create_warranty_claim_voided_rejected(self):
+        repair = self._make_completed_repair_with_warranty()
+        Repair.objects.filter(pk=repair.pk).update(
+            warranty_void=True, warranty_void_reason='Tampered'
+        )
+        repair.refresh_from_db()
+        self.assertFalse(repair.has_warranty)
+
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        before_count = Repair.objects.filter(tenant=self.tenant).count()
+        client.post(
+            f'/tech/repairs/{repair.id}/warranty-claim/',
+            data={'claim_reason': 'Voided attempt'},
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        after_count = Repair.objects.filter(tenant=self.tenant).count()
+        self.assertEqual(before_count, after_count, "No claim should be created for voided warranty")
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 4. Warranty claim — sets correct fields
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_create_warranty_claim_sets_correct_fields(self):
+        repair = self._make_completed_repair_with_warranty()
+
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        client.post(
+            f'/tech/repairs/{repair.id}/warranty-claim/',
+            data={'claim_reason': 'Recrack', 'technician_id': self.tech.id},
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        claim = Repair.objects.filter(
+            tenant=self.tenant, override_reason__contains=f'#{repair.pk}'
+        ).first()
+        self.assertIsNotNone(claim)
+        self.assertEqual(claim.cost, Decimal('0.00'))
+        self.assertEqual(claim.cost_override, Decimal('0.00'))
+        self.assertTrue(claim.skip_invoicing)
+        self.assertEqual(claim.queue_status, 'REQUESTED')
+        self.assertEqual(claim.customer, repair.customer)
+        self.assertEqual(claim.unit_number, repair.unit_number)
+        self.assertIn('Recrack', claim.description)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 5. Warranty policy list view — only shows tenant's policies
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_warranty_policy_list_view_tenant_scoped(self):
+        # Create a policy for another tenant
+        WarrantyPolicy.objects.create(
+            tenant=self.tenant2,
+            name='Other Shop Policy',
+            applies_to='all_repairs',
+            is_active=True,
+        )
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.get(
+            '/tech/settings/warranty/',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        self.assertEqual(response.status_code, 200)
+        policies_in_context = list(response.context['policies'])
+        names = [p.name for p in policies_in_context]
+        self.assertIn('UI Warranty', names)
+        self.assertNotIn('Other Shop Policy', names)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 6. Warranty policy create — AJAX endpoint works
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_create_warranty_policy_ajax(self):
+        import json
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.post(
+            '/tech/settings/api/warranty/create/',
+            data=json.dumps({
+                'name': 'AJAX Policy',
+                'applies_to': 'Chip',
+                'duration_type': 'custom_days',
+                'duration_days': 180,
+                'coverage_description': 'Test',
+                'covers_labor': True,
+                'covers_materials': False,
+                'is_default': False,
+                'is_active': True,
+            }),
+            content_type='application/json',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertTrue(WarrantyPolicy.objects.filter(tenant=self.tenant, name='AJAX Policy').exists())
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 7. Warranty policy create — cross-tenant isolation
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_create_warranty_policy_cross_tenant_isolation(self):
+        """Policy created by user of tenant1 must be scoped to tenant1, not tenant2."""
+        import json
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.post(
+            '/tech/settings/api/warranty/create/',
+            data=json.dumps({
+                'name': 'Isolation Test Policy',
+                'applies_to': 'Crack',
+                'duration_type': 'lifetime',
+                'duration_days': 365,
+                'is_active': True,
+            }),
+            content_type='application/json',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        data = response.json()
+        self.assertTrue(data['success'])
+        policy = WarrantyPolicy.objects.get(name='Isolation Test Policy')
+        self.assertEqual(policy.tenant, self.tenant)
+        self.assertNotEqual(policy.tenant, self.tenant2)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 8. Warranty policy update — AJAX endpoint works
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_update_warranty_policy_ajax(self):
+        import json
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.post(
+            f'/tech/settings/api/warranty/{self.policy.id}/update/',
+            data=json.dumps({'name': 'Updated Warranty', 'duration_days': 730}),
+            content_type='application/json',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.policy.refresh_from_db()
+        self.assertEqual(self.policy.name, 'Updated Warranty')
+        self.assertEqual(self.policy.duration_days, 730)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 9. Warranty policy delete — AJAX endpoint works
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_delete_warranty_policy_ajax(self):
+        policy_to_delete = WarrantyPolicy.objects.create(
+            tenant=self.tenant,
+            name='Delete Me',
+            applies_to='Star Break',
+            is_active=True,
+        )
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.post(
+            f'/tech/settings/api/warranty/{policy_to_delete.id}/delete/',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertFalse(WarrantyPolicy.objects.filter(id=policy_to_delete.id).exists())
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 10. Warranty policy toggle — AJAX endpoint works
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_toggle_warranty_policy_ajax(self):
+        self.assertTrue(self.policy.is_active)
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.post(
+            f'/tech/settings/api/warranty/{self.policy.id}/toggle/',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.policy.refresh_from_db()
+        self.assertFalse(self.policy.is_active)
+        # Toggle again
+        response2 = client.post(
+            f'/tech/settings/api/warranty/{self.policy.id}/toggle/',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        data2 = response2.json()
+        self.assertTrue(data2['success'])
+        self.policy.refresh_from_db()
+        self.assertTrue(self.policy.is_active)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 11. Repair detail view includes available_technicians in context
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_repair_detail_includes_available_technicians(self):
+        repair = self._make_completed_repair_with_warranty()
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.get(
+            f'/tech/repairs/{repair.id}/',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('available_technicians', response.context)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 12. Warranty claim requires POST method
+    # ─────────────────────────────────────────────────────────────────────────
+    def test_warranty_claim_requires_post(self):
+        repair = self._make_completed_repair_with_warranty()
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.get(
+            f'/tech/repairs/{repair.id}/warranty-claim/',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        # GET should redirect back to repair_detail (not create a claim)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f'/tech/repairs/{repair.id}/', response['Location'])
+        # No extra repair created
+        self.assertEqual(
+            Repair.objects.filter(
+                tenant=self.tenant, override_reason__contains=f'#{repair.pk}'
+            ).count(),
+            0,
+        )
