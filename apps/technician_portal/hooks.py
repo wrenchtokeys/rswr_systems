@@ -133,15 +133,38 @@ def loyalty_hook(repair) -> None:
 
 def warranty_hook(repair) -> None:
     """
-    Placeholder: set warranty on repair completion.
+    Assign warranty to a repair that just transitioned to COMPLETED.
 
-    Will delegate to WarrantyService.set_warranty_on_completion(repair)
-    once the warranty system is implemented (see docs/proposals/warranty-system.md).
+    Delegates to WarrantyService.assign_warranty(repair). If no active
+    warranty policy exists for the tenant, the hook is a silent no-op
+    (the shop hasn't configured warranties yet).
+
+    Idempotency: skips if the repair already has a warranty assigned
+    or if original_status was already COMPLETED (re-save).
     """
-    # TODO (warranty system): uncomment when WarrantyService ships.
-    # from apps.warranty.services import WarrantyService
-    # WarrantyService.set_warranty_on_completion(repair)
-    pass
+    try:
+        from apps.technician_portal.warranty_service import WarrantyService
+
+        # Idempotency: skip re-saves of already-COMPLETED repairs
+        if hasattr(repair, 'original_status') and repair.original_status == 'COMPLETED':
+            return
+
+        # Skip if warranty already assigned (e.g. manual assignment)
+        if repair.warranty_policy_id:
+            return
+
+        WarrantyService.assign_warranty(repair)
+
+    except ValueError:
+        # No policy found for this tenant — that's fine, warranty is optional.
+        pass
+    except Exception as exc:
+        logger.error(
+            "Post-completion hook 'warranty_hook' failed for repair pk=%s: %s",
+            repair.pk,
+            exc,
+            exc_info=True,
+        )
 
 
 def review_request_hook(repair) -> None:

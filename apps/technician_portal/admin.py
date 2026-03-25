@@ -9,7 +9,7 @@ from django.shortcuts import render
 from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django import forms
-from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation, TechnicianNotification
+from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation, TechnicianNotification, WarrantyPolicy
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -550,6 +550,28 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
             if errors:
                 msg += f" ⚠️ {errors} customer(s) failed — check server logs."
             self.message_user(request, msg, level='warning')
+
+
+@admin.register(WarrantyPolicy)
+class WarrantyPolicyAdmin(TenantFilterMixin, admin.ModelAdmin):
+    list_display = ['name', 'tenant', 'applies_to', 'duration_type', 'duration_days', 'is_default', 'is_active']
+    list_filter = ['tenant', 'is_active', 'is_default', 'duration_type']
+    search_fields = ['name', 'tenant__name']
+    list_select_related = ['tenant']
+    list_per_page = 25
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('tenant', 'name', 'applies_to', 'is_active', 'is_default'),
+        }),
+        ('Duration', {
+            'fields': ('duration_type', 'duration_days'),
+            'description': 'Set warranty duration. duration_days is ignored for lifetime/none.',
+        }),
+        ('Coverage', {
+            'fields': ('covers_labor', 'covers_materials', 'coverage_description'),
+        }),
+    )
 
 
 @admin.register(UnitRepairCount)

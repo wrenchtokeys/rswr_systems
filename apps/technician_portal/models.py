@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
@@ -403,6 +405,98 @@ class GlassService(models.Model):
 
 
 # =============================================================================
+# WARRANTY POLICY MODEL
+# =============================================================================
+
+class WarrantyPolicy(models.Model):
+    """
+    Per-tenant warranty terms. Shops define their own policies per damage type.
+
+    Each tenant can have one policy per damage_type (or an 'all_repairs' default).
+    Only one policy per tenant may be marked is_default=True — the custom save()
+    enforces this by deactivating other defaults.
+    """
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='warranty_policies',
+    )
+
+    # IMPORTANT: These values MUST match Repair.DAMAGE_TYPE_CHOICES exactly
+    # (see DAMAGE_TYPE_CHOICES below) so that WarrantyService can match
+    # repair.damage_type to the correct policy.
+    APPLIES_TO_CHOICES = [
+        ('Chip', 'Chip Repair'),
+        ('Crack', 'Crack Repair'),
+        ('Star Break', 'Star Break'),
+        ("Bull's Eye", "Bull's Eye"),
+        ('Combination Break', 'Combination Break'),
+        ('Half-Moon', 'Half-Moon'),
+        ('Other', 'Other'),
+        ('all_repairs', 'All Repairs (default)'),
+    ]
+    applies_to = models.CharField(max_length=30, choices=APPLIES_TO_CHOICES, default='all_repairs')
+
+    name = models.CharField(max_length=200, help_text="e.g. 'Standard Glass Warranty'")
+
+    WARRANTY_DURATION_CHOICES = [
+        ('lifetime', 'Lifetime'),
+        ('custom_days', 'Custom (days)'),
+        ('none', 'No Warranty'),
+    ]
+    duration_type = models.CharField(
+        max_length=20, choices=WARRANTY_DURATION_CHOICES, default='custom_days',
+    )
+    duration_days = models.PositiveIntegerField(
+        default=365,
+        help_text="Days from completion. Ignored if duration_type is lifetime or none.",
+    )
+
+    coverage_description = models.TextField(
+        blank=True,
+        help_text="Customer-facing warranty terms shown on invoices/emails",
+    )
+
+    covers_labor = models.BooleanField(default=True)
+    covers_materials = models.BooleanField(default=True)
+
+    is_default = models.BooleanField(
+        default=False,
+        help_text="If True, this policy applies when no damage-type-specific policy exists.",
+    )
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantManager()
+
+    class Meta:
+        unique_together = ['tenant', 'name']
+        ordering = ['applies_to']
+        verbose_name_plural = 'warranty policies'
+
+    def __str__(self):
+        return f"{self.name} ({self.tenant.name})"
+
+    def save(self, *args, **kwargs):
+        # Enforce only one default per tenant
+        if self.is_default:
+            WarrantyPolicy.objects.filter(
+                tenant=self.tenant, is_default=True,
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+    def get_expiry_date(self, completion_date):
+        """Calculate warranty expiration from repair completion date."""
+        if self.duration_type == 'lifetime':
+            return None  # Never expires
+        if self.duration_type == 'none':
+            return completion_date  # Already expired
+        return completion_date + timedelta(days=self.duration_days)
+
+
+# =============================================================================
 # REPAIR MODEL
 # =============================================================================
 
@@ -510,6 +604,36 @@ class Repair(GlassService):
         null=True, blank=True,
         help_text="When set, this repair is soft-deleted and excluded from normal querysets"
     )
+
+    # =========================================================================
+    # WARRANTY TRACKING FIELDS
+    # =========================================================================
+    warranty_policy = models.ForeignKey(
+        WarrantyPolicy, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='repairs',
+        help_text="Warranty policy applied to this repair on completion",
+    )
+    warranty_expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Warranty expiration. Null with a policy = lifetime warranty.",
+    )
+    warranty_void = models.BooleanField(default=False)
+    warranty_void_reason = models.CharField(
+        max_length=255, null=True, blank=True,
+        help_text="Reason warranty was voided (e.g. new impact damage)",
+    )
+
+    @property
+    def has_warranty(self):
+        """True if this repair has an active, non-expired, non-voided warranty."""
+        if not self.warranty_policy_id:
+            return False
+        if self.warranty_void:
+            return False
+        # Lifetime warranty: expires_at is None but policy exists
+        if self.warranty_expires_at is None:
+            return True
+        return self.warranty_expires_at > timezone.now()
 
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
