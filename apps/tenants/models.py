@@ -193,11 +193,11 @@ class Tenant(models.Model):
 
     # Stripe billing
     stripe_customer_id = models.CharField(
-        max_length=50, blank=True,
+        max_length=50, blank=True, db_index=True,
         help_text="Stripe Customer ID for platform billing"
     )
     stripe_subscription_id = models.CharField(
-        max_length=50, blank=True,
+        max_length=50, blank=True, db_index=True,
         help_text="Stripe Subscription ID for platform billing"
     )
 
@@ -212,7 +212,7 @@ class Tenant(models.Model):
     ]
 
     stripe_connect_account_id = models.CharField(
-        max_length=50, blank=True,
+        max_length=50, blank=True, db_index=True,
         help_text="Stripe Connect Account ID (acct_...) for receiving invoice payments"
     )
     stripe_onboarding_status = models.CharField(
