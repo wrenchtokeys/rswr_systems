@@ -1913,8 +1913,17 @@ def account_settings(request):
                         'repair_form': repair_form,
                     })
 
-                if len(new_password) < 8:
-                    messages.error(request, "Password must be at least 8 characters long.")
+                # Use Django's full password validation (length, common passwords,
+                # entirely numeric, etc.) instead of a bare length check.
+                # Same pattern as customer_register() and accept_customer_invitation()
+                # fixed in CODE-188. A bare `len() < 8` check accepted passwords
+                # like "password1" or "12345678".  (CODE-190)
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                try:
+                    validate_password(new_password, user=user)
+                except DjangoValidationError as e:
+                    for msg in e.messages:
+                        messages.error(request, msg)
                     repair_form = RepairPreferenceForm(instance=repair_prefs)
                     return render(request, 'customer_portal/account_settings.html', {
                         'customer_user': customer_user,
