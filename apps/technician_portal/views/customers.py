@@ -263,16 +263,23 @@ def unit_details(request, customer_id, unit_number):
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
-    # Get repairs for this unit
+    # Get repairs for this unit.
+    # Must guard _scoped_tech_unit=None: if a user has a 'technician' TenantMembership
+    # role but no Technician record, passing technician=None to the filter would return
+    # every *unassigned* repair for the customer — data leakage.  Mirror the safe pattern
+    # from customer_details() which uses Repair.objects.none() in that case.  (CODE-187)
     if is_admin or is_mgr:
         repairs = Repair.objects.filter(customer=customer, unit_number=unit_number)
-    else:
+    elif _scoped_tech_unit:
         repairs = Repair.objects.filter(
             technician=_scoped_tech_unit,
             customer=customer,
             unit_number=unit_number
         )
-    
+    else:
+        # No Technician record at this tenant — show nothing (safe default)
+        repairs = Repair.objects.none()
+
     repairs = repairs.exclude(
         queue_status__in=['REQUESTED', 'PENDING']
     ).select_related('customer', 'technician__user')
@@ -282,16 +289,19 @@ def unit_details(request, customer_id, unit_number):
     else:
         repairs = repairs.none()
     
-    # Get replacements for this unit
+    # Get replacements for this unit.
+    # Same guard: _scoped_tech_unit=None → none() to prevent unassigned-record leakage.
     from apps.technician_portal.models import Replacement
     if is_admin or is_mgr:
         replacements = Replacement.objects.filter(customer=customer, unit_number=unit_number)
-    else:
+    elif _scoped_tech_unit:
         replacements = Replacement.objects.filter(
             technician=_scoped_tech_unit,
             customer=customer,
             unit_number=unit_number
         )
+    else:
+        replacements = Replacement.objects.none()
     
     if tenant:
         replacements = replacements.filter(tenant=tenant)
