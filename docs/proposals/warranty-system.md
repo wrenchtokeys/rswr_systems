@@ -1,8 +1,8 @@
 # Proposal: Warranty System
 
-**Author:** Amelia  
-**Date:** 2026-03-25  
-**Status:** Draft — awaiting Drake's review
+**Author:** Amelia
+**Date:** 2026-03-25
+**Status:** Phase 1 COMPLETE (Sprint 4, 2026-03-25)
 
 ---
 
@@ -334,16 +334,17 @@ Customer can self-service request a warranty claim through their portal — goes
 
 ## Implementation Plan
 
-### Phase 1: Core (3-4 days)
-- [ ] WarrantyPolicy model + migration
-- [ ] Warranty fields on Repair model (expires_at, is_lifetime, is_warranty_claim, original_repair, claim_reason) + migration
-- [ ] WarrantyService (set on completion, check status, create claim, stats)
-- [ ] Hook into Repair.save() on COMPLETED transition
-- [ ] Warranty badge on repair detail page
-- [ ] "Create Warranty Claim" button + modal
-- [ ] Owner settings page for warranty policies
-- [ ] Default policies seeded on first access (chip=lifetime, crack=365d, replacement=none)
-- [ ] Tests
+### Phase 1: Core (3-4 days) — COMPLETE (2026-03-25)
+- [x] WarrantyPolicy model + migration (`technician_portal.0036`)
+- [x] Warranty fields on Repair model (warranty_policy FK, warranty_expires_at, warranty_void, warranty_void_reason) + `has_warranty` property
+- [x] WarrantyService (`warranty_service.py`) — assign_warranty, void_warranty, check_warranty_valid, get_active_warranty, get_warranties_expiring_soon, get_all_warranty_repairs
+- [x] Hook into Repair.save() on COMPLETED transition via orchestrator (`hooks.py` warranty_hook)
+- [x] Default policies seeded via data migration (`technician_portal.0037`)
+- [x] WarrantyPolicy admin with TenantFilterMixin
+- [x] 32 regression tests in `tests/test_warranty.py`
+- [ ] Warranty badge on repair detail page (Phase 2)
+- [ ] "Create Warranty Claim" button + modal (Phase 2)
+- [ ] Owner settings page for warranty policies (Phase 2)
 
 ### Phase 2: Reporting + Portal (2 days)
 - [ ] Warranty dashboard widget (claims count, rate, by tech, by type)

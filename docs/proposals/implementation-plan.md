@@ -84,17 +84,26 @@ explaining each correction.
 
 ---
 
-### 6. Warranty System improvements
+### 6. Warranty System improvements ✅ Phase 1 COMPLETE (Sprint 4, 2026-03-25)
 **Ref:** [suggestions.md §4](#4-warranty-system-draft)
+
+**Phase 1 delivered:**
+- WarrantyPolicy model with tenant scoping, `applies_to` choices matching `Repair.DAMAGE_TYPE_CHOICES`
+- Warranty fields on Repair (policy FK, expires_at, void tracking, `has_warranty` property)
+- WarrantyService (assign/void/check/query methods with `select_for_update()`)
+- Orchestrator hook auto-assigns warranty on repair completion
+- Data migration seeding default policies for all tenants
+- Admin with TenantFilterMixin
+- 32 regression tests passing
 
 | Suggestion | Plan | When |
 |-----------|------|------|
-| Fix `applies_to` choices (see §2 above) | Pull from `Repair.DAMAGE_TYPE_CHOICES` | Before build |
-| Per-customer warranty overrides → Phase 2 not Phase 3 | Agree — add nullable `customer` FK to `WarrantyPolicy` in Phase 1 migration, build UI in Phase 2 | Phase 1 migration, Phase 2 UI |
-| Soft-deleted original repair → show "Original repair (deleted)" | Add check for `warranty_original_repair` existence in template | Phase 1 |
-| Goodwill repair flag (out-of-warranty courtesy repairs) | Add `is_goodwill_repair` boolean to Repair, separate from warranty claim | Phase 1 |
-| Warranty badge on repair list view (not just detail) | Add ✅W / ⌛W / ❌W badge to repair list table | Phase 1 |
-| Warranty terms on invoice PDF → Phase 1 minimum | Add one line to invoice template: "WARRANTY: [terms from policy]" | Phase 1 |
+| Fix `applies_to` choices (see §2 above) | ✅ Done — matches `Repair.DAMAGE_TYPE_CHOICES` | Done |
+| Per-customer warranty overrides → Phase 2 not Phase 3 | Add nullable `customer` FK to `WarrantyPolicy`, build UI in Phase 2 | Phase 2 |
+| Soft-deleted original repair → show "Original repair (deleted)" | Add check for `warranty_original_repair` existence in template | Phase 2 |
+| Goodwill repair flag (out-of-warranty courtesy repairs) | Add `is_goodwill_repair` boolean to Repair, separate from warranty claim | Phase 2 |
+| Warranty badge on repair list view (not just detail) | Add badge to repair list table | Phase 2 |
+| Warranty terms on invoice PDF → Phase 1 minimum | Add one line to invoice template: "WARRANTY: [terms from policy]" | Phase 2 |
 | Cache `get_warranty_stats()` or use management command | Use management command + cached results, not on-demand in dashboard view | Phase 2 |
 
 ---
