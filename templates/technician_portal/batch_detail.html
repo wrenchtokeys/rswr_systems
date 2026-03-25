@@ -145,7 +145,7 @@
                 <div class="col-md-6">
                     <p class="mb-2"><strong>Damage Type:</strong> {{ repair.get_damage_type_display }}</p>
                     <p class="mb-2"><strong>Cost:</strong> ${{ repair.cost|floatformat:2 }}</p>
-                    {% if repair.cost_override %}
+                    {% if repair.cost_override is not None %}
                     <p class="mb-2 text-warning">
                         <strong><i class="fas fa-dollar-sign"></i> Manager Price Override:</strong> Applied
                     </p>

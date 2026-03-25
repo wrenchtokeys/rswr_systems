@@ -460,7 +460,7 @@
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                             placeholder="Leave blank for auto-pricing"
                         >
-                        {% if current_technician and current_technician.approval_limit %}
+                        {% if current_technician and current_technician.approval_limit is not None %}
                         <p class="mt-1 text-xs text-gray-600">
                             Your approval limit: <span class="font-semibold">${{ current_technician.approval_limit }}</span>
                         </p>
