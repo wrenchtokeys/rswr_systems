@@ -31,6 +31,7 @@ Each proposal includes:
 ### 🟡 Awaiting Review
 | Proposal | Status | Notes |
 |----------|--------|-------|
+| [Warranty System](warranty-system.md) | Draft | Warranty tracking, claims workflow, per-tenant policies, zero-charge warranty repairs |
 | [Review Request System](review-request-system.md) | Draft | Smart Google review requests after repair completion. Ties into website widget flywheel |
 | [Website Integration Widget](website-integration-widget.md) | Draft | Embeddable quote form for shop websites |
 | [Repair Form Efficiency](repair-form-efficiency.md) | Draft | 12 ideas for repair form, 7 for replacement, 5 for multi-break |

@@ -11,27 +11,29 @@
 - **Gap:** No way to track warranty periods on repairs or handle warranty claims
 - **What's needed:**
   - Warranty period per repair (e.g., "lifetime on chip repairs", "1 year on replacements")
-  - Configurable per tenant (owner sets their warranty policy)
-  - When a customer calls back about a repair failing, tech can look up the original repair and see if it's still under warranty
-  - Warranty claim creates a new repair linked to the original, flagged as warranty (no charge)
-  - Warranty repairs shouldn't generate invoices
-  - Reporting: how many warranty claims per month, which techs have highest warranty rate
-- **Proposal needed:** Yes
+  - Configurable per tenant (owner sets their warranty policy per damage type)
+  - When a customer calls back, tech looks up original repair and sees warranty status instantly
+  - Warranty claim creates a new $0 repair linked to the original
+  - Warranty repairs excluded from invoicing, loyalty points, and review requests
+  - Reporting: claims per month, warranty rate, by tech, by damage type
+- → **[`proposals/warranty-system.md`](proposals/warranty-system.md)**
 
 ### Customer Communication Log
 - **Gap:** No record of calls, texts, or conversations with customers
 - **What's needed:** Simple activity log per customer — "Called re: unit 4482, will schedule for Thursday"
 - Shop owners and techs currently track this in their heads or text messages
+- **Proposal needed:** Yes
 
 ### Scheduling / Calendar
 - **Gap:** No scheduling — repairs have a date but no calendar view, no time slots, no route planning
 - **What's needed:** At minimum a daily view showing who's going where
-- Drake said no /schedule page for Rockstar site, but the SaaS product needs this eventually
+- **Proposal needed:** Yes
 
 ### Estimates / Quotes
 - **Gap:** No formal quote/estimate workflow before a repair
 - **What's needed:** Generate a quote, send to customer, customer approves → converts to repair
 - Currently: customer requests repair → tech shows up → invoices after. No quote step.
+- **Proposal needed:** Yes
 
 ---
 
@@ -44,19 +46,24 @@
 - **Status:** Phase 1 shipped. Drake approved. Phases 2-4 queued.
 - → `docs/proposals/loyalty-system-overhaul.md`
 
+### Warranty System
+- **Status:** Proposal written, awaiting approval
+- Warranty tracking, claims workflow, per-tenant policies, reporting
+- → [`proposals/warranty-system.md`](proposals/warranty-system.md)
+
 ### Review Request System
 - **Status:** Proposal written, awaiting approval
 - Smart Google review requests after repair completion, throttled by customer type
-- → `docs/proposals/review-request-system.md`
+- → [`proposals/review-request-system.md`](proposals/review-request-system.md)
 
 ### Website Integration Widget
 - **Status:** Proposal written, awaiting approval
 - Embeddable quote form for shop websites → auto-creates customers + repairs
-- → `docs/proposals/website-integration-widget.md`
+- → [`proposals/website-integration-widget.md`](proposals/website-integration-widget.md)
 
 ### Stripe Connect Phase 3 — Dashboard
 - **Status:** Connect is live, dashboard (payout history, balance, fee reporting) still pending
-- → `docs/proposals/stripe-connect-implementation-plan.md`
+- → [`proposals/stripe-connect-implementation-plan.md`](proposals/stripe-connect-implementation-plan.md)
 
 ---
 
