@@ -34,6 +34,8 @@ from common.utils import convert_heic_to_jpeg
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from core.services.sms_service import SMSService
 
@@ -1314,8 +1316,16 @@ def customer_register(request):
         if password != confirm_password:
             return render_with_form_data("Passwords do not match")
 
-        if len(password) < 8:
-            return render_with_form_data("Password must be at least 8 characters long")
+        # Use Django's full password validators (CommonPasswordValidator,
+        # NumericPasswordValidator, MinimumLengthValidator, etc.) instead of
+        # a bare length check so weak passwords like "password1" are rejected.
+        # (CODE-188: customer_register used len(password) < 8; this matches the
+        # validation used in shop_join_view and accept_invite.)
+        try:
+            temp_user = User(username=username, email=email, first_name=first_name, last_name=last_name)
+            validate_password(password, user=temp_user)
+        except DjangoValidationError as e:
+            return render_with_form_data(' '.join(e.messages))
 
         if User.objects.filter(username=username).exists():
             return render_with_form_data("Username already exists")
@@ -3059,10 +3069,21 @@ def accept_customer_invitation(request, token):
             errors.append("First name is required.")
         if not password:
             errors.append("Password is required.")
-        if len(password) < 8:
-            errors.append("Password must be at least 8 characters.")
         if password != password_confirm:
             errors.append("Passwords do not match.")
+        # Use Django's full password validators instead of bare length check.
+        # (CODE-188: accept_customer_invitation used len(password) < 8; this
+        # matches the validation used in shop_join_view and accept_invite so
+        # common/numeric passwords like "password1" are properly rejected.)
+        if password and not errors:
+            try:
+                temp_user = User(
+                    username='temp', email=email,
+                    first_name=first_name, last_name=last_name,
+                )
+                validate_password(password, user=temp_user)
+            except DjangoValidationError as e:
+                errors.extend(e.messages)
         if User.objects.filter(email__iexact=email).exists():
             errors.append("An account with this email already exists. Please log in instead.")
         
