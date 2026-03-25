@@ -2764,6 +2764,10 @@ def owner_email_invoice(request, invoice_id):
         messages.error(request, 'Cannot email a draft invoice. Send it first.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
+    if invoice.status == 'CANCELLED':
+        messages.error(request, 'Cannot email a cancelled (voided) invoice.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         email_service = InvoiceEmailService(tenant=tenant)

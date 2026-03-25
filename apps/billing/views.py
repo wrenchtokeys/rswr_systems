@@ -374,6 +374,8 @@ def send_invoice_email(request, invoice_id):
 
     if invoice.status == 'PAID':
         return JsonResponse({'error': f'Invoice {invoice.invoice_number} is already paid'}, status=400)
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'error': f'Invoice {invoice.invoice_number} is cancelled and cannot be sent'}, status=400)
 
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
@@ -446,6 +448,9 @@ def send_invoice_email_batch(request):
         try:
             if invoice.status == 'PAID':
                 results.append({'id': inv_id, 'success': False, 'error': 'Already paid'})
+                continue
+            if invoice.status == 'CANCELLED':
+                results.append({'id': inv_id, 'success': False, 'error': 'Invoice is cancelled'})
                 continue
             if not invoice.customer.email:
                 results.append({'id': inv_id, 'success': False, 'error': 'No email'})
