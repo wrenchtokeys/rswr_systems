@@ -40,7 +40,10 @@ Split the redemption flow by reward category:
 └───────────────────────────────────────────┘
 ```
 
-- Show only FULFILLED, unapplied monetary redemptions
+- Show only APPROVED, unapplied monetary redemptions
+  {# NOTE: Use APPROVED (not FULFILLED). FULFILLED means the reward is already delivered/applied.
+     APPROVED means the shop has approved it but it hasn't been applied to a specific repair yet.
+     Bug fix per suggestions.md §10 / impl-plan §3. #}
 - Customer checks the box to apply
 - Repair is created with `applied_rewards` already linked
 - Tech sees "Customer applied: 25% off" on repair detail

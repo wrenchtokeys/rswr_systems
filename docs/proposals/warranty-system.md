@@ -47,14 +47,20 @@ class WarrantyPolicy(models.Model):
     tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE,
         related_name='warranty_policies')
     
+    # IMPORTANT: These values MUST match Repair.DAMAGE_TYPE_CHOICES exactly
+    # (apps/technician_portal/models.py lines 443-453) so that
+    # WarrantyService.set_warranty_on_completion() can match repair.damage_type
+    # to the correct policy via applies_to=repair.damage_type.
+    # Using mismatched strings would silently fall through to the 'all_repairs'
+    # default for every repair. (Bug fix per suggestions.md §4 / impl-plan §2)
     APPLIES_TO_CHOICES = [
-        ('chip', 'Chip Repair'),
-        ('crack', 'Crack Repair'),
-        ('star_break', 'Star Break'),
-        ('bulls_eye', "Bull's Eye"),
-        ('combination', 'Combination Break'),
-        ('half_moon', 'Half-Moon'),
-        ('replacement', 'Full Replacement'),
+        ('Chip', 'Chip Repair'),
+        ('Crack', 'Crack Repair'),
+        ('Star Break', 'Star Break'),
+        ("Bull's Eye", "Bull's Eye"),
+        ('Combination Break', 'Combination Break'),
+        ('Half-Moon', 'Half-Moon'),
+        ('Other', 'Other'),
         ('all_repairs', 'All Repairs (default)'),
     ]
     applies_to = models.CharField(max_length=30, choices=APPLIES_TO_CHOICES)

@@ -11,40 +11,45 @@
 
 These are errors in the proposals that need correcting before any implementation begins.
 
-### 1. Review Request: `queue_status_history_contains()` doesn't exist
+### 1. Review Request: `queue_status_history_contains()` doesn't exist ✅ DONE
 **Ref:** [suggestions.md §5](#5-review-request-system-draft) — "method call will raise AttributeError at runtime"
 
 **Fix:** Replace `repair.queue_status_history_contains('DENIED')` with a check against actual data. Two options:
 - **Option A (simple):** Check `repair.queue_status == 'DENIED'` — only catches currently-denied repairs, not ones that were denied and later re-requested
-- **Option B (better):** Check `TechnicianNotification.objects.filter(repair=repair, notification_type='repair_denied').exists()` — catches any repair that was ever denied
+- **Option B (better):** Check `TechnicianNotification.objects.filter(repair=repair, message__icontains='DENIED').exists()` — catches any repair that was ever denied (using message content since TechnicianNotification has no notification_type field)
 
-**Plan:** Fix in `review-request-system.md` before building. Use Option B.
+**Completed:** Fixed in `review-request-system.md`. Used Option B with `message__icontains='DENIED'`.
+When customer portals deny a repair, a TechnicianNotification is created with "DENIED" in the message.
+This check is robust to re-requested repairs that were previously denied.
 
 ---
 
-### 2. Warranty: `applies_to` choices don't match Repair damage types
+### 2. Warranty: `applies_to` choices don't match Repair damage types ✅ DONE
 **Ref:** [suggestions.md §4](#4-warranty-system-draft) — "silently breaks... always fall through to all_repairs default"
 
 **Fix:** Change `WarrantyPolicy.APPLIES_TO_CHOICES` to match `Repair.DAMAGE_TYPE_CHOICES` exactly:
 ```python
-# Current (wrong):  'chip', 'crack', 'star_break', 'bulls_eye'
-# Correct (match):  'Chip', 'Crack', 'Star Break', "Bull's Eye"
+# Was (wrong):  'chip', 'crack', 'star_break', 'bulls_eye', 'combination', 'half_moon', 'replacement'
+# Now (correct): 'Chip', 'Crack', 'Star Break', "Bull's Eye", 'Combination Break', 'Half-Moon', 'Other'
 ```
 
-**Plan:** Fix in `warranty-system.md` before building. Pull choices directly from `Repair.DAMAGE_TYPE_CHOICES` to prevent future drift.
+**Completed:** Fixed in `warranty-system.md`. Choices now match `apps/technician_portal/models.py` lines 443-453
+exactly. 'replacement' removed (not in Repair.DAMAGE_TYPE_CHOICES), 'Other' added. max_length bumped to
+accommodate 'Combination Break' (16 chars). Added comment warning against future drift.
 
 ---
 
-### 3. Reward Redemption UX: Wrong status filter
+### 3. Reward Redemption UX: Wrong status filter ✅ DONE
 **Ref:** [suggestions.md §10](#10-reward-redemption-ux-overhaul-draft) — "FULFILLED implies the redemption is already complete"
 
 **Fix:** Change "Show only FULFILLED, unapplied monetary redemptions" → "Show only APPROVED, unapplied monetary redemptions."
 
-**Plan:** Fix in `reward-redemption-ux-overhaul.md`.
+**Completed:** Fixed in `reward-redemption-ux-overhaul.md`. FULFILLED = reward already delivered.
+APPROVED = shop approved, not yet applied to a repair. Added inline comment explaining the distinction.
 
 ---
 
-### 4. AI Plan Recommendation: Projection math bug
+### 4. AI Plan Recommendation: Projection math bug ✅ DONE
 **Ref:** [suggestions.md §8](#8-ai-plan-recommendation-draft) — "underestimates throughput for shops that ramped up"
 
 **Fix:** Change denominator from `trial_days` to `min(trial_days, 30)`:
@@ -53,11 +58,13 @@ sample_days = min(trial_days, 30)
 projected_monthly_repairs = (stats['monthly_repairs'] / sample_days) * 30
 ```
 
-Also fix: Stripe Connect → Enterprise recommendation is too aggressive. Move to Pro signal, not Enterprise.
+Also fix: Stripe Connect → Enterprise recommendation was too aggressive. Moved to Pro signal.
 
-Also fix: Enterprise threshold uses 50 customers (Starter limit), not Pro limit. Align thresholds to actual plan limits.
+Also fix: Threshold alignment — Enterprise now requires >15 techs or >500 projected repairs/month.
+Pro covers >5 techs, >200 repairs, >50 customers, or Stripe Connect usage. Matches actual plan limits.
 
-**Plan:** Fix all three issues in `ai-plan-recommendation.md`.
+**Completed:** All three sub-fixes applied in `ai-plan-recommendation.md` with inline comments
+explaining each correction.
 
 ---
 

@@ -161,7 +161,16 @@ class ReviewRequestService:
             return None  # No one to email
         
         # 2. Check suppression: negative experience
-        if repair.queue_status_history_contains('DENIED'):
+        # NOTE: repair.queue_status_history_contains() does not exist — Repair has no
+        # status history table. Instead, check TechnicianNotification for a denial
+        # message on this repair. When a customer denies a repair, a TechnicianNotification
+        # is created with a message containing "DENIED". We use message__icontains so this
+        # is robust to minor message changes. (Bug fix per suggestions.md §5 / impl-plan §1)
+        from apps.technician_portal.models import TechnicianNotification
+        if TechnicianNotification.objects.filter(
+            repair=repair,
+            message__icontains='DENIED',
+        ).exists():
             return ReviewRequest.objects.create(
                 tenant=repair.tenant, customer=customer,
                 customer_user=customer_user, repair=repair,
