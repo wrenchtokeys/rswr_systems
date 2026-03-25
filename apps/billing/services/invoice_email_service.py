@@ -364,12 +364,13 @@ class InvoiceEmailService:
                         # or show a fallback page with contact info.
                         try:
                             from rs_systems.views import generate_payment_token
-                            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
                             token = generate_payment_token(invoice_record.id)
                             payment_link = f"{base_url}/pay/{invoice_record.id}/{token}/"
                         except Exception as e:
                             logger.warning(f"Could not generate payment URL: {e}")
-                            payment_link = f"https://rssystems.io/app/invoices/{invoice_record.id}/"
+                            _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                            payment_link = f"{_fb_base}/app/invoices/{invoice_record.id}/"
                 except Exception:
                     pass
             
@@ -441,13 +442,15 @@ class InvoiceEmailService:
         elif invoice_id:
             try:
                 from rs_systems.views import generate_payment_token
-                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
                 token = generate_payment_token(invoice_id)
                 portal_url = f"{base_url}/pay/{invoice_id}/{token}/"
             except Exception:
-                portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/"
+                _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                portal_url = f"{_fb_base}/app/invoices/{invoice_id}/"
         else:
-            portal_url = "https://rssystems.io/app/invoices/"
+            _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+            portal_url = f"{_fb_base}/app/invoices/"
 
         # Company info
         company_name = 'RS Systems'
