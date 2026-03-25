@@ -1,5 +1,13 @@
 # Proposals
 
+## Platform Reference Documents
+
+| Document | Purpose |
+|----------|---------|
+| [Pricing Tiers](../PRICING_TIERS.md) | Feature-to-plan tier matrix — **check before every proposal** |
+
+---
+
 Feature proposals and workflow improvements suggested by Amelia.
 
 Each proposal includes:

@@ -12,6 +12,14 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **`TenantConfig` abstract base class** (`common/models.py`) — DRY pattern for all per-tenant config models. Provides `get_for_tenant()` classmethod and `created_at`/`updated_at` timestamps. `LoyaltyConfig` now inherits from it. All future per-tenant configs (`ReviewConfig`, `WarrantyPolicy`, etc.) must inherit from `TenantConfig`. (CODE-184, implementation-plan.md section 16)
+- **`docs/PRICING_TIERS.md`** — Canonical feature-to-plan tier matrix. Single source of truth for pricing decisions across all proposals. All proposals must reference this before features ship. (CODE-184, implementation-plan.md section 17)
+
+---
+
 ## [2.10.0] - March 24, 2026
 
 ### Added — Loyalty System Phase 1

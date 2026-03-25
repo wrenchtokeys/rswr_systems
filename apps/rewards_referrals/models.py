@@ -2,6 +2,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 from apps.customer_portal.models import CustomerUser
+from common.models import TenantConfig
 
 class ReferralCode(models.Model):
     """
@@ -280,11 +281,8 @@ class PointTransaction(models.Model):
         return f"{self.customer_user} {sign}{self.amount} ({self.transaction_type})"
 
 
-class LoyaltyConfig(models.Model):
+class LoyaltyConfig(TenantConfig):
     """Per-tenant loyalty program configuration."""
-    tenant = models.OneToOneField(
-        'tenants.Tenant', on_delete=models.CASCADE, related_name='loyalty_config',
-    )
     points_per_repair = models.PositiveIntegerField(default=50)
     referral_bonus_referrer = models.PositiveIntegerField(default=500)
     referral_bonus_referred = models.PositiveIntegerField(default=100)
@@ -299,18 +297,10 @@ class LoyaltyConfig(models.Model):
     expiry_warning_days = models.PositiveIntegerField(default=30)
     program_name = models.CharField(max_length=100, default='Rewards')
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
+    class Meta(TenantConfig.Meta):
         verbose_name = 'Loyalty Configuration'
         verbose_name_plural = 'Loyalty Configurations'
 
     def __str__(self):
         return f"{self.tenant.name} — {self.program_name}"
-
-    @classmethod
-    def get_for_tenant(cls, tenant):
-        """get_or_create pattern — always returns a LoyaltyConfig."""
-        config, _created = cls.objects.get_or_create(tenant=tenant)
-        return config

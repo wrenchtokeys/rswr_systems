@@ -236,7 +236,7 @@ def post_completion_hooks(repair):
 
 ---
 
-### 16. TenantConfig Abstract Base Class
+### 16. TenantConfig Abstract Base Class ✅ DONE
 **Problem:** `BillingConfig`, `LoyaltyConfig`, `ReviewConfig`, `WarrantyPolicy` all repeat the same pattern.
 
 **Plan:**
@@ -256,9 +256,11 @@ class TenantConfig(models.Model):
 
 **When:** Next new config model. Retrofit existing ones in a cleanup sprint.
 
+> **Implemented** in `common/models.py`. `LoyaltyConfig` now inherits from `TenantConfig` (`created_at`, `updated_at`, `get_for_tenant()` all inherited). Tested in `tests_loyalty.py` `TenantConfigBaseClassTest` (5 regression tests).
+
 ---
 
-### 17. Feature-to-Plan Tier Matrix
+### 17. Feature-to-Plan Tier Matrix ✅ DONE
 **Problem:** Pricing decisions scattered across proposals with inconsistencies.
 
 **Plan:** Create `docs/PRICING_TIERS.md`:
@@ -279,6 +281,8 @@ class TenantConfig(models.Model):
 | Google Business API | ❌ | ❌ | ✅ |
 
 **When:** Before any new feature ships to production. Reference from all proposals.
+
+> **Implemented** as `docs/PRICING_TIERS.md`. Reference added to `docs/proposals/README.md` under "Platform Reference Documents".
 
 ---
 

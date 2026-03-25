@@ -684,3 +684,43 @@ class RedeemRewardInactiveLoyaltyTest(TestCase):
         txns = PointTransaction.objects.filter(customer_user=self.cu, transaction_type='redemption')
         self.assertEqual(txns.count(), 1)
         self.assertEqual(txns.first().amount, -self.option.points_required)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# TenantConfig abstract base class (CODE-184)
+# ──────────────────────────────────────────────────────────────────────
+
+class TenantConfigBaseClassTest(TestCase):
+    """Tests for TenantConfig abstract base class via LoyaltyConfig."""
+
+    def setUp(self):
+        self.tenant, self.owner = _make_tenant('BaseClass Shop', 'baseclass-shop')
+
+    def test_loyalty_config_inherits_get_for_tenant(self):
+        """LoyaltyConfig.get_for_tenant() works via inherited classmethod."""
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        self.assertIsInstance(config, LoyaltyConfig)
+        self.assertEqual(config.tenant, self.tenant)
+
+    def test_get_for_tenant_creates_if_missing(self):
+        """get_for_tenant creates a new LoyaltyConfig if none exists."""
+        LoyaltyConfig.objects.filter(tenant=self.tenant).delete()
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        self.assertIsNotNone(config.pk)
+
+    def test_get_for_tenant_idempotent(self):
+        """Calling get_for_tenant twice returns same object, no duplicate created."""
+        config1 = LoyaltyConfig.get_for_tenant(self.tenant)
+        config2 = LoyaltyConfig.get_for_tenant(self.tenant)
+        self.assertEqual(config1.pk, config2.pk)
+        self.assertEqual(LoyaltyConfig.objects.filter(tenant=self.tenant).count(), 1)
+
+    def test_loyalty_config_has_created_at(self):
+        """LoyaltyConfig has created_at via TenantConfig inheritance."""
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        self.assertIsNotNone(config.created_at)
+
+    def test_loyalty_config_has_updated_at(self):
+        """LoyaltyConfig has updated_at via TenantConfig inheritance."""
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        self.assertIsNotNone(config.updated_at)
