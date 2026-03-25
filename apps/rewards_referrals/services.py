@@ -115,6 +115,253 @@ class LoyaltyService:
         ).aggregate(total=Sum('amount'))
         return result['total'] or 0
 
+    @staticmethod
+    def reconcile_balance(customer_user):
+        """
+        Recompute Reward.points from the PointTransaction ledger and flag drift.
+
+        Returns a dict:
+            {
+                'ledger_sum': int,
+                'cached_balance': int,
+                'drift': int,          # ledger_sum - cached_balance
+                'in_sync': bool,
+            }
+
+        Does NOT mutate any data — read-only diagnostic method.
+        Use the reconcile_loyalty_balances management command (with --fix) to
+        correct drift automatically, or update Reward.points manually.
+        """
+        tenant = customer_user.customer.tenant
+        ledger_sum = (
+            PointTransaction.objects
+            .filter(tenant=tenant, customer_user=customer_user)
+            .aggregate(total=Sum('amount'))
+        )['total'] or 0
+
+        reward = Reward.objects.filter(customer_user=customer_user).first()
+        cached_balance = reward.points if reward else 0
+
+        drift = ledger_sum - cached_balance
+        return {
+            'ledger_sum': ledger_sum,
+            'cached_balance': cached_balance,
+            'drift': drift,
+            'in_sync': drift == 0,
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def manual_adjustment(customer_user, amount, reason, created_by, tenant=None):
+        """
+        Apply a manual point adjustment by an owner or manager.
+
+        ``amount`` may be positive (award) or negative (deduct).
+        ``reason`` is required for audit purposes and stored in description.
+        ``created_by`` must be the Django User making the adjustment.
+
+        Returns the created PointTransaction, or raises ValueError on bad input.
+        Raises ValueError if:
+          - amount is zero
+          - reason is blank
+          - a deduction would take the balance below zero
+          - the loyalty program is inactive
+
+        This method does NOT bypass LoyaltyService.award_points() — it uses it
+        as the single write path so every adjustment appears in the ledger with
+        the correct balance_after and tenant FK.
+        """
+        if amount == 0:
+            raise ValueError('Adjustment amount cannot be zero.')
+        if not reason or not str(reason).strip():
+            raise ValueError('A reason is required for manual point adjustments (audit trail).')
+
+        if tenant is None:
+            tenant = customer_user.customer.tenant
+
+        config = LoyaltyConfig.get_for_tenant(tenant)
+        if not config.is_active:
+            raise ValueError('Cannot make adjustments while the loyalty program is inactive.')
+
+        if amount < 0:
+            # Guard: deductions must not take the balance below zero.
+            # Lock first to get the current balance under the atomic block.
+            reward, _ = Reward.objects.get_or_create(
+                customer_user=customer_user,
+                defaults={'tenant': tenant, 'points': 0},
+            )
+            reward = Reward.objects.select_for_update().get(pk=reward.pk)
+            if reward.points + amount < 0:
+                raise ValueError(
+                    f'Deduction of {abs(amount)} would take balance below zero '
+                    f'(current balance: {reward.points}).'
+                )
+
+        description = f'Manual adjustment: {str(reason).strip()}'
+        pt = LoyaltyService.award_points(
+            customer_user=customer_user,
+            amount=amount,
+            transaction_type='manual_adjustment',
+            description=description,
+            tenant=tenant,
+            created_by=created_by,
+        )
+        return pt
+
+    @staticmethod
+    def get_point_liability_report(tenant):
+        """
+        Return a point liability summary for a tenant.
+
+        Liability = total outstanding (un-redeemed, un-expired) points across
+        all customers. This is the maximum points exposure the shop has.
+
+        Returns a dict:
+            {
+                'total_outstanding_points': int,
+                'total_issued_lifetime': int,
+                'total_redeemed_lifetime': int,
+                'total_expired_lifetime': int,
+                'total_manually_adjusted': int,
+                'active_customer_count': int,
+                'customers': [
+                    {
+                        'customer_user_id': int,
+                        'email': str,
+                        'customer_name': str,
+                        'current_balance': int,
+                        'lifetime_earned': int,
+                        'lifetime_redeemed': int,
+                        'lifetime_expired': int,
+                    },
+                    ...
+                ],
+            }
+        """
+        from django.db.models import Sum, Q, Count, Case, When, IntegerField, Value
+
+        # Aggregate PointTransaction by transaction_type for this tenant
+        stats = (
+            PointTransaction.objects
+            .filter(tenant=tenant)
+            .aggregate(
+                issued=Sum(
+                    Case(
+                        When(amount__gt=0, transaction_type__in=[
+                            'repair_complete', 'referral_made', 'referral_received',
+                            'milestone_bonus', 'early_pay_bonus', 'review_bonus',
+                            'tier_bonus',
+                        ], then='amount'),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                ),
+                manual_positive=Sum(
+                    Case(
+                        When(amount__gt=0, transaction_type='manual_adjustment', then='amount'),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                ),
+                manual_negative=Sum(
+                    Case(
+                        When(amount__lt=0, transaction_type='manual_adjustment', then='amount'),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                ),
+                redeemed=Sum(
+                    Case(
+                        When(transaction_type='redemption', then='amount'),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                ),
+                expired=Sum(
+                    Case(
+                        When(transaction_type='expiration', then='amount'),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                ),
+            )
+        )
+
+        total_issued = (stats['issued'] or 0) + (stats['manual_positive'] or 0)
+        total_redeemed = abs(stats['redeemed'] or 0)
+        total_expired = abs(stats['expired'] or 0)
+        total_manual_deducted = abs(stats['manual_negative'] or 0)
+
+        # Total outstanding = current sum of all Reward.points for this tenant
+        total_outstanding = (
+            Reward.objects
+            .filter(
+                tenant=tenant,
+                points__gt=0,
+            )
+            .aggregate(total=Sum('points'))
+        )['total'] or 0
+
+        # Per-customer breakdown — only customers with any activity
+        customer_data = []
+        rewards = (
+            Reward.objects
+            .filter(tenant=tenant)
+            .select_related('customer_user__user', 'customer_user__customer')
+            .order_by('-points')
+        )
+
+        for reward in rewards:
+            cu = reward.customer_user
+            cu_stats = (
+                PointTransaction.objects
+                .filter(tenant=tenant, customer_user=cu)
+                .aggregate(
+                    cu_issued=Sum(
+                        Case(
+                            When(amount__gt=0, then='amount'),
+                            default=Value(0),
+                            output_field=IntegerField(),
+                        )
+                    ),
+                    cu_redeemed=Sum(
+                        Case(
+                            When(transaction_type='redemption', then='amount'),
+                            default=Value(0),
+                            output_field=IntegerField(),
+                        )
+                    ),
+                    cu_expired=Sum(
+                        Case(
+                            When(transaction_type='expiration', then='amount'),
+                            default=Value(0),
+                            output_field=IntegerField(),
+                        )
+                    ),
+                )
+            )
+            customer_data.append({
+                'customer_user_id': cu.pk,
+                'email': cu.user.email,
+                'customer_name': cu.customer.name,
+                'current_balance': reward.points,
+                'lifetime_earned': cu_stats['cu_issued'] or 0,
+                'lifetime_redeemed': abs(cu_stats['cu_redeemed'] or 0),
+                'lifetime_expired': abs(cu_stats['cu_expired'] or 0),
+            })
+
+        active_count = sum(1 for c in customer_data if c['current_balance'] > 0)
+
+        return {
+            'total_outstanding_points': total_outstanding,
+            'total_issued_lifetime': total_issued,
+            'total_redeemed_lifetime': total_redeemed,
+            'total_expired_lifetime': total_expired,
+            'total_manually_adjusted': (stats['manual_positive'] or 0) + (stats['manual_negative'] or 0),
+            'active_customer_count': active_count,
+            'customers': customer_data,
+        }
+
 
 class ReferralService:
     """

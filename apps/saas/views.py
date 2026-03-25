@@ -3916,3 +3916,118 @@ def owner_generate_invoice_from_repair(request, repair_id):
         logger.error(f"Error generating invoice from repair {repair_id}: {e}", exc_info=True)
         messages.error(request, 'Could not generate invoice. Please try again.')
         return redirect('repair_detail', repair_id=repair.id)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Loyalty Phase 2: Manual Point Adjustment + Point Liability Report
+# (CODE-197)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@login_required
+@require_POST
+def owner_loyalty_adjust_points(request, customer_user_id):
+    """
+    POST /owner/loyalty/customers/<customer_user_id>/adjust/
+
+    Manually award or deduct loyalty points for a specific customer.
+    Restricted to owners and managers of the same tenant.
+
+    Form fields:
+        amount  (int, non-zero — positive = award, negative = deduct)
+        reason  (str, required — stored in PointTransaction.description)
+
+    Returns JSON:
+        { "success": true, "new_balance": 450, "transaction_id": 99 }
+      or
+        { "success": false, "error": "..." }
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+    from apps.customer_portal.models import CustomerUser
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Unauthorized.'}, status=403)
+
+    # Unscoped get_object_or_404 is forbidden — always include tenant= scoping.
+    # CustomerUser doesn't have a direct tenant FK but we reach it via customer__tenant.
+    try:
+        cu = CustomerUser.objects.select_related('customer', 'user').get(
+            pk=customer_user_id,
+            customer__tenant=tenant,
+        )
+    except CustomerUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Customer not found.'}, status=404)
+
+    # Parse and validate inputs
+    try:
+        raw_amount = request.POST.get('amount', '')
+        amount = int(raw_amount)
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Amount must be a non-zero integer.'}, status=400)
+
+    reason = request.POST.get('reason', '').strip()
+
+    try:
+        pt = LoyaltyService.manual_adjustment(
+            customer_user=cu,
+            amount=amount,
+            reason=reason,
+            created_by=request.user,
+            tenant=tenant,
+        )
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception as exc:
+        logger.error('owner_loyalty_adjust_points: unexpected error for cu=%s: %s', customer_user_id, exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': 'An unexpected error occurred.'}, status=500)
+
+    return JsonResponse({
+        'success': True,
+        'new_balance': pt.balance_after,
+        'transaction_id': pt.pk,
+        'amount': pt.amount,
+        'description': pt.description,
+    })
+
+
+@login_required
+def owner_loyalty_liability_report(request):
+    """
+    GET /owner/loyalty/liability/
+
+    JSON endpoint returning the point liability report for the authenticated
+    owner's tenant. Restricted to owners and managers.
+
+    Response:
+        {
+            "tenant_name": "Rockstar Windshield Repair",
+            "total_outstanding_points": 1200,
+            "total_issued_lifetime": 5400,
+            "total_redeemed_lifetime": 3800,
+            "total_expired_lifetime": 200,
+            "total_manually_adjusted": 100,
+            "active_customer_count": 7,
+            "customers": [
+                {
+                    "customer_user_id": 3,
+                    "email": "fleet@eos.com",
+                    "customer_name": "EOS Trucking",
+                    "current_balance": 450,
+                    "lifetime_earned": 1200,
+                    "lifetime_redeemed": 700,
+                    "lifetime_expired": 50,
+                },
+                ...
+            ]
+        }
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'error': 'Unauthorized.'}, status=403)
+
+    report = LoyaltyService.get_point_liability_report(tenant)
+    report['tenant_name'] = tenant.name
+
+    return JsonResponse(report)

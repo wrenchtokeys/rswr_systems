@@ -77,6 +77,10 @@ urlpatterns = [
     path('owner/setup/save/viscosity/', views.owner_setup_save_viscosity, name='owner_setup_save_viscosity'),
     path('owner/setup/save/assignment/', views.owner_setup_save_assignment, name='owner_setup_save_assignment'),
 
+    # Loyalty Phase 2: Manual point adjustment + liability report (CODE-197)
+    path('owner/loyalty/customers/<int:customer_user_id>/adjust/', views.owner_loyalty_adjust_points, name='owner_loyalty_adjust_points'),
+    path('owner/loyalty/liability/', views.owner_loyalty_liability_report, name='owner_loyalty_liability_report'),
+
     # Tax rate management
     path('owner/tax-rates/', views.owner_tax_rates, name='owner_tax_rates'),
     path('owner/tax-rates/add/', views.owner_add_tax_rate, name='owner_add_tax_rate'),
