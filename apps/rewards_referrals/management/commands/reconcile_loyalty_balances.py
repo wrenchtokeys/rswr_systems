@@ -151,9 +151,11 @@ class Command(BaseCommand):
                 .aggregate(total=Sum('amount'))
             )['total'] or 0
 
-            # Get the cached Reward row
+            # Get the cached Reward row — plain read here; the fix_mode path
+            # re-fetches with select_for_update() inside its own atomic block.
+            # select_for_update() outside a transaction raises TransactionManagementError.
             try:
-                reward = Reward.objects.select_for_update(nowait=True).get(
+                reward = Reward.objects.get(
                     customer_user_id=cu_id,
                 )
             except Reward.DoesNotExist:

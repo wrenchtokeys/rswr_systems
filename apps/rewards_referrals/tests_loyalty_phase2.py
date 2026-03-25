@@ -427,6 +427,35 @@ class ReconcileCommandTest(TestCase):
         data = json.loads(output)
         self.assertGreater(data['total_missing_reward_row'], 0)
 
+    def test_command_does_not_use_select_for_update_outside_atomic(self):
+        """
+        Regression test for CODE-199: reconcile_loyalty_balances used
+        select_for_update(nowait=True) outside of an atomic block, which raises
+        TransactionManagementError on PostgreSQL.
+
+        The read pass should use a plain .get(). Only the fix_mode path (inside
+        its own atomic block) needs the lock. Verify the command completes
+        without raising TransactionManagementError even with multiple customers.
+        """
+        _award(self.cu, 100)
+        # Add a second customer to trigger multiple iterations of the loop
+        cu2 = _make_customer_user(self.tenant, 'reccmd2_no_sfu@test.com')
+        _award(cu2, 200)
+
+        # Must NOT raise TransactionManagementError
+        try:
+            output = self._call_command('--json')
+            data = json.loads(output)
+        except Exception as exc:
+            self.fail(
+                f'reconcile_loyalty_balances raised {type(exc).__name__}: {exc}\n'
+                f'This likely means select_for_update() was called outside an atomic block.'
+            )
+
+        self.assertEqual(data['total_customers_checked'], 2)
+        self.assertEqual(data['total_drifted'], 0)
+        self.assertEqual(data['total_ok'], 2)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # expire_loyalty_points management command
