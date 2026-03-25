@@ -457,6 +457,14 @@ def send_invoice_email_batch(request):
                 repair_ids=repair_ids if repair_ids else None,
             )
             if sent_ok:
+                # Promote DRAFT → SENT on confirmed delivery (mirrors single-send logic).
+                # Without this, batch-sent invoices stay DRAFT: they appear in
+                # "unsent" filters, automated reminders don't trigger, and the
+                # sent_at timestamp is never recorded. (CODE-182)
+                if invoice.status == 'DRAFT':
+                    invoice.status = 'SENT'
+                    invoice.sent_at = timezone.now()
+                    invoice.save(update_fields=['status', 'sent_at'])
                 results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
             else:
                 results.append({'id': inv_id, 'success': False, 'error': sent_msg})
