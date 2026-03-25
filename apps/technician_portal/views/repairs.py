@@ -194,7 +194,7 @@ def repair_detail(request, repair_id):
     # Cache the admin check to avoid a duplicate TenantMembership query in the
     # permission block (line ~193) and the context dict (line ~248).
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
-    qs = Repair.objects.select_related('customer', 'technician__user')
+    qs = Repair.objects.select_related('customer', 'technician__user', 'warranty_policy')
     if tenant:
         qs = qs.filter(tenant=tenant)
     else:
