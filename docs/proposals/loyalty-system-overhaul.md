@@ -2,7 +2,7 @@
 
 **Author:** Amelia  
 **Date:** 2026-03-24  
-**Status:** Draft — awaiting Drake's review
+**Status:** ✅ Phase 1 SHIPPED (LOYALTY-001, March 24 2026) — Phases 2-4 pending
 
 ---
 

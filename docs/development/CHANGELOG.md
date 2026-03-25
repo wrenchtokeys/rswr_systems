@@ -12,6 +12,79 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.10.0] - March 24, 2026
+
+### Added — Loyalty System Phase 1
+- **PointTransaction model** — immutable ledger for all point changes (earn/spend/expire)
+- **LoyaltyConfig model** — per-tenant configurable point values, program name, expiry
+- **LoyaltyService** — single entry point for all balance changes with row-level locking
+- Points balance badge in customer portal navigation
+- Points history page at `/rewards/points-history/`
+- Backfill migration for existing reward balances
+- PointTransaction + LoyaltyConfig admin pages
+
+### Changed
+- `award_completion_points()` reads from LoyaltyConfig instead of hardcoded values
+- `ReferralService.process_referral()` delegates to LoyaltyService
+- `RewardService.redeem_reward()` creates PointTransaction via LoyaltyService
+- `referral_rewards` view now routes to `dashboard.html` (was using broken `rewards_compact.html`)
+- Replaced browser `confirm()` dialog with Tailwind modal for reward redemption
+
+### Fixed
+- `referral_rewards` view missing `is_active=True` filter (deactivated options shown)
+- `reward_options` view missing `points` in context (all Redeem buttons disabled)
+- Duplicate Tailwind CDN in `rewards_compact.html`
+- `ReferralCode.customer_user` missing unique constraint (race condition for duplicate codes)
+- CODE-164 through CODE-175: tenant isolation in rewards, race conditions, N+1 queries, admin delete_queryset gaps, round-robin assignment bugs
+
+---
+
+## [2.9.0] - March 23, 2026
+
+### Added
+- **Stripe Connect live** — charges_enabled, payouts_enabled, real payments flowing
+- **FAB quick action button** — on all 19 portal pages with staggered animation
+- **Public payment links** — HMAC-token URLs for customer payment without login
+- **Branded HTML emails** — all 11+ email types converted from plain text
+- **Platform owner flag** — permanent pro plan, no subscription needed
+
+### Changed
+- Windshield damage diagram restored on repair, multi-break, and customer request forms
+- Mobile batch buttons: 44px min tap targets, grid layout
+- Wider repair + multi-break forms on mobile
+
+### Fixed
+- Stale Stripe customer IDs from test→live mode switch
+- Payment notification stale data (refresh_from_db)
+- Connect webhook endpoint (connect: false → true)
+
+---
+
+## [2.8.0] - March 21-22, 2026
+
+### Fixed
+- CODE-113 through CODE-124: 12 bugs (shop_join IntegrityError, Decimal falsy, bulk invoice mark_paid, overdue reminder format, custom email template, PDF numbers, admin tax bypass, batch rewards, void ProtectedError, PaymentAdmin delete)
+- Signup CAPTCHA fix
+- Plan pre-selection on billing page, "Not sure yet" at signup, day 20 nudge email
+
+---
+
+## [2.7.0] - March 18-20, 2026
+
+### Security
+- CODE-077 through CODE-104: Full tenant isolation sweep — unscoped OneToOneField across all portals
+- ~70+ regression tests
+
+---
+
+## [2.6.0] - March 16-17, 2026
+
+### Security
+- CODE-049 through CODE-061: Race conditions, IDOR, financial bugs, customer portal guards
+- ~103 new regression tests
+
+---
+
 ## [2.5.0] - March 11-12, 2026
 
 ### Added — Admin Console Overhaul
