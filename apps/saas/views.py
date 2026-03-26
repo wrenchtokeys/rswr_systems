@@ -1418,11 +1418,51 @@ def owner_settings_view(request):
             # Update batch invoicing configuration
             try:
                 config = BillingConfig.get_for_tenant(tenant)
-                config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
-                config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
+
+                # Validate frequency against canonical choices — an unrecognised
+                # value would be silently saved and then cause batch invoicing to
+                # never run (the task's _should_run_batch_today() returns False for
+                # any unknown frequency).  (CODE-201)
+                raw_freq = request.POST.get('batch_invoice_frequency', 'disabled')
+                valid_frequencies = {code for code, _ in BillingConfig.BATCH_FREQUENCY_CHOICES}
+                if raw_freq not in valid_frequencies:
+                    messages.error(
+                        request,
+                        f'Invalid batch invoice frequency: {raw_freq!r}. '
+                        f'Must be one of: {", ".join(sorted(valid_frequencies))}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+
+                raw_day = request.POST.get('batch_invoice_day', '1')
+                try:
+                    batch_day = int(raw_day)
+                except (ValueError, TypeError):
+                    messages.error(request, 'Batch invoice day must be a number.')
+                    return redirect('/owner/settings/?tab=billing')
+
+                # Validate day range based on frequency:
+                #   weekly/biweekly → 0-6 (Monday=0, Sunday=6)
+                #   monthly         → 1-28
+                #   disabled        → day is irrelevant, accept any valid int
+                if raw_freq in ('weekly', 'biweekly') and not (0 <= batch_day <= 6):
+                    messages.error(
+                        request,
+                        f'Batch invoice day must be 0–6 for weekly/bi-weekly scheduling '
+                        f'(0=Monday … 6=Sunday). Got: {batch_day}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+                if raw_freq == 'monthly' and not (1 <= batch_day <= 28):
+                    messages.error(
+                        request,
+                        f'Batch invoice day must be 1–28 for monthly scheduling. Got: {batch_day}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+
+                config.batch_invoice_frequency = raw_freq
+                config.batch_invoice_day = batch_day
                 config.batch_invoice_auto_send = request.POST.get('batch_invoice_auto_send') == '1'
                 config.save(update_fields=['batch_invoice_frequency', 'batch_invoice_day', 'batch_invoice_auto_send'])
-                
+
                 if config.batch_invoice_frequency != 'disabled':
                     messages.success(request, f'Batch invoicing enabled: {config.batch_invoice_frequency} on day {config.batch_invoice_day}.')
                 else:
