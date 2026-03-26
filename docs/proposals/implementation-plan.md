@@ -330,22 +330,27 @@ class TenantConfig(models.Model):
 
 ---
 
-### 19. Management Command Registry
+### 19. Management Command Registry ✅ DONE
 **Problem:** Cron jobs accumulating without centralized documentation.
 
-**Plan:** Update `docs/deployment/PRODUCTION_CHECKLIST.md` with a management command table:
+**Plan:** Update `docs/deployment/PRODUCTION_CHECKLIST.md` with a management command table.
+
+> **Implemented** in `docs/deployment/PRODUCTION_CHECKLIST.md` (v1.2). Full registry added with four sections:
+> - **Scheduled (EB Cron)** — `process_batch_invoices`, `process_overdue_invoices`, `generate_aging_report`, `check_subscription_alerts`
+> - **Loyalty commands pending cron** — `expire_loyalty_points` (midnight), `reconcile_loyalty_balances` (3am) — implemented, need adding to `.ebextensions`
+> - **On-demand commands** — 10 commands with flags documented
+> - **Maintenance-only** — 4 one-time commands
+> - **Adding a new command checklist** — 6-step guide for future additions
 
 | Command | Schedule | Purpose |
 |---------|----------|---------|
-| `check_subscription_alerts` | Daily 8am | Subscription expiry emails |
-| `process_batch_invoices` | Daily | Auto-generate batch invoices |
-| `process_overdue_invoices` | Daily | Mark overdue, send reminders |
-| `send_review_requests` | Every 30min | Send queued review request emails |
-| `expire_loyalty_points` | Daily midnight | Expire points past expiry date |
-| `reconcile_loyalty_balances` | Daily 3am | Verify Reward.points matches ledger |
-| `generate_aging_report` | Weekly Monday | Aging report cache refresh |
-
-**When:** Next deployment doc update. Add each new command as features ship.
+| `check_subscription_alerts` | Daily 9am UTC | Subscription expiry emails |
+| `process_batch_invoices` | Daily 6am UTC | Auto-generate batch invoices |
+| `process_overdue_invoices` | Daily 8am UTC | Mark overdue, send reminders |
+| `expire_loyalty_points` | Daily midnight UTC | Expire points past expiry date |
+| `reconcile_loyalty_balances` | Daily 3am UTC | Verify Reward.points matches ledger |
+| `generate_aging_report` | Daily 9am UTC | Aging report cache refresh |
+| `purge_deleted_records` | Manual / weekly | Hard-purge soft-deleted records older than 30d |
 
 ---
 

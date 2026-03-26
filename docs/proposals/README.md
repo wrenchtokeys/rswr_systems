@@ -34,12 +34,12 @@ Each proposal includes:
 ### 🚧 Partially Shipped
 | Proposal | Status | Notes |
 |----------|--------|-------|
-| [Loyalty System Overhaul](loyalty-system-overhaul.md) | Phase 1 shipped | PointTransaction ledger, LoyaltyConfig, LoyaltyService. Phases 2-4 (engagement hooks, tiers, dashboards) pending |
+| [Loyalty System Overhaul](loyalty-system-overhaul.md) | Phases 1-2 shipped | Phase 1: ledger, LoyaltyConfig, LoyaltyService. Phase 2: reconcile command, expire command, liability report, manual adjustment. Phases 3-4 (tiers, dashboards) pending |
+| [Warranty System](warranty-system.md) | Phase 1 shipped | Policies, claim workflow, repair badges, invoice terms, completion hook. Phase 2 (per-customer overrides, goodwill flag, stats cache) pending |
 
 ### 🟡 Awaiting Review
 | Proposal | Status | Notes |
 |----------|--------|-------|
-| [Warranty System](warranty-system.md) | Draft | Warranty tracking, claims workflow, per-tenant policies, zero-charge warranty repairs |
 | [Review Request System](review-request-system.md) | Draft | Smart Google review requests after repair completion. Ties into website widget flywheel |
 | [Website Integration Widget](website-integration-widget.md) | Draft | Embeddable quote form for shop websites |
 | [Repair Form Efficiency](repair-form-efficiency.md) | Draft | 12 ideas for repair form, 7 for replacement, 5 for multi-break |

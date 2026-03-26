@@ -302,21 +302,15 @@ class LoyaltyService:
             .aggregate(total=Sum('points'))
         )['total'] or 0
 
-        # Per-customer breakdown — only customers with any activity
-        customer_data = []
-        rewards = (
-            Reward.objects
-            .filter(tenant=tenant)
-            .select_related('customer_user__user', 'customer_user__customer')
-            .order_by('-points')
-        )
-
-        for reward in rewards:
-            cu = reward.customer_user
-            cu_stats = (
+        # Per-customer breakdown — only customers with any activity.
+        # Build stats in a SINGLE annotated query (CODE-200 fix: was N+1).
+        per_cu_stats = {
+            row['customer_user_id']: row
+            for row in (
                 PointTransaction.objects
-                .filter(tenant=tenant, customer_user=cu)
-                .aggregate(
+                .filter(tenant=tenant)
+                .values('customer_user_id')
+                .annotate(
                     cu_issued=Sum(
                         Case(
                             When(amount__gt=0, then='amount'),
@@ -340,14 +334,27 @@ class LoyaltyService:
                     ),
                 )
             )
+        }
+
+        customer_data = []
+        rewards = (
+            Reward.objects
+            .filter(tenant=tenant)
+            .select_related('customer_user__user', 'customer_user__customer')
+            .order_by('-points')
+        )
+
+        for reward in rewards:
+            cu = reward.customer_user
+            cu_stats = per_cu_stats.get(cu.pk, {})
             customer_data.append({
                 'customer_user_id': cu.pk,
                 'email': cu.user.email,
                 'customer_name': cu.customer.name,
                 'current_balance': reward.points,
-                'lifetime_earned': cu_stats['cu_issued'] or 0,
-                'lifetime_redeemed': abs(cu_stats['cu_redeemed'] or 0),
-                'lifetime_expired': abs(cu_stats['cu_expired'] or 0),
+                'lifetime_earned': cu_stats.get('cu_issued') or 0,
+                'lifetime_redeemed': abs(cu_stats.get('cu_redeemed') or 0),
+                'lifetime_expired': abs(cu_stats.get('cu_expired') or 0),
             })
 
         active_count = sum(1 for c in customer_data if c['current_balance'] > 0)

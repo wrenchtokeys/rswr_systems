@@ -1,21 +1,19 @@
 # RS Systems — TODO & Feature Gaps
 
 *Things the system doesn't have yet, organized by priority.*
-*Last Updated: March 25, 2026*
+*Last Updated: March 26, 2026*
 
 ---
 
 ## 🔴 Missing Features (Needed for Real Shops)
 
-### Warranty System
-- **Gap:** No way to track warranty periods on repairs or handle warranty claims
-- **What's needed:**
-  - Warranty period per repair (e.g., "lifetime on chip repairs", "1 year on replacements")
-  - Configurable per tenant (owner sets their warranty policy per damage type)
-  - When a customer calls back, tech looks up original repair and sees warranty status instantly
-  - Warranty claim creates a new $0 repair linked to the original
-  - Warranty repairs excluded from invoicing, loyalty points, and review requests
-  - Reporting: claims per month, warranty rate, by tech, by damage type
+### Warranty System Phase 2
+- **Phase 1 shipped** (2026-03-25) — policies, claim modal, badges, invoice terms
+- **Phase 2 remaining:**
+  - Per-customer warranty overrides (nullable `customer` FK on `WarrantyPolicy`)
+  - Soft-deleted original repair → show "Original repair (deleted)" on claim
+  - Goodwill repair flag (`is_goodwill_repair` on Repair — courtesy repairs outside policy)
+  - `get_warranty_stats()` cached via management command
 - → **[`proposals/warranty-system.md`](proposals/warranty-system.md)**
 
 ### Customer Communication Log
@@ -39,16 +37,14 @@
 
 ## 🟡 Approved / In Progress
 
-### Loyalty System Phases 2-4
-- **Phase 2:** Engagement hooks (early payment bonus, review bonus, manual adjustments, expiry management command)
+### Loyalty System Phases 3-4
+- **Phase 2 shipped** (2026-03-25) — reconcile command, expire command, liability report, manual adjustment
 - **Phase 3:** Tiers (Pro-only — configurable Bronze/Silver/Gold/Platinum with point multipliers)
-- **Phase 4:** Dashboards (customer loyalty view, owner analytics, liability report)
-- **Status:** Phase 1 shipped. Drake approved. Phases 2-4 queued.
+- **Phase 4:** Dashboards (customer loyalty view, owner analytics)
 - → `docs/proposals/loyalty-system-overhaul.md`
 
-### Warranty System
-- **Status:** Proposal written, awaiting approval
-- Warranty tracking, claims workflow, per-tenant policies, reporting
+### Warranty System Phase 2
+- **Status:** Phase 1 shipped. Phase 2 items itemized above in 🔴 section.
 - → [`proposals/warranty-system.md`](proposals/warranty-system.md)
 
 ### Review Request System

@@ -2,6 +2,42 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-03-26 (Sprint 7 — Cleanup & Registry)
+
+### Added
+- **Management Command Registry** — `docs/deployment/PRODUCTION_CHECKLIST.md` now contains a full registry of all management commands (scheduled EB cron, on-demand, and maintenance-only). Includes per-command flags, log file paths, and a 6-step checklist for adding new commands. (§19 of implementation-plan.md)
+
+### Fixed
+- **CODE-199** — `reconcile_loyalty_balances` command crashed with `TransactionManagementError` due to `select_for_update()` called outside an atomic block in the read path. Silent failure masked as "0 drifts found" on every run. Fixed by using plain `.get()` in read path; `--fix` mode still uses proper locked atomic block.
+- **CODE-198** — Missing `db_index` on `Tenant.stripe_customer_id`, `stripe_subscription_id`, and `stripe_connect_account_id`. Every Stripe webhook triggered a full table scan. Three indexes added via migration `0017`.
+- **CODE-197 / Loyalty Phase 2** — Four Phase 2 items shipped: `reconcile_loyalty_balances` command, `expire_loyalty_points` command, point liability report (`GET /owner/loyalty/liability/`), manual point adjustment (`POST /owner/loyalty/customers/<id>/adjust/`). 59 new tests.
+- **CODE-196** — Missing `select_related('warranty_policy')` in `repair_detail()` view; extra DB query per page load for every warranted repair.
+- **CODE-195 / Sprint 5 — Warranty UI** — Owner warranty policy settings, repair warranty badges, warranty claim modal, invoice PDF warranty terms. 12 new tests.
+- **CODE-190** — `account_settings()` used bare `len(password) < 8` instead of `validate_password()`. Third and final instance of this pattern (CODE-188 fixed the other two).
+- **CODE-190 / DashboardService** — `_filter()` applied `filter(tenant=...)` to Payment querysets which have no direct `tenant` FK (path is Payment → Invoice → Tenant). `FieldError` → 500 on billing dashboard.
+- **CODE-189** — `WarrantyService.get_all_warranty_repairs()` used `models.Q(...)` without importing `models`. Runtime `NameError` on any call.
+- **CODE-188** — `customer_register()` and `accept_customer_invitation()` used bare length check instead of Django's `validate_password()`. Weak/common passwords accepted.
+- **CODE-187** — `unit_details()` fell into `else` branch doing `Repair.objects.filter(technician=None)` instead of `.none()` when no Technician record existed.
+- **CODE-186 — Repair Completion Hook Orchestrator** — `Repair.save()` now calls a hook orchestrator (`technician_portal/hooks.py`) instead of award_completion_points directly. Loyalty, warranty, and review hooks all isolated; one failure can't block others.
+- **CODE-185** — `ReferralCode.customer_user` field changed from `ForeignKey(unique=True)` to `OneToOneField` (fixes Django W342 warning; no schema change, constraint was already enforced).
+- **CODE-184 (Decimal falsy)** — Three templates used `{% if value %}` on optional Decimal fields. `Decimal('0.00')` is falsy; managers with zero approval limits and $0.00-override repairs were invisible. Fixed to `{% if value is not None %}`.
+- **CODE-184 (TenantConfig)** — `TenantConfig` abstract base class added to `common/models.py`. `LoyaltyConfig` refactored to inherit from it, removing duplicated `created_at`, `updated_at`, `get_for_tenant()`.
+- **CODE-183** — CANCELLED invoice email guard missing in 3 send paths: single-send API, batch API, and owner portal resend.
+- **CODE-182** — `send_invoice_email_batch()` batch success path never updated `invoice.status` or `invoice.sent_at`. All batch-sent invoices stayed as DRAFT indefinitely.
+- **CODE-181 (email fallbacks)** — Three exception-fallback paths in `InvoiceEmailService` hardcoded `https://rssystems.io` instead of using `settings.BASE_URL`.
+- **CODE-181 (convert_to_batch)** — `cost_override` not persisted on new Repair rows in `convert_to_batch()`, silently wiping manager price overrides on repair completion.
+- **CODE-180** — `reward_fulfillment_detail()` used wrong email field for Customer lookup. `customer_repairs` always empty; "Apply to Repair" dropdown never appeared.
+
+### Technical
+- `WarrantyPolicy` model, migrations, admin, service, and hook — full warranty system Phase 1
+- `PointTransaction` ledger, `LoyaltyConfig`, `LoyaltyService` — full loyalty Phase 2
+- `db_index=True` on three Stripe ID fields — migration `0017_add_stripe_id_indexes`
+- `docs/PRICING_TIERS.md` — feature-to-plan tier matrix (§17 of implementation-plan.md)
+- `docs/proposals/suggestions.md` and `implementation-plan.md` — full proposals audit and action plan
+- All proposal bugs §1–4 corrected in source proposal docs
+
+---
+
 ## [Unreleased] — 2026-03-21
 
 ### Added
