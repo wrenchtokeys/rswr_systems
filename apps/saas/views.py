@@ -2077,6 +2077,16 @@ def update_team_member(request, membership_id):
         messages.error(request, 'Only the shop owner can change member roles.')
         return redirect('owner_settings')
 
+    # Managers can only update technicians — not other managers or owners.
+    # Without this check, a manager can POST with role=manager (matching the
+    # target's current role so the role-change guard above doesn't fire) and
+    # silently modify a peer manager's can_repair/can_replace abilities.
+    # Only the shop owner should be able to edit manager or owner records.
+    # (CODE-212)
+    if my_membership.role == 'manager' and target.role in ('manager', 'owner'):
+        messages.error(request, 'Managers can only update technician team members.')
+        return redirect('owner_settings')
+
     # Validate role
     if new_role not in ('owner', 'manager', 'technician', 'viewer'):
         messages.error(request, 'Invalid role.')
