@@ -3464,14 +3464,61 @@ def owner_setup_save_billing(request):
         from apps.billing.models import BillingConfig
 
         config = BillingConfig.get_for_tenant(tenant)
-        config.default_payment_terms = request.POST.get('default_payment_terms', 'COD')
+
+        # Validate default_payment_terms against canonical choices.
+        # An unrecognised value is silently saved to the DB and causes invoice
+        # creation to use Django's CharField default instead of the intended
+        # terms, producing incorrect due dates.  Mirror the validation applied
+        # in owner_settings_view.  (CODE-202)
+        raw_terms = request.POST.get('default_payment_terms', 'COD')
+        valid_terms = {code for code, _ in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if raw_terms not in valid_terms:
+            return JsonResponse(
+                {'success': False, 'error': f'Invalid payment terms: {raw_terms!r}. '
+                                            f'Must be one of: {", ".join(sorted(valid_terms))}.'},
+                status=400,
+            )
+
+        # Validate batch_invoice_frequency — an unrecognised value is silently
+        # saved and causes _should_run_batch_today() to return False forever,
+        # so no batch invoices ever run.  The same validation lives in
+        # owner_settings_view (CODE-201) but was missing here in the setup
+        # wizard endpoint.  (CODE-202)
+        raw_freq = request.POST.get('batch_invoice_frequency', 'disabled')
+        valid_frequencies = {code for code, _ in BillingConfig.BATCH_FREQUENCY_CHOICES}
+        if raw_freq not in valid_frequencies:
+            return JsonResponse(
+                {'success': False, 'error': f'Invalid batch invoice frequency: {raw_freq!r}. '
+                                            f'Must be one of: {", ".join(sorted(valid_frequencies))}.'},
+                status=400,
+            )
+
+        # Validate batch_invoice_day range based on frequency.
+        try:
+            batch_day = int(request.POST.get('batch_invoice_day', '1'))
+        except (ValueError, TypeError):
+            return JsonResponse(
+                {'success': False, 'error': 'Batch invoice day must be a number.'},
+                status=400,
+            )
+        if raw_freq in ('weekly', 'biweekly') and not (0 <= batch_day <= 6):
+            return JsonResponse(
+                {'success': False, 'error': f'Batch invoice day must be 0–6 for weekly/bi-weekly '
+                                            f'scheduling (0=Monday … 6=Sunday). Got: {batch_day}.'},
+                status=400,
+            )
+        if raw_freq == 'monthly' and not (1 <= batch_day <= 28):
+            return JsonResponse(
+                {'success': False, 'error': f'Batch invoice day must be 1–28 for monthly scheduling. '
+                                            f'Got: {batch_day}.'},
+                status=400,
+            )
+
+        config.default_payment_terms = raw_terms
         config.overdue_reminder_enabled = request.POST.get('overdue_reminder_enabled') == '1'
         config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
-        config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
-        try:
-            config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
-        except (ValueError, TypeError):
-            config.batch_invoice_day = 1
+        config.batch_invoice_frequency = raw_freq
+        config.batch_invoice_day = batch_day
         config.save(update_fields=[
             'default_payment_terms', 'overdue_reminder_enabled', 'overdue_reminder_days',
             'batch_invoice_frequency', 'batch_invoice_day',
