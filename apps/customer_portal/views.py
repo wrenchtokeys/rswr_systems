@@ -597,7 +597,13 @@ def customer_repairs(request):
         # Each batch counts as 1 item, each individual repair counts as 1 item
         all_items = batch_summaries + [{'type': 'individual', 'repair': r} for r in individual_repairs_list]
 
-        page_size = int(request.GET.get('page_size', 50))
+        # Guard: int() raises ValueError on non-numeric input (e.g. ?page_size=abc).
+        # Without this guard, an invalid page_size causes a 500 error instead of
+        # silently falling back to the default.  (CODE-205)
+        try:
+            page_size = int(request.GET.get('page_size', 50))
+        except (ValueError, TypeError):
+            page_size = 50
         if page_size not in [20, 50, 100]:
             page_size = 50
 
