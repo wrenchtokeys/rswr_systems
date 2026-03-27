@@ -12,6 +12,10 @@ class CustomerUser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     is_primary_contact = models.BooleanField(default=False)
+    review_opt_out = models.BooleanField(
+        default=False,
+        help_text="If True, this user will never receive review request emails.",
+    )
 
     class Meta:
         verbose_name = 'Customer User'

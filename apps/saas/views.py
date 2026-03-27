@@ -1484,6 +1484,26 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not save email templates.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'review_settings':
+            try:
+                from apps.technician_portal.review_models import ReviewConfig
+                review_config = ReviewConfig.get_for_tenant(tenant)
+                review_config.is_enabled = request.POST.get('review_enabled') == 'on'
+                review_config.google_review_url = request.POST.get('google_review_url', '').strip()
+                review_config.email_subject = (
+                    request.POST.get('email_subject', '').strip()
+                    or "How was your experience with {shop_name}?"
+                )
+                review_config.email_body_template = request.POST.get('email_body_template', '').strip()
+                review_config.save(update_fields=[
+                    'is_enabled', 'google_review_url', 'email_subject', 'email_body_template',
+                ])
+                messages.success(request, 'Review settings saved.')
+            except Exception as e:
+                logger.error(f"Error saving review settings: {e}")
+                messages.error(request, 'Could not save review settings.')
+            return redirect('/owner/settings/?tab=reviews')
+
         # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
         tenant.business_phone = request.POST.get('business_phone', '').strip()
@@ -1570,6 +1590,16 @@ def owner_settings_view(request):
 
     batch_month_days = [{'value': d, 'label': f'{d}{_ordinal_suffix(d)} of the month'} for d in range(1, 29)]
 
+    # Review request settings + recent requests
+    from apps.technician_portal.review_models import ReviewConfig, ReviewRequest
+    review_config = ReviewConfig.get_for_tenant(tenant)
+    recent_review_requests = (
+        ReviewRequest.objects
+        .filter(tenant=tenant)
+        .select_related('customer', 'repair')
+        .order_by('-created_at')[:10]
+    )
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1584,6 +1614,8 @@ def owner_settings_view(request):
         'reminder_day_choices': reminder_day_choices,
         'active_reminder_days': active_reminder_days,
         'batch_month_days': batch_month_days,
+        'review_config': review_config,
+        'recent_review_requests': recent_review_requests,
     }
 
     return render(request, 'saas/owner_settings.html', context)

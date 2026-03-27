@@ -25,6 +25,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, Sp
 from . import views
 from apps.saas import views as saas_views
 from core.views import preview_email_template, test_notification, check_notification_prefs
+from apps.technician_portal.review_views import review_click, review_opt_out
 
 # Custom error handlers (BUG-004 — replace bare Django 404/500 with branded templates)
 handler404 = 'rs_systems.views.custom_404'
@@ -33,6 +34,11 @@ handler500 = 'rs_systems.views.custom_500'
 urlpatterns = [
     path('', views.home, name='home'),
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
+
+    # Review request public endpoints (no auth — token-based)
+    path('reviews/click/<uuid:token>/', review_click, name='review_click'),
+    path('reviews/opt-out/<uuid:token>/', review_opt_out, name='review_opt_out'),
+
     path('payment-complete', views.payment_complete, name='payment_complete'),
     path('payment-cancelled', views.payment_cancelled, name='payment_cancelled'),
     path('pay/<int:invoice_id>/<str:token>/', views.public_pay_invoice, name='public_pay_invoice'),

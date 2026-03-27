@@ -473,9 +473,9 @@ All scheduled and operational management commands for RS Systems. Update this ta
 | `generate_aging_report` | Daily 9:00 AM | `/var/log/billing-aging.log` | Refresh AR aging report cache (30/60/90/90+ day buckets) |
 | `check_subscription_alerts` | Daily 9:00 AM | (stdout) | Send subscription expiry warning emails at 7d/1d/0d/15d-past/5d-past/end milestones |
 
-> **Note:** New loyalty commands (`expire_loyalty_points`, `reconcile_loyalty_balances`) should be added to the cron config before the next production deployment. See "Add to Cron" section below.
+> **Note:** New loyalty commands (`expire_loyalty_points`, `reconcile_loyalty_balances`) and the review request command (`send_review_requests`) should be added to the cron config before the next production deployment. See "Add to Cron" section below.
 
-### Loyalty Commands — Add to Cron Before Next Deploy
+### Loyalty & Review Commands — Add to Cron Before Next Deploy
 
 These commands are implemented but not yet in `.ebextensions/11_billing_cron.config`. Add them:
 
@@ -485,6 +485,9 @@ These commands are implemented but not yet in `.ebextensions/11_billing_cron.con
 
 # Run daily at 3 AM UTC — reconcile Reward.points cache vs PointTransaction ledger
 0 3 * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py reconcile_loyalty_balances --json >> /var/log/loyalty-reconcile.log 2>&1'
+
+# Run every 15 minutes — send pending review request emails whose scheduled_at has arrived
+*/15 * * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py send_review_requests >> /var/log/review-requests.log 2>&1'
 ```
 
 ### On-Demand Commands (Run Manually)
@@ -493,6 +496,7 @@ These commands are implemented but not yet in `.ebextensions/11_billing_cron.con
 |---------|-----|---------|-------|
 | `expire_loyalty_points` | `rewards_referrals` | Expire points past their `expires_at` date, deduct from `Reward.points` balance | `--dry-run`, `--tenant-id <id>`, `--json` |
 | `reconcile_loyalty_balances` | `rewards_referrals` | Compare `Reward.points` cache vs `PointTransaction` ledger sum; alert on drift | `--fix` (auto-correct), `--tenant-id <id>`, `--json` |
+| `send_review_requests` | `technician_portal` | Send pending review request emails whose scheduled time has arrived | `--dry-run` |
 | `purge_deleted_records` | `technician_portal` | Hard-delete soft-deleted Repairs/Invoices older than N days | `--days <n>` (default 30), `--apply` (required to execute) |
 | `generate_aging_report` | `billing` | Refresh aging report cache; useful after bulk data imports | `--tenant-id <id>`, `--json` |
 | `fix_billing_config_names` | `billing` | One-time fix: correct `BillingConfig.company_name` defaulted to "Rockstar" | `--apply` |
