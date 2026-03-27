@@ -122,17 +122,28 @@ explaining each correction.
 
 ---
 
-### 7. Review Request System improvements
+### 7. Review Request System improvements ✅ Phase 1 COMPLETE (CODE-208, 2026-03-27)
 **Ref:** [suggestions.md §5](#5-review-request-system-draft)
 
-| Suggestion | Plan | When |
-|-----------|------|------|
-| Fix `queue_status_history_contains` (see §1 above) | Use notification existence check | Before build |
-| Non-deterministic `CustomerUser.first()` fallback | Change to `.filter(is_primary_contact=True)` with no fallback. If no primary, skip. | Phase 1 |
-| Customer opt-out / unsubscribe | Add `review_opt_out` boolean on CustomerUser. Unsubscribe link in every review email. CAN-SPAM compliance. | Phase 1 |
-| Document that `'reviewed'` status is a black box until Google API | Add note to proposal and code comments | Phase 1 |
-| Connect to loyalty system — confirmed review triggers points | When review `status='reviewed'` (via Google API Phase 3), call `LoyaltyService.award_points()` | Phase 3 |
-| Add `send_review_requests` to cron.yaml | Add alongside existing management commands | Phase 1 |
+**Phase 1 delivered — 41 tests passing:**
+
+| Suggestion | Status |
+|-----------|--------|
+| Fix `queue_status_history_contains` (see §1 above) | ✅ Done — uses `TechnicianNotification` existence check |
+| Non-deterministic `CustomerUser.first()` fallback | ✅ Done — `.filter(is_primary_contact=True).first()` only; no fallback; skips if no primary |
+| Customer opt-out / CAN-SPAM | ✅ Done — `CustomerUser.review_opt_out` boolean; opt-out link in every email; re-checked at send time |
+| Document `'reviewed'` status is a black box until Google API | ✅ Done — code comments + proposal updated |
+| `send_review_requests` to cron registry | ✅ Done — production checklist updated (every 15 min) |
+| Connect to loyalty system (Phase 3) | ⏳ Pending — wires in when Google Business API integrated |
+
+**Built:**
+- `ReviewConfig` (per-tenant, extends `TenantConfig`) — enable toggle, Google review URL, email customization, cooldowns, business hours
+- `ReviewRequest` model — lifecycle: pending → sent → clicked → reviewed/skipped/suppressed; UUID tokens for secure public links
+- `ReviewRequestService` — 8 eligibility checks; business hours clamping; send pipeline
+- `review_request_hook` in `hooks.py` — fires on COMPLETED transitions (replaces placeholder)
+- Public endpoints: `/reviews/click/<token>/` and `/reviews/opt-out/<token>/`
+- `send_review_requests` management command (`--dry-run` supported)
+- Owner settings Reviews tab — enable/disable, Google URL, email template, recent requests table
 
 ---
 
