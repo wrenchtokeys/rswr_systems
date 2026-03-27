@@ -96,10 +96,10 @@ explaining each correction.
 
 ---
 
-### 6. Warranty System improvements ✅ Phase 1 COMPLETE (Sprint 4, 2026-03-25)
+### 6. Warranty System improvements ✅ Phase 2 COMPLETE (CODE-207, 2026-03-27)
 **Ref:** [suggestions.md §4](#4-warranty-system-draft)
 
-**Phase 1 delivered:**
+**Phase 1 delivered (Sprint 4, 2026-03-25):**
 - WarrantyPolicy model with tenant scoping, `applies_to` choices matching `Repair.DAMAGE_TYPE_CHOICES`
 - Warranty fields on Repair (policy FK, expires_at, void tracking, `has_warranty` property)
 - WarrantyService (assign/void/check/query methods with `select_for_update()`)
@@ -108,15 +108,17 @@ explaining each correction.
 - Admin with TenantFilterMixin
 - 32 regression tests passing
 
-| Suggestion | Plan | When |
-|-----------|------|------|
-| Fix `applies_to` choices (see §2 above) | ✅ Done — matches `Repair.DAMAGE_TYPE_CHOICES` | Done |
-| Per-customer warranty overrides → Phase 2 not Phase 3 | Add nullable `customer` FK to `WarrantyPolicy`, build UI in Phase 2 | Phase 2 |
-| Soft-deleted original repair → show "Original repair (deleted)" | Add check for `warranty_original_repair` existence in template | Phase 2 |
-| Goodwill repair flag (out-of-warranty courtesy repairs) | Add `is_goodwill_repair` boolean to Repair, separate from warranty claim | Phase 2 |
-| Warranty badge on repair list view (not just detail) | Add badge to repair list table | Phase 2 |
-| Warranty terms on invoice PDF → Phase 1 minimum | Add one line to invoice template: "WARRANTY: [terms from policy]" | Phase 2 |
-| Cache `get_warranty_stats()` or use management command | Use management command + cached results, not on-demand in dashboard view | Phase 2 |
+**Phase 2 delivered (CODE-207, 2026-03-27) — 38 new tests, 70 total:**
+
+| Suggestion | Status |
+|-----------|--------|
+| Fix `applies_to` choices (see §2 above) | ✅ Done — matches `Repair.DAMAGE_TYPE_CHOICES` |
+| Per-customer warranty overrides | ✅ Done — nullable `customer` FK on `WarrantyPolicy`; `assign_warranty()` checks per-customer first; admin + `__str__` updated |
+| Soft-deleted original repair → show "Original repair (deleted)" | ✅ Done — template checks `deleted_at` on `warranty_original_repair` |
+| Goodwill repair flag | ✅ Done — `is_goodwill_repair` boolean on Repair; excluded from loyalty points; pink badge on list/detail; admin fieldset |
+| Warranty badge on repair list view | ✅ Done — ✅ W (emerald) for active, ⌛ W (amber) for expiring <30d; `warranty_expiring_soon` property on Repair |
+| Warranty terms on invoice PDF | ✅ Done — `WarrantyPolicy.terms_summary` property; rendered in invoice PDF when available |
+| Cache `get_warranty_stats()` or use management command | ✅ Done — 1-hour cache TTL on `get_warranty_stats()`; new `generate_warranty_report` management command (`--json`, `--tenant`, `--period`) |
 
 ---
 
