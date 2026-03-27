@@ -4051,7 +4051,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
 # (CODE-197)
 # ──────────────────────────────────────────────────────────────────────────────
 
-@login_required
+@owner_or_manager_required
 @require_POST
 def owner_loyalty_adjust_points(request, customer_user_id):
     """
@@ -4118,7 +4118,7 @@ def owner_loyalty_adjust_points(request, customer_user_id):
     })
 
 
-@login_required
+@owner_or_manager_required
 def owner_loyalty_liability_report(request):
     """
     GET /owner/loyalty/liability/
