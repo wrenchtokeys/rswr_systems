@@ -97,11 +97,19 @@ class BillingConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
 
 
 class InvoiceLineItemInline(admin.TabularInline):
-    """Inline display of line items on invoice."""
+    """Inline display of line items on invoice.
+
+    repair_date and unit_number are stored on the line item itself (denormalized
+    from the linked repair at creation time) so they persist even if the repair
+    is edited later.  They were listed in readonly_fields but NOT in fields,
+    which meant Django never rendered them in the tabular inline — admins had no
+    way to see which date/unit a line item corresponded to without clicking
+    through to the repair.  Added to fields so they actually appear.  (CODE-197)
+    """
     model = InvoiceLineItem
     extra = 0
     readonly_fields = ['repair_link', 'repair_date', 'unit_number']
-    fields = ['description', 'quantity', 'unit_price', 'discount', 'amount', 'repair_link']
+    fields = ['description', 'unit_number', 'repair_date', 'quantity', 'unit_price', 'discount', 'amount', 'repair_link']
     
     def repair_link(self, obj):
         if obj.repair:
