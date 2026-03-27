@@ -159,6 +159,7 @@ class RewardRedemption(models.Model):
     REDEMPTION_STATUS_CHOICES = [
         ('PENDING', 'Pending'),
         ('APPROVED', 'Approved'),
+        ('SCHEDULED', 'Scheduled'),
         ('FULFILLED', 'Fulfilled'),
         ('REJECTED', 'Rejected'),
     ]

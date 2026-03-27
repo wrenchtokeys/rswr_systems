@@ -840,9 +840,16 @@ def customer_repair_deny(request, repair_id):
                 approval.save()
             
             # Update the repair status to indicate it was denied
-            # Using a special value for DENIED to distinguish from regular PENDING
-            repair.queue_status = 'DENIED'  # You'll need to add this to the model choices
+            repair.queue_status = 'DENIED'
             repair.save()
+
+            # Auto-restore any applied reward so customer can reuse it (CODE-210)
+            restored = _restore_reward_for_repair(repair)
+            for redemption in restored:
+                messages.info(
+                    request,
+                    f'Your "{redemption.reward_option.name}" reward has been restored and can be used on your next repair.'
+                )
 
             # Create notification for technician
             if repair.technician:
@@ -1030,6 +1037,9 @@ def customer_batch_deny(request, batch_id):
                 # Update repair status
                 repair.queue_status = 'DENIED'
                 repair.save()
+
+                # Auto-restore any applied reward (CODE-210)
+                _restore_reward_for_repair(repair)
 
                 # Track technician for batch notification
                 if repair.technician:
@@ -1429,16 +1439,51 @@ def request_repair(request):
                 return handle_batch_repair_request(request, customer)
             else:
                 # Legacy single repair submission (for backwards compatibility)
-                return handle_single_repair_request(request, customer)
+                return handle_single_repair_request(request, customer, customer_user)
+
+        # Fetch available monetary rewards (APPROVED, not yet applied to a repair)
+        available_rewards = _get_available_monetary_rewards(customer_user)
 
         # Render the repair request form
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', {
+            'available_rewards': available_rewards,
+        })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 
-def handle_single_repair_request(request, customer):
+def _get_available_monetary_rewards(customer_user):
+    """
+    Return APPROVED, unapplied monetary redemptions for this customer.
+    Monetary = REPAIR_DISCOUNT, REPLACEMENT_DISCOUNT, FREE_SERVICE.
+    """
+    monetary_categories = ('REPAIR_DISCOUNT', 'REPLACEMENT_DISCOUNT', 'FREE_SERVICE')
+    return RewardRedemption.objects.filter(
+        reward__customer_user=customer_user,
+        status='APPROVED',
+        applied_to_repair__isnull=True,
+        reward_option__reward_type__category__in=monetary_categories,
+    ).select_related('reward_option', 'reward_option__reward_type')
+
+
+def _restore_reward_for_repair(repair):
+    """
+    If a repair has an applied reward redemption, unapply it and restore to APPROVED.
+    Returns the redemption if restored, None otherwise.
+    """
+    redemptions = RewardRedemption.objects.filter(applied_to_repair=repair)
+    restored = []
+    for redemption in redemptions:
+        redemption.applied_to_repair = None
+        redemption.status = 'APPROVED'
+        redemption.fulfilled_at = None
+        redemption.save()
+        restored.append(redemption)
+    return restored
+
+
+def handle_single_repair_request(request, customer, customer_user=None):
     """Handle traditional single repair request submission"""
     unit_number = request.POST.get('unit_number', '')
     description = request.POST.get('description', '')
@@ -1483,6 +1528,22 @@ def handle_single_repair_request(request, customer):
             customer_notes=description,
             queue_status='REQUESTED'
         )
+
+        # Apply selected monetary reward if provided
+        apply_reward_id = request.POST.get('apply_reward')
+        if apply_reward_id and customer_user:
+            try:
+                redemption = RewardRedemption.objects.get(
+                    id=apply_reward_id,
+                    reward__customer_user=customer_user,
+                    status='APPROVED',
+                    applied_to_repair__isnull=True,
+                )
+                redemption.applied_to_repair = repair
+                redemption.save()
+                messages.info(request, f'Reward "{redemption.reward_option.name}" applied to this repair.')
+            except RewardRedemption.DoesNotExist:
+                pass  # Silently skip if reward no longer available
 
         # Auto-assign technician based on tenant strategy
         from apps.tenants.services.assignment_service import auto_assign_repair

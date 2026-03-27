@@ -162,6 +162,44 @@
                     </ul>
                 </div>
 
+                <!-- Available Rewards (CODE-210) -->
+                {% if available_rewards %}
+                <div class="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-lg p-4 mb-4">
+                    <h3 class="text-sm font-semibold text-amber-900 mb-2 flex items-center">
+                        <i class="fas fa-gift mr-2 text-amber-600"></i>
+                        Available Rewards
+                    </h3>
+                    <p class="text-xs text-amber-700 mb-3">Select a reward to apply to this repair request</p>
+                    <div id="rewardSelectionList" class="space-y-2">
+                        {% for redemption in available_rewards %}
+                        <label class="flex items-start p-2 bg-white rounded border border-amber-100 hover:border-amber-300 cursor-pointer transition-colors">
+                            <input type="radio" name="apply_reward" value="{{ redemption.id }}"
+                                   class="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300">
+                            <div class="ml-3">
+                                <span class="text-sm font-medium text-gray-900">{{ redemption.reward_option.name }}</span>
+                                {% if redemption.reward_option.reward_type %}
+                                <span class="text-xs text-amber-600 ml-1">
+                                    {% if redemption.reward_option.reward_type.discount_type == 'PERCENTAGE' %}
+                                        ({{ redemption.reward_option.reward_type.discount_value }}% off)
+                                    {% elif redemption.reward_option.reward_type.discount_type == 'FIXED_AMOUNT' %}
+                                        (${{ redemption.reward_option.reward_type.discount_value }} off)
+                                    {% elif redemption.reward_option.reward_type.discount_type == 'FREE' %}
+                                        (Free)
+                                    {% endif %}
+                                </span>
+                                {% endif %}
+                                <p class="text-xs text-gray-500 mt-0.5">Redeemed {{ redemption.created_at|date:"M j" }}</p>
+                            </div>
+                        </label>
+                        {% endfor %}
+                        <button type="button" onclick="document.querySelectorAll('input[name=apply_reward]').forEach(r => r.checked = false)"
+                                class="text-xs text-gray-500 hover:text-gray-700 mt-1">
+                            <i class="fas fa-times"></i> Clear selection
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Submit Form -->
                 <form id="batchRepairForm" method="post" class="space-y-4">
                     {% csrf_token %}
