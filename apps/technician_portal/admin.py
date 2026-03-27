@@ -10,6 +10,7 @@ from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django import forms
 from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation, TechnicianNotification, WarrantyPolicy
+from .review_models import ReviewConfig, ReviewRequest
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -738,3 +739,146 @@ class TechnicianNotificationAdmin(TechnicianTenantFilterMixin, admin.ModelAdmin)
     def mark_as_unread(self, request, queryset):
         updated = queryset.filter(read=True).update(read=False)
         self.message_user(request, f'🔔 {updated} notification(s) marked as unread.')
+
+
+# =============================================================================
+# REVIEW REQUEST SYSTEM (CODE-208)
+# =============================================================================
+
+@admin.register(ReviewConfig)
+class ReviewConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Admin for per-tenant review request configuration.
+
+    ReviewConfig inherits from TenantConfig (abstract base with a tenant OneToOneField),
+    so TenantFilterMixin scopes superuser views correctly and non-superusers see
+    only their own shop's config.
+
+    CODE-210: Added admin registration — ReviewConfig and ReviewRequest were
+    created in CODE-208 but never registered in admin.py, making them invisible
+    to superusers in the Django admin.
+    """
+    list_display = [
+        'tenant', 'is_enabled', 'google_review_url_short',
+        'retail_cooldown_days', 'fleet_cooldown_days', 'send_delay_hours',
+    ]
+    list_filter = ['tenant', 'is_enabled']
+    search_fields = ['tenant__name', 'google_review_url']
+    list_select_related = ['tenant']
+    list_per_page = 25
+    readonly_fields = []
+
+    fieldsets = (
+        ('Tenant & Status', {
+            'fields': ('tenant', 'is_enabled'),
+        }),
+        ('Google Review Link', {
+            'fields': ('google_review_url',),
+            'description': 'Paste your Google Business review URL here.',
+        }),
+        ('Email Customisation', {
+            'fields': ('email_subject', 'email_body_template'),
+            'description': 'Leave email_body_template blank to use the default template.',
+        }),
+        ('Throttling', {
+            'fields': ('retail_cooldown_days', 'fleet_cooldown_days'),
+            'description': 'Minimum days between review requests per customer type.',
+        }),
+        ('Timing', {
+            'fields': ('send_delay_hours', 'business_hours_start', 'business_hours_end'),
+            'description': 'When to send review requests (hours in 0-23 format).',
+        }),
+    )
+
+    def google_review_url_short(self, obj):
+        url = obj.google_review_url
+        if url:
+            return url[:50] + '…' if len(url) > 50 else url
+        return '—'
+    google_review_url_short.short_description = 'Google Review URL'
+
+    def has_delete_permission(self, request, obj=None):
+        # ReviewConfig is a singleton per tenant — prevent accidental deletion.
+        return request.user.is_superuser
+
+
+@admin.register(ReviewRequest)
+class ReviewRequestAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Read-only admin for review request records.
+
+    ReviewRequest has a direct tenant FK, so TenantFilterMixin handles
+    per-tenant scoping automatically.  Records are created programmatically
+    by ReviewRequestService — add/change is disabled.
+
+    CODE-210: Added admin registration — ReviewConfig and ReviewRequest were
+    created in CODE-208 but never registered in admin.py.
+    """
+    list_display = [
+        'id', 'tenant', 'customer_link', 'status_badge',
+        'repair_link', 'scheduled_at', 'sent_at', 'clicked_at', 'created_at',
+    ]
+    list_filter = ['tenant', 'status', 'scheduled_at', 'created_at']
+    search_fields = ['customer__name', 'tenant__name', 'skip_reason']
+    date_hierarchy = 'created_at'
+    list_select_related = ['tenant', 'customer', 'repair']
+    list_per_page = 50
+    ordering = ['-created_at']
+    readonly_fields = [
+        'tenant', 'customer', 'customer_user', 'repair',
+        'status', 'skip_reason', 'token',
+        'scheduled_at', 'sent_at', 'clicked_at', 'created_at',
+    ]
+
+    fieldsets = (
+        ('Request Details', {
+            'fields': ('tenant', 'customer', 'customer_user', 'repair'),
+        }),
+        ('Status', {
+            'fields': ('status', 'skip_reason'),
+        }),
+        ('Tracking', {
+            'fields': ('token', 'scheduled_at', 'sent_at', 'clicked_at', 'created_at'),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        # Review requests are created by business logic, not manually.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Records are immutable — status updates happen via service layer.
+        return False
+
+    def customer_link(self, obj):
+        from django.urls import reverse
+        url = reverse('admin:core_customer_change', args=[obj.customer.id])
+        return format_html('<a href="{}">{}</a>', url, obj.customer.name)
+    customer_link.short_description = 'Customer'
+    customer_link.admin_order_field = 'customer__name'
+
+    def repair_link(self, obj):
+        if obj.repair:
+            from django.urls import reverse
+            url = reverse('admin:technician_portal_repair_change', args=[obj.repair.id])
+            return format_html('<a href="{}">Repair #{}</a>', url, obj.repair.id)
+        return '—'
+    repair_link.short_description = 'Repair'
+
+    def status_badge(self, obj):
+        colors = {
+            'pending': '#ffc107',
+            'sent': '#007bff',
+            'clicked': '#17a2b8',
+            'reviewed': '#28a745',
+            'skipped': '#6c757d',
+            'suppressed': '#dc3545',
+        }
+        color = colors.get(obj.status, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 2px 8px; '
+            'border-radius: 4px; font-size: 11px;">{}</span>',
+            color, obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+    status_badge.admin_order_field = 'status'
