@@ -7,8 +7,9 @@ All methods enforce tenant scoping and use select_for_update() for state mutatio
 import logging
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.db import models, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -43,22 +44,43 @@ class WarrantyService:
             )
 
         if policy is None:
-            # Try damage-type-specific policy first
-            policy = WarrantyPolicy.objects.filter(
-                tenant=repair.tenant,
-                is_active=True,
-                applies_to=repair.damage_type,
-            ).first()
+            # Priority: per-customer policy > tenant-wide policy
+            # 1. Per-customer, damage-type-specific
+            if repair.customer_id:
+                policy = WarrantyPolicy.objects.filter(
+                    tenant=repair.tenant,
+                    customer=repair.customer,
+                    is_active=True,
+                    applies_to=repair.damage_type,
+                ).first()
+                # 2. Per-customer, all_repairs
+                if not policy:
+                    policy = WarrantyPolicy.objects.filter(
+                        tenant=repair.tenant,
+                        customer=repair.customer,
+                        is_active=True,
+                        applies_to='all_repairs',
+                    ).first()
 
-            # Fall back to 'all_repairs' default policy
+            # 3. Tenant-wide, damage-type-specific
             if not policy:
                 policy = WarrantyPolicy.objects.filter(
                     tenant=repair.tenant,
+                    customer__isnull=True,
+                    is_active=True,
+                    applies_to=repair.damage_type,
+                ).first()
+
+            # 4. Tenant-wide, 'all_repairs' default
+            if not policy:
+                policy = WarrantyPolicy.objects.filter(
+                    tenant=repair.tenant,
+                    customer__isnull=True,
                     is_active=True,
                     applies_to='all_repairs',
                 ).first()
 
-            # Fall back to any default policy for this tenant
+            # 5. Any default policy for this tenant
             if not policy:
                 policy = WarrantyPolicy.objects.filter(
                     tenant=repair.tenant,
@@ -240,3 +262,52 @@ class WarrantyService:
             Q(warranty_expires_at__isnull=True) |
             Q(warranty_expires_at__gt=now)
         ).select_related('warranty_policy', 'customer', 'technician__user')
+
+    STATS_CACHE_KEY = 'warranty_stats_{tenant_pk}'
+    STATS_CACHE_TTL = 3600  # 1 hour
+
+    @staticmethod
+    def get_warranty_stats(tenant, period_days=30, use_cache=True):
+        """
+        Warranty analytics for the owner dashboard.
+
+        Returns cached stats (1-hour TTL) unless use_cache=False.
+        """
+        from apps.technician_portal.models import Repair
+
+        cache_key = WarrantyService.STATS_CACHE_KEY.format(tenant_pk=tenant.pk)
+        if use_cache:
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+        cutoff = timezone.now() - timedelta(days=period_days)
+
+        claims = Repair.objects.filter(
+            tenant=tenant,
+            is_warranty_claim=True,
+            service_date__gte=cutoff,
+        )
+
+        total_repairs = Repair.objects.filter(
+            tenant=tenant,
+            queue_status='COMPLETED',
+            service_date__gte=cutoff,
+        ).count()
+
+        stats = {
+            'claims_this_period': claims.count(),
+            'total_repairs': total_repairs,
+            'warranty_rate': round(
+                (claims.count() / total_repairs * 100) if total_repairs else 0, 1
+            ),
+            'by_technician': list(claims.values(
+                'technician__user__first_name',
+            ).annotate(count=Count('id')).order_by('-count')),
+            'by_damage_type': list(claims.values(
+                'damage_type',
+            ).annotate(count=Count('id')).order_by('-count')),
+        }
+
+        cache.set(cache_key, stats, WarrantyService.STATS_CACHE_TTL)
+        return stats

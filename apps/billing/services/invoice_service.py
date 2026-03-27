@@ -873,14 +873,18 @@ class InvoiceService:
         for item in invoice_data.line_items:
             if hasattr(item, 'repair_obj') and item.repair_obj and item.repair_obj.warranty_policy:
                 policy = item.repair_obj.warranty_policy
-                term = f"Unit {item.unit_number}: {policy.name}"
-                if policy.duration_type == 'lifetime':
-                    term += " \u2014 Lifetime Warranty"
-                elif policy.duration_type == 'custom_days':
-                    term += f" \u2014 {policy.duration_days}-day Warranty"
-                if policy.coverage_description:
-                    term += f" ({policy.coverage_description})"
-                warranty_terms.append(term)
+                summary = getattr(policy, 'terms_summary', '')
+                if summary:
+                    warranty_terms.append(f"WARRANTY: {summary}")
+                else:
+                    term = f"Unit {item.unit_number}: {policy.name}"
+                    if policy.duration_type == 'lifetime':
+                        term += " \u2014 Lifetime Warranty"
+                    elif policy.duration_type == 'custom_days':
+                        term += f" \u2014 {policy.duration_days}-day Warranty"
+                    if policy.coverage_description:
+                        term += f" ({policy.coverage_description})"
+                    warranty_terms.append(term)
 
         if warranty_terms:
             story.append(Spacer(1, 20))

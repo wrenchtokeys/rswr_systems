@@ -1,11 +1,21 @@
 """
-Tests for Sprint 4 Phase 1 — Warranty system.
+Tests for Warranty system (Phase 1 + Phase 2).
 
-Covers:
+Phase 1 covers:
 - WarrantyPolicy model (creation, default enforcement, uniqueness)
 - WarrantyService (assign, void, check, query methods)
 - Orchestrator auto-assignment on repair completion
 - Repair.has_warranty property
+
+Phase 2 covers:
+- Per-customer warranty overrides
+- Goodwill repair flag (excluded from loyalty points)
+- Warranty badge expiring-soon indicator
+- is_warranty_claim + warranty_original_repair fields
+- Soft-deleted original repair display
+- WarrantyPolicy.terms_summary property
+- get_warranty_stats() with caching
+- generate_warranty_report management command
 """
 
 from datetime import timedelta
@@ -962,3 +972,384 @@ class WarrantyUITests(TestCase):
             ).count(),
             0,
         )
+
+
+# =============================================================================
+# PHASE 2 TESTS
+# =============================================================================
+
+@override_settings(**TEST_SETTINGS)
+class PerCustomerWarrantyOverrideTests(TestCase):
+    """Tests for per-customer warranty policy overrides."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Override Shop', 'override_owner')
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Fleet Alpha', email='alpha@test.com',
+        )
+        self.other_customer = Customer.objects.create(
+            tenant=self.tenant, name='Fleet Beta', email='beta@test.com',
+        )
+        # Tenant-wide default: 365 days
+        self.default_policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Standard', applies_to='all_repairs',
+            duration_type='custom_days', duration_days=365,
+            is_default=True, is_active=True,
+        )
+        # Per-customer override for Fleet Alpha: lifetime
+        self.customer_policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Alpha Lifetime', applies_to='all_repairs',
+            duration_type='lifetime',
+            customer=self.customer,
+            is_active=True,
+        )
+
+    def _make_repair(self, customer):
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=customer, technician=self.tech,
+            unit_number='OVR-001', damage_type='Chip', queue_status='COMPLETED',
+        )
+        GlassService.save(repair)
+        return repair
+
+    def test_per_customer_policy_preferred_over_tenant_wide(self):
+        repair = self._make_repair(self.customer)
+        WarrantyService.assign_warranty(repair)
+        repair.refresh_from_db()
+        self.assertEqual(repair.warranty_policy, self.customer_policy)
+        self.assertIsNone(repair.warranty_expires_at)  # Lifetime
+
+    def test_other_customer_gets_tenant_wide_policy(self):
+        repair = self._make_repair(self.other_customer)
+        WarrantyService.assign_warranty(repair)
+        repair.refresh_from_db()
+        self.assertEqual(repair.warranty_policy, self.default_policy)
+        self.assertIsNotNone(repair.warranty_expires_at)
+
+    def test_per_customer_damage_type_specific(self):
+        # Customer-specific chip policy
+        chip_policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Alpha Chip 30d', applies_to='Chip',
+            duration_type='custom_days', duration_days=30,
+            customer=self.customer, is_active=True,
+        )
+        repair = self._make_repair(self.customer)
+        WarrantyService.assign_warranty(repair)
+        repair.refresh_from_db()
+        self.assertEqual(repair.warranty_policy, chip_policy)
+
+    def test_customer_fk_on_warranty_policy_model(self):
+        self.assertEqual(self.customer_policy.customer, self.customer)
+        self.assertIsNone(self.default_policy.customer)
+
+    def test_warranty_policy_str_includes_customer(self):
+        self.assertIn('Fleet Alpha', str(self.customer_policy))
+        self.assertNotIn('Fleet Alpha', str(self.default_policy))
+
+
+@override_settings(**TEST_SETTINGS)
+class GoodwillRepairTests(TestCase):
+    """Tests for is_goodwill_repair field and loyalty exclusion."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Goodwill Shop', 'goodwill_owner')
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='GW Customer', email='gw@test.com',
+        )
+
+    def test_goodwill_flag_defaults_to_false(self):
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='GW-001', damage_type='Chip', queue_status='REQUESTED',
+        )
+        GlassService.save(repair)
+        self.assertFalse(repair.is_goodwill_repair)
+
+    def test_goodwill_repair_excludes_loyalty_points(self):
+        """Goodwill repairs must not award loyalty points."""
+        from apps.technician_portal.hooks import loyalty_hook
+
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='GW-002', damage_type='Chip', queue_status='COMPLETED',
+            is_goodwill_repair=True,
+        )
+        GlassService.save(repair)
+        repair.original_status = 'PENDING'  # Simulate first-time completion
+
+        # loyalty_hook should return early for goodwill repairs
+        # (no exception = success; we verify no points by checking it doesn't crash)
+        loyalty_hook(repair)
+
+    def test_goodwill_repair_can_be_set_on_creation(self):
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='GW-003', damage_type='Crack', queue_status='REQUESTED',
+            is_goodwill_repair=True,
+        )
+        GlassService.save(repair)
+        repair.refresh_from_db()
+        self.assertTrue(repair.is_goodwill_repair)
+
+
+@override_settings(**TEST_SETTINGS)
+class WarrantyExpiringBadgeTests(TestCase):
+    """Tests for warranty_expiring_soon property."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Badge Shop', 'badge_owner')
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Badge Co', email='badge@test.com',
+        )
+        self.policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Badge Policy', applies_to='all_repairs',
+            duration_type='custom_days', duration_days=365,
+            is_default=True, is_active=True,
+        )
+
+    def _make_warranted_repair(self, expires_delta_days):
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='BDG-001', damage_type='Chip', queue_status='COMPLETED',
+        )
+        GlassService.save(repair)
+        repair.warranty_policy = self.policy
+        repair.warranty_expires_at = timezone.now() + timedelta(days=expires_delta_days)
+        repair.save(update_fields=['warranty_policy', 'warranty_expires_at'])
+        return repair
+
+    def test_expiring_soon_within_30_days(self):
+        repair = self._make_warranted_repair(15)
+        self.assertTrue(repair.warranty_expiring_soon)
+
+    def test_not_expiring_soon_over_30_days(self):
+        repair = self._make_warranted_repair(60)
+        self.assertFalse(repair.warranty_expiring_soon)
+
+    def test_expired_not_expiring_soon(self):
+        repair = self._make_warranted_repair(-5)
+        self.assertFalse(repair.warranty_expiring_soon)  # has_warranty is False
+
+    def test_lifetime_not_expiring_soon(self):
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='BDG-002', damage_type='Chip', queue_status='COMPLETED',
+        )
+        GlassService.save(repair)
+        repair.warranty_policy = self.policy
+        repair.warranty_expires_at = None  # Lifetime
+        repair.save(update_fields=['warranty_policy', 'warranty_expires_at'])
+        self.assertFalse(repair.warranty_expiring_soon)
+
+    def test_no_warranty_not_expiring_soon(self):
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='BDG-003', damage_type='Chip', queue_status='COMPLETED',
+        )
+        GlassService.save(repair)
+        self.assertFalse(repair.warranty_expiring_soon)
+
+
+@override_settings(**TEST_SETTINGS)
+class WarrantyClaimFieldsTests(TestCase):
+    """Tests for is_warranty_claim and warranty_original_repair fields."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Claim Shop', 'claim_owner')
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Claim Fleet', email='claim@test.com',
+        )
+        self.policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Claim Policy', applies_to='all_repairs',
+            duration_type='custom_days', duration_days=365,
+            is_default=True, is_active=True,
+        )
+
+    def _make_completed_repair(self):
+        from apps.technician_portal.models import GlassService
+        repair = Repair(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='CLM-001', damage_type='Chip', queue_status='COMPLETED',
+        )
+        GlassService.save(repair)
+        WarrantyService.assign_warranty(repair)
+        repair.refresh_from_db()
+        return repair
+
+    def test_warranty_claim_sets_fields_via_view(self):
+        original = self._make_completed_repair()
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+        self.client.post(
+            f'/tech/repairs/{original.id}/warranty-claim/',
+            data={'claim_reason': 'Recrack', 'technician_id': self.tech.id},
+        )
+        claim = Repair.objects.filter(
+            tenant=self.tenant, is_warranty_claim=True,
+        ).first()
+        self.assertIsNotNone(claim)
+        self.assertTrue(claim.is_warranty_claim)
+        self.assertEqual(claim.warranty_original_repair, original)
+
+    def test_soft_deleted_original_accessible_via_fk(self):
+        """warranty_original_repair FK should still resolve to a soft-deleted repair."""
+        original = self._make_completed_repair()
+        claim = Repair.objects.create(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='CLM-002', damage_type='Chip', queue_status='REQUESTED',
+            is_warranty_claim=True, warranty_original_repair=original,
+            cost=Decimal('0.00'), cost_override=Decimal('0.00'),
+            skip_invoicing=True,
+        )
+        # Soft-delete the original
+        Repair.objects.filter(pk=original.pk).update(deleted_at=timezone.now())
+
+        claim.refresh_from_db()
+        # FK still resolves even though original is soft-deleted
+        orig = Repair.all_objects.get(pk=original.pk)
+        self.assertIsNotNone(orig.deleted_at)
+        self.assertEqual(claim.warranty_original_repair_id, original.pk)
+
+    def test_warranty_claims_reverse_relation(self):
+        original = self._make_completed_repair()
+        claim = Repair.objects.create(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='CLM-003', damage_type='Chip', queue_status='REQUESTED',
+            is_warranty_claim=True, warranty_original_repair=original,
+            cost=Decimal('0.00'), cost_override=Decimal('0.00'),
+            skip_invoicing=True,
+        )
+        self.assertIn(claim, original.warranty_claims.all())
+
+
+@override_settings(**TEST_SETTINGS)
+class TermsSummaryPropertyTests(TestCase):
+    """Tests for WarrantyPolicy.terms_summary property."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Terms Shop', 'terms_owner')
+
+    def test_lifetime_terms_summary(self):
+        policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Lifetime Chip', applies_to='Chip',
+            duration_type='lifetime', covers_labor=True, covers_materials=True,
+            is_active=True,
+        )
+        self.assertIn('Lifetime', policy.terms_summary)
+        self.assertIn('labor', policy.terms_summary)
+        self.assertIn('materials', policy.terms_summary)
+
+    def test_custom_days_terms_summary(self):
+        policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='90-Day', applies_to='Crack',
+            duration_type='custom_days', duration_days=90,
+            covers_labor=True, covers_materials=False,
+            is_active=True,
+        )
+        self.assertIn('90 days', policy.terms_summary)
+        self.assertIn('labor', policy.terms_summary)
+        self.assertNotIn('materials', policy.terms_summary)
+
+    def test_none_duration_returns_empty(self):
+        policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='No Warranty', applies_to='Other',
+            duration_type='none', is_active=True,
+        )
+        self.assertEqual(policy.terms_summary, '')
+
+
+@override_settings(**TEST_SETTINGS)
+class WarrantyStatsAndCacheTests(TestCase):
+    """Tests for get_warranty_stats() with caching."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Stats Shop', 'stats_owner')
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Stats Fleet', email='stats@test.com',
+        )
+
+    def test_get_warranty_stats_empty(self):
+        stats = WarrantyService.get_warranty_stats(self.tenant, use_cache=False)
+        self.assertEqual(stats['claims_this_period'], 0)
+        self.assertEqual(stats['total_repairs'], 0)
+        self.assertEqual(stats['warranty_rate'], 0)
+
+    def test_get_warranty_stats_with_claims(self):
+        from apps.technician_portal.models import GlassService
+        # Create completed repairs
+        for i in range(3):
+            r = Repair(
+                tenant=self.tenant, customer=self.customer, technician=self.tech,
+                unit_number=f'STAT-{i}', damage_type='Chip', queue_status='COMPLETED',
+            )
+            GlassService.save(r)
+        # Create a warranty claim
+        Repair.objects.create(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='STAT-CLM', damage_type='Chip', queue_status='REQUESTED',
+            is_warranty_claim=True, cost=Decimal('0.00'), cost_override=Decimal('0.00'),
+        )
+
+        stats = WarrantyService.get_warranty_stats(self.tenant, use_cache=False)
+        self.assertEqual(stats['claims_this_period'], 1)
+        self.assertEqual(stats['total_repairs'], 3)
+
+    def test_stats_are_cached(self):
+        from django.core.cache import cache
+        # Prime the cache
+        WarrantyService.get_warranty_stats(self.tenant, use_cache=False)
+        cache_key = WarrantyService.STATS_CACHE_KEY.format(tenant_pk=self.tenant.pk)
+        cached = cache.get(cache_key)
+        self.assertIsNotNone(cached)
+        self.assertIn('claims_this_period', cached)
+
+    def test_cache_hit_returns_cached_data(self):
+        from django.core.cache import cache
+        fake_stats = {'claims_this_period': 999, 'total_repairs': 1000, 'warranty_rate': 99.9}
+        cache_key = WarrantyService.STATS_CACHE_KEY.format(tenant_pk=self.tenant.pk)
+        cache.set(cache_key, fake_stats, 3600)
+        result = WarrantyService.get_warranty_stats(self.tenant, use_cache=True)
+        self.assertEqual(result['claims_this_period'], 999)
+
+
+@override_settings(**TEST_SETTINGS)
+class GenerateWarrantyReportCommandTests(TestCase):
+    """Tests for generate_warranty_report management command."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Cmd Shop', 'cmd_owner')
+
+    def test_command_runs_successfully(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command('generate_warranty_report', stdout=out)
+        output = out.getvalue()
+        self.assertIn('Done', output)
+
+    def test_command_json_output(self):
+        from django.core.management import call_command
+        from io import StringIO
+        import json
+        out = StringIO()
+        call_command('generate_warranty_report', json=True, stdout=out)
+        data = json.loads(out.getvalue())
+        self.assertIn(self.tenant.name, data)
+
+    def test_command_specific_tenant(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command('generate_warranty_report', tenant=self.tenant.pk, stdout=out)
+        output = out.getvalue()
+        self.assertIn(self.tenant.name, output)

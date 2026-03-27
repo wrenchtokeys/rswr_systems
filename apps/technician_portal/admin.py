@@ -141,7 +141,11 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
             'fields': ('technician', 'customer', 'unit_number', 'service_date')
         }),
         ('Repair Details', {
-            'fields': ('damage_type', 'description', 'queue_status')
+            'fields': ('damage_type', 'description', 'queue_status', 'is_goodwill_repair')
+        }),
+        ('Warranty Claim', {
+            'fields': ('is_warranty_claim', 'warranty_original_repair'),
+            'classes': ('collapse',),
         }),
         ('Pricing', {
             'fields': ('cost', 'cost_override', 'override_reason'),
@@ -554,15 +558,16 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
 
 @admin.register(WarrantyPolicy)
 class WarrantyPolicyAdmin(TenantFilterMixin, admin.ModelAdmin):
-    list_display = ['name', 'tenant', 'applies_to', 'duration_type', 'duration_days', 'is_default', 'is_active']
+    list_display = ['name', 'tenant', 'customer', 'applies_to', 'duration_type', 'duration_days', 'is_default', 'is_active']
     list_filter = ['tenant', 'is_active', 'is_default', 'duration_type']
-    search_fields = ['name', 'tenant__name']
-    list_select_related = ['tenant']
+    search_fields = ['name', 'tenant__name', 'customer__name']
+    list_select_related = ['tenant', 'customer']
     list_per_page = 25
 
     fieldsets = (
         ('Basic Information', {
-            'fields': ('tenant', 'name', 'applies_to', 'is_active', 'is_default'),
+            'fields': ('tenant', 'name', 'applies_to', 'customer', 'is_active', 'is_default'),
+            'description': 'Leave "Customer" blank for a tenant-wide policy. Set a customer for per-fleet overrides.',
         }),
         ('Duration', {
             'fields': ('duration_type', 'duration_days'),

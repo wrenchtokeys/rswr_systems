@@ -268,8 +268,13 @@
                         {{ repair.get_queue_status_display }}
                     </span>
                     {% if repair.has_warranty %}
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                        <i class="fas fa-shield-alt mr-0.5"></i>W
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {% if repair.warranty_expiring_soon %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
+                        {% if repair.warranty_expiring_soon %}⌛{% else %}✅{% endif %} W
+                    </span>
+                    {% endif %}
+                    {% if repair.is_goodwill_repair %}
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-700">
+                        <i class="fas fa-heart mr-0.5"></i>Goodwill
                     </span>
                     {% endif %}
                     </div>
@@ -346,8 +351,13 @@
                                 {{ repair.get_queue_status_display }}
                             </span>
                             {% if repair.has_warranty %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 ml-1" title="Under Warranty{% if repair.warranty_expires_at %} until {{ repair.warranty_expires_at|date:'M d, Y' }}{% else %} (Lifetime){% endif %}">
-                                <i class="fas fa-shield-alt mr-0.5"></i>W
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {% if repair.warranty_expiring_soon %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %} ml-1" title="{% if repair.warranty_expiring_soon %}Warranty expiring soon{% elif repair.warranty_expires_at %}Under Warranty until {{ repair.warranty_expires_at|date:'M d, Y' }}{% else %}Lifetime Warranty{% endif %}">
+                                {% if repair.warranty_expiring_soon %}⌛{% else %}✅{% endif %} W
+                            </span>
+                            {% endif %}
+                            {% if repair.is_goodwill_repair %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-700 ml-1" title="Goodwill repair (courtesy)">
+                                <i class="fas fa-heart mr-0.5"></i>Goodwill
                             </span>
                             {% endif %}
                         </td>

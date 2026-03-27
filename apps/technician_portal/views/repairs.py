@@ -1513,6 +1513,8 @@ def create_warranty_claim(request, repair_id):
             f'({original_repair.repair_date.strftime("%b %d, %Y") if original_repair.repair_date else "N/A"})'
         ),
         skip_invoicing=True,
+        is_warranty_claim=True,
+        warranty_original_repair=original_repair,
     )
 
     messages.success(request, f"Warranty claim created as Repair #{claim.id} ($0.00)")

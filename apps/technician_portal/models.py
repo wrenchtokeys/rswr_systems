@@ -469,6 +469,14 @@ class WarrantyPolicy(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Per-customer override — if set, this policy applies only to that customer.
+    # Null = tenant-wide policy (applies to all customers).
+    customer = models.ForeignKey(
+        'core.Customer', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='warranty_policies',
+        help_text="If set, this policy applies only to this customer (fleet override).",
+    )
+
     objects = TenantManager()
 
     class Meta:
@@ -477,7 +485,8 @@ class WarrantyPolicy(models.Model):
         verbose_name_plural = 'warranty policies'
 
     def __str__(self):
-        return f"{self.name} ({self.tenant.name})"
+        suffix = f" [{self.customer.name}]" if self.customer_id else ""
+        return f"{self.name} ({self.tenant.name}){suffix}"
 
     def save(self, *args, **kwargs):
         # Enforce only one default per tenant
@@ -494,6 +503,25 @@ class WarrantyPolicy(models.Model):
         if self.duration_type == 'none':
             return completion_date  # Already expired
         return completion_date + timedelta(days=self.duration_days)
+
+    @property
+    def terms_summary(self):
+        """One-line summary of warranty terms for invoices."""
+        if self.duration_type == 'lifetime':
+            duration = "Lifetime"
+        elif self.duration_type == 'none':
+            return ""
+        else:
+            duration = f"{self.duration_days} days"
+        parts = [f"{self.name}: {duration}"]
+        coverage = []
+        if self.covers_labor:
+            coverage.append("labor")
+        if self.covers_materials:
+            coverage.append("materials")
+        if coverage:
+            parts.append(f"covers {' + '.join(coverage)}")
+        return " — ".join(parts)
 
 
 # =============================================================================
@@ -623,6 +651,23 @@ class Repair(GlassService):
         help_text="Reason warranty was voided (e.g. new impact damage)",
     )
 
+    # Warranty claim fields
+    is_warranty_claim = models.BooleanField(
+        default=False,
+        help_text="This repair is a warranty claim against an original repair",
+    )
+    warranty_original_repair = models.ForeignKey(
+        'self', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='warranty_claims',
+        help_text="Original repair this warranty claim is for",
+    )
+
+    # Goodwill repair — out-of-warranty courtesy repair (not a warranty claim)
+    is_goodwill_repair = models.BooleanField(
+        default=False,
+        help_text="Courtesy repair outside warranty — excluded from loyalty points",
+    )
+
     @property
     def has_warranty(self):
         """True if this repair has an active, non-expired, non-voided warranty."""
@@ -634,6 +679,16 @@ class Repair(GlassService):
         if self.warranty_expires_at is None:
             return True
         return self.warranty_expires_at > timezone.now()
+
+    @property
+    def warranty_expiring_soon(self):
+        """True if warranty expires within 30 days (for badge display)."""
+        if not self.has_warranty:
+            return False
+        if self.warranty_expires_at is None:
+            return False  # Lifetime — never expiring
+        days_left = (self.warranty_expires_at - timezone.now()).days
+        return 0 < days_left <= 30
 
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
@@ -1613,3 +1668,7 @@ class ViscosityRecommendation(models.Model):
                 }
 
         return None
+
+
+# Review request models live in a separate file to keep this module manageable.
+from apps.technician_portal.review_models import ReviewConfig, ReviewRequest  # noqa: E402, F401

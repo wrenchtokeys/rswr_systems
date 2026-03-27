@@ -57,6 +57,10 @@ def loyalty_hook(repair) -> None:
         if hasattr(repair, 'original_status') and repair.original_status == 'COMPLETED':
             return
 
+        # Goodwill repairs are courtesy work — no loyalty points awarded.
+        if getattr(repair, 'is_goodwill_repair', False):
+            return
+
         # Prefer primary contact; fall back to any contact.
         customer_users = CustomerUser.objects.filter(customer=repair.customer)
         if not customer_users.exists():
@@ -169,16 +173,28 @@ def warranty_hook(repair) -> None:
 
 def review_request_hook(repair) -> None:
     """
-    Placeholder: queue a review request email after repair completion.
+    Queue a review request email after repair completion.
 
-    Will delegate to ReviewRequestService.on_repair_completed(repair)
-    once the review request system is implemented
-    (see docs/proposals/review-request-system.md).
+    Delegates to ReviewRequestService which evaluates eligibility
+    (cooldowns, opt-outs, negative experience, etc.) and either
+    schedules a pending request or records a skip/suppression.
     """
-    # TODO (review request system): uncomment when ReviewRequestService ships.
-    # from apps.reviews.services import ReviewRequestService
-    # ReviewRequestService.on_repair_completed(repair)
-    pass
+    try:
+        from apps.technician_portal.review_service import ReviewRequestService
+
+        # Idempotency: skip re-saves of already-COMPLETED repairs
+        if hasattr(repair, 'original_status') and repair.original_status == 'COMPLETED':
+            return
+
+        ReviewRequestService.schedule_review_request(repair)
+
+    except Exception as exc:
+        logger.error(
+            "Post-completion hook 'review_request_hook' failed for repair pk=%s: %s",
+            repair.pk,
+            exc,
+            exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------
