@@ -1634,6 +1634,15 @@ def invite_member(request):
         messages.error(request, 'Invalid role selected.')
         return redirect('owner_settings')
 
+    # Privilege escalation guard: managers cannot invite other managers.
+    # Only shop owners can grant manager-level access.  Without this check,
+    # a manager can run the invite flow with role=manager (the role validation
+    # above allows it) and create a peer manager without the owner's knowledge.
+    # (CODE-206)
+    if membership.role == 'manager' and role == 'manager':
+        messages.error(request, 'Only the shop owner can invite managers.')
+        return redirect('owner_settings')
+
     # Check if user already exists
     user = User.objects.filter(email=email).first()
     if not user:
