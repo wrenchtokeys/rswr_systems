@@ -132,6 +132,29 @@ class CustomerRepairPreference(models.Model):
         help_text="Include repair photos in invoice emails?"
     )
 
+    # Payment terms override (uses shop default if blank)
+    PAYMENT_TERMS_CHOICES = [
+        ('', '(use shop default)'),
+        ('COD', 'Cash on Delivery (COD)'),
+        ('DUE_ON_RECEIPT', 'Due on Receipt'),
+        ('NET15', 'Net 15'),
+        ('NET30', 'Net 30'),
+        ('NET45', 'Net 45'),
+        ('NET60', 'Net 60'),
+    ]
+    payment_terms = models.CharField(
+        max_length=20,
+        choices=PAYMENT_TERMS_CHOICES,
+        default='',
+        blank=True,
+        help_text="Payment terms for this customer (blank = use shop default)"
+    )
+    batch_invoice_day = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Day to run batch invoicing for this customer (1-28 for monthly). Blank = use shop default."
+    )
+
     # Tracking
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

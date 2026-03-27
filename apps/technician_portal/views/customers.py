@@ -17,6 +17,38 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _save_billing_preferences(customer, cleaned_data):
+    """Create CustomerRepairPreference if any billing fields were provided.
+
+    If all billing fields are empty (e.g. the details section was never opened),
+    no record is created — the customer uses shop defaults.
+    """
+    invoice_pref = cleaned_data.get('invoice_preference', '')
+    payment_terms = cleaned_data.get('payment_terms', '')
+    billing_email = cleaned_data.get('billing_email', '')
+    batch_day = cleaned_data.get('batch_invoice_day')
+
+    # Treat all-empty as "use shop defaults" — don't create a record
+    if not any([invoice_pref, payment_terms, billing_email, batch_day]):
+        return
+
+    from apps.customer_portal.models import CustomerRepairPreference
+    defaults = {}
+    if invoice_pref:
+        defaults['invoice_preference'] = invoice_pref
+    if payment_terms:
+        defaults['payment_terms'] = payment_terms
+    if billing_email:
+        defaults['billing_email'] = billing_email
+    if batch_day is not None:
+        defaults['batch_invoice_day'] = batch_day
+
+    CustomerRepairPreference.objects.update_or_create(
+        customer=customer,
+        defaults=defaults,
+    )
+
+
 @technician_required
 def create_customer(request):
     """Create a new customer with optional portal invitation."""
@@ -37,11 +69,14 @@ def create_customer(request):
             if tenant:
                 customer.tenant = tenant
             customer.save()
-            
+
+            # Handle billing preferences if any were provided
+            _save_billing_preferences(customer, form.cleaned_data)
+
             # Handle portal invitation if requested
             invite_email = form.cleaned_data.get('invite_email')
             send_invitation = form.cleaned_data.get('send_invitation', False)
-            
+
             if invite_email and send_invitation:
                 from apps.customer_portal.services.invitation_service import CustomerInvitationService
                 try:
@@ -76,7 +111,7 @@ def create_customer(request):
             return redirect('technician_dashboard')
     else:
         form = CustomerForm(tenant=tenant)
-    return render(request, 'technician_portal/customer_form.html', {'form': form})
+    return render(request, 'technician_portal/customer_form.html', {'form': form, 'tenant': tenant})
 
 
 @technician_required
