@@ -188,15 +188,17 @@ explaining each correction.
 
 ---
 
-### 11. Customer Billing Preferences improvements
+### 11. Customer Billing Preferences improvements ✅ COMPLETE (CODE-209, 2026-03-27)
 **Ref:** [suggestions.md §9](#9-customer-billing-preferences-ux-draft)
 
-| Suggestion | Plan | When |
-|-----------|------|------|
-| Handle empty fields from collapsed `<details>` → treat as "use shop default" | Explicit check in view: empty = don't create preference record | Phase 1 |
-| Remove primary tech from UI mockup (already handled by CODE-136) | Clean up proposal | Before build |
-| Show actual default value ("Net 30 — shop default") not just "Shop default" | Pre-populate from `BillingConfig.get_for_tenant()` | Phase 1 |
-| "Most fleet customers prefer batch billing" tooltip | Add `💡` hint next to invoice preference dropdown | Phase 1 |
+| Suggestion | Status |
+|-----------|--------|
+| Handle empty fields from collapsed `<details>` → treat as "use shop default" | ✅ Done — `_save_billing_preferences()` skips if all empty |
+| Remove primary tech from UI mockup (already handled by CODE-136) | ✅ Done |
+| Show actual default value ("Net 30 — shop default") not just "Shop default" | ✅ Done — dropdown dynamically shows shop's actual default from `BillingConfig.get_for_tenant()` |
+| "Most fleet customers prefer batch billing" tooltip | ✅ Done — tooltip on invoice preference field |
+
+**Built:** Collapsible `<details>` section on customer form, 4 billing fields (invoice preference, payment terms, billing email, batch invoice day), shared `_save_billing_preferences()` helper, 16 tests passing.
 
 ---
 
