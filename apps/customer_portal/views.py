@@ -1490,9 +1490,17 @@ def handle_single_repair_request(request, customer, customer_user=None):
     damage_type = request.POST.get('damage_type', '')
     damage_photo = request.FILES.get('damage_photo_before')
 
+    # Pre-compute available rewards so ALL error-path renders include them.
+    # CODE-211: Previously the error paths called render() with no context, so the
+    # reward selection UI disappeared on validation failure — customers who had
+    # selected a reward lost it from the form and were confused about what happened.
+    _rewards_ctx = {
+        'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
+    }
+
     if not unit_number:
         messages.error(request, "Unit number is required.")
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
     # Provide defaults for optional fields
     if not damage_type:
@@ -1505,7 +1513,7 @@ def handle_single_repair_request(request, customer, customer_user=None):
         photo_valid, photo_error = validate_repair_photo(damage_photo)
         if not photo_valid:
             messages.error(request, photo_error)
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
         damage_photo = convert_heic_to_jpeg(damage_photo)
 
     # Find available technician (scoped to tenant)
@@ -1513,7 +1521,7 @@ def handle_single_repair_request(request, customer, customer_user=None):
     technician = get_available_technician(tenant=tenant)
     if not technician:
         messages.error(request, "No technicians available. Please try again later.")
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
     # Create the repair
     try:
@@ -1555,7 +1563,7 @@ def handle_single_repair_request(request, customer, customer_user=None):
         return redirect('customer_dashboard')
     except Exception as e:
         messages.error(request, f"Error creating repair request: {str(e)}")
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
 
 def handle_batch_repair_request(request, customer):
