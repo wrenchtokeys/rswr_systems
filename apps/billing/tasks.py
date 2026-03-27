@@ -257,13 +257,20 @@ def process_batch_invoices():
         if not _should_run_batch_today(config, today):
             continue
         
-        # Find customers with batch preference
+        # Find customers with batch preference.
+        # Scope the CustomerRepairPreference subquery to this tenant so the
+        # VALUES scan only touches rows belonging to the current shop.  Without
+        # the tenant filter the subquery reads ALL CustomerRepairPreference rows
+        # across every tenant, then Django's outer WHERE clause re-narrows by
+        # tenant — a full-table scan that grows O(total customers) instead of
+        # O(tenant customers).  CustomerRepairPreference has no tenant field but
+        # can be scoped via customer__tenant.  (CODE-203)
         batch_customers = Customer.objects.filter(
             tenant=tenant,
-        ).filter(
             id__in=CustomerRepairPreference.objects.filter(
-                invoice_preference='batch'
-            ).values_list('customer_id', flat=True)
+                invoice_preference='batch',
+                customer__tenant=tenant,
+            ).values_list('customer_id', flat=True),
         )
         
         for customer in batch_customers:
