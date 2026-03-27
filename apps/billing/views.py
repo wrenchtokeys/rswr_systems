@@ -678,6 +678,32 @@ def cancel_invoice(request, invoice_id):
     if invoice.status == 'PAID':
         return JsonResponse({'error': 'Cannot cancel a paid invoice'}, status=400)
 
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'error': 'Invoice is already cancelled'}, status=400)
+
+    # (CODE-204) Block cancellation of PARTIAL invoices via API — mirrors the UI guard
+    # added in CODE-123 for owner_invoice_void().  A PARTIAL invoice has real Payment
+    # records pointing at it; calling invoice.cancel() sets status='CANCELLED' but leaves
+    # those Payment rows intact.  The Payment.invoice FK uses on_delete=PROTECT, so the
+    # invoice can then never be deleted, and invoice.amount_paid stays non-zero on a
+    # "cancelled" invoice — misleading financials and a permanent data integrity violation.
+    # The caller must remove or reverse all payments first (via the record_payment API or
+    # admin), at which point the invoice status drops back to SENT/OVERDUE and can be
+    # cancelled normally.
+    if invoice.status == 'PARTIAL':
+        payment_count = invoice.payments.count()
+        return JsonResponse(
+            {
+                'error': (
+                    f'Cannot cancel a partially-paid invoice. '
+                    f'{payment_count} payment(s) are recorded against it. '
+                    'Remove or reverse the payment(s) first, '
+                    'then cancel the invoice.'
+                )
+            },
+            status=400,
+        )
+
     try:
         data = json.loads(request.body) if request.body else {}
     except json.JSONDecodeError:
