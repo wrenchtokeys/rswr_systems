@@ -13,11 +13,14 @@ Updated: 2026-01-27 - Royal blue styling, logo support
 """
 
 import io
+import logging
 import os
 import urllib.request
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional, Dict, Any, Tuple
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -314,7 +317,7 @@ class InvoiceService:
         )
         if self.tenant:
             queryset = queryset.filter(tenant=self.tenant)
-        queryset = queryset.select_related('customer', 'technician', 'technician__user')
+        queryset = queryset.select_related('customer', 'technician', 'technician__user', 'warranty_policy')
         
         if repair_ids:
             queryset = queryset.filter(id__in=repair_ids)
@@ -997,12 +1000,20 @@ class InvoiceService:
 # Convenience functions
 def generate_customer_invoice(
     customer_id: int,
+    tenant=None,
     repair_ids: Optional[List[int]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None
 ) -> Tuple[bytes, InvoiceData]:
-    """Convenience function to generate an invoice"""
-    service = InvoiceService()
+    """Convenience function to generate an invoice.
+    
+    Args:
+        tenant: Required. The Tenant instance to scope the invoice to.
+                Without it, repairs are unscoped and branding info is blank.
+    """
+    if tenant is None:
+        logger.warning("generate_customer_invoice called without tenant — invoice will lack company info")
+    service = InvoiceService(tenant=tenant)
     return service.generate_invoice(
         customer_id=customer_id,
         repair_ids=repair_ids,
@@ -1011,7 +1022,14 @@ def generate_customer_invoice(
     )
 
 
-def get_invoiceable_repairs(customer_id: int) -> QuerySet:
-    """Get all completed repairs that can be invoiced for a customer"""
-    service = InvoiceService()
+def get_invoiceable_repairs(customer_id: int, tenant=None) -> QuerySet:
+    """Get all completed repairs that can be invoiced for a customer.
+    
+    Args:
+        tenant: Required. The Tenant instance to scope queries to.
+                Without it, repairs from ALL tenants may be returned.
+    """
+    if tenant is None:
+        logger.warning("get_invoiceable_repairs called without tenant — results may be unscoped")
+    service = InvoiceService(tenant=tenant)
     return service.get_completed_repairs(customer_id=customer_id)
