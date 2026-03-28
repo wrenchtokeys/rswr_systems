@@ -212,7 +212,7 @@ class CustomerRepairPreferenceForm(forms.ModelForm):
 @admin.register(CustomerRepairPreference)
 class CustomerRepairPreferenceAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
     form = CustomerRepairPreferenceForm
-    list_display = ['get_tenant_display', 'customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'updated_at']
+    list_display = ['get_tenant_display', 'customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'invoice_preference', 'payment_terms', 'auto_email_invoices', 'lot_walking_enabled', 'updated_at']
     list_filter = ['field_repair_approval_mode', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'lot_walking_frequency', 'updated_at']
     search_fields = ['customer__name', 'customer__tenant__name']
     list_select_related = ['customer', 'customer__tenant']
@@ -232,12 +232,17 @@ class CustomerRepairPreferenceAdmin(CustomerTenantFilterMixin, admin.ModelAdmin)
             'description': 'Configure scheduled lot walking service for this customer.'
         }),
         ('Invoice Settings', {
-            'fields': ('invoice_preference', 'billing_email', 'auto_email_invoices', 'include_photos_in_invoice'),
+            'fields': (
+                'invoice_preference', 'billing_email', 'auto_email_invoices', 'include_photos_in_invoice',
+                'payment_terms', 'batch_invoice_day',
+            ),
             'description': (
                 'Configure how invoices should be generated and delivered for this customer. '
                 '"Per repair" = auto-generate when each repair completes. '
                 '"Batch" = group repairs together (manual trigger). '
-                '"Manual" = never auto-generate.'
+                '"Manual" = never auto-generate. '
+                '"Payment Terms" overrides the shop default for this customer (blank = use shop default). '
+                '"Batch Invoice Day" overrides the monthly batch day for this customer (blank = use shop default).'
             )
         }),
         ('Tracking', {

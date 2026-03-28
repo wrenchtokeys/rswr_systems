@@ -343,10 +343,24 @@ def _create_batch_invoice(tenant, customer, config):
         with transaction.atomic():
             # Calculate totals
             subtotal = Decimal('0.00')
-            
+
+            # Resolve effective payment terms: customer-specific override wins
+            # over the shop-level BillingConfig default.  The
+            # CustomerRepairPreference.payment_terms field was added in
+            # migration 0013 but the batch invoice task was never updated to
+            # read it, so customer-specific terms were silently ignored and all
+            # batch invoices used the shop default.  (CODE-219)
+            effective_payment_terms = config.default_payment_terms
+            try:
+                customer_prefs = customer.repair_preferences
+                if customer_prefs.payment_terms:
+                    effective_payment_terms = customer_prefs.payment_terms
+            except Exception:
+                pass  # No preferences set — use shop default
+
             # Create invoice
             invoice_number = _generate_invoice_number(tenant, config)
-            due_date = _calculate_due_date(config)
+            due_date = _calculate_due_date(config, payment_terms_override=effective_payment_terms)
             
             # Always create as DRAFT — status is promoted to SENT only AFTER
             # email delivery is confirmed (see CODE-095 / AGENTS.md gotcha).
@@ -358,7 +372,7 @@ def _create_batch_invoice(tenant, customer, config):
                 invoice_number=invoice_number,
                 invoice_date=timezone.now().date(),
                 due_date=due_date,
-                payment_terms=config.default_payment_terms,
+                payment_terms=effective_payment_terms,
                 status='DRAFT',
                 notes=f'Batch invoice for {len(repairs_list)} repairs and {len(replacements_list)} replacements',
             )
@@ -489,8 +503,15 @@ def _generate_invoice_number(tenant, config):
     return f"{prefix}-{tenant.id}-{date_str}-{int(time.time() * 1000) % 1000000:06d}"
 
 
-def _calculate_due_date(config):
-    """Calculate due date based on payment terms."""
+def _calculate_due_date(config, payment_terms_override=None):
+    """Calculate due date based on payment terms.
+
+    Args:
+        config: BillingConfig instance for the tenant (used as fallback).
+        payment_terms_override: If provided, this term code takes priority over
+            ``config.default_payment_terms``.  Allows customer-specific terms
+            to affect the due date (CODE-219).
+    """
     today = timezone.now().date()
     
     terms_days = {
@@ -501,8 +522,9 @@ def _calculate_due_date(config):
         'NET45': 45,
         'NET60': 60,
     }
-    
-    days = terms_days.get(config.default_payment_terms, config.default_due_days)
+
+    effective_terms = payment_terms_override or config.default_payment_terms
+    days = terms_days.get(effective_terms, config.default_due_days)
     return today + timedelta(days=days)
 
 
