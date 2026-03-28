@@ -1,6 +1,22 @@
 import csv
 
 from django.contrib import admin
+
+
+def _csv_safe(value):
+    """
+    Neutralise CSV formula injection (CODE-214).
+
+    Prefix user-supplied strings that start with a spreadsheet formula trigger
+    character ('=', '+', '-', '@', tab, CR) with a single-quote so that Excel
+    / LibreOffice / Google Sheets treats the cell as text rather than executing
+    an embedded formula.  Numeric/date/None values are passed through unchanged.
+    """
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
 from django.contrib.admin.widgets import FilteredSelectMultiple
 from django.db.models import Prefetch
 from django.http import HttpResponse
@@ -170,10 +186,10 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
         for repair in queryset.select_related('customer', 'technician__user', 'tenant'):
             writer.writerow([
                 repair.id,
-                repair.tenant.name if repair.tenant else '',
-                repair.customer.name if repair.customer else '',
-                repair.unit_number,
-                repair.technician.user.get_full_name() if repair.technician else '',
+                _csv_safe(repair.tenant.name if repair.tenant else ''),
+                _csv_safe(repair.customer.name if repair.customer else ''),
+                _csv_safe(repair.unit_number),
+                _csv_safe(repair.technician.user.get_full_name() if repair.technician else ''),
                 repair.get_queue_status_display(),
                 repair.damage_type,
                 repair.cost,
@@ -463,12 +479,12 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
         for customer in queryset.select_related('tenant'):
             writer.writerow([
                 customer.id,
-                customer.name,
-                customer.tenant.name if customer.tenant else '',
-                customer.email,
-                customer.phone,
-                customer.address,
-                getattr(customer, 'customer_type', ''),
+                _csv_safe(customer.name),
+                _csv_safe(customer.tenant.name if customer.tenant else ''),
+                _csv_safe(customer.email),
+                _csv_safe(customer.phone),
+                _csv_safe(customer.address),
+                _csv_safe(getattr(customer, 'customer_type', '')),
                 customer.tax_exempt,
             ])
         return response

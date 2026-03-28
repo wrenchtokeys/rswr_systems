@@ -3056,8 +3056,35 @@ def owner_aging_report_csv(request):
 
     from decimal import Decimal
 
+    def _csv_safe(value):
+        """
+        Neutralise CSV formula injection.
+
+        Spreadsheet applications (Excel, LibreOffice, Google Sheets) treat a
+        cell value as a formula when it starts with '=', '+', '-', or '@'.
+        An attacker with control over user-supplied data (e.g. a customer name
+        like '=HYPERLINK(...)') could embed a payload that executes when an
+        accountant opens the exported file.
+
+        Fix: prefix any cell whose string representation starts with a formula
+        trigger character with a single-quote (').  The single-quote is the
+        standard spreadsheet escape; it forces the cell to be treated as text.
+        Numeric/date/None values are left untouched — only strings are checked.
+        (CODE-214)
+        """
+        if not isinstance(value, str):
+            return value
+        if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+            return "'" + value
+        return value
+
+    # Sanitise the tenant name used in the filename and header row.
+    # A shop name containing a double-quote would break the Content-Disposition
+    # header; strip/replace potentially dangerous characters.
+    safe_tenant_name = tenant.name.replace('"', '').replace('\n', '').replace('\r', '').replace(' ', '_')
+
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="{tenant.name.replace(" ", "_")}_AR_Aging_{today}.csv"'
+    response['Content-Disposition'] = f'attachment; filename="{safe_tenant_name}_AR_Aging_{today}.csv"'
     writer = csv.writer(response)
 
     # Header with report info
@@ -3102,8 +3129,8 @@ def owner_aging_report_csv(request):
         grand_total += amount_due
 
         writer.writerow([
-            inv.customer.name,
-            inv.invoice_number,
+            _csv_safe(inv.customer.name),
+            _csv_safe(inv.invoice_number),
             inv.invoice_date.strftime('%m/%d/%Y'),
             inv.due_date.strftime('%m/%d/%Y') if inv.due_date else '',
             f'{float(inv.total):.2f}',
@@ -3112,8 +3139,8 @@ def owner_aging_report_csv(request):
             inv.get_status_display(),
             max(0, days_old),
             bucket_label[bucket],
-            inv.customer.email or '',
-            inv.customer.phone or '',
+            _csv_safe(inv.customer.email or ''),
+            _csv_safe(inv.customer.phone or ''),
         ])
 
     # Summary section
