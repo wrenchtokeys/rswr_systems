@@ -2153,10 +2153,16 @@ def repair_cost_data_api(request):
         customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
-        # Get all repairs for this customer (tenant-scoped)
+        # Get only COMPLETED repairs for this customer (tenant-scoped).
+        # Previously this fetched ALL repairs regardless of queue_status, so
+        # PENDING, DENIED, IN_PROGRESS, etc. were counted as "repairs done" in
+        # the monthly frequency chart — inflating the numbers and making them
+        # inconsistent with the unit_repair_data_api endpoint which correctly
+        # filters on queue_status='COMPLETED'.  (CODE-215)
         repairs = Repair.objects.filter(
             customer=customer,
             tenant=customer.tenant,
+            queue_status='COMPLETED',
         ).order_by('service_date')
         
         # Group repairs by month and count them
