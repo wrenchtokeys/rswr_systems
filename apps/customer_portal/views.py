@@ -751,44 +751,59 @@ def customer_repair_approve(request, repair_id):
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
             
-            # Create or update the approval
-            approval, created = RepairApproval.objects.get_or_create(
-                repair=repair,
-                defaults={
-                    'approved': True,
-                    'approved_by': customer_user,
-                    'approval_date': timezone.now(),
-                    'notes': notes
-                }
-            )
-            
-            if not created:
-                approval.approved = True
-                approval.approved_by = customer_user
-                approval.approval_date = timezone.now()
-                approval.notes = notes
-                approval.save()
-            
-            # Update the repair status
-            repair.queue_status = 'APPROVED'
+            # Use a transaction + row-level lock to prevent:
+            #   1. RepairApproval created but repair.save() fails → partial write.
+            #   2. Double-click race: two concurrent POSTs both pass the status
+            #      check above (pre-lock) and both write APPROVED — harmless for
+            #      the repair status but could create duplicate notifications.
+            #   This mirrors the select_for_update() pattern in quick_approve_repair.
+            #   (CODE-223)
+            with transaction.atomic():
+                locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
 
-            # IMPORTANT: Ensure technician is preserved
-            # PENDING repairs should already have a technician (the one who found the damage)
-            # This prevents NULL technician errors later
-            if not repair.technician:
-                # This shouldn't happen, but log it for debugging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Repair #{repair.id} approved but has no technician assigned")
+                # Re-check status inside the lock so a concurrent approval/denial
+                # that committed between the initial get_object_or_404 and here
+                # doesn't get overwritten.
+                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    messages.warning(request, "This repair has already been processed.")
+                    return redirect('customer_repair_detail', repair_id=repair.id)
 
-            repair.save()
+                # Create or update the approval
+                approval, created = RepairApproval.objects.get_or_create(
+                    repair=locked_repair,
+                    defaults={
+                        'approved': True,
+                        'approved_by': customer_user,
+                        'approval_date': timezone.now(),
+                        'notes': notes
+                    }
+                )
+                
+                if not created:
+                    approval.approved = True
+                    approval.approved_by = customer_user
+                    approval.approval_date = timezone.now()
+                    approval.notes = notes
+                    approval.save()
+                
+                # Update the repair status
+                locked_repair.queue_status = 'APPROVED'
 
-            # Create notification for technician
-            if repair.technician:
+                # IMPORTANT: Ensure technician is preserved
+                # PENDING repairs should already have a technician (the one who found the damage)
+                # This prevents NULL technician errors later
+                if not locked_repair.technician:
+                    logger.warning(f"Repair #{locked_repair.id} approved but has no technician assigned")
+
+                locked_repair.save()
+
+            # Create notification for technician (outside transaction — best effort)
+            if locked_repair.technician:
                 TechnicianNotification.objects.create(
-                    technician=repair.technician,
-                    message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                    technician=locked_repair.technician,
+                    message=f"✅ Repair #{locked_repair.id} APPROVED by {customer.name} - Unit {locked_repair.unit_number}. You can now complete the work.",
                     read=False,
-                    repair=repair
+                    repair=locked_repair
                 )
 
             messages.success(request, "Repair has been approved successfully. The technician can now complete the work.")
@@ -821,46 +836,63 @@ def customer_repair_deny(request, repair_id):
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
             
-            # Create or update the approval record to mark as denied
-            approval, created = RepairApproval.objects.get_or_create(
-                repair=repair,
-                defaults={
-                    'approved': False,
-                    'approved_by': customer_user,
-                    'approval_date': timezone.now(),
-                    'notes': reason
-                }
-            )
-            
-            if not created:
-                approval.approved = False
-                approval.approved_by = customer_user
-                approval.approval_date = timezone.now()
-                approval.notes = reason
-                approval.save()
-            
-            # Update the repair status to indicate it was denied
-            repair.queue_status = 'DENIED'
-            repair.save()
+            # Use a transaction + row-level lock to prevent:
+            #   1. RepairApproval created but repair.save() fails → partial write.
+            #   2. Double-click race: two concurrent POSTs both pass the status
+            #      check above (pre-lock) and both write DENIED — harmless for
+            #      status but could cause double reward restoration.
+            #   Mirrors the select_for_update() pattern in quick_deny_repair.
+            #   (CODE-223)
+            restored = []
+            with transaction.atomic():
+                locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
 
-            # Auto-restore any applied reward so customer can reuse it (CODE-210)
-            restored = _restore_reward_for_repair(repair)
+                # Re-check status inside the lock
+                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    messages.warning(request, "This repair has already been processed.")
+                    return redirect('customer_repair_detail', repair_id=repair.id)
+
+                # Create or update the approval record to mark as denied
+                approval, created = RepairApproval.objects.get_or_create(
+                    repair=locked_repair,
+                    defaults={
+                        'approved': False,
+                        'approved_by': customer_user,
+                        'approval_date': timezone.now(),
+                        'notes': reason
+                    }
+                )
+                
+                if not created:
+                    approval.approved = False
+                    approval.approved_by = customer_user
+                    approval.approval_date = timezone.now()
+                    approval.notes = reason
+                    approval.save()
+                
+                # Update the repair status to indicate it was denied
+                locked_repair.queue_status = 'DENIED'
+                locked_repair.save()
+
+                # Auto-restore any applied reward so customer can reuse it (CODE-210)
+                restored = _restore_reward_for_repair(locked_repair)
+
             for redemption in restored:
                 messages.info(
                     request,
                     f'Your "{redemption.reward_option.name}" reward has been restored and can be used on your next repair.'
                 )
 
-            # Create notification for technician
-            if repair.technician:
-                denial_message = f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}."
+            # Create notification for technician (outside transaction — best effort)
+            if locked_repair.technician:
+                denial_message = f"❌ Repair #{locked_repair.id} DENIED by {customer.name} - Unit {locked_repair.unit_number}."
                 if reason:
                     denial_message += f" Reason: {reason}"
                 TechnicianNotification.objects.create(
-                    technician=repair.technician,
+                    technician=locked_repair.technician,
                     message=denial_message,
                     read=False,
-                    repair=repair
+                    repair=locked_repair
                 )
 
             messages.success(request, "Repair request has been denied.")
