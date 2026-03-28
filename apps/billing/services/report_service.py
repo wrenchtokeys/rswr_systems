@@ -68,7 +68,8 @@ class ReportService:
             service_date__date=report_date
         )
         repair_count = repairs_completed.count()
-        repair_revenue = sum(r.cost for r in repairs_completed)
+        # CODE-218: Use aggregate instead of iterating all repair objects (N+1)
+        repair_revenue = repairs_completed.aggregate(Sum('cost'))['cost__sum'] or Decimal('0')
         
         prev_repairs = self._filter(Repair.objects).filter(
             queue_status='COMPLETED',
@@ -91,14 +92,18 @@ class ReportService:
             payment_date=prev_date
         ).aggregate(Sum('amount'))['amount__sum'] or Decimal('0')
         
-        # Payment breakdown by method
+        # Payment breakdown by method — use a single GROUP BY query instead of
+        # iterating all payment objects (CODE-218: N+1 fix).
+        _method_display = dict(Payment.PAYMENT_METHOD_CHOICES)
         payment_by_method = {}
-        for p in payments:
-            method = p.get_payment_method_display()
-            if method not in payment_by_method:
-                payment_by_method[method] = {'count': 0, 'total': 0}
-            payment_by_method[method]['count'] += 1
-            payment_by_method[method]['total'] += float(p.amount)
+        for row in payments.values('payment_method').annotate(
+            count=Count('id'), total=Sum('amount')
+        ):
+            label = _method_display.get(row['payment_method'], row['payment_method'])
+            payment_by_method[label] = {
+                'count': row['count'],
+                'total': float(row['total'] or 0),
+            }
         
         # Outstanding snapshot
         outstanding = self._filter(Invoice.objects).filter(
@@ -182,7 +187,8 @@ class ReportService:
             service_date__date__lte=week_end
         )
         repair_count = repairs.count()
-        repair_revenue = sum(r.cost for r in repairs)
+        # CODE-218: Use aggregate instead of iterating all repair objects (N+1)
+        repair_revenue = repairs.aggregate(Sum('cost'))['cost__sum'] or Decimal('0')
         
         prev_repairs = self._filter(Repair.objects).filter(
             queue_status='COMPLETED',
