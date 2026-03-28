@@ -87,8 +87,15 @@ class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
     get_full_name.admin_order_field = 'user__first_name'
 
     fieldsets = (
+        ('Tenant & Account', {
+            'fields': ('tenant', 'user'),
+            'description': (
+                'Assign this technician to a shop (tenant). Without a tenant, the technician '
+                'cannot be scoped to any shop and will not appear in tenant-filtered views.'
+            ),
+        }),
         ('Basic Information', {
-            'fields': ('user', 'phone_number', 'expertise', 'is_active')
+            'fields': ('phone_number', 'expertise', 'is_active')
         }),
         ('Manager Capabilities', {
             'fields': ('is_manager', 'approval_limit', 'can_assign_work', 'can_override_pricing', 'managed_technicians'),
