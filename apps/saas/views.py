@@ -382,16 +382,31 @@ def onboarding_view(request):
                         if add_self:
                             # Add the owner as a technician (use their existing user)
                             if not Technician.objects.filter(user=request.user, tenant=tenant).exists():
-                                Technician.objects.create(
-                                    tenant=tenant,
-                                    user=request.user,
-                                    phone_number=cd.get('tech_phone', '') or tenant.business_phone,
-                                    is_active=True,
-                                )
-                                from django.contrib.auth.models import Group
-                                tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                request.user.groups.add(tech_group)
-                                messages.success(request, 'You have been added as a technician!')
+                                # Guard: Technician.user is a OneToOneField — if this user
+                                # already has a Technician record at a *different* tenant
+                                # (e.g. they previously signed up for another shop), we
+                                # cannot create a second one.  Attempting to do so raises
+                                # IntegrityError (duplicate key).  Inform the user instead
+                                # of crashing.  (CODE-217)
+                                foreign_tech = Technician.objects.filter(user=request.user).exclude(tenant=tenant).first()
+                                if foreign_tech:
+                                    messages.warning(
+                                        request,
+                                        'Your account is already linked to a technician profile at another shop. '
+                                        'You can still manage this shop as an owner — add a separate technician '
+                                        'account from Settings → Team if needed.'
+                                    )
+                                else:
+                                    Technician.objects.create(
+                                        tenant=tenant,
+                                        user=request.user,
+                                        phone_number=cd.get('tech_phone', '') or tenant.business_phone,
+                                        is_active=True,
+                                    )
+                                    from django.contrib.auth.models import Group
+                                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                                    request.user.groups.add(tech_group)
+                                    messages.success(request, 'You have been added as a technician!')
                             else:
                                 messages.info(request, 'You are already set up as a technician.')
                         else:
