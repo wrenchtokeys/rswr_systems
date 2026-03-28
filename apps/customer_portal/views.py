@@ -1436,7 +1436,7 @@ def request_repair(request):
             is_batch = request.POST.get('batch_submission') == 'true'
 
             if is_batch:
-                return handle_batch_repair_request(request, customer)
+                return handle_batch_repair_request(request, customer, customer_user)
             else:
                 # Legacy single repair submission (for backwards compatibility)
                 return handle_single_repair_request(request, customer, customer_user)
@@ -1566,30 +1566,38 @@ def handle_single_repair_request(request, customer, customer_user=None):
         return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
 
-def handle_batch_repair_request(request, customer):
+def handle_batch_repair_request(request, customer, customer_user=None):
     """Handle multi-unit batch repair request submission"""
     import json
     import uuid
+
+    # Pre-compute available rewards so ALL error-path renders include them.
+    # CODE-216: Without this, the reward section disappeared when batch submission
+    # hit any validation error — mirrors the same fix applied to handle_single_repair_request
+    # in CODE-211.
+    _rewards_ctx = {
+        'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
+    }
 
     try:
         # Parse units data from JSON
         units_data_json = request.POST.get('units_data')
         if not units_data_json:
             messages.error(request, "No repair data provided.")
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
         units_data = json.loads(units_data_json)
 
         if not units_data or len(units_data) == 0:
             messages.error(request, "Please add at least one unit to submit.")
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
         # Find available technician (scoped to tenant)
         tenant = getattr(request, 'tenant', None)
         technician = get_available_technician(tenant=tenant)
         if not technician:
             messages.error(request, "No technicians available. Please try again later.")
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
         # Create all repairs atomically
         created_repairs = []
@@ -1720,7 +1728,7 @@ def handle_batch_repair_request(request, customer):
                 'success': False,
                 'error': 'Invalid request data format.'
             }, status=400)
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
     except Exception as e:
         logging.error(f"Error creating batch repair request: {str(e)}")
         messages.error(request, f"Error creating repair requests: {str(e)}")
@@ -1730,7 +1738,7 @@ def handle_batch_repair_request(request, customer):
                 'success': False,
                 'error': f"Error creating repair requests: {str(e)}"
             }, status=500)
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
 
 def validate_repair_photo(photo_file):
