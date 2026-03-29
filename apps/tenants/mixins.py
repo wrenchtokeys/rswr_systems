@@ -96,7 +96,11 @@ class PlanEnforcementMixin:
         tenant = getattr(request, 'tenant', None)
         if not tenant:
             return True, None  # No tenant context = no limits to enforce
-        
+
+        # Platform owners are always exempt from all limits
+        if tenant.is_platform_owner:
+            return True, None
+
         # Check trial expiry
         if tenant.plan == 'trial' and tenant.is_trial_expired:
             return False, {
@@ -184,7 +188,11 @@ def check_plan_limit(tenant, resource_type):
     """
     if not tenant:
         return True, None
-    
+
+    # Platform owners are always exempt from all limits
+    if tenant.is_platform_owner:
+        return True, None
+
     # Check trial expiry
     if tenant.plan == 'trial' and tenant.is_trial_expired:
         return False, {

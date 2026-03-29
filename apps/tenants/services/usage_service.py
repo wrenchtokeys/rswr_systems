@@ -138,6 +138,8 @@ class UsageService:
         Check if the tenant can add another technician.
         Returns (allowed: bool, message: str).
         """
+        if self.tenant.is_platform_owner:
+            return True, ""
         if not self.plan:
             return True, ""
         
@@ -159,6 +161,8 @@ class UsageService:
         Check if the tenant can add another customer.
         Returns (allowed: bool, message: str).
         """
+        if self.tenant.is_platform_owner:
+            return True, ""
         if not self.plan:
             return True, ""
         
