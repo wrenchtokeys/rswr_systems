@@ -253,24 +253,45 @@ def process_batch_invoices():
         if config.batch_invoice_frequency == 'disabled':
             continue
         
-        # Check if today is the right day to run
-        if not _should_run_batch_today(config, today):
+        is_shop_day = _should_run_batch_today(config, today)
+        
+        # Find all batch-preference customers for this tenant (CODE-203 scoping).
+        batch_prefs = CustomerRepairPreference.objects.filter(
+            invoice_preference='batch',
+            customer__tenant=tenant,
+        )
+        
+        # Per-customer batch_invoice_day overrides only apply to monthly frequency.
+        # Weekly/biweekly use weekday (0-6) which is a different domain than
+        # batch_invoice_day (day-of-month 1-28), so overrides are meaningless.
+        #
+        # Monthly: customers WITH override → invoice when THEIR day matches today.
+        #          customers WITHOUT override → invoice on shop's batch day.
+        # Weekly/biweekly: all batch customers invoiced on shop day. (CODE-225)
+        if config.batch_invoice_frequency == 'monthly':
+            override_customer_ids = batch_prefs.filter(
+                batch_invoice_day__isnull=False,
+                batch_invoice_day=today.day,
+            ).values_list('customer_id', flat=True)
+            
+            default_customer_ids = batch_prefs.filter(
+                batch_invoice_day__isnull=True,
+            ).values_list('customer_id', flat=True) if is_shop_day else []
+            
+            from itertools import chain
+            eligible_ids = set(chain(override_customer_ids, default_customer_ids))
+        else:
+            # Weekly/biweekly — all batch customers on shop day, ignore overrides
+            if not is_shop_day:
+                continue
+            eligible_ids = set(batch_prefs.values_list('customer_id', flat=True))
+        
+        if not eligible_ids:
             continue
         
-        # Find customers with batch preference.
-        # Scope the CustomerRepairPreference subquery to this tenant so the
-        # VALUES scan only touches rows belonging to the current shop.  Without
-        # the tenant filter the subquery reads ALL CustomerRepairPreference rows
-        # across every tenant, then Django's outer WHERE clause re-narrows by
-        # tenant — a full-table scan that grows O(total customers) instead of
-        # O(tenant customers).  CustomerRepairPreference has no tenant field but
-        # can be scoped via customer__tenant.  (CODE-203)
         batch_customers = Customer.objects.filter(
             tenant=tenant,
-            id__in=CustomerRepairPreference.objects.filter(
-                invoice_preference='batch',
-                customer__tenant=tenant,
-            ).values_list('customer_id', flat=True),
+            id__in=eligible_ids,
         )
         
         for customer in batch_customers:
