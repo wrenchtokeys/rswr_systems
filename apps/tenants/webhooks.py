@@ -295,7 +295,12 @@ def _handle_subscription_updated(subscription):
         'past_due': 'past_due',
         'canceled': 'canceled',
         'trialing': 'trialing',
-        'incomplete': 'incomplete',  # SECURITY: Don't treat as active until paid
+        # 'incomplete' = checkout started but not paid.  Don't upgrade plan.
+        # Map to 'trialing' (current access unchanged) rather than storing the
+        # invalid value 'incomplete' which is not in Tenant.subscription_status
+        # choices.  The 'active' status arrives via invoice.paid webhook once
+        # payment clears.  (CODE-228)
+        'incomplete': 'trialing',
         'incomplete_expired': 'expired',
         'unpaid': 'past_due',
     }
