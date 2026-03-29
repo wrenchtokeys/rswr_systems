@@ -19,6 +19,22 @@ from django.utils.html import format_html
 from django.urls import reverse
 from decimal import Decimal
 
+
+def _csv_safe(value):
+    """
+    Neutralise CSV formula injection.
+
+    Spreadsheet applications treat a cell value as a formula when it starts
+    with '=', '+', '-', or '@'.  Prefix such strings with a single-quote (')
+    to force text mode.  Mirrors the same helper in technician_portal/admin.py
+    and saas/views.py (CODE-214).
+    """
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
+
 from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate, PlatformConfig, PlatformFeeRecord
 from rs_systems.admin_mixins import TenantFilterMixin
 
@@ -253,11 +269,11 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
         ])
         for inv in queryset.select_related('customer'):
             writer.writerow([
-                inv.invoice_number,
-                inv.customer.name if inv.customer else '',
+                _csv_safe(inv.invoice_number),
+                _csv_safe(inv.customer.name if inv.customer else ''),
                 inv.invoice_date,
                 inv.due_date,
-                inv.payment_terms,
+                _csv_safe(inv.payment_terms),
                 inv.status,
                 inv.subtotal,
                 inv.tax_amount,
