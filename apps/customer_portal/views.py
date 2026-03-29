@@ -1215,15 +1215,29 @@ def customer_replacement_approve(request, replacement_id):
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
 
-            # Update replacement status
-            replacement.queue_status = 'APPROVED'
-            replacement.save()
+            # Use a transaction + row-level lock to prevent double-click races
+            # that could create duplicate notifications or corrupt status.
+            # Mirrors the select_for_update() pattern added to repair approve/deny
+            # in CODE-223.  (CODE-234)
+            with transaction.atomic():
+                locked_replacement = Replacement.objects.select_for_update().get(pk=replacement.pk)
 
-            # Create notification for technician
-            if replacement.technician:
+                # Re-check status inside the lock so a concurrent approval/denial
+                # that committed between the initial get_object_or_404 and here
+                # doesn't get overwritten.
+                if locked_replacement.queue_status not in ['PENDING', 'REQUESTED']:
+                    messages.warning(request, "This replacement has already been processed.")
+                    return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+                # Update replacement status
+                locked_replacement.queue_status = 'APPROVED'
+                locked_replacement.save()
+
+            # Create notification for technician (outside transaction — best effort)
+            if locked_replacement.technician:
                 TechnicianNotification.objects.create(
-                    technician=replacement.technician,
-                    message=f"✅ Replacement #{replacement.id} APPROVED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}",
+                    technician=locked_replacement.technician,
+                    message=f"✅ Replacement #{locked_replacement.id} APPROVED by {customer.name} - {locked_replacement.get_glass_position_display()} on Unit {locked_replacement.unit_number}",
                     read=False,
                 )
 
@@ -1256,17 +1270,28 @@ def customer_replacement_deny(request, replacement_id):
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
 
-            # Update replacement status
-            replacement.queue_status = 'DENIED'
-            replacement.save()
+            # Use a transaction + row-level lock to prevent double-click races.
+            # Mirrors the select_for_update() pattern added to repair deny in
+            # CODE-223.  (CODE-234)
+            with transaction.atomic():
+                locked_replacement = Replacement.objects.select_for_update().get(pk=replacement.pk)
 
-            # Create notification for technician
-            if replacement.technician:
-                denial_message = f"❌ Replacement #{replacement.id} DENIED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}"
+                # Re-check status inside the lock
+                if locked_replacement.queue_status not in ['PENDING', 'REQUESTED']:
+                    messages.warning(request, "This replacement has already been processed.")
+                    return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+                # Update replacement status
+                locked_replacement.queue_status = 'DENIED'
+                locked_replacement.save()
+
+            # Create notification for technician (outside transaction — best effort)
+            if locked_replacement.technician:
+                denial_message = f"❌ Replacement #{locked_replacement.id} DENIED by {customer.name} - {locked_replacement.get_glass_position_display()} on Unit {locked_replacement.unit_number}"
                 if reason:
                     denial_message += f". Reason: {reason}"
                 TechnicianNotification.objects.create(
-                    technician=replacement.technician,
+                    technician=locked_replacement.technician,
                     message=denial_message,
                     read=False,
                 )
