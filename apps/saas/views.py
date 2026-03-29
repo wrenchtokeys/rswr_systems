@@ -231,12 +231,17 @@ def _verify_turnstile(request) -> bool:
         return True
 
 
+@ratelimit(key='ip', rate='5/h', method='POST', block=True)
 def signup_view(request):
     """
     Public signup page — creates user, tenant, membership.
 
     The user account is created with is_active=False. A confirmation email
     is sent. The user is NOT logged in until they click the link.
+
+    Rate-limited to 5 POST requests per IP per hour. Turnstile CAPTCHA is
+    the primary defence but is disabled in dev/CI (no secret key), so the
+    rate limit is the safety net against automated account-creation spam.
     """
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
@@ -3790,12 +3795,17 @@ def owner_confirm_email_verification(request, uidb64, token):
     return redirect('signup')
 
 
+@ratelimit(key='ip', rate='3/h', method='GET', block=True)
 def resend_confirmation_email(request, uidb64):
     """
     GET /confirm-email/<uidb64>/resend/
 
     Resend the account confirmation email for an inactive account.
     The user must not yet be active (prevents abuse by active users).
+
+    Rate-limited to 3 requests per IP per hour to prevent:
+    - Email bombing inactive users
+    - SendGrid quota exhaustion (uidb64 is trivially enumerable)
     """
     from django.utils.http import urlsafe_base64_decode
 
