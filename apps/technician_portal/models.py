@@ -1447,7 +1447,15 @@ class Replacement(GlassService):
             # A new windshield means fresh repair pricing for that unit
             if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
                 try:
+                    # Include tenant in the filter to respect tenant isolation.
+                    # Without this, completing a replacement for Tenant A could
+                    # reset Tenant B's repair count if both share a customer
+                    # with the same unit_number.  The Repair model's save()
+                    # already includes tenant= in its UnitRepairCount lookup
+                    # (see line ~756) — this brings Replacement into parity.
+                    # (CODE-230)
                     unit_repair_count = UnitRepairCount.objects.filter(
+                        tenant=self.tenant,
                         customer=self.customer,
                         unit_number=self.unit_number
                     ).first()
