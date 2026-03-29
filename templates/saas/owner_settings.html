@@ -37,6 +37,10 @@
             class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
             <i class="fas fa-star mr-1.5"></i>Reviews
         </button>
+        <button onclick="switchTab('warranty')" id="tab-warranty"
+            class="tab-btn pb-3 px-1 text-sm font-medium border-b-2 transition-colors">
+            <i class="fas fa-shield-alt mr-1.5"></i>Warranty
+        </button>
     </nav>
 </div>
 
@@ -1158,7 +1162,272 @@ Thank you,
 </div>
 
 {% include "includes/fab_quick_actions.html" %}
+
+<!-- ======================= WARRANTY TAB ======================= -->
+<div id="panel-warranty" class="tab-panel hidden">
+
+    <!-- Header row -->
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h2 class="text-xl font-bold text-gray-900">Warranty Policies</h2>
+            <p class="text-sm text-gray-500 mt-0.5">Define what warranty coverage your shop offers per repair type. Customer-specific overrides are shown below.</p>
+        </div>
+        <button onclick="document.getElementById('modal-warranty-create').classList.remove('hidden')"
+            class="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors">
+            <i class="fas fa-plus"></i>New Policy
+        </button>
+    </div>
+
+    {% if warranty_policies %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+        <div class="px-6 py-4 border-b border-gray-200" style="background-color:#EBF8FF;">
+            <h3 class="text-base font-semibold" style="color:#2B6CB0;">All Policies</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applies To</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer Override</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">
+                    {% for policy in warranty_policies %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3">
+                            <div class="font-medium text-gray-900 text-sm">{{ policy.name }}</div>
+                            {% if policy.is_default %}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 mt-0.5">Default</span>{% endif %}
+                            {% if policy.coverage_description %}
+                            <div class="text-xs text-gray-400 mt-0.5 truncate max-w-xs" title="{{ policy.coverage_description }}">{{ policy.coverage_description|truncatechars:60 }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-700">{{ policy.get_applies_to_display }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">
+                            {% if policy.duration_type == 'lifetime' %}
+                                <span class="text-emerald-700 font-medium">Lifetime</span>
+                            {% elif policy.duration_type == 'none' %}
+                                <span class="text-gray-400">No Warranty</span>
+                            {% else %}
+                                {{ policy.duration_days }} day{% if policy.duration_days != 1 %}s{% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            {% if policy.customer %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                    <i class="fas fa-user mr-1"></i>{{ policy.customer.name }}
+                                </span>
+                            {% else %}
+                                <span class="text-gray-400 text-xs">All customers</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if policy.is_active %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Active</span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <!-- Edit button -->
+                                <button
+                                    onclick="openEditWarrantyModal({{ policy.pk }}, '{{ policy.name|escapejs }}', '{{ policy.applies_to }}', '{{ policy.duration_type }}', {{ policy.duration_days }}, '{{ policy.coverage_description|escapejs }}', {{ policy.is_active|yesno:'true,false' }}, {{ policy.is_default|yesno:'true,false' }}, {{ policy.covers_labor|yesno:'true,false' }}, {{ policy.covers_materials|yesno:'true,false' }})"
+                                    class="text-blue-600 hover:text-blue-800 text-xs font-medium transition-colors">
+                                    <i class="fas fa-edit mr-1"></i>Edit
+                                </button>
+                                <!-- Toggle active -->
+                                <form method="post" action="{% url 'owner_warranty_toggle' policy.pk %}" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="text-xs font-medium transition-colors {% if policy.is_active %}text-yellow-600 hover:text-yellow-800{% else %}text-emerald-600 hover:text-emerald-800{% endif %}">
+                                        {% if policy.is_active %}<i class="fas fa-toggle-on mr-1"></i>Deactivate{% else %}<i class="fas fa-toggle-off mr-1"></i>Activate{% endif %}
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center mb-6">
+        <i class="fas fa-shield-alt text-4xl text-gray-300 mb-3 block"></i>
+        <p class="text-gray-500 font-medium">No warranty policies yet.</p>
+        <p class="text-gray-400 text-sm mt-1">Create your first policy to define warranty terms for your customers.</p>
+        <button onclick="document.getElementById('modal-warranty-create').classList.remove('hidden')"
+            class="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors">
+            <i class="fas fa-plus"></i>Create Policy
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- Coverage summary -->
+    {% if warranty_policies %}
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+        <i class="fas fa-info-circle mr-2"></i>
+        <strong>How policies apply:</strong> RS Systems matches repairs to the most specific active policy — customer override &gt; damage-type policy &gt; "All Repairs" default.
+        Policies with a <em>Customer Override</em> apply only to that specific fleet account.
+    </div>
+    {% endif %}
+</div>
+
+<!-- ============ CREATE WARRANTY MODAL ============ -->
+<div id="modal-warranty-create" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-screen overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between" style="background-color:#EBF8FF;">
+            <h3 class="text-lg font-semibold" style="color:#2B6CB0;"><i class="fas fa-shield-alt mr-2"></i>New Warranty Policy</h3>
+            <button onclick="document.getElementById('modal-warranty-create').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-lg"></i>
+            </button>
+        </div>
+        <form method="post" action="{% url 'owner_warranty_create' %}" class="p-6 space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Policy Name <span class="text-red-500">*</span></label>
+                <input type="text" name="name" required maxlength="200" placeholder="e.g. Standard Glass Warranty"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Applies To</label>
+                <select name="applies_to" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {% for val, label in warranty_applies_to_choices %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Duration Type</label>
+                <select name="duration_type" id="create-duration-type" onchange="toggleCreateDays(this.value)"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {% for val, label in warranty_duration_type_choices %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div id="create-days-field">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Duration (Days)</label>
+                <input type="number" name="duration_days" value="365" min="0"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <p class="text-xs text-gray-400 mt-1">Enter 0 for lifetime coverage, or the number of days after repair completion.</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Coverage Description</label>
+                <textarea name="coverage_description" rows="3" placeholder="Customer-facing warranty terms shown on invoices..."
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+            </div>
+            <div class="flex flex-wrap gap-4">
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" name="covers_labor" checked class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Covers Labor
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" name="covers_materials" checked class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Covers Materials
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" name="is_default" class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Set as Default
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" name="is_active" checked class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Active
+                </label>
+            </div>
+            <div class="flex gap-3 pt-2">
+                <button type="submit" class="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors">
+                    <i class="fas fa-save mr-1.5"></i>Create Policy
+                </button>
+                <button type="button" onclick="document.getElementById('modal-warranty-create').classList.add('hidden')"
+                    class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============ EDIT WARRANTY MODAL ============ -->
+<div id="modal-warranty-edit" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-screen overflow-y-auto">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between" style="background-color:#EBF8FF;">
+            <h3 class="text-lg font-semibold" style="color:#2B6CB0;"><i class="fas fa-edit mr-2"></i>Edit Warranty Policy</h3>
+            <button onclick="document.getElementById('modal-warranty-edit').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-lg"></i>
+            </button>
+        </div>
+        <form id="edit-warranty-form" method="post" action="" class="p-6 space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Policy Name <span class="text-red-500">*</span></label>
+                <input type="text" id="edit-warranty-name" name="name" required maxlength="200"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Applies To</label>
+                <select id="edit-warranty-applies-to" name="applies_to"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {% for val, label in warranty_applies_to_choices %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Duration Type</label>
+                <select id="edit-warranty-duration-type" name="duration_type" onchange="toggleEditDays(this.value)"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    {% for val, label in warranty_duration_type_choices %}
+                    <option value="{{ val }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div id="edit-days-field">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Duration (Days)</label>
+                <input type="number" id="edit-warranty-duration-days" name="duration_days" min="0"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <p class="text-xs text-gray-400 mt-1">Enter 0 for lifetime coverage, or the number of days after repair completion.</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Coverage Description</label>
+                <textarea id="edit-warranty-coverage" name="coverage_description" rows="3"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+            </div>
+            <div class="flex flex-wrap gap-4">
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="edit-warranty-covers-labor" name="covers_labor" class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Covers Labor
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="edit-warranty-covers-materials" name="covers_materials" class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Covers Materials
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="edit-warranty-is-default" name="is_default" class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Set as Default
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="edit-warranty-is-active" name="is_active" class="rounded border-gray-300 text-blue-500 focus:ring-blue-400">
+                    Active
+                </label>
+            </div>
+            <div class="flex gap-3 pt-2">
+                <button type="submit" class="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors">
+                    <i class="fas fa-save mr-1.5"></i>Save Changes
+                </button>
+                <button type="button" onclick="document.getElementById('modal-warranty-edit').classList.add('hidden')"
+                    class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
+
 
 {% block extra_js %}
 <script>
@@ -1314,6 +1583,48 @@ document.addEventListener('DOMContentLoaded', function() {
     updateBatchDayField();
     const freqSelect = document.getElementById('batch-frequency-select');
     if (freqSelect) freqSelect.addEventListener('change', updateBatchDayField);
+});
+
+// ---- Warranty modal helpers ----
+function toggleCreateDays(durationType) {
+    const field = document.getElementById('create-days-field');
+    if (field) field.style.display = (durationType === 'custom_days') ? '' : 'none';
+}
+
+function toggleEditDays(durationType) {
+    const field = document.getElementById('edit-days-field');
+    if (field) field.style.display = (durationType === 'custom_days') ? '' : 'none';
+}
+
+function openEditWarrantyModal(id, name, appliesTo, durationType, durationDays, coverage, isActive, isDefault, coversLabor, coversMaterials) {
+    const form = document.getElementById('edit-warranty-form');
+    form.action = '/owner/settings/warranty/' + id + '/edit/';
+    document.getElementById('edit-warranty-name').value = name;
+    document.getElementById('edit-warranty-duration-days').value = durationDays;
+    document.getElementById('edit-warranty-coverage').value = coverage;
+    document.getElementById('edit-warranty-is-active').checked = isActive;
+    document.getElementById('edit-warranty-is-default').checked = isDefault;
+    document.getElementById('edit-warranty-covers-labor').checked = coversLabor;
+    document.getElementById('edit-warranty-covers-materials').checked = coversMaterials;
+
+    const appliesSelect = document.getElementById('edit-warranty-applies-to');
+    if (appliesSelect) {
+        for (let opt of appliesSelect.options) { opt.selected = (opt.value === appliesTo); }
+    }
+    const durSelect = document.getElementById('edit-warranty-duration-type');
+    if (durSelect) {
+        for (let opt of durSelect.options) { opt.selected = (opt.value === durationType); }
+    }
+    toggleEditDays(durationType);
+    document.getElementById('modal-warranty-edit').classList.remove('hidden');
+}
+
+// Close modals when clicking backdrop
+document.addEventListener('click', function(e) {
+    ['modal-warranty-create', 'modal-warranty-edit'].forEach(function(id) {
+        const modal = document.getElementById(id);
+        if (modal && e.target === modal) modal.classList.add('hidden');
+    });
 });
 </script>
 {% endblock extra_js %}
