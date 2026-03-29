@@ -221,19 +221,28 @@ def _handle_invoice_paid(invoice):
     if not tenant:
         return
     
+    # Check previous status before updating (for payment_recovered detection)
+    previous_status = tenant.subscription_status
+
     # Update tenant status to active
     tenant.subscription_status = 'active'
-    
+
     # Update subscription ID if it changed
     if subscription_id and tenant.stripe_subscription_id != subscription_id:
         tenant.stripe_subscription_id = subscription_id
-    
+
     tenant.save(update_fields=['subscription_status', 'stripe_subscription_id'])
-    
+
     logger.info(
         f"invoice.paid: Tenant {tenant.slug} subscription payment successful. "
         f"Invoice: {invoice.get('id')}"
     )
+
+    # If transitioning from past_due → active, send payment recovered email
+    if previous_status == 'past_due':
+        _notify_owners_and_managers(tenant, 'payment_recovered', {
+            'invoice_id': invoice.get('id'),
+        })
 
 
 def _handle_invoice_payment_failed(invoice):
@@ -474,17 +483,40 @@ def _notify_owners_and_managers(tenant, event_type, context):
         base_url = getattr(django_settings, 'BASE_URL', 'https://rssystems.io')
 
         if event_type == 'payment_failed':
+            attempt_count = context.get('attempt_count', 1)
+            max_attempts = 4
+            retry_text = (
+                f"This was attempt {attempt_count} of {max_attempts}. "
+                "Stripe will retry automatically, but we recommend updating "
+                "your payment method now to avoid service interruption."
+            )
             send_branded_email(
                 subject=f'⚠️ Payment failed for {tenant.name}',
                 recipient_list=recipient_list,
                 headline='Payment Failed',
                 body_paragraphs=[
                     f"Hi {owner_name},",
-                    f"We were unable to process your payment for {tenant.name} (attempt #{context.get('attempt_count', 1)}).",
-                    "Please update your payment method to avoid service interruption.",
+                    f"We were unable to process your payment for {tenant.name} (attempt #{attempt_count}).",
+                    retry_text,
                 ],
                 button_text='💳 Update Payment Method',
-                button_url=f'{base_url}/owner/billing/',
+                button_url=f'{base_url}/owner/update-payment-method/',
+                tenant=tenant,
+                fail_silently=True,
+            )
+        elif event_type == 'payment_recovered':
+            send_branded_email(
+                subject=f'✅ Payment successful for {tenant.name}',
+                recipient_list=recipient_list,
+                headline='Good news!',
+                body_paragraphs=[
+                    f"Hi {owner_name},",
+                    f"Your payment for {tenant.name} has been successfully processed. "
+                    "Your account is back to active status.",
+                    "No further action is needed — thank you for being a valued customer!",
+                ],
+                button_text='Go to Dashboard',
+                button_url=f'{base_url}/owner/',
                 tenant=tenant,
                 fail_silently=True,
             )

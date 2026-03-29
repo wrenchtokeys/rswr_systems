@@ -38,6 +38,7 @@ urlpatterns = [
     path('owner/payments/setup/return/', views.connect_return, name='connect_return'),
     path('owner/payments/setup/refresh/', views.connect_refresh, name='connect_refresh'),
     path('owner/payments/dashboard/', views.connect_dashboard, name='connect_dashboard'),
+    path('owner/update-payment-method/', views.update_payment_method, name='update_payment_method'),
     path('owner/billing/portal/', views.billing_portal_redirect, name='billing_portal_redirect'),
 
     # Owner settings & team

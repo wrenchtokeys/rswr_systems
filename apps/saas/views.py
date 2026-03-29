@@ -1113,6 +1113,24 @@ def billing_cancel(request):
 
 
 @owner_or_manager_required
+def update_payment_method(request):
+    """GET /owner/update-payment-method/ — redirect to Stripe Billing Portal for card update."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership:
+        messages.error(request, 'Access denied.')
+        return redirect('billing_settings')
+
+    svc = SubscriptionService()
+    try:
+        return_url = request.build_absolute_uri('/owner/billing/')
+        portal_url = svc.create_billing_portal_session(tenant, return_url)
+        return redirect(portal_url)
+    except SubscriptionError as e:
+        messages.error(request, str(e))
+        return redirect('billing_settings')
+
+
+@owner_or_manager_required
 def billing_portal_redirect(request):
     """GET /owner/billing/portal/ — redirect to Stripe Billing Portal."""
     tenant, membership = _get_owner_tenant(request)
