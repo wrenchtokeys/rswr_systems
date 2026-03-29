@@ -5,6 +5,17 @@ status, and description.
 
 ## Fixed
 
+### CODE-231: AuditLogAdmin missing tenant scoping (cross-tenant data leak)
+- **Severity:** 🔴 Tenant isolation bug
+- **Fixed:** 2026-03-29
+- **Details:** `AuditLogAdmin` (Django's `LogEntry` admin) had no `get_queryset()`
+  override — non-superuser staff could see ALL audit log entries across all tenants.
+  Since `LogEntry.object_repr` contains customer names, invoice numbers, and repair
+  details, a Shop A admin could read Shop B's sensitive business data simply by
+  visiting the audit log page. Fixed by scoping to log entries made by users who
+  share at least one active `TenantMembership` with the requesting user.
+- **Test:** `tests/bug_fixes/test_code231_auditlog_tenant_scoping.py` (6 tests)
+
 ### CODE-230: Replacement.save() missing tenant filter on UnitRepairCount reset
 - **Severity:** 🔴 Tenant isolation bug
 - **Fixed:** 2026-03-29
