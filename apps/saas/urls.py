@@ -78,6 +78,8 @@ urlpatterns = [
     path('owner/setup/save/assignment/', views.owner_setup_save_assignment, name='owner_setup_save_assignment'),
 
     # Loyalty Phase 2: Manual point adjustment + liability report (CODE-197)
+    path('owner/loyalty/', views.owner_loyalty_dashboard, name='owner_loyalty_dashboard'),
+    path('owner/loyalty/config/', views.owner_loyalty_save_config, name='owner_loyalty_save_config'),
     path('owner/loyalty/customers/<int:customer_user_id>/adjust/', views.owner_loyalty_adjust_points, name='owner_loyalty_adjust_points'),
     path('owner/loyalty/liability/', views.owner_loyalty_liability_report, name='owner_loyalty_liability_report'),
 
@@ -87,6 +89,11 @@ urlpatterns = [
     path('owner/tax-rates/<int:rate_id>/edit/', views.owner_edit_tax_rate, name='owner_edit_tax_rate'),
     path('owner/tax-rates/<int:rate_id>/delete/', views.owner_delete_tax_rate, name='owner_delete_tax_rate'),
     path('owner/tax-rates/toggle/', views.owner_toggle_tax, name='owner_toggle_tax'),
+
+    # Warranty policy management (owner/manager)
+    path('owner/settings/warranty/create/', views.owner_warranty_create, name='owner_warranty_create'),
+    path('owner/settings/warranty/<int:policy_id>/edit/', views.owner_warranty_edit, name='owner_warranty_edit'),
+    path('owner/settings/warranty/<int:policy_id>/toggle/', views.owner_warranty_toggle, name='owner_warranty_toggle'),
 
     # Replacement management
     path('tech/replacements/', views.replacement_list, name='replacement_list'),

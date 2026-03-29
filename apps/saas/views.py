@@ -35,7 +35,7 @@ from apps.tenants.models import InviteToken, SubscriptionPlan, Tenant, TenantMem
 from apps.tenants.services.usage_service import UsageService
 from apps.tenants.services.subscription_service import SubscriptionService, SubscriptionError
 from apps.tenants.services.signup_service import create_tenant_with_owner, SignupError
-from apps.technician_portal.models import Repair, Replacement, Technician
+from apps.technician_portal.models import Repair, Replacement, Technician, WarrantyPolicy
 from apps.customer_portal.models import CustomerUser
 from core.models import Customer
 
@@ -1615,6 +1615,14 @@ def owner_settings_view(request):
         .order_by('-created_at')[:10]
     )
 
+    # Warranty policies for the Warranty tab
+    warranty_policies = (
+        WarrantyPolicy.objects
+        .filter(tenant=tenant)
+        .select_related('customer')
+        .order_by('applies_to', 'name')
+    )
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1631,6 +1639,9 @@ def owner_settings_view(request):
         'batch_month_days': batch_month_days,
         'review_config': review_config,
         'recent_review_requests': recent_review_requests,
+        'warranty_policies': warranty_policies,
+        'warranty_applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
+        'warranty_duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -4211,3 +4222,230 @@ def owner_loyalty_liability_report(request):
     report['tenant_name'] = tenant.name
 
     return JsonResponse(report)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Loyalty Dashboard — Owner HTML Page
+# ──────────────────────────────────────────────────────────────────────────────
+
+@owner_or_manager_required
+def owner_loyalty_dashboard(request):
+    """
+    GET  /owner/loyalty/          — render the loyalty dashboard
+    POST /owner/loyalty/config/   — handled separately (see owner_loyalty_save_config)
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+    from apps.rewards_referrals.models import LoyaltyConfig, PointTransaction
+    from django.db.models import Sum, Q
+    from django.utils import timezone
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('owner_dashboard')
+
+    # Liability report (customer list + totals)
+    report = LoyaltyService.get_point_liability_report(tenant)
+
+    # Points awarded this month
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    points_this_month = (
+        PointTransaction.objects
+        .filter(tenant=tenant, created_at__gte=month_start, amount__gt=0)
+        .aggregate(total=Sum('amount'))['total'] or 0
+    )
+
+    config = LoyaltyConfig.get_for_tenant(tenant)
+
+    ctx = {
+        'tenant': tenant,
+        'report': report,
+        'points_this_month': points_this_month,
+        'config': config,
+    }
+    return render(request, 'saas/owner_loyalty.html', ctx)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_loyalty_save_config(request):
+    """
+    POST /owner/loyalty/config/
+    Save LoyaltyConfig fields: is_active, points_per_repair, points_expiry_days.
+    """
+    from apps.rewards_referrals.models import LoyaltyConfig
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Unauthorized.'}, status=403)
+
+    config = LoyaltyConfig.get_for_tenant(tenant)
+
+    errors = []
+
+    # Toggle
+    config.is_active = request.POST.get('is_active') == 'true'
+
+    # points_per_repair
+    try:
+        ppr = int(request.POST.get('points_per_repair', config.points_per_repair))
+        if ppr < 0:
+            raise ValueError
+        config.points_per_repair = ppr
+    except (ValueError, TypeError):
+        errors.append('Points per repair must be a non-negative integer.')
+
+    # points_expiry_days
+    try:
+        ped = int(request.POST.get('points_expiry_days', config.points_expiry_days))
+        if ped < 0:
+            raise ValueError
+        config.points_expiry_days = ped
+    except (ValueError, TypeError):
+        errors.append('Points expiry days must be a non-negative integer (0 = never).')
+
+    if errors:
+        return JsonResponse({'success': False, 'errors': errors}, status=400)
+
+    config.save()
+    return JsonResponse({
+        'success': True,
+        'is_active': config.is_active,
+        'points_per_repair': config.points_per_repair,
+        'points_expiry_days': config.points_expiry_days,
+    })
+
+
+# ─────────────────────────────────────────────
+# Warranty Policy CRUD (owner/manager only)
+# ─────────────────────────────────────────────
+
+@owner_or_manager_required
+def owner_warranty_create(request):
+    """POST /owner/settings/warranty/create/ — create a new warranty policy."""
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    name = request.POST.get('name', '').strip()
+    applies_to = request.POST.get('applies_to', 'all_repairs')
+    duration_type = request.POST.get('duration_type', 'custom_days')
+    coverage_description = request.POST.get('coverage_description', '').strip()
+    is_active = request.POST.get('is_active') == 'on'
+    is_default = request.POST.get('is_default') == 'on'
+    covers_labor = request.POST.get('covers_labor') == 'on'
+    covers_materials = request.POST.get('covers_materials') == 'on'
+
+    try:
+        duration_days = int(request.POST.get('duration_days', 365))
+    except (ValueError, TypeError):
+        duration_days = 365
+
+    # Validate applies_to
+    valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+    if applies_to not in valid_applies:
+        messages.error(request, 'Invalid "Applies To" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    if not name:
+        messages.error(request, 'Policy name is required.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    try:
+        WarrantyPolicy.objects.create(
+            tenant=tenant,
+            name=name,
+            applies_to=applies_to,
+            duration_type=duration_type,
+            duration_days=duration_days,
+            coverage_description=coverage_description,
+            is_active=is_active,
+            is_default=is_default,
+            covers_labor=covers_labor,
+            covers_materials=covers_materials,
+        )
+        messages.success(request, f'Warranty policy "{name}" created.')
+    except Exception as e:
+        logger.error(f"Error creating warranty policy: {e}")
+        messages.error(request, f'Could not create policy: {e}')
+
+    return redirect('/owner/settings/?tab=warranty')
+
+
+@owner_or_manager_required
+def owner_warranty_edit(request, policy_id):
+    """POST /owner/settings/warranty/<id>/edit/ — update an existing warranty policy."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    policy = get_object_or_404(WarrantyPolicy, pk=policy_id, tenant=tenant)
+
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    name = request.POST.get('name', '').strip()
+    applies_to = request.POST.get('applies_to', policy.applies_to)
+    duration_type = request.POST.get('duration_type', policy.duration_type)
+    coverage_description = request.POST.get('coverage_description', '').strip()
+    is_active = request.POST.get('is_active') == 'on'
+    is_default = request.POST.get('is_default') == 'on'
+    covers_labor = request.POST.get('covers_labor') == 'on'
+    covers_materials = request.POST.get('covers_materials') == 'on'
+
+    try:
+        duration_days = int(request.POST.get('duration_days', policy.duration_days))
+    except (ValueError, TypeError):
+        duration_days = policy.duration_days
+
+    valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+    if applies_to not in valid_applies:
+        messages.error(request, 'Invalid "Applies To" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    if not name:
+        messages.error(request, 'Policy name is required.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    try:
+        policy.name = name
+        policy.applies_to = applies_to
+        policy.duration_type = duration_type
+        policy.duration_days = duration_days
+        policy.coverage_description = coverage_description
+        policy.is_active = is_active
+        policy.is_default = is_default
+        policy.covers_labor = covers_labor
+        policy.covers_materials = covers_materials
+        policy.save()
+        messages.success(request, f'Warranty policy "{name}" updated.')
+    except Exception as e:
+        logger.error(f"Error updating warranty policy {policy_id}: {e}")
+        messages.error(request, f'Could not update policy: {e}')
+
+    return redirect('/owner/settings/?tab=warranty')
+
+
+@owner_or_manager_required
+def owner_warranty_toggle(request, policy_id):
+    """POST /owner/settings/warranty/<id>/toggle/ — soft toggle is_active."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    policy = get_object_or_404(WarrantyPolicy, pk=policy_id, tenant=tenant)
+
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    policy.is_active = not policy.is_active
+    policy.save(update_fields=['is_active'])
+    status = 'activated' if policy.is_active else 'deactivated'
+    messages.success(request, f'Policy "{policy.name}" {status}.')
+    return redirect('/owner/settings/?tab=warranty')
