@@ -4067,16 +4067,37 @@ def owner_generate_invoice_from_repair(request, repair_id):
         messages.error(request, 'Only completed repairs can be invoiced.')
         return redirect('repair_detail', repair_id=repair.id)
 
-    # Validate: not already invoiced
+    # Multi-break batch: include ALL sibling repairs from the same batch.
+    # A multi-break job (e.g. 3 chips on one windshield) creates separate Repair
+    # records sharing the same repair_batch_id. Invoicing only the clicked repair
+    # would miss the other breaks and undercharge. (CODE-226)
+    if repair.repair_batch_id:
+        batch_repairs = list(
+            Repair.objects.filter(
+                tenant=tenant,
+                repair_batch_id=repair.repair_batch_id,
+                queue_status='COMPLETED',
+            ).order_by('break_number')
+        )
+    else:
+        batch_repairs = [repair]
+
+    # Validate: not already invoiced (check all repairs in the batch)
     from apps.billing.models import InvoiceLineItem
-    if InvoiceLineItem.objects.filter(
-        repair=repair,
-        invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
-    ).exists():
-        messages.info(request, 'This repair has already been invoiced.')
+    already_invoiced_repair = None
+    for r in batch_repairs:
+        if InvoiceLineItem.objects.filter(
+            repair=r,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).exists():
+            already_invoiced_repair = r
+            break
+
+    if already_invoiced_repair:
+        messages.info(request, 'This repair (or part of its batch) has already been invoiced.')
         line_item = InvoiceLineItem.objects.filter(
-            repair=repair,
+            repair=already_invoiced_repair,
             invoice__tenant=tenant,
             invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
         ).select_related('invoice').first()
@@ -4095,10 +4116,14 @@ def owner_generate_invoice_from_repair(request, repair_id):
         tracking_svc = InvoiceTrackingService(tenant=tenant)
         invoice = tracking_svc.create_invoice_from_repairs(
             customer=repair.customer,
-            repairs=[repair],
+            repairs=batch_repairs,
             payment_terms=req_payment_terms,
         )
-        messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
+        repair_count = len(batch_repairs)
+        if repair_count > 1:
+            messages.success(request, f'Invoice {invoice.invoice_number} created for {repair_count} repairs (multi-break batch). Review and send below.')
+        else:
+            messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
     except ValueError as e:
         messages.error(request, str(e))
