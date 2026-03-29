@@ -1319,6 +1319,7 @@ def is_suspicious_username(username):
 
     return False
 
+@ratelimit(key='ip', rate='10/h', method='POST', block=False)
 def customer_register(request):
     if request.user.is_authenticated:
         return redirect('customer_dashboard')

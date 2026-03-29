@@ -30,6 +30,7 @@ from common.decorators import owner_or_manager_required
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
 
 from apps.tenants.models import InviteToken, SubscriptionPlan, Tenant, TenantMembership
 from apps.tenants.services.usage_service import UsageService
@@ -1889,6 +1890,7 @@ def invite_member(request):
 # 10. Shop Join — Customer Self-Signup (Phase 4)
 # ------------------------------------------------------------------
 
+@ratelimit(key='ip', rate='10/h', method='POST', block=False)
 def shop_join_view(request, slug):
     """Public page: /join/<slug>/ — customer self-signup for a shop's portal."""
     from apps.customer_portal.models import CustomerUser as CustomerUserModel
@@ -1952,6 +1954,14 @@ def shop_join_view(request, slug):
         return redirect('customer_dashboard')
 
     if request.method == 'POST':
+        # Enforce IP-based rate limit (set by @ratelimit decorator)
+        if getattr(request, 'limited', False):
+            return render(request, 'saas/shop_join.html', {
+                'tenant': tenant,
+                'errors': ['Too many registration attempts. Please try again later.'],
+                'form_data': {},
+            })
+
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
         email = request.POST.get('email', '').strip().lower()
