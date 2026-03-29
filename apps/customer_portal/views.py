@@ -2376,7 +2376,13 @@ def customer_bulk_action(request):
             messages.error(request, "No repairs selected.")
             return redirect('customer_repairs')
 
-        # Validate and process repairs with transaction safety
+        # Validate and process repairs with transaction safety.
+        # Use select_for_update() to prevent a double-click / concurrent request
+        # race that could create duplicate TechnicianNotification records or
+        # corrupt repair status.  The single-repair views were fixed in CODE-223
+        # and replacements in CODE-234, but the bulk action was missed.  (CODE-236)
+        notifications_to_create = []  # collect notifications outside the lock
+
         with transaction.atomic():
             # Get all repairs and ensure they belong to this customer (tenant-scoped).
             # Include REQUESTED repairs — customer-initiated repairs start as REQUESTED
@@ -2384,20 +2390,27 @@ def customer_bulk_action(request):
             # customer_repair_approve() which also accepts {'PENDING', 'REQUESTED'}.
             # (CODE-065: previously only 'PENDING', so REQUESTED repairs were silently
             # dropped from bulk actions without any warning to the user.)
-            repairs = Repair.objects.filter(
-                id__in=repair_ids,
-                customer=customer,
-                tenant=customer.tenant,
-                queue_status__in=['PENDING', 'REQUESTED']
-            ).select_related('technician')
+            repairs = list(
+                Repair.objects.select_for_update().filter(
+                    id__in=repair_ids,
+                    customer=customer,
+                    tenant=customer.tenant,
+                    queue_status__in=['PENDING', 'REQUESTED']
+                ).select_related('technician')
+            )
 
-            if not repairs.exists():
+            if not repairs:
                 messages.error(request, "No valid repairs found to process.")
                 return redirect('customer_repairs')
 
             processed_count = 0
 
             for repair in repairs:
+                # Re-check status inside the lock — a concurrent request may have
+                # already transitioned this repair.
+                if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    continue
+
                 if action == 'approve':
                     # Create or update approval
                     approval, created = RepairApproval.objects.get_or_create(
@@ -2406,7 +2419,7 @@ def customer_bulk_action(request):
                             'approved': True,
                             'approved_by': customer_user,
                             'approval_date': timezone.now(),
-                            'notes': f'Bulk approved via multi-select'
+                            'notes': 'Bulk approved via multi-select'
                         }
                     )
 
@@ -2414,20 +2427,22 @@ def customer_bulk_action(request):
                         approval.approved = True
                         approval.approved_by = customer_user
                         approval.approval_date = timezone.now()
-                        approval.notes = f'Bulk approved via multi-select'
+                        approval.notes = 'Bulk approved via multi-select'
                         approval.save()
 
                     # Update repair status
                     repair.queue_status = 'APPROVED'
                     repair.save()
 
-                    # Create notification for technician
+                    # Queue notification for technician (created outside the lock)
                     if repair.technician:
-                        TechnicianNotification.objects.create(
-                            technician=repair.technician,
-                            message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
-                            read=False,
-                            repair=repair
+                        notifications_to_create.append(
+                            TechnicianNotification(
+                                technician=repair.technician,
+                                message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                                read=False,
+                                repair=repair,
+                            )
                         )
 
                 else:  # deny
@@ -2438,7 +2453,7 @@ def customer_bulk_action(request):
                             'approved': False,
                             'approved_by': customer_user,
                             'approval_date': timezone.now(),
-                            'notes': f'Bulk denied via multi-select'
+                            'notes': 'Bulk denied via multi-select'
                         }
                     )
 
@@ -2446,23 +2461,37 @@ def customer_bulk_action(request):
                         approval.approved = False
                         approval.approved_by = customer_user
                         approval.approval_date = timezone.now()
-                        approval.notes = f'Bulk denied via multi-select'
+                        approval.notes = 'Bulk denied via multi-select'
                         approval.save()
 
                     # Update repair status
                     repair.queue_status = 'DENIED'
                     repair.save()
 
-                    # Create notification for technician
+                    # Queue notification for technician (created outside the lock)
                     if repair.technician:
-                        TechnicianNotification.objects.create(
-                            technician=repair.technician,
-                            message=f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}.",
-                            read=False,
-                            repair=repair
+                        notifications_to_create.append(
+                            TechnicianNotification(
+                                technician=repair.technician,
+                                message=f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}.",
+                                read=False,
+                                repair=repair,
+                            )
                         )
 
                 processed_count += 1
+
+        # Create technician notifications outside the transaction to avoid
+        # holding the row lock longer than necessary (best effort, same
+        # pattern as CODE-223 / CODE-234).
+        for notif in notifications_to_create:
+            try:
+                notif.save()
+            except Exception:
+                logger.warning(
+                    "Failed to create technician notification for repair %s",
+                    notif.repair_id, exc_info=True,
+                )
 
             # Success message
             action_word = "approved" if action == 'approve' else "denied"
