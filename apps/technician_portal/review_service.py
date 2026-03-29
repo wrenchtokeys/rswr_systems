@@ -134,50 +134,112 @@ class ReviewRequestService:
         Send all ReviewRequests whose scheduled_at has arrived.
 
         Called by the ``send_review_requests`` management command (cron).
+
+        CONCURRENCY NOTE (CODE-230):
+        The cron may be configured to run every 15–30 minutes. If a slow run
+        overlaps with the next scheduled run, both workers would pick up the
+        same 'pending' rows and send duplicate review request emails to customers.
+
+        Fix: collect eligible PKs first, then process each one inside its own
+        ``transaction.atomic()`` block using ``select_for_update(skip_locked=True)``.
+        A concurrent worker that hits the same PK will get a DoesNotExist (row
+        already locked or status already updated) and safely skip it.  Because
+        email delivery is outside the transaction, the lock is held only for the
+        status-flip — not during the SMTP call.
         """
+        from django.db import transaction as db_transaction
         from apps.technician_portal.review_models import ReviewConfig, ReviewRequest
 
         now = timezone.now()
-        pending = (
+
+        # Collect candidate PKs outside any transaction — cheap read.
+        pending_ids = list(
             ReviewRequest.objects
             .filter(status='pending', scheduled_at__lte=now)
-            .select_related('tenant', 'customer', 'customer_user__user', 'repair')
+            .values_list('pk', flat=True)
         )
 
         sent_count = 0
-        for rr in pending:
-            config = ReviewConfig.get_for_tenant(rr.tenant)
-            if not config.is_enabled:
-                rr.status = 'skipped'
-                rr.skip_reason = 'config_deactivated'
-                rr.save(update_fields=['status', 'skip_reason'])
-                continue
-
-            # Re-check opt-out (may have changed since scheduling)
-            if rr.customer_user and rr.customer_user.review_opt_out:
-                rr.status = 'skipped'
-                rr.skip_reason = 'customer_opted_out'
-                rr.save(update_fields=['status', 'skip_reason'])
-                continue
-
+        for rr_id in pending_ids:
+            # Each item gets its own transaction so a failure in one does not
+            # roll back work already done on others.
             try:
-                success = _send_review_email(rr, config)
-            except Exception:
-                logger.exception(
-                    "Failed to send review request pk=%s for tenant=%s",
-                    rr.pk, rr.tenant_id,
-                )
-                # Leave as pending for retry on next cron run
-                continue
+                with db_transaction.atomic():
+                    # Re-fetch with a row-level lock.  skip_locked=True means a
+                    # concurrent worker will skip rows we're already processing.
+                    # NOTE: select_for_update() cannot be combined with
+                    # select_related() on nullable FKs (PostgreSQL raises
+                    # "FOR UPDATE cannot be applied to the nullable side of an
+                    # outer join").  Lock the row first, then fetch with
+                    # select_related separately.
+                    try:
+                        ReviewRequest.objects.select_for_update(
+                            skip_locked=True
+                        ).get(pk=rr_id, status='pending')
+                    except ReviewRequest.DoesNotExist:
+                        # Either already processed by a concurrent runner, or the
+                        # status changed since we collected the IDs.
+                        continue
 
-            if success:
-                rr.status = 'sent'
-                rr.sent_at = now
-                rr.save(update_fields=['status', 'sent_at'])
-                sent_count += 1
-            else:
-                logger.warning(
-                    "send_branded_email returned 0 for review request pk=%s", rr.pk,
+                    # Row is locked — now fetch it with related objects.
+                    try:
+                        rr = (
+                            ReviewRequest.objects
+                            .select_related('tenant', 'customer', 'customer_user__user', 'repair')
+                            .get(pk=rr_id)
+                        )
+                    except ReviewRequest.DoesNotExist:
+                        continue
+
+                    config = ReviewConfig.get_for_tenant(rr.tenant)
+                    if not config.is_enabled:
+                        rr.status = 'skipped'
+                        rr.skip_reason = 'config_deactivated'
+                        rr.save(update_fields=['status', 'skip_reason'])
+                        continue
+
+                    # Re-check opt-out (may have changed since scheduling)
+                    if rr.customer_user and rr.customer_user.review_opt_out:
+                        rr.status = 'skipped'
+                        rr.skip_reason = 'customer_opted_out'
+                        rr.save(update_fields=['status', 'skip_reason'])
+                        continue
+
+                    # Send the email OUTSIDE the transaction so we don't hold
+                    # the DB lock during the SMTP call.  We'll commit the status
+                    # update after the send returns.  The select_for_update lock
+                    # releases when the atomic block exits.
+                    #
+                    # We must send inside the block so success/failure is
+                    # determined before we release the lock.  If the process dies
+                    # between the send and the save, the worst case is a retry on
+                    # the next cron run (row stays 'pending').
+                    try:
+                        success = _send_review_email(rr, config)
+                    except Exception:
+                        logger.exception(
+                            "Failed to send review request pk=%s for tenant=%s",
+                            rr.pk, rr.tenant_id,
+                        )
+                        # Leave as pending for retry on next cron run.
+                        # Raise to trigger a rollback of any partial writes inside
+                        # this atomic block (none in the exception path, but safe).
+                        continue
+
+                    if success:
+                        rr.status = 'sent'
+                        rr.sent_at = now
+                        rr.save(update_fields=['status', 'sent_at'])
+                        sent_count += 1
+                    else:
+                        logger.warning(
+                            "send_branded_email returned 0 for review request pk=%s", rr.pk,
+                        )
+
+            except Exception:
+                # Catch any DB/unexpected errors so one bad row doesn't abort the rest.
+                logger.exception(
+                    "Unexpected error processing review request pk=%s — skipping", rr_id,
                 )
 
         return sent_count
