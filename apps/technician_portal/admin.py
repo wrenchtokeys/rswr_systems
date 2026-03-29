@@ -126,8 +126,8 @@ class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
 
 @admin.register(Repair)
 class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
-    list_display = ['id', 'tenant', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
-    list_filter = ['tenant', 'queue_status', 'service_date', 'technician']
+    list_display = ['id', 'tenant', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date', 'skip_invoicing']
+    list_filter = ['tenant', 'queue_status', 'service_date', 'technician', 'skip_invoicing', 'is_goodwill_repair']
     search_fields = ['customer__name', 'unit_number', 'damage_type', 'technician__user__username', 'tenant__name']
     readonly_fields = ['service_date']
     date_hierarchy = 'service_date'
@@ -166,6 +166,15 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
         }),
         ('Repair Details', {
             'fields': ('damage_type', 'description', 'queue_status', 'is_goodwill_repair')
+        }),
+        ('Invoicing', {
+            'fields': ('skip_invoicing',),
+            'description': (
+                'Check "Skip invoicing" for repairs that were already paid outside the system '
+                '(e.g., cash on the spot, manual invoice, legacy data). '
+                'Skipped repairs are excluded from the uninvoiced-repairs list and admin '
+                '"Generate invoices" action.'
+            ),
         }),
         ('Warranty Claim', {
             'fields': ('is_warranty_claim', 'warranty_original_repair'),
