@@ -484,6 +484,16 @@ def create_warranty_policy(request):
         if not data.get('name'):
             return JsonResponse({'success': False, 'error': 'Policy name is required'}, status=400)
 
+        applies_to = data.get('applies_to', 'all_repairs')
+        valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+        if applies_to not in valid_applies:
+            return JsonResponse({'success': False, 'error': 'Invalid "Applies To" value.'}, status=400)
+
+        duration_type = data.get('duration_type', 'custom_days')
+        valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+        if duration_type not in valid_duration_types:
+            return JsonResponse({'success': False, 'error': 'Invalid "Duration Type" value.'}, status=400)
+
         duration_days = data.get('duration_days', 365)
         try:
             duration_days = int(duration_days)
@@ -493,8 +503,8 @@ def create_warranty_policy(request):
         policy = WarrantyPolicy.objects.create(
             tenant=tenant,
             name=data['name'],
-            applies_to=data.get('applies_to', 'all_repairs'),
-            duration_type=data.get('duration_type', 'custom_days'),
+            applies_to=applies_to,
+            duration_type=duration_type,
             duration_days=duration_days,
             coverage_description=data.get('coverage_description', ''),
             covers_labor=data.get('covers_labor', True),
@@ -542,8 +552,14 @@ def update_warranty_policy(request, policy_id):
         if 'name' in data:
             policy.name = data['name']
         if 'applies_to' in data:
+            valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+            if data['applies_to'] not in valid_applies:
+                return JsonResponse({'success': False, 'error': 'Invalid "Applies To" value.'}, status=400)
             policy.applies_to = data['applies_to']
         if 'duration_type' in data:
+            valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+            if data['duration_type'] not in valid_duration_types:
+                return JsonResponse({'success': False, 'error': 'Invalid "Duration Type" value.'}, status=400)
             policy.duration_type = data['duration_type']
         if 'duration_days' in data:
             try:

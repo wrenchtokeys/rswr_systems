@@ -4376,6 +4376,12 @@ def owner_warranty_create(request):
         messages.error(request, 'Invalid "Applies To" value.')
         return redirect('/owner/settings/?tab=warranty')
 
+    # Validate duration_type
+    valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+    if duration_type not in valid_duration_types:
+        messages.error(request, 'Invalid "Duration Type" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
     if not name:
         messages.error(request, 'Policy name is required.')
         return redirect('/owner/settings/?tab=warranty')
@@ -4431,6 +4437,12 @@ def owner_warranty_edit(request, policy_id):
     valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
     if applies_to not in valid_applies:
         messages.error(request, 'Invalid "Applies To" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    # Validate duration_type
+    valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+    if duration_type not in valid_duration_types:
+        messages.error(request, 'Invalid "Duration Type" value.')
         return redirect('/owner/settings/?tab=warranty')
 
     if not name:
