@@ -54,6 +54,18 @@ status, and description.
   copy-paste omission when Replacement was added.
 - **Test:** `tests/bug_fixes/test_code230_replacement_unit_count_tenant.py`
 
+### CODE-235: NotificationAdmin FK dropdown cross-tenant data leak
+- **Severity:** 🔴 Tenant isolation bug
+- **Fixed:** 2026-03-30
+- **Details:** `NotificationAdmin` had custom `get_queryset()` for tenant scoping
+  but no `formfield_for_foreignkey` override. Non-superuser staff could see ALL
+  customers and repairs from ALL tenants in the `customer` and `repair` FK dropdowns
+  when editing a notification — exposing customer names and repair details cross-tenant.
+  Fixed by adding `formfield_for_foreignkey()` that scopes `customer` and `repair`
+  FKs to the current user's tenant(s). `template` and `recipient_type` FKs are left
+  unrestricted (no tenant context).
+- **Test:** `tests/bug_fixes/test_code235_notification_fk_tenant_scoping.py` (5 tests)
+
 ### CODE-234: RewardRedemptionAdmin FK dropdown cross-tenant data leak
 - **Severity:** 🔴 Tenant isolation bug
 - **Fixed:** 2026-03-30
