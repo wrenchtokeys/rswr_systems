@@ -78,8 +78,8 @@ class RewardOptionAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_per_page = 25
 
     fieldsets = [
-        ('Basic Information', {
-            'fields': ['name', 'description', 'points_required', 'is_active']
+        ('Tenant & Basic Information', {
+            'fields': ['tenant', 'name', 'description', 'points_required', 'is_active']
         }),
         ('Reward Type', {
             'fields': ['reward_type']

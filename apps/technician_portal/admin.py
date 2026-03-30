@@ -632,9 +632,9 @@ class ViscosityRecommendationAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_per_page = 25
 
     fieldsets = (
-        ('Basic Information', {
-            'fields': ('name', 'is_active', 'display_order'),
-            'description': 'Give this rule a descriptive name and set its priority (lower number = higher priority)'
+        ('Tenant & Basic Information', {
+            'fields': ('tenant', 'name', 'is_active', 'display_order'),
+            'description': 'Assign to a shop (tenant) and give this rule a descriptive name. Lower display_order = higher priority.'
         }),
         ('Temperature Range', {
             'fields': ('min_temperature', 'max_temperature'),
