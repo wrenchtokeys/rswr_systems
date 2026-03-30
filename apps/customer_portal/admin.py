@@ -46,6 +46,27 @@ class CustomerTenantFilterMixin:
                 filters = [tenant_filter] + filters
         return filters
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, admin change forms show ALL records across ALL tenants
+        in FK dropdown menus — a cross-tenant data leak.  (CODE-232)
+        """
+        if not request.user.is_superuser:
+            related_model = db_field.related_model
+            has_tenant = any(
+                f.name == 'tenant'
+                for f in related_model._meta.get_fields()
+                if hasattr(f, 'name') and hasattr(f, 'related_model')
+            )
+            if has_tenant:
+                tenant_ids = self._get_user_tenant_ids(request)
+                kwargs['queryset'] = related_model._default_manager.filter(
+                    tenant__in=tenant_ids
+                )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_tenant_display(self, obj):
         """Helper for list_display: shows tenant name."""
         try:
