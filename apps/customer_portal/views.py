@@ -1855,6 +1855,7 @@ def get_available_technician(tenant=None):
 
 
 @customer_required
+@customer_required
 def repair_pricing_api(request):
     """
     API endpoint to get pricing estimates for repair requests.
@@ -2154,6 +2155,7 @@ def account_settings(request):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
+@customer_required
 @customer_required
 def unit_repair_data_api(request):
     """API endpoint to provide unit repair data for visualizations"""
