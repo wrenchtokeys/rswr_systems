@@ -162,6 +162,19 @@ def create_multi_break_repair(request):
             repair_date_str = request.POST.get('repair_date', request.POST.get('service_date'))
             breaks_count = int(request.POST.get('breaks_count', 0))
 
+            # Cap break count to prevent abuse / accidental mass-creation.
+            # A single windshield rarely has more than ~10 breaks; 20 is generous.
+            # Without this guard, a crafted POST with breaks_count=10000 would
+            # create 10k Repair rows in one atomic transaction.  (CODE-240)
+            MAX_BREAKS_PER_UNIT = 20
+            if breaks_count > MAX_BREAKS_PER_UNIT:
+                error_msg = f"Break count ({breaks_count}) exceeds the maximum of {MAX_BREAKS_PER_UNIT} per unit."
+                logger.warning(f"[MULTI-BREAK] Break count exceeds limit - breaks={breaks_count}, max={MAX_BREAKS_PER_UNIT}")
+                messages.error(request, error_msg)
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                return redirect('create_multi_break_repair')
+
             logger.info(f"[MULTI-BREAK] Request received - customer_id={customer_id}, unit={unit_number}, date={repair_date_str}, breaks={breaks_count}")
 
             if not all([customer_id, unit_number, repair_date_str, breaks_count > 0]):
@@ -512,6 +525,12 @@ def convert_to_batch(request, repair_id):
 
             if additional_breaks < 1:
                 messages.error(request, "You must add at least 1 additional break.")
+                return redirect('convert_to_batch', repair_id=repair_id)
+
+            # Cap additional breaks to prevent mass-creation abuse (CODE-240)
+            # Total batch size = 1 (original) + additional_breaks
+            if additional_breaks > 19:  # 1 + 19 = 20 max total
+                messages.error(request, f"Too many breaks ({additional_breaks + 1} total). Maximum is 20 per unit.")
                 return redirect('convert_to_batch', repair_id=repair_id)
 
             batch_id = uuid.uuid4()

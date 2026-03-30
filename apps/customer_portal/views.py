@@ -1650,6 +1650,21 @@ def handle_batch_repair_request(request, customer, customer_user=None):
             messages.error(request, "Please add at least one unit to submit.")
             return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
+        # Guard against abuse: cap the number of units and breaks per request.
+        # A windshield rarely has more than ~10 breaks; 20 is generous.  Without
+        # this cap, a malicious POST with breakCount=10000 across 500 units
+        # would create 5 million Repair rows in a single atomic transaction,
+        # exhausting DB connections and disk.  (CODE-240)
+        MAX_UNITS_PER_REQUEST = 50
+        MAX_BREAKS_PER_UNIT = 20
+
+        if len(units_data) > MAX_UNITS_PER_REQUEST:
+            error_msg = f"Too many units submitted ({len(units_data)}). Maximum is {MAX_UNITS_PER_REQUEST} per request."
+            messages.error(request, error_msg)
+            if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'error': error_msg}, status=400)
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
+
         # Find available technician (scoped to tenant)
         tenant = getattr(request, 'tenant', None)
         technician = get_available_technician(tenant=tenant)
@@ -1676,6 +1691,18 @@ def handle_batch_repair_request(request, customer, customer_user=None):
 
                 if not unit_number:
                     continue  # Skip invalid entries
+
+                # Clamp break_count to prevent abuse (CODE-240)
+                if break_count is not None:
+                    try:
+                        break_count = int(break_count)
+                    except (ValueError, TypeError):
+                        break_count = None
+                    else:
+                        if break_count > MAX_BREAKS_PER_UNIT:
+                            break_count = MAX_BREAKS_PER_UNIT
+                        elif break_count < 1:
+                            break_count = None
 
                 # Get photo if provided
                 photo_file = None
