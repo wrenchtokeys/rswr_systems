@@ -105,6 +105,36 @@ class NotificationAdmin(admin.ModelAdmin):
             filters = ['customer__tenant'] + filters
         return filters
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, the `customer` and `repair` dropdowns on the Notification
+        change form show ALL records across ALL tenants — a non-superuser at
+        Shop A can see (and select) Shop B's customers and repairs.
+
+        - customer → Customer (has direct tenant FK)
+        - repair → Repair (has direct tenant FK)
+        - template → NotificationTemplate (no tenant — unrestricted, fine)
+        - recipient_type → ContentType (no tenant — unrestricted, fine)
+
+        (CODE-235)
+        """
+        if not request.user.is_superuser:
+            from apps.tenants.models import TenantMembership
+            tenant_ids = list(
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
+            if db_field.name == 'customer':
+                from core.models import Customer
+                kwargs['queryset'] = Customer.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'repair':
+                from apps.technician_portal.models import Repair
+                kwargs['queryset'] = Repair.objects.filter(tenant__in=tenant_ids)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_tenant_display(self, obj):
         """Best-effort tenant label from customer or repair→customer chain."""
         try:
