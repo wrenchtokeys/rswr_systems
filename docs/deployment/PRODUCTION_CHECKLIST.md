@@ -460,8 +460,75 @@ Expected entries:
 
 ---
 
-**Document Version**: 1.1
-**Last Updated**: March 2026
+## Management Command Registry
+
+All scheduled and operational management commands for RS Systems. Update this table whenever a new command is added.
+
+### Scheduled (EB Cron — `.ebextensions/11_billing_cron.config`)
+
+| Command | Schedule (UTC) | Log File | Purpose |
+|---------|---------------|----------|---------|
+| `process_batch_invoices` | Daily 6:00 AM | `/var/log/billing-batch.log` | Auto-generate batch invoices for fleet customers on their billing cycle |
+| `process_overdue_invoices` | Daily 8:00 AM | `/var/log/billing-overdue.log` | Mark invoices past due date as OVERDUE, send configurable reminder emails |
+| `generate_aging_report` | Daily 9:00 AM | `/var/log/billing-aging.log` | Refresh AR aging report cache (30/60/90/90+ day buckets) |
+| `check_subscription_alerts` | Daily 9:00 AM | (stdout) | Send subscription expiry warning emails at 7d/1d/0d/15d-past/5d-past/end milestones |
+
+> **Note:** New loyalty commands (`expire_loyalty_points`, `reconcile_loyalty_balances`) and the review request command (`send_review_requests`) should be added to the cron config before the next production deployment. See "Add to Cron" section below.
+
+### Loyalty & Review Commands — Add to Cron Before Next Deploy
+
+These commands are implemented but not yet in `.ebextensions/11_billing_cron.config`. Add them:
+
+```cron
+# Run daily at midnight UTC — expire points past their expiry date
+0 0 * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py expire_loyalty_points --json >> /var/log/loyalty-expire.log 2>&1'
+
+# Run daily at 3 AM UTC — reconcile Reward.points cache vs PointTransaction ledger
+0 3 * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py reconcile_loyalty_balances --json >> /var/log/loyalty-reconcile.log 2>&1'
+
+# Run every 15 minutes — send pending review request emails whose scheduled_at has arrived
+*/15 * * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py send_review_requests >> /var/log/review-requests.log 2>&1'
+```
+
+### On-Demand Commands (Run Manually)
+
+| Command | App | Purpose | Flags |
+|---------|-----|---------|-------|
+| `expire_loyalty_points` | `rewards_referrals` | Expire points past their `expires_at` date, deduct from `Reward.points` balance | `--dry-run`, `--tenant-id <id>`, `--json` |
+| `reconcile_loyalty_balances` | `rewards_referrals` | Compare `Reward.points` cache vs `PointTransaction` ledger sum; alert on drift | `--fix` (auto-correct), `--tenant-id <id>`, `--json` |
+| `send_review_requests` | `technician_portal` | Send pending review request emails whose scheduled time has arrived | `--dry-run` |
+| `purge_deleted_records` | `technician_portal` | Hard-delete soft-deleted Repairs/Invoices older than N days | `--days <n>` (default 30), `--apply` (required to execute) |
+| `generate_aging_report` | `billing` | Refresh aging report cache; useful after bulk data imports | `--tenant-id <id>`, `--json` |
+| `fix_billing_config_names` | `billing` | One-time fix: correct `BillingConfig.company_name` defaulted to "Rockstar" | `--apply` |
+| `setup_viscosity_rules` | `technician_portal` | Seed default viscosity rules for a tenant | `--tenant-id <id>` |
+| `setup_simplified_rewards` | `rewards_referrals` | Seed default reward options for a tenant | `--tenant-id <id>` |
+| `security_audit` | `security` | Run security checks and log findings to `SecurityAuditLog` | (none) |
+| `seed_plans` | `tenants` | Seed subscription plan records (Starter/Pro/Enterprise) | (none) |
+| `set_stripe_prices` | `tenants` | Sync Stripe price IDs onto `SubscriptionPlan` records | (none) |
+
+### Maintenance-Only Commands (One-Time Use)
+
+| Command | Purpose |
+|---------|---------|
+| `fix_connect_account` | Fix broken Stripe Connect account state on specific tenant |
+| `reset_connect` | Full reset of Stripe Connect for a tenant (use with extreme care) |
+| `load_tax_rates` | Bulk-load tax rates from CSV (deprecated — owners now manage via UI) |
+| `tax_debug` | Debug tax calculation for a specific tenant |
+
+### Adding a New Command Checklist
+
+When adding a new management command:
+1. Create in `apps/<app>/management/commands/<name>.py`
+2. Add `help` attribute with a clear one-line description
+3. Add to this registry table (correct section)
+4. If scheduled: add to `.ebextensions/11_billing_cron.config` + add log file to `bundlelogs.d`
+5. Document `--dry-run` flag if the command mutates data
+6. Add regression tests in `tests/test_<name>.py` or the relevant test file
+
+---
+
+**Document Version**: 1.2
+**Last Updated**: March 2026 (Sprint 7 — Management Command Registry)
 **Next Review**: After each major deployment
 
 ---

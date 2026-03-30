@@ -29,7 +29,10 @@
         <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
             <i class="fas fa-gift text-blue-600 text-sm"></i>
         </div>
-        <span class="font-medium text-blue-800 text-sm">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left on free trial</span>
+        <div class="min-w-0">
+            <span class="font-medium text-blue-800 text-sm">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left on free trial</span>
+            {% if intended_plan_name %}<span class="text-blue-600 text-xs ml-1 hidden sm:inline">— {{ intended_plan_name }} is the plan you chose at signup</span>{% endif %}
+        </div>
         {% endif %}
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">

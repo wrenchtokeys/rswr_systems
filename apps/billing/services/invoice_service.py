@@ -13,11 +13,14 @@ Updated: 2026-01-27 - Royal blue styling, logo support
 """
 
 import io
+import logging
 import os
 import urllib.request
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional, Dict, Any, Tuple
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -59,6 +62,7 @@ class InvoiceLineItem:
     has_photos: bool
     before_photo_url: Optional[str] = None
     after_photo_url: Optional[str] = None
+    repair_obj: object = None
 
 
 @dataclass
@@ -313,7 +317,7 @@ class InvoiceService:
         )
         if self.tenant:
             queryset = queryset.filter(tenant=self.tenant)
-        queryset = queryset.select_related('customer', 'technician', 'technician__user')
+        queryset = queryset.select_related('customer', 'technician', 'technician__user', 'warranty_policy')
         
         if repair_ids:
             queryset = queryset.filter(id__in=repair_ids)
@@ -352,7 +356,8 @@ class InvoiceService:
             discount_description=discounted['discount_description'] if discounted['discount_applied'] else '',
             has_photos=repair.has_photos(),
             before_photo_url=repair.damage_photo_before.url if repair.damage_photo_before else None,
-            after_photo_url=repair.damage_photo_after.url if repair.damage_photo_after else None
+            after_photo_url=repair.damage_photo_after.url if repair.damage_photo_after else None,
+            repair_obj=repair,
         )
     
     def _generate_invoice_number(self, customer_id: int) -> str:
@@ -866,6 +871,48 @@ class InvoiceService:
         
         story.append(totals_table)
         
+        # Warranty Terms Section
+        warranty_terms = []
+        for item in invoice_data.line_items:
+            if hasattr(item, 'repair_obj') and item.repair_obj and item.repair_obj.warranty_policy:
+                policy = item.repair_obj.warranty_policy
+                summary = getattr(policy, 'terms_summary', '')
+                if summary:
+                    warranty_terms.append(f"WARRANTY: {summary}")
+                else:
+                    term = f"Unit {item.unit_number}: {policy.name}"
+                    if policy.duration_type == 'lifetime':
+                        term += " \u2014 Lifetime Warranty"
+                    elif policy.duration_type == 'custom_days':
+                        term += f" \u2014 {policy.duration_days}-day Warranty"
+                    if policy.coverage_description:
+                        term += f" ({policy.coverage_description})"
+                    warranty_terms.append(term)
+
+        if warranty_terms:
+            story.append(Spacer(1, 20))
+            story.append(Paragraph(
+                "<b>Warranty Terms</b>",
+                ParagraphStyle(
+                    name='WarrantyHeader',
+                    parent=self.styles['Normal'],
+                    fontSize=11,
+                    textColor=colors.HexColor('#065f46'),
+                )
+            ))
+            story.append(Spacer(1, 5))
+            for term in warranty_terms:
+                story.append(Paragraph(
+                    f"\u26d1 {term}",
+                    ParagraphStyle(
+                        name='WarrantyTerm',
+                        parent=self.styles['Normal'],
+                        fontSize=9,
+                        textColor=colors.HexColor('#374151'),
+                        leftIndent=10,
+                    )
+                ))
+
         # Footer note (configurable via BillingConfig)
         footer_text = getattr(self, 'INVOICE_FOOTER', 'Thank you for your business!')
         story.append(Spacer(1, 40))
@@ -953,12 +1000,20 @@ class InvoiceService:
 # Convenience functions
 def generate_customer_invoice(
     customer_id: int,
+    tenant=None,
     repair_ids: Optional[List[int]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None
 ) -> Tuple[bytes, InvoiceData]:
-    """Convenience function to generate an invoice"""
-    service = InvoiceService()
+    """Convenience function to generate an invoice.
+    
+    Args:
+        tenant: Required. The Tenant instance to scope the invoice to.
+                Without it, repairs are unscoped and branding info is blank.
+    """
+    if tenant is None:
+        logger.warning("generate_customer_invoice called without tenant — invoice will lack company info")
+    service = InvoiceService(tenant=tenant)
     return service.generate_invoice(
         customer_id=customer_id,
         repair_ids=repair_ids,
@@ -967,7 +1022,14 @@ def generate_customer_invoice(
     )
 
 
-def get_invoiceable_repairs(customer_id: int) -> QuerySet:
-    """Get all completed repairs that can be invoiced for a customer"""
-    service = InvoiceService()
+def get_invoiceable_repairs(customer_id: int, tenant=None) -> QuerySet:
+    """Get all completed repairs that can be invoiced for a customer.
+    
+    Args:
+        tenant: Required. The Tenant instance to scope queries to.
+                Without it, repairs from ALL tenants may be returned.
+    """
+    if tenant is None:
+        logger.warning("get_invoiceable_repairs called without tenant — results may be unscoped")
+    service = InvoiceService(tenant=tenant)
     return service.get_completed_repairs(customer_id=customer_id)

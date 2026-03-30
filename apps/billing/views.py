@@ -374,6 +374,8 @@ def send_invoice_email(request, invoice_id):
 
     if invoice.status == 'PAID':
         return JsonResponse({'error': f'Invoice {invoice.invoice_number} is already paid'}, status=400)
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'error': f'Invoice {invoice.invoice_number} is cancelled and cannot be sent'}, status=400)
 
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
@@ -447,6 +449,9 @@ def send_invoice_email_batch(request):
             if invoice.status == 'PAID':
                 results.append({'id': inv_id, 'success': False, 'error': 'Already paid'})
                 continue
+            if invoice.status == 'CANCELLED':
+                results.append({'id': inv_id, 'success': False, 'error': 'Invoice is cancelled'})
+                continue
             if not invoice.customer.email:
                 results.append({'id': inv_id, 'success': False, 'error': 'No email'})
                 continue
@@ -457,6 +462,14 @@ def send_invoice_email_batch(request):
                 repair_ids=repair_ids if repair_ids else None,
             )
             if sent_ok:
+                # Promote DRAFT → SENT on confirmed delivery (mirrors single-send logic).
+                # Without this, batch-sent invoices stay DRAFT: they appear in
+                # "unsent" filters, automated reminders don't trigger, and the
+                # sent_at timestamp is never recorded. (CODE-182)
+                if invoice.status == 'DRAFT':
+                    invoice.status = 'SENT'
+                    invoice.sent_at = timezone.now()
+                    invoice.save(update_fields=['status', 'sent_at'])
                 results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
             else:
                 results.append({'id': inv_id, 'success': False, 'error': sent_msg})
@@ -664,6 +677,32 @@ def cancel_invoice(request, invoice_id):
 
     if invoice.status == 'PAID':
         return JsonResponse({'error': 'Cannot cancel a paid invoice'}, status=400)
+
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'error': 'Invoice is already cancelled'}, status=400)
+
+    # (CODE-204) Block cancellation of PARTIAL invoices via API — mirrors the UI guard
+    # added in CODE-123 for owner_invoice_void().  A PARTIAL invoice has real Payment
+    # records pointing at it; calling invoice.cancel() sets status='CANCELLED' but leaves
+    # those Payment rows intact.  The Payment.invoice FK uses on_delete=PROTECT, so the
+    # invoice can then never be deleted, and invoice.amount_paid stays non-zero on a
+    # "cancelled" invoice — misleading financials and a permanent data integrity violation.
+    # The caller must remove or reverse all payments first (via the record_payment API or
+    # admin), at which point the invoice status drops back to SENT/OVERDUE and can be
+    # cancelled normally.
+    if invoice.status == 'PARTIAL':
+        payment_count = invoice.payments.count()
+        return JsonResponse(
+            {
+                'error': (
+                    f'Cannot cancel a partially-paid invoice. '
+                    f'{payment_count} payment(s) are recorded against it. '
+                    'Remove or reverse the payment(s) first, '
+                    'then cancel the invoice.'
+                )
+            },
+            status=400,
+        )
 
     try:
         data = json.loads(request.body) if request.body else {}

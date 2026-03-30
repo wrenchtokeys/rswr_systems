@@ -556,13 +556,35 @@ def invalidate_notification_cache(sender, instance, created, **kwargs):
         # Get recipient from notification
         recipient = instance.recipient
 
-        if recipient:
-            # Invalidate unread count cache
-            # Cache key format: notif_unread_count:tech:{technician_id}
-            if hasattr(recipient, 'id'):
-                cache_key = f'notif_unread_count:tech:{recipient.id}'
-                cache.delete(cache_key)
-
+        if recipient and hasattr(recipient, 'id'):
+            # Invalidate unread count cache.
+            #
+            # CODE-087 added a tenant suffix to the cache key in get_unread_count()
+            # so that cross-tenant users see the correct shop's notification count.
+            # Cache key format (post-CODE-087): notif_unread_count:tech:{id}:{tenant_pk}
+            #
+            # The original signal only deleted the old (non-tenant-scoped) key
+            # `notif_unread_count:tech:{id}`, which is never set by the view anymore.
+            # That made the cache invalidation a no-op: new notifications would not
+            # appear in the bell until the 120-second TTL expired.
+            #
+            # Fix: when the recipient is a Technician (the only model that uses the
+            # tenant-scoped key), delete the correct key.  Also delete the legacy key
+            # to handle any entries left from before CODE-087.
+            from apps.technician_portal.models import Technician as _Technician
+            if isinstance(recipient, _Technician) and recipient.tenant_id:
+                # Tenant-scoped key (used by get_unread_count after CODE-087)
+                tenant_scoped_key = f'notif_unread_count:tech:{recipient.id}:{recipient.tenant_id}'
+                cache.delete(tenant_scoped_key)
+                logger.debug(
+                    f"Invalidated tenant-scoped notification cache for Technician {recipient.id} "
+                    f"(tenant {recipient.tenant_id})"
+                )
+            else:
+                # Fallback: non-technician recipients or technicians without a tenant
+                # use the legacy key format.
+                legacy_key = f'notif_unread_count:tech:{recipient.id}'
+                cache.delete(legacy_key)
                 logger.debug(
                     f"Invalidated notification cache for {recipient._meta.model_name} {recipient.id}"
                 )

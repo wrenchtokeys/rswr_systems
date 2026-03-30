@@ -170,6 +170,33 @@ class CustomerForm(forms.ModelForm):
         help_text="Primary contacts receive repair lifecycle notifications by default"
     )
 
+    # Billing preference fields (optional — collapsed section)
+    invoice_preference = forms.ChoiceField(
+        required=False,
+        choices=[('', '(use shop default)')] + list(
+            __import__('apps.customer_portal.models', fromlist=['CustomerRepairPreference'])
+            .CustomerRepairPreference.INVOICE_PREFERENCE_CHOICES
+        ),
+        label="Invoice Preference",
+    )
+    payment_terms = forms.ChoiceField(
+        required=False,
+        choices=[],  # populated in __init__ with shop default label
+        label="Payment Terms",
+    )
+    billing_email = forms.EmailField(
+        required=False,
+        label="Billing Email",
+        help_text="Dedicated AP/billing email (optional — uses customer email if blank)"
+    )
+    batch_invoice_day = forms.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=28,
+        label="Batch Invoice Day",
+        help_text="Day of month (1-28) for batch invoicing. Leave blank for shop default."
+    )
+
     class Meta:
         model = Customer
         fields = ['name', 'customer_type', 'email', 'phone', 'primary_technician']
@@ -190,6 +217,23 @@ class CustomerForm(forms.ModelForm):
         self.fields['email'].required = False
         self.fields['phone'].required = False
         self.fields['customer_type'].required = False
+
+        # Build payment_terms choices with actual shop default label
+        from apps.billing.models import BillingConfig
+        shop_default_terms = 'COD'
+        if self.tenant:
+            billing_config = BillingConfig.get_for_tenant(self.tenant)
+            shop_default_terms = billing_config.default_payment_terms
+        terms_display = dict(BillingConfig.PAYMENT_TERMS_CHOICES).get(shop_default_terms, shop_default_terms)
+        self.fields['payment_terms'].choices = [
+            ('', f'{terms_display} — shop default'),
+        ] + BillingConfig.PAYMENT_TERMS_CHOICES
+
+    def clean_batch_invoice_day(self):
+        day = self.cleaned_data.get('batch_invoice_day')
+        if day is not None and not (1 <= day <= 28):
+            raise forms.ValidationError('Batch invoice day must be between 1 and 28.')
+        return day
 
     def clean_phone(self):
         """Normalize phone to digits-only, accept common formats."""

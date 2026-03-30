@@ -36,6 +36,18 @@ class DashboardService:
         if self.tenant:
             return qs.filter(tenant=self.tenant)
         return qs.none()
+
+    def _filter_payment(self, qs):
+        """
+        Apply tenant filter to a Payment queryset.
+
+        Payment has no direct tenant FK — the path is Payment → Invoice → Tenant.
+        Using _filter() (which does filter(tenant=…)) on Payment.objects raises
+        FieldError: Cannot resolve keyword 'tenant' into field.  (CODE-190)
+        """
+        if self.tenant:
+            return qs.filter(invoice__tenant=self.tenant)
+        return qs.none()
     
     def get_full_dashboard(self):
         """
@@ -71,7 +83,7 @@ class DashboardService:
         prev_month_end = month_start - timedelta(seconds=1)
         
         def sum_payments(start, end=None):
-            qs = self._filter(Payment.objects).filter(payment_date__gte=start.date())
+            qs = self._filter_payment(Payment.objects).filter(payment_date__gte=start.date())
             if end:
                 qs = qs.filter(payment_date__lte=end.date())
             result = qs.aggregate(total=Sum('amount'))['total']
@@ -161,7 +173,7 @@ class DashboardService:
         now = timezone.now()
         thirty_days_ago = now - timedelta(days=30)
         
-        recent_payments = self._filter(Payment.objects).filter(
+        recent_payments = self._filter_payment(Payment.objects).filter(
             payment_date__gte=thirty_days_ago.date()
         )
         
@@ -174,7 +186,7 @@ class DashboardService:
         )
         
         # Recent payments list
-        latest = self._filter(Payment.objects).select_related('invoice', 'invoice__customer').order_by('-created_at')[:10]
+        latest = self._filter_payment(Payment.objects).select_related('invoice', 'invoice__customer').order_by('-created_at')[:10]
         latest_list = [
             {
                 'id': p.id,
@@ -336,7 +348,7 @@ class DashboardService:
         
         # Daily revenue for last 30 days
         thirty_days_ago = now - timedelta(days=30)
-        daily_revenue = self._filter(Payment.objects).filter(
+        daily_revenue = self._filter_payment(Payment.objects).filter(
             payment_date__gte=thirty_days_ago.date()
         ).annotate(
             day=TruncDate('payment_date')

@@ -46,6 +46,27 @@ class CustomerTenantFilterMixin:
                 filters = [tenant_filter] + filters
         return filters
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, admin change forms show ALL records across ALL tenants
+        in FK dropdown menus — a cross-tenant data leak.  (CODE-232)
+        """
+        if not request.user.is_superuser:
+            related_model = db_field.related_model
+            has_tenant = any(
+                f.name == 'tenant'
+                for f in related_model._meta.get_fields()
+                if hasattr(f, 'name') and hasattr(f, 'related_model')
+            )
+            if has_tenant:
+                tenant_ids = self._get_user_tenant_ids(request)
+                kwargs['queryset'] = related_model._default_manager.filter(
+                    tenant__in=tenant_ids
+                )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_tenant_display(self, obj):
         """Helper for list_display: shows tenant name."""
         try:
@@ -212,7 +233,7 @@ class CustomerRepairPreferenceForm(forms.ModelForm):
 @admin.register(CustomerRepairPreference)
 class CustomerRepairPreferenceAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
     form = CustomerRepairPreferenceForm
-    list_display = ['get_tenant_display', 'customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'updated_at']
+    list_display = ['get_tenant_display', 'customer', 'field_repair_approval_mode', 'units_per_visit_threshold', 'invoice_preference', 'payment_terms', 'auto_email_invoices', 'lot_walking_enabled', 'updated_at']
     list_filter = ['field_repair_approval_mode', 'invoice_preference', 'auto_email_invoices', 'lot_walking_enabled', 'lot_walking_frequency', 'updated_at']
     search_fields = ['customer__name', 'customer__tenant__name']
     list_select_related = ['customer', 'customer__tenant']
@@ -232,12 +253,17 @@ class CustomerRepairPreferenceAdmin(CustomerTenantFilterMixin, admin.ModelAdmin)
             'description': 'Configure scheduled lot walking service for this customer.'
         }),
         ('Invoice Settings', {
-            'fields': ('invoice_preference', 'billing_email', 'auto_email_invoices', 'include_photos_in_invoice'),
+            'fields': (
+                'invoice_preference', 'billing_email', 'auto_email_invoices', 'include_photos_in_invoice',
+                'payment_terms', 'batch_invoice_day',
+            ),
             'description': (
                 'Configure how invoices should be generated and delivered for this customer. '
                 '"Per repair" = auto-generate when each repair completes. '
                 '"Batch" = group repairs together (manual trigger). '
-                '"Manual" = never auto-generate.'
+                '"Manual" = never auto-generate. '
+                '"Payment Terms" overrides the shop default for this customer (blank = use shop default). '
+                '"Batch Invoice Day" overrides the monthly batch day for this customer (blank = use shop default).'
             )
         }),
         ('Tracking', {

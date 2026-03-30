@@ -70,7 +70,7 @@ def repair_list(request):
         repairs = repairs.none()
 
     # Optimize query with select_related
-    repairs = repairs.select_related('customer', 'technician__user').order_by('-service_date')
+    repairs = repairs.select_related('customer', 'technician__user', 'warranty_policy').order_by('-service_date')
 
     # Get filter parameters
     customer_search = request.GET.get('customer_search', '')
@@ -154,7 +154,13 @@ def repair_list(request):
         repairs = repairs.order_by(sort_by)
 
     # Pagination
-    page_size = int(request.GET.get('page_size', 50))
+    # Guard: int() raises ValueError on non-numeric input (e.g. ?page_size=abc).
+    # Without this guard, an invalid page_size causes a 500 error instead of
+    # silently falling back to the default.  (CODE-205)
+    try:
+        page_size = int(request.GET.get('page_size', 50))
+    except (ValueError, TypeError):
+        page_size = 50
     if page_size not in [20, 50, 100]:
         page_size = 50
 
@@ -194,7 +200,7 @@ def repair_detail(request, repair_id):
     # Cache the admin check to avoid a duplicate TenantMembership query in the
     # permission block (line ~193) and the context dict (line ~248).
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
-    qs = Repair.objects.select_related('customer', 'technician__user')
+    qs = Repair.objects.select_related('customer', 'technician__user', 'warranty_policy')
     if tenant:
         qs = qs.filter(tenant=tenant)
     else:
@@ -302,6 +308,12 @@ def repair_detail(request, repair_id):
         except Exception:
             pass
 
+    available_technicians = []
+    if tenant:
+        available_technicians = Technician.objects.filter(
+            tenant=tenant, is_active=True
+        ).select_related('user').order_by('user__first_name')
+
     return render(request, 'technician_portal/repair_detail.html', {
         'repair': repair,
         'TIME_ZONE': timezone.get_current_timezone_name(),
@@ -315,6 +327,7 @@ def repair_detail(request, repair_id):
         'is_invoiced': is_invoiced,
         'invoice_id': invoice_id,
         'default_payment_terms': default_payment_terms,
+        'available_technicians': available_technicians,
     })
 
 
@@ -1449,3 +1462,60 @@ def archived_repairs(request):
         'is_admin': True,
     }
     return render(request, 'technician_portal/archived_repairs.html', context)
+
+
+@technician_required
+def create_warranty_claim(request, repair_id):
+    """Create a warranty claim repair linked to the original."""
+    if request.method != 'POST':
+        return redirect('repair_detail', repair_id=repair_id)
+
+    tenant = getattr(request, 'tenant', None)
+    qs = Repair.objects.select_related('customer', 'technician__user')
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
+    original_repair = get_object_or_404(qs, id=repair_id)
+
+    if not original_repair.has_warranty:
+        messages.error(request, "This repair is not under warranty.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    claim_reason = request.POST.get('claim_reason', '').strip()
+    if not claim_reason:
+        messages.error(request, "Please provide a reason for the warranty claim.")
+        return redirect('repair_detail', repair_id=repair_id)
+
+    technician_id = request.POST.get('technician_id')
+    tech = None
+    if technician_id:
+        tech = Technician.objects.filter(id=technician_id, tenant=tenant, is_active=True).first()
+    if not tech:
+        tech = original_repair.technician
+
+    # Create the warranty claim repair
+    claim = Repair.objects.create(
+        tenant=tenant,
+        customer=original_repair.customer,
+        technician=tech,
+        unit_number=original_repair.unit_number,
+        damage_type=original_repair.damage_type,
+        damage_location_x=original_repair.damage_location_x,
+        damage_location_y=original_repair.damage_location_y,
+        queue_status='REQUESTED',
+        cost=Decimal('0.00'),
+        cost_override=Decimal('0.00'),
+        override_reason=f'Warranty claim against Repair #{original_repair.pk}',
+        description=(
+            f'WARRANTY CLAIM: {claim_reason}\n'
+            f'Original Repair: #{original_repair.pk} '
+            f'({original_repair.repair_date.strftime("%b %d, %Y") if original_repair.repair_date else "N/A"})'
+        ),
+        skip_invoicing=True,
+        is_warranty_claim=True,
+        warranty_original_repair=original_repair,
+    )
+
+    messages.success(request, f"Warranty claim created as Repair #{claim.id} ($0.00)")
+    return redirect('repair_detail', repair_id=claim.id)

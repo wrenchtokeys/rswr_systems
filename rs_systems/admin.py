@@ -330,6 +330,15 @@ class AuditLogAdmin(admin.ModelAdmin):
     """
     Read-only admin view over Django's built-in action log.
     Shows who changed what and when, across all admin-managed models.
+
+    Tenant scoping (CODE-231):
+    LogEntry has no direct tenant FK, but every entry records which user
+    performed the action.  Non-superuser staff should only see log entries
+    made by users who belong to the same tenant(s) — otherwise a Shop A
+    admin could read object_repr strings revealing Shop B's customer names,
+    invoice numbers, and repair details.
+
+    Superusers see all log entries across all tenants.
     """
 
     list_display = [
@@ -342,6 +351,32 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_select_related = ['user', 'content_type']
     list_per_page = 50
     ordering = ['-action_time']
+
+    def get_queryset(self, request):
+        """
+        Scope audit log entries to the current user's tenant(s).
+
+        Non-superusers only see log entries made by users who share at least
+        one active TenantMembership with them.  This prevents cross-tenant
+        data leakage through object_repr and change_message strings.
+        """
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        from apps.tenants.models import TenantMembership
+        # Get all tenant IDs the current user belongs to
+        my_tenant_ids = (
+            TenantMembership.objects
+            .filter(user=request.user, is_active=True)
+            .values_list('tenant_id', flat=True)
+        )
+        # Get all user IDs who are members of those same tenants
+        co_tenant_user_ids = (
+            TenantMembership.objects
+            .filter(tenant_id__in=my_tenant_ids, is_active=True)
+            .values_list('user_id', flat=True)
+        )
+        return qs.filter(user_id__in=co_tenant_user_ids)
 
     # No adding, editing, or deleting audit records
     def has_add_permission(self, request):

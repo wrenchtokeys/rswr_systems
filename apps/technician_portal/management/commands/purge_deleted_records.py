@@ -14,6 +14,7 @@ Usage:
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q
 
 
 class Command(BaseCommand):
@@ -56,14 +57,43 @@ class Command(BaseCommand):
         )
         repair_count = old_repairs.count()
 
-        # --- Line items to purge (linked to those invoices) ---
+        # --- Line items to purge ---
+        # Must delete ALL InvoiceLineItems referencing repairs OR invoices being
+        # purged — not just those on soft-deleted invoices.  InvoiceLineItem has
+        # on_delete=PROTECT on both its repair and invoice FKs.  A soft-deleted
+        # repair can still be referenced by a line item on an *active* invoice
+        # (e.g. repair was soft-deleted after the invoice was sent/paid).
+        # Failing to clear those line items causes ProtectedError when step 3
+        # tries to hard-delete the repairs, which rolls back the entire
+        # transaction and purges nothing.  (CODE-234)
         invoice_ids = list(old_invoices.values_list('id', flat=True))
-        line_item_count = InvoiceLineItem.objects.filter(invoice_id__in=invoice_ids).count()
+        repair_ids = list(old_repairs.values_list('id', flat=True))
+        line_items_to_delete = InvoiceLineItem.objects.filter(
+            Q(invoice_id__in=invoice_ids) | Q(repair_id__in=repair_ids)
+        )
+        line_item_count = line_items_to_delete.count()
+
+        # Count repairs that will be skipped (referenced by active invoices)
+        repairs_with_active_invoice_refs = 0
+        if repair_ids:
+            repairs_with_active_invoice_refs = (
+                InvoiceLineItem.objects
+                .filter(repair_id__in=repair_ids)
+                .exclude(invoice_id__in=invoice_ids)
+                .values_list('repair_id', flat=True)
+                .distinct()
+                .count()
+            )
 
         self.stdout.write(f"\n{'DRY RUN — ' if not apply else ''}Purge cutoff: {cutoff.strftime('%Y-%m-%d %H:%M UTC')}")
         self.stdout.write(f"  Invoices to purge:     {invoice_count}")
         self.stdout.write(f"  Line items to purge:   {line_item_count}")
         self.stdout.write(f"  Repairs to purge:      {repair_count}")
+        if repairs_with_active_invoice_refs:
+            self.stdout.write(self.style.WARNING(
+                f"  ⚠ {repairs_with_active_invoice_refs} repair(s) still referenced by active invoices — "
+                f"their line item links will be cleared to allow purge."
+            ))
 
         if not apply:
             self.stdout.write(self.style.WARNING(
@@ -76,15 +106,16 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
-            # 1. Delete InvoiceLineItems first (PROTECT constraint on Invoice)
+            # 1. Delete ALL InvoiceLineItems linked to purged invoices OR purged
+            #    repairs (PROTECT constraint on both FKs).
             deleted_li, _ = InvoiceLineItem.objects.filter(
-                invoice_id__in=invoice_ids
+                Q(invoice_id__in=invoice_ids) | Q(repair_id__in=repair_ids)
             ).delete()
 
             # 2. Delete Invoices
             deleted_inv, _ = old_invoices.delete()
 
-            # 3. Delete Repairs (line items with PROTECT on Repair already removed above)
+            # 3. Delete Repairs
             deleted_rep, _ = old_repairs.delete()
 
         self.stdout.write(self.style.SUCCESS(

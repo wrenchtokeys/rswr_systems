@@ -49,6 +49,9 @@ class TenantAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ['owner']
     inlines = [TenantMembershipInline, ViscosityRecommendationInline, BillingConfigInline]
+    # Prevent N+1 queries for 'owner' (FK→User) and 'subscription_plan' (FK→SubscriptionPlan)
+    # in the list view.  Without this, Django fires 2 extra SELECTs per tenant row.
+    list_select_related = ['owner', 'subscription_plan']
     list_per_page = 25
     readonly_fields = [
         'created_at', 'updated_at', 'trial_started_at',

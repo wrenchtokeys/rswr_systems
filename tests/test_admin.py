@@ -93,6 +93,24 @@ class AdminPageLoadTests(TestCase):
     def test_notification_changelist(self):
         self._assert_page_ok('admin:core_notification_changelist')
 
+    def test_review_config_changelist(self):
+        """
+        ReviewConfig admin changelist should return 200.
+
+        CODE-210: ReviewConfig and ReviewRequest were added in CODE-208 but
+        never registered in admin.py. This test would have failed before the
+        fix because the URL would not exist (404/NoReverseMatch).
+        """
+        self._assert_page_ok('admin:technician_portal_reviewconfig_changelist')
+
+    def test_review_request_changelist(self):
+        """
+        ReviewRequest admin changelist should return 200.
+
+        CODE-210: Companion test to test_review_config_changelist.
+        """
+        self._assert_page_ok('admin:technician_portal_reviewrequest_changelist')
+
 
 class AdminDashboardTests(TestCase):
     """Custom dashboard metrics render correctly."""

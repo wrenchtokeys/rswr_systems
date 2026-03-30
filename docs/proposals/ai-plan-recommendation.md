@@ -48,21 +48,37 @@ def recommend_plan(tenant):
         'storage_mb': tenant.get_storage_used_mb(),
     }
     
-    # Project monthly usage from trial activity
+    # Project monthly usage from trial activity.
+    # BUG FIX (impl-plan §4a): Use min(trial_days, 30) as the denominator, not trial_days.
+    # stats['monthly_repairs'] counts repairs in the last 30 days only. If the shop is on
+    # day 45 of their trial, dividing last-30-days repairs by 45 underestimates throughput
+    # for shops that ramped up after week 1. min(trial_days, 30) gives the correct sample
+    # window in all cases.
     trial_days = (now() - tenant.trial_started_at).days or 1
-    projected_monthly_repairs = (stats['monthly_repairs'] / trial_days) * 30
-    
-    if (stats['techs'] > 5 or projected_monthly_repairs > 200 
-            or stats['uses_connect'] or stats['customers'] > 50):
+    sample_days = min(trial_days, 30)
+    projected_monthly_repairs = (stats['monthly_repairs'] / sample_days) * 30
+
+    # BUG FIX (impl-plan §4b): Thresholds now match actual plan limits.
+    # Starter plan: 200 repairs/month, 5 techs, 50 customers.
+    # Pro plan: unlimited repairs, 15 techs, unlimited customers.
+    # Enterprise: unlimited everything + advanced features.
+    # Old code had stats['customers'] > 50 pushing to Enterprise, but hitting the
+    # Starter customer limit means Pro is needed, not Enterprise.
+    # BUG FIX (impl-plan §4c): Stripe Connect used alone is NOT an Enterprise signal.
+    # All plans can use Stripe Connect. Moved to Pro signal (a shop actively processing
+    # online payments is likely doing meaningful volume, not necessarily Enterprise scale).
+    if stats['techs'] > 15 or projected_monthly_repairs > 500:
         return 'enterprise', "Your shop's volume and team size need Enterprise-level capacity."
-    
-    if (stats['techs'] > 2 or projected_monthly_repairs > 50
+
+    if (stats['techs'] > 5 or projected_monthly_repairs > 200
+            or stats['customers'] > 50
+            or stats['uses_connect']  # Online payments = meaningful volume → Pro
             or stats['uses_invoicing'] or stats['uses_rewards']):
         return 'pro', "You're using advanced features and growing fast — Pro gives you room."
-    
+
     if stats['techs'] >= 1 or projected_monthly_repairs > 10:
         return 'starter', "Perfect for a shop your size — all the essentials, no extras you don't need."
-    
+
     return 'starter', "Start here — you can always upgrade as your shop grows."
 ```
 

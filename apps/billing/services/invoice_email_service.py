@@ -11,6 +11,7 @@ Created: 2026-01-27
 """
 from __future__ import annotations
 
+import html
 import io
 import os
 import boto3
@@ -223,12 +224,17 @@ class InvoiceEmailService:
             "",
         ])
         
-        # Portal link — always include so customer can view invoice online
+        # Portal link — always include so customer can view invoice online.
+        # Use BASE_URL from settings so multi-tenant deployments with a custom
+        # domain get the correct link, not a hardcoded rssystems.io URL.
+        # (CODE-178: plain-text email body was missing the BASE_URL fallback that
+        # _build_html_email already had — caused wrong domain for non-RS tenants.)
         invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
+        _base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
         if invoice_id:
-            portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/"
+            portal_url = f"{_base_url}/app/invoices/{invoice_id}/"
         else:
-            portal_url = "https://rssystems.io/app/invoices/"
+            portal_url = f"{_base_url}/app/invoices/"
         lines.extend([
             "📄 View Invoice Online:",
             portal_url,
@@ -359,12 +365,13 @@ class InvoiceEmailService:
                         # or show a fallback page with contact info.
                         try:
                             from rs_systems.views import generate_payment_token
-                            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
                             token = generate_payment_token(invoice_record.id)
                             payment_link = f"{base_url}/pay/{invoice_record.id}/{token}/"
                         except Exception as e:
                             logger.warning(f"Could not generate payment URL: {e}")
-                            payment_link = f"https://rssystems.io/app/invoices/{invoice_record.id}/"
+                            _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                            payment_link = f"{_fb_base}/app/invoices/{invoice_record.id}/"
                 except Exception:
                     pass
             
@@ -436,30 +443,35 @@ class InvoiceEmailService:
         elif invoice_id:
             try:
                 from rs_systems.views import generate_payment_token
-                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
                 token = generate_payment_token(invoice_id)
                 portal_url = f"{base_url}/pay/{invoice_id}/{token}/"
             except Exception:
-                portal_url = f"https://rssystems.io/app/invoices/{invoice_id}/"
+                _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                portal_url = f"{_fb_base}/app/invoices/{invoice_id}/"
         else:
-            portal_url = "https://rssystems.io/app/invoices/"
+            _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+            portal_url = f"{_fb_base}/app/invoices/"
 
-        # Company info
-        company_name = 'RS Systems'
+        # Company info — escape all user-controlled strings before embedding in HTML
+        # (CODE-232: XSS in invoice email HTML body)
+        company_name = html.escape('RS Systems')
         company_address = ''
         company_phone = ''
         if self.tenant:
-            company_name = self.tenant.name or company_name
-            company_address = self.tenant.business_address or ''
-            company_phone = self.tenant.business_phone or ''
+            company_name = html.escape(self.tenant.name or 'RS Systems')
+            company_address = html.escape(self.tenant.business_address or '')
+            company_phone = html.escape(self.tenant.business_phone or '')
 
         # Line items HTML
         items_html = ''
         for item in invoice_data.line_items:
+            unit_esc = html.escape(str(item.unit_number))
+            damage_esc = html.escape(str(item.damage_type))
             items_html += f'''
             <tr>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">Unit {item.unit_number}</td>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{item.damage_type}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">Unit {unit_esc}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{damage_esc}</td>
                 <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;text-align:right;">${item.final_cost:.2f}</td>
             </tr>'''
 
@@ -492,7 +504,12 @@ class InvoiceEmailService:
                 </a>
             </div>'''
 
-        html = f'''<!DOCTYPE html>
+        # Escape remaining user-controlled values used in the HTML template
+        cust_name_esc = html.escape(str(invoice_data.customer_name))
+        inv_number_esc = html.escape(str(invoice_data.invoice_number))
+        pay_terms_esc = html.escape(str(invoice_data.payment_terms_display))
+
+        html_doc = f'''<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -501,23 +518,23 @@ class InvoiceEmailService:
 <!-- Header -->
 <div style="background-color:#1e40af;padding:24px;border-radius:12px 12px 0 0;text-align:center;">
     <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">{company_name}</h1>
-    <p style="margin:4px 0 0;color:#93c5fd;font-size:14px;">Invoice #{invoice_data.invoice_number}</p>
+    <p style="margin:4px 0 0;color:#93c5fd;font-size:14px;">Invoice #{inv_number_esc}</p>
 </div>
 
 <!-- Body -->
 <div style="background-color:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
 
     <p style="font-size:15px;color:#374151;margin:0 0 16px;">
-        Hi {invoice_data.customer_name},<br><br>
+        Hi {cust_name_esc},<br><br>
         Here's your invoice for recent windshield repair services.
     </p>
 
     <!-- Invoice Details -->
     <div style="background-color:#f9fafb;border-radius:8px;padding:16px;margin-bottom:20px;">
         <table style="width:100%;font-size:14px;color:#6b7280;">
-            <tr><td style="padding:4px 0;">Invoice #</td><td style="text-align:right;font-weight:600;color:#111827;">{invoice_data.invoice_number}</td></tr>
+            <tr><td style="padding:4px 0;">Invoice #</td><td style="text-align:right;font-weight:600;color:#111827;">{inv_number_esc}</td></tr>
             <tr><td style="padding:4px 0;">Date</td><td style="text-align:right;">{invoice_data.invoice_date.strftime('%B %d, %Y')}</td></tr>
-            <tr><td style="padding:4px 0;">Payment Terms</td><td style="text-align:right;">{invoice_data.payment_terms_display}</td></tr>
+            <tr><td style="padding:4px 0;">Payment Terms</td><td style="text-align:right;">{pay_terms_esc}</td></tr>
         </table>
     </div>
 
@@ -561,7 +578,7 @@ class InvoiceEmailService:
 </div>
 </body>
 </html>'''
-        return html
+        return html_doc
 
     def preview_invoice_email(
         self,

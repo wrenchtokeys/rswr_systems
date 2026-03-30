@@ -132,14 +132,20 @@ class SubscriptionEnforcementTests(TestCase):
             self.assertIn('pricing', resp.url)
 
     def test_canceled_subscription_blocked(self):
+        # CODE-130 changed the meaning of 'canceled': a tenant with
+        # subscription_status='canceled' but NO grace_period_end is treated as
+        # "active (scheduled to cancel)" — the shop still has paid time.  We
+        # must set grace_period_end to a past date to simulate a subscription
+        # that has actually expired, which is what the Stripe webhook does.
         user, tenant = _make_tenant(
             'Canceled Shop', 'canceled_owner',
             subscription_status='canceled',
+            grace_period_end=timezone.now() - timedelta(days=1),
         )
         self.client.login(username='canceled_owner', password='testpass123')
         resp = self.client.get('/tech/')
         self.assertEqual(resp.status_code, 302)
-        self.assertIn('pricing', resp.url)
+        self.assertIn('subscription-blocked', resp.url)
 
     def test_active_subscription_allowed(self):
         user, tenant = _make_tenant(
@@ -167,9 +173,13 @@ class SubscriptionEnforcementTests(TestCase):
 
     def test_api_returns_402(self):
         """API endpoints return 402 for expired subscriptions."""
+        # Per CODE-130, 'canceled' without grace_period_end means "scheduled to
+        # cancel but still active". Set grace_period_end in the past to create a
+        # genuinely expired subscription that the middleware will block.
         user, tenant = _make_tenant(
             'API Expired', 'api_expired',
             subscription_status='canceled',
+            grace_period_end=timezone.now() - timedelta(days=1),
         )
         self.client.login(username='api_expired', password='testpass123')
         # A non-exempt API path

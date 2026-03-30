@@ -9,7 +9,6 @@ from apps.technician_portal.models import Technician, Repair
 from apps.customer_portal.models import CustomerUser
 from apps.rewards_referrals.models import RewardRedemption
 from apps.rewards_referrals.services import RewardFulfillmentService
-from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 
 import logging
@@ -45,33 +44,46 @@ def reward_fulfillment_detail(request, redemption_id):
         redemption_qs = RewardRedemption.objects.none()
     redemption = get_object_or_404(redemption_qs, id=redemption_id)
 
-    is_assigned_technician = (redemption.assigned_technician == technician)
+    # A technician without a profile (None) should never match the assigned
+    # technician slot — even when the redemption is also unassigned (None).
+    # Previously, None == None evaluated to True, making any admin/owner
+    # without a Technician row appear as "assigned" and then crashing in
+    # mark_as_fulfilled() with AttributeError on None.user.  (CODE-176)
+    is_assigned_technician = (
+        technician is not None
+        and redemption.assigned_technician is not None
+        and redemption.assigned_technician == technician
+    )
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     can_fulfill = is_assigned_technician or is_admin
 
-    # Get customer repairs for applying reward
+    # Get customer repairs for applying reward.
+    #
+    # CODE-180: Previously this looked up the Customer via email:
+    #   customer_qs.get(email=customer_email)
+    # Customer.email is NOT unique — two fleet accounts at the same shop can
+    # share an AP email address, which raises MultipleObjectsReturned (500 crash).
+    # The CustomerUser already has a direct FK to Customer, so we resolve the
+    # customer through the ORM relationship instead.  This is both correct and
+    # cheaper (one fewer DB query).
     customer_repairs = []
-    if redemption.reward and redemption.reward.customer_user and redemption.reward.customer_user.user:
-        customer_email = redemption.reward.customer_user.user.email
+    if redemption.reward and redemption.reward.customer_user:
         try:
-            customer_qs = Customer.objects.all()
-            if tenant:
-                customer_qs = customer_qs.filter(tenant=tenant)
-
-            else:
-                customer_qs = customer_qs.none()
-            customer = customer_qs.get(email=customer_email)
-            repair_qs = Repair.objects.filter(
-                customer=customer,
-                queue_status__in=['APPROVED', 'IN_PROGRESS']
-            )
-            if tenant:
-                repair_qs = repair_qs.filter(tenant=tenant)
-
-            else:
-                repair_qs = repair_qs.none()
-            customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-service_date')
-        except Customer.DoesNotExist:
+            customer = redemption.reward.customer_user.customer
+            # Guard: ensure the customer belongs to the current tenant.
+            # The redemption queryset above is already tenant-scoped, so this
+            # should always hold, but an explicit check avoids surprises if the
+            # chain is unexpectedly broken.
+            if tenant and customer.tenant_id != tenant.id:
+                customer = None
+            if customer:
+                repair_qs = Repair.objects.filter(
+                    customer=customer,
+                    queue_status__in=['APPROVED', 'IN_PROGRESS'],
+                    tenant=tenant,
+                ) if tenant else Repair.objects.none()
+                customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-service_date')
+        except Exception:
             pass
 
     if request.method == 'POST':

@@ -30,12 +30,13 @@ from common.decorators import owner_or_manager_required
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
 
 from apps.tenants.models import InviteToken, SubscriptionPlan, Tenant, TenantMembership
 from apps.tenants.services.usage_service import UsageService
 from apps.tenants.services.subscription_service import SubscriptionService, SubscriptionError
 from apps.tenants.services.signup_service import create_tenant_with_owner, SignupError
-from apps.technician_portal.models import Repair, Replacement, Technician
+from apps.technician_portal.models import Repair, Replacement, Technician, WarrantyPolicy
 from apps.customer_portal.models import CustomerUser
 from core.models import Customer
 
@@ -230,12 +231,17 @@ def _verify_turnstile(request) -> bool:
         return True
 
 
+@ratelimit(key='ip', rate='5/h', method='POST', block=True)
 def signup_view(request):
     """
     Public signup page — creates user, tenant, membership.
 
     The user account is created with is_active=False. A confirmation email
     is sent. The user is NOT logged in until they click the link.
+
+    Rate-limited to 5 POST requests per IP per hour. Turnstile CAPTCHA is
+    the primary defence but is disabled in dev/CI (no secret key), so the
+    rate limit is the safety net against automated account-creation spam.
     """
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
@@ -382,16 +388,31 @@ def onboarding_view(request):
                         if add_self:
                             # Add the owner as a technician (use their existing user)
                             if not Technician.objects.filter(user=request.user, tenant=tenant).exists():
-                                Technician.objects.create(
-                                    tenant=tenant,
-                                    user=request.user,
-                                    phone_number=cd.get('tech_phone', '') or tenant.business_phone,
-                                    is_active=True,
-                                )
-                                from django.contrib.auth.models import Group
-                                tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                request.user.groups.add(tech_group)
-                                messages.success(request, 'You have been added as a technician!')
+                                # Guard: Technician.user is a OneToOneField — if this user
+                                # already has a Technician record at a *different* tenant
+                                # (e.g. they previously signed up for another shop), we
+                                # cannot create a second one.  Attempting to do so raises
+                                # IntegrityError (duplicate key).  Inform the user instead
+                                # of crashing.  (CODE-217)
+                                foreign_tech = Technician.objects.filter(user=request.user).exclude(tenant=tenant).first()
+                                if foreign_tech:
+                                    messages.warning(
+                                        request,
+                                        'Your account is already linked to a technician profile at another shop. '
+                                        'You can still manage this shop as an owner — add a separate technician '
+                                        'account from Settings → Team if needed.'
+                                    )
+                                else:
+                                    Technician.objects.create(
+                                        tenant=tenant,
+                                        user=request.user,
+                                        phone_number=cd.get('tech_phone', '') or tenant.business_phone,
+                                        is_active=True,
+                                    )
+                                    from django.contrib.auth.models import Group
+                                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                                    request.user.groups.add(tech_group)
+                                    messages.success(request, 'You have been added as a technician!')
                             else:
                                 messages.info(request, 'You are already set up as a technician.')
                         else:
@@ -1097,6 +1118,24 @@ def billing_cancel(request):
 
 
 @owner_or_manager_required
+def update_payment_method(request):
+    """GET /owner/update-payment-method/ — redirect to Stripe Billing Portal for card update."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership:
+        messages.error(request, 'Access denied.')
+        return redirect('billing_settings')
+
+    svc = SubscriptionService()
+    try:
+        return_url = request.build_absolute_uri('/owner/billing/')
+        portal_url = svc.create_billing_portal_session(tenant, return_url)
+        return redirect(portal_url)
+    except SubscriptionError as e:
+        messages.error(request, str(e))
+        return redirect('billing_settings')
+
+
+@owner_or_manager_required
 def billing_portal_redirect(request):
     """GET /owner/billing/portal/ — redirect to Stripe Billing Portal."""
     tenant, membership = _get_owner_tenant(request)
@@ -1418,11 +1457,51 @@ def owner_settings_view(request):
             # Update batch invoicing configuration
             try:
                 config = BillingConfig.get_for_tenant(tenant)
-                config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
-                config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
+
+                # Validate frequency against canonical choices — an unrecognised
+                # value would be silently saved and then cause batch invoicing to
+                # never run (the task's _should_run_batch_today() returns False for
+                # any unknown frequency).  (CODE-201)
+                raw_freq = request.POST.get('batch_invoice_frequency', 'disabled')
+                valid_frequencies = {code for code, _ in BillingConfig.BATCH_FREQUENCY_CHOICES}
+                if raw_freq not in valid_frequencies:
+                    messages.error(
+                        request,
+                        f'Invalid batch invoice frequency: {raw_freq!r}. '
+                        f'Must be one of: {", ".join(sorted(valid_frequencies))}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+
+                raw_day = request.POST.get('batch_invoice_day', '1')
+                try:
+                    batch_day = int(raw_day)
+                except (ValueError, TypeError):
+                    messages.error(request, 'Batch invoice day must be a number.')
+                    return redirect('/owner/settings/?tab=billing')
+
+                # Validate day range based on frequency:
+                #   weekly/biweekly → 0-6 (Monday=0, Sunday=6)
+                #   monthly         → 1-28
+                #   disabled        → day is irrelevant, accept any valid int
+                if raw_freq in ('weekly', 'biweekly') and not (0 <= batch_day <= 6):
+                    messages.error(
+                        request,
+                        f'Batch invoice day must be 0–6 for weekly/bi-weekly scheduling '
+                        f'(0=Monday … 6=Sunday). Got: {batch_day}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+                if raw_freq == 'monthly' and not (1 <= batch_day <= 28):
+                    messages.error(
+                        request,
+                        f'Batch invoice day must be 1–28 for monthly scheduling. Got: {batch_day}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+
+                config.batch_invoice_frequency = raw_freq
+                config.batch_invoice_day = batch_day
                 config.batch_invoice_auto_send = request.POST.get('batch_invoice_auto_send') == '1'
                 config.save(update_fields=['batch_invoice_frequency', 'batch_invoice_day', 'batch_invoice_auto_send'])
-                
+
                 if config.batch_invoice_frequency != 'disabled':
                     messages.success(request, f'Batch invoicing enabled: {config.batch_invoice_frequency} on day {config.batch_invoice_day}.')
                 else:
@@ -1443,6 +1522,26 @@ def owner_settings_view(request):
                 logger.error(f"Error saving email templates: {e}")
                 messages.error(request, 'Could not save email templates.')
             return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'review_settings':
+            try:
+                from apps.technician_portal.review_models import ReviewConfig
+                review_config = ReviewConfig.get_for_tenant(tenant)
+                review_config.is_enabled = request.POST.get('review_enabled') == 'on'
+                review_config.google_review_url = request.POST.get('google_review_url', '').strip()
+                review_config.email_subject = (
+                    request.POST.get('email_subject', '').strip()
+                    or "How was your experience with {shop_name}?"
+                )
+                review_config.email_body_template = request.POST.get('email_body_template', '').strip()
+                review_config.save(update_fields=[
+                    'is_enabled', 'google_review_url', 'email_subject', 'email_body_template',
+                ])
+                messages.success(request, 'Review settings saved.')
+            except Exception as e:
+                logger.error(f"Error saving review settings: {e}")
+                messages.error(request, 'Could not save review settings.')
+            return redirect('/owner/settings/?tab=reviews')
 
         # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
@@ -1530,6 +1629,24 @@ def owner_settings_view(request):
 
     batch_month_days = [{'value': d, 'label': f'{d}{_ordinal_suffix(d)} of the month'} for d in range(1, 29)]
 
+    # Review request settings + recent requests
+    from apps.technician_portal.review_models import ReviewConfig, ReviewRequest
+    review_config = ReviewConfig.get_for_tenant(tenant)
+    recent_review_requests = (
+        ReviewRequest.objects
+        .filter(tenant=tenant)
+        .select_related('customer', 'repair')
+        .order_by('-created_at')[:10]
+    )
+
+    # Warranty policies for the Warranty tab
+    warranty_policies = (
+        WarrantyPolicy.objects
+        .filter(tenant=tenant)
+        .select_related('customer')
+        .order_by('applies_to', 'name')
+    )
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1544,6 +1661,11 @@ def owner_settings_view(request):
         'reminder_day_choices': reminder_day_choices,
         'active_reminder_days': active_reminder_days,
         'batch_month_days': batch_month_days,
+        'review_config': review_config,
+        'recent_review_requests': recent_review_requests,
+        'warranty_policies': warranty_policies,
+        'warranty_applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
+        'warranty_duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -1592,6 +1714,15 @@ def invite_member(request):
 
     if role not in ('manager', 'technician', 'viewer'):
         messages.error(request, 'Invalid role selected.')
+        return redirect('owner_settings')
+
+    # Privilege escalation guard: managers cannot invite other managers.
+    # Only shop owners can grant manager-level access.  Without this check,
+    # a manager can run the invite flow with role=manager (the role validation
+    # above allows it) and create a peer manager without the owner's knowledge.
+    # (CODE-206)
+    if membership.role == 'manager' and role == 'manager':
+        messages.error(request, 'Only the shop owner can invite managers.')
         return redirect('owner_settings')
 
     # Check if user already exists
@@ -1782,6 +1913,7 @@ def invite_member(request):
 # 10. Shop Join — Customer Self-Signup (Phase 4)
 # ------------------------------------------------------------------
 
+@ratelimit(key='ip', rate='10/h', method='POST', block=False)
 def shop_join_view(request, slug):
     """Public page: /join/<slug>/ — customer self-signup for a shop's portal."""
     from apps.customer_portal.models import CustomerUser as CustomerUserModel
@@ -1845,6 +1977,14 @@ def shop_join_view(request, slug):
         return redirect('customer_dashboard')
 
     if request.method == 'POST':
+        # Enforce IP-based rate limit (set by @ratelimit decorator)
+        if getattr(request, 'limited', False):
+            return render(request, 'saas/shop_join.html', {
+                'tenant': tenant,
+                'errors': ['Too many registration attempts. Please try again later.'],
+                'form_data': {},
+            })
+
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
         email = request.POST.get('email', '').strip().lower()
@@ -1994,6 +2134,16 @@ def update_team_member(request, membership_id):
     # Only owners can change roles
     if new_role != target.role and my_membership.role != 'owner':
         messages.error(request, 'Only the shop owner can change member roles.')
+        return redirect('owner_settings')
+
+    # Managers can only update technicians — not other managers or owners.
+    # Without this check, a manager can POST with role=manager (matching the
+    # target's current role so the role-change guard above doesn't fire) and
+    # silently modify a peer manager's can_repair/can_replace abilities.
+    # Only the shop owner should be able to edit manager or owner records.
+    # (CODE-212)
+    if my_membership.role == 'manager' and target.role in ('manager', 'owner'):
+        messages.error(request, 'Managers can only update technician team members.')
         return redirect('owner_settings')
 
     # Validate role
@@ -2764,6 +2914,10 @@ def owner_email_invoice(request, invoice_id):
         messages.error(request, 'Cannot email a draft invoice. Send it first.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
+    if invoice.status == 'CANCELLED':
+        messages.error(request, 'Cannot email a cancelled (voided) invoice.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         email_service = InvoiceEmailService(tenant=tenant)
@@ -2961,8 +3115,35 @@ def owner_aging_report_csv(request):
 
     from decimal import Decimal
 
+    def _csv_safe(value):
+        """
+        Neutralise CSV formula injection.
+
+        Spreadsheet applications (Excel, LibreOffice, Google Sheets) treat a
+        cell value as a formula when it starts with '=', '+', '-', or '@'.
+        An attacker with control over user-supplied data (e.g. a customer name
+        like '=HYPERLINK(...)') could embed a payload that executes when an
+        accountant opens the exported file.
+
+        Fix: prefix any cell whose string representation starts with a formula
+        trigger character with a single-quote (').  The single-quote is the
+        standard spreadsheet escape; it forces the cell to be treated as text.
+        Numeric/date/None values are left untouched — only strings are checked.
+        (CODE-214)
+        """
+        if not isinstance(value, str):
+            return value
+        if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+            return "'" + value
+        return value
+
+    # Sanitise the tenant name used in the filename and header row.
+    # A shop name containing a double-quote would break the Content-Disposition
+    # header; strip/replace potentially dangerous characters.
+    safe_tenant_name = tenant.name.replace('"', '').replace('\n', '').replace('\r', '').replace(' ', '_')
+
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="{tenant.name.replace(" ", "_")}_AR_Aging_{today}.csv"'
+    response['Content-Disposition'] = f'attachment; filename="{safe_tenant_name}_AR_Aging_{today}.csv"'
     writer = csv.writer(response)
 
     # Header with report info
@@ -3007,8 +3188,8 @@ def owner_aging_report_csv(request):
         grand_total += amount_due
 
         writer.writerow([
-            inv.customer.name,
-            inv.invoice_number,
+            _csv_safe(inv.customer.name),
+            _csv_safe(inv.invoice_number),
             inv.invoice_date.strftime('%m/%d/%Y'),
             inv.due_date.strftime('%m/%d/%Y') if inv.due_date else '',
             f'{float(inv.total):.2f}',
@@ -3017,8 +3198,8 @@ def owner_aging_report_csv(request):
             inv.get_status_display(),
             max(0, days_old),
             bucket_label[bucket],
-            inv.customer.email or '',
-            inv.customer.phone or '',
+            _csv_safe(inv.customer.email or ''),
+            _csv_safe(inv.customer.phone or ''),
         ])
 
     # Summary section
@@ -3420,14 +3601,61 @@ def owner_setup_save_billing(request):
         from apps.billing.models import BillingConfig
 
         config = BillingConfig.get_for_tenant(tenant)
-        config.default_payment_terms = request.POST.get('default_payment_terms', 'COD')
+
+        # Validate default_payment_terms against canonical choices.
+        # An unrecognised value is silently saved to the DB and causes invoice
+        # creation to use Django's CharField default instead of the intended
+        # terms, producing incorrect due dates.  Mirror the validation applied
+        # in owner_settings_view.  (CODE-202)
+        raw_terms = request.POST.get('default_payment_terms', 'COD')
+        valid_terms = {code for code, _ in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if raw_terms not in valid_terms:
+            return JsonResponse(
+                {'success': False, 'error': f'Invalid payment terms: {raw_terms!r}. '
+                                            f'Must be one of: {", ".join(sorted(valid_terms))}.'},
+                status=400,
+            )
+
+        # Validate batch_invoice_frequency — an unrecognised value is silently
+        # saved and causes _should_run_batch_today() to return False forever,
+        # so no batch invoices ever run.  The same validation lives in
+        # owner_settings_view (CODE-201) but was missing here in the setup
+        # wizard endpoint.  (CODE-202)
+        raw_freq = request.POST.get('batch_invoice_frequency', 'disabled')
+        valid_frequencies = {code for code, _ in BillingConfig.BATCH_FREQUENCY_CHOICES}
+        if raw_freq not in valid_frequencies:
+            return JsonResponse(
+                {'success': False, 'error': f'Invalid batch invoice frequency: {raw_freq!r}. '
+                                            f'Must be one of: {", ".join(sorted(valid_frequencies))}.'},
+                status=400,
+            )
+
+        # Validate batch_invoice_day range based on frequency.
+        try:
+            batch_day = int(request.POST.get('batch_invoice_day', '1'))
+        except (ValueError, TypeError):
+            return JsonResponse(
+                {'success': False, 'error': 'Batch invoice day must be a number.'},
+                status=400,
+            )
+        if raw_freq in ('weekly', 'biweekly') and not (0 <= batch_day <= 6):
+            return JsonResponse(
+                {'success': False, 'error': f'Batch invoice day must be 0–6 for weekly/bi-weekly '
+                                            f'scheduling (0=Monday … 6=Sunday). Got: {batch_day}.'},
+                status=400,
+            )
+        if raw_freq == 'monthly' and not (1 <= batch_day <= 28):
+            return JsonResponse(
+                {'success': False, 'error': f'Batch invoice day must be 1–28 for monthly scheduling. '
+                                            f'Got: {batch_day}.'},
+                status=400,
+            )
+
+        config.default_payment_terms = raw_terms
         config.overdue_reminder_enabled = request.POST.get('overdue_reminder_enabled') == '1'
         config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
-        config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
-        try:
-            config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
-        except (ValueError, TypeError):
-            config.batch_invoice_day = 1
+        config.batch_invoice_frequency = raw_freq
+        config.batch_invoice_day = batch_day
         config.save(update_fields=[
             'default_payment_terms', 'overdue_reminder_enabled', 'overdue_reminder_days',
             'batch_invoice_frequency', 'batch_invoice_day',
@@ -3567,12 +3795,17 @@ def owner_confirm_email_verification(request, uidb64, token):
     return redirect('signup')
 
 
+@ratelimit(key='ip', rate='3/h', method='GET', block=True)
 def resend_confirmation_email(request, uidb64):
     """
     GET /confirm-email/<uidb64>/resend/
 
     Resend the account confirmation email for an inactive account.
     The user must not yet be active (prevents abuse by active users).
+
+    Rate-limited to 3 requests per IP per hour to prevent:
+    - Email bombing inactive users
+    - SendGrid quota exhaustion (uidb64 is trivially enumerable)
     """
     from django.utils.http import urlsafe_base64_decode
 
@@ -3872,16 +4105,45 @@ def owner_generate_invoice_from_repair(request, repair_id):
         messages.error(request, 'Only completed repairs can be invoiced.')
         return redirect('repair_detail', repair_id=repair.id)
 
-    # Validate: not already invoiced
+    # Multi-break batch: include ALL sibling repairs from the same batch.
+    # A multi-break job (e.g. 3 chips on one windshield) creates separate Repair
+    # records sharing the same repair_batch_id. Invoicing only the clicked repair
+    # would miss the other breaks and undercharge. (CODE-226)
+    if repair.repair_batch_id:
+        all_batch_repairs = list(
+            Repair.objects.filter(
+                tenant=tenant,
+                repair_batch_id=repair.repair_batch_id,
+            ).order_by('break_number')
+        )
+        batch_repairs = [r for r in all_batch_repairs if r.queue_status == 'COMPLETED']
+        # CODE-247: Warn if some siblings are not yet completed
+        excluded_count = len(all_batch_repairs) - len(batch_repairs)
+        if excluded_count > 0:
+            messages.warning(
+                request,
+                f'{excluded_count} of {len(all_batch_repairs)} batch repairs are not yet completed '
+                f'and were excluded from this invoice.'
+            )
+    else:
+        batch_repairs = [repair]
+
+    # Validate: not already invoiced (check all repairs in the batch)
     from apps.billing.models import InvoiceLineItem
-    if InvoiceLineItem.objects.filter(
-        repair=repair,
-        invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
-    ).exists():
-        messages.info(request, 'This repair has already been invoiced.')
+    already_invoiced_repair = None
+    for r in batch_repairs:
+        if InvoiceLineItem.objects.filter(
+            repair=r,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).exists():
+            already_invoiced_repair = r
+            break
+
+    if already_invoiced_repair:
+        messages.info(request, 'This repair (or part of its batch) has already been invoiced.')
         line_item = InvoiceLineItem.objects.filter(
-            repair=repair,
+            repair=already_invoiced_repair,
             invoice__tenant=tenant,
             invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
         ).select_related('invoice').first()
@@ -3900,10 +4162,14 @@ def owner_generate_invoice_from_repair(request, repair_id):
         tracking_svc = InvoiceTrackingService(tenant=tenant)
         invoice = tracking_svc.create_invoice_from_repairs(
             customer=repair.customer,
-            repairs=[repair],
+            repairs=batch_repairs,
             payment_terms=req_payment_terms,
         )
-        messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
+        repair_count = len(batch_repairs)
+        if repair_count > 1:
+            messages.success(request, f'Invoice {invoice.invoice_number} created for {repair_count} repairs (multi-break batch). Review and send below.')
+        else:
+            messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
     except ValueError as e:
         messages.error(request, str(e))
@@ -3912,3 +4178,357 @@ def owner_generate_invoice_from_repair(request, repair_id):
         logger.error(f"Error generating invoice from repair {repair_id}: {e}", exc_info=True)
         messages.error(request, 'Could not generate invoice. Please try again.')
         return redirect('repair_detail', repair_id=repair.id)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Loyalty Phase 2: Manual Point Adjustment + Point Liability Report
+# (CODE-197)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@owner_or_manager_required
+@require_POST
+def owner_loyalty_adjust_points(request, customer_user_id):
+    """
+    POST /owner/loyalty/customers/<customer_user_id>/adjust/
+
+    Manually award or deduct loyalty points for a specific customer.
+    Restricted to owners and managers of the same tenant.
+
+    Form fields:
+        amount  (int, non-zero — positive = award, negative = deduct)
+        reason  (str, required — stored in PointTransaction.description)
+
+    Returns JSON:
+        { "success": true, "new_balance": 450, "transaction_id": 99 }
+      or
+        { "success": false, "error": "..." }
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+    from apps.customer_portal.models import CustomerUser
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Unauthorized.'}, status=403)
+
+    # Unscoped get_object_or_404 is forbidden — always include tenant= scoping.
+    # CustomerUser doesn't have a direct tenant FK but we reach it via customer__tenant.
+    try:
+        cu = CustomerUser.objects.select_related('customer', 'user').get(
+            pk=customer_user_id,
+            customer__tenant=tenant,
+        )
+    except CustomerUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Customer not found.'}, status=404)
+
+    # Parse and validate inputs
+    try:
+        raw_amount = request.POST.get('amount', '')
+        amount = int(raw_amount)
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Amount must be a non-zero integer.'}, status=400)
+
+    reason = request.POST.get('reason', '').strip()
+
+    try:
+        pt = LoyaltyService.manual_adjustment(
+            customer_user=cu,
+            amount=amount,
+            reason=reason,
+            created_by=request.user,
+            tenant=tenant,
+        )
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception as exc:
+        logger.error('owner_loyalty_adjust_points: unexpected error for cu=%s: %s', customer_user_id, exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': 'An unexpected error occurred.'}, status=500)
+
+    return JsonResponse({
+        'success': True,
+        'new_balance': pt.balance_after,
+        'transaction_id': pt.pk,
+        'amount': pt.amount,
+        'description': pt.description,
+    })
+
+
+@owner_or_manager_required
+def owner_loyalty_liability_report(request):
+    """
+    GET /owner/loyalty/liability/
+
+    JSON endpoint returning the point liability report for the authenticated
+    owner's tenant. Restricted to owners and managers.
+
+    Response:
+        {
+            "tenant_name": "Rockstar Windshield Repair",
+            "total_outstanding_points": 1200,
+            "total_issued_lifetime": 5400,
+            "total_redeemed_lifetime": 3800,
+            "total_expired_lifetime": 200,
+            "total_manually_adjusted": 100,
+            "active_customer_count": 7,
+            "customers": [
+                {
+                    "customer_user_id": 3,
+                    "email": "fleet@eos.com",
+                    "customer_name": "EOS Trucking",
+                    "current_balance": 450,
+                    "lifetime_earned": 1200,
+                    "lifetime_redeemed": 700,
+                    "lifetime_expired": 50,
+                },
+                ...
+            ]
+        }
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'error': 'Unauthorized.'}, status=403)
+
+    report = LoyaltyService.get_point_liability_report(tenant)
+    report['tenant_name'] = tenant.name
+
+    return JsonResponse(report)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Loyalty Dashboard — Owner HTML Page
+# ──────────────────────────────────────────────────────────────────────────────
+
+@owner_or_manager_required
+def owner_loyalty_dashboard(request):
+    """
+    GET  /owner/loyalty/          — render the loyalty dashboard
+    POST /owner/loyalty/config/   — handled separately (see owner_loyalty_save_config)
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+    from apps.rewards_referrals.models import LoyaltyConfig, PointTransaction
+    from django.db.models import Sum, Q
+    from django.utils import timezone
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('owner_dashboard')
+
+    # Liability report (customer list + totals)
+    report = LoyaltyService.get_point_liability_report(tenant)
+
+    # Points awarded this month
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    points_this_month = (
+        PointTransaction.objects
+        .filter(tenant=tenant, created_at__gte=month_start, amount__gt=0)
+        .aggregate(total=Sum('amount'))['total'] or 0
+    )
+
+    config = LoyaltyConfig.get_for_tenant(tenant)
+
+    ctx = {
+        'tenant': tenant,
+        'report': report,
+        'points_this_month': points_this_month,
+        'config': config,
+    }
+    return render(request, 'saas/owner_loyalty.html', ctx)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_loyalty_save_config(request):
+    """
+    POST /owner/loyalty/config/
+    Save LoyaltyConfig fields: is_active, points_per_repair, points_expiry_days.
+    """
+    from apps.rewards_referrals.models import LoyaltyConfig
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Unauthorized.'}, status=403)
+
+    config = LoyaltyConfig.get_for_tenant(tenant)
+
+    errors = []
+
+    # Toggle
+    config.is_active = request.POST.get('is_active') == 'true'
+
+    # points_per_repair
+    try:
+        ppr = int(request.POST.get('points_per_repair', config.points_per_repair))
+        if ppr < 0:
+            raise ValueError
+        config.points_per_repair = ppr
+    except (ValueError, TypeError):
+        errors.append('Points per repair must be a non-negative integer.')
+
+    # points_expiry_days
+    try:
+        ped = int(request.POST.get('points_expiry_days', config.points_expiry_days))
+        if ped < 0:
+            raise ValueError
+        config.points_expiry_days = ped
+    except (ValueError, TypeError):
+        errors.append('Points expiry days must be a non-negative integer (0 = never).')
+
+    if errors:
+        return JsonResponse({'success': False, 'errors': errors}, status=400)
+
+    config.save()
+    return JsonResponse({
+        'success': True,
+        'is_active': config.is_active,
+        'points_per_repair': config.points_per_repair,
+        'points_expiry_days': config.points_expiry_days,
+    })
+
+
+# ─────────────────────────────────────────────
+# Warranty Policy CRUD (owner/manager only)
+# ─────────────────────────────────────────────
+
+@owner_or_manager_required
+def owner_warranty_create(request):
+    """POST /owner/settings/warranty/create/ — create a new warranty policy."""
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    name = request.POST.get('name', '').strip()
+    applies_to = request.POST.get('applies_to', 'all_repairs')
+    duration_type = request.POST.get('duration_type', 'custom_days')
+    coverage_description = request.POST.get('coverage_description', '').strip()
+    is_active = request.POST.get('is_active') == 'on'
+    is_default = request.POST.get('is_default') == 'on'
+    covers_labor = request.POST.get('covers_labor') == 'on'
+    covers_materials = request.POST.get('covers_materials') == 'on'
+
+    try:
+        duration_days = int(request.POST.get('duration_days', 365))
+    except (ValueError, TypeError):
+        duration_days = 365
+
+    # Validate applies_to
+    valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+    if applies_to not in valid_applies:
+        messages.error(request, 'Invalid "Applies To" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    # Validate duration_type
+    valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+    if duration_type not in valid_duration_types:
+        messages.error(request, 'Invalid "Duration Type" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    if not name:
+        messages.error(request, 'Policy name is required.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    try:
+        WarrantyPolicy.objects.create(
+            tenant=tenant,
+            name=name,
+            applies_to=applies_to,
+            duration_type=duration_type,
+            duration_days=duration_days,
+            coverage_description=coverage_description,
+            is_active=is_active,
+            is_default=is_default,
+            covers_labor=covers_labor,
+            covers_materials=covers_materials,
+        )
+        messages.success(request, f'Warranty policy "{name}" created.')
+    except Exception as e:
+        logger.error(f"Error creating warranty policy: {e}")
+        messages.error(request, f'Could not create policy: {e}')
+
+    return redirect('/owner/settings/?tab=warranty')
+
+
+@owner_or_manager_required
+def owner_warranty_edit(request, policy_id):
+    """POST /owner/settings/warranty/<id>/edit/ — update an existing warranty policy."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    policy = get_object_or_404(WarrantyPolicy, pk=policy_id, tenant=tenant)
+
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    name = request.POST.get('name', '').strip()
+    applies_to = request.POST.get('applies_to', policy.applies_to)
+    duration_type = request.POST.get('duration_type', policy.duration_type)
+    coverage_description = request.POST.get('coverage_description', '').strip()
+    is_active = request.POST.get('is_active') == 'on'
+    is_default = request.POST.get('is_default') == 'on'
+    covers_labor = request.POST.get('covers_labor') == 'on'
+    covers_materials = request.POST.get('covers_materials') == 'on'
+
+    try:
+        duration_days = int(request.POST.get('duration_days', policy.duration_days))
+    except (ValueError, TypeError):
+        duration_days = policy.duration_days
+
+    valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+    if applies_to not in valid_applies:
+        messages.error(request, 'Invalid "Applies To" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    # Validate duration_type
+    valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+    if duration_type not in valid_duration_types:
+        messages.error(request, 'Invalid "Duration Type" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    if not name:
+        messages.error(request, 'Policy name is required.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    try:
+        policy.name = name
+        policy.applies_to = applies_to
+        policy.duration_type = duration_type
+        policy.duration_days = duration_days
+        policy.coverage_description = coverage_description
+        policy.is_active = is_active
+        policy.is_default = is_default
+        policy.covers_labor = covers_labor
+        policy.covers_materials = covers_materials
+        policy.save()
+        messages.success(request, f'Warranty policy "{name}" updated.')
+    except Exception as e:
+        logger.error(f"Error updating warranty policy {policy_id}: {e}")
+        messages.error(request, f'Could not update policy: {e}')
+
+    return redirect('/owner/settings/?tab=warranty')
+
+
+@owner_or_manager_required
+def owner_warranty_toggle(request, policy_id):
+    """POST /owner/settings/warranty/<id>/toggle/ — soft toggle is_active."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    policy = get_object_or_404(WarrantyPolicy, pk=policy_id, tenant=tenant)
+
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    policy.is_active = not policy.is_active
+    policy.save(update_fields=['is_active'])
+    status = 'activated' if policy.is_active else 'deactivated'
+    messages.success(request, f'Policy "{policy.name}" {status}.')
+    return redirect('/owner/settings/?tab=warranty')

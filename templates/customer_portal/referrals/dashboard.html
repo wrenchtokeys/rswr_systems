@@ -11,8 +11,8 @@
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Referrals & Rewards</h1>
         <p class="text-sm text-gray-500 mt-0.5">Earn points by referring other businesses</p>
     </div>
-    <a href="{% url 'reward_redemptions' %}" class="inline-flex items-center px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-        <i class="fas fa-history mr-2 text-xs"></i> Redemption History
+    <a href="{% url 'customer_points_history' %}" class="inline-flex items-center px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+        <i class="fas fa-history mr-2 text-xs"></i> Points History
     </a>
 </div>
 
@@ -285,6 +285,29 @@
 </div>
 {% endif %}
 
+<!-- Redeem Confirmation Modal -->
+<div id="redeemModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div id="modalBackdrop" class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <div role="dialog" aria-modal="true" class="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+        <div class="flex items-center justify-center w-14 h-14 bg-brand-100 rounded-full mx-auto mb-4">
+            <i class="fas fa-gift text-brand-600 text-xl"></i>
+        </div>
+        <h3 class="text-lg font-bold text-gray-900 text-center mb-1">Redeem Reward?</h3>
+        <p class="text-sm text-gray-500 text-center mb-5">
+            You're about to redeem <strong id="modalRewardName" class="text-gray-900"></strong> for
+            <strong id="modalRewardPoints" class="text-brand-600"></strong> points. This can't be undone.
+        </p>
+        <div class="flex gap-3">
+            <button id="modalCancelBtn" type="button" class="flex-1 py-2.5 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors">
+                Cancel
+            </button>
+            <button id="modalConfirmBtn" type="button" class="flex-1 py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                <i class="fas fa-check mr-1.5"></i> Confirm
+            </button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -323,14 +346,56 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Confirm redemption
+    // Confirm redemption via modal
+    const modal = document.getElementById('redeemModal');
+    const modalName = document.getElementById('modalRewardName');
+    const modalPoints = document.getElementById('modalRewardPoints');
+    const modalConfirm = document.getElementById('modalConfirmBtn');
+    const modalCancel = document.getElementById('modalCancelBtn');
+    const modalBackdrop = document.getElementById('modalBackdrop');
+    let pendingForm = null;
+
     document.querySelectorAll('form[action="{% url "redeem_reward" %}"]').forEach(form => {
         form.addEventListener('submit', function(e) {
-            if (!confirm('Redeem this reward? This cannot be undone.')) {
-                e.preventDefault();
-            }
+            e.preventDefault();
+            pendingForm = form;
+            const card = form.closest('.rounded-xl');
+            const name = card.querySelector('h3').textContent.trim();
+            const pts = card.querySelector('.text-brand-600').textContent.trim();
+            modalName.textContent = name;
+            modalPoints.textContent = pts;
+            modal.classList.remove('hidden');
+            modal.querySelector('[role="dialog"]').classList.add('animate-modal-in');
+            setTimeout(() => modalConfirm.focus(), 100);
         });
+    });
+
+    function closeModal() {
+        modal.classList.add('hidden');
+        modal.querySelector('[role="dialog"]').classList.remove('animate-modal-in');
+        pendingForm = null;
+    }
+
+    modalConfirm.addEventListener('click', function() {
+        if (pendingForm) {
+            modalConfirm.disabled = true;
+            modalConfirm.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i> Redeeming...';
+            pendingForm.submit();
+        }
+    });
+    modalCancel.addEventListener('click', closeModal);
+    modalBackdrop.addEventListener('click', closeModal);
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
     });
 });
 </script>
+
+<style>
+@keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-modal-in { animation: modalIn 0.2s ease-out forwards; }
+</style>
 {% endblock %}

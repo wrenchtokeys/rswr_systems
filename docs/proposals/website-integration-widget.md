@@ -150,6 +150,10 @@ Shop's Website → Widget JS → RS Systems API → WebsiteSubmission
 
 Build Phase 1, wire it into rockstarwindshield.repair to replace the current S3-only contact form. Drake uses it daily for real leads. Iron out the UX based on real usage. Then package it as an RS Systems feature.
 
+## Related Proposals
+
+- **[Automated Review Request System](./review-request-system.md)** — After a repair submitted through the widget is completed, RS Systems can automatically send a Google review request to the customer. This creates a flywheel: widget → quote → repair → review → better Google ranking → more widget submissions.
+
 ## Decision Needed
 1. Approve Phase 1 (backend + Rockstar integration)?
 2. Which plan tier should the widget live in?

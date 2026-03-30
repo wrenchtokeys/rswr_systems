@@ -17,6 +17,38 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _save_billing_preferences(customer, cleaned_data):
+    """Create CustomerRepairPreference if any billing fields were provided.
+
+    If all billing fields are empty (e.g. the details section was never opened),
+    no record is created — the customer uses shop defaults.
+    """
+    invoice_pref = cleaned_data.get('invoice_preference', '')
+    payment_terms = cleaned_data.get('payment_terms', '')
+    billing_email = cleaned_data.get('billing_email', '')
+    batch_day = cleaned_data.get('batch_invoice_day')
+
+    # Treat all-empty as "use shop defaults" — don't create a record
+    if not any([invoice_pref, payment_terms, billing_email, batch_day]):
+        return
+
+    from apps.customer_portal.models import CustomerRepairPreference
+    defaults = {}
+    if invoice_pref:
+        defaults['invoice_preference'] = invoice_pref
+    if payment_terms:
+        defaults['payment_terms'] = payment_terms
+    if billing_email:
+        defaults['billing_email'] = billing_email
+    if batch_day is not None:
+        defaults['batch_invoice_day'] = batch_day
+
+    CustomerRepairPreference.objects.update_or_create(
+        customer=customer,
+        defaults=defaults,
+    )
+
+
 @technician_required
 def create_customer(request):
     """Create a new customer with optional portal invitation."""
@@ -37,11 +69,14 @@ def create_customer(request):
             if tenant:
                 customer.tenant = tenant
             customer.save()
-            
+
+            # Handle billing preferences if any were provided
+            _save_billing_preferences(customer, form.cleaned_data)
+
             # Handle portal invitation if requested
             invite_email = form.cleaned_data.get('invite_email')
             send_invitation = form.cleaned_data.get('send_invitation', False)
-            
+
             if invite_email and send_invitation:
                 from apps.customer_portal.services.invitation_service import CustomerInvitationService
                 try:
@@ -76,7 +111,7 @@ def create_customer(request):
             return redirect('technician_dashboard')
     else:
         form = CustomerForm(tenant=tenant)
-    return render(request, 'technician_portal/customer_form.html', {'form': form})
+    return render(request, 'technician_portal/customer_form.html', {'form': form, 'tenant': tenant})
 
 
 @technician_required
@@ -263,16 +298,23 @@ def unit_details(request, customer_id, unit_number):
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
-    # Get repairs for this unit
+    # Get repairs for this unit.
+    # Must guard _scoped_tech_unit=None: if a user has a 'technician' TenantMembership
+    # role but no Technician record, passing technician=None to the filter would return
+    # every *unassigned* repair for the customer — data leakage.  Mirror the safe pattern
+    # from customer_details() which uses Repair.objects.none() in that case.  (CODE-187)
     if is_admin or is_mgr:
         repairs = Repair.objects.filter(customer=customer, unit_number=unit_number)
-    else:
+    elif _scoped_tech_unit:
         repairs = Repair.objects.filter(
             technician=_scoped_tech_unit,
             customer=customer,
             unit_number=unit_number
         )
-    
+    else:
+        # No Technician record at this tenant — show nothing (safe default)
+        repairs = Repair.objects.none()
+
     repairs = repairs.exclude(
         queue_status__in=['REQUESTED', 'PENDING']
     ).select_related('customer', 'technician__user')
@@ -282,16 +324,19 @@ def unit_details(request, customer_id, unit_number):
     else:
         repairs = repairs.none()
     
-    # Get replacements for this unit
+    # Get replacements for this unit.
+    # Same guard: _scoped_tech_unit=None → none() to prevent unassigned-record leakage.
     from apps.technician_portal.models import Replacement
     if is_admin or is_mgr:
         replacements = Replacement.objects.filter(customer=customer, unit_number=unit_number)
-    else:
+    elif _scoped_tech_unit:
         replacements = Replacement.objects.filter(
             technician=_scoped_tech_unit,
             customer=customer,
             unit_number=unit_number
         )
+    else:
+        replacements = Replacement.objects.none()
     
     if tenant:
         replacements = replacements.filter(tenant=tenant)

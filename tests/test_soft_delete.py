@@ -472,3 +472,76 @@ class PurgeDeletedRecordsTests(TestCase):
         out = StringIO()
         call_command('purge_deleted_records', '--apply', '--days', '5', stdout=out)
         self.assertFalse(Repair.all_objects.filter(id=repair.id).exists())
+
+    def test_purge_repair_with_active_invoice_line_item(self):
+        """
+        CODE-234: A soft-deleted repair referenced by a line item on an
+        ACTIVE (non-deleted) invoice must still be purgeable.
+
+        Before the fix, the command only deleted line items belonging to
+        soft-deleted invoices.  If the repair's invoice was still active,
+        its InvoiceLineItem (with on_delete=PROTECT on the repair FK)
+        remained, causing ProtectedError and rolling back the entire purge.
+        """
+        repair = make_repair(self.tenant, self.customer)
+        # Invoice is NOT soft-deleted — it was sent/paid and is still active
+        invoice = make_invoice(self.tenant, self.customer, repairs=[repair])
+        line_item_id = InvoiceLineItem.objects.filter(repair=repair).first().id
+
+        # Soft-delete only the repair, not the invoice
+        repair.deleted_at = timezone.now() - timedelta(days=35)
+        repair.save()
+
+        out = StringIO()
+        # This used to raise ProtectedError and purge nothing
+        call_command('purge_deleted_records', '--apply', stdout=out)
+
+        # Repair should be hard-deleted
+        self.assertFalse(Repair.all_objects.filter(id=repair.id).exists())
+        # The line item linking repair to the active invoice should also be gone
+        self.assertFalse(InvoiceLineItem.objects.filter(id=line_item_id).exists())
+        # The invoice itself should NOT be deleted (it was never soft-deleted)
+        self.assertTrue(Invoice.all_objects.filter(id=invoice.id).exists())
+
+    def test_purge_repair_dry_run_reports_active_invoice_refs(self):
+        """CODE-234: Dry run should report repairs with active invoice references."""
+        repair = make_repair(self.tenant, self.customer)
+        invoice = make_invoice(self.tenant, self.customer, repairs=[repair])
+        repair.deleted_at = timezone.now() - timedelta(days=35)
+        repair.save()
+
+        out = StringIO()
+        call_command('purge_deleted_records', stdout=out)
+        output = out.getvalue()
+        self.assertIn('DRY RUN', output)
+        # Should mention the active invoice reference
+        self.assertIn('still referenced by active invoices', output)
+
+    def test_purge_only_invoice_line_items_for_targeted_records(self):
+        """
+        CODE-234: Purge should not delete line items from unrelated invoices.
+        """
+        repair_to_purge = make_repair(self.tenant, self.customer)
+        repair_to_keep = make_repair(self.tenant, self.customer)
+        invoice_keep = make_invoice(self.tenant, self.customer, repairs=[repair_to_keep])
+        invoice_purge = make_invoice(self.tenant, self.customer, repairs=[repair_to_purge])
+
+        # Soft-delete only the first repair and its invoice
+        repair_to_purge.deleted_at = timezone.now() - timedelta(days=35)
+        repair_to_purge.save()
+        invoice_purge.deleted_at = timezone.now() - timedelta(days=35)
+        invoice_purge.save()
+
+        out = StringIO()
+        call_command('purge_deleted_records', '--apply', stdout=out)
+
+        # Purged
+        self.assertFalse(Repair.all_objects.filter(id=repair_to_purge.id).exists())
+        self.assertFalse(Invoice.all_objects.filter(id=invoice_purge.id).exists())
+        # Kept
+        self.assertTrue(Repair.all_objects.filter(id=repair_to_keep.id).exists())
+        self.assertTrue(Invoice.all_objects.filter(id=invoice_keep.id).exists())
+        self.assertTrue(
+            InvoiceLineItem.objects.filter(repair=repair_to_keep).exists(),
+            "Line items for unrelated repairs should not be deleted"
+        )

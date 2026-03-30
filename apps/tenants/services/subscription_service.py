@@ -305,9 +305,15 @@ class SubscriptionService:
                     end_behavior='release',  # Release back to regular subscription after
                     phases=[
                         {
-                            # Current phase: keep current plan until period end
+                            # Current phase: keep current plan until period end.
+                            # IMPORTANT: start_date must NOT be in the past.
+                            # 'now' is the correct token for "start immediately"
+                            # when the phase covers an already-active period.
+                            # Using subscription.current_period_start (a past
+                            # Unix timestamp) causes Stripe to reject the request
+                            # with InvalidRequestError.  (CODE-229)
                             'items': [{'price': current_plan.stripe_price_id}],
-                            'start_date': subscription.current_period_start,
+                            'start_date': 'now',
                             'end_date': current_period_end,
                         },
                         {

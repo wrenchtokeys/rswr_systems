@@ -12,6 +12,10 @@ class CustomerUser(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     is_primary_contact = models.BooleanField(default=False)
+    review_opt_out = models.BooleanField(
+        default=False,
+        help_text="If True, this user will never receive review request emails.",
+    )
 
     class Meta:
         verbose_name = 'Customer User'
@@ -126,6 +130,29 @@ class CustomerRepairPreference(models.Model):
     include_photos_in_invoice = models.BooleanField(
         default=True,
         help_text="Include repair photos in invoice emails?"
+    )
+
+    # Payment terms override (uses shop default if blank)
+    PAYMENT_TERMS_CHOICES = [
+        ('', '(use shop default)'),
+        ('COD', 'Cash on Delivery (COD)'),
+        ('DUE_ON_RECEIPT', 'Due on Receipt'),
+        ('NET15', 'Net 15'),
+        ('NET30', 'Net 30'),
+        ('NET45', 'Net 45'),
+        ('NET60', 'Net 60'),
+    ]
+    payment_terms = models.CharField(
+        max_length=20,
+        choices=PAYMENT_TERMS_CHOICES,
+        default='',
+        blank=True,
+        help_text="Payment terms for this customer (blank = use shop default)"
+    )
+    batch_invoice_day = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Day to run batch invoicing for this customer (1-28 for monthly). Blank = use shop default."
     )
 
     # Tracking

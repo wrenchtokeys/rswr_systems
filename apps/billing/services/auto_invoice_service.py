@@ -129,12 +129,26 @@ class AutoInvoiceService:
                 try:
                     from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
                     tracking_service = InvoiceTrackingService(tenant=repair_tenant)
+
+                    # Resolve customer-specific payment terms override.
+                    # CustomerRepairPreference.payment_terms was added (migration 0013)
+                    # but auto_invoice_service was not updated to read it — customer
+                    # overrides were silently ignored.  (CODE-219)
+                    _cust_payment_terms = None
+                    try:
+                        _cprefs = repair.customer.repair_preferences
+                        if _cprefs.payment_terms:
+                            _cust_payment_terms = _cprefs.payment_terms
+                    except Exception:
+                        pass  # No preferences — use shop default via tracking_service
+
                     invoice_record = tracking_service.create_invoice_from_repairs(
                         customer=repair.customer,
                         repairs=[repair],
                         invoice_number=invoice_data.invoice_number,
                         s3_key=s3_key,
-                        auto_send=False  # Start as DRAFT; mark SENT after email confirms
+                        auto_send=False,  # Start as DRAFT; mark SENT after email confirms
+                        payment_terms=_cust_payment_terms,
                     )
                     result['invoice_id'] = invoice_record.id
                     logger.info(f"Created invoice record #{invoice_record.id}")

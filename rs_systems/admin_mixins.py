@@ -59,3 +59,32 @@ class TenantFilterMixin:
             # Remove 'tenant' filter for non-superusers
             filters = [f for f in filters if f != 'tenant']
         return filters
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, admin change forms show ALL records across ALL tenants
+        in FK dropdown menus — a staff user at Shop A can see (and select)
+        Shop B's customers, technicians, invoices, etc.  This is a cross-tenant
+        data leak via the admin UI.
+
+        The filter is applied to any FK whose target model has a 'tenant' field.
+        Superusers are unrestricted (they need cross-tenant access for debugging).
+
+        (CODE-232)
+        """
+        if not request.user.is_superuser:
+            related_model = db_field.related_model
+            # Check if the target model has a 'tenant' FK
+            has_tenant = any(
+                f.name == 'tenant'
+                for f in related_model._meta.get_fields()
+                if hasattr(f, 'name') and hasattr(f, 'related_model')
+            )
+            if has_tenant:
+                tenant_ids = self._get_user_tenants(request)
+                kwargs['queryset'] = related_model._default_manager.filter(
+                    tenant__in=tenant_ids
+                )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)

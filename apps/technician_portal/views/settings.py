@@ -13,7 +13,7 @@ from django.db.models import Prefetch
 import json
 import logging
 
-from apps.technician_portal.models import Technician, Repair, ViscosityRecommendation
+from apps.technician_portal.models import Technician, Repair, ViscosityRecommendation, WarrantyPolicy
 from apps.technician_portal.decorators import technician_required, manager_required, is_tenant_admin
 
 logger = logging.getLogger(__name__)
@@ -59,10 +59,16 @@ def manager_settings_dashboard(request):
     viscosity_qs = ViscosityRecommendation.objects.filter(is_active=True)
     if tenant:
         viscosity_qs = viscosity_qs.filter(tenant=tenant)
-
     else:
         viscosity_qs = viscosity_qs.none()
     viscosity_rules_count = viscosity_qs.count()
+
+    warranty_qs = WarrantyPolicy.objects.filter(is_active=True)
+    if tenant:
+        warranty_qs = warranty_qs.filter(tenant=tenant)
+    else:
+        warranty_qs = warranty_qs.none()
+    warranty_policies_count = warranty_qs.count()
 
     team_count = 0
     if manager:
@@ -72,6 +78,7 @@ def manager_settings_dashboard(request):
         'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
         'technician': manager,
         'viscosity_rules_count': viscosity_rules_count,
+        'warranty_policies_count': warranty_policies_count,
         'team_count': team_count,
     }
 
@@ -396,3 +403,253 @@ def team_overview(request):
     }
 
     return render(request, 'technician_portal/settings/team_overview.html', context)
+
+
+# ─── Warranty Policy Views ────────────────────────────────────────────────────
+
+@manager_required
+@ensure_csrf_cookie
+def manage_warranty_policies(request):
+    """Manage warranty policies with card-based interface."""
+    tenant = getattr(request, 'tenant', None)
+    try:
+        manager = (
+            Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if tenant else None
+        )
+    except Exception:
+        manager = None
+
+    policies = WarrantyPolicy.objects.all()
+    if tenant:
+        policies = policies.filter(tenant=tenant)
+    else:
+        policies = policies.none()
+    policies = policies.order_by('applies_to', 'name')
+
+    context = {
+        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None)),
+        'technician': manager,
+        'policies': policies,
+        'applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
+        'duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
+    }
+    return render(request, 'technician_portal/settings/warranty_policies.html', context)
+
+
+@manager_required
+def get_warranty_policy(request, policy_id):
+    """AJAX endpoint to fetch a single warranty policy."""
+    if request.method != 'GET':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
+
+    tenant = getattr(request, 'tenant', None)
+    try:
+        policy = get_object_or_404(WarrantyPolicy, id=policy_id, tenant=tenant)
+        return JsonResponse({
+            'success': True,
+            'policy': {
+                'id': policy.id,
+                'name': policy.name,
+                'applies_to': policy.applies_to,
+                'duration_type': policy.duration_type,
+                'duration_days': policy.duration_days,
+                'coverage_description': policy.coverage_description,
+                'covers_labor': policy.covers_labor,
+                'covers_materials': policy.covers_materials,
+                'is_default': policy.is_default,
+                'is_active': policy.is_active,
+            }
+        })
+    except Http404:
+        raise
+    except Exception as e:
+        logger.error(f'Error fetching warranty policy: {str(e)}')
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@manager_required
+def create_warranty_policy(request):
+    """AJAX endpoint to create a new warranty policy."""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
+
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Tenant not resolved'}, status=400)
+
+    try:
+        data = json.loads(request.body)
+
+        if not data.get('name'):
+            return JsonResponse({'success': False, 'error': 'Policy name is required'}, status=400)
+
+        applies_to = data.get('applies_to', 'all_repairs')
+        valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+        if applies_to not in valid_applies:
+            return JsonResponse({'success': False, 'error': 'Invalid "Applies To" value.'}, status=400)
+
+        duration_type = data.get('duration_type', 'custom_days')
+        valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+        if duration_type not in valid_duration_types:
+            return JsonResponse({'success': False, 'error': 'Invalid "Duration Type" value.'}, status=400)
+
+        duration_days = data.get('duration_days', 365)
+        try:
+            duration_days = int(duration_days)
+        except (ValueError, TypeError):
+            duration_days = 365
+
+        policy = WarrantyPolicy.objects.create(
+            tenant=tenant,
+            name=data['name'],
+            applies_to=applies_to,
+            duration_type=duration_type,
+            duration_days=duration_days,
+            coverage_description=data.get('coverage_description', ''),
+            covers_labor=data.get('covers_labor', True),
+            covers_materials=data.get('covers_materials', True),
+            is_default=data.get('is_default', False),
+            is_active=data.get('is_active', True),
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Warranty policy created successfully',
+            'policy': {
+                'id': policy.id,
+                'name': policy.name,
+                'applies_to': policy.applies_to,
+                'applies_to_display': policy.get_applies_to_display(),
+                'duration_type': policy.duration_type,
+                'duration_days': policy.duration_days,
+                'coverage_description': policy.coverage_description,
+                'covers_labor': policy.covers_labor,
+                'covers_materials': policy.covers_materials,
+                'is_default': policy.is_default,
+                'is_active': policy.is_active,
+            }
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        logger.error(f'Error creating warranty policy: {str(e)}')
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@manager_required
+def update_warranty_policy(request, policy_id):
+    """AJAX endpoint to update an existing warranty policy."""
+    if request.method not in ['PUT', 'POST']:
+        return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
+
+    tenant = getattr(request, 'tenant', None)
+    try:
+        policy = get_object_or_404(WarrantyPolicy, id=policy_id, tenant=tenant)
+        data = json.loads(request.body)
+
+        if 'name' in data:
+            policy.name = data['name']
+        if 'applies_to' in data:
+            valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+            if data['applies_to'] not in valid_applies:
+                return JsonResponse({'success': False, 'error': 'Invalid "Applies To" value.'}, status=400)
+            policy.applies_to = data['applies_to']
+        if 'duration_type' in data:
+            valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+            if data['duration_type'] not in valid_duration_types:
+                return JsonResponse({'success': False, 'error': 'Invalid "Duration Type" value.'}, status=400)
+            policy.duration_type = data['duration_type']
+        if 'duration_days' in data:
+            try:
+                policy.duration_days = int(data['duration_days'])
+            except (ValueError, TypeError):
+                policy.duration_days = 365
+        if 'coverage_description' in data:
+            policy.coverage_description = data['coverage_description']
+        if 'covers_labor' in data:
+            policy.covers_labor = data['covers_labor']
+        if 'covers_materials' in data:
+            policy.covers_materials = data['covers_materials']
+        if 'is_default' in data:
+            policy.is_default = data['is_default']
+        if 'is_active' in data:
+            policy.is_active = data['is_active']
+
+        policy.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Warranty policy updated successfully',
+            'policy': {
+                'id': policy.id,
+                'name': policy.name,
+                'applies_to': policy.applies_to,
+                'applies_to_display': policy.get_applies_to_display(),
+                'duration_type': policy.duration_type,
+                'duration_days': policy.duration_days,
+                'coverage_description': policy.coverage_description,
+                'covers_labor': policy.covers_labor,
+                'covers_materials': policy.covers_materials,
+                'is_default': policy.is_default,
+                'is_active': policy.is_active,
+            }
+        })
+
+    except Http404:
+        raise
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        logger.error(f'Error updating warranty policy: {str(e)}')
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@manager_required
+def delete_warranty_policy(request, policy_id):
+    """AJAX endpoint to delete a warranty policy."""
+    if request.method not in ['DELETE', 'POST']:
+        return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
+
+    tenant = getattr(request, 'tenant', None)
+    try:
+        policy = get_object_or_404(WarrantyPolicy, id=policy_id, tenant=tenant)
+        policy_name = policy.name
+        policy.delete()
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Warranty policy "{policy_name}" deleted successfully',
+        })
+
+    except Http404:
+        raise
+    except Exception as e:
+        logger.error(f'Error deleting warranty policy: {str(e)}')
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@manager_required
+def toggle_warranty_policy(request, policy_id):
+    """AJAX endpoint to toggle active status of a warranty policy."""
+    if request.method not in ['PATCH', 'POST']:
+        return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
+
+    tenant = getattr(request, 'tenant', None)
+    try:
+        policy = get_object_or_404(WarrantyPolicy, id=policy_id, tenant=tenant)
+        policy.is_active = not policy.is_active
+        policy.save()
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Warranty policy {"activated" if policy.is_active else "deactivated"}',
+            'is_active': policy.is_active,
+        })
+
+    except Http404:
+        raise
+    except Exception as e:
+        logger.error(f'Error toggling warranty policy: {str(e)}')
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

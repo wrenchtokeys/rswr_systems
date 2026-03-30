@@ -232,6 +232,7 @@ def logout_view(request):
     logout(request)
     return redirect('login')
 
+@ratelimit(key='ip', rate='20/h', method='POST', block=False)
 def accept_invite(request, token):
     """Accept an invite token — set password and join the shop."""
     from apps.tenants.models import InviteToken, TenantMembership

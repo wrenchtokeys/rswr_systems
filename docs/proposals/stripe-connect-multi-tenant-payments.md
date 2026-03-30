@@ -1,6 +1,6 @@
 # Proposal: Stripe Connect Multi-Tenant Payments
 
-**Status:** TODO
+**Status:** ✅ SHIPPED — Superseded by stripe-connect-implementation-plan.md (which was built and deployed)
 **Priority:** High (required before other shops process customer payments)
 **Date:** 2026-03-15
 

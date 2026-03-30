@@ -151,6 +151,11 @@ def _send_overdue_reminder(invoice, config, days_overdue):
         subject = f"Reminder: Invoice #{invoice.invoice_number} is overdue"
     
     # Generate public payment link
+    # NOTE: pay_url must be initialised to None BEFORE the try block.
+    # If the import or generate_payment_token call raises, pay_url would
+    # otherwise be undefined and the send_branded_email call below would
+    # raise NameError, silently aborting the reminder. (CODE-179)
+    pay_url = None
     pay_link_text = ''
     try:
         from rs_systems.views import generate_payment_token
@@ -248,17 +253,45 @@ def process_batch_invoices():
         if config.batch_invoice_frequency == 'disabled':
             continue
         
-        # Check if today is the right day to run
-        if not _should_run_batch_today(config, today):
+        is_shop_day = _should_run_batch_today(config, today)
+        
+        # Find all batch-preference customers for this tenant (CODE-203 scoping).
+        batch_prefs = CustomerRepairPreference.objects.filter(
+            invoice_preference='batch',
+            customer__tenant=tenant,
+        )
+        
+        # Per-customer batch_invoice_day overrides only apply to monthly frequency.
+        # Weekly/biweekly use weekday (0-6) which is a different domain than
+        # batch_invoice_day (day-of-month 1-28), so overrides are meaningless.
+        #
+        # Monthly: customers WITH override → invoice when THEIR day matches today.
+        #          customers WITHOUT override → invoice on shop's batch day.
+        # Weekly/biweekly: all batch customers invoiced on shop day. (CODE-225)
+        if config.batch_invoice_frequency == 'monthly':
+            override_customer_ids = batch_prefs.filter(
+                batch_invoice_day__isnull=False,
+                batch_invoice_day=today.day,
+            ).values_list('customer_id', flat=True)
+            
+            default_customer_ids = batch_prefs.filter(
+                batch_invoice_day__isnull=True,
+            ).values_list('customer_id', flat=True) if is_shop_day else []
+            
+            from itertools import chain
+            eligible_ids = set(chain(override_customer_ids, default_customer_ids))
+        else:
+            # Weekly/biweekly — all batch customers on shop day, ignore overrides
+            if not is_shop_day:
+                continue
+            eligible_ids = set(batch_prefs.values_list('customer_id', flat=True))
+        
+        if not eligible_ids:
             continue
         
-        # Find customers with batch preference
         batch_customers = Customer.objects.filter(
             tenant=tenant,
-        ).filter(
-            id__in=CustomerRepairPreference.objects.filter(
-                invoice_preference='batch'
-            ).values_list('customer_id', flat=True)
+            id__in=eligible_ids,
         )
         
         for customer in batch_customers:
@@ -331,10 +364,24 @@ def _create_batch_invoice(tenant, customer, config):
         with transaction.atomic():
             # Calculate totals
             subtotal = Decimal('0.00')
-            
+
+            # Resolve effective payment terms: customer-specific override wins
+            # over the shop-level BillingConfig default.  The
+            # CustomerRepairPreference.payment_terms field was added in
+            # migration 0013 but the batch invoice task was never updated to
+            # read it, so customer-specific terms were silently ignored and all
+            # batch invoices used the shop default.  (CODE-219)
+            effective_payment_terms = config.default_payment_terms
+            try:
+                customer_prefs = customer.repair_preferences
+                if customer_prefs.payment_terms:
+                    effective_payment_terms = customer_prefs.payment_terms
+            except Exception:
+                pass  # No preferences set — use shop default
+
             # Create invoice
             invoice_number = _generate_invoice_number(tenant, config)
-            due_date = _calculate_due_date(config)
+            due_date = _calculate_due_date(config, payment_terms_override=effective_payment_terms)
             
             # Always create as DRAFT — status is promoted to SENT only AFTER
             # email delivery is confirmed (see CODE-095 / AGENTS.md gotcha).
@@ -346,7 +393,7 @@ def _create_batch_invoice(tenant, customer, config):
                 invoice_number=invoice_number,
                 invoice_date=timezone.now().date(),
                 due_date=due_date,
-                payment_terms=config.default_payment_terms,
+                payment_terms=effective_payment_terms,
                 status='DRAFT',
                 notes=f'Batch invoice for {len(repairs_list)} repairs and {len(replacements_list)} replacements',
             )
@@ -477,8 +524,15 @@ def _generate_invoice_number(tenant, config):
     return f"{prefix}-{tenant.id}-{date_str}-{int(time.time() * 1000) % 1000000:06d}"
 
 
-def _calculate_due_date(config):
-    """Calculate due date based on payment terms."""
+def _calculate_due_date(config, payment_terms_override=None):
+    """Calculate due date based on payment terms.
+
+    Args:
+        config: BillingConfig instance for the tenant (used as fallback).
+        payment_terms_override: If provided, this term code takes priority over
+            ``config.default_payment_terms``.  Allows customer-specific terms
+            to affect the due date (CODE-219).
+    """
     today = timezone.now().date()
     
     terms_days = {
@@ -489,8 +543,9 @@ def _calculate_due_date(config):
         'NET45': 45,
         'NET60': 60,
     }
-    
-    days = terms_days.get(config.default_payment_terms, config.default_due_days)
+
+    effective_terms = payment_terms_override or config.default_payment_terms
+    days = terms_days.get(effective_terms, config.default_due_days)
     return today + timedelta(days=days)
 
 

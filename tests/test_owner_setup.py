@@ -476,3 +476,91 @@ class OwnerSetupCompletionTest(TestCase):
         other_tenant.refresh_from_db()
         self.assertNotEqual(other_tenant.name, 'My Updated Shop')
         self.assertNotEqual(other_tenant.business_phone, '555-9999')
+
+
+class OnboardingAddSelfAsTechTest(TestCase):
+    """
+    Regression tests for CODE-217: onboarding add-self-as-tech crashes with
+    IntegrityError when the owner already has a Technician record at another tenant.
+
+    Technician.user is a OneToOneField — at most one Technician row per User globally.
+    Previously, the check `if not Technician.objects.filter(user=user, tenant=tenant).exists()`
+    passed (the cross-tenant tech has a different tenant), and the subsequent
+    Technician.objects.create() raised IntegrityError.
+    """
+
+    def setUp(self):
+        self.tenant_a = _make_tenant('Shop A')
+        self.tenant_b = _make_tenant('Shop B')
+        self.owner = _make_user('onb_owner_crossten')
+        _make_membership(self.tenant_a, self.owner, 'owner')
+        _make_membership(self.tenant_b, self.owner, 'owner')
+        self.client = Client()
+        self.client.login(username='onb_owner_crossten', password='testpass123')
+
+    def _set_tenant(self, tenant):
+        session = self.client.session
+        session['tenant_id'] = tenant.id
+        session.save()
+
+    def test_add_self_as_tech_at_first_shop_succeeds(self):
+        """Owner can add themselves as a tech at their first shop."""
+        self._set_tenant(self.tenant_a)
+        from apps.technician_portal.models import Technician
+        self.assertFalse(Technician.objects.filter(user=self.owner).exists())
+
+        resp = self.client.post('/onboarding/?step=2', {
+            'add_self': 'on',
+            'tech_phone': '555-1111',
+        })
+        # Should redirect (success) to step 3
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(Technician.objects.filter(user=self.owner, tenant=self.tenant_a).exists())
+
+    def test_add_self_as_tech_cross_tenant_no_crash(self):
+        """
+        CODE-217: Owner who already has a Technician at Shop A should not crash
+        when they try to add themselves as a tech at Shop B during onboarding.
+        The view must show a warning and NOT raise IntegrityError.
+        """
+        from apps.technician_portal.models import Technician
+        # Pre-create a Technician at tenant_a
+        Technician.objects.create(
+            tenant=self.tenant_a,
+            user=self.owner,
+            is_active=True,
+        )
+
+        # Now try to add-self at tenant_b
+        self._set_tenant(self.tenant_b)
+        try:
+            resp = self.client.post('/onboarding/?step=2', {
+                'add_self': 'on',
+                'tech_phone': '555-2222',
+            })
+        except Exception as exc:
+            self.fail(f"Cross-tenant add-self raised unexpectedly: {exc}")
+
+        # Must not crash — should either redirect (302) or render the page (200)
+        self.assertIn(resp.status_code, [200, 302])
+        # No second Technician should have been created for tenant_b
+        self.assertFalse(Technician.objects.filter(user=self.owner, tenant=self.tenant_b).exists())
+        # Tenant A's record must be untouched
+        self.assertTrue(Technician.objects.filter(user=self.owner, tenant=self.tenant_a).exists())
+
+    def test_add_self_idempotent_same_shop(self):
+        """Adding self when already a tech at the same shop shows info message (no error)."""
+        from apps.technician_portal.models import Technician
+        Technician.objects.create(
+            tenant=self.tenant_a,
+            user=self.owner,
+            is_active=True,
+        )
+        self._set_tenant(self.tenant_a)
+        resp = self.client.post('/onboarding/?step=2', {
+            'add_self': 'on',
+            'tech_phone': '555-3333',
+        })
+        self.assertIn(resp.status_code, [200, 302])
+        # Still only one Technician record
+        self.assertEqual(Technician.objects.filter(user=self.owner).count(), 1)
