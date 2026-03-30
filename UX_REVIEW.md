@@ -5,6 +5,21 @@ status, and description.
 
 ## Fixed
 
+### CODE-232b: ViscosityRecommendation & RewardOption admin missing tenant in fieldsets
+- **Severity:** 🟡 Data integrity / admin UX bug
+- **Fixed:** 2026-03-30
+- **Details:** Both `ViscosityRecommendationAdmin` and `RewardOptionAdmin` had `tenant`
+  in `list_display` and `list_filter` but NOT in `fieldsets`. This meant superusers
+  creating new records via admin would save them with `tenant=NULL` (model fields are
+  nullable), making them invisible to non-superuser staff and logically orphaned from
+  any shop. Editing existing records also had no way to see/change the tenant assignment.
+  Fixed by adding `tenant` to the first fieldset group in both admin classes.
+- **Test:** `tests/bug_fixes/test_code232_admin_tenant_in_fieldsets.py` (4 tests)
+- **Note:** Several other TenantFilterMixin admins (Repair, Replacement, Customer,
+  Invoice, TaxRate, UnitRepairCount) also lack `tenant` in fieldsets but those models
+  are primarily created via SaaS views (not admin) and have tenant auto-set logic or
+  are less commonly created manually. Tracked below for future cleanup.
+
 ### CODE-231: AuditLogAdmin missing tenant scoping (cross-tenant data leak)
 - **Severity:** 🔴 Tenant isolation bug
 - **Fixed:** 2026-03-29
@@ -28,6 +43,13 @@ status, and description.
 - **Test:** `tests/bug_fixes/test_code230_replacement_unit_count_tenant.py`
 
 ## Open / Noted (for future runs)
+
+### Other TenantFilterMixin admins missing tenant in fieldsets (low priority)
+- Repair, Replacement, Customer, Invoice, TaxRate, UnitRepairCount, DeliveryLog
+- These models are primarily created via SaaS views, not admin, and mostly
+  have auto-set logic or are rarely created manually.
+- Adding tenant to fieldsets would improve admin UX for superusers but is not
+  a data integrity risk since these creation paths are uncommon.
 
 ### Missing db_index on frequently filtered fields
 - `queue_status` on Repair (via GlassService) — filtered in many views and admin
