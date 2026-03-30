@@ -108,8 +108,12 @@ def _send_alert(tenant, alert_key, subject, body, dry_run=False,
         )
         return False
 
-    # Record the alert as sent
+    # Record the alert as sent — update both DB and in-memory object
+    # so subsequent _send_alert calls in the same run see the updated dict.
+    # Without updating tenant.subscription_alerts_sent, a None→{} fallback
+    # creates an unlinked dict and later alerts overwrite earlier ones in the DB.
     alerts_sent[alert_key] = timezone.now().isoformat()
+    tenant.subscription_alerts_sent = alerts_sent
     Tenant.objects.filter(pk=tenant.pk).update(subscription_alerts_sent=alerts_sent)
     logger.info(f"Sent alert '{alert_key}' to {recipients} for tenant {tenant.slug}")
     return True
