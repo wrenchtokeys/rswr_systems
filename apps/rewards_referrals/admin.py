@@ -50,6 +50,46 @@ class CustomerUserTenantFilterMixin:
                 filters = [tenant_filter] + filters
         return filters
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, admin change forms show ALL records across ALL tenants
+        in FK dropdown menus — a cross-tenant data leak.
+
+        Handles two cases:
+        1. FK targets with a direct 'tenant' field (e.g. RewardOption)
+        2. FK targets that reach tenant via customer (e.g. CustomerUser → customer → tenant)
+
+        (CODE-233)
+        """
+        if not request.user.is_superuser:
+            related_model = db_field.related_model
+            tenant_ids = self._get_user_tenant_ids(request)
+
+            # Case 1: target model has a direct 'tenant' FK
+            has_direct_tenant = any(
+                f.name == 'tenant'
+                for f in related_model._meta.get_fields()
+                if hasattr(f, 'name') and hasattr(f, 'related_model')
+            )
+            if has_direct_tenant:
+                kwargs['queryset'] = related_model._default_manager.filter(
+                    tenant__in=tenant_ids
+                )
+            else:
+                # Case 2: target reaches tenant via 'customer' FK
+                has_customer = any(
+                    f.name == 'customer'
+                    for f in related_model._meta.get_fields()
+                    if hasattr(f, 'name') and hasattr(f, 'related_model')
+                )
+                if has_customer:
+                    kwargs['queryset'] = related_model._default_manager.filter(
+                        customer__tenant__in=tenant_ids
+                    )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_tenant_display(self, obj):
         """Helper for list_display: shows tenant name."""
         try:
@@ -333,6 +373,32 @@ class ReferralAdmin(admin.ModelAdmin):
         if request.user.is_superuser and 'referral_code__customer_user__customer__tenant' not in filters:
             filters = ['referral_code__customer_user__customer__tenant'] + filters
         return filters
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, the referral_code and customer_user dropdowns show ALL
+        records across ALL tenants — a cross-tenant data leak.  (CODE-233)
+        """
+        if not request.user.is_superuser:
+            from apps.tenants.models import TenantMembership
+            tenant_ids = (
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
+            if db_field.name == 'referral_code':
+                from apps.rewards_referrals.models import ReferralCode
+                kwargs['queryset'] = ReferralCode.objects.filter(
+                    customer_user__customer__tenant__in=tenant_ids
+                )
+            elif db_field.name == 'customer_user':
+                from apps.customer_portal.models import CustomerUser
+                kwargs['queryset'] = CustomerUser.objects.filter(
+                    customer__tenant__in=tenant_ids
+                )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def get_tenant_display(self, obj):
         try:
