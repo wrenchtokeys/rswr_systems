@@ -4110,13 +4110,21 @@ def owner_generate_invoice_from_repair(request, repair_id):
     # records sharing the same repair_batch_id. Invoicing only the clicked repair
     # would miss the other breaks and undercharge. (CODE-226)
     if repair.repair_batch_id:
-        batch_repairs = list(
+        all_batch_repairs = list(
             Repair.objects.filter(
                 tenant=tenant,
                 repair_batch_id=repair.repair_batch_id,
-                queue_status='COMPLETED',
             ).order_by('break_number')
         )
+        batch_repairs = [r for r in all_batch_repairs if r.queue_status == 'COMPLETED']
+        # CODE-247: Warn if some siblings are not yet completed
+        excluded_count = len(all_batch_repairs) - len(batch_repairs)
+        if excluded_count > 0:
+            messages.warning(
+                request,
+                f'{excluded_count} of {len(all_batch_repairs)} batch repairs are not yet completed '
+                f'and were excluded from this invoice.'
+            )
     else:
         batch_repairs = [repair]
 

@@ -87,11 +87,27 @@ def technician_batch_detail(request, batch_id):
             unread_batch_notifications.update(read=True)
             logger.info(f"Auto-marked {unread_count} batch notification(s) as read for technician {technician.user.username}")
 
+    # CODE-248: Determine if there are incomplete repairs that can be completed
+    has_incomplete = any(
+        r.queue_status in ('APPROVED', 'IN_PROGRESS')
+        for r in repairs
+    )
+    can_complete_all = has_incomplete and (user_is_admin or any(
+        r.technician == technician and r.queue_status in ('APPROVED', 'IN_PROGRESS')
+        for r in repairs
+    ))
+
+    # CODE-247: Determine if batch can be invoiced (all completed, user is admin/owner)
+    all_completed = all(r.queue_status == 'COMPLETED' for r in repairs)
+    can_generate_invoice = all_completed and user_is_admin and len(repairs) > 0
+
     return render(request, 'technician_portal/batch_detail.html', {
         'batch_summary': batch_summary,
         'repairs': batch_summary['repairs'],
         'technician': technician,
         'can_start_work': can_start_work,
+        'can_complete_all': can_complete_all,
+        'can_generate_invoice': can_generate_invoice,
         'is_admin': user_is_admin,
     })
 
@@ -147,6 +163,49 @@ def technician_batch_start_work(request, batch_id):
             'started_count': started_count,
             'batch_id': str(batch_id),
         })
+
+    return redirect('technician_batch_detail', batch_id=batch_id)
+
+
+@technician_required
+@transaction.atomic
+def batch_complete_all(request, batch_id):
+    """Mark all APPROVED/IN_PROGRESS repairs in a batch as COMPLETED (CODE-248)."""
+    if request.method != 'POST':
+        messages.error(request, "Invalid request.")
+        return redirect('technician_dashboard')
+
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
+
+    batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
+    if not batch_summary:
+        messages.error(request, "Batch not found.")
+        return redirect('technician_dashboard')
+
+    repairs = batch_summary['all_repairs']
+    completed_count = 0
+
+    for repair in repairs:
+        if repair.queue_status not in ('APPROVED', 'IN_PROGRESS'):
+            continue
+        if user_is_admin or repair.technician == technician:
+            repair.queue_status = 'COMPLETED'
+            repair.save()
+            completed_count += 1
+
+    if completed_count > 0:
+        messages.success(
+            request,
+            f"Marked {completed_count} break{'s' if completed_count > 1 else ''} as completed in Unit {batch_summary['unit_number']} batch."
+        )
+    else:
+        messages.warning(request, "No repairs were completed. They may already be completed or not assigned to you.")
 
     return redirect('technician_batch_detail', batch_id=batch_id)
 
@@ -634,6 +693,10 @@ def convert_to_batch(request, repair_id):
                     except (InvalidOperation, ValueError) as e:
                         raise ValueError(f"Invalid override cost for break {break_number}: {str(e)}")
 
+                # Damage location coordinates (CODE-245)
+                damage_loc_x = request.POST.get(f'damage_location_x_{i}', '')
+                damage_loc_y = request.POST.get(f'damage_location_y_{i}', '')
+
                 new_repair = Repair(
                     tenant=original_repair.tenant,  # Copy tenant from original repair
                     customer=original_repair.customer,
@@ -660,6 +723,8 @@ def convert_to_batch(request, repair_id):
                     resin_viscosity=request.POST.get(f'resin_viscosity_{i}') or '',
                     drilled_before_repair=request.POST.get(f'drilled_before_repair_{i}') == 'on',
                     override_reason=override_reason if override_cost else '',
+                    damage_location_x=float(damage_loc_x) if damage_loc_x else None,
+                    damage_location_y=float(damage_loc_y) if damage_loc_y else None,
                 )
 
                 photo_before = request.FILES.get(f'photo_before_{i}')
@@ -678,12 +743,23 @@ def convert_to_batch(request, repair_id):
 
                 logger.info(f"Created additional repair {new_repair.id} - Break {break_number}/{total_breaks_in_batch}")
 
+            # CODE-248: If 'mark_completed' checkbox is checked, set all
+            # repairs in the batch (including original) to COMPLETED.
+            mark_completed = request.POST.get('mark_completed') == 'on'
+            if mark_completed:
+                for r in created_repairs:
+                    if r.queue_status != 'COMPLETED':
+                        r.queue_status = 'COMPLETED'
+                        r.save()
+                logger.info(f"Batch {batch_id}: All {len(created_repairs)} repairs marked COMPLETED per tech request")
+
             total_cost = sum(r.cost for r in created_repairs)
 
+            status_note = " All repairs marked as completed." if mark_completed else ""
             messages.success(
                 request,
                 f"Successfully converted to batch! Added {additional_breaks} break{'s' if additional_breaks > 1 else ''} "
-                f"to Unit {original_repair.unit_number} (${total_cost:.2f} total)."
+                f"to Unit {original_repair.unit_number} (${total_cost:.2f} total).{status_note}"
             )
 
             return redirect('technician_batch_detail', batch_id=batch_id)

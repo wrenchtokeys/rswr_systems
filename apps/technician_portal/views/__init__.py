@@ -37,6 +37,7 @@ from .repairs import (
 from .batch import (
     technician_batch_detail,
     technician_batch_start_work,
+    batch_complete_all,
     create_multi_break_repair,
     convert_to_batch,
 )

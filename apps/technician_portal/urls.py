@@ -33,6 +33,7 @@ urlpatterns = [
     # Multi-break batch management (technician portal)
     path('batch/<uuid:batch_id>/', views.technician_batch_detail, name='technician_batch_detail'),
     path('batch/<uuid:batch_id>/start-work/', views.technician_batch_start_work, name='technician_batch_start_work'),
+    path('batch/<uuid:batch_id>/complete-all/', views.batch_complete_all, name='batch_complete_all'),
     
     # Customer management
     path('customers/', views.customer_list, name='technician_customers'),

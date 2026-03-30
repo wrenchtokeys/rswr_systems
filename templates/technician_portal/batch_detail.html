@@ -96,26 +96,52 @@
     {% endwith %}
     {% endif %}
 
-    <!-- Batch Actions (if approved and technician can start work) -->
-    {% if can_start_work %}
+    <!-- Batch Actions -->
+    {% if can_start_work or can_complete_all or can_generate_invoice %}
     <div class="card mb-4 bg-light">
         <div class="card-body">
             <h5 class="card-title"><i class="fas fa-play-circle"></i> Batch Actions</h5>
-            <p class="text-muted mb-3">Start work on all {{ batch_summary.break_count }} breaks at once:</p>
 
+            {% if can_start_work %}
+            <p class="text-muted mb-3">Start work on all {{ batch_summary.break_count }} breaks at once:</p>
             <form method="post" action="{% url 'technician_batch_start_work' batch_summary.batch_id %}" class="d-inline">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-primary btn-lg">
                     <i class="fas fa-play-circle"></i> Start Work on All {{ batch_summary.break_count }} Breaks
                 </button>
             </form>
+            {% endif %}
 
+            {% if can_complete_all %}
+            {% if can_start_work %}<hr class="my-3">{% endif %}
+            <p class="text-muted mb-3">Mark all incomplete repairs in this batch as completed:</p>
+            <form method="post" action="{% url 'batch_complete_all' batch_summary.batch_id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success btn-lg"
+                        onclick="return confirm('Mark all incomplete repairs in this batch as completed?');">
+                    <i class="fas fa-check-double"></i> Complete All Repairs
+                </button>
+            </form>
+            {% endif %}
+
+            {% if can_generate_invoice %}
+            {% if can_start_work or can_complete_all %}<hr class="my-3">{% endif %}
+            <p class="text-muted mb-3">All repairs are completed. Generate an invoice for this batch:</p>
+            <form method="post" action="{% url 'owner_generate_invoice_from_repair' repairs.0.id %}" class="d-inline">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-info btn-lg">
+                    <i class="fas fa-file-invoice-dollar"></i> Generate Invoice for Batch
+                </button>
+            </form>
+            {% endif %}
+
+            {% if can_start_work %}
             <hr class="my-4">
-
             <p class="text-muted small">
-                <strong>Or start work on individual breaks:</strong>
-                Use the action buttons on each break below to start work on them separately.
+                <strong>Or manage individual breaks:</strong>
+                Use the action buttons on each break below.
             </p>
+            {% endif %}
         </div>
     </div>
     {% endif %}
