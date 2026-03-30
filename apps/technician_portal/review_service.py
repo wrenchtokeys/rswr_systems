@@ -291,14 +291,32 @@ def _adjust_to_business_hours(dt, start_hour, end_hour):
     return dt
 
 
+def _safe_format(template, **kwargs):
+    """
+    Safely apply str.format() to a user-editable template.
+
+    Returns the formatted string on success, or the raw template if the
+    user included unknown placeholders or stray curly braces.  This prevents
+    KeyError / ValueError from crashing the review-request send pipeline.
+    """
+    try:
+        return template.format(**kwargs)
+    except (KeyError, ValueError, IndexError):
+        return template
+
+
 def _send_review_email(review_request, config):
     """Send a branded review request email. Returns True on success."""
     from core.email_utils import send_branded_email
 
     rr = review_request
     shop_name = rr.tenant.name or 'our shop'
+    customer_name = rr.customer.name or 'Valued Customer'
 
-    subject = config.email_subject.format(shop_name=shop_name)
+    # Template vars available to tenant-customised subject & body
+    tpl_vars = dict(shop_name=shop_name, customer_name=customer_name)
+
+    subject = _safe_format(config.email_subject, **tpl_vars)
 
     # Build the review link with our tracking token
     # The opt-out/click URLs are handled by our own endpoints
@@ -308,11 +326,9 @@ def _send_review_email(review_request, config):
     if rr.repair and rr.repair.unit_number:
         unit_info = f' on unit {rr.repair.unit_number}'
 
-    customer_name = rr.customer.name or 'Valued Customer'
-
     body_paragraphs = []
     if config.email_body_template:
-        body_paragraphs.append(config.email_body_template)
+        body_paragraphs.append(_safe_format(config.email_body_template, **tpl_vars))
     else:
         body_paragraphs = [
             f"Thanks for choosing {shop_name} for your recent windshield repair{unit_info}.",
