@@ -2522,12 +2522,16 @@ def customer_bulk_action(request):
                     notif.repair_id, exc_info=True,
                 )
 
-            # Success message
-            action_word = "approved" if action == 'approve' else "denied"
-            messages.success(
-                request,
-                f"Successfully {action_word} {processed_count} repair{'' if processed_count == 1 else 's'}."
-            )
+        # Success message — must be OUTSIDE the notification loop.
+        # Previously this was indented inside the for-loop, causing:
+        #   (a) one success toast per notification (duplicate messages), or
+        #   (b) no toast at all when notifications_to_create was empty
+        #       (e.g. repairs with no assigned technician).  (CODE-241)
+        action_word = "approved" if action == 'approve' else "denied"
+        messages.success(
+            request,
+            f"Successfully {action_word} {processed_count} repair{'' if processed_count == 1 else 's'}."
+        )
 
         return redirect('customer_repairs')
 
