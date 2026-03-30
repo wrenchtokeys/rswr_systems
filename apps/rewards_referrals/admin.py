@@ -234,6 +234,48 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
         return "Not applied"
     get_applied_to_repair.short_description = 'Applied To Repair'
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        RewardRedemptionAdmin uses autocomplete_fields for reward_option,
+        assigned_technician, applied_to_repair, and processed_by.  The
+        autocomplete *search* results are scoped by the target admin's
+        get_queryset() (e.g. TechnicianAdmin uses TenantFilterMixin), but the
+        form's ModelChoiceField validation is NOT — it defaults to the
+        model's full queryset.  A non-superuser can bypass the autocomplete UI
+        and POST an arbitrary cross-tenant FK id; Django validates it against
+        the unrestricted queryset and silently accepts it.
+
+        Fix: scope reward_option, assigned_technician, and applied_to_repair
+        to the current user's tenant(s).  processed_by (User) is left
+        unrestricted since it has no tenant FK and is auto-set in save_model.
+
+        (CODE-234)
+        """
+        if not request.user.is_superuser:
+            from apps.tenants.models import TenantMembership
+            tenant_ids = list(
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
+            if db_field.name == 'reward_option':
+                from apps.rewards_referrals.models import RewardOption
+                kwargs['queryset'] = RewardOption.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'assigned_technician':
+                from apps.technician_portal.models import Technician
+                kwargs['queryset'] = Technician.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'applied_to_repair':
+                from apps.technician_portal.models import Repair
+                kwargs['queryset'] = Repair.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'reward':
+                from apps.rewards_referrals.models import Reward
+                kwargs['queryset'] = Reward.objects.filter(
+                    customer_user__customer__tenant__in=tenant_ids
+                )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def save_model(self, request, obj, form, change):
         if change and 'status' in form.changed_data:
             if obj.status in ['APPROVED', 'FULFILLED', 'REJECTED']:

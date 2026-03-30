@@ -54,6 +54,25 @@ status, and description.
   copy-paste omission when Replacement was added.
 - **Test:** `tests/bug_fixes/test_code230_replacement_unit_count_tenant.py`
 
+### CODE-234: RewardRedemptionAdmin FK dropdown cross-tenant data leak
+- **Severity:** 🔴 Tenant isolation bug
+- **Fixed:** 2026-03-30
+- **Details:** `RewardRedemptionAdmin` used `autocomplete_fields` for `reward_option`,
+  `assigned_technician`, `applied_to_repair`, and `raw_id_fields` for `reward`, but
+  had no `formfield_for_foreignkey` override. While the autocomplete search results
+  are scoped by the target admin's `get_queryset()`, the form's `ModelChoiceField`
+  validation is NOT — it defaults to the full, unscoped queryset. A non-superuser
+  staff user could bypass the autocomplete UI and POST an arbitrary cross-tenant FK
+  id (e.g. a technician or repair from another shop); Django would validate it
+  against the unrestricted queryset and silently accept it. This allows:
+    - Assigning a Shop B technician to a Shop A reward redemption
+    - Linking a Shop B repair to a Shop A redemption
+    - Selecting a Shop B reward option for a Shop A redemption
+  Fixed by adding `formfield_for_foreignkey()` that scopes `reward_option`,
+  `assigned_technician`, `applied_to_repair`, and `reward` FKs to the current
+  user's tenant(s). `processed_by` (User FK, no tenant) is left unrestricted.
+- **Test:** `tests/bug_fixes/test_code234_redemption_fk_tenant_scoping.py` (5 tests)
+
 ## Open / Noted (for future runs)
 
 ### Other TenantFilterMixin admins missing tenant in fieldsets (low priority)
