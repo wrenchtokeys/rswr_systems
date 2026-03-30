@@ -154,7 +154,20 @@ def technician_batch_start_work(request, batch_id):
 @technician_required
 def create_multi_break_repair(request):
     """Create multiple repairs (breaks) on the same unit in one session."""
-    user_is_admin = is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None))
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    # Plan limit check — batch creation must respect the same monthly
+    # repair cap as single-repair creation (CODE-243).  Without this,
+    # technicians on a capped plan could bypass limits by using the
+    # multi-break flow instead of the single-repair form.
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, limit_msg)
+            return redirect('technician_dashboard')
+
     if request.method == 'POST':
         try:
             customer_id = request.POST.get('customer')
@@ -518,6 +531,15 @@ def convert_to_batch(request, repair_id):
     if original_repair.queue_status not in ['APPROVED', 'IN_PROGRESS']:
         messages.error(request, "Only approved or in-progress repairs can be converted to batches.")
         return redirect('repair_detail', repair_id=repair_id)
+
+    # Plan limit check — converting to batch creates additional Repair rows,
+    # so it must respect the same monthly cap as single-repair creation (CODE-243).
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, limit_msg)
+            return redirect('repair_detail', repair_id=repair_id)
 
     if request.method == 'POST':
         try:

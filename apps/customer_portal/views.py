@@ -1543,6 +1543,18 @@ def _restore_reward_for_repair(repair):
 
 def handle_single_repair_request(request, customer, customer_user=None):
     """Handle traditional single repair request submission"""
+    # Plan limit check — customer-submitted repairs count toward the tenant's
+    # monthly cap just like technician-created ones (CODE-243).
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, "This shop has reached its repair limit for the month. Please contact the shop for assistance.")
+            return render(request, 'customer_portal/request_repair.html', {
+                'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
+            })
+
     unit_number = request.POST.get('unit_number', '')
     description = request.POST.get('description', '')
     damage_type = request.POST.get('damage_type', '')
@@ -1636,6 +1648,16 @@ def handle_batch_repair_request(request, customer, customer_user=None):
     _rewards_ctx = {
         'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
     }
+
+    # Plan limit check — customer-submitted batch repairs count toward the
+    # tenant's monthly cap just like technician-created ones (CODE-243).
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, "This shop has reached its repair limit for the month. Please contact the shop for assistance.")
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
     try:
         # Parse units data from JSON
