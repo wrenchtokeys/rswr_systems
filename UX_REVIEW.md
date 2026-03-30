@@ -20,6 +20,18 @@ status, and description.
   are primarily created via SaaS views (not admin) and have tenant auto-set logic or
   are less commonly created manually. Tracked below for future cleanup.
 
+### CODE-233: FK dropdown leak in rewards/referrals admin (cross-tenant data leak)
+- **Severity:** 🔴 Tenant isolation bug
+- **Fixed:** 2026-03-30
+- **Details:** `CustomerUserTenantFilterMixin` (used by `RewardAdmin`, `ReferralCodeAdmin`)
+  and `ReferralAdmin` had no `formfield_for_foreignkey` override. Non-superuser staff
+  could see ALL FK dropdown entries from ALL tenants when editing rewards, referral codes,
+  or referrals — exposing customer names, emails, and referral codes cross-tenant.
+  Fixed by adding `formfield_for_foreignkey` to `CustomerUserTenantFilterMixin` (handles
+  both direct-tenant and customer→tenant FK paths) and an explicit override in
+  `ReferralAdmin` for its `referral_code` and `customer_user` fields.
+- **Test:** `tests/bug_fixes/test_code233_rewards_fk_tenant_scoping.py` (6 tests)
+
 ### CODE-231: AuditLogAdmin missing tenant scoping (cross-tenant data leak)
 - **Severity:** 🔴 Tenant isolation bug
 - **Fixed:** 2026-03-29
