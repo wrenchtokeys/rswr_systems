@@ -499,6 +499,9 @@ class TaxRateAdmin(TenantFilterMixin, admin.ModelAdmin):
     readonly_fields = ['total_rate']
 
     fieldsets = (
+        ('Tenant', {
+            'fields': ('tenant',),
+        }),
         ('Location', {
             'fields': ('city', 'county', 'state', 'zip_code'),
         }),

@@ -4141,13 +4141,79 @@ def owner_generate_invoice_from_repair(request, repair_id):
             break
 
     if already_invoiced_repair:
-        messages.info(request, 'This repair (or part of its batch) has already been invoiced.')
         line_item = InvoiceLineItem.objects.filter(
             repair=already_invoiced_repair,
             invoice__tenant=tenant,
             invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
         ).select_related('invoice').first()
-        return redirect('owner_invoice_detail', invoice_id=line_item.invoice_id)
+        existing_invoice = line_item.invoice
+
+        # CODE-249: If the existing invoice is a DRAFT and this is a batch,
+        # check if any batch siblings are missing from the invoice. This happens
+        # when the invoice was created before the batch fix (CODE-226) — only 1
+        # repair was included. Auto-add missing siblings to the draft invoice.
+        if existing_invoice.status == 'DRAFT' and repair.repair_batch_id:
+            invoiced_repair_ids = set(
+                InvoiceLineItem.objects.filter(invoice=existing_invoice)
+                .values_list('repair_id', flat=True)
+            )
+            missing_repairs = [r for r in batch_repairs if r.id not in invoiced_repair_ids]
+
+            if missing_repairs:
+                from decimal import Decimal as D
+                for mr in missing_repairs:
+                    discounted = mr.get_discounted_cost()
+                    InvoiceLineItem.objects.create(
+                        invoice=existing_invoice,
+                        repair=mr,
+                        description=f"Windshield repair - Unit #{mr.unit_number} - {mr.get_damage_type_display() or 'Repair'}",
+                        quantity=1,
+                        unit_price=discounted['original_cost'],
+                        discount=discounted['savings'],
+                        amount=discounted['final_cost'],
+                        repair_date=mr.repair_date.date() if mr.repair_date else None,
+                        unit_number=mr.unit_number,
+                    )
+
+                # Recalculate invoice totals
+                all_line_items = InvoiceLineItem.objects.filter(invoice=existing_invoice)
+                existing_invoice.subtotal = sum(li.unit_price for li in all_line_items)
+                existing_invoice.discount = sum(li.discount for li in all_line_items)
+                existing_invoice.total = existing_invoice.subtotal - existing_invoice.discount
+
+                # Re-apply tax
+                try:
+                    from apps.billing.services.tax_service import TaxService
+                    tax_svc = TaxService(tenant=existing_invoice.tenant)
+                    tax_svc.apply_tax_to_invoice(existing_invoice)
+                except Exception:
+                    pass
+
+                existing_invoice.save()
+                messages.success(
+                    request,
+                    f'Added {len(missing_repairs)} missing batch repair(s) to existing invoice '
+                    f'{existing_invoice.invoice_number}. Review below.'
+                )
+                return redirect('owner_invoice_detail', invoice_id=existing_invoice.id)
+
+        # If invoice is not DRAFT but batch has missing siblings, warn the user
+        if existing_invoice.status != 'DRAFT' and repair.repair_batch_id:
+            invoiced_repair_ids = set(
+                InvoiceLineItem.objects.filter(invoice=existing_invoice)
+                .values_list('repair_id', flat=True)
+            )
+            missing_count = sum(1 for r in batch_repairs if r.id not in invoiced_repair_ids)
+            if missing_count > 0:
+                messages.warning(
+                    request,
+                    f'This invoice is missing {missing_count} batch repair(s) but cannot be '
+                    f'auto-updated because it\'s already {existing_invoice.get_status_display()}. '
+                    f'Void this invoice and regenerate to include all batch repairs.'
+                )
+
+        messages.info(request, 'This repair (or part of its batch) has already been invoiced.')
+        return redirect('owner_invoice_detail', invoice_id=existing_invoice.id)
 
     # Generate the invoice — accept optional payment_terms override (CODE-153)
     req_payment_terms = request.POST.get('payment_terms') or None

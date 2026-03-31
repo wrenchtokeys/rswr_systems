@@ -445,10 +445,16 @@ def customer_repairs(request):
 
         # Get all repairs for this customer with optimization
         # Also filter by tenant to prevent cross-tenant data leakage
-        repairs = Repair.objects.filter(
+        # CODE-249: Use a separate base queryset for stats so they always reflect
+        # global totals, regardless of active filters. Previously stats were
+        # computed on the filtered queryset — filtering to e.g. "COMPLETED"
+        # made pending_approval=0, which is misleading. Mirrors the correct
+        # pattern already used in customer_replacements().
+        base_repairs = Repair.objects.filter(
             customer=customer,
             tenant=customer.tenant,
-        ).select_related('technician__user')
+        )
+        repairs = base_repairs.select_related('technician__user')
 
         # Apply status filters
         if status_filter != 'all':
@@ -489,11 +495,11 @@ def customer_repairs(request):
         if sort_by in valid_sorts:
             repairs = repairs.order_by(sort_by)
 
-        # Calculate summary statistics — all in ONE aggregate query instead of 5
-        # separate .count()/.aggregate() calls. (CODE-143)
+        # Calculate summary statistics from the UNFILTERED base queryset so
+        # stat badges always show global totals. (CODE-249)
         from decimal import Decimal
         month_start = timezone.now().date().replace(day=1)
-        stats_agg = repairs.aggregate(
+        stats_agg = base_repairs.aggregate(
             total_repairs=Count('id'),
             pending_approval=Count('id', filter=Q(queue_status='PENDING')),
             in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
