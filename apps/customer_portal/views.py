@@ -772,62 +772,71 @@ def customer_repair_approve(request, repair_id):
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
             
-            # Use a transaction + row-level lock to prevent:
-            #   1. RepairApproval created but repair.save() fails → partial write.
-            #   2. Double-click race: two concurrent POSTs both pass the status
-            #      check above (pre-lock) and both write APPROVED — harmless for
-            #      the repair status but could create duplicate notifications.
-            #   This mirrors the select_for_update() pattern in quick_approve_repair.
-            #   (CODE-223)
-            with transaction.atomic():
-                locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+            # CODE-262: If repair is part of a batch, approve ALL siblings.
+            # Fleet managers expect "approve" to cover the whole job, not one chip.
+            is_batch = repair.is_part_of_batch
+            batch_id = repair.repair_batch_id if is_batch else None
 
-                # Re-check status inside the lock so a concurrent approval/denial
-                # that committed between the initial get_object_or_404 and here
-                # doesn't get overwritten.
-                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+            with transaction.atomic():
+                if is_batch and batch_id:
+                    # Lock ALL batch siblings for atomic approval
+                    repairs_to_approve = list(
+                        Repair.objects.select_for_update().filter(
+                            repair_batch_id=batch_id,
+                            tenant=customer.tenant,
+                            queue_status__in=('PENDING', 'REQUESTED'),
+                        ).select_related('technician')
+                    )
+                else:
+                    locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+                    if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This repair has already been processed.")
+                        return redirect('customer_repair_detail', repair_id=repair.id)
+                    repairs_to_approve = [locked_repair]
+
+                if not repairs_to_approve:
                     messages.warning(request, "This repair has already been processed.")
                     return redirect('customer_repair_detail', repair_id=repair.id)
 
-                # Create or update the approval
-                approval, created = RepairApproval.objects.get_or_create(
-                    repair=locked_repair,
-                    defaults={
-                        'approved': True,
-                        'approved_by': customer_user,
-                        'approval_date': timezone.now(),
-                        'notes': notes
-                    }
-                )
-                
-                if not created:
-                    approval.approved = True
-                    approval.approved_by = customer_user
-                    approval.approval_date = timezone.now()
-                    approval.notes = notes
-                    approval.save()
-                
-                # Update the repair status
-                locked_repair.queue_status = 'APPROVED'
-
-                # IMPORTANT: Ensure technician is preserved
-                # PENDING repairs should already have a technician (the one who found the damage)
-                # This prevents NULL technician errors later
-                if not locked_repair.technician:
-                    logger.warning(f"Repair #{locked_repair.id} approved but has no technician assigned")
-
-                locked_repair.save()
+                for r in repairs_to_approve:
+                    RepairApproval.objects.update_or_create(
+                        repair=r,
+                        defaults={
+                            'approved': True,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': notes or (f'Batch approval ({len(repairs_to_approve)} breaks)' if is_batch else ''),
+                        }
+                    )
+                    r.queue_status = 'APPROVED'
+                    if not r.technician:
+                        logger.warning(f"Repair #{r.id} approved but has no technician assigned")
+                    r.save()
 
             # Create notification for technician (outside transaction — best effort)
-            if locked_repair.technician:
-                TechnicianNotification.objects.create(
-                    technician=locked_repair.technician,
-                    message=f"✅ Repair #{locked_repair.id} APPROVED by {customer.name} - Unit {locked_repair.unit_number}. You can now complete the work.",
-                    read=False,
-                    repair=locked_repair
-                )
+            technician = repairs_to_approve[0].technician if repairs_to_approve else None
+            if technician:
+                if is_batch and len(repairs_to_approve) > 1:
+                    TechnicianNotification.objects.create(
+                        technician=technician,
+                        message=f"✅ Batch of {len(repairs_to_approve)} breaks APPROVED by {customer.name} - Unit {repair.unit_number}.",
+                        read=False,
+                        repair=repairs_to_approve[0],
+                        repair_batch_id=batch_id,
+                    )
+                else:
+                    TechnicianNotification.objects.create(
+                        technician=technician,
+                        message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                        read=False,
+                        repair=repairs_to_approve[0],
+                    )
 
-            messages.success(request, "Repair has been approved successfully. The technician can now complete the work.")
+            approved_count = len(repairs_to_approve)
+            if is_batch and approved_count > 1:
+                messages.success(request, f"All {approved_count} breaks in this batch have been approved. The technician can now complete the work.")
+            else:
+                messages.success(request, "Repair has been approved successfully. The technician can now complete the work.")
             return redirect('customer_repair_detail', repair_id=repair.id)
         
         return render(request, 'customer_portal/repair_approve.html', {
@@ -857,46 +866,44 @@ def customer_repair_deny(request, repair_id):
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
             
-            # Use a transaction + row-level lock to prevent:
-            #   1. RepairApproval created but repair.save() fails → partial write.
-            #   2. Double-click race: two concurrent POSTs both pass the status
-            #      check above (pre-lock) and both write DENIED — harmless for
-            #      status but could cause double reward restoration.
-            #   Mirrors the select_for_update() pattern in quick_deny_repair.
-            #   (CODE-223)
+            # CODE-262: If repair is part of a batch, deny ALL siblings.
+            is_batch = repair.is_part_of_batch
+            batch_id = repair.repair_batch_id if is_batch else None
+
             restored = []
             with transaction.atomic():
-                locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+                if is_batch and batch_id:
+                    repairs_to_deny = list(
+                        Repair.objects.select_for_update().filter(
+                            repair_batch_id=batch_id,
+                            tenant=customer.tenant,
+                            queue_status__in=('PENDING', 'REQUESTED'),
+                        ).select_related('technician')
+                    )
+                else:
+                    locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+                    if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This repair has already been processed.")
+                        return redirect('customer_repair_detail', repair_id=repair.id)
+                    repairs_to_deny = [locked_repair]
 
-                # Re-check status inside the lock
-                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                if not repairs_to_deny:
                     messages.warning(request, "This repair has already been processed.")
                     return redirect('customer_repair_detail', repair_id=repair.id)
 
-                # Create or update the approval record to mark as denied
-                approval, created = RepairApproval.objects.get_or_create(
-                    repair=locked_repair,
-                    defaults={
-                        'approved': False,
-                        'approved_by': customer_user,
-                        'approval_date': timezone.now(),
-                        'notes': reason
-                    }
-                )
-                
-                if not created:
-                    approval.approved = False
-                    approval.approved_by = customer_user
-                    approval.approval_date = timezone.now()
-                    approval.notes = reason
-                    approval.save()
-                
-                # Update the repair status to indicate it was denied
-                locked_repair.queue_status = 'DENIED'
-                locked_repair.save()
-
-                # Auto-restore any applied reward so customer can reuse it (CODE-210)
-                restored = _restore_reward_for_repair(locked_repair)
+                for r in repairs_to_deny:
+                    RepairApproval.objects.update_or_create(
+                        repair=r,
+                        defaults={
+                            'approved': False,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': reason or (f'Batch denial ({len(repairs_to_deny)} breaks)' if is_batch else ''),
+                        }
+                    )
+                    r.queue_status = 'DENIED'
+                    r.save()
+                    restored.extend(_restore_reward_for_repair(r))
 
             for redemption in restored:
                 messages.info(
@@ -905,18 +912,29 @@ def customer_repair_deny(request, repair_id):
                 )
 
             # Create notification for technician (outside transaction — best effort)
-            if locked_repair.technician:
-                denial_message = f"❌ Repair #{locked_repair.id} DENIED by {customer.name} - Unit {locked_repair.unit_number}."
-                if reason:
-                    denial_message += f" Reason: {reason}"
+            technician = repairs_to_deny[0].technician if repairs_to_deny else None
+            denied_count = len(repairs_to_deny)
+            if technician:
+                if is_batch and denied_count > 1:
+                    denial_message = f"❌ Batch of {denied_count} breaks DENIED by {customer.name} - Unit {repair.unit_number}."
+                    if reason:
+                        denial_message += f" Reason: {reason}"
+                else:
+                    denial_message = f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}."
+                    if reason:
+                        denial_message += f" Reason: {reason}"
                 TechnicianNotification.objects.create(
                     technician=locked_repair.technician,
                     message=denial_message,
                     read=False,
-                    repair=locked_repair
+                    repair=repairs_to_deny[0],
+                    **({"repair_batch_id": batch_id} if is_batch and batch_id else {}),
                 )
 
-            messages.success(request, "Repair request has been denied.")
+            if is_batch and denied_count > 1:
+                messages.success(request, f"All {denied_count} breaks in this batch have been denied.")
+            else:
+                messages.success(request, "Repair request has been denied.")
             return redirect('customer_repair_detail', repair_id=repair.id)
         
         return render(request, 'customer_portal/repair_deny.html', {

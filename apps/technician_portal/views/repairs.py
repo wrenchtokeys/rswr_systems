@@ -797,6 +797,21 @@ def update_queue_status(request, repair_id):
 
                 repair.save()
 
+                # CODE-262: Batch propagation — when admin approves/denies a
+                # PENDING repair that's part of a batch, apply to all siblings.
+                # Only for PENDING→APPROVED or PENDING→DENIED transitions (admin override).
+                if (old_status == 'PENDING' and new_status in ('APPROVED', 'DENIED')
+                        and repair.is_part_of_batch and repair.repair_batch_id and tenant):
+                    sibling_repairs = Repair.objects.filter(
+                        repair_batch_id=repair.repair_batch_id,
+                        tenant=tenant,
+                        queue_status='PENDING',
+                    ).exclude(pk=repair.pk)
+                    sibling_count = sibling_repairs.update(queue_status=new_status)
+                    if sibling_count > 0:
+                        action = 'approved' if new_status == 'APPROVED' else 'denied'
+                        messages.info(request, f"Also {action} {sibling_count} other break(s) in this batch.")
+
                 # Auto-cleanup: mark notifications as read on completion
                 if new_status == 'COMPLETED' and repair.technician:
                     completed_notifications = TechnicianNotification.objects.filter(
