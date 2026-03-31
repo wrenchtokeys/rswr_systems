@@ -181,22 +181,22 @@
             </div>
             {% endif %}
 
-            <!-- Quick Actions Bar — Status-Aware Priority -->
-            <div class="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200 sticky top-16 z-10 shadow-sm">
-                <div class="px-6 py-4">
-                    <div class="flex items-center justify-between gap-4 flex-wrap">
+            <!-- Quick Actions Bar — Compact -->
+            <div class="bg-gray-50 border-b border-gray-200 sticky top-16 z-10">
+                <div class="px-4 sm:px-6 py-2.5">
+                    <div class="flex items-center justify-between gap-2">
                         
-                        <!-- PRIMARY ACTION (big, prominent) -->
-                        <div class="flex items-center gap-3">
+                        <!-- PRIMARY ACTIONS -->
+                        <div class="flex items-center gap-2 flex-wrap">
                             {% if repair.queue_status == 'COMPLETED' %}
                                 {% if is_invoiced %}
-                                <a href="{% url 'owner_invoice_detail' invoice_id %}" class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm">
-                                    <i class="fas fa-file-invoice-dollar mr-2"></i>View Invoice
+                                <a href="{% url 'owner_invoice_detail' invoice_id %}" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
+                                    <i class="fas fa-file-invoice-dollar mr-1.5"></i>View Invoice
                                 </a>
                                 {% else %}
-                                <form action="{% url 'owner_generate_invoice_from_repair' repair.id %}" method="post" class="inline flex items-center gap-2">
+                                <form action="{% url 'owner_generate_invoice_from_repair' repair.id %}" method="post" class="inline flex items-center gap-1.5">
                                     {% csrf_token %}
-                                    <select name="payment_terms" class="rounded-lg border-gray-300 text-sm py-2.5 focus:ring-blue-500 focus:border-blue-500" title="Payment terms for this invoice">
+                                    <select name="payment_terms" class="rounded-md border-gray-300 text-xs py-1.5 px-2 focus:ring-blue-500 focus:border-blue-500" title="Payment terms">
                                         <option value="COD"{% if default_payment_terms == 'COD' %} selected{% endif %}>COD</option>
                                         <option value="DUE_ON_RECEIPT"{% if default_payment_terms == 'DUE_ON_RECEIPT' %} selected{% endif %}>Due on Receipt</option>
                                         <option value="NET15"{% if default_payment_terms == 'NET15' %} selected{% endif %}>Net 15</option>
@@ -204,8 +204,8 @@
                                         <option value="NET45"{% if default_payment_terms == 'NET45' %} selected{% endif %}>Net 45</option>
                                         <option value="NET60"{% if default_payment_terms == 'NET60' %} selected{% endif %}>Net 60</option>
                                     </select>
-                                    <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                                        <i class="fas fa-file-invoice-dollar mr-2"></i>Generate Invoice
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-md hover:bg-blue-700 transition-colors">
+                                        <i class="fas fa-file-invoice-dollar mr-1.5"></i>Invoice
                                     </button>
                                 </form>
                                 {% endif %}
@@ -215,21 +215,21 @@
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="APPROVED">
-                                    <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm">
-                                        <i class="fas fa-check mr-2"></i>Accept Repair
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-check mr-1.5"></i>Accept
                                     </button>
                                 </form>
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="DENIED">
-                                    <button type="submit" class="inline-flex items-center px-4 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors">
-                                        <i class="fas fa-times mr-1.5"></i>Deny
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-md hover:bg-red-700 transition-colors">
+                                        <i class="fas fa-times mr-1"></i>Deny
                                     </button>
                                 </form>
                                 {% endif %}
                                 {% if technician and technician.is_manager or is_admin %}
-                                <a href="{% url 'assign_repair' repair.id %}" class="inline-flex items-center px-4 py-2.5 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 transition-colors">
-                                    <i class="fas fa-user-plus mr-1.5"></i>Assign
+                                <a href="{% url 'assign_repair' repair.id %}" class="inline-flex items-center px-3 py-1.5 bg-purple-600 text-white text-xs font-semibold rounded-md hover:bg-purple-700 transition-colors">
+                                    <i class="fas fa-user-plus mr-1"></i>Assign
                                 </a>
                                 {% endif %}
 
@@ -238,8 +238,8 @@
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="IN_PROGRESS">
-                                    <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                                        <i class="fas fa-play mr-2"></i>Start Work
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-md hover:bg-blue-700 transition-colors">
+                                        <i class="fas fa-play mr-1.5"></i>Start Work
                                     </button>
                                 </form>
                                 {% endif %}
@@ -249,8 +249,8 @@
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="COMPLETED">
-                                    <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm">
-                                        <i class="fas fa-check-circle mr-2"></i>Mark Complete
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-check-circle mr-1.5"></i>Complete
                                     </button>
                                 </form>
                                 {% endif %}
@@ -260,71 +260,70 @@
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="APPROVED">
-                                    <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm">
-                                        <i class="fas fa-check mr-2"></i>Override — Approve
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-check mr-1.5"></i>Approve
                                     </button>
                                 </form>
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="DENIED">
-                                    <button type="submit" class="inline-flex items-center px-4 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors">
-                                        <i class="fas fa-times mr-1.5"></i>Deny
+                                    <button type="submit" class="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-xs font-semibold rounded-md hover:bg-red-700 transition-colors">
+                                        <i class="fas fa-times mr-1"></i>Deny
                                     </button>
                                 </form>
                                 {% else %}
-                                <span class="inline-flex items-center px-4 py-2.5 bg-yellow-100 text-yellow-800 text-sm font-semibold rounded-lg">
-                                    <i class="fas fa-clock mr-2"></i>Awaiting Customer Approval
+                                <span class="inline-flex items-center px-3 py-1.5 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-md">
+                                    <i class="fas fa-clock mr-1.5"></i>Awaiting Approval
                                 </span>
                                 {% endif %}
                             {% endif %}
 
                             <!-- Batch: Next Break -->
                             {% if batch_info and next_break %}
-                            <a href="{% url 'repair_detail' next_break.id %}" class="inline-flex items-center px-4 py-2.5 bg-gray-700 text-white text-sm font-semibold rounded-lg hover:bg-gray-800 transition-colors">
-                                Next Break ({{ next_break.break_number }}/{{ batch_info.break_count }})
-                                <i class="fas fa-chevron-right ml-1.5"></i>
+                            <a href="{% url 'repair_detail' next_break.id %}" class="inline-flex items-center px-3 py-1.5 bg-gray-700 text-white text-xs font-semibold rounded-md hover:bg-gray-800 transition-colors">
+                                Next ({{ next_break.break_number }}/{{ batch_info.break_count }})
+                                <i class="fas fa-chevron-right ml-1"></i>
                             </a>
                             {% endif %}
                         </div>
 
-                        <!-- SECONDARY ACTIONS (smaller, right side) -->
-                        <div class="flex items-center gap-2 text-sm relative">
+                        <!-- SECONDARY ACTIONS -->
+                        <div class="flex items-center gap-1 text-xs relative">
                             {% if is_admin or technician and technician.is_manager or repair.queue_status not in 'COMPLETED,DENIED' and repair.technician == technician %}
-                            <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
-                                <i class="fas fa-edit mr-1"></i><span class="hidden sm:inline">Edit</span>
+                            <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="Edit">
+                                <i class="fas fa-edit"></i>
                             </a>
                             {% endif %}
-                            <a href="{% url 'technician_dashboard' %}" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
-                                <i class="fas fa-home mr-1"></i><span class="hidden sm:inline">Dashboard</span>
+                            <a href="{% url 'technician_dashboard' %}" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="Dashboard">
+                                <i class="fas fa-home"></i>
                             </a>
-                            <!-- More actions dropdown -->
                             {% if is_admin or technician and technician.is_manager or can_reassign_to_self %}
                             <div class="relative">
-                                <button id="moreActionsBtn" onclick="toggleMoreActions()" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
+                                <button id="moreActionsBtn" onclick="toggleMoreActions()" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="More">
                                     <i class="fas fa-ellipsis-v"></i>
                                 </button>
-                                <div id="moreActionsMenu" class="hidden absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                <div id="moreActionsMenu" class="hidden absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
                                     {% if is_admin or technician and technician.is_manager %}
-                                    <button onclick="document.getElementById('deleteRepairModal').classList.remove('hidden'); toggleMoreActions();" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
-                                        <i class="fas fa-trash mr-2 w-4"></i>Delete
+                                    <button onclick="document.getElementById('deleteRepairModal').classList.remove('hidden'); toggleMoreActions();" class="w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50 transition-colors">
+                                        <i class="fas fa-trash mr-2 w-3"></i>Delete
                                     </button>
                                     {% endif %}
                                     {% if can_reassign_to_self %}
-                                    <a href="{% url 'reassign_to_self' repair.id %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                        <i class="fas fa-user-check mr-2 w-4"></i>Reassign to Me
+                                    <a href="{% url 'reassign_to_self' repair.id %}" class="block px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                                        <i class="fas fa-user-check mr-2 w-3"></i>Reassign to Me
                                     </a>
                                     {% endif %}
                                     {% if is_admin and repair.queue_status != 'COMPLETED' %}
-                                    <a href="{% url 'admin_reassign_repair' repair.id %}" class="block px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 transition-colors">
-                                        <i class="fas fa-user-edit mr-2 w-4"></i>Reassign Tech
+                                    <a href="{% url 'admin_reassign_repair' repair.id %}" class="block px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors">
+                                        <i class="fas fa-user-edit mr-2 w-3"></i>Reassign Tech
                                     </a>
                                     {% endif %}
                                     {% if is_admin and repair.queue_status != 'PENDING' and repair.queue_status != 'COMPLETED' %}
                                     <form action="{% url 'update_queue_status' repair.id %}" method="post">
                                         {% csrf_token %}
                                         <input type="hidden" name="status" value="PENDING">
-                                        <button type="submit" class="w-full text-left px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors">
-                                            <i class="fas fa-undo mr-2 w-4"></i>Reset to Pending
+                                        <button type="submit" class="w-full text-left px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 transition-colors">
+                                            <i class="fas fa-undo mr-2 w-3"></i>Reset to Pending
                                         </button>
                                     </form>
                                     {% endif %}
