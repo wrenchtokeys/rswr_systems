@@ -5,6 +5,23 @@ status, and description.
 
 ## Fixed
 
+### CODE-254: AutoUpdateTimestampMixin for all 18 models with auto_now updated_at
+- **Severity:** 🟡 Data integrity / audit trail bug (systemic)
+- **Fixed:** 2026-03-31
+- **Details:** Django's `auto_now=True` on DateTimeField is NOT auto-included
+  when `save()` is called with `update_fields=[...]`. CODE-253 fixed this for
+  Tenant only. This commit creates a reusable `AutoUpdateTimestampMixin` in
+  `rs_systems/model_mixins.py` and applies it to all 18 affected models:
+  Tenant, BillingConfig, Invoice, PlatformConfig, WarrantyPolicy,
+  ViscosityRecommendation, ReviewConfig, LoyaltyConfig, CustomerRepairPreference,
+  CustomerPricing, ReferralCode, Reward, RewardOption, Vehicle,
+  NotificationTemplate, EmailBrandingConfig, TechnicianNotificationPreference,
+  CustomerNotificationPreference.
+  Applied via abstract bases where possible (TenantConfig → ReviewConfig +
+  LoyaltyConfig; BaseNotificationPreference → both preference models).
+  Tenant's inline fix replaced with the mixin.
+- **Test:** `tests/bug_fixes/test_code254_auto_update_timestamp_mixin.py` (40 tests)
+
 ### CODE-253: Tenant.save(update_fields=...) not bumping updated_at
 - **Severity:** 🟡 Data integrity / audit trail bug
 - **Fixed:** 2026-03-31
@@ -124,18 +141,7 @@ status, and description.
 - `LoginAttempt` and `SecurityAuditLog` have no admin registration
 - Low priority — they're audit/security models and may intentionally be unregistered
 
-### CODE-253b: auto_now updated_at bug on non-Tenant models
-- 17 other models have the same bug as CODE-253 — `save(update_fields=...)`
-  doesn't bump `updated_at` when `auto_now=True`. Affected: BillingConfig,
-  Invoice, PlatformConfig, CustomerPricing, CustomerRepairPreference,
-  Reward, RewardOption, LoyaltyConfig, ReferralCode, ReviewConfig,
-  ViscosityRecommendation, WarrantyPolicy, Vehicle,
-  TechnicianNotificationPreference, CustomerNotificationPreference,
-  NotificationTemplate, EmailBrandingConfig.
-- **Fix:** Create a common `AutoUpdateTimestampMixin` with the save() override
-  and apply it to all affected models.
-- **Priority:** Low-medium — most of these models have fewer update_fields
-  call sites than Tenant, but Invoice and Reward are important.
+### CODE-253b: auto_now updated_at bug on non-Tenant models — ✅ FIXED (CODE-254)
 
 ### ApprovalToken not registered in admin
 - `customer_portal.ApprovalToken` — no admin registration
