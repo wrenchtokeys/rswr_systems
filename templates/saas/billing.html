@@ -380,12 +380,12 @@
                 </p>
             </div>
             <div class="flex gap-3">
-                <button onclick="document.getElementById('cancelModal').classList.add('hidden')" class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                <button onclick="document.getElementById('cancelModal').classList.add('hidden')" class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-md hover:bg-gray-200 transition-colors">
                     Keep Subscription
                 </button>
                 <form method="post" action="{% url 'billing_cancel' %}" class="flex-1">
                     {% csrf_token %}
-                    <button type="submit" class="w-full px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors">
+                    <button type="submit" class="w-full px-4 py-2 bg-red-600 text-white font-medium rounded-md hover:bg-red-700 transition-colors">
                         Yes, Cancel
                     </button>
                 </form>

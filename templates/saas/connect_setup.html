@@ -88,7 +88,7 @@
                 <div class="mt-4">
                     <form method="post" action="{% url 'connect_setup' %}">
                         {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                        <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
                             <i class="fas fa-arrow-right mr-2"></i> Continue Setup
                         </button>
                     </form>
