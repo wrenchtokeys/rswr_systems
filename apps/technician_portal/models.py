@@ -9,6 +9,7 @@ from django.core.validators import FileExtensionValidator, RegexValidator
 from decimal import Decimal
 from core.models import Customer
 from apps.tenants.managers import TenantManager
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 import logging
 
 logger = logging.getLogger(__name__)
@@ -320,7 +321,7 @@ class GlassService(models.Model):
         blank=True,
         help_text="Reason for price override (required when using custom price)"
     )
-    queue_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    queue_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', db_index=True)
     
     # Photo documentation fields
     customer_submitted_photo = models.ImageField(
@@ -408,7 +409,7 @@ class GlassService(models.Model):
 # WARRANTY POLICY MODEL
 # =============================================================================
 
-class WarrantyPolicy(models.Model):
+class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
     """
     Per-tenant warranty terms. Shops define their own policies per damage type.
 
@@ -1621,7 +1622,7 @@ class TechnicianNotification(models.Model):
         verbose_name_plural = 'Technician Notifications'
 
 
-class ViscosityRecommendation(models.Model):
+class ViscosityRecommendation(AutoUpdateTimestampMixin, models.Model):
     """
     Configurable temperature-based resin viscosity recommendations.
     Managers can configure these rules through the settings UI.

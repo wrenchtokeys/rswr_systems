@@ -1,6 +1,7 @@
 import csv
 
 from django.contrib import admin
+from django.db import transaction
 
 
 def _csv_safe(value):
@@ -133,7 +134,7 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
     date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user', 'tenant']
     list_per_page = 25
-    actions = ['export_csv', 'bulk_delete_repairs']
+    actions = ['export_csv', 'bulk_delete_repairs', 'bulk_approve', 'bulk_deny', 'bulk_reset_to_pending', 'bulk_reassign_technician']
 
     def get_status_badge(self, obj):
         status_colors = {
@@ -212,6 +213,80 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
                 repair.service_date,
             ])
         return response
+
+    @admin.action(description='✅ Approve selected repairs')
+    def bulk_approve(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for repair in eligible:
+                repair.queue_status = 'APPROVED'
+                repair.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Approved {count} repair(s).'
+        if skipped:
+            msg += f' Skipped {skipped} repair(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='❌ Deny selected repairs')
+    def bulk_deny(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for repair in eligible:
+                repair.queue_status = 'DENIED'
+                repair.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Denied {count} repair(s).'
+        if skipped:
+            msg += f' Skipped {skipped} repair(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='🔄 Reset selected to Pending')
+    def bulk_reset_to_pending(self, request, queryset):
+        eligible = queryset.exclude(queue_status='COMPLETED')
+        completed_count = queryset.filter(queue_status='COMPLETED').count()
+        count = 0
+        with transaction.atomic():
+            for repair in eligible:
+                repair.queue_status = 'PENDING'
+                repair.save()
+                count += 1
+        msg = f'Reset {count} repair(s) to Pending.'
+        if completed_count:
+            msg += f' Skipped {completed_count} completed repair(s).'
+        self.message_user(request, msg)
+
+    @admin.action(description='👤 Reassign selected to technician...')
+    def bulk_reassign_technician(self, request, queryset):
+        if 'apply' in request.POST:
+            technician_id = request.POST.get('technician_id')
+            if technician_id:
+                tech = Technician.objects.get(id=technician_id)
+                count = 0
+                with transaction.atomic():
+                    for repair in queryset:
+                        repair.technician = tech
+                        repair.save()
+                        count += 1
+                self.message_user(request, f'Reassigned {count} repair(s) to {tech.user.get_full_name()}.')
+                return None
+
+        first_item = queryset.first()
+        tenant = first_item.tenant if first_item else None
+        technicians = Technician.objects.filter(tenant=tenant, is_active=True).select_related('user') if tenant else Technician.objects.none()
+
+        return render(request, 'admin/bulk_reassign.html', {
+            'title': 'Reassign Repairs to Technician',
+            'items': queryset,
+            'item_count': queryset.count(),
+            'technicians': technicians,
+            'action': 'bulk_reassign_technician',
+            'item_type': 'repair',
+            'opts': self.model._meta,
+        })
 
     @admin.action(description='🗑️ Bulk delete selected repairs (hard delete)')
     def bulk_delete_repairs(self, request, queryset):
@@ -343,6 +418,7 @@ class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
     date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user', 'tenant']
     list_per_page = 25
+    actions = ['bulk_approve', 'bulk_deny', 'bulk_reset_to_pending', 'bulk_reassign_technician']
 
     def get_status_badge(self, obj):
         status_colors = {
@@ -385,6 +461,80 @@ class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
+
+    @admin.action(description='✅ Approve selected replacements')
+    def bulk_approve(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for item in eligible:
+                item.queue_status = 'APPROVED'
+                item.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Approved {count} replacement(s).'
+        if skipped:
+            msg += f' Skipped {skipped} replacement(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='❌ Deny selected replacements')
+    def bulk_deny(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for item in eligible:
+                item.queue_status = 'DENIED'
+                item.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Denied {count} replacement(s).'
+        if skipped:
+            msg += f' Skipped {skipped} replacement(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='🔄 Reset selected to Pending')
+    def bulk_reset_to_pending(self, request, queryset):
+        eligible = queryset.exclude(queue_status='COMPLETED')
+        completed_count = queryset.filter(queue_status='COMPLETED').count()
+        count = 0
+        with transaction.atomic():
+            for item in eligible:
+                item.queue_status = 'PENDING'
+                item.save()
+                count += 1
+        msg = f'Reset {count} replacement(s) to Pending.'
+        if completed_count:
+            msg += f' Skipped {completed_count} completed replacement(s).'
+        self.message_user(request, msg)
+
+    @admin.action(description='👤 Reassign selected to technician...')
+    def bulk_reassign_technician(self, request, queryset):
+        if 'apply' in request.POST:
+            technician_id = request.POST.get('technician_id')
+            if technician_id:
+                tech = Technician.objects.get(id=technician_id)
+                count = 0
+                with transaction.atomic():
+                    for item in queryset:
+                        item.technician = tech
+                        item.save()
+                        count += 1
+                self.message_user(request, f'Reassigned {count} replacement(s) to {tech.user.get_full_name()}.')
+                return None
+
+        first_item = queryset.first()
+        tenant = first_item.tenant if first_item else None
+        technicians = Technician.objects.filter(tenant=tenant, is_active=True).select_related('user') if tenant else Technician.objects.none()
+
+        return render(request, 'admin/bulk_reassign.html', {
+            'title': 'Reassign Replacements to Technician',
+            'items': queryset,
+            'item_count': queryset.count(),
+            'technicians': technicians,
+            'action': 'bulk_reassign_technician',
+            'item_type': 'replacement',
+            'opts': self.model._meta,
+        })
 
     def delete_queryset(self, request, queryset):
         """

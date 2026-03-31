@@ -161,6 +161,10 @@ def create_viscosity_rule(request):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Tenant not resolved'}, status=400)
+
     try:
         data = json.loads(request.body)
 
@@ -172,13 +176,7 @@ def create_viscosity_rule(request):
                     'error': f'Missing required field: {field}'
                 }, status=400)
 
-        tenant = getattr(request, 'tenant', None)
-        order_qs = ViscosityRecommendation.objects.all()
-        if tenant:
-            order_qs = order_qs.filter(tenant=tenant)
-
-        else:
-            order_qs = order_qs.none()
+        order_qs = ViscosityRecommendation.objects.filter(tenant=tenant)
         max_order = order_qs.aggregate(
             max_order=models.Max('display_order')
         )['max_order']

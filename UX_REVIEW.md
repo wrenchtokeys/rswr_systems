@@ -5,6 +5,42 @@ status, and description.
 
 ## Fixed
 
+### CODE-254: AutoUpdateTimestampMixin for all 18 models with auto_now updated_at
+- **Severity:** 🟡 Data integrity / audit trail bug (systemic)
+- **Fixed:** 2026-03-31
+- **Details:** Django's `auto_now=True` on DateTimeField is NOT auto-included
+  when `save()` is called with `update_fields=[...]`. CODE-253 fixed this for
+  Tenant only. This commit creates a reusable `AutoUpdateTimestampMixin` in
+  `rs_systems/model_mixins.py` and applies it to all 18 affected models:
+  Tenant, BillingConfig, Invoice, PlatformConfig, WarrantyPolicy,
+  ViscosityRecommendation, ReviewConfig, LoyaltyConfig, CustomerRepairPreference,
+  CustomerPricing, ReferralCode, Reward, RewardOption, Vehicle,
+  NotificationTemplate, EmailBrandingConfig, TechnicianNotificationPreference,
+  CustomerNotificationPreference.
+  Applied via abstract bases where possible (TenantConfig → ReviewConfig +
+  LoyaltyConfig; BaseNotificationPreference → both preference models).
+  Tenant's inline fix replaced with the mixin.
+- **Test:** `tests/bug_fixes/test_code254_auto_update_timestamp_mixin.py` (40 tests)
+
+### CODE-253: Tenant.save(update_fields=...) not bumping updated_at
+- **Severity:** 🟡 Data integrity / audit trail bug
+- **Fixed:** 2026-03-31
+- **Details:** Django's `auto_now=True` on DateTimeField is NOT automatically
+  included when `save()` is called with `update_fields=[...]`. Every code path
+  that uses `update_fields` for efficiency — webhook handlers (6 call sites),
+  subscription service (8 call sites), Connect service (4 call sites), admin
+  actions (3 call sites), and more — silently leaves `updated_at` stale. The
+  timestamp lies about when the Tenant record was last modified. This affects
+  30+ call sites across the codebase.
+  Fixed by overriding `Tenant.save()` to auto-inject `'updated_at'` into
+  `update_fields` when the caller specifies `update_fields` without it.
+  Creates a new list to avoid mutating the caller's original list.
+- **Test:** `tests/bug_fixes/test_code253_tenant_updated_at.py` (7 tests)
+- **Note:** The same bug exists on all other models with `auto_now=True` on
+  `updated_at` (BillingConfig, Invoice, Reward, LoyaltyConfig, etc. — 18
+  models total). A common `AutoUpdateTimestampMixin` should be created to fix
+  them all. Tracked below for future runs.
+
 ### CODE-232b: ViscosityRecommendation & RewardOption admin missing tenant in fieldsets
 - **Severity:** 🟡 Data integrity / admin UX bug
 - **Fixed:** 2026-03-30
@@ -104,6 +140,8 @@ status, and description.
 ### Security admin models not registered
 - `LoginAttempt` and `SecurityAuditLog` have no admin registration
 - Low priority — they're audit/security models and may intentionally be unregistered
+
+### CODE-253b: auto_now updated_at bug on non-Tenant models — ✅ FIXED (CODE-254)
 
 ### ApprovalToken not registered in admin
 - `customer_portal.ApprovalToken` — no admin registration

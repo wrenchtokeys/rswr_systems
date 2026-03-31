@@ -19,6 +19,7 @@ from django.core.validators import MinValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from apps.tenants.managers import TenantManager
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 # BILLING CONFIGURATION (Per-Tenant)
 # =============================================================================
 
-class BillingConfig(models.Model):
+class BillingConfig(AutoUpdateTimestampMixin, models.Model):
     """
     Per-tenant billing configuration — controls company info on invoices,
     default payment terms, and other billing defaults for each shop.
@@ -298,7 +299,7 @@ class InvoiceSoftDeleteManager(TenantManager):
         return super().get_queryset().filter(deleted_at__isnull=True)
 
 
-class Invoice(models.Model):
+class Invoice(AutoUpdateTimestampMixin, models.Model):
     """
     Tracks invoices sent to customers.
     
@@ -865,7 +866,7 @@ class TaxRate(models.Model):
 # PLATFORM CONFIG (Singleton)
 # =============================================================================
 
-class PlatformConfig(models.Model):
+class PlatformConfig(AutoUpdateTimestampMixin, models.Model):
     """
     Singleton — global platform settings for Stripe Connect fee routing.
 

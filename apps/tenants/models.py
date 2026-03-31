@@ -17,6 +17,8 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
 
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
+
 
 class SubscriptionPlan(models.Model):
     """
@@ -94,7 +96,7 @@ class SubscriptionPlan(models.Model):
         return self.features.get(feature_name, False)
 
 
-class Tenant(models.Model):
+class Tenant(AutoUpdateTimestampMixin, models.Model):
     """
     Represents a glass shop business on the RS Systems platform.
     
@@ -305,6 +307,9 @@ class Tenant(models.Model):
             self.slug = slugify(self.name)
         if not self.subdomain:
             self.subdomain = self.slug
+
+        # AutoUpdateTimestampMixin handles updated_at injection for
+        # save(update_fields=...) calls. (CODE-253 → CODE-254)
         super().save(*args, **kwargs)
     
     def get_upload_prefix(self):

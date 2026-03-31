@@ -326,8 +326,8 @@
                     {% for repair in repairs %}
                     <tr class="hover:bg-gray-50 transition-colors {% if repair.queue_status == 'REQUESTED' %}bg-yellow-50/50{% endif %}">
                         <td class="px-4 py-3">
-                            {% if repair.queue_status == 'PENDING' or repair.queue_status == 'REQUESTED' %}
-                            <input type="checkbox" class="repair-checkbox w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" data-repair-id="{{ repair.id }}" onchange="updateBulkToolbar()">
+                            {% if repair.queue_status == 'PENDING' or repair.queue_status == 'REQUESTED' or is_admin and repair.queue_status != 'COMPLETED' %}
+                            <input type="checkbox" class="repair-checkbox w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" data-repair-id="{{ repair.id }}" data-status="{{ repair.queue_status }}" onchange="updateBulkToolbar()">
                             {% else %}
                             <span class="text-gray-200">—</span>
                             {% endif %}
@@ -472,6 +472,14 @@
                     <button onclick="bulkDeny()" class="inline-flex items-center px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors">
                         <i class="fas fa-times mr-1.5"></i>Deny
                     </button>
+                    {% if is_admin %}
+                    <button onclick="bulkResetToPending()" class="inline-flex items-center px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors">
+                        <i class="fas fa-undo mr-1.5"></i>Reset
+                    </button>
+                    <button onclick="bulkReassign()" class="inline-flex items-center px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors">
+                        <i class="fas fa-user-edit mr-1.5"></i>Reassign
+                    </button>
+                    {% endif %}
                     <button onclick="deselectAll()" class="px-3 py-2 text-gray-400 hover:text-white text-sm transition-colors">
                         Cancel
                     </button>
@@ -589,6 +597,21 @@ function bulkDeny() {
     const ids = getSelectedRepairIds();
     if (ids.length && confirm(`Deny ${ids.length} repair${ids.length === 1 ? '' : 's'}?`)) {
         submitBulkAction('deny', ids);
+    }
+}
+
+function bulkResetToPending() {
+    const ids = getSelectedRepairIds();
+    if (ids.length && confirm('Reset ' + ids.length + ' repair(s) to Pending? This will NOT affect completed repairs.')) {
+        submitBulkAction('reset_to_pending', ids);
+    }
+}
+
+function bulkReassign() {
+    const ids = getSelectedRepairIds();
+    if (ids.length) {
+        const params = ids.map(id => 'repair_ids=' + id).join('&');
+        window.location.href = '{% url "portal_bulk_reassign" %}?' + params;
     }
 }
 
