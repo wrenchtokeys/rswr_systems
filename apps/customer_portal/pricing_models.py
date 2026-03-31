@@ -1,9 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import User
 from core.models import Customer
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
 
-class CustomerPricing(models.Model):
+class CustomerPricing(AutoUpdateTimestampMixin, models.Model):
     """Custom pricing configuration for specific customers"""
 
     customer = models.OneToOneField(Customer, on_delete=models.CASCADE, related_name='pricing')

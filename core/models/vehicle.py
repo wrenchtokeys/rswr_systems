@@ -13,9 +13,10 @@ Author: Amelia (Clawdbot AI)
 
 from django.db import models
 from apps.tenants.managers import TenantManager
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
 
-class Vehicle(models.Model):
+class Vehicle(AutoUpdateTimestampMixin, models.Model):
     """
     A vehicle that receives glass services.
     

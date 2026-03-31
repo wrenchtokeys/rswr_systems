@@ -6,6 +6,7 @@ from apps.technician_portal.models import Repair, Replacement
 import secrets
 from datetime import timedelta
 from django.utils import timezone
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
 class CustomerUser(models.Model):
     """Links a Django User account to a Customer (company) for portal access."""
@@ -43,7 +44,7 @@ class CustomerPreference(models.Model):
     def __str__(self):
         return f"Preferences for {self.customer.name}"
 
-class CustomerRepairPreference(models.Model):
+class CustomerRepairPreference(AutoUpdateTimestampMixin, models.Model):
     """Stores customer preferences for field repair approval workflow and invoicing"""
 
     APPROVAL_MODE_CHOICES = [

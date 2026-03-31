@@ -1,8 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
-class BaseNotificationPreference(models.Model):
+
+class BaseNotificationPreference(AutoUpdateTimestampMixin, models.Model):
     """
     Abstract base class for notification preferences.
 

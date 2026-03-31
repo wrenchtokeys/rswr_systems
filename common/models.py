@@ -8,10 +8,12 @@ import logging
 
 from django.db import models
 
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
+
 logger = logging.getLogger(__name__)
 
 
-class TenantConfig(models.Model):
+class TenantConfig(AutoUpdateTimestampMixin, models.Model):
     """
     Abstract base class for all per-tenant configuration models.
 

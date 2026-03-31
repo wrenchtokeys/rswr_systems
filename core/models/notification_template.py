@@ -2,8 +2,10 @@ from django.db import models
 from django.template import Template, Context
 from django.utils.safestring import mark_safe
 
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
-class NotificationTemplate(models.Model):
+
+class NotificationTemplate(AutoUpdateTimestampMixin, models.Model):
     """
     Reusable notification templates with variable substitution.
 

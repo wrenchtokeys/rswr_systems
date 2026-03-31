@@ -3,8 +3,9 @@ from django.db.models import Q
 from django.utils import timezone
 from apps.customer_portal.models import CustomerUser
 from common.models import TenantConfig
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
-class ReferralCode(models.Model):
+class ReferralCode(AutoUpdateTimestampMixin, models.Model):
     """
     Stores unique referral codes associated with customer users.
     
@@ -82,7 +83,7 @@ class RewardType(models.Model):
         else:
             return self.name
 
-class Reward(models.Model):
+class Reward(AutoUpdateTimestampMixin, models.Model):
     """
     Tracks point balances for customers.
 
@@ -113,7 +114,7 @@ class Reward(models.Model):
     def __str__(self):
         return f"{self.customer_user.user.email} - {self.points} points"
     
-class RewardOption(models.Model):
+class RewardOption(AutoUpdateTimestampMixin, models.Model):
     """
     Defines available redemption options for customers.
 
