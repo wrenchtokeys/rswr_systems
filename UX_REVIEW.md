@@ -5,6 +5,22 @@ status, and description.
 
 ## Fixed
 
+### CODE-255: Bulk reassign technician action — cross-tenant IDOR
+- **Severity:** 🔴 Tenant isolation bug
+- **Fixed:** 2026-03-31
+- **Details:** Both `RepairAdmin` and `ReplacementAdmin` had a
+  `bulk_reassign_technician` action where the POST handler used an unscoped
+  `Technician.objects.get(id=technician_id)`. While the dropdown that renders
+  the technician options was correctly filtered to same-tenant technicians,
+  a staff user could craft a POST request with any `technician_id` from
+  another tenant and successfully reassign repairs/replacements to a
+  cross-tenant technician — linking Shop B's tech to Shop A's repair data.
+  Fixed by scoping the `Technician` lookup to the tenant of the selected
+  items. Non-superusers without a tenant context are denied, and an
+  unrecognized technician_id now shows an error message instead of crashing
+  with `DoesNotExist`.
+- **Test:** `tests/bug_fixes/test_code255_bulk_reassign_tenant_scoping.py` (5 tests)
+
 ### CODE-254: AutoUpdateTimestampMixin for all 18 models with auto_now updated_at
 - **Severity:** 🟡 Data integrity / audit trail bug (systemic)
 - **Fixed:** 2026-03-31

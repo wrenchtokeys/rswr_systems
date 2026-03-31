@@ -196,16 +196,32 @@ class Technician(models.Model):
         return self.managed_technicians.filter(id=technician.id).exists()
 
     def get_team_repairs(self):
-        """Get all repairs assigned to technicians this manager supervises"""
+        """Get all repairs assigned to technicians this manager supervises.
+
+        Always scoped to this manager's tenant — prevents cross-tenant data
+        leakage even if a cross-tenant Technician somehow ended up in the
+        managed_technicians M2M (e.g. via admin bypass or direct DB edit).
+        (CODE-255)
+        """
         if not self.is_manager:
             return Repair.objects.none()
         managed_tech_ids = self.managed_technicians.values_list('id', flat=True)
-        return Repair.objects.filter(technician_id__in=managed_tech_ids)
+        qs = Repair.objects.filter(technician_id__in=managed_tech_ids)
+        if self.tenant_id:
+            qs = qs.filter(tenant_id=self.tenant_id)
+        else:
+            qs = qs.none()
+        return qs
 
     def update_performance_stats(self):
-        """Update performance statistics based on completed repairs"""
+        """Update performance statistics based on completed repairs.
+
+        Scoped to this technician's tenant for defence-in-depth. (CODE-255)
+        """
         from django.db.models import Avg
         completed_repairs = self.repair_set.filter(queue_status='COMPLETED')
+        if self.tenant_id:
+            completed_repairs = completed_repairs.filter(tenant_id=self.tenant_id)
         self.repairs_completed = completed_repairs.count()
         # Note: average_repair_time calculation would need repair start/end timestamps
         self.save()

@@ -264,7 +264,23 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
         if 'apply' in request.POST:
             technician_id = request.POST.get('technician_id')
             if technician_id:
-                tech = Technician.objects.get(id=technician_id)
+                # Determine tenant from selected repairs to scope the technician
+                # lookup.  Without tenant=, a staff user could POST an arbitrary
+                # technician_id from another shop — the dropdown is scoped but
+                # the POST handler must independently validate.  (CODE-255)
+                first_item = queryset.first()
+                tenant = first_item.tenant if first_item else None
+                tech_qs = Technician.objects.filter(id=technician_id)
+                if tenant:
+                    tech_qs = tech_qs.filter(tenant=tenant)
+                elif not request.user.is_superuser:
+                    # Non-superuser without a tenant context — deny
+                    self.message_user(request, 'Cannot reassign: no tenant context.', level='error')
+                    return None
+                tech = tech_qs.select_related('user').first()
+                if not tech:
+                    self.message_user(request, 'Selected technician not found in this shop.', level='error')
+                    return None
                 count = 0
                 with transaction.atomic():
                     for repair in queryset:
@@ -512,7 +528,21 @@ class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
         if 'apply' in request.POST:
             technician_id = request.POST.get('technician_id')
             if technician_id:
-                tech = Technician.objects.get(id=technician_id)
+                # Scope technician lookup to same tenant as the selected
+                # replacements — prevents cross-tenant reassignment via
+                # crafted POST.  (CODE-255)
+                first_item = queryset.first()
+                tenant = first_item.tenant if first_item else None
+                tech_qs = Technician.objects.filter(id=technician_id)
+                if tenant:
+                    tech_qs = tech_qs.filter(tenant=tenant)
+                elif not request.user.is_superuser:
+                    self.message_user(request, 'Cannot reassign: no tenant context.', level='error')
+                    return None
+                tech = tech_qs.select_related('user').first()
+                if not tech:
+                    self.message_user(request, 'Selected technician not found in this shop.', level='error')
+                    return None
                 count = 0
                 with transaction.atomic():
                     for item in queryset:
