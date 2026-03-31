@@ -513,6 +513,42 @@ def payment_cancelled(request):
 
 
 
+def robots_txt(request):
+    """robots.txt for search engine crawlers."""
+    content = """User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /clawdbot/
+Disallow: /setup-database/
+Disallow: /portal/
+Disallow: /owner/
+Disallow: /customer/
+
+Sitemap: https://rssystems.io/sitemap.xml
+"""
+    return HttpResponse(content.strip(), content_type='text/plain')
+
+
+def sitemap_xml(request):
+    """Basic XML sitemap for search engines."""
+    urls = [
+        ('https://rssystems.io/', '1.0', 'weekly'),
+        ('https://rssystems.io/login/', '0.5', 'monthly'),
+        ('https://rssystems.io/register/', '0.8', 'monthly'),
+    ]
+    xml_lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+    xml_lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    for loc, priority, freq in urls:
+        xml_lines.append(f'  <url>')
+        xml_lines.append(f'    <loc>{loc}</loc>')
+        xml_lines.append(f'    <changefreq>{freq}</changefreq>')
+        xml_lines.append(f'    <priority>{priority}</priority>')
+        xml_lines.append(f'  </url>')
+    xml_lines.append('</urlset>')
+    return HttpResponse('\n'.join(xml_lines), content_type='application/xml')
+
+
 def custom_404(request, exception=None):
     """Custom 404 handler — branded page instead of bare Django 404 (BUG-004)."""
     return render(request, '404.html', status=404)

@@ -34,6 +34,8 @@ handler500 = 'rs_systems.views.custom_500'
 urlpatterns = [
     path('', views.home, name='home'),
     path('health/', views.health_check, name='health_check'),  # AWS health check endpoint
+    path('robots.txt', views.robots_txt, name='robots_txt'),
+    path('sitemap.xml', views.sitemap_xml, name='sitemap_xml'),
 
     # Review request public endpoints (no auth — token-based)
     path('reviews/click/<uuid:token>/', review_click, name='review_click'),
