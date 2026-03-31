@@ -4166,7 +4166,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
                     InvoiceLineItem.objects.create(
                         invoice=existing_invoice,
                         repair=mr,
-                        description=f"Windshield repair - Unit #{mr.unit_number} - {mr.get_damage_type_display() or 'Repair'}",
+                        description=mr.get_invoice_description(),
                         quantity=1,
                         unit_price=discounted['original_cost'],
                         discount=discounted['savings'],
