@@ -11,6 +11,7 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from decimal import Decimal, InvalidOperation
 import logging
+import uuid
 
 from apps.technician_portal.models import Technician, Repair, TechnicianNotification
 from apps.customer_portal.models import RepairApproval, CustomerUser, CustomerRepairPreference
@@ -1520,31 +1521,61 @@ def create_warranty_claim(request, repair_id):
     if not tech:
         tech = original_repair.technician
 
-    # Create the warranty claim repair
-    claim = Repair.objects.create(
-        tenant=tenant,
-        customer=original_repair.customer,
-        technician=tech,
-        unit_number=original_repair.unit_number,
-        damage_type=original_repair.damage_type,
-        damage_location_x=original_repair.damage_location_x,
-        damage_location_y=original_repair.damage_location_y,
-        queue_status='REQUESTED',
-        cost=Decimal('0.00'),
-        cost_override=Decimal('0.00'),
-        override_reason=f'Warranty claim against Repair #{original_repair.pk}',
-        description=(
-            f'WARRANTY CLAIM: {claim_reason}\n'
-            f'Original Repair: #{original_repair.pk} '
-            f'({original_repair.repair_date.strftime("%b %d, %Y") if original_repair.repair_date else "N/A"})'
-        ),
-        skip_invoicing=True,
-        is_warranty_claim=True,
-        warranty_original_repair=original_repair,
-    )
+    # CODE-263: If "claim_batch" is checked and repair is part of a batch,
+    # create warranty claims for ALL completed+warranty-eligible siblings.
+    claim_batch = request.POST.get('claim_batch') == 'on'
+    repairs_to_claim = [original_repair]
 
-    messages.success(request, f"Warranty claim created as Repair #{claim.id} ($0.00)")
-    return redirect('repair_detail', repair_id=claim.id)
+    if claim_batch and original_repair.is_part_of_batch and original_repair.repair_batch_id:
+        batch_siblings = Repair.objects.filter(
+            repair_batch_id=original_repair.repair_batch_id,
+            tenant=tenant,
+            queue_status='COMPLETED',
+        ).exclude(pk=original_repair.pk).select_related('technician__user')
+        # Only include siblings that are actually under warranty
+        for sibling in batch_siblings:
+            if sibling.has_warranty:
+                repairs_to_claim.append(sibling)
+
+    # If claiming multiple, group them under a new batch ID
+    claim_batch_id = uuid.uuid4() if len(repairs_to_claim) > 1 else None
+    claims = []
+
+    for idx, orig in enumerate(repairs_to_claim, 1):
+        claim_tech = tech if orig == original_repair else (orig.technician or tech)
+        claim = Repair.objects.create(
+            tenant=tenant,
+            customer=orig.customer,
+            technician=claim_tech,
+            unit_number=orig.unit_number,
+            damage_type=orig.damage_type,
+            damage_location_x=orig.damage_location_x,
+            damage_location_y=orig.damage_location_y,
+            queue_status='REQUESTED',
+            cost=Decimal('0.00'),
+            cost_override=Decimal('0.00'),
+            override_reason=f'Warranty claim against Repair #{orig.pk}',
+            description=(
+                f'WARRANTY CLAIM: {claim_reason}\n'
+                f'Original Repair: #{orig.pk} '
+                f'({orig.repair_date.strftime("%b %d, %Y") if orig.repair_date else "N/A"})'
+            ),
+            skip_invoicing=True,
+            is_warranty_claim=True,
+            warranty_original_repair=orig,
+            repair_batch_id=claim_batch_id,
+            break_number=idx if claim_batch_id else None,
+            total_breaks_in_batch=len(repairs_to_claim) if claim_batch_id else None,
+        )
+        claims.append(claim)
+
+    if len(claims) > 1:
+        messages.success(request, f"Warranty claims created for {len(claims)} repairs in this batch (all $0.00)")
+    else:
+        messages.success(request, f"Warranty claim created as Repair #{claims[0].id} ($0.00)")
+    if len(claims) > 1 and claim_batch_id:
+        return redirect('technician_batch_detail', batch_id=claim_batch_id)
+    return redirect('repair_detail', repair_id=claims[0].id)
 
 
 @technician_required

@@ -857,8 +857,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     {% endfor %}
                 </select>
             </div>
+            {% if repair.is_part_of_batch %}
+            <div class="mb-4">
+                <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" name="claim_batch" class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+                    <span>Claim entire batch (all {{ repair.total_breaks_in_batch }} breaks)</span>
+                </label>
+                <p class="text-xs text-gray-500 mt-1 ml-6">Creates warranty claims for all warranty-eligible repairs in this batch.</p>
+            </div>
+            {% endif %}
             <p class="text-xs text-gray-500 mb-4">
-                ⚠️ This will create a $0.00 repair linked to the original.
+                ⚠️ This will create $0.00 repair(s) linked to the original(s).
             </p>
             <div class="flex gap-3">
                 <button type="button" onclick="document.getElementById('warrantyClaimModal').classList.add('hidden')"
