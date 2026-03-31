@@ -410,17 +410,33 @@ def _create_batch_invoice(tenant, customer, config):
                 original = discounted['original_cost'] or Decimal('0.00')
                 final_amt = discounted['final_cost'] or Decimal('0.00')
                 savings = discounted['savings'] or Decimal('0.00')
-                subtotal += original
-                total_discount += savings
+                
+                pricing_info = repair.get_progressive_pricing_info()
+                if pricing_info['is_discounted']:
+                    prog_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
+                    unit_price = pricing_info['base_rate']
+                    total_disc = prog_savings + savings
+                    amount = unit_price - total_disc
+                else:
+                    unit_price = original
+                    total_disc = savings
+                    amount = final_amt
+                
+                subtotal += unit_price
+                total_discount += total_disc
+
+                description = repair.get_invoice_description()
+                if pricing_info['is_discounted']:
+                    description += " [multi-break rate]"
 
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     repair=repair,
-                    description=repair.get_invoice_description(),
+                    description=description,
                     quantity=1,
-                    unit_price=original,
-                    discount=savings,
-                    amount=final_amt,
+                    unit_price=unit_price,
+                    discount=total_disc,
+                    amount=amount,
                     repair_date=repair.service_date,
                     unit_number=repair.unit_number or '',
                 )

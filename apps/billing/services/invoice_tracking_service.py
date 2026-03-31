@@ -134,21 +134,40 @@ class InvoiceTrackingService:
             
             for repair in repairs:
                 discounted = repair.get_discounted_cost()
+                pricing_info = repair.get_progressive_pricing_info()
+                
+                # unit_price = base rate (1st-break price) so customer sees the
+                # "standard" rate.  discount = progressive discount + reward discount
+                # so the math is transparent: base - discount = amount charged.
+                if pricing_info['is_discounted']:
+                    progressive_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
+                    unit_price = pricing_info['base_rate']
+                    total_line_discount = progressive_savings + discounted['savings']
+                    amount = unit_price - total_line_discount
+                else:
+                    unit_price = discounted['original_cost']
+                    total_line_discount = discounted['savings']
+                    amount = discounted['final_cost']
+
+                # Build description with discount note
+                description = repair.get_invoice_description()
+                if pricing_info['is_discounted']:
+                    description += f" [multi-break rate]"
                 
                 line_item = InvoiceLineItem.objects.create(
                     invoice=invoice,
                     repair=repair,
-                    description=repair.get_invoice_description(),
+                    description=description,
                     quantity=1,
-                    unit_price=discounted['original_cost'],
-                    discount=discounted['savings'],
-                    amount=discounted['final_cost'],
+                    unit_price=unit_price,
+                    discount=total_line_discount,
+                    amount=amount,
                     repair_date=repair.repair_date.date() if repair.repair_date else None,
                     unit_number=repair.unit_number,
                 )
                 
-                subtotal += discounted['original_cost']
-                total_discount += discounted['savings']
+                subtotal += unit_price
+                total_discount += total_line_discount
             
             # Update invoice totals
             invoice.subtotal = subtotal
