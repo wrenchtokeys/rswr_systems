@@ -948,7 +948,6 @@ def customer_batch_detail(request, batch_id):
         return redirect('profile_creation')
 
 @customer_required
-@transaction.atomic
 def customer_batch_approve(request, batch_id):
     """Approve all repairs in a batch (all-or-nothing transaction)"""
     try:
@@ -972,53 +971,78 @@ def customer_batch_approve(request, batch_id):
             return redirect('customer_dashboard')
 
         if request.method == 'POST':
-            repairs = batch_summary['all_repairs']
-            approved_count = 0
+            # Use a transaction + row-level locks to prevent double-click race
+            # conditions that create duplicate RepairApproval records and
+            # TechnicianNotification records.  The single-repair views were
+            # fixed in CODE-223 and replacements in CODE-234, but the batch
+            # views were missed — they used @transaction.atomic without
+            # select_for_update().  (CODE-254)
             technician = None
+            approved_count = 0
+            break_count = batch_summary['break_count']
+            unit_number = batch_summary['unit_number']
+            total_cost = batch_summary['total_cost']
 
-            # Approve all repairs in the batch
-            for repair in repairs:
-                # Create or update approval record
-                approval, created = RepairApproval.objects.get_or_create(
-                    repair=repair,
-                    defaults={
-                        'approved': True,
-                        'approved_by': customer_user,
-                        'approval_date': timezone.now(),
-                        'notes': f'Batch approval for {batch_summary["break_count"]} breaks'
-                    }
+            with transaction.atomic():
+                # Re-fetch all batch repairs with row-level locks
+                locked_repairs = list(
+                    Repair.objects.select_for_update().filter(
+                        repair_batch_id=batch_id,
+                        tenant=customer.tenant,
+                    ).select_related('technician')
                 )
 
-                if not created:
-                    approval.approved = True
-                    approval.approved_by = customer_user
-                    approval.approval_date = timezone.now()
-                    approval.notes = f'Batch approval for {batch_summary["break_count"]} breaks'
-                    approval.save()
+                if not locked_repairs:
+                    messages.error(request, "Batch not found.")
+                    return redirect('customer_dashboard')
 
-                # Update repair status
-                repair.queue_status = 'APPROVED'
-                repair.save()
+                # Re-check ALL statuses inside the lock — a concurrent request
+                # may have already approved/denied some or all repairs.
+                for repair in locked_repairs:
+                    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This batch has already been processed.")
+                        return redirect('customer_dashboard')
 
-                # Track technician for batch notification
-                if repair.technician:
-                    technician = repair.technician
+                # All repairs are still pending — approve them
+                for repair in locked_repairs:
+                    approval, created = RepairApproval.objects.get_or_create(
+                        repair=repair,
+                        defaults={
+                            'approved': True,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': f'Batch approval for {break_count} breaks'
+                        }
+                    )
 
-                approved_count += 1
+                    if not created:
+                        approval.approved = True
+                        approval.approved_by = customer_user
+                        approval.approval_date = timezone.now()
+                        approval.notes = f'Batch approval for {break_count} breaks'
+                        approval.save()
 
-            # Create single grouped notification for the entire batch
+                    repair.queue_status = 'APPROVED'
+                    repair.save()
+
+                    if repair.technician:
+                        technician = repair.technician
+
+                    approved_count += 1
+
+            # Create single grouped notification outside the transaction (best effort)
             if technician:
                 TechnicianNotification.objects.create(
                     technician=technician,
-                    message=f"✅ Batch of {batch_summary['break_count']} breaks APPROVED by {customer.name} - Unit {batch_summary['unit_number']} (${batch_summary['total_cost']:.2f} total)",
+                    message=f"✅ Batch of {break_count} breaks APPROVED by {customer.name} - Unit {unit_number} (${total_cost:.2f} total)",
                     read=False,
-                    repair=repairs[0],  # Link to first repair in batch
-                    repair_batch_id=batch_id  # Store batch_id for batch notification
+                    repair=locked_repairs[0],
+                    repair_batch_id=batch_id
                 )
 
             messages.success(
                 request,
-                f"Successfully approved all {approved_count} breaks for Unit {batch_summary['unit_number']} (${batch_summary['total_cost']:.2f} total)."
+                f"Successfully approved all {approved_count} breaks for Unit {unit_number} (${total_cost:.2f} total)."
             )
             return redirect('customer_dashboard')
 
@@ -1033,7 +1057,6 @@ def customer_batch_approve(request, batch_id):
         return redirect('profile_creation')
 
 @customer_required
-@transaction.atomic
 def customer_batch_deny(request, batch_id):
     """Deny all repairs in a batch (all-or-nothing transaction)"""
     try:
@@ -1058,59 +1081,87 @@ def customer_batch_deny(request, batch_id):
 
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
-            repairs = batch_summary['all_repairs']
-            denied_count = 0
+            # Use a transaction + row-level locks to prevent double-click race
+            # conditions.  Mirrors the fix applied to customer_batch_approve in
+            # CODE-254.
             technician = None
+            denied_count = 0
+            break_count = batch_summary['break_count']
+            unit_number = batch_summary['unit_number']
+            restored_rewards = []
 
-            # Deny all repairs in the batch
-            for repair in repairs:
-                # Create or update approval record
-                approval, created = RepairApproval.objects.get_or_create(
-                    repair=repair,
-                    defaults={
-                        'approved': False,
-                        'approved_by': customer_user,
-                        'approval_date': timezone.now(),
-                        'notes': reason or f'Batch denial for {batch_summary["break_count"]} breaks'
-                    }
+            with transaction.atomic():
+                # Re-fetch all batch repairs with row-level locks
+                locked_repairs = list(
+                    Repair.objects.select_for_update().filter(
+                        repair_batch_id=batch_id,
+                        tenant=customer.tenant,
+                    ).select_related('technician')
                 )
 
-                if not created:
-                    approval.approved = False
-                    approval.approved_by = customer_user
-                    approval.approval_date = timezone.now()
-                    approval.notes = reason or f'Batch denial for {batch_summary["break_count"]} breaks'
-                    approval.save()
+                if not locked_repairs:
+                    messages.error(request, "Batch not found.")
+                    return redirect('customer_dashboard')
 
-                # Update repair status
-                repair.queue_status = 'DENIED'
-                repair.save()
+                # Re-check ALL statuses inside the lock
+                for repair in locked_repairs:
+                    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This batch has already been processed.")
+                        return redirect('customer_dashboard')
 
-                # Auto-restore any applied reward (CODE-210)
-                _restore_reward_for_repair(repair)
+                # All repairs are still pending — deny them
+                for repair in locked_repairs:
+                    approval, created = RepairApproval.objects.get_or_create(
+                        repair=repair,
+                        defaults={
+                            'approved': False,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': reason or f'Batch denial for {break_count} breaks'
+                        }
+                    )
 
-                # Track technician for batch notification
-                if repair.technician:
-                    technician = repair.technician
+                    if not created:
+                        approval.approved = False
+                        approval.approved_by = customer_user
+                        approval.approval_date = timezone.now()
+                        approval.notes = reason or f'Batch denial for {break_count} breaks'
+                        approval.save()
 
-                denied_count += 1
+                    repair.queue_status = 'DENIED'
+                    repair.save()
 
-            # Create single grouped notification for the entire batch
+                    # Auto-restore any applied reward (CODE-210)
+                    restored_rewards.extend(_restore_reward_for_repair(repair))
+
+                    if repair.technician:
+                        technician = repair.technician
+
+                    denied_count += 1
+
+            # Show restored reward messages outside transaction
+            for redemption in restored_rewards:
+                messages.info(
+                    request,
+                    f'Your "{redemption.reward_option.name}" reward has been restored and can be used on your next repair.'
+                )
+
+            # Create single grouped notification outside the transaction (best effort)
             if technician:
-                denial_message = f"❌ Batch of {batch_summary['break_count']} breaks DENIED by {customer.name} - Unit {batch_summary['unit_number']}"
+                denial_message = f"❌ Batch of {break_count} breaks DENIED by {customer.name} - Unit {unit_number}"
                 if reason:
                     denial_message += f" - Reason: {reason}"
                 TechnicianNotification.objects.create(
                     technician=technician,
                     message=denial_message,
                     read=False,
-                    repair=repairs[0],  # Link to first repair in batch
-                    repair_batch_id=batch_id  # Store batch_id for batch notification
+                    repair=locked_repairs[0],
+                    repair_batch_id=batch_id
                 )
 
             messages.success(
                 request,
-                f"Denied all {denied_count} breaks for Unit {batch_summary['unit_number']}."
+                f"Denied all {denied_count} breaks for Unit {unit_number}."
             )
             return redirect('customer_dashboard')
 
