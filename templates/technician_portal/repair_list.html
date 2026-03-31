@@ -52,7 +52,7 @@
             </div>
             <!-- Desktop new repair + export -->
             <div class="hidden sm:flex items-center gap-2">
-                <a href="{% url 'create_repair' %}" class="inline-flex items-center px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors">
+                <a href="{% url 'create_repair' %}" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
                     <i class="fas fa-plus mr-2 text-xs"></i>New Repair
                 </a>
                 <button onclick="exportToCSV()" class="inline-flex items-center px-3 py-2.5 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors" title="Export CSV">
@@ -414,7 +414,7 @@
             </div>
             <h3 class="text-lg font-semibold text-gray-900 mb-1">No repairs found</h3>
             <p class="text-sm text-gray-500 mb-6">Try adjusting your filters or create a new repair.</p>
-            <a href="{% url 'create_repair' %}" class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors">
+            <a href="{% url 'create_repair' %}" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
                 <i class="fas fa-plus mr-2"></i>Create Repair
             </a>
         </div>

@@ -8,7 +8,7 @@
         <div class="flex items-center justify-between mb-5">
             <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Customers</h1>
             {% if is_admin %}
-            <a href="{% url 'create_customer' %}" class="hidden sm:inline-flex items-center px-4 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors">
+            <a href="{% url 'create_customer' %}" class="hidden sm:inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
                 <i class="fas fa-plus mr-2 text-xs"></i>New Customer
             </a>
             {% endif %}
@@ -114,7 +114,7 @@
                 {% endif %}
             </p>
             {% if is_admin and not search_query %}
-            <a href="{% url 'create_customer' %}" class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors">
+            <a href="{% url 'create_customer' %}" class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-md hover:bg-green-700 transition-colors">
                 <i class="fas fa-plus mr-2"></i>New Customer
             </a>
             {% endif %}
