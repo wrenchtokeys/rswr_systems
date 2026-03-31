@@ -666,9 +666,14 @@ def customer_repair_detail(request, repair_id):
         available_rewards = []
         is_invoiced = repair.invoice_line_items.exists()
         if not is_invoiced and repair.queue_status not in ('COMPLETED', 'DENIED'):
+            # Only show APPROVED rewards — PENDING (not yet approved by shop),
+            # REJECTED, and FULFILLED (already used) must not be selectable.
+            # Previously this filtered status__in=['PENDING', 'FULFILLED'] which
+            # showed unapproved and already-fulfilled rewards.  The correct status
+            # is 'APPROVED', matching _get_available_monetary_rewards().  (CODE-251)
             available_rewards = RewardRedemption.objects.filter(
                 reward__customer_user=customer_user,
-                status__in=['PENDING', 'FULFILLED'],
+                status='APPROVED',
                 applied_to_repair__isnull=True,
                 reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
             ).select_related('reward_option', 'reward_option__reward_type')
@@ -711,11 +716,16 @@ def customer_apply_reward(request, repair_id):
             messages.error(request, "No reward selected.")
             return redirect('customer_repair_detail', repair_id=repair_id)
 
-        # Verify the redemption belongs to this customer and is available
+        # Verify the redemption belongs to this customer, is APPROVED, and is
+        # not yet applied.  The status='APPROVED' guard prevents applying a
+        # PENDING (unapproved), REJECTED, or FULFILLED redemption via a crafted
+        # POST.  Previously the status was not checked here — only the display
+        # queryset filtered by status.  (CODE-251)
         redemption = get_object_or_404(
             RewardRedemption,
             id=redemption_id,
             reward__customer_user=customer_user,
+            status='APPROVED',
             applied_to_repair__isnull=True,
             reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
         )
