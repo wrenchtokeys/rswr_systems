@@ -616,3 +616,123 @@ class ConvertToBatchMarkCompletedTest(FieldWorkflowTestBase):
 
         repair.refresh_from_db()
         self.assertEqual(repair.queue_status, 'COMPLETED')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CODE-249: Regenerating batch invoice auto-adds missing siblings to DRAFT
+# ─────────────────────────────────────────────────────────────────────────────
+
+class BatchInvoiceRegenerationTest(FieldWorkflowTestBase):
+    """CODE-249: When a batch invoice already exists but is missing siblings,
+    auto-add them if the invoice is still DRAFT."""
+
+    def _make_batch_with_invoice(self, include_second=False):
+        """Create a 2-repair batch where repair 1 has a DRAFT invoice.
+        If include_second=True, repair 2 is also on the invoice."""
+        from apps.billing.models import Invoice, InvoiceLineItem, BillingConfig
+        BillingConfig.objects.get_or_create(tenant=self.tenant)
+
+        batch_id = uuid.uuid4()
+        r1 = Repair.objects.create(
+            tenant=self.tenant, customer=self.customer, technician=self.technician,
+            unit_number='REGEN-001', damage_type='CHIP', cost=Decimal('45.00'),
+            queue_status='COMPLETED', repair_batch_id=batch_id,
+            break_number=1, total_breaks_in_batch=2,
+        )
+        r2 = Repair.objects.create(
+            tenant=self.tenant, customer=self.customer, technician=self.technician,
+            unit_number='REGEN-001', damage_type='CHIP', cost=Decimal('35.00'),
+            queue_status='COMPLETED', repair_batch_id=batch_id,
+            break_number=2, total_breaks_in_batch=2,
+        )
+
+        invoice = Invoice.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            invoice_number='INV-REGEN-001',
+            invoice_date='2026-03-30', due_date='2026-03-30',
+            status='DRAFT', subtotal=Decimal('45.00'),
+            total=Decimal('45.00'),
+        )
+        InvoiceLineItem.objects.create(
+            invoice=invoice, repair=r1,
+            description='Windshield repair - Unit #REGEN-001 - Chip',
+            quantity=1, unit_price=Decimal('45.00'),
+            discount=Decimal('0.00'), amount=Decimal('45.00'),
+            unit_number='REGEN-001',
+        )
+        if include_second:
+            InvoiceLineItem.objects.create(
+                invoice=invoice, repair=r2,
+                description='Windshield repair - Unit #REGEN-001 - Chip',
+                quantity=1, unit_price=Decimal('35.00'),
+                discount=Decimal('0.00'), amount=Decimal('35.00'),
+                unit_number='REGEN-001',
+            )
+
+        return batch_id, r1, r2, invoice
+
+    def test_draft_invoice_auto_adds_missing_sibling(self):
+        """When regenerating a batch invoice in DRAFT, missing sibling is auto-added."""
+        batch_id, r1, r2, invoice = self._make_batch_with_invoice(include_second=False)
+
+        client = Client()
+        client.force_login(self.owner_user)
+        url = reverse('owner_generate_invoice_from_repair', args=[r1.id])
+
+        with patch('apps.saas.views._get_owner_tenant') as mock_tenant:
+            mock_tenant.return_value = (self.tenant, MagicMock())
+            response = client.post(url, follow=True)
+
+        from apps.billing.models import InvoiceLineItem
+        line_items = InvoiceLineItem.objects.filter(invoice=invoice)
+        self.assertEqual(line_items.count(), 2,
+                         f"Invoice should have 2 line items after auto-add, got {line_items.count()}")
+
+        # Check totals updated (subtotal uses unit_price from get_discounted_cost,
+        # which may differ from the cost field due to progressive pricing)
+        invoice.refresh_from_db()
+        self.assertGreater(invoice.subtotal, Decimal('45.00'),
+                           "Subtotal should increase after adding the missing sibling")
+
+    def test_draft_invoice_no_duplicate_if_already_complete(self):
+        """If invoice already has all siblings, no duplicates are added."""
+        batch_id, r1, r2, invoice = self._make_batch_with_invoice(include_second=True)
+
+        client = Client()
+        client.force_login(self.owner_user)
+        url = reverse('owner_generate_invoice_from_repair', args=[r1.id])
+
+        with patch('apps.saas.views._get_owner_tenant') as mock_tenant:
+            mock_tenant.return_value = (self.tenant, MagicMock())
+            response = client.post(url, follow=True)
+
+        from apps.billing.models import InvoiceLineItem
+        line_items = InvoiceLineItem.objects.filter(invoice=invoice)
+        self.assertEqual(line_items.count(), 2,
+                         "Invoice should still have exactly 2 line items, no duplicates")
+
+    def test_sent_invoice_warns_about_missing_siblings(self):
+        """SENT invoice can't be auto-updated — shows warning instead."""
+        batch_id, r1, r2, invoice = self._make_batch_with_invoice(include_second=False)
+        invoice.status = 'SENT'
+        invoice.save()
+
+        client = Client()
+        client.force_login(self.owner_user)
+        url = reverse('owner_generate_invoice_from_repair', args=[r1.id])
+
+        with patch('apps.saas.views._get_owner_tenant') as mock_tenant:
+            mock_tenant.return_value = (self.tenant, MagicMock())
+            response = client.post(url, follow=True)
+
+        msgs = [str(m) for m in response.context['messages']]
+        warning_msgs = [m for m in msgs if 'missing' in m.lower() or 'void' in m.lower()]
+        self.assertTrue(len(warning_msgs) > 0,
+                        f"Should warn about missing siblings on SENT invoice. Got: {msgs}")
+
+        # Line items should NOT have been modified
+        from apps.billing.models import InvoiceLineItem
+        self.assertEqual(
+            InvoiceLineItem.objects.filter(invoice=invoice).count(), 1,
+            "SENT invoice should not be auto-modified"
+        )
