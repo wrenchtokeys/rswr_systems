@@ -305,6 +305,18 @@ class Tenant(models.Model):
             self.slug = slugify(self.name)
         if not self.subdomain:
             self.subdomain = self.slug
+
+        # Django does NOT auto-include auto_now fields in save(update_fields=...).
+        # When callers use update_fields for efficiency (e.g. webhook handlers,
+        # subscription service, Connect service), the updated_at timestamp is
+        # never bumped — it silently lies about when the record was last modified.
+        # Fix: always inject 'updated_at' when update_fields is specified.
+        # (CODE-253)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'updated_at' not in update_fields:
+            # Don't mutate the caller's list — create a new one
+            kwargs['update_fields'] = list(update_fields) + ['updated_at']
+
         super().save(*args, **kwargs)
     
     def get_upload_prefix(self):
