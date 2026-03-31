@@ -334,6 +334,8 @@ class DeliveryLogAdmin(TenantFilterMixin, admin.ModelAdmin):
         'provider_name'
     ]
 
+    list_select_related = ['tenant']
+
     search_fields = [
         'notification__title',
         'recipient_email',
