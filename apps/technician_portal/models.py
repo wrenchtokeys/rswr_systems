@@ -1036,12 +1036,15 @@ class Repair(GlassService):
         Includes break number (for batches) and damage location if available.
         Examples:
             'Windshield repair - Unit #100 - Chip'
-            'Windshield repair - Unit #100 - Break 2 - Chip (passenger side)'
+            'Windshield repair - Unit #100 - Break 2 of 3 - Chip (passenger side)'
         """
         parts = [f"Windshield repair - Unit #{self.unit_number}"]
         
         if self.is_part_of_batch and self.break_number:
-            parts.append(f"Break {self.break_number}")
+            if self.total_breaks_in_batch:
+                parts.append(f"Break {self.break_number} of {self.total_breaks_in_batch}")
+            else:
+                parts.append(f"Break {self.break_number}")
         
         damage = self.get_damage_type_display() or 'Repair'
         location = self.get_damage_location_label()
@@ -1051,6 +1054,43 @@ class Repair(GlassService):
             parts.append(damage)
         
         return ' - '.join(parts)
+
+    def get_progressive_pricing_info(self):
+        """Return progressive pricing context for this repair.
+        
+        Returns dict with base_rate, actual_cost, is_discounted, and explanation.
+        Used to show customers why break 2 costs $40 instead of $50.
+        """
+        from decimal import Decimal
+        
+        if not self.is_part_of_batch or not self.break_number:
+            return {
+                'base_rate': self.cost,
+                'actual_cost': self.cost,
+                'is_discounted': False,
+                'explanation': '',
+            }
+        
+        # Get the first-break price for comparison
+        tenant = self.tenant
+        try:
+            from apps.technician_portal.services.pricing_service import get_tenant_repair_price
+            first_break_price = get_tenant_repair_price(tenant, 1)
+        except Exception:
+            first_break_price = Decimal('50.00')
+        
+        is_discounted = self.cost < first_break_price
+        explanation = ''
+        if is_discounted:
+            savings = first_break_price - self.cost
+            explanation = f"Multi-break discount (break {self.break_number}): -${savings}"
+        
+        return {
+            'base_rate': first_break_price,
+            'actual_cost': self.cost,
+            'is_discounted': is_discounted,
+            'explanation': explanation,
+        }
 
     # Batch repair helper methods
     @property

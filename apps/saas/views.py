@@ -4163,14 +4163,30 @@ def owner_generate_invoice_from_repair(request, repair_id):
                 from decimal import Decimal as D
                 for mr in missing_repairs:
                     discounted = mr.get_discounted_cost()
+                    pricing_info = mr.get_progressive_pricing_info()
+                    
+                    if pricing_info['is_discounted']:
+                        prog_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
+                        unit_price = pricing_info['base_rate']
+                        total_disc = prog_savings + discounted['savings']
+                        amount = unit_price - total_disc
+                    else:
+                        unit_price = discounted['original_cost']
+                        total_disc = discounted['savings']
+                        amount = discounted['final_cost']
+                    
+                    description = mr.get_invoice_description()
+                    if pricing_info['is_discounted']:
+                        description += " [multi-break rate]"
+                    
                     InvoiceLineItem.objects.create(
                         invoice=existing_invoice,
                         repair=mr,
-                        description=mr.get_invoice_description(),
+                        description=description,
                         quantity=1,
-                        unit_price=discounted['original_cost'],
-                        discount=discounted['savings'],
-                        amount=discounted['final_cost'],
+                        unit_price=unit_price,
+                        discount=total_disc,
+                        amount=amount,
                         repair_date=mr.repair_date.date() if mr.repair_date else None,
                         unit_number=mr.unit_number,
                     )

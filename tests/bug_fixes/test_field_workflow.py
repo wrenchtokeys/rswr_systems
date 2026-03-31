@@ -861,6 +861,7 @@ class InvoiceDescriptionTest(TestCase):
         r2 = self._make_repair(
             repair_batch_id=batch_id, break_number=2, total_breaks_in_batch=2,
             damage_location_x=80.0, damage_location_y=50.0,
+            cost=Decimal('40.00'),  # progressive pricing: break 2 is cheaper
         )
 
         svc = InvoiceTrackingService(tenant=self._tenant)
@@ -874,3 +875,64 @@ class InvoiceDescriptionTest(TestCase):
         self.assertIn('driver side', items[0].description)
         self.assertIn('Break 2', items[1].description)
         self.assertIn('passenger side', items[1].description)
+
+    def test_progressive_pricing_shows_base_rate(self):
+        """Break 2 at $40 should show $50 base rate with $10 discount."""
+        from apps.billing.models import BillingConfig, InvoiceLineItem
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        self._make_repair(unit_number='SETUP2')
+        Repair.objects.filter(unit_number='SETUP2').delete()
+        BillingConfig.objects.get_or_create(tenant=self._tenant)
+
+        batch_id = uuid.uuid4()
+        r1 = self._make_repair(
+            repair_batch_id=batch_id, break_number=1, total_breaks_in_batch=2,
+            cost_override=Decimal('50.00'),
+        )
+        r2 = self._make_repair(
+            repair_batch_id=batch_id, break_number=2, total_breaks_in_batch=2,
+            cost_override=Decimal('40.00'),
+        )
+
+        svc = InvoiceTrackingService(tenant=self._tenant)
+        invoice = svc.create_invoice_from_repairs(
+            customer=self._customer, repairs=[r1, r2],
+        )
+
+        items = InvoiceLineItem.objects.filter(invoice=invoice).order_by('id')
+        # Break 1: $50 base, no discount
+        self.assertEqual(items[0].unit_price, Decimal('50.00'))
+        self.assertEqual(items[0].discount, Decimal('0.00'))
+        self.assertEqual(items[0].amount, Decimal('50.00'))
+        
+        # Break 2: $50 base, $10 multi-break discount, $40 charged
+        self.assertEqual(items[1].unit_price, Decimal('50.00'))
+        self.assertEqual(items[1].discount, Decimal('10.00'))
+        self.assertEqual(items[1].amount, Decimal('40.00'))
+        self.assertIn('multi-break rate', items[1].description)
+        self.assertNotIn('multi-break rate', items[0].description)
+
+    def test_progressive_pricing_info_method(self):
+        """get_progressive_pricing_info returns correct data."""
+        # Ensure lazy fixtures initialized
+        self._make_repair(unit_number='SETUP3')
+        Repair.objects.filter(unit_number='SETUP3').delete()
+
+        batch_id = uuid.uuid4()
+        # Use cost_override to force $40 — Repair.save() recalculates cost on
+        # COMPLETED repairs, so raw cost= is overridden by progressive pricing.
+        r2 = self._make_repair(
+            repair_batch_id=batch_id, break_number=2, total_breaks_in_batch=3,
+            cost_override=Decimal('40.00'),
+        )
+        r2.refresh_from_db()
+        self.assertTrue(r2.is_part_of_batch)
+        self.assertEqual(r2.break_number, 2)
+        self.assertEqual(r2.cost, Decimal('40.00'))
+        
+        info = r2.get_progressive_pricing_info()
+        # Tenant default first-break price is $50, repair cost is $40 → discounted
+        self.assertEqual(info['base_rate'], Decimal('50.00'))
+        self.assertTrue(info['is_discounted'])
+        self.assertIn('multi-break', info['explanation'].lower())
+        self.assertEqual(info['actual_cost'], Decimal('40.00'))
