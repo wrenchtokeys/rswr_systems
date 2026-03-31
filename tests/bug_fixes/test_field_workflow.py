@@ -1,12 +1,14 @@
 """
-Field Workflow Bug Fixes: CODE-244 through CODE-248
+Field Workflow Bug Fixes: CODE-244 through CODE-250
 
-Tests for 5 UX bugs Drake found while using RS Systems in the field on mobile:
+Tests for UX bugs Drake found while using RS Systems in the field on mobile:
   CODE-244: Convert-to-batch form missing damage location diagram
   CODE-245: Create Batch button cramped on mobile
   CODE-246: Invoice generation may miss batch siblings
   CODE-247: No 'Complete All' on batch detail
   CODE-248: Convert-to-batch should allow COMPLETED status
+  CODE-249: Regenerating batch invoice auto-adds missing siblings to DRAFT
+  CODE-250: Invoice line items show break number and damage location
 """
 
 import uuid
@@ -736,3 +738,139 @@ class BatchInvoiceRegenerationTest(FieldWorkflowTestBase):
             InvoiceLineItem.objects.filter(invoice=invoice).count(), 1,
             "SENT invoice should not be auto-modified"
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CODE-250: Invoice descriptions include break number and damage location
+# ─────────────────────────────────────────────────────────────────────────────
+
+class InvoiceDescriptionTest(TestCase):
+    """CODE-250: Line items should show break number and damage location."""
+
+    def _make_repair(self, **kwargs):
+        from apps.tenants.models import Tenant, TenantMembership
+        from django.contrib.auth.models import User
+
+        if not hasattr(self, '_tenant'):
+            self._user = User.objects.create_user(
+                username=f'desc_test_{uuid.uuid4().hex[:8]}', password='pass'
+            )
+            self._tenant = Tenant.objects.create(
+                name='Desc Test Shop', slug=f'desc-test-{uuid.uuid4().hex[:8]}',
+                is_active=True, owner=self._user,
+            )
+            TenantMembership.objects.create(
+                user=self._user, tenant=self._tenant, role='owner', is_active=True,
+            )
+            self._tech = Technician.objects.create(
+                user=self._user, tenant=self._tenant, is_active=True,
+            )
+            self._customer = Customer.objects.create(
+                name='Desc Customer', tenant=self._tenant,
+            )
+
+        defaults = dict(
+            tenant=self._tenant, customer=self._customer, technician=self._tech,
+            unit_number='500', damage_type='CHIP', cost=Decimal('45.00'),
+            queue_status='COMPLETED',
+        )
+        defaults.update(kwargs)
+        return Repair.objects.create(**defaults)
+
+    def test_single_repair_no_break_number(self):
+        """Single repair (not in batch) should not show break number."""
+        repair = self._make_repair()
+        desc = repair.get_invoice_description()
+        self.assertIn('Unit #500', desc)
+        # get_damage_type_display() returns display name; check case-insensitive
+        self.assertIn('chip', desc.lower())
+        self.assertNotIn('Break', desc)
+
+    def test_batch_repair_includes_break_number(self):
+        """Batch repair should include break number."""
+        batch_id = uuid.uuid4()
+        repair = self._make_repair(
+            repair_batch_id=batch_id, break_number=2, total_breaks_in_batch=3,
+        )
+        desc = repair.get_invoice_description()
+        self.assertIn('Break 2', desc)
+        self.assertIn('Unit #500', desc)
+
+    def test_damage_location_driver_side(self):
+        """Repair with damage on driver side shows location."""
+        repair = self._make_repair(damage_location_x=15.0, damage_location_y=50.0)
+        desc = repair.get_invoice_description()
+        self.assertIn('driver side', desc)
+
+    def test_damage_location_passenger_side(self):
+        """Repair with damage on passenger side shows location."""
+        repair = self._make_repair(damage_location_x=80.0, damage_location_y=50.0)
+        desc = repair.get_invoice_description()
+        self.assertIn('passenger side', desc)
+
+    def test_damage_location_center(self):
+        """Repair with damage in center shows center."""
+        repair = self._make_repair(damage_location_x=50.0, damage_location_y=50.0)
+        desc = repair.get_invoice_description()
+        self.assertIn('center', desc)
+
+    def test_damage_location_upper(self):
+        """Repair with damage near top shows upper."""
+        repair = self._make_repair(damage_location_x=50.0, damage_location_y=15.0)
+        desc = repair.get_invoice_description()
+        self.assertIn('upper', desc)
+
+    def test_no_location_when_not_set(self):
+        """Repair without damage location should not show location in parens."""
+        repair = self._make_repair()
+        desc = repair.get_invoice_description()
+        self.assertNotIn('(', desc)
+
+    def test_batch_with_location_full_description(self):
+        """Batch repair with location shows everything."""
+        batch_id = uuid.uuid4()
+        repair = self._make_repair(
+            repair_batch_id=batch_id, break_number=1, total_breaks_in_batch=2,
+            damage_location_x=20.0, damage_location_y=70.0,
+        )
+        desc = repair.get_invoice_description()
+        self.assertIn('Break 1', desc)
+        self.assertIn('driver side', desc)
+        self.assertIn('lower', desc)
+        self.assertIn('Unit #500', desc)
+
+    def test_get_damage_location_label_no_coords(self):
+        """No coords returns empty string."""
+        repair = self._make_repair()
+        self.assertEqual(repair.get_damage_location_label(), '')
+
+    def test_invoice_service_uses_new_description(self):
+        """InvoiceTrackingService creates line items with break/location info."""
+        from apps.billing.models import BillingConfig, InvoiceLineItem
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        # Ensure _make_repair's lazy fixtures are initialized
+        self._make_repair(unit_number='SETUP')
+        Repair.objects.filter(unit_number='SETUP').delete()
+        BillingConfig.objects.get_or_create(tenant=self._tenant)
+
+        batch_id = uuid.uuid4()
+        r1 = self._make_repair(
+            repair_batch_id=batch_id, break_number=1, total_breaks_in_batch=2,
+            damage_location_x=15.0, damage_location_y=50.0,
+        )
+        r2 = self._make_repair(
+            repair_batch_id=batch_id, break_number=2, total_breaks_in_batch=2,
+            damage_location_x=80.0, damage_location_y=50.0,
+        )
+
+        svc = InvoiceTrackingService(tenant=self._tenant)
+        invoice = svc.create_invoice_from_repairs(
+            customer=self._customer, repairs=[r1, r2],
+        )
+
+        items = InvoiceLineItem.objects.filter(invoice=invoice).order_by('id')
+        self.assertEqual(items.count(), 2)
+        self.assertIn('Break 1', items[0].description)
+        self.assertIn('driver side', items[0].description)
+        self.assertIn('Break 2', items[1].description)
+        self.assertIn('passenger side', items[1].description)

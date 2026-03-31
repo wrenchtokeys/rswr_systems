@@ -997,6 +997,61 @@ class Repair(GlassService):
         except Exception as e:
             logger.error(f"Error awarding completion points: {e}")
 
+    def get_damage_location_label(self):
+        """Return human-readable damage location from X/Y coordinates.
+        
+        The windshield diagram is 0-100% on both axes:
+        - X: 0 = driver side, 100 = passenger side
+        - Y: 0 = top (roof), 100 = bottom (hood)
+        """
+        if self.damage_location_x is None or self.damage_location_y is None:
+            return ''
+        
+        x = self.damage_location_x
+        y = self.damage_location_y
+        
+        # Horizontal position
+        if x < 35:
+            h_pos = 'driver side'
+        elif x > 65:
+            h_pos = 'passenger side'
+        else:
+            h_pos = 'center'
+        
+        # Vertical position
+        if y < 35:
+            v_pos = 'upper'
+        elif y > 65:
+            v_pos = 'lower'
+        else:
+            v_pos = ''
+        
+        if v_pos:
+            return f"{v_pos} {h_pos}"
+        return h_pos
+
+    def get_invoice_description(self):
+        """Generate a descriptive line item string for invoices.
+        
+        Includes break number (for batches) and damage location if available.
+        Examples:
+            'Windshield repair - Unit #100 - Chip'
+            'Windshield repair - Unit #100 - Break 2 - Chip (passenger side)'
+        """
+        parts = [f"Windshield repair - Unit #{self.unit_number}"]
+        
+        if self.is_part_of_batch and self.break_number:
+            parts.append(f"Break {self.break_number}")
+        
+        damage = self.get_damage_type_display() or 'Repair'
+        location = self.get_damage_location_label()
+        if location:
+            parts.append(f"{damage} ({location})")
+        else:
+            parts.append(damage)
+        
+        return ' - '.join(parts)
+
     # Batch repair helper methods
     @property
     def is_part_of_batch(self):

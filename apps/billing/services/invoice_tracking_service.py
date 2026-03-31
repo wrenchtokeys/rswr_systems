@@ -138,7 +138,7 @@ class InvoiceTrackingService:
                 line_item = InvoiceLineItem.objects.create(
                     invoice=invoice,
                     repair=repair,
-                    description=f"Windshield repair - Unit #{repair.unit_number} - {repair.get_damage_type_display() or 'Repair'}",
+                    description=repair.get_invoice_description(),
                     quantity=1,
                     unit_price=discounted['original_cost'],
                     discount=discounted['savings'],

@@ -416,7 +416,7 @@ def _create_batch_invoice(tenant, customer, config):
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     repair=repair,
-                    description=f"Windshield Repair - {repair.damage_type} - Unit {repair.unit_number or 'N/A'}",
+                    description=repair.get_invoice_description(),
                     quantity=1,
                     unit_price=original,
                     discount=savings,
