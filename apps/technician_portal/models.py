@@ -320,7 +320,7 @@ class GlassService(models.Model):
         blank=True,
         help_text="Reason for price override (required when using custom price)"
     )
-    queue_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    queue_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', db_index=True)
     
     # Photo documentation fields
     customer_submitted_photo = models.ImageField(
