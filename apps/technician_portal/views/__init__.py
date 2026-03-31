@@ -31,6 +31,8 @@ from .repairs import (
     restore_repair,
     archived_repairs,
     create_warranty_claim,
+    admin_reassign_repair,
+    portal_bulk_reassign,
 )
 
 # Multi-break batch operations

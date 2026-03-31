@@ -1070,7 +1070,7 @@ def bulk_repair_action(request):
             return redirect('repair_list')
 
     action = request.POST.get('action')
-    if action not in ['approve', 'deny']:
+    if action not in ['approve', 'deny', 'reset_to_pending']:
         messages.error(request, "Invalid action specified.")
         return redirect('repair_list')
 
@@ -1080,11 +1080,16 @@ def bulk_repair_action(request):
         return redirect('repair_list')
 
     with transaction.atomic():
-        # Get repairs that are PENDING or REQUESTED
-        repairs = Repair.objects.filter(
-            id__in=repair_ids,
-            queue_status__in=['PENDING', 'REQUESTED']
-        ).select_related('customer', 'technician')
+        # Get repairs that are PENDING or REQUESTED (or any non-COMPLETED for reset)
+        if action == 'reset_to_pending':
+            repairs = Repair.objects.filter(
+                id__in=repair_ids,
+            ).exclude(queue_status='COMPLETED').select_related('customer', 'technician')
+        else:
+            repairs = Repair.objects.filter(
+                id__in=repair_ids,
+                queue_status__in=['PENDING', 'REQUESTED']
+            ).select_related('customer', 'technician')
 
         if tenant:
             repairs = repairs.filter(tenant=tenant)
@@ -1139,7 +1144,7 @@ def bulk_repair_action(request):
                         repair=repair
                     )
 
-            else:  # deny
+            elif action == 'deny':
                 repair.queue_status = 'DENIED'
                 repair.save()
 
@@ -1175,9 +1180,15 @@ def bulk_repair_action(request):
                         repair=repair
                     )
 
+            elif action == 'reset_to_pending':
+                if repair.queue_status == 'COMPLETED':
+                    continue  # Skip completed
+                repair.queue_status = 'PENDING'
+                repair.save()
+
             processed_count += 1
 
-        action_word = "approved" if action == 'approve' else "denied"
+        action_word = {"approve": "approved", "deny": "denied", "reset_to_pending": "reset to pending"}[action]
         messages.success(
             request,
             f"Successfully {action_word} {processed_count} repair{'' if processed_count == 1 else 's'}."
@@ -1519,3 +1530,171 @@ def create_warranty_claim(request, repair_id):
 
     messages.success(request, f"Warranty claim created as Repair #{claim.id} ($0.00)")
     return redirect('repair_detail', repair_id=claim.id)
+
+
+@technician_required
+def admin_reassign_repair(request, repair_id):
+    """Admin reassigns a repair to any active technician."""
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    if not user_is_admin:
+        messages.error(request, "Only admins can reassign repairs.")
+        return redirect('technician_dashboard')
+
+    qs = Repair.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
+    repair = get_object_or_404(qs, id=repair_id)
+
+    if repair.queue_status == 'COMPLETED':
+        messages.error(request, "Cannot reassign completed repairs.")
+        return redirect('repair_detail', repair_id=repair.id)
+
+    if request.method == 'POST':
+        technician_id = request.POST.get('technician_id')
+        if not technician_id:
+            messages.error(request, "Please select a technician.")
+            return redirect('admin_reassign_repair', repair_id=repair.id)
+
+        try:
+            tech_qs = Technician.objects.filter(id=technician_id, is_active=True)
+            if tenant:
+                tech_qs = tech_qs.filter(tenant=tenant)
+            else:
+                tech_qs = tech_qs.none()
+            new_tech = tech_qs.get()
+
+            old_tech = repair.technician
+            repair.technician = new_tech
+            repair.save()
+
+            # Notify old technician
+            if old_tech and old_tech != new_tech:
+                TechnicianNotification.objects.create(
+                    technician=old_tech,
+                    message=f"Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been reassigned to {new_tech.user.get_full_name()}",
+                    read=False,
+                    repair=repair
+                )
+
+            # Notify new technician
+            TechnicianNotification.objects.create(
+                technician=new_tech,
+                message=f"You have been assigned Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number}",
+                read=False,
+                repair=repair
+            )
+
+            messages.success(request, f"Repair #{repair.id} reassigned to {new_tech.user.get_full_name()}")
+            return redirect('repair_detail', repair_id=repair.id)
+
+        except Technician.DoesNotExist:
+            messages.error(request, "Selected technician not found.")
+            return redirect('admin_reassign_repair', repair_id=repair.id)
+
+    # GET
+    tech_qs = Technician.objects.filter(is_active=True)
+    if tenant:
+        tech_qs = tech_qs.filter(tenant=tenant)
+    else:
+        tech_qs = tech_qs.none()
+    available_technicians = tech_qs.select_related('user').order_by('user__first_name')
+
+    return render(request, 'technician_portal/admin_reassign_repair.html', {
+        'repair': repair,
+        'available_technicians': available_technicians,
+    })
+
+
+@technician_required
+def portal_bulk_reassign(request):
+    """Admin bulk reassign repairs to a technician (portal version)."""
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    if not user_is_admin:
+        messages.error(request, "Only admins can bulk reassign repairs.")
+        return redirect('repair_list')
+
+    if request.method == 'POST':
+        repair_ids = request.POST.getlist('repair_ids')
+        technician_id = request.POST.get('technician_id')
+
+        if not repair_ids or not technician_id:
+            messages.error(request, "Please select repairs and a technician.")
+            return redirect('repair_list')
+
+        try:
+            tech_qs = Technician.objects.filter(id=technician_id, is_active=True)
+            if tenant:
+                tech_qs = tech_qs.filter(tenant=tenant)
+            else:
+                tech_qs = tech_qs.none()
+            new_tech = tech_qs.get()
+        except Technician.DoesNotExist:
+            messages.error(request, "Selected technician not found.")
+            return redirect('repair_list')
+
+        qs = Repair.objects.filter(id__in=repair_ids).exclude(queue_status='COMPLETED')
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        else:
+            qs = qs.none()
+
+        count = 0
+        with transaction.atomic():
+            for repair in qs:
+                old_tech = repair.technician
+                repair.technician = new_tech
+                repair.save()
+                count += 1
+
+                if old_tech and old_tech != new_tech:
+                    TechnicianNotification.objects.create(
+                        technician=old_tech,
+                        message=f"Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been reassigned to {new_tech.user.get_full_name()}",
+                        read=False,
+                        repair=repair
+                    )
+
+                TechnicianNotification.objects.create(
+                    technician=new_tech,
+                    message=f"You have been assigned Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number}",
+                    read=False,
+                    repair=repair
+                )
+
+        messages.success(request, f"Reassigned {count} repair(s) to {new_tech.user.get_full_name()}")
+        return redirect('repair_list')
+
+    # GET — collect repair IDs from query params
+    repair_ids = request.GET.getlist('repair_ids')
+    if not repair_ids:
+        messages.error(request, "No repairs selected.")
+        return redirect('repair_list')
+
+    qs = Repair.objects.filter(id__in=repair_ids).exclude(queue_status='COMPLETED').select_related('customer', 'technician__user')
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
+    repairs = list(qs)
+
+    if not repairs:
+        messages.error(request, "No valid repairs found to reassign.")
+        return redirect('repair_list')
+
+    tech_qs = Technician.objects.filter(is_active=True)
+    if tenant:
+        tech_qs = tech_qs.filter(tenant=tenant)
+    else:
+        tech_qs = tech_qs.none()
+    available_technicians = tech_qs.select_related('user').order_by('user__first_name')
+
+    return render(request, 'technician_portal/portal_bulk_reassign.html', {
+        'repairs': repairs,
+        'available_technicians': available_technicians,
+    })

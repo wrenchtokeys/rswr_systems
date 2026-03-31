@@ -256,9 +256,26 @@
                                 {% endif %}
 
                             {% elif repair.queue_status == 'PENDING' %}
+                                {% if is_admin %}
+                                <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="APPROVED">
+                                    <button type="submit" class="inline-flex items-center px-5 py-2.5 bg-green-600 text-white text-sm font-bold rounded-lg hover:bg-green-700 transition-colors shadow-sm">
+                                        <i class="fas fa-check mr-2"></i>Override — Approve
+                                    </button>
+                                </form>
+                                <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="status" value="DENIED">
+                                    <button type="submit" class="inline-flex items-center px-4 py-2.5 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors">
+                                        <i class="fas fa-times mr-1.5"></i>Deny
+                                    </button>
+                                </form>
+                                {% else %}
                                 <span class="inline-flex items-center px-4 py-2.5 bg-yellow-100 text-yellow-800 text-sm font-semibold rounded-lg">
                                     <i class="fas fa-clock mr-2"></i>Awaiting Customer Approval
                                 </span>
+                                {% endif %}
                             {% endif %}
 
                             <!-- Batch: Next Break -->
@@ -286,6 +303,20 @@
                             <a href="{% url 'reassign_to_self' repair.id %}" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
                                 <i class="fas fa-user-check mr-1"></i>Reassign
                             </a>
+                            {% endif %}
+                            {% if is_admin and repair.queue_status != 'COMPLETED' %}
+                            <a href="{% url 'admin_reassign_repair' repair.id %}" class="text-purple-500 hover:text-purple-700 px-2 py-1.5 rounded hover:bg-purple-50 transition-colors">
+                                <i class="fas fa-user-edit mr-1"></i>Reassign
+                            </a>
+                            {% endif %}
+                            {% if is_admin and repair.queue_status != 'PENDING' and repair.queue_status != 'COMPLETED' %}
+                            <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="status" value="PENDING">
+                                <button type="submit" class="text-amber-500 hover:text-amber-700 px-2 py-1.5 rounded hover:bg-amber-50 transition-colors">
+                                    <i class="fas fa-undo mr-1"></i>Reset to Pending
+                                </button>
+                            </form>
                             {% endif %}
                             <a href="{% url 'technician_dashboard' %}" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
                                 <i class="fas fa-home mr-1"></i>Dashboard
