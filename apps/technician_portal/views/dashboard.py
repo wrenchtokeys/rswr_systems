@@ -20,7 +20,22 @@ logger = logging.getLogger(__name__)
 
 
 def register_technician(request):
-    """Handle technician registration."""
+    """Handle technician registration.
+
+    Legacy endpoint at /admin/register-technician/ — predates the invite system.
+    MUST require staff/superuser access; without this gate any anonymous visitor
+    can create a Django User + Technician record (tenant=NULL), polluting the
+    user table and potentially causing cascading issues when the orphaned
+    Technician record is resolved by the OneToOneField reverse accessor.
+
+    (CODE-252: add authentication guard to legacy register_technician endpoint)
+    """
+    # Require authenticated staff/superuser — matches the "Admin Only" label
+    # shown in the template and the /admin/ prefix in the URL.
+    if not request.user.is_authenticated or not (request.user.is_staff or request.user.is_superuser):
+        messages.error(request, "This page requires administrator access.")
+        return redirect('login')
+
     if request.method == 'POST':
         form = TechnicianRegistrationForm(request.POST)
         if form.is_valid():
