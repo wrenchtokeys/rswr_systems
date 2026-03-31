@@ -288,39 +288,49 @@
                         </div>
 
                         <!-- SECONDARY ACTIONS (smaller, right side) -->
-                        <div class="flex items-center gap-2 text-sm">
+                        <div class="flex items-center gap-2 text-sm relative">
                             {% if is_admin or technician and technician.is_manager or repair.queue_status not in 'COMPLETED,DENIED' and repair.technician == technician %}
                             <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
-                                <i class="fas fa-edit mr-1"></i>Edit
+                                <i class="fas fa-edit mr-1"></i><span class="hidden sm:inline">Edit</span>
                             </a>
-                            {% endif %}
-                            {% if is_admin or technician and technician.is_manager %}
-                            <button onclick="document.getElementById('deleteRepairModal').classList.remove('hidden')" class="text-red-400 hover:text-red-600 px-2 py-1.5 rounded hover:bg-red-50 transition-colors">
-                                <i class="fas fa-trash mr-1"></i>Delete
-                            </button>
-                            {% endif %}
-                            {% if can_reassign_to_self %}
-                            <a href="{% url 'reassign_to_self' repair.id %}" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
-                                <i class="fas fa-user-check mr-1"></i>Reassign
-                            </a>
-                            {% endif %}
-                            {% if is_admin and repair.queue_status != 'COMPLETED' %}
-                            <a href="{% url 'admin_reassign_repair' repair.id %}" class="text-purple-500 hover:text-purple-700 px-2 py-1.5 rounded hover:bg-purple-50 transition-colors">
-                                <i class="fas fa-user-edit mr-1"></i>Reassign
-                            </a>
-                            {% endif %}
-                            {% if is_admin and repair.queue_status != 'PENDING' and repair.queue_status != 'COMPLETED' %}
-                            <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
-                                {% csrf_token %}
-                                <input type="hidden" name="status" value="PENDING">
-                                <button type="submit" class="text-amber-500 hover:text-amber-700 px-2 py-1.5 rounded hover:bg-amber-50 transition-colors">
-                                    <i class="fas fa-undo mr-1"></i>Reset to Pending
-                                </button>
-                            </form>
                             {% endif %}
                             <a href="{% url 'technician_dashboard' %}" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
-                                <i class="fas fa-home mr-1"></i>Dashboard
+                                <i class="fas fa-home mr-1"></i><span class="hidden sm:inline">Dashboard</span>
                             </a>
+                            <!-- More actions dropdown -->
+                            {% if is_admin or technician and technician.is_manager or can_reassign_to_self %}
+                            <div class="relative">
+                                <button id="moreActionsBtn" onclick="toggleMoreActions()" class="text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded hover:bg-gray-200 transition-colors">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div id="moreActionsMenu" class="hidden absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                    {% if is_admin or technician and technician.is_manager %}
+                                    <button onclick="document.getElementById('deleteRepairModal').classList.remove('hidden'); toggleMoreActions();" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                                        <i class="fas fa-trash mr-2 w-4"></i>Delete
+                                    </button>
+                                    {% endif %}
+                                    {% if can_reassign_to_self %}
+                                    <a href="{% url 'reassign_to_self' repair.id %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                                        <i class="fas fa-user-check mr-2 w-4"></i>Reassign to Me
+                                    </a>
+                                    {% endif %}
+                                    {% if is_admin and repair.queue_status != 'COMPLETED' %}
+                                    <a href="{% url 'admin_reassign_repair' repair.id %}" class="block px-4 py-2 text-sm text-purple-700 hover:bg-purple-50 transition-colors">
+                                        <i class="fas fa-user-edit mr-2 w-4"></i>Reassign Tech
+                                    </a>
+                                    {% endif %}
+                                    {% if is_admin and repair.queue_status != 'PENDING' and repair.queue_status != 'COMPLETED' %}
+                                    <form action="{% url 'update_queue_status' repair.id %}" method="post">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="status" value="PENDING">
+                                        <button type="submit" class="w-full text-left px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 transition-colors">
+                                            <i class="fas fa-undo mr-2 w-4"></i>Reset to Pending
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -732,18 +742,18 @@ function openImageModal(imageUrl, title) {
 }
 
 
-function toggleDropdown() {
-    const dropdown = document.getElementById('dropdownMenu');
-    dropdown.classList.toggle('hidden');
+function toggleMoreActions() {
+    const menu = document.getElementById('moreActionsMenu');
+    if (menu) menu.classList.toggle('hidden');
 }
 
 // Close dropdown when clicking outside
 document.addEventListener('click', function(event) {
-    const dropdown = document.getElementById('dropdownMenu');
-    const button = document.getElementById('adminActionsDropdown');
+    const menu = document.getElementById('moreActionsMenu');
+    const button = document.getElementById('moreActionsBtn');
     
-    if (dropdown && button && !button.contains(event.target) && !dropdown.contains(event.target)) {
-        dropdown.classList.add('hidden');
+    if (menu && button && !button.contains(event.target) && !menu.contains(event.target)) {
+        menu.classList.add('hidden');
     }
 });
 
