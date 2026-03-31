@@ -263,8 +263,12 @@ def customer_dashboard(request):
         # the outstanding amount — a $500 invoice with $300 already paid would be
         # counted as $500 owed instead of $200.  Mirrors the correct formula used in
         # the owner invoice list (owner_invoice_list in saas/views.py).
+        # CODE-262: Add tenant filter for defense-in-depth tenant isolation.
+        # CODE-255 added tenant= to the invoice list/detail/pay views but
+        # missed the dashboard's outstanding invoices query.
         _outstanding_qs = Invoice.objects.filter(
             customer=customer,
+            tenant=tenant,
             status__in=['SENT', 'OVERDUE', 'PARTIAL']
         ).order_by('due_date')
         _outstanding_agg = _outstanding_qs.aggregate(
@@ -277,6 +281,7 @@ def customer_dashboard(request):
         outstanding_invoices = _outstanding_qs[:5]  # Display slice AFTER aggregate
         overdue_count = Invoice.objects.filter(
             customer=customer,
+            tenant=tenant,
             status='OVERDUE'
         ).count()
         
