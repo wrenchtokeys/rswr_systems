@@ -3110,9 +3110,13 @@ def customer_invoices(request):
         customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
+        # CODE-255: Add tenant filter for defense-in-depth tenant isolation.
+        # Customer FK is already tenant-scoped, but every query must include
+        # an explicit tenant= filter per project conventions (AGENTS.md).
         invoices = list(
             Invoice.objects.filter(
-                customer=customer
+                customer=customer,
+                tenant=customer.tenant,
             ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
         )
 
@@ -3143,7 +3147,8 @@ def customer_invoice_detail(request, invoice_id):
         customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
+        # CODE-255: Include tenant filter for defense-in-depth tenant isolation.
+        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer, tenant=customer.tenant)
 
         # Don't let customers see draft invoices
         if invoice.status == 'DRAFT':
@@ -3186,7 +3191,8 @@ def customer_invoice_pay(request, invoice_id):
         customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
+        # CODE-255: Include tenant filter for defense-in-depth tenant isolation.
+        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer, tenant=customer.tenant)
 
         # Validate the invoice can be paid
         if invoice.status in ('CANCELLED', 'PAID', 'DRAFT'):
