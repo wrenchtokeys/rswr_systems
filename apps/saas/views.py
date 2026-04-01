@@ -3226,14 +3226,25 @@ def owner_customer_statement(request, customer_id):
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
 
-    # All invoices for this customer, oldest first
+    # All invoices for this customer, oldest first.
+    # CODE-264: Add tenant filter for defense-in-depth tenant isolation (same
+    # pattern as CODE-255/262 applied to other invoice queries).
     invoices = Invoice.objects.filter(
         customer=customer,
+        tenant=tenant,
     ).prefetch_related('payments').order_by('invoice_date', 'created_at')
 
-    # All payments for this customer, chronological
+    # All payments for this customer, chronological.
+    # CODE-264: Add tenant filter via invoice__tenant for defense-in-depth.
+    # Also exclude payments for soft-deleted invoices: Payment's FK join
+    # bypasses InvoiceSoftDeleteManager, so without the deleted_at guard a
+    # soft-deleted invoice's payments appear as credits while the matching
+    # debit (the invoice itself) is excluded — creating an imbalanced
+    # running balance and overstating how much the customer has paid.
     payments = Payment.objects.filter(
         invoice__customer=customer,
+        invoice__tenant=tenant,
+        invoice__deleted_at__isnull=True,
     ).select_related('invoice').order_by('payment_date', 'created_at')
 
     # Build a unified timeline for running balance
