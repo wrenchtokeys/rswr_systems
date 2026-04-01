@@ -1499,8 +1499,17 @@ def customer_register(request):
         if User.objects.filter(username=username).exists():
             return render_with_form_data("Username already exists")
 
-        if User.objects.filter(email=email).exists():
+        # Case-insensitive check to prevent duplicate accounts with the
+        # same email in different cases (e.g. "Test@example.com" vs
+        # "test@example.com").  Matches the iexact check used in
+        # accept_customer_invitation().  (CODE-264)
+        if User.objects.filter(email__iexact=email).exists():
             return render_with_form_data("Email already exists")
+
+        # Normalize email to lowercase before creating the user so lookups
+        # and uniqueness checks are consistent regardless of input case.
+        # (CODE-264)
+        email = email.lower()
 
         # Create user
         user = User.objects.create_user(
@@ -2224,8 +2233,11 @@ def account_settings(request):
             # This prevents partial state if a later step raises an exception.
             prefs_updates = {}  # field → value
 
-            if email and email != user.email:
-                if User.objects.filter(email=email).exclude(id=user.id).exists():
+            if email and email.lower() != user.email.lower():
+                # Case-insensitive check to prevent duplicate accounts with the
+                # same email in different cases.  Matches the iexact check used in
+                # accept_customer_invitation().  (CODE-264)
+                if User.objects.filter(email__iexact=email).exclude(id=user.id).exists():
                     messages.error(request, "This email is already in use by another account.")
                     repair_form = RepairPreferenceForm(instance=repair_prefs)
                     return render(request, 'customer_portal/account_settings.html', {
