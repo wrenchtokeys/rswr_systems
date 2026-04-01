@@ -5,6 +5,24 @@ status, and description.
 
 ## Fixed
 
+### CODE-256: ReminderService._render_template() crashes on malformed user templates
+- **Severity:** 🟡 Silent data loss / UX bug
+- **Fixed:** 2026-04-01
+- **Details:** `ReminderService._render_template()` used bare `str.format()` on
+  user-editable reminder email templates. If a shop owner included a stray `{`,
+  an unknown placeholder like `{foo}`, or a positional `{0}`, the method would
+  raise `KeyError`, `IndexError`, or `ValueError`. The caller at line 83 wrapped
+  the call in `except Exception: pass`, which meant the crash was silently
+  swallowed — the custom template was discarded and the default template used
+  instead, with **no log entry and no warning to the shop owner**. This was the
+  only remaining `.format()` call on user-editable templates without protection;
+  `invoice_email_service.py`, `billing/tasks.py`, and `review_service.py`
+  (CODE-244) all had proper try/except or `_safe_format()` wrappers.
+  Fixed by adding a try/except that catches KeyError/IndexError/ValueError,
+  logs a warning with the tenant ID and template snippet, and returns `''` so
+  callers fall back to the default template.
+- **Test:** `tests/bug_fixes/test_code256_render_template_safe_format.py` (7 tests)
+
 ### CODE-255: Bulk reassign technician action — cross-tenant IDOR
 - **Severity:** 🔴 Tenant isolation bug
 - **Fixed:** 2026-03-31

@@ -301,15 +301,30 @@ Best regards,
             except Exception:
                 company_name = self.tenant.name
 
-        return template_str.format(
-            customer_name=invoice.customer.name,
-            invoice_number=invoice.invoice_number,
-            total=f'${invoice.total:,.2f}',
-            amount_due=f'${invoice.amount_due:,.2f}',
-            due_date=invoice.due_date.strftime('%B %d, %Y') if invoice.due_date else 'N/A',
-            days_overdue=days_overdue,
-            company_name=company_name,
-        )
+        try:
+            return template_str.format(
+                customer_name=invoice.customer.name,
+                invoice_number=invoice.invoice_number,
+                total=f'${invoice.total:,.2f}',
+                amount_due=f'${invoice.amount_due:,.2f}',
+                due_date=invoice.due_date.strftime('%B %d, %Y') if invoice.due_date else 'N/A',
+                days_overdue=days_overdue,
+                company_name=company_name,
+            )
+        except (KeyError, IndexError, ValueError) as exc:
+            # User-editable template contains unknown placeholders or malformed
+            # braces (e.g. a stray "{").  Log a warning so the shop owner's
+            # custom template failure is visible in logs rather than silently
+            # swallowed, and return empty string so callers fall back to the
+            # default template.  Same pattern as invoice_email_service.py and
+            # billing/tasks.py.  (CODE-256)
+            logger.warning(
+                "Malformed reminder_email_template for tenant %s: %r — %s",
+                self.tenant.pk if self.tenant else '?',
+                template_str[:200],
+                exc,
+            )
+            return ''
 
     def _build_reminder_email(self, invoice, reminder_type):
         """Build reminder email subject and body."""
