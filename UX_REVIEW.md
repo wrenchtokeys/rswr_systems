@@ -5,6 +5,57 @@ status, and description.
 
 ## Fixed
 
+### CODE-258: purge_deleted_records corrupts active invoices by deleting their line items
+- **Severity:** 🔴 Data integrity / financial corruption
+- **Fixed:** 2026-04-01
+- **Details:** `purge_deleted_records` deleted ALL InvoiceLineItems referencing
+  soft-deleted repairs — including line items on active (non-soft-deleted)
+  invoices (SENT, PAID, etc.). This meant a nightly purge could silently
+  remove line items from a PAID invoice, breaking the total/subtotal
+  relationship and the audit trail. The root cause was the PROTECT FK
+  constraint on InvoiceLineItem.repair: the old code worked around it by
+  deleting ALL matching line items regardless of the parent invoice's state.
+  Fixed by excluding soft-deleted repairs from purging if they are still
+  referenced by line items on active invoices. Those repairs will be purged
+  in a future run once their parent invoice is also soft-deleted and aged
+  past the cutoff. Line items are now only deleted when their parent invoice
+  is also being purged or is already soft-deleted.
+- **Test:** `tests/bug_fixes/test_code258_purge_active_invoice_protection.py` (6 tests)
+
+### CODE-257: UnitRepairCount lookups missing tenant scoping in pricing services
+- **Severity:** 🟡 Data integrity / potential pricing bug
+- **Fixed:** 2026-04-01
+- **Details:** `batch_pricing_service.calculate_batch_pricing()` and
+  `pricing_service.apply_pricing_to_repair()` both queried
+  `UnitRepairCount.objects.get(customer=..., unit_number=...)` without `tenant=`
+  scoping. The unique constraint on UnitRepairCount is `(tenant, customer, unit_number)`,
+  so the unscoped lookup could hit stale NULL-tenant legacy rows or raise
+  `MultipleObjectsReturned` if both NULL-tenant and tenant-scoped rows exist for
+  the same customer+unit. This would cause wrong `repair_count` to be used for
+  progressive pricing calculations — a customer could be charged for the wrong
+  pricing tier. The already-fixed `get_or_create` in `get_expected_cost()` (line 190)
+  included `tenant=`, but the two `get()` calls at lines 54 and 250 did not.
+  Fixed by adding `tenant=` to both lookups with graceful fallback when tenant is None.
+- **Test:** `tests/bug_fixes/test_code257_unit_repair_count_tenant_scoping.py` (6 tests)
+
+### CODE-256: ReminderService._render_template() crashes on malformed user templates
+- **Severity:** 🟡 Silent data loss / UX bug
+- **Fixed:** 2026-04-01
+- **Details:** `ReminderService._render_template()` used bare `str.format()` on
+  user-editable reminder email templates. If a shop owner included a stray `{`,
+  an unknown placeholder like `{foo}`, or a positional `{0}`, the method would
+  raise `KeyError`, `IndexError`, or `ValueError`. The caller at line 83 wrapped
+  the call in `except Exception: pass`, which meant the crash was silently
+  swallowed — the custom template was discarded and the default template used
+  instead, with **no log entry and no warning to the shop owner**. This was the
+  only remaining `.format()` call on user-editable templates without protection;
+  `invoice_email_service.py`, `billing/tasks.py`, and `review_service.py`
+  (CODE-244) all had proper try/except or `_safe_format()` wrappers.
+  Fixed by adding a try/except that catches KeyError/IndexError/ValueError,
+  logs a warning with the tenant ID and template snippet, and returns `''` so
+  callers fall back to the default template.
+- **Test:** `tests/bug_fixes/test_code256_render_template_safe_format.py` (7 tests)
+
 ### CODE-255: Bulk reassign technician action — cross-tenant IDOR
 - **Severity:** 🔴 Tenant isolation bug
 - **Fixed:** 2026-03-31

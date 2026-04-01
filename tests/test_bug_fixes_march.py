@@ -744,3 +744,219 @@ class ProfileCreationRedirectLoopTests(TestCase):
         response = self.client.get('/app/profile/create/', HTTP_HOST='testserver')
         # Should see the form, not be redirected elsewhere
         self.assertIn(response.status_code, [200, 302])  # 302 only if something else redirects
+
+
+@override_settings(**TEST_OVERRIDES)
+class BatchRepairDenyNotificationTests(TestCase):
+    """
+    CODE-263: customer_repair_deny used `locked_repair.technician` in the
+    notification path, but `locked_repair` is only defined in the non-batch
+    code path.  In the batch path this caused a NameError, crashing the
+    entire deny flow after the repairs were already DENIED — leaving repairs
+    stuck with no technician notification.
+    """
+
+    def setUp(self):
+        import uuid
+        from apps.customer_portal.models import CustomerUser
+        from apps.technician_portal.models import TechnicianNotification
+
+        self.sub_plan = SubscriptionPlan.objects.create(
+            name='Test Plan', slug='tp-batch-deny',
+            monthly_price=Decimal('10.00'), stripe_price_id='price_batch_deny',
+        )
+        self.owner_user = User.objects.create_user('batchdenyowner', 'o@test.com', 'testpass123')
+        self.tenant = Tenant.objects.create(
+            name='BatchDenyShop', slug='bds', subdomain='bds',
+            plan='professional', subscription_plan=self.sub_plan,
+            owner=self.owner_user,
+        )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.owner_user, role='owner', is_active=True)
+
+        self.tech_user = User.objects.create_user('batchdenytech', 't@test.com', 'testpass123')
+        self.technician = Technician.objects.create(
+            user=self.tech_user, tenant=self.tenant, is_active=True, can_repair=True,
+        )
+
+        self.customer = Customer.objects.create(name='Batch Deny Co', tenant=self.tenant)
+
+        self.cu_user = User.objects.create_user('batchdenycu', 'cu@test.com', 'testpass123')
+        self.customer_user = CustomerUser.objects.create(
+            user=self.cu_user, customer=self.customer, is_primary_contact=True,
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.cu_user, role='viewer', is_active=True,
+        )
+
+        # Create a batch of 3 repairs
+        self.batch_id = uuid.uuid4()
+        from apps.technician_portal.models import Repair
+        self.repairs = []
+        for i in range(1, 4):
+            r = Repair.objects.create(
+                tenant=self.tenant,
+                technician=self.technician,
+                customer=self.customer,
+                unit_number='UNIT-BATCH-DENY',
+                damage_type='Star Break',
+                queue_status='PENDING',
+                repair_batch_id=self.batch_id,
+                break_number=i,
+                total_breaks_in_batch=3,
+            )
+            self.repairs.append(r)
+
+    def test_batch_deny_creates_notification_without_nameerror(self):
+        """Denying a batch repair should NOT crash and should create a notification."""
+        from apps.technician_portal.models import TechnicianNotification
+
+        self.client.force_login(self.cu_user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+        # Deny the first repair in the batch (view should deny all batch siblings)
+        response = self.client.post(
+            f'/app/repairs/{self.repairs[0].id}/deny/',
+            {'reason': 'Not needed'},
+            HTTP_HOST='testserver',
+        )
+        # Should redirect, not crash
+        self.assertIn(response.status_code, [200, 301, 302])
+
+        # All batch repairs should be DENIED
+        from apps.technician_portal.models import Repair
+        for r in Repair.objects.filter(repair_batch_id=self.batch_id):
+            self.assertEqual(r.queue_status, 'DENIED', f"Repair #{r.id} should be DENIED")
+
+        # A technician notification should have been created
+        notifs = TechnicianNotification.objects.filter(
+            technician=self.technician,
+            message__contains='DENIED',
+        )
+        self.assertTrue(notifs.exists(), "Technician should receive a denial notification")
+
+
+# =============================================================================
+# CODE-265: Email normalization missing in account_settings and
+#           accept_customer_invitation
+# =============================================================================
+
+class EmailNormalizationTests(TestCase):
+    """
+    CODE-265: Verify that email addresses are normalized to lowercase in all
+    user-creation and email-update paths in the customer portal.
+
+    customer_register() was fixed by CODE-264, but account_settings() and
+    accept_customer_invitation() were missed — mixed-case emails could bypass
+    uniqueness checks and cause duplicate accounts or inconsistent lookups.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='pro',
+            defaults={
+                'name': 'Pro', 'monthly_price': Decimal('49.00'),
+                'max_repairs_per_month': 999, 'max_technicians': 10,
+            },
+        )
+        self.owner = User.objects.create_user(
+            username='emailshopowner', email='owner@emailshop.test', password='ownerpass!',
+        )
+        self.tenant = Tenant.objects.create(
+            name='Email Test Shop',
+            slug='email-test-shop',
+            subdomain='email-test-shop',
+            subscription_plan=plan,
+            subscription_status='active',
+            owner=self.owner,
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.owner, role='owner', is_active=True,
+        )
+        self.user = User.objects.create_user(
+            username='emailtestuser',
+            email='existing@example.com',
+            password='testpass123!',
+            first_name='Test',
+            last_name='User',
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.user, role='viewer', is_active=True,
+        )
+        from core.models import Customer
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Email Test Customer',
+        )
+        from apps.customer_portal.models import CustomerUser
+        self.customer_user = CustomerUser.objects.create(
+            user=self.user, customer=self.customer, is_primary_contact=True,
+        )
+
+    def test_account_settings_normalizes_email_to_lowercase(self):
+        """account_settings should save emails in lowercase."""
+        from apps.customer_portal.views import account_settings
+        factory = RequestFactory()
+        request = factory.post('/app/account/settings/', {
+            'first_name': 'Test',
+            'last_name': 'User',
+            'email': 'NewEmail@Example.COM',
+            'phone': '',
+        })
+        request.user = self.user
+        request.tenant = self.tenant
+        # Attach session middleware (needed for messages framework)
+        from django.contrib.sessions.backends.db import SessionStore
+        request.session = SessionStore()
+        # Attach messages middleware
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        setattr(request, '_messages', FallbackStorage(request))
+
+        response = account_settings(request)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, 'newemail@example.com',
+                         "Email should be normalized to lowercase in account_settings")
+
+    def test_accept_invitation_normalizes_email_to_lowercase(self):
+        """accept_customer_invitation should create users with lowercase email."""
+        from apps.customer_portal.models import CustomerInvitation
+        from apps.customer_portal.views import accept_customer_invitation
+        invitation = CustomerInvitation.objects.create(
+            customer=self.customer,
+            email='NewPerson@Example.COM',
+            first_name='New',
+            last_name='Person',
+            invited_by=self.user,
+            token='test-invite-token-email-norm',
+            expires_at=timezone.now() + timedelta(days=7),
+            status='pending',
+        )
+
+        factory = RequestFactory()
+        request = factory.post(
+            f'/app/invite/{invitation.token}/',
+            {
+                'first_name': 'New',
+                'last_name': 'Person',
+                'email': 'NewPerson@Example.COM',
+                'password': 'SecurePass123!',
+                'password_confirm': 'SecurePass123!',
+            },
+        )
+        # Anonymous user (not logged in)
+        from django.contrib.auth.models import AnonymousUser
+        request.user = AnonymousUser()
+        request.tenant = self.tenant
+        from django.contrib.sessions.backends.db import SessionStore
+        request.session = SessionStore()
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        setattr(request, '_messages', FallbackStorage(request))
+
+        response = accept_customer_invitation(request, invitation.token)
+
+        # The new user should have a lowercase email
+        new_user = User.objects.filter(email='newperson@example.com').first()
+        self.assertIsNotNone(new_user,
+                             "User should be created with lowercase email from invitation")
