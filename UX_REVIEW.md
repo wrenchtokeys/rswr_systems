@@ -5,6 +5,23 @@ status, and description.
 
 ## Fixed
 
+### CODE-258: purge_deleted_records corrupts active invoices by deleting their line items
+- **Severity:** 🔴 Data integrity / financial corruption
+- **Fixed:** 2026-04-01
+- **Details:** `purge_deleted_records` deleted ALL InvoiceLineItems referencing
+  soft-deleted repairs — including line items on active (non-soft-deleted)
+  invoices (SENT, PAID, etc.). This meant a nightly purge could silently
+  remove line items from a PAID invoice, breaking the total/subtotal
+  relationship and the audit trail. The root cause was the PROTECT FK
+  constraint on InvoiceLineItem.repair: the old code worked around it by
+  deleting ALL matching line items regardless of the parent invoice's state.
+  Fixed by excluding soft-deleted repairs from purging if they are still
+  referenced by line items on active invoices. Those repairs will be purged
+  in a future run once their parent invoice is also soft-deleted and aged
+  past the cutoff. Line items are now only deleted when their parent invoice
+  is also being purged or is already soft-deleted.
+- **Test:** `tests/bug_fixes/test_code258_purge_active_invoice_protection.py` (6 tests)
+
 ### CODE-257: UnitRepairCount lookups missing tenant scoping in pricing services
 - **Severity:** 🟡 Data integrity / potential pricing bug
 - **Fixed:** 2026-04-01
