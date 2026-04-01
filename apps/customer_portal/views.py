@@ -923,8 +923,13 @@ def customer_repair_deny(request, repair_id):
                     denial_message = f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}."
                     if reason:
                         denial_message += f" Reason: {reason}"
+                # CODE-263: Use `technician` (extracted from repairs_to_deny[0]
+                # above) instead of `locked_repair.technician`.  `locked_repair`
+                # is only defined in the non-batch code path — in the batch path
+                # it was a NameError that crashed the entire deny flow, leaving
+                # repairs stuck in DENIED status with no technician notification.
                 TechnicianNotification.objects.create(
-                    technician=locked_repair.technician,
+                    technician=technician,
                     message=denial_message,
                     read=False,
                     repair=repairs_to_deny[0],
