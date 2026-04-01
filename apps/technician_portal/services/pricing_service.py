@@ -245,12 +245,16 @@ def apply_pricing_to_repair(repair: 'Repair') -> None:
         repair.cost = repair.cost_override
         return
 
-    # Get the current repair count for this unit
+    # Get the current repair count for this unit.
+    # Include tenant= so the lookup matches the unique constraint
+    # (tenant, customer, unit_number) — consistent with get_or_create above
+    # and avoids hitting stale NULL-tenant rows.  (CODE-257)
     try:
-        unit_repair_count = UnitRepairCount.objects.get(
-            customer=repair.customer,
-            unit_number=repair.unit_number
-        )
+        lookup = {'customer': repair.customer, 'unit_number': repair.unit_number}
+        tenant = getattr(repair, 'tenant', None)
+        if tenant is not None:
+            lookup['tenant'] = tenant
+        unit_repair_count = UnitRepairCount.objects.get(**lookup)
         repair_count = unit_repair_count.repair_count
     except UnitRepairCount.DoesNotExist:
         repair_count = 1  # First repair for this unit
