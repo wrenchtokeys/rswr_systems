@@ -92,8 +92,11 @@ def create_tenant_with_owner(
     """
     email = email.strip().lower()
 
-    # Validate uniqueness
-    if User.objects.filter(email=email).exists():
+    # Validate uniqueness.
+    # iexact: catches legacy mixed-case emails stored before normalisation was
+    # introduced.  email is already .lower() from the strip/lower above, but
+    # older DB rows may still have mixed-case stored values.  (CODE-266)
+    if User.objects.filter(email__iexact=email).exists():
         raise SignupError('An account with this email already exists.')
 
     # Generate username if not provided

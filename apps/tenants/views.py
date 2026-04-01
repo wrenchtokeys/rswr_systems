@@ -196,7 +196,9 @@ def signup(request):
         except DjangoValidationError:
             errors['email'] = 'Enter a valid email address.'
 
-    if email and User.objects.filter(email=email).exists():
+    # iexact: catches legacy mixed-case emails stored before normalisation was
+    # introduced.  email is already lowercased above.  (CODE-266)
+    if email and User.objects.filter(email__iexact=email).exists():
         errors['email'] = 'An account with this email already exists.'
 
     # Password

@@ -1726,7 +1726,10 @@ def invite_member(request):
         return redirect('owner_settings')
 
     # Check if user already exists
-    user = User.objects.filter(email=email).first()
+    # Use iexact so legacy mixed-case emails in the DB are found.
+    # (email is already .lower() from the POST extraction above, but older
+    # accounts may have been stored with uppercase chars before normalization.)
+    user = User.objects.filter(email__iexact=email).first()
     if not user:
         from apps.tenants.services.signup_service import generate_unique_username
         username = generate_unique_username(email, first_name)
@@ -2016,7 +2019,9 @@ def shop_join_view(request, slug):
         # should log in at /login/?next=/join/<slug>/ — after login the view
         # will detect their existing account and create a CustomerUser record
         # automatically (see the is_authenticated branch at the top of this view).
-        if email and User.objects.filter(email=email).exists():
+        # iexact: catches legacy mixed-case emails stored before normalisation was
+        # introduced.  email is already lowercased above, but old DB rows may not be.
+        if email and User.objects.filter(email__iexact=email).exists():
             errors.append(
                 'An account with this email already exists. '
                 'Please log in to access this portal.'
