@@ -835,3 +835,128 @@ class BatchRepairDenyNotificationTests(TestCase):
             message__contains='DENIED',
         )
         self.assertTrue(notifs.exists(), "Technician should receive a denial notification")
+
+
+# =============================================================================
+# CODE-265: Email normalization missing in account_settings and
+#           accept_customer_invitation
+# =============================================================================
+
+class EmailNormalizationTests(TestCase):
+    """
+    CODE-265: Verify that email addresses are normalized to lowercase in all
+    user-creation and email-update paths in the customer portal.
+
+    customer_register() was fixed by CODE-264, but account_settings() and
+    accept_customer_invitation() were missed — mixed-case emails could bypass
+    uniqueness checks and cause duplicate accounts or inconsistent lookups.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='pro',
+            defaults={
+                'name': 'Pro', 'monthly_price': Decimal('49.00'),
+                'max_repairs_per_month': 999, 'max_technicians': 10,
+            },
+        )
+        self.owner = User.objects.create_user(
+            username='emailshopowner', email='owner@emailshop.test', password='ownerpass!',
+        )
+        self.tenant = Tenant.objects.create(
+            name='Email Test Shop',
+            slug='email-test-shop',
+            subdomain='email-test-shop',
+            subscription_plan=plan,
+            subscription_status='active',
+            owner=self.owner,
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.owner, role='owner', is_active=True,
+        )
+        self.user = User.objects.create_user(
+            username='emailtestuser',
+            email='existing@example.com',
+            password='testpass123!',
+            first_name='Test',
+            last_name='User',
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.user, role='viewer', is_active=True,
+        )
+        from core.models import Customer
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Email Test Customer',
+        )
+        from apps.customer_portal.models import CustomerUser
+        self.customer_user = CustomerUser.objects.create(
+            user=self.user, customer=self.customer, is_primary_contact=True,
+        )
+
+    def test_account_settings_normalizes_email_to_lowercase(self):
+        """account_settings should save emails in lowercase."""
+        from apps.customer_portal.views import account_settings
+        factory = RequestFactory()
+        request = factory.post('/app/account/settings/', {
+            'first_name': 'Test',
+            'last_name': 'User',
+            'email': 'NewEmail@Example.COM',
+            'phone': '',
+        })
+        request.user = self.user
+        request.tenant = self.tenant
+        # Attach session middleware (needed for messages framework)
+        from django.contrib.sessions.backends.db import SessionStore
+        request.session = SessionStore()
+        # Attach messages middleware
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        setattr(request, '_messages', FallbackStorage(request))
+
+        response = account_settings(request)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, 'newemail@example.com',
+                         "Email should be normalized to lowercase in account_settings")
+
+    def test_accept_invitation_normalizes_email_to_lowercase(self):
+        """accept_customer_invitation should create users with lowercase email."""
+        from apps.customer_portal.models import CustomerInvitation
+        from apps.customer_portal.views import accept_customer_invitation
+        invitation = CustomerInvitation.objects.create(
+            customer=self.customer,
+            email='NewPerson@Example.COM',
+            first_name='New',
+            last_name='Person',
+            invited_by=self.user,
+            token='test-invite-token-email-norm',
+            expires_at=timezone.now() + timedelta(days=7),
+            status='pending',
+        )
+
+        factory = RequestFactory()
+        request = factory.post(
+            f'/app/invite/{invitation.token}/',
+            {
+                'first_name': 'New',
+                'last_name': 'Person',
+                'email': 'NewPerson@Example.COM',
+                'password': 'SecurePass123!',
+                'password_confirm': 'SecurePass123!',
+            },
+        )
+        # Anonymous user (not logged in)
+        from django.contrib.auth.models import AnonymousUser
+        request.user = AnonymousUser()
+        request.tenant = self.tenant
+        from django.contrib.sessions.backends.db import SessionStore
+        request.session = SessionStore()
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        setattr(request, '_messages', FallbackStorage(request))
+
+        response = accept_customer_invitation(request, invitation.token)
+
+        # The new user should have a lowercase email
+        new_user = User.objects.filter(email='newperson@example.com').first()
+        self.assertIsNotNone(new_user,
+                             "User should be created with lowercase email from invitation")

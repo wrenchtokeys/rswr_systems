@@ -2244,7 +2244,11 @@ def account_settings(request):
                         'customer_user': customer_user,
                         'repair_form': repair_form,
                     })
-                user.email = email
+                # Normalize email to lowercase before saving so lookups
+                # and uniqueness checks are consistent regardless of input case.
+                # (CODE-265: account_settings was missed by CODE-264 which only
+                # normalized in customer_register and accept_customer_invitation.)
+                user.email = email.lower()
                 # Reset email verification when email changes
                 if customer.email_verified:
                     messages.info(request, "Email address changed. Please verify your new email address.")
@@ -3409,7 +3413,10 @@ def accept_customer_invitation(request, token):
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
-        email = request.POST.get('email', invitation.email).strip()
+        # Normalize email to lowercase so lookups and uniqueness checks
+        # are consistent regardless of input case.  (CODE-265: this path was
+        # missed by CODE-264 which only normalized in customer_register.)
+        email = request.POST.get('email', invitation.email).strip().lower()
         password = request.POST.get('password', '')
         password_confirm = request.POST.get('password_confirm', '')
         
