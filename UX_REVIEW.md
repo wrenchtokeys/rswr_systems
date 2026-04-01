@@ -5,6 +5,22 @@ status, and description.
 
 ## Fixed
 
+### CODE-257: UnitRepairCount lookups missing tenant scoping in pricing services
+- **Severity:** 🟡 Data integrity / potential pricing bug
+- **Fixed:** 2026-04-01
+- **Details:** `batch_pricing_service.calculate_batch_pricing()` and
+  `pricing_service.apply_pricing_to_repair()` both queried
+  `UnitRepairCount.objects.get(customer=..., unit_number=...)` without `tenant=`
+  scoping. The unique constraint on UnitRepairCount is `(tenant, customer, unit_number)`,
+  so the unscoped lookup could hit stale NULL-tenant legacy rows or raise
+  `MultipleObjectsReturned` if both NULL-tenant and tenant-scoped rows exist for
+  the same customer+unit. This would cause wrong `repair_count` to be used for
+  progressive pricing calculations — a customer could be charged for the wrong
+  pricing tier. The already-fixed `get_or_create` in `get_expected_cost()` (line 190)
+  included `tenant=`, but the two `get()` calls at lines 54 and 250 did not.
+  Fixed by adding `tenant=` to both lookups with graceful fallback when tenant is None.
+- **Test:** `tests/bug_fixes/test_code257_unit_repair_count_tenant_scoping.py` (6 tests)
+
 ### CODE-256: ReminderService._render_template() crashes on malformed user templates
 - **Severity:** 🟡 Silent data loss / UX bug
 - **Fixed:** 2026-04-01
