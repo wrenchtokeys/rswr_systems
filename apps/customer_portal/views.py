@@ -3456,6 +3456,18 @@ def accept_customer_invitation(request, token):
         
         try:
             with transaction.atomic():
+                # Re-fetch the invitation under an exclusive row lock so we can
+                # re-validate atomically.  Without this, two concurrent POST
+                # requests (double-click, browser retry) both see is_valid=True
+                # before the transaction, then BOTH proceed to create a User and
+                # CustomerUser row for the same invitation — leaving the customer
+                # with two ghost portal accounts linked to the same invite.
+                # (CODE-273: same TOCTOU pattern fixed for staff invites in CODE-270)
+                from .models import CustomerInvitation as _CInv
+                locked_invite = _CInv.objects.select_for_update().get(pk=invitation.pk)
+                if not locked_invite.is_valid:
+                    return render(request, 'customer_portal/invitation_invalid.html')
+
                 # Create the user
                 username = generate_unique_username(first_name or email.split('@')[0])
                 user = User.objects.create_user(
@@ -3469,14 +3481,14 @@ def accept_customer_invitation(request, token):
                 # Create CustomerUser link
                 # Primary status is set explicitly by the owner when sending the invite.
                 # No auto-promotion — the owner decides who is primary.
-                if invitation.is_primary_contact:
+                if locked_invite.is_primary_contact:
                     CustomerUser.objects.filter(
-                        customer=invitation.customer, is_primary_contact=True
+                        customer=locked_invite.customer, is_primary_contact=True
                     ).update(is_primary_contact=False)
                 CustomerUser.objects.create(
                     user=user,
-                    customer=invitation.customer,
-                    is_primary_contact=invitation.is_primary_contact,
+                    customer=locked_invite.customer,
+                    is_primary_contact=locked_invite.is_primary_contact,
                 )
 
                 # Create a TenantMembership so the middleware can resolve this
@@ -3486,7 +3498,7 @@ def accept_customer_invitation(request, token):
                 # and an extra DB round-trip per request.
                 # Matches the pattern used in shop_join_view() (CODE-104).
                 from apps.tenants.models import TenantMembership as _TM
-                tenant_for_invite = invitation.customer.tenant
+                tenant_for_invite = locked_invite.customer.tenant
                 if tenant_for_invite:
                     _TM.objects.get_or_create(
                         tenant=tenant_for_invite,
@@ -3495,15 +3507,15 @@ def accept_customer_invitation(request, token):
                     )
                     request.session['tenant_id'] = tenant_for_invite.id
 
-                # Mark invitation as accepted
-                invitation.mark_accepted(user)
+                # Mark invitation as accepted (uses the locked row)
+                locked_invite.mark_accepted(user)
                 
                 # Log them in
                 login(request, user)
                 
                 messages.success(
                     request, 
-                    f"Welcome to {invitation.customer.name}! Your account has been created."
+                    f"Welcome to {locked_invite.customer.name}! Your account has been created."
                 )
                 return redirect('customer_dashboard')
                 
