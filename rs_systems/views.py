@@ -275,34 +275,46 @@ def accept_invite(request, token):
             return render(request, 'saas/invite_accept.html', context)
 
         with transaction.atomic():
-            user = invite.user
+            # Re-fetch token under a row lock to prevent double-submission race.
+            # Without this guard, two simultaneous POSTs (double-click, network
+            # retry) both pass the `if not invite.is_valid` check above (TOCTOU),
+            # then both execute inside separate transactions — setting the password
+            # twice and potentially creating duplicate Technician records.
+            # Same select_for_update() pattern used in quick_approve_repair() and
+            # quick_deny_repair(). (CODE-270)
+            locked_invite = InviteToken.objects.select_for_update().get(pk=invite.pk)
+            if not locked_invite.is_valid:
+                context['error'] = 'This invitation link has already been used or has expired.'
+                return render(request, 'saas/invite_accept.html', context)
+
+            user = locked_invite.user
             user.set_password(password)
             user.save()
 
-            invite.used_at = timezone.now()
-            invite.save()
+            locked_invite.used_at = timezone.now()
+            locked_invite.save()
 
             # Ensure Technician record exists for technician/manager roles
-            if invite.role in ('technician', 'manager'):
+            if locked_invite.role in ('technician', 'manager'):
                 tech_group, _ = Group.objects.get_or_create(name='Technicians')
                 user.groups.add(tech_group)
 
-                if not Technician.objects.filter(user=user, tenant=invite.tenant).exists():
+                if not Technician.objects.filter(user=user, tenant=locked_invite.tenant).exists():
                     Technician.objects.create(
-                        tenant=invite.tenant,
+                        tenant=locked_invite.tenant,
                         user=user,
-                        is_manager=(invite.role == 'manager'),
+                        is_manager=(locked_invite.role == 'manager'),
                         is_active=True,
                         can_repair=True,
                         can_replace=False,
                     )
                 else:
-                    tech = Technician.objects.get(user=user, tenant=invite.tenant)
-                    if invite.role == 'manager':
+                    tech = Technician.objects.get(user=user, tenant=locked_invite.tenant)
+                    if locked_invite.role == 'manager':
                         tech.is_manager = True
                         tech.save()
 
-        # Log the user in
+        # Log the user in (use locally-bound `user` from inside the atomic block)
         auth_user = authenticate(request, username=user.username, password=password)
         if auth_user:
             login(request, auth_user)
