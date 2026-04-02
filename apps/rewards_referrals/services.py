@@ -152,7 +152,6 @@ class LoyaltyService:
 
     @staticmethod
     @transaction.atomic
-    @transaction.atomic
     def manual_adjustment(customer_user, amount, reason, created_by, tenant=None):
         """
         Apply a manual point adjustment by an owner or manager.

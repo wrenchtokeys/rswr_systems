@@ -188,6 +188,22 @@ status, and description.
   user's tenant(s). `processed_by` (User FK, no tenant) is left unrestricted.
 - **Test:** `tests/bug_fixes/test_code234_redemption_fk_tenant_scoping.py` (5 tests)
 
+### CODE-271: Duplicate @transaction.atomic on LoyaltyService.manual_adjustment()
+- **Severity:** 🟡 Code quality / correctness regression
+- **Fixed:** 2026-04-02
+- **Details:** CODE-267 (Apr 2) added `@transaction.atomic` to fix the `select_for_update()` outside
+  transaction bug in `manual_adjustment()`. However, the method already had `@transaction.atomic`
+  from a prior fix. The CODE-267 patch blindly added a second decorator without checking whether
+  one already existed, resulting in a double-decorated function.
+  While duplicate `@transaction.atomic` decorators don't crash at runtime (the outer creates a
+  transaction or savepoint, the inner nests a savepoint within it), this creates confusing nesting
+  semantics: any caller already inside a transaction would trigger a two-level savepoint stack
+  instead of one. More importantly, it indicates a broken patch process — if CODE-267 were to be
+  mis-applied again with a third decorator, the behavior would diverge further. In unit tests, the
+  double-nesting can also mask rollback failures that a single wrapper would expose.
+- **Test:** `tests/bug_fixes/test_code271_duplicate_atomic_decorator.py` (5 tests including
+  an introspection test that counts `@transaction.atomic` wrappers and asserts exactly 1)
+
 ### CODE-268: RewardFulfillmentService assigns inactive technicians + uses full save()
 - **Severity:** 🟡 Data integrity / notification spam
 - **Fixed:** 2026-04-02
