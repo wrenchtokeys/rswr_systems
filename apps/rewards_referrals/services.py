@@ -645,7 +645,17 @@ class RewardFulfillmentService:
 
     @staticmethod
     def assign_technician(redemption):
-        """Assign the most appropriate technician to fulfill a reward."""
+        """Assign the most appropriate technician to fulfill a reward.
+
+        Only considers technicians who are active (both the Technician record
+        AND the underlying User account must be active).  Previously the query
+        used Technician.objects.all() without an is_active filter, which could
+        assign deactivated staff to reward fulfilments and send them spurious
+        notifications.  (CODE-268)
+
+        Uses save(update_fields=...) to avoid overwriting concurrent changes
+        to other fields on the redemption row.  (CODE-268)
+        """
         from django.db.models import Count, Q
         from apps.technician_portal.models import Technician, Repair
 
@@ -653,9 +663,16 @@ class RewardFulfillmentService:
             tenant = redemption.reward.customer_user.customer.tenant
         except AttributeError:
             tenant = None
-        technicians_qs = Technician.objects.all()
+
         if tenant:
-            technicians_qs = technicians_qs.filter(tenant=tenant)
+            # Scope to tenant and exclude inactive technicians.
+            technicians_qs = Technician.objects.filter(
+                tenant=tenant,
+                is_active=True,
+                user__is_active=True,
+            )
+        else:
+            technicians_qs = Technician.objects.none()
 
         if not technicians_qs.exists():
             return None
@@ -676,7 +693,7 @@ class RewardFulfillmentService:
             return None
 
         redemption.assigned_technician = assigned_technician
-        redemption.save()
+        redemption.save(update_fields=['assigned_technician'])
 
         RewardFulfillmentService.notify_technician(redemption, assigned_technician)
 
