@@ -152,6 +152,7 @@ class LoyaltyService:
 
     @staticmethod
     @transaction.atomic
+    @transaction.atomic
     def manual_adjustment(customer_user, amount, reason, created_by, tenant=None):
         """
         Apply a manual point adjustment by an owner or manager.
@@ -170,6 +171,12 @@ class LoyaltyService:
         This method does NOT bypass LoyaltyService.award_points() — it uses it
         as the single write path so every adjustment appears in the ledger with
         the correct balance_after and tenant FK.
+
+        NOTE: @transaction.atomic is required because the select_for_update() call
+        below (for the deduction balance guard) must be inside a transaction.
+        PostgreSQL raises TransactionManagementError if select_for_update() is
+        called outside an atomic block.  The nested @transaction.atomic on
+        award_points() creates a savepoint, which is safe.  (CODE-267)
         """
         if amount == 0:
             raise ValueError('Adjustment amount cannot be zero.')
@@ -185,7 +192,10 @@ class LoyaltyService:
 
         if amount < 0:
             # Guard: deductions must not take the balance below zero.
-            # Lock first to get the current balance under the atomic block.
+            # select_for_update() requires an active transaction — this method is
+            # decorated with @transaction.atomic so the lock is always inside a
+            # transaction.  Previously this was called without the decorator,
+            # causing TransactionManagementError on every deduction.  (CODE-267)
             reward, _ = Reward.objects.get_or_create(
                 customer_user=customer_user,
                 defaults={'tenant': tenant, 'points': 0},
