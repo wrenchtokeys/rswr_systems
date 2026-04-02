@@ -459,6 +459,22 @@ def public_pay_invoice(request, invoice_id, token):
     if invoice.amount_due <= 0:
         return render(request, 'billing/payment_complete.html')
 
+    # CODE-274: Block payment attempts on voided/cancelled invoices.
+    # If the shop owner cancels an invoice AFTER sending the payment link, the
+    # customer may still have the old URL bookmarked.  Without this check, they
+    # would see an active checkout session for a CANCELLED invoice — they could
+    # pay, Stripe would charge them, but the payment wouldn't reconcile against
+    # a live invoice.  Show a friendly "this invoice has been cancelled" page
+    # instead of proceeding to checkout.
+    if invoice.status == 'CANCELLED':
+        context = {
+            'invoice': invoice,
+            'error_msg': 'This invoice has been cancelled by the shop. Please contact them if you have questions.',
+            'company_name': invoice.tenant.name if invoice.tenant else 'RS Systems',
+            'company_phone': invoice.tenant.business_phone if invoice.tenant else '',
+        }
+        return render(request, 'billing/public_pay_unavailable.html', context)
+
     # Try to create a Stripe Checkout session
     checkout_url = None
     error_msg = None
