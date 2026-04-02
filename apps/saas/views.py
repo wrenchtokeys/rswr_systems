@@ -1544,7 +1544,18 @@ def owner_settings_view(request):
             return redirect('/owner/settings/?tab=reviews')
 
         # Default: business info update
-        tenant.name = request.POST.get('business_name', tenant.name).strip()
+        # CODE-272: Guard against blanking the business name. If the submitted
+        # value is empty (user deleted the text and submitted), keep the existing
+        # name. The `or tenant.name` mirrors the same guard in owner_setup_save_business.
+        # Without this, `request.POST.get('business_name', tenant.name)` returns ''
+        # (not the default) when the key exists but is empty, then .strip() keeps it
+        # as '', and tenant.save() writes '' to the DB — breaking every invoice,
+        # email, and portal page that renders tenant.name.
+        new_name = request.POST.get('business_name', tenant.name).strip()
+        if not new_name:
+            messages.error(request, 'Business name is required and cannot be blank.')
+            return redirect('owner_settings')
+        tenant.name = new_name
         tenant.business_phone = request.POST.get('business_phone', '').strip()
         tenant.business_email = request.POST.get('business_email', '').strip()
         tenant.business_address = request.POST.get('business_address', '').strip()
