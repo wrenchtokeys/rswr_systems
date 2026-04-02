@@ -188,6 +188,22 @@ status, and description.
   user's tenant(s). `processed_by` (User FK, no tenant) is left unrestricted.
 - **Test:** `tests/bug_fixes/test_code234_redemption_fk_tenant_scoping.py` (5 tests)
 
+### CODE-268: RewardFulfillmentService assigns inactive technicians + uses full save()
+- **Severity:** 🟡 Data integrity / notification spam
+- **Fixed:** 2026-04-02
+- **Details:** `RewardFulfillmentService.assign_technician()` filtered technicians
+  with `Technician.objects.all()` plus only a `tenant=` filter — no `is_active`
+  check. A deactivated technician (or one whose User account is inactive) could
+  be chosen as the lowest-workload assignee and then notified via
+  `TechnicianNotification`, sending spurious alerts to former staff. The method
+  also called `redemption.save()` without `update_fields`, rewriting every field
+  on the redemption row and potentially overwriting concurrent changes.
+  Fixed by filtering `is_active=True, user__is_active=True` before selecting
+  the assignee, using `save(update_fields=['assigned_technician'])`, and
+  returning `Technician.objects.none()` (→ None) when tenant can't be resolved
+  instead of risking a global query.
+- **Test:** `tests/bug_fixes/test_code268_reward_assignment_inactive_tech.py` (7 tests)
+
 ## Open / Noted (for future runs)
 
 ### Other TenantFilterMixin admins missing tenant in fieldsets (low priority)

@@ -80,10 +80,14 @@ class WarrantyService:
                     applies_to='all_repairs',
                 ).first()
 
-            # 5. Any default policy for this tenant
+            # 5. Tenant-wide default (customer=None only).
+            # Per-customer defaults must NOT bleed over to other customers.
+            # Only step 1-2 above may match per-customer policies; this step is
+            # strictly a tenant-wide fallback.  (CODE-269)
             if not policy:
                 policy = WarrantyPolicy.objects.filter(
                     tenant=repair.tenant,
+                    customer__isnull=True,
                     is_active=True,
                     is_default=True,
                 ).first()

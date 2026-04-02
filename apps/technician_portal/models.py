@@ -506,10 +506,16 @@ class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
         return f"{self.name} ({self.tenant.name}){suffix}"
 
     def save(self, *args, **kwargs):
-        # Enforce only one default per tenant
+        # Enforce only one default per tenant+customer scope.
+        # Per-customer defaults (customer=X) and global defaults (customer=None)
+        # are independent; a per-customer default must NOT clear the global default
+        # and vice versa.  Scope the uniqueness constraint accordingly.
+        # (CODE-269)
         if self.is_default:
             WarrantyPolicy.objects.filter(
-                tenant=self.tenant, is_default=True,
+                tenant=self.tenant,
+                customer=self.customer,  # None = global; FK = per-customer
+                is_default=True,
             ).exclude(pk=self.pk).update(is_default=False)
         super().save(*args, **kwargs)
 
