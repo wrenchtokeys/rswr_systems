@@ -77,6 +77,7 @@ class InvoiceData:
     subtotal: Decimal
     total_discount: Decimal
     total: Decimal
+    description: str = ""
     notes: str = ""
     payment_terms: str = "COD"
     payment_terms_display: str = "Cash on Delivery (COD)"
@@ -372,6 +373,7 @@ class InvoiceService:
         repair_ids: Optional[List[int]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        invoice_description: str = "",
         invoice_number: Optional[str] = None,
         invoice_date: Optional[datetime] = None,
     ) -> InvoiceData:
@@ -478,6 +480,7 @@ class InvoiceService:
             subtotal=subtotal,
             total_discount=total_discount,
             total=total_with_tax,
+            description=invoice_description,
             tax_rate=tax_rate,
             state_tax_rate=state_tax_rate,
             county_tax_rate=county_tax_rate,
@@ -718,7 +721,15 @@ class InvoiceService:
         ]))
         story.append(info_table)
         story.append(Spacer(1, 25))
-        
+
+        # Optional invoice-level description / summary
+        if getattr(invoice_data, 'description', ''):
+            story.append(Paragraph(
+                invoice_data.description.replace('\n', '<br/>'),
+                self.styles['Normal']
+            ))
+            story.append(Spacer(1, 15))
+
         # Line Items Table
         story.append(Paragraph("Repair Details", self.styles['SectionHeader']))
         
@@ -961,6 +972,7 @@ class InvoiceService:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         include_photos: bool = False,  # Photos disabled by default for now
+        invoice_description: str = "",
         invoice_number: Optional[str] = None,
         invoice_date: Optional[datetime] = None,
         invoice_status: str = '',
@@ -987,10 +999,11 @@ class InvoiceService:
             repair_ids=repair_ids,
             start_date=start_date,
             end_date=end_date,
+            invoice_description=invoice_description,
             invoice_number=invoice_number,
             invoice_date=invoice_date,
         )
-        
+
         pdf_bytes = self.generate_pdf(invoice_data, include_photos=include_photos,
                                        invoice_status=invoice_status)
         

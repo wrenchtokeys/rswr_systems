@@ -425,7 +425,11 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         help_text="When set, this invoice is soft-deleted and excluded from normal querysets"
     )
 
-    # Notes
+    # Description / Notes
+    description = models.TextField(
+        blank=True,
+        help_text="Customer-facing description or summary for this invoice"
+    )
     notes = models.TextField(blank=True)
     internal_notes = models.TextField(
         blank=True,

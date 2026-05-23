@@ -519,7 +519,10 @@ def get_invoice(request, invoice_id):
             's3_key': invoice.s3_key,
             'stripe_invoice_id': invoice.stripe_invoice_id,
             'stripe_hosted_url': invoice.stripe_hosted_url,
+            'description': invoice.description,
             'notes': invoice.notes,
+            'internal_notes': invoice.internal_notes,
+            'payment_terms': invoice.payment_terms,
         },
         'line_items': [{
             'id': item.id,
@@ -715,6 +718,141 @@ def cancel_invoice(request, invoice_id):
         'success': True,
         'invoice_number': invoice.invoice_number,
         'status': invoice.status,
+    })
+
+
+@requires_api('invoices')
+@require_POST
+def update_invoice(request, invoice_id):
+    """
+    Update invoice-level fields.
+    POST: {"notes": "...", "internal_notes": "...", "due_date": "2026-06-01", "payment_terms": "NET30"}
+    """
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    from apps.billing.models import Invoice
+
+    try:
+        invoice = Invoice.objects.for_tenant(tenant).get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+
+    if invoice.status in ('PAID', 'CANCELLED'):
+        return JsonResponse({'error': f'Cannot edit a {invoice.status.lower()} invoice'}, status=400)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    update_fields = []
+    if 'description' in data:
+        invoice.description = data['description']
+        update_fields.append('description')
+    if 'notes' in data:
+        invoice.notes = data['notes']
+        update_fields.append('notes')
+    if 'internal_notes' in data:
+        invoice.internal_notes = data['internal_notes']
+        update_fields.append('internal_notes')
+    if 'payment_terms' in data:
+        invoice.payment_terms = data['payment_terms']
+        update_fields.append('payment_terms')
+    if 'due_date' in data:
+        try:
+            invoice.due_date = datetime.strptime(data['due_date'], '%Y-%m-%d').date()
+            update_fields.append('due_date')
+        except (ValueError, TypeError):
+            return JsonResponse({'error': 'Invalid date. Use YYYY-MM-DD'}, status=400)
+
+    if not update_fields:
+        return JsonResponse({'error': 'No valid fields to update'}, status=400)
+
+    invoice.save(update_fields=update_fields)
+
+    return JsonResponse({
+        'success': True,
+        'invoice_number': invoice.invoice_number,
+        'description': invoice.description,
+        'notes': invoice.notes,
+        'internal_notes': invoice.internal_notes,
+        'payment_terms': invoice.payment_terms,
+        'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+    })
+
+
+@requires_api('invoices')
+@require_POST
+def update_invoice_line_item(request, invoice_id, line_item_id):
+    """
+    Update an invoice line item and recalculate invoice totals.
+    POST: {"unit_price": 50.00, "discount": 0, "amount": 50.00, "description": "..."}
+    """
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    from apps.billing.models import Invoice, InvoiceLineItem
+
+    try:
+        invoice = Invoice.objects.for_tenant(tenant).get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+
+    if invoice.status in ('PAID', 'CANCELLED'):
+        return JsonResponse({'error': f'Cannot edit a {invoice.status.lower()} invoice'}, status=400)
+
+    try:
+        line_item = invoice.line_items.get(id=line_item_id)
+    except InvoiceLineItem.DoesNotExist:
+        return JsonResponse({'error': 'Line item not found'}, status=404)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    if 'description' in data:
+        line_item.description = data['description']
+    if 'unit_price' in data:
+        line_item.unit_price = Decimal(str(data['unit_price']))
+    if 'discount' in data:
+        line_item.discount = Decimal(str(data['discount']))
+    if 'amount' in data:
+        line_item.amount = Decimal(str(data['amount']))
+    elif 'unit_price' in data or 'discount' in data:
+        # Recalculate amount if price or discount changed but amount not explicitly set
+        line_item.amount = (line_item.unit_price * line_item.quantity) - line_item.discount
+
+    line_item.save()
+
+    # Recalculate invoice totals from all line items
+    all_items = invoice.line_items.all()
+    invoice.subtotal = sum(item.unit_price * item.quantity for item in all_items)
+    invoice.discount = sum(item.discount for item in all_items)
+    taxable = invoice.subtotal - invoice.discount
+    if invoice.tax_rate and invoice.tax_rate > 0:
+        invoice.tax_amount = (taxable * invoice.tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+    invoice.total = taxable + invoice.tax_amount
+    invoice.save(update_fields=['subtotal', 'discount', 'tax_amount', 'total'])
+
+    return JsonResponse({
+        'success': True,
+        'line_item': {
+            'id': line_item.id,
+            'description': line_item.description,
+            'unit_price': float(line_item.unit_price),
+            'discount': float(line_item.discount),
+            'amount': float(line_item.amount),
+        },
+        'invoice': {
+            'subtotal': float(invoice.subtotal),
+            'discount': float(invoice.discount),
+            'tax_amount': float(invoice.tax_amount),
+            'total': float(invoice.total),
+        },
     })
 
 

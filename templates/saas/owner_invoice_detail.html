@@ -13,6 +13,11 @@
         <span class="text-gray-600">{{ invoice.invoice_number }}</span>
     </div>
     <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+        {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+        <button onclick="openInvoiceEditModal()" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-pen sm:mr-2"></i><span class="hidden sm:inline">Edit Details</span>
+        </button>
+        {% endif %}
         {% if invoice.status == 'DRAFT' %}
         <!-- Draft Actions -->
         <button onclick="document.getElementById('send-confirm-modal').classList.remove('hidden')"
@@ -141,7 +146,19 @@
                             </td>
                             <td class="px-6 py-4 text-sm text-gray-600 text-center">{{ item.quantity }}</td>
                             <td class="px-6 py-4 text-sm text-gray-600 text-right">${{ item.unit_price|floatformat:2 }}</td>
-                            <td class="px-6 py-4 text-sm font-medium text-gray-900 text-right">${{ item.amount|floatformat:2 }}</td>
+                            <td class="px-6 py-4 text-sm font-medium text-gray-900 text-right">
+                                <div class="flex items-center justify-end gap-3">
+                                    <span>${{ item.amount|floatformat:2 }}</span>
+                                    {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+                                    <button type="button"
+                                        onclick="openLineItemEditModal({{ item.id }}, '{{ item.description|escapejs }}', '{{ item.unit_price }}', '{{ item.discount }}')"
+                                        title="Edit line item"
+                                        class="text-gray-400 hover:text-blue-600 transition-colors">
+                                        <i class="fas fa-pen text-xs"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -346,13 +363,23 @@
         </div>
         {% endif %}
 
+        <!-- Invoice Description -->
+        {% if invoice.description %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-sm font-semibold text-gray-900 mb-2">
+                <i class="fas fa-align-left mr-1.5 text-gray-400"></i>Description
+            </h3>
+            <p class="text-sm text-gray-600 whitespace-pre-line">{{ invoice.description }}</p>
+        </div>
+        {% endif %}
+
         <!-- Invoice Notes -->
         {% if invoice.notes %}
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h3 class="text-sm font-semibold text-gray-900 mb-2">
                 <i class="fas fa-sticky-note mr-1.5 text-gray-400"></i>Notes
             </h3>
-            <p class="text-sm text-gray-600">{{ invoice.notes }}</p>
+            <p class="text-sm text-gray-600 whitespace-pre-line">{{ invoice.notes }}</p>
         </div>
         {% endif %}
     </div>
@@ -517,6 +544,174 @@ document.addEventListener('keydown', function(e) {
         closeReminderModal();
         document.getElementById('send-confirm-modal')?.classList.add('hidden');
     }
+});
+</script>
+{% endif %}
+
+{% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+<!-- Hidden CSRF token (guarantees a token exists for AJAX regardless of which action forms render) -->
+<form id="invoice-edit-csrf" class="hidden">{% csrf_token %}</form>
+
+<!-- Line Item Edit Modal -->
+<div id="line-item-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeLineItemEditModal()"></div>
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full">
+            <div class="bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 border-b border-blue-100 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-pen mr-2 text-blue-600"></i>Edit Line Item</h3>
+                <button onclick="closeLineItemEditModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+            </div>
+            <div class="px-6 py-5 space-y-4">
+                <input type="hidden" id="li-edit-id">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <input type="text" id="li-edit-description" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Unit Price</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="text-gray-500 text-sm">$</span></div>
+                            <input type="number" id="li-edit-unit-price" step="0.01" min="0" class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Discount</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="text-gray-500 text-sm">$</span></div>
+                            <input type="number" id="li-edit-discount" step="0.01" min="0" class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </div>
+                </div>
+                <p id="li-edit-error" class="hidden text-sm text-red-600"></p>
+            </div>
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+                <button onclick="closeLineItemEditModal()" class="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button id="li-edit-save" onclick="saveLineItem()" class="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Invoice Details Edit Modal -->
+<div id="invoice-edit-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeInvoiceEditModal()"></div>
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+            <div class="bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 border-b border-blue-100 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-pen mr-2 text-blue-600"></i>Edit Invoice Details</h3>
+                <button onclick="closeInvoiceEditModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+            </div>
+            <div class="px-6 py-5 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea id="inv-edit-description" rows="3" placeholder="Customer-facing description or summary..." class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">{{ invoice.description }}</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea id="inv-edit-notes" rows="2" placeholder="Notes shown on invoice..." class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">{{ invoice.notes }}</textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
+                        <input type="date" id="inv-edit-due-date" value="{{ invoice.due_date|date:'Y-m-d' }}" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                        <select id="inv-edit-terms" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                            {% for value, label in payment_terms_choices %}
+                            <option value="{{ value }}" {% if value == invoice.payment_terms %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <p id="inv-edit-error" class="hidden text-sm text-red-600"></p>
+            </div>
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+                <button onclick="closeInvoiceEditModal()" class="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button id="inv-edit-save" onclick="saveInvoiceDetails()" class="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const INVOICE_ID = {{ invoice.id }};
+
+function _csrf() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+}
+
+function _toggleModal(id, show) {
+    document.getElementById(id).classList.toggle('hidden', !show);
+    document.body.classList.toggle('overflow-hidden', show);
+}
+
+// --- Line item edit ---
+function openLineItemEditModal(id, description, unitPrice, discount) {
+    document.getElementById('li-edit-id').value = id;
+    document.getElementById('li-edit-description').value = description;
+    document.getElementById('li-edit-unit-price').value = parseFloat(unitPrice).toFixed(2);
+    document.getElementById('li-edit-discount').value = parseFloat(discount).toFixed(2);
+    document.getElementById('li-edit-error').classList.add('hidden');
+    _toggleModal('line-item-modal', true);
+}
+function closeLineItemEditModal() { _toggleModal('line-item-modal', false); }
+
+function saveLineItem() {
+    const id = document.getElementById('li-edit-id').value;
+    const btn = document.getElementById('li-edit-save');
+    const errEl = document.getElementById('li-edit-error');
+    const payload = {
+        description: document.getElementById('li-edit-description').value,
+        unit_price: parseFloat(document.getElementById('li-edit-unit-price').value || '0'),
+        discount: parseFloat(document.getElementById('li-edit-discount').value || '0'),
+    };
+    btn.disabled = true;
+    fetch(`/api/billing/invoices/${INVOICE_ID}/line-items/${id}/update/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() },
+        body: JSON.stringify(payload),
+    })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+        if (ok && d.success) { window.location.reload(); }
+        else { errEl.textContent = d.error || 'Failed to update line item'; errEl.classList.remove('hidden'); btn.disabled = false; }
+    })
+    .catch(err => { errEl.textContent = 'Error: ' + err.message; errEl.classList.remove('hidden'); btn.disabled = false; });
+}
+
+// --- Invoice details edit ---
+function openInvoiceEditModal() { document.getElementById('inv-edit-error').classList.add('hidden'); _toggleModal('invoice-edit-modal', true); }
+function closeInvoiceEditModal() { _toggleModal('invoice-edit-modal', false); }
+
+function saveInvoiceDetails() {
+    const btn = document.getElementById('inv-edit-save');
+    const errEl = document.getElementById('inv-edit-error');
+    const payload = {
+        description: document.getElementById('inv-edit-description').value,
+        notes: document.getElementById('inv-edit-notes').value,
+        payment_terms: document.getElementById('inv-edit-terms').value,
+    };
+    const due = document.getElementById('inv-edit-due-date').value;
+    if (due) { payload.due_date = due; }
+    btn.disabled = true;
+    fetch(`/api/billing/invoices/${INVOICE_ID}/update/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() },
+        body: JSON.stringify(payload),
+    })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+        if (ok && d.success) { window.location.reload(); }
+        else { errEl.textContent = d.error || 'Failed to update invoice'; errEl.classList.remove('hidden'); btn.disabled = false; }
+    })
+    .catch(err => { errEl.textContent = 'Error: ' + err.message; errEl.classList.remove('hidden'); btn.disabled = false; });
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { closeLineItemEditModal(); closeInvoiceEditModal(); }
 });
 </script>
 {% endif %}

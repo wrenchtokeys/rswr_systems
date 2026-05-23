@@ -12,6 +12,38 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
+## [2.10.1] - May 23, 2026
+
+### Fixed — Technician Repair Form & Invoicing
+
+Mobile production bugs reported from the field (iPhone via rssystems.io); desktop dev was unaffected for styling.
+
+#### Batch pricing recalculated incorrectly on edit (financial)
+- `Repair.save()` re-priced COMPLETED batch repairs against the already-incremented `UnitRepairCount`, shifting every break down a tier on edit (a batch that created at $50/$40 showed $40/$35 after editing).
+- Now preserves the batch price computed at creation time for existing multi-break repairs.
+
+#### Broken styling / unusable form on mobile (UX)
+- `repair_form.html`, `multi_break_repair_form.html`, and 13 other technician templates each loaded the Tailwind CDN a **second** time (already loaded in `base_app.html`) plus a redundant `tailwind.config`, causing a race on slow mobile connections that left the form unstyled.
+- Removed the duplicate CDN `<script>` and redundant configs (the green palette they defined is already Tailwind's default).
+
+#### Batch photos mixed up between breaks (data integrity)
+- `multi_break.js` reused stale file-input state, so submitting a second break overwrote the first break's photo.
+- Added per-session `photoBeforeChanged`/`photoAfterChanged` flags and a modal reset on edit; an unchanged break now keeps its own photos.
+
+### Added
+
+#### Invoice editing
+- New API endpoints: `update_invoice` (notes, internal notes, description, due date, payment terms) and `update_invoice_line_item` (description, unit price, discount, amount — recalculates invoice subtotal/discount/tax/total). Both reject PAID/CANCELLED invoices and are tenant-scoped.
+- Owner invoice detail page now has an **Edit Details** button and a per-line-item edit (pencil) wired to these endpoints via AJAX. Hidden for PAID/CANCELLED invoices.
+
+#### Invoice description field
+- New `Invoice.description` text field, exposed in the admin, the invoice API, the edit UI, and PDF rendering.
+
+### Tests
+- New `tests/test_invoice_edit_api.py` (23 tests) covering the edit endpoints, description field, PDF render, and the detail-page edit UI.
+
+---
+
 ## [Unreleased]
 
 ### Added
