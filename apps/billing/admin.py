@@ -141,7 +141,7 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     
     fieldsets = (
         ('Invoice Details', {
-            'fields': ('invoice_number', 'customer', 'status', 'payment_terms')
+            'fields': ('invoice_number', 'customer', 'status', 'payment_terms', 'description')
         }),
         ('Dates', {
             'fields': ('invoice_date', 'due_date', 'sent_at', 'paid_at')

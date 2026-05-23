@@ -27,6 +27,8 @@ urlpatterns = [
     path('invoices/<int:invoice_id>/', views.get_invoice, name='invoice_detail'),
     path('invoices/<int:invoice_id>/payment/', views.record_payment, name='invoice_payment'),
     path('invoices/<int:invoice_id>/cancel/', views.cancel_invoice, name='invoice_cancel'),
+    path('invoices/<int:invoice_id>/update/', views.update_invoice, name='invoice_update'),
+    path('invoices/<int:invoice_id>/line-items/<int:line_item_id>/update/', views.update_invoice_line_item, name='invoice_line_item_update'),
     
     path('invoices/<int:invoice_id>/send-email/', views.send_invoice_email, name='invoice_send_email'),
     path('invoices/send-email-batch/', views.send_invoice_email_batch, name='invoice_send_email_batch'),

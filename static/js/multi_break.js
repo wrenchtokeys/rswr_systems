@@ -77,6 +77,8 @@ const ImageCompressor = {
 // State management
 let breaks = [];
 let editingIndex = null;
+let photoBeforeChanged = false;
+let photoAfterChanged = false;
 
 // Initialize datetime field with current time
 document.addEventListener('DOMContentLoaded', function() {
@@ -246,6 +248,8 @@ function clearModal() {
     document.getElementById('modal_notes').value = '';
     document.getElementById('preview_before').innerHTML = '';
     document.getElementById('preview_after').innerHTML = '';
+    photoBeforeChanged = false;
+    photoAfterChanged = false;
 
     // Clear manager override fields if they exist
     const costOverride = document.getElementById('modal_cost_override');
@@ -313,14 +317,26 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
     // Photos are optional - can be added later
     // Updated: November 9, 2025 - Removed photo validation
 
+    // Only use the file input photo when the user explicitly selected a new file
+    // during this modal session. Otherwise preserve the existing photo from the break.
+    let finalPhotoBefore;
+    let finalPhotoAfter;
+    if (editingIndex !== null) {
+        finalPhotoBefore = photoBeforeChanged ? photoBefore : breaks[editingIndex].photo_before;
+        finalPhotoAfter = photoAfterChanged ? photoAfter : breaks[editingIndex].photo_after;
+    } else {
+        finalPhotoBefore = photoBefore || null;
+        finalPhotoAfter = photoAfter || null;
+    }
+
     const breakData = {
         id: editingIndex !== null ? breaks[editingIndex].id : generateUUID(),
         damage_type: damageType,
         drilled_before_repair: drilledBefore,
         windshield_temperature: windshieldTemp,
         resin_viscosity: resinViscosity,
-        photo_before: photoBefore || (editingIndex !== null ? breaks[editingIndex].photo_before : null),
-        photo_after: photoAfter || (editingIndex !== null ? breaks[editingIndex].photo_after : null),
+        photo_before: finalPhotoBefore,
+        photo_after: finalPhotoAfter,
         notes: notes,
         cost_override: costOverride,
         override_reason: overrideReason
@@ -411,16 +427,19 @@ async function handlePhotoSelect(inputElement, previewElement) {
 }
 
 document.getElementById('modal_photo_before').addEventListener('change', (e) => {
+    photoBeforeChanged = true;
     handlePhotoSelect(e.target, document.getElementById('preview_before'));
 });
 
 document.getElementById('modal_photo_after').addEventListener('change', (e) => {
+    photoAfterChanged = true;
     handlePhotoSelect(e.target, document.getElementById('preview_after'));
 });
 
 // Edit Break Function
 window.editBreak = function(index) {
     editingIndex = index;
+    clearModal();  // Reset file inputs and change flags before populating
     const breakData = breaks[index];
 
     document.getElementById('modal_damage_type').value = breakData.damage_type;

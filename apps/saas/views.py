@@ -1870,6 +1870,7 @@ def owner_invoice_detail(request, invoice_id):
         'line_items': line_items,
         'payments': payments,
         'payment_methods': payment_methods,
+        'payment_terms_choices': BillingConfig.PAYMENT_TERMS_CHOICES,
         'pdf_url': pdf_url,
         'today': timezone.now().date(),
     }

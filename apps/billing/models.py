@@ -390,7 +390,11 @@ class Invoice(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # Notes
+    # Description / Notes
+    description = models.TextField(
+        blank=True,
+        help_text="Customer-facing description or summary for this invoice"
+    )
     notes = models.TextField(blank=True)
     internal_notes = models.TextField(
         blank=True,
@@ -511,8 +515,10 @@ class InvoiceLineItem(models.Model):
         return f"{self.description} - ${self.amount}"
     
     def save(self, *args, **kwargs):
-        # Auto-calculate amount if not set
-        if not self.amount:
+        # Auto-calculate amount only when it has never been set.
+        # Using `is None` instead of `not self.amount` so that an explicitly
+        # set amount of $0.00 is preserved and not recalculated on re-save.
+        if self.amount is None:
             self.amount = (self.unit_price * self.quantity) - self.discount
         super().save(*args, **kwargs)
 

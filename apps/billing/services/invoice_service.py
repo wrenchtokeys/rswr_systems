@@ -73,6 +73,7 @@ class InvoiceData:
     subtotal: Decimal
     total_discount: Decimal
     total: Decimal
+    description: str = ""
     notes: str = ""
     payment_terms: str = "COD"
     payment_terms_display: str = "Cash on Delivery (COD)"
@@ -366,7 +367,8 @@ class InvoiceService:
         customer_id: int,
         repair_ids: Optional[List[int]] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        invoice_description: str = ""
     ) -> InvoiceData:
         """
         Build complete invoice data structure from repairs.
@@ -461,6 +463,7 @@ class InvoiceService:
             subtotal=subtotal,
             total_discount=total_discount,
             total=total_with_tax,
+            description=invoice_description,
             tax_rate=tax_rate,
             state_tax_rate=state_tax_rate,
             county_tax_rate=county_tax_rate,
@@ -580,7 +583,15 @@ class InvoiceService:
         ]))
         story.append(info_table)
         story.append(Spacer(1, 25))
-        
+
+        # Optional invoice-level description / summary
+        if getattr(invoice_data, 'description', ''):
+            story.append(Paragraph(
+                invoice_data.description.replace('\n', '<br/>'),
+                self.styles['Normal']
+            ))
+            story.append(Spacer(1, 15))
+
         # Line Items Table
         story.append(Paragraph("Repair Details", self.styles['SectionHeader']))
         
@@ -762,7 +773,8 @@ class InvoiceService:
         repair_ids: Optional[List[int]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        include_photos: bool = False  # Photos disabled by default for now
+        include_photos: bool = False,  # Photos disabled by default for now
+        invoice_description: str = ""
     ) -> Tuple[bytes, InvoiceData]:
         """
         Generate a complete invoice PDF.
@@ -781,9 +793,10 @@ class InvoiceService:
             customer_id=customer_id,
             repair_ids=repair_ids,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            invoice_description=invoice_description
         )
-        
+
         pdf_bytes = self.generate_pdf(invoice_data, include_photos=include_photos)
         
         return pdf_bytes, invoice_data

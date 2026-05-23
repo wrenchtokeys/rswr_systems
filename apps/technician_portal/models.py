@@ -572,6 +572,13 @@ class Repair(GlassService):
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
                     self.cost = self.cost_override
+                elif self.pk and is_multi_break and self.cost:
+                    # BATCH REPAIR FIX: Preserve batch pricing calculated at creation time.
+                    # Batch pricing is set correctly by calculate_batch_pricing() when the
+                    # batch is first created. Re-saving should not recalculate because the
+                    # UnitRepairCount has already been incremented by all breaks in the batch,
+                    # which would shift every break to the wrong pricing tier.
+                    pass
                 else:
                     from .services.pricing_service import calculate_repair_cost
                     if skip_progressive and not is_multi_break:
