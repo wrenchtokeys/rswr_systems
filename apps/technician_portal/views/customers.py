@@ -17,6 +17,38 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _save_billing_preferences(customer, cleaned_data):
+    """Create CustomerRepairPreference if any billing fields were provided.
+
+    If all billing fields are empty (e.g. the details section was never opened),
+    no record is created — the customer uses shop defaults.
+    """
+    invoice_pref = cleaned_data.get('invoice_preference', '')
+    payment_terms = cleaned_data.get('payment_terms', '')
+    billing_email = cleaned_data.get('billing_email', '')
+    batch_day = cleaned_data.get('batch_invoice_day')
+
+    # Treat all-empty as "use shop defaults" — don't create a record
+    if not any([invoice_pref, payment_terms, billing_email, batch_day]):
+        return
+
+    from apps.customer_portal.models import CustomerRepairPreference
+    defaults = {}
+    if invoice_pref:
+        defaults['invoice_preference'] = invoice_pref
+    if payment_terms:
+        defaults['payment_terms'] = payment_terms
+    if billing_email:
+        defaults['billing_email'] = billing_email
+    if batch_day is not None:
+        defaults['batch_invoice_day'] = batch_day
+
+    CustomerRepairPreference.objects.update_or_create(
+        customer=customer,
+        defaults=defaults,
+    )
+
+
 @technician_required
 def create_customer(request):
     """Create a new customer with optional portal invitation."""
@@ -37,11 +69,14 @@ def create_customer(request):
             if tenant:
                 customer.tenant = tenant
             customer.save()
-            
+
+            # Handle billing preferences if any were provided
+            _save_billing_preferences(customer, form.cleaned_data)
+
             # Handle portal invitation if requested
             invite_email = form.cleaned_data.get('invite_email')
             send_invitation = form.cleaned_data.get('send_invitation', False)
-            
+
             if invite_email and send_invitation:
                 from apps.customer_portal.services.invitation_service import CustomerInvitationService
                 try:
@@ -50,7 +85,8 @@ def create_customer(request):
                         email=invite_email,
                         invited_by=request.user,
                         first_name=form.cleaned_data.get('invite_first_name', ''),
-                        last_name=form.cleaned_data.get('invite_last_name', '')
+                        last_name=form.cleaned_data.get('invite_last_name', ''),
+                        is_primary_contact=form.cleaned_data.get('is_primary_contact', True),
                     )
                     if CustomerInvitationService.send_invitation_email(invitation, request):
                         messages.success(
@@ -75,7 +111,7 @@ def create_customer(request):
             return redirect('technician_dashboard')
     else:
         form = CustomerForm(tenant=tenant)
-    return render(request, 'technician_portal/customer_form.html', {'form': form})
+    return render(request, 'technician_portal/customer_form.html', {'form': form, 'tenant': tenant})
 
 
 @technician_required
@@ -85,8 +121,10 @@ def customer_list(request):
 
     # Admins and working managers see all customers in their tenant
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = (hasattr(request.user, 'technician') and
-              request.user.technician.is_manager)
+    # Scope the Technician lookup to the current tenant so that a manager at Shop A
+    # cannot bypass this check when acting in Shop B's context. (CODE-076)
+    _scoped_tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    is_mgr = bool(_scoped_tech and _scoped_tech.is_manager)
 
     if is_admin or is_mgr:
         customers = Customer.objects.all()
@@ -97,8 +135,24 @@ def customer_list(request):
             customers = customers.none()
         customers = customers.order_by('name')
     else:
-        if hasattr(request.user, 'technician'):
-            technician = request.user.technician
+        # Use tenant-scoped Technician lookup so that a user who is a Technician
+        # at Shop A but has a TenantMembership at Shop B (without a Technician record
+        # there) doesn't resolve to Shop A's Technician here. Unscoped
+        # request.user.technician would return the wrong shop's record — correct
+        # downstream tenant filtering masks the actual issue, but using the wrong
+        # Technician PK to filter repairs means a cross-tenant user sees no customers
+        # at Shop B even if they have repairs there (broken UX). (CODE-088)
+        if tenant:
+            technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+        elif hasattr(request.user, 'technician'):
+            try:
+                technician = request.user.technician
+            except Technician.DoesNotExist:
+                technician = None
+        else:
+            technician = None
+
+        if technician:
             repair_qs = Repair.objects.filter(technician=technician)
             if tenant:
                 repair_qs = repair_qs.filter(tenant=tenant)
@@ -144,10 +198,11 @@ def customer_details(request, customer_id):
     """View customer details with unit listing for current technician."""
     tenant = getattr(request, 'tenant', None)
     
-    # Get technician if exists (owners/managers may not have one)
-    technician = None
-    if hasattr(request.user, 'technician'):
-        technician = request.user.technician
+    # Get technician if exists (owners/managers may not have one).
+    # Scope to the current tenant — request.user.technician resolves via OneToOneField
+    # without tenant scope, so a manager at Shop A would incorrectly pass is_mgr checks
+    # when acting in Shop B's context.  (CODE-076)
+    technician = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
 
     qs = Customer.objects.select_related('primary_technician__user').all()
     if tenant:
@@ -159,7 +214,7 @@ def customer_details(request, customer_id):
 
     # Determine if user is admin/owner/manager (can see all repairs)
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = technician and technician.is_manager
+    is_mgr = bool(technician and technician.is_manager)
     
     # Build repairs query
     if is_admin or is_mgr:
@@ -186,7 +241,7 @@ def customer_details(request, customer_id):
     if unit_search:
         repairs = repairs.filter(unit_number__icontains=unit_search)
 
-    units = repairs.values_list('unit_number', flat=True).distinct()
+    units = repairs.exclude(unit_number__in=['', None]).values_list('unit_number', flat=True).distinct()
 
     # Determine if user can edit primary technician (admin, owner, or manager)
     can_edit_customer = is_admin or is_mgr
@@ -227,9 +282,13 @@ def unit_details(request, customer_id, unit_number):
     """View all repairs and replacements for a specific unit."""
     tenant = getattr(request, 'tenant', None)
     
-    # Check if user is admin/manager (can see all)
+    # Check if user is admin/manager (can see all).
+    # Scope the Technician lookup to the current tenant — request.user.technician resolves
+    # via OneToOneField with no tenant guard, so a manager at Shop A would incorrectly
+    # pass is_mgr checks when acting in Shop B's context.  (CODE-076)
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    _scoped_tech_unit = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    is_mgr = bool(_scoped_tech_unit and _scoped_tech_unit.is_manager)
 
     qs = Customer.objects.all()
     if tenant:
@@ -239,17 +298,23 @@ def unit_details(request, customer_id, unit_number):
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
 
-    # Get repairs for this unit
+    # Get repairs for this unit.
+    # Must guard _scoped_tech_unit=None: if a user has a 'technician' TenantMembership
+    # role but no Technician record, passing technician=None to the filter would return
+    # every *unassigned* repair for the customer — data leakage.  Mirror the safe pattern
+    # from customer_details() which uses Repair.objects.none() in that case.  (CODE-187)
     if is_admin or is_mgr:
         repairs = Repair.objects.filter(customer=customer, unit_number=unit_number)
-    else:
-        technician = getattr(request.user, 'technician', None)
+    elif _scoped_tech_unit:
         repairs = Repair.objects.filter(
-            technician=technician,
+            technician=_scoped_tech_unit,
             customer=customer,
             unit_number=unit_number
         )
-    
+    else:
+        # No Technician record at this tenant — show nothing (safe default)
+        repairs = Repair.objects.none()
+
     repairs = repairs.exclude(
         queue_status__in=['REQUESTED', 'PENDING']
     ).select_related('customer', 'technician__user')
@@ -259,17 +324,19 @@ def unit_details(request, customer_id, unit_number):
     else:
         repairs = repairs.none()
     
-    # Get replacements for this unit
+    # Get replacements for this unit.
+    # Same guard: _scoped_tech_unit=None → none() to prevent unassigned-record leakage.
     from apps.technician_portal.models import Replacement
     if is_admin or is_mgr:
         replacements = Replacement.objects.filter(customer=customer, unit_number=unit_number)
-    else:
-        technician = getattr(request.user, 'technician', None)
+    elif _scoped_tech_unit:
         replacements = Replacement.objects.filter(
-            technician=technician,
+            technician=_scoped_tech_unit,
             customer=customer,
             unit_number=unit_number
         )
+    else:
+        replacements = Replacement.objects.none()
     
     if tenant:
         replacements = replacements.filter(tenant=tenant)
@@ -300,19 +367,25 @@ def mark_unit_replaced(request, customer_id, unit_number):
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
-    # Get or create the unit repair count record
+    # Get or create the unit repair count record.
+    # Include tenant in the lookup (not just defaults) so the lookup itself is
+    # tenant-scoped.  Having tenant only in defaults means a NULL-tenant row
+    # from an older codepath would match and the correct tenant would never be set.
     unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+        tenant=tenant,
         customer=customer,
         unit_number=unit_number,
-        defaults={'repair_count': 0, 'tenant': tenant}
+        defaults={'repair_count': 0}
     )
     
-    # Get the technician (current user or fallback)
+    # Get the technician (current user or fallback).
+    # Scope to the current tenant to avoid cross-tenant Technician contamination
+    # on Replacement records (same pattern as CODE-076 through CODE-085).
     technician = None
-    if hasattr(request.user, 'technician'):
-        technician = request.user.technician
-    else:
-        # For admins without technician record, try to get customer's primary tech
+    if tenant:
+        technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    if technician is None:
+        # For admins without a technician record, fall back to customer's primary tech
         technician = customer.primary_technician
     
     if not technician:
@@ -358,8 +431,11 @@ def update_primary_technician(request, customer_id):
     """Update the primary technician for a customer (manager/admin only)."""
     tenant = getattr(request, 'tenant', None)
 
-    if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
-        if not hasattr(request.user, 'technician') or not request.user.technician.is_manager:
+    # Scope the Technician lookup to the current tenant so that a manager at Shop A
+    # cannot bypass this gate when acting in Shop B's context.  (CODE-076)
+    _scoped_tech_upt = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    if not is_tenant_admin(request.user, tenant=tenant):
+        if not (_scoped_tech_upt and _scoped_tech_upt.is_manager):
             messages.error(request, "Only managers or admins can change a customer's primary technician.")
             return redirect('customer_detail', customer_id=customer_id)
 
@@ -397,9 +473,10 @@ def edit_customer(request, customer_id):
     """Edit customer details (manager/admin only)."""
     tenant = getattr(request, 'tenant', None)
     
-    # Check permissions
+    # Check permissions — scope Technician lookup to current tenant (CODE-076)
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    _scoped_tech_ec = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    is_mgr = bool(_scoped_tech_ec and _scoped_tech_ec.is_manager)
     
     if not (is_admin or is_mgr):
         messages.error(request, "Only managers or admins can edit customers.")
@@ -449,8 +526,13 @@ def delete_customer(request, customer_id):
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
     
-    # Check for related repairs
-    repair_count = Repair.objects.filter(customer=customer, tenant=tenant).count()
+    # Check for related repairs — use all_objects to include soft-deleted repairs.
+    # Repair.objects uses RepairSoftDeleteManager which excludes deleted records.
+    # A customer with only soft-deleted repairs would pass the Repair.objects count
+    # check (count=0), allowing deletion and orphaning those archived repairs
+    # (customer FK becomes NULL since GlassService.customer is SET_NULL).
+    # We must block deletion whenever ANY repair — active OR archived — exists.
+    repair_count = Repair.all_objects.filter(customer=customer, tenant=tenant).count()
     
     if repair_count > 0:
         # Soft approach: don't delete, show error
@@ -473,9 +555,10 @@ def send_customer_invitation(request, customer_id):
     """Send or resend a customer portal invitation."""
     tenant = getattr(request, 'tenant', None)
     
-    # Only admins/managers can send invitations
+    # Only admins/managers can send invitations — scope Technician to current tenant (CODE-076)
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    _scoped_tech_sci = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    is_mgr = bool(_scoped_tech_sci and _scoped_tech_sci.is_manager)
     
     if not (is_admin or is_mgr):
         messages.error(request, "Only managers can send customer invitations.")
@@ -527,29 +610,34 @@ def resend_customer_invitation(request, invitation_id):
     """Resend an existing customer invitation."""
     from apps.customer_portal.models import CustomerInvitation
     from apps.customer_portal.services.invitation_service import CustomerInvitationService
-    
+
     tenant = getattr(request, 'tenant', None)
-    
-    # Only admins/managers can resend invitations
-    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
-    
+
+    # Reject early if no tenant context — we cannot safely scope the lookup.
+    if not tenant:
+        messages.error(request, "No shop context found. Please log out and back in.")
+        return redirect('technician_dashboard')
+
+    # Only admins/managers can resend invitations — scope Technician to current tenant (CODE-076)
+    is_admin = is_tenant_admin(request.user, tenant=tenant)
+    _scoped_tech_rci = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    is_mgr = bool(_scoped_tech_rci and _scoped_tech_rci.is_manager)
+
     if not (is_admin or is_mgr):
         messages.error(request, "Only managers can resend invitations.")
         return redirect('technician_dashboard')
-    
-    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
-    
-    # Verify customer belongs to tenant
-    if tenant and invitation.customer.tenant != tenant:
-        messages.error(request, "Invitation not found.")
-        return redirect('technician_dashboard')
-    
+
+    # Scope the lookup to this tenant directly — never fetch the record first and
+    # check the tenant afterwards, because a missing/None tenant would skip the check.
+    invitation = get_object_or_404(
+        CustomerInvitation, id=invitation_id, customer__tenant=tenant
+    )
+
     if CustomerInvitationService.resend_invitation(invitation, request):
         messages.success(request, f"Invitation resent to {invitation.email}")
     else:
         messages.error(request, "Failed to resend invitation.")
-    
+
     return redirect('customer_detail', customer_id=invitation.customer_id)
 
 
@@ -559,31 +647,36 @@ def cancel_customer_invitation(request, invitation_id):
     """Cancel a pending customer invitation."""
     from apps.customer_portal.models import CustomerInvitation
     from apps.customer_portal.services.invitation_service import CustomerInvitationService
-    
+
     tenant = getattr(request, 'tenant', None)
-    
-    # Only admins/managers can cancel invitations
-    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
-    
+
+    # Reject early if no tenant context — we cannot safely scope the lookup.
+    if not tenant:
+        messages.error(request, "No shop context found. Please log out and back in.")
+        return redirect('technician_dashboard')
+
+    # Only admins/managers can cancel invitations — scope Technician to current tenant (CODE-076)
+    is_admin = is_tenant_admin(request.user, tenant=tenant)
+    _scoped_tech_cci = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    is_mgr = bool(_scoped_tech_cci and _scoped_tech_cci.is_manager)
+
     if not (is_admin or is_mgr):
         messages.error(request, "Only managers can cancel invitations.")
         return redirect('technician_dashboard')
-    
-    invitation = get_object_or_404(CustomerInvitation, id=invitation_id)
-    
-    # Verify customer belongs to tenant
-    if tenant and invitation.customer.tenant != tenant:
-        messages.error(request, "Invitation not found.")
-        return redirect('technician_dashboard')
-    
+
+    # Scope the lookup to this tenant directly — same defence-in-depth reasoning
+    # as resend: never rely on a post-fetch `if tenant and ...` guard.
+    invitation = get_object_or_404(
+        CustomerInvitation, id=invitation_id, customer__tenant=tenant
+    )
+
     customer_id = invitation.customer_id
-    
+
     if CustomerInvitationService.cancel_invitation(invitation):
         messages.success(request, f"Invitation to {invitation.email} cancelled.")
     else:
         messages.error(request, "Could not cancel this invitation.")
-    
+
     return redirect('customer_detail', customer_id=customer_id)
 
 
@@ -596,7 +689,9 @@ def set_primary_contact(request, customer_id, cu_id):
     tenant = getattr(request, 'tenant', None)
 
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
-    is_mgr = hasattr(request.user, 'technician') and request.user.technician.is_manager
+    # Scope Technician lookup to current tenant — prevents cross-tenant is_manager bypass (CODE-076)
+    _scoped_tech_spc = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    is_mgr = bool(_scoped_tech_spc and _scoped_tech_spc.is_manager)
 
     if not (is_admin or is_mgr):
         messages.error(request, "Only managers can change the primary contact.")

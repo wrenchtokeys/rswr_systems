@@ -3,414 +3,323 @@
 {% block title %}Dashboard | {{ tenant.name }} | RS Systems{% endblock %}
 
 {% block content %}
+<div class="pb-24 sm:pb-8">
+
 <!-- Trial Banner -->
 {% if is_trial %}
-<div class="mb-6 p-4 rounded-xl {% if is_trial_expired %}bg-red-50 border border-red-200{% elif trial_days_remaining <= 7 %}bg-yellow-50 border border-yellow-200{% else %}bg-blue-50 border border-blue-200{% endif %}" id="trialBanner">
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div class="flex items-center space-x-3">
-            {% if is_trial_expired %}
-                <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-exclamation-triangle text-red-600"></i>
-                </div>
-                <div>
-                    <p class="font-semibold text-red-800">Your free trial has expired</p>
-                    <p class="text-sm text-red-600">Upgrade now to keep using RS Systems.</p>
-                </div>
-            {% elif trial_days_remaining <= 7 %}
-                <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-clock text-yellow-600"></i>
-                </div>
-                <div>
-                    <p class="font-semibold text-yellow-800">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left in your free trial</p>
-                    <p class="text-sm text-yellow-600">Don't lose your data — upgrade to a paid plan.</p>
-                </div>
-            {% else %}
-                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-gift text-blue-600"></i>
-                </div>
-                <div>
-                    <p class="font-semibold text-blue-800">Free trial — {{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} remaining</p>
-                    <p class="text-sm text-blue-600">You're on the free trial. Upgrade anytime for more features.</p>
-                </div>
-            {% endif %}
+<div class="mb-5 p-3.5 rounded-xl flex items-center justify-between gap-3
+    {% if is_trial_expired %}bg-red-50 border border-red-200
+    {% elif trial_days_remaining <= 7 %}bg-amber-50 border border-amber-200
+    {% else %}bg-blue-50 border border-blue-200{% endif %}" id="trialBanner">
+    <div class="flex items-center gap-3 min-w-0">
+        {% if is_trial_expired %}
+        <div class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-exclamation-triangle text-red-600 text-sm"></i>
         </div>
-        <div class="flex items-center gap-2">
-            <a href="{% url 'billing_settings' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0">
-                <i class="fas fa-arrow-up mr-2"></i>Upgrade Now
-            </a>
-            <button onclick="document.getElementById('trialBanner').style.display='none'" class="text-gray-400 hover:text-gray-600 p-1">
-                <i class="fas fa-times"></i>
-            </button>
+        <div class="min-w-0">
+            <span class="font-semibold text-red-800 text-sm">Trial expired</span>
+            <span class="text-red-600 text-sm ml-1 hidden sm:inline">— Upgrade to keep using RS Systems</span>
         </div>
+        {% elif trial_days_remaining <= 7 %}
+        <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-clock text-amber-600 text-sm"></i>
+        </div>
+        <span class="font-semibold text-amber-800 text-sm">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left</span>
+        {% else %}
+        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-gift text-blue-600 text-sm"></i>
+        </div>
+        <div class="min-w-0">
+            <span class="font-medium text-blue-800 text-sm">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left on free trial</span>
+            {% if intended_plan_name %}<span class="text-blue-600 text-xs ml-1 hidden sm:inline">— {{ intended_plan_name }} is the plan you chose at signup</span>{% endif %}
+        </div>
+        {% endif %}
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+        <a href="{% url 'billing_settings' %}{% if intended_plan %}?plan={{ intended_plan }}{% endif %}" class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+            {% if intended_plan_name %}Upgrade to {{ intended_plan_name }}{% else %}Upgrade{% endif %}
+        </a>
+        <button onclick="document.getElementById('trialBanner').style.display='none'" class="text-gray-400 hover:text-gray-600 p-1">
+            <i class="fas fa-times text-xs"></i>
+        </button>
     </div>
 </div>
 {% endif %}
 
-<!-- Welcome Header -->
-<div class="mb-8">
-    <h1 class="text-3xl font-bold text-gray-900">Welcome back, {{ request.user.first_name|default:request.user.username }}!</h1>
-    <p class="text-gray-500 mt-1">Here's what's happening at {{ tenant.name }}</p>
+<!-- Welcome + Revenue Hero -->
+<div class="mb-6">
+    <h1 class="text-xl sm:text-2xl font-bold text-gray-900 mb-1">Hey, {{ request.user.first_name|default:request.user.username }}!</h1>
+    <p class="text-sm text-gray-500">{{ tenant.name }}</p>
 </div>
 
-<!-- Revenue Summary -->
-<div class="mb-8">
-    <div class="bg-gradient-to-r from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-                <div class="text-blue-100 text-sm font-medium mb-1">Revenue This Month</div>
-                <div class="text-3xl sm:text-4xl font-bold">${{ total_revenue|floatformat:2 }}</div>
-                <div class="text-blue-200 text-sm mt-2">
-                    <span class="mr-4">
-                        <i class="fas fa-tools mr-1"></i>
-                        Repairs: ${{ repair_revenue|floatformat:2 }}
-                    </span>
-                    <span>
-                        <i class="fas fa-car mr-1"></i>
-                        Replacements: ${{ replacement_revenue|floatformat:2 }}
-                    </span>
-                </div>
-            </div>
-            <div class="flex-shrink-0">
-                <div class="w-16 h-16 rounded-full bg-white bg-opacity-20 flex items-center justify-center">
-                    <i class="fas fa-dollar-sign text-3xl text-white"></i>
-                </div>
-            </div>
-        </div>
+<!-- Revenue Card — BIG number -->
+<div class="bg-gradient-to-br from-green-600 to-green-800 rounded-2xl p-5 sm:p-6 text-white mb-6 shadow-lg">
+    <div class="text-green-200 text-sm font-medium mb-1">Revenue This Month</div>
+    <div class="text-4xl sm:text-5xl font-extrabold tracking-tight">${{ total_revenue|floatformat:2 }}</div>
+    <div class="flex items-center gap-4 mt-3 text-green-200 text-sm">
+        <span><i class="fas fa-tools mr-1"></i>${{ repair_revenue|floatformat:2 }} repairs</span>
+        <span><i class="fas fa-car mr-1"></i>${{ replacement_revenue|floatformat:2 }} replacements</span>
     </div>
 </div>
 
-<!-- Usage Meters -->
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-    <!-- Repairs This Month -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-medium text-gray-500">Repairs This Month</h3>
-            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-tools text-green-600 text-sm"></i>
-            </div>
+<!-- Outstanding Invoices Alert Bar -->
+{% if outstanding_count > 0 %}
+<a href="{% url 'owner_invoice_list' %}{% if overdue_count > 0 %}?status=overdue{% endif %}" class="flex items-center justify-between p-3.5 mb-6 rounded-xl border transition-colors
+    {% if overdue_count > 0 %}bg-red-50 border-red-200 hover:bg-red-100{% else %}bg-amber-50 border-amber-200 hover:bg-amber-100{% endif %}">
+    <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
+            {% if overdue_count > 0 %}bg-red-100{% else %}bg-amber-100{% endif %}">
+            <i class="fas fa-file-invoice-dollar text-sm {% if overdue_count > 0 %}text-red-600{% else %}text-amber-600{% endif %}"></i>
         </div>
-        <div class="text-3xl font-bold text-gray-900 mb-2">{{ usage.repairs.used }}</div>
+        <div>
+            <span class="font-semibold text-sm {% if overdue_count > 0 %}text-red-800{% else %}text-amber-800{% endif %}">
+                {% if overdue_count > 0 %}{{ overdue_count }} overdue{% endif %}
+                {% if overdue_count > 0 and outstanding_count > overdue_count %} · {% endif %}
+                {% if outstanding_count > overdue_count %}{{ outstanding_count|add:"-0" }} outstanding{% endif %}
+            </span>
+            <span class="text-sm ml-1.5 {% if overdue_count > 0 %}text-red-600{% else %}text-amber-600{% endif %}">
+                — ${{ outstanding_amount|floatformat:2 }} total
+            </span>
+        </div>
+    </div>
+    <i class="fas fa-chevron-right text-xs {% if overdue_count > 0 %}text-red-400{% else %}text-amber-400{% endif %}"></i>
+</a>
+{% endif %}
+
+<!-- Stats + Billing — Combined compact grid -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+    <!-- Repairs -->
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium text-gray-500">Repairs</span>
+            <i class="fas fa-tools text-green-500 text-xs"></i>
+        </div>
+        <div class="text-2xl font-bold text-gray-900">{{ usage.repairs.used }}</div>
         {% if usage.repairs.limit %}
-        <div class="w-full bg-gray-200 rounded-full h-2 mb-1">
-            <div class="h-2 rounded-full transition-all duration-500
+        <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
+            <div class="h-1.5 rounded-full transition-all
                 {% if usage.repairs.percent >= 90 %}bg-red-500
-                {% elif usage.repairs.percent >= 70 %}bg-yellow-500
+                {% elif usage.repairs.percent >= 70 %}bg-amber-500
                 {% else %}bg-green-500{% endif %}"
                 style="width: {% if usage.repairs.percent %}{{ usage.repairs.percent }}{% else %}0{% endif %}%"></div>
         </div>
-        <p class="text-xs text-gray-500">{{ usage.repairs.used }} of {{ usage.repairs.limit }} used</p>
+        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.repairs.limit }}</span>
         {% else %}
-        <p class="text-xs text-gray-500">Unlimited</p>
+        <span class="text-[11px] text-gray-400 mt-1 block">Unlimited</span>
         {% endif %}
     </div>
 
     <!-- Technicians -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-medium text-gray-500">Technicians</h3>
-            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-users text-blue-600 text-sm"></i>
-            </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium text-gray-500">Technicians</span>
+            <i class="fas fa-users text-blue-500 text-xs"></i>
         </div>
-        <div class="text-3xl font-bold text-gray-900 mb-2">{{ usage.technicians.used }}</div>
+        <div class="text-2xl font-bold text-gray-900">{{ usage.technicians.used }}</div>
         {% if usage.technicians.limit %}
-        <div class="w-full bg-gray-200 rounded-full h-2 mb-1">
-            <div class="h-2 rounded-full transition-all duration-500
+        <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
+            <div class="h-1.5 rounded-full transition-all
                 {% if usage.technicians.percent >= 90 %}bg-red-500
-                {% elif usage.technicians.percent >= 70 %}bg-yellow-500
+                {% elif usage.technicians.percent >= 70 %}bg-amber-500
                 {% else %}bg-blue-500{% endif %}"
                 style="width: {% if usage.technicians.percent %}{{ usage.technicians.percent }}{% else %}0{% endif %}%"></div>
         </div>
-        <p class="text-xs text-gray-500">{{ usage.technicians.used }} of {{ usage.technicians.limit }} seats</p>
+        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.technicians.limit }}</span>
         {% else %}
-        <p class="text-xs text-gray-500">Unlimited</p>
+        <span class="text-[11px] text-gray-400 mt-1 block">Unlimited</span>
         {% endif %}
     </div>
 
     <!-- Customers -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-medium text-gray-500">Customers</h3>
-            <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-building text-purple-600 text-sm"></i>
-            </div>
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium text-gray-500">Customers</span>
+            <i class="fas fa-building text-purple-500 text-xs"></i>
         </div>
-        <div class="text-3xl font-bold text-gray-900 mb-2">{{ usage.customers.used }}</div>
+        <div class="text-2xl font-bold text-gray-900">{{ usage.customers.used }}</div>
         {% if usage.customers.limit %}
-        <div class="w-full bg-gray-200 rounded-full h-2 mb-1">
-            <div class="h-2 rounded-full transition-all duration-500
+        <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
+            <div class="h-1.5 rounded-full transition-all
                 {% if usage.customers.percent >= 90 %}bg-red-500
-                {% elif usage.customers.percent >= 70 %}bg-yellow-500
+                {% elif usage.customers.percent >= 70 %}bg-amber-500
                 {% else %}bg-purple-500{% endif %}"
                 style="width: {% if usage.customers.percent %}{{ usage.customers.percent }}{% else %}0{% endif %}%"></div>
         </div>
-        <p class="text-xs text-gray-500">{{ usage.customers.used }} of {{ usage.customers.limit }} accounts</p>
+        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.customers.limit }}</span>
         {% else %}
-        <p class="text-xs text-gray-500">Unlimited</p>
+        <span class="text-[11px] text-gray-400 mt-1 block">Unlimited</span>
         {% endif %}
     </div>
+
+    <!-- Collected This Month -->
+    <div class="bg-white rounded-xl border border-gray-200 p-4">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-medium text-gray-500">Collected</span>
+            <i class="fas fa-money-bill-wave text-green-500 text-xs"></i>
+        </div>
+        <div class="text-2xl font-bold text-green-600">${{ collected_this_month|floatformat:0 }}</div>
+        <a href="{% url 'owner_invoice_list' %}" class="text-[11px] text-blue-500 hover:text-blue-700 mt-1 block">View invoices →</a>
+    </div>
 </div>
 
-<!-- Billing Overview -->
-{% if outstanding_count > 0 or recent_payments %}
-<div class="mb-8">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-900">Billing</h2>
-        <a href="{% url 'owner_invoice_list' %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">
-            View all invoices →
-        </a>
-    </div>
-
-    <!-- Billing Metric Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-sm font-medium text-gray-500">Outstanding</span>
-                <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                    <i class="fas fa-file-invoice-dollar text-amber-600 text-sm"></i>
-                </div>
-            </div>
-            <div class="text-2xl font-bold text-gray-900">${{ outstanding_amount|floatformat:2 }}</div>
-            <p class="text-xs text-gray-500 mt-1">{{ outstanding_count }} invoice{{ outstanding_count|pluralize }}</p>
-        </div>
-        <a href="{% url 'owner_invoice_list' %}?status=overdue" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md hover:border-red-300 transition-all {% if overdue_count > 0 %}cursor-pointer{% endif %}">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-sm font-medium text-gray-500">Overdue</span>
-                <div class="w-8 h-8 {% if overdue_count > 0 %}bg-red-100{% else %}bg-green-100{% endif %} rounded-lg flex items-center justify-center">
-                    <i class="fas fa-exclamation-circle {% if overdue_count > 0 %}text-red-600{% else %}text-green-600{% endif %} text-sm"></i>
-                </div>
-            </div>
-            <div class="text-2xl font-bold {% if overdue_count > 0 %}text-red-600{% else %}text-green-600{% endif %}">{{ overdue_count }}</div>
-            <p class="text-xs text-gray-500 mt-1">{% if overdue_count > 0 %}Need attention{% else %}All current{% endif %}</p>
-        </a>
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-sm font-medium text-gray-500">Collected This Month</span>
-                <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <i class="fas fa-money-bill-wave text-green-600 text-sm"></i>
-                </div>
-            </div>
-            <div class="text-2xl font-bold text-green-600">${{ collected_this_month|floatformat:2 }}</div>
-            <p class="text-xs text-gray-500 mt-1">Payments received</p>
-        </div>
-    </div>
-
-    <!-- Outstanding Invoices Table -->
-    {% if outstanding_invoices %}
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-sm font-semibold text-gray-900">Outstanding Invoices</h3>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Due</th>
-                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-100">
-                    {% for inv in outstanding_invoices %}
-                    <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{{ inv.invoice_number }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{{ inv.customer.name }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            {% if inv.due_date %}{{ inv.due_date|date:"M d, Y" }}{% else %}—{% endif %}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-right
-                            {% if inv.status == 'OVERDUE' %}text-red-600{% else %}text-gray-900{% endif %}">
-                            ${{ inv.amount_due|floatformat:2 }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-center">
-                            {% if inv.status == 'OVERDUE' %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Overdue</span>
-                            {% elif inv.status == 'PARTIAL' %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Partial</span>
-                            {% else %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Sent</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Recent Payments -->
-    {% if recent_payments %}
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-sm font-semibold text-gray-900">Recent Payments</h3>
-        </div>
-        <div class="divide-y divide-gray-100">
-            {% for p in recent_payments %}
-            <div class="px-6 py-3 flex items-center justify-between hover:bg-gray-50">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-check text-green-600 text-xs"></i>
-                    </div>
-                    <div>
-                        <span class="text-sm font-medium text-gray-900">{{ p.invoice.customer.name }}</span>
-                        <span class="text-xs text-gray-500 ml-2">{{ p.invoice.invoice_number }}</span>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <span class="text-xs text-gray-500">{{ p.get_payment_method_display }}</span>
-                    <span class="text-sm font-semibold text-green-600">+${{ p.amount|floatformat:2 }}</span>
-                    <span class="text-xs text-gray-400">{{ p.payment_date|date:"M d" }}</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-</div>
-{% endif %}
-
-<!-- Setup Progress Card (unified setup page) -->
+<!-- Setup Progress (only if incomplete) -->
 {% if setup_completion and not setup_completion.critical_complete %}
-<div class="mb-8 bg-white border border-blue-200 rounded-xl p-5 shadow-sm">
-    <div class="flex items-start justify-between gap-4 mb-4">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <i class="fas fa-wrench text-blue-600"></i>
+<div class="mb-6 bg-white border border-blue-200 rounded-xl p-4">
+    <div class="flex items-center justify-between gap-3 mb-3">
+        <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-wrench text-blue-600 text-sm"></i>
             </div>
             <div>
-                <h2 class="text-base font-semibold text-gray-900">🔧 {{ setup_completion.configured_count }} of 6 settings configured</h2>
-                <p class="text-sm text-gray-500">Finish setting up your shop to get the most out of RS Systems</p>
+                <span class="text-sm font-semibold text-gray-900">{{ setup_completion.configured_count }}/6 configured</span>
+                <span class="text-xs text-gray-500 ml-1.5 hidden sm:inline">— Finish setting up your shop</span>
             </div>
         </div>
-        <a href="/owner/setup/" class="flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-            Continue Setup <i class="fas fa-arrow-right text-xs"></i>
+        <a href="/owner/setup/" class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+            Continue <i class="fas fa-arrow-right text-xs ml-1"></i>
         </a>
     </div>
     <div class="w-full bg-gray-100 rounded-full h-2">
-        <div class="bg-blue-500 h-2 rounded-full transition-all duration-500"
-             style="width: {% widthratio setup_completion.configured_count 6 100 %}%"></div>
+        <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: {% widthratio setup_completion.configured_count 6 100 %}%"></div>
     </div>
 </div>
 {% elif setup_steps %}
-<!-- Legacy setup steps (fallback) -->
-<div class="mb-8 bg-blue-50 border border-blue-200 rounded-xl p-6">
-    <div class="flex items-center gap-3 mb-4">
-        <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-            <i class="fas fa-clipboard-check text-blue-600"></i>
+<div class="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+    <div class="flex items-center gap-2.5 mb-3">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+            <i class="fas fa-clipboard-check text-blue-600 text-sm"></i>
         </div>
-        <div>
-            <h2 class="text-lg font-semibold text-gray-900">Finish setting up your shop</h2>
-            <p class="text-sm text-gray-600">Complete these steps to get the most out of RS Systems</p>
-        </div>
+        <span class="text-sm font-semibold text-gray-900">Finish setting up your shop</span>
     </div>
-    <div class="space-y-3">
+    <div class="space-y-2">
         {% for step in setup_steps %}
-        <a href="{{ step.url }}" class="flex items-center gap-4 p-3 bg-white rounded-lg border border-blue-100 hover:border-blue-300 hover:shadow-sm transition-all group">
-            <div class="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                <i class="{{ step.icon }} text-blue-500 text-sm"></i>
+        <a href="{{ step.url }}" class="flex items-center gap-3 p-2.5 bg-white rounded-lg border border-blue-100 hover:border-blue-300 hover:shadow-sm transition-all group">
+            <div class="w-7 h-7 bg-blue-50 rounded-full flex items-center justify-center group-hover:bg-blue-100 transition-colors flex-shrink-0">
+                <i class="{{ step.icon }} text-blue-500 text-xs"></i>
             </div>
-            <div class="flex-1">
+            <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-gray-900">{{ step.label }}</p>
-                <p class="text-xs text-gray-500">{{ step.desc }}</p>
+                <p class="text-xs text-gray-500 truncate">{{ step.desc }}</p>
             </div>
-            <i class="fas fa-chevron-right text-gray-300 group-hover:text-blue-400 transition-colors"></i>
+            <i class="fas fa-chevron-right text-gray-300 group-hover:text-blue-400 text-xs transition-colors"></i>
         </a>
         {% endfor %}
     </div>
 </div>
 {% endif %}
 
-<!-- Quick Actions -->
-<div class="mb-8">
-    <h2 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <a href="{% url 'create_repair' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-green-300 hover:shadow-md transition-all group">
-            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-green-200 transition-colors">
-                <i class="fas fa-tools text-green-600 text-lg"></i>
-            </div>
-            <span class="text-sm font-medium text-gray-900">New Repair</span>
-        </a>
-        <a href="{% url 'replacement_create' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all group">
-            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-blue-200 transition-colors">
-                <i class="fas fa-car-crash text-blue-600 text-lg"></i>
-            </div>
-            <span class="text-sm font-medium text-gray-900">New Replacement</span>
-        </a>
-        <a href="{% url 'create_customer' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-purple-300 hover:shadow-md transition-all group">
-            <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-purple-200 transition-colors">
-                <i class="fas fa-user-plus text-purple-600 text-lg"></i>
-            </div>
-            <span class="text-sm font-medium text-gray-900">New Customer</span>
-        </a>
-        <a href="{% url 'repair_list' %}" class="flex flex-col items-center p-5 bg-white rounded-xl shadow-sm border border-gray-200 hover:border-amber-300 hover:shadow-md transition-all group">
-            <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center mb-3 group-hover:bg-amber-200 transition-colors">
-                <i class="fas fa-file-invoice-dollar text-amber-600 text-lg"></i>
-            </div>
-            <span class="text-sm font-medium text-gray-900">View Repairs</span>
-        </a>
-    </div>
-</div>
-
-<!-- Recent Activity -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200">
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-gray-900">Recent Activity</h2>
-        <a href="{% url 'repair_list' %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">View all →</a>
+<!-- Recent Activity Timeline -->
+<div class="bg-white rounded-xl border border-gray-200">
+    <div class="px-4 sm:px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-900">Recent Activity</h2>
+        <a href="{% url 'repair_list' %}" class="text-xs font-medium text-blue-600 hover:text-blue-800">View all →</a>
     </div>
     {% if recent_activity %}
-    <div class="divide-y divide-gray-100">
+    <div class="divide-y divide-gray-50">
         {% for item in recent_activity %}
-        <div class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 transition-colors">
-            <div class="flex items-center space-x-4">
-                <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
-                    {% if item.queue_status == 'COMPLETED' %}bg-green-100
-                    {% elif item.queue_status == 'IN_PROGRESS' %}bg-orange-100
-                    {% elif item.queue_status == 'APPROVED' %}bg-blue-100
-                    {% else %}bg-gray-100{% endif %}">
-                    <i class="fas {% if item.item_type == 'Replacement' %}fa-car-crash{% else %}fa-tools{% endif %}
-                        {% if item.queue_status == 'COMPLETED' %}text-green-600
-                        {% elif item.queue_status == 'IN_PROGRESS' %}text-orange-600
-                        {% elif item.queue_status == 'APPROVED' %}text-blue-600
-                        {% else %}text-gray-600{% endif %} text-sm"></i>
+        <div class="px-4 sm:px-5 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors">
+            <!-- Timeline dot -->
+            <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0
+                {% if item.queue_status == 'COMPLETED' %}bg-green-100
+                {% elif item.queue_status == 'IN_PROGRESS' %}bg-blue-100
+                {% elif item.queue_status == 'APPROVED' %}bg-indigo-100
+                {% elif item.queue_status == 'PENDING' %}bg-amber-100
+                {% elif item.queue_status == 'DENIED' %}bg-red-100
+                {% else %}bg-gray-100{% endif %}">
+                <i class="fas {% if item.item_type == 'Replacement' %}fa-car-crash{% else %}fa-tools{% endif %} text-xs
+                    {% if item.queue_status == 'COMPLETED' %}text-green-600
+                    {% elif item.queue_status == 'IN_PROGRESS' %}text-blue-600
+                    {% elif item.queue_status == 'APPROVED' %}text-indigo-600
+                    {% elif item.queue_status == 'PENDING' %}text-amber-600
+                    {% elif item.queue_status == 'DENIED' %}text-red-600
+                    {% else %}text-gray-500{% endif %}"></i>
+            </div>
+            <!-- Content -->
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-medium text-gray-900 truncate">{{ item.customer }}</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide
+                        {% if item.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
+                        {% elif item.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-800
+                        {% elif item.queue_status == 'APPROVED' %}bg-indigo-100 text-indigo-800
+                        {% elif item.queue_status == 'PENDING' %}bg-amber-100 text-amber-800
+                        {% elif item.queue_status == 'DENIED' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ item.get_queue_status_display }}
+                    </span>
                 </div>
-                <div>
-                    <div class="text-sm font-medium text-gray-900">
-                        {{ item.item_type }} — {{ item.customer }}
-                    </div>
-                    <div class="text-xs text-gray-500">
-                        Unit {{ item.unit_number }} • {{ item.service_date|date:"M d, Y" }}
-                    </div>
+                <div class="text-xs text-gray-500 mt-0.5">
+                    {{ item.item_type }} · Unit {{ item.unit_number }} · {{ item.service_date|date:"M d" }}
                 </div>
             </div>
-            <div class="flex items-center space-x-3 sm:ml-auto">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                    {% if item.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                    {% elif item.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
-                    {% elif item.queue_status == 'APPROVED' %}bg-blue-100 text-blue-800
-                    {% elif item.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                    {% elif item.queue_status == 'DENIED' %}bg-red-100 text-red-800
-                    {% else %}bg-gray-100 text-gray-800{% endif %}">
-                    {{ item.get_queue_status_display }}
-                </span>
-                <span class="text-sm font-semibold text-gray-900">${{ item.cost|floatformat:2 }}</span>
-            </div>
+            <!-- Cost -->
+            <span class="text-sm font-semibold text-gray-900 flex-shrink-0">${{ item.cost|floatformat:2 }}</span>
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <div class="px-6 py-12 text-center">
-        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i class="fas fa-inbox text-gray-400 text-2xl"></i>
+    <div class="py-12 px-6 text-center">
+        <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-inbox text-gray-400 text-xl"></i>
         </div>
-        <h3 class="text-sm font-medium text-gray-900 mb-1">No activity yet</h3>
-        <p class="text-sm text-gray-500 mb-4">Create your first repair or replacement to get started.</p>
-        <a href="{% url 'create_repair' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+        <h3 class="text-sm font-semibold text-gray-900 mb-1">No activity yet</h3>
+        <p class="text-sm text-gray-500 mb-4">Create your first repair to get started.</p>
+        <a href="{% url 'create_repair' %}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
             <i class="fas fa-plus mr-2"></i>Create Repair
         </a>
     </div>
     {% endif %}
 </div>
+
+<!-- Recent Payments (compact) -->
+{% if recent_payments %}
+<div class="mt-6 bg-white rounded-xl border border-gray-200">
+    <div class="px-4 sm:px-5 py-3.5 border-b border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-900">Recent Payments</h2>
+    </div>
+    <div class="divide-y divide-gray-50">
+        {% for p in recent_payments %}
+        <div class="px-4 sm:px-5 py-2.5 flex items-center justify-between">
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-7 h-7 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-check text-green-600 text-[10px]"></i>
+                </div>
+                <div class="min-w-0">
+                    <span class="text-sm font-medium text-gray-900 truncate block">{{ p.invoice.customer.name }}</span>
+                    <span class="text-xs text-gray-400">{{ p.payment_date|date:"M d" }} · {{ p.get_payment_method_display }}</span>
+                </div>
+            </div>
+            <span class="text-sm font-semibold text-green-600 flex-shrink-0">+${{ p.amount|floatformat:2 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Mobile FAB — Quick Actions -->
+{% include "includes/fab_quick_actions.html" %}
+
+<!-- Desktop Quick Actions — compact row -->
+<div class="hidden sm:flex items-center justify-center gap-3 mt-6">
+    <a href="{% url 'create_repair' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-green-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-green-600 text-xs"></i></div>
+        New Repair
+    </a>
+    <a href="{% url 'replacement_create' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-blue-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-car-crash text-blue-600 text-xs"></i></div>
+        New Replacement
+    </a>
+    <a href="{% url 'create_customer' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-purple-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><i class="fas fa-user-plus text-purple-600 text-xs"></i></div>
+        New Customer
+    </a>
+    <a href="{% url 'repair_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-amber-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-list text-amber-600 text-xs"></i></div>
+        View Repairs
+    </a>
+</div>
+
+</div>
+
+
 {% endblock %}

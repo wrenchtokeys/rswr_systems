@@ -218,3 +218,133 @@ class TestInvoiceServiceTenantParam(TestCase):
 
         svc = InvoiceService()
         self.assertIsNone(svc.tenant)
+
+
+class TestReminderServiceSaveUpdateFields(TestCase):
+    """
+    CODE-171: ReminderService.send_reminder() must use save(update_fields=['internal_notes'])
+    to avoid clobbering invoice status/totals with stale in-memory values.
+
+    PDF generation + SMTP can take several seconds.  A payment that arrives
+    during that window would update status/totals in the DB, but the invoice
+    object in memory is still stale.  Calling invoice.save() (no update_fields)
+    would then overwrite the DB with those stale values — potentially marking a
+    PAID invoice back to SENT, or zeroing out paid_at.
+
+    tasks._send_overdue_reminder() was already correct:
+        invoice.save(update_fields=['internal_notes'])
+    This test ensures reminder_service.send_reminder() follows the same pattern.
+    """
+
+    def _make_tenant_and_customer(self):
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='test-plan',
+            defaults={
+                'name': 'Test Plan',
+                'max_technicians': 5,
+                'max_customers': 50,
+                'monthly_price': Decimal('29.99'),
+            }
+        )
+        user = User.objects.create_user(
+            username='code171owner@example.com',
+            email='code171owner@example.com',
+            password='testpass123',
+        )
+        tenant = Tenant.objects.create(
+            name='CODE-171 Shop',
+            owner=user,
+            subscription_plan=plan,
+            plan='starter',
+            is_active=True,
+        )
+        customer = Customer.objects.create(
+            name='Fleet Co', email='fleet@example.com', tenant=tenant
+        )
+        return tenant, customer
+
+    def test_send_reminder_uses_update_fields(self):
+        """
+        send_reminder() must call save(update_fields=['internal_notes']), not save().
+        """
+        import inspect
+        from apps.billing.services.reminder_service import ReminderService
+
+        source = inspect.getsource(ReminderService.send_reminder)
+
+        # The fix: must use save(update_fields=['internal_notes'])
+        self.assertIn("update_fields=['internal_notes']", source,
+                      "send_reminder() must use save(update_fields=['internal_notes']) "
+                      "to avoid clobbering invoice status/totals. (CODE-171)")
+
+    def test_send_reminder_does_not_bare_save(self):
+        """
+        send_reminder() must NOT call invoice.save() without update_fields
+        after writing to internal_notes.
+        """
+        import re
+        import inspect
+        from apps.billing.services.reminder_service import ReminderService
+
+        source = inspect.getsource(ReminderService.send_reminder)
+
+        # Find all bare .save() calls not followed by (update_fields=
+        # A bare save() is one NOT immediately followed by "("
+        # with update_fields as the first arg.
+        bare_saves = re.findall(r'invoice\.save\(\)', source)
+        self.assertEqual(
+            len(bare_saves), 0,
+            f"send_reminder() has {len(bare_saves)} bare invoice.save() call(s) — "
+            f"must use update_fields. (CODE-171)"
+        )
+
+    def test_internal_notes_appended_not_clobbered(self):
+        """
+        After a successful reminder, internal_notes should be appended to,
+        not overwritten. The invoice's status/paid_at/total must not change.
+        """
+        tenant, customer = self._make_tenant_and_customer()
+        config = BillingConfig.get_for_tenant(tenant)
+        config.company_name = 'CODE-171 Shop'
+        config.save()
+
+        invoice = Invoice.objects.create(
+            tenant=tenant,
+            customer=customer,
+            invoice_number='CODE171-001',
+            invoice_date=timezone.now().date(),
+            due_date=timezone.now().date() - timedelta(days=7),
+            status='SENT',
+            subtotal=Decimal('100.00'),
+            total=Decimal('100.00'),
+            internal_notes='original notes',
+        )
+
+        from apps.billing.services.reminder_service import ReminderService
+        svc = ReminderService(tenant=tenant)
+
+        # Simulate a successful email send by patching _send_email
+        with patch.object(svc, '_send_email', return_value=True), \
+             patch.object(svc, '_build_reminder_email', return_value=('Test Subject', 'Test Body')):
+            # Simulate a concurrent payment updating status/total WHILE the
+            # reminder is being processed — we do this BEFORE calling send_reminder
+            # to represent the stale-object scenario
+            Invoice.objects.filter(pk=invoice.pk).update(
+                status='PAID',
+                total=Decimal('100.00'),
+            )
+
+            result = svc.send_reminder(invoice, 'overdue')
+
+        self.assertTrue(result['success'])
+
+        # DB must still show PAID (not reverted to SENT by a bare save())
+        invoice.refresh_from_db()
+        self.assertEqual(
+            invoice.status, 'PAID',
+            "send_reminder() clobbered invoice status with stale in-memory value (CODE-171)"
+        )
+        # internal_notes must contain the reminder log entry
+        self.assertIn('[Reminder] overdue', invoice.internal_notes)
+        # Must also retain original notes
+        self.assertIn('original notes', invoice.internal_notes)

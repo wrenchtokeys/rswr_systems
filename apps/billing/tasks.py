@@ -78,9 +78,17 @@ def process_overdue_invoices():
                 
                 # Check if we should send a reminder today
                 if days_overdue in reminder_days:
-                    sent = _send_overdue_reminder(invoice, config, days_overdue)
-                    if sent:
-                        reminder_count += 1
+                    try:
+                        sent = _send_overdue_reminder(invoice, config, days_overdue)
+                        if sent:
+                            reminder_count += 1
+                    except Exception as inv_exc:
+                        # Log and continue — one broken invoice/template must not
+                        # prevent reminders for the rest of the tenant's invoices.
+                        logger.error(
+                            f"_send_overdue_reminder failed for invoice "
+                            f"{invoice.invoice_number} (id={invoice.id}): {inv_exc}"
+                        )
     
     logger.info(
         f"process_overdue_invoices: Updated {processed_count} invoices to OVERDUE, "
@@ -100,18 +108,67 @@ def _parse_reminder_days(days_str):
 def _send_overdue_reminder(invoice, config, days_overdue):
     """Send overdue reminder email for an invoice."""
     customer = invoice.customer
-    if not customer.email:
+
+    # Prefer billing_email from CustomerRepairPreference when set — fleet customers
+    # often have a dedicated AP email that is different from their general contact
+    # email.  All manual invoice-send paths already do this; the automated reminder
+    # task must be consistent.  (CODE-127)
+    recipient_email = None
+    try:
+        prefs = customer.repair_preferences
+        recipient_email = prefs.billing_email or customer.email
+    except Exception:
+        recipient_email = customer.email
+
+    if not recipient_email:
         logger.warning(f"Cannot send reminder for invoice {invoice.invoice_number}: no customer email")
         return False
     
-    # Format subject with template variables
-    subject = config.overdue_reminder_subject.format(
-        invoice_number=invoice.invoice_number,
-        customer_name=customer.name,
-        amount_due=f"${invoice.amount_due:.2f}",
-        days_overdue=days_overdue,
-    )
+    # Format subject with all documented template variables.
+    # Use a safe mapping so that unknown placeholders in a custom subject
+    # template produce an empty string rather than a KeyError that would
+    # abort the entire reminder loop.  (CODE-117)
+    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
+    _due_date_str = invoice.due_date.strftime('%m/%d/%Y') if invoice.due_date else ''
+    try:
+        subject = config.overdue_reminder_subject.format(
+            invoice_number=invoice.invoice_number,
+            customer_name=customer.name,
+            amount_due=f"${invoice.amount_due:.2f}",
+            total=f"${invoice.total:.2f}",
+            days_overdue=days_overdue,
+            due_date=_due_date_str,
+            company_name=_company_name,
+        )
+    except (KeyError, ValueError):
+        # Malformed template — fall back to the system default subject so we
+        # still send the reminder rather than silently dropping it.
+        logger.warning(
+            f"Malformed overdue_reminder_subject template for tenant "
+            f"{invoice.tenant_id}: {config.overdue_reminder_subject!r}. "
+            f"Using default subject."
+        )
+        subject = f"Reminder: Invoice #{invoice.invoice_number} is overdue"
     
+    # Generate public payment link
+    # NOTE: pay_url must be initialised to None BEFORE the try block.
+    # If the import or generate_payment_token call raises, pay_url would
+    # otherwise be undefined and the send_branded_email call below would
+    # raise NameError, silently aborting the reminder. (CODE-179)
+    pay_url = None
+    pay_link_text = ''
+    try:
+        from rs_systems.views import generate_payment_token
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+        token = generate_payment_token(invoice.id)
+        pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
+        pay_link_text = f"\nPay online: {pay_url}\n"
+    except Exception:
+        pass
+
+    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
+    _company_phone = config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')
+
     # Build email body
     body = f"""Dear {customer.name},
 
@@ -122,30 +179,44 @@ Invoice Details:
   Invoice Date: {invoice.invoice_date.strftime('%B %d, %Y')}
   Due Date: {invoice.due_date.strftime('%B %d, %Y')}
   Amount Due: ${invoice.amount_due:.2f}
-
+{pay_link_text}
 Please submit payment at your earliest convenience.
 
 If you have already sent payment, please disregard this notice.
 
 Thank you,
-{config.company_name}
-{config.company_phone}
+{_company_name}
+{_company_phone}
 """
     
     try:
-        send_mail(
+        from core.email_utils import send_branded_email
+        send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[customer.email],
-            fail_silently=False,
+            recipient_list=[recipient_email],
+            headline=f'Payment Reminder — Invoice {invoice.invoice_number}',
+            body_paragraphs=[
+                f"Dear {customer.name},",
+                f"This is a friendly reminder that invoice {invoice.invoice_number} is now {days_overdue} days overdue.",
+                "If you have already sent payment, please disregard this notice.",
+            ],
+            detail_rows=[
+                ('Invoice #', invoice.invoice_number),
+                ('Invoice Date', invoice.invoice_date.strftime('%B %d, %Y')),
+                ('Due Date', invoice.due_date.strftime('%B %d, %Y')),
+                ('Amount Due', f'${invoice.amount_due:.2f}'),
+            ],
+            button_text='💳 Pay Now' if pay_url else None,
+            button_url=pay_url if pay_url else None,
+            tenant=invoice.tenant,
+            plain_text=body,
         )
         
         # Log that we sent a reminder
         invoice.internal_notes = (invoice.internal_notes or '') + f"\n[{timezone.now().strftime('%Y-%m-%d')}] Reminder sent ({days_overdue} days overdue)"
         invoice.save(update_fields=['internal_notes'])
         
-        logger.info(f"Sent overdue reminder for invoice {invoice.invoice_number} to {customer.email}")
+        logger.info(f"Sent overdue reminder for invoice {invoice.invoice_number} to {recipient_email}")
         return True
         
     except Exception as e:
@@ -182,17 +253,45 @@ def process_batch_invoices():
         if config.batch_invoice_frequency == 'disabled':
             continue
         
-        # Check if today is the right day to run
-        if not _should_run_batch_today(config, today):
+        is_shop_day = _should_run_batch_today(config, today)
+        
+        # Find all batch-preference customers for this tenant (CODE-203 scoping).
+        batch_prefs = CustomerRepairPreference.objects.filter(
+            invoice_preference='batch',
+            customer__tenant=tenant,
+        )
+        
+        # Per-customer batch_invoice_day overrides only apply to monthly frequency.
+        # Weekly/biweekly use weekday (0-6) which is a different domain than
+        # batch_invoice_day (day-of-month 1-28), so overrides are meaningless.
+        #
+        # Monthly: customers WITH override → invoice when THEIR day matches today.
+        #          customers WITHOUT override → invoice on shop's batch day.
+        # Weekly/biweekly: all batch customers invoiced on shop day. (CODE-225)
+        if config.batch_invoice_frequency == 'monthly':
+            override_customer_ids = batch_prefs.filter(
+                batch_invoice_day__isnull=False,
+                batch_invoice_day=today.day,
+            ).values_list('customer_id', flat=True)
+            
+            default_customer_ids = batch_prefs.filter(
+                batch_invoice_day__isnull=True,
+            ).values_list('customer_id', flat=True) if is_shop_day else []
+            
+            from itertools import chain
+            eligible_ids = set(chain(override_customer_ids, default_customer_ids))
+        else:
+            # Weekly/biweekly — all batch customers on shop day, ignore overrides
+            if not is_shop_day:
+                continue
+            eligible_ids = set(batch_prefs.values_list('customer_id', flat=True))
+        
+        if not eligible_ids:
             continue
         
-        # Find customers with batch preference
         batch_customers = Customer.objects.filter(
             tenant=tenant,
-        ).filter(
-            id__in=CustomerRepairPreference.objects.filter(
-                invoice_preference='batch'
-            ).values_list('customer_id', flat=True)
+            id__in=eligible_ids,
         )
         
         for customer in batch_customers:
@@ -265,33 +364,78 @@ def _create_batch_invoice(tenant, customer, config):
         with transaction.atomic():
             # Calculate totals
             subtotal = Decimal('0.00')
-            
+
+            # Resolve effective payment terms: customer-specific override wins
+            # over the shop-level BillingConfig default.  The
+            # CustomerRepairPreference.payment_terms field was added in
+            # migration 0013 but the batch invoice task was never updated to
+            # read it, so customer-specific terms were silently ignored and all
+            # batch invoices used the shop default.  (CODE-219)
+            effective_payment_terms = config.default_payment_terms
+            try:
+                customer_prefs = customer.repair_preferences
+                if customer_prefs.payment_terms:
+                    effective_payment_terms = customer_prefs.payment_terms
+            except Exception:
+                pass  # No preferences set — use shop default
+
             # Create invoice
             invoice_number = _generate_invoice_number(tenant, config)
-            due_date = _calculate_due_date(config)
+            due_date = _calculate_due_date(config, payment_terms_override=effective_payment_terms)
             
+            # Always create as DRAFT — status is promoted to SENT only AFTER
+            # email delivery is confirmed (see CODE-095 / AGENTS.md gotcha).
+            # Setting 'SENT' here and then failing the email would leave the
+            # invoice permanently SENT with the customer never having received it.
             invoice = Invoice.objects.create(
                 tenant=tenant,
                 customer=customer,
                 invoice_number=invoice_number,
                 invoice_date=timezone.now().date(),
                 due_date=due_date,
-                payment_terms=config.default_payment_terms,
-                status='DRAFT' if not config.batch_invoice_auto_send else 'SENT',
+                payment_terms=effective_payment_terms,
+                status='DRAFT',
                 notes=f'Batch invoice for {len(repairs_list)} repairs and {len(replacements_list)} replacements',
             )
             
             # Add repair line items
+            # CODE-122: Use get_discounted_cost() so reward-based discounts
+            # (REPAIR_DISCOUNT, FREE_SERVICE redemptions) are reflected in the
+            # line item amount and the invoice discount/subtotal totals.
+            # Previously repair.cost was used directly, causing customers with
+            # earned rewards to be overbilled on all batch invoices.
+            total_discount = Decimal('0.00')
             for repair in repairs_list:
-                amount = repair.cost or Decimal('0.00')
-                subtotal += amount
+                discounted = repair.get_discounted_cost()
+                original = discounted['original_cost'] or Decimal('0.00')
+                final_amt = discounted['final_cost'] or Decimal('0.00')
+                savings = discounted['savings'] or Decimal('0.00')
                 
+                pricing_info = repair.get_progressive_pricing_info()
+                if pricing_info['is_discounted']:
+                    prog_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
+                    unit_price = pricing_info['base_rate']
+                    total_disc = prog_savings + savings
+                    amount = unit_price - total_disc
+                else:
+                    unit_price = original
+                    total_disc = savings
+                    amount = final_amt
+                
+                subtotal += unit_price
+                total_discount += total_disc
+
+                description = repair.get_invoice_description()
+                if pricing_info['is_discounted']:
+                    description += " [multi-break rate]"
+
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     repair=repair,
-                    description=f"Windshield Repair - {repair.damage_type} - Unit {repair.unit_number or 'N/A'}",
+                    description=description,
                     quantity=1,
-                    unit_price=amount,
+                    unit_price=unit_price,
+                    discount=total_disc,
                     amount=amount,
                     repair_date=repair.service_date,
                     unit_number=repair.unit_number or '',
@@ -313,23 +457,48 @@ def _create_batch_invoice(tenant, customer, config):
                     unit_number=replacement.unit_number or '',
                 )
             
-            # Calculate tax if enabled
-            tax_amount = Decimal('0.00')
-            if config.tax_enabled and not customer.tax_exempt:
-                tax_amount = (subtotal * config.default_tax_rate / 100).quantize(Decimal('0.01'))
-            
-            # Update invoice totals
+            # Calculate tax via TaxService — this is the single source of truth
+            # for whether tax is enabled (checks TaxRate rows, not BillingConfig.tax_enabled)
+            # and applies the correct per-tenant rate with component breakdown.
+            # Previously this used `config.tax_enabled + config.default_tax_rate` which
+            # bypassed TaxService entirely, causing batch invoices to charge tax when it
+            # was disabled (or vice-versa) and to miss per-customer city/state rate
+            # lookups. (CODE-104)
+            #
+            # CODE-122: Tax is calculated on the discounted net (subtotal − discounts)
+            # so customers are not charged tax on reward savings they have already earned.
+            from apps.billing.services.tax_service import TaxService
+            tax_svc = TaxService(tenant=tenant)
+            discounted_subtotal = subtotal - total_discount
+            tax_result = tax_svc.calculate_tax(subtotal=discounted_subtotal, customer=customer)
             invoice.subtotal = subtotal
-            invoice.tax_rate = config.default_tax_rate if config.tax_enabled else Decimal('0.00')
-            invoice.tax_amount = tax_amount
-            invoice.total = subtotal + tax_amount
+            invoice.discount = total_discount
+            invoice.tax_rate = tax_result['rate']
+            invoice.state_tax_rate = tax_result['state_rate']
+            invoice.county_tax_rate = tax_result['county_rate']
+            invoice.city_tax_rate = tax_result['city_rate']
+            invoice.special_tax_rate = tax_result['special_rate']
+            invoice.tax_amount = tax_result['amount']
+            invoice.total = discounted_subtotal + tax_result['amount']
             invoice.save()
             
-            # Send if auto_send is enabled
+            # Send if auto_send is enabled — only mark SENT after email confirmed.
+            # (CODE-095: same pattern as CODE-094 for AutoInvoiceService.
+            # Do NOT stamp sent_at or set status='SENT' before the email attempt.)
             if config.batch_invoice_auto_send:
-                invoice.sent_at = timezone.now()
-                invoice.save(update_fields=['sent_at'])
-                _send_batch_invoice_email(invoice, config)
+                email_sent = _send_batch_invoice_email(invoice, config)
+                if email_sent:
+                    invoice.status = 'SENT'
+                    invoice.sent_at = timezone.now()
+                    invoice.save(update_fields=['status', 'sent_at'])
+                else:
+                    # Email failed — leave as DRAFT so the shop owner can see it
+                    # and retry manually. Log at WARNING level for visibility.
+                    logger.warning(
+                        f"Batch invoice {invoice.invoice_number} for {customer.name} "
+                        f"created as DRAFT — auto-send email delivery failed. "
+                        f"Owner must send manually."
+                    )
             
             logger.info(f"Created batch invoice {invoice.invoice_number} for {customer.name} - ${invoice.total}")
             return invoice
@@ -371,8 +540,15 @@ def _generate_invoice_number(tenant, config):
     return f"{prefix}-{tenant.id}-{date_str}-{int(time.time() * 1000) % 1000000:06d}"
 
 
-def _calculate_due_date(config):
-    """Calculate due date based on payment terms."""
+def _calculate_due_date(config, payment_terms_override=None):
+    """Calculate due date based on payment terms.
+
+    Args:
+        config: BillingConfig instance for the tenant (used as fallback).
+        payment_terms_override: If provided, this term code takes priority over
+            ``config.default_payment_terms``.  Allows customer-specific terms
+            to affect the due date (CODE-219).
+    """
     today = timezone.now().date()
     
     terms_days = {
@@ -383,19 +559,62 @@ def _calculate_due_date(config):
         'NET45': 45,
         'NET60': 60,
     }
-    
-    days = terms_days.get(config.default_payment_terms, config.default_due_days)
+
+    effective_terms = payment_terms_override or config.default_payment_terms
+    days = terms_days.get(effective_terms, config.default_due_days)
     return today + timedelta(days=days)
 
 
 def _send_batch_invoice_email(invoice, config):
-    """Send batch invoice email to customer."""
+    """Send batch invoice email to customer.
+
+    Returns:
+        bool: True if email was sent successfully, False otherwise.
+    """
     customer = invoice.customer
-    if not customer.email:
-        return
-    
-    subject = f"Invoice {invoice.invoice_number} from {config.company_name}"
-    body = f"""Dear {customer.name},
+
+    # Prefer billing_email from CustomerRepairPreference when set — fleet customers
+    # often have a dedicated AP email that is different from their general contact
+    # email.  All other invoice-send paths (owner_send_invoice, owner_email_invoice,
+    # owner_send_reminder, _send_overdue_reminder) already do this; the batch
+    # invoice task must be consistent.  (CODE-139)
+    recipient_email = None
+    try:
+        prefs = customer.repair_preferences
+        recipient_email = prefs.billing_email or customer.email
+    except Exception:
+        recipient_email = customer.email
+
+    if not recipient_email:
+        logger.warning(
+            f"Cannot auto-send batch invoice {invoice.invoice_number}: "
+            f"customer {customer.name!r} has no email address."
+        )
+        return False
+
+    _company_name = config.company_name or (invoice.tenant.name if invoice.tenant else '')
+    _company_phone = config.company_phone or (invoice.tenant.business_phone if invoice.tenant else '')
+    _company_email = config.company_email or (invoice.tenant.business_email if invoice.tenant else '')
+
+    subject = f"Invoice {invoice.invoice_number} from {_company_name}"
+
+    # CODE-119: Apply shop-defined invoice email template if one is configured.
+    body = ''
+    if config.invoice_email_template:
+        try:
+            body = config.invoice_email_template.format(
+                customer_name=customer.name,
+                invoice_number=invoice.invoice_number,
+                total=f'${invoice.total:,.2f}',
+                invoice_date=invoice.invoice_date.strftime('%B %d, %Y') if invoice.invoice_date else 'N/A',
+                company_name=_company_name,
+            )
+        except (KeyError, IndexError, ValueError):
+            # Unknown placeholder in template — fall back to default body.
+            body = ''
+
+    if not body:
+        body = f"""Dear {customer.name},
 
 Please find attached your invoice for recent services.
 
@@ -406,21 +625,48 @@ Total Amount: ${invoice.total:.2f}
 
 Thank you for your business!
 
-{config.company_name}
-{config.company_phone}
-{config.company_email}
+{_company_name}
+{_company_phone}
+{_company_email}
 """
-    
+
+    # Generate public payment link
+    pay_url = None
     try:
-        send_mail(
+        from rs_systems.views import generate_payment_token
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
+        token = generate_payment_token(invoice.id)
+        pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
+    except Exception:
+        pass
+
+    try:
+        from core.email_utils import send_branded_email
+        sent_count = send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[customer.email],
-            fail_silently=True,
+            recipient_list=[recipient_email],
+            headline=f'Invoice {invoice.invoice_number}',
+            body_paragraphs=[
+                f"Dear {customer.name},",
+                "Please find your invoice for recent services below.",
+            ],
+            detail_rows=[
+                ('Invoice #', invoice.invoice_number),
+                ('Date', invoice.invoice_date.strftime('%B %d, %Y')),
+                ('Due Date', invoice.due_date.strftime('%B %d, %Y')),
+                ('Total', f'${invoice.total:,.2f}'),
+            ],
+            button_text='💳 Pay Invoice' if pay_url else None,
+            button_url=pay_url,
+            tenant=invoice.tenant,
+            plain_text=body,
         )
+        return sent_count > 0
     except Exception as e:
-        logger.error(f"Failed to send batch invoice email for {invoice.invoice_number}: {e}")
+        logger.error(
+            f"Failed to send batch invoice email for {invoice.invoice_number}: {e}"
+        )
+        return False
 
 
 # =============================================================================

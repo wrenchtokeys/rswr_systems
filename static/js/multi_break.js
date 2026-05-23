@@ -260,6 +260,9 @@ function clearModal() {
     // Hide required indicator for override reason
     const reasonRequired = document.getElementById('override_reason_required');
     if (reasonRequired) reasonRequired.style.display = 'none';
+
+    // Clear damage location
+    clearMultiBreakDamageMarker();
 }
 
 // Add Break Button
@@ -329,6 +332,12 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
         finalPhotoAfter = photoAfter || null;
     }
 
+    // Get damage location
+    const locXInput = document.getElementById('modal_damage_location_x');
+    const locYInput = document.getElementById('modal_damage_location_y');
+    const damageLocationX = locXInput ? locXInput.value : '';
+    const damageLocationY = locYInput ? locYInput.value : '';
+
     const breakData = {
         id: editingIndex !== null ? breaks[editingIndex].id : generateUUID(),
         damage_type: damageType,
@@ -339,7 +348,9 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
         photo_after: finalPhotoAfter,
         notes: notes,
         cost_override: costOverride,
-        override_reason: overrideReason
+        override_reason: overrideReason,
+        damage_location_x: damageLocationX || null,
+        damage_location_y: damageLocationY || null
     };
 
     // Add or update
@@ -471,6 +482,13 @@ window.editBreak = function(index) {
                 `<img src="${e.target.result}" alt="Preview" class="mt-2 max-w-full h-32 rounded border border-gray-300">`;
         };
         reader.readAsDataURL(breakData.photo_after);
+    }
+
+    // Restore damage location
+    if (breakData.damage_location_x && breakData.damage_location_y) {
+        placeMultiBreakDamageMarker(parseFloat(breakData.damage_location_x), parseFloat(breakData.damage_location_y));
+    } else {
+        clearMultiBreakDamageMarker();
     }
 
     showModal();
@@ -670,6 +688,8 @@ function submitForm() {
         formData.append(`breaks[${index}][notes]`, breakData.notes || '');
         formData.append(`breaks[${index}][cost_override]`, breakData.cost_override || '');
         formData.append(`breaks[${index}][override_reason]`, breakData.override_reason || '');
+        formData.append(`breaks[${index}][damage_location_x]`, breakData.damage_location_x || '');
+        formData.append(`breaks[${index}][damage_location_y]`, breakData.damage_location_y || '');
 
         if (breakData.photo_before) {
             formData.append(`breaks[${index}][photo_before]`, breakData.photo_before);
@@ -997,3 +1017,62 @@ if (modalTemperatureInput && modalViscositySuggestionContainer) {
         fetchModalViscositySuggestion(e.target.value);
     });
 }
+
+// ================ DAMAGE LOCATION DIAGRAM ================
+function placeMultiBreakDamageMarker(xPercent, yPercent) {
+    const marker = document.getElementById('modalDamageMarker');
+    const xInput = document.getElementById('modal_damage_location_x');
+    const yInput = document.getElementById('modal_damage_location_y');
+    const locationText = document.getElementById('modalLocationText');
+    const clearBtn = document.getElementById('modalClearLocationBtn');
+    if (!marker) return;
+
+    marker.style.left = xPercent + '%';
+    marker.style.top = yPercent + '%';
+    marker.style.display = 'block';
+    xInput.value = xPercent.toFixed(1);
+    yInput.value = yPercent.toFixed(1);
+
+    const side = xPercent < 50 ? 'driver' : 'passenger';
+    const vertical = yPercent < 33 ? 'upper' : (yPercent > 66 ? 'lower' : 'middle');
+    locationText.textContent = 'Marked: ' + vertical + ' ' + side + ' side';
+    clearBtn.style.display = 'inline';
+}
+
+function clearMultiBreakDamageMarker() {
+    const marker = document.getElementById('modalDamageMarker');
+    const xInput = document.getElementById('modal_damage_location_x');
+    const yInput = document.getElementById('modal_damage_location_y');
+    const locationText = document.getElementById('modalLocationText');
+    const clearBtn = document.getElementById('modalClearLocationBtn');
+    if (!marker) return;
+
+    marker.style.display = 'none';
+    if (xInput) xInput.value = '';
+    if (yInput) yInput.value = '';
+    if (locationText) locationText.textContent = 'Tap to mark where this break is';
+    if (clearBtn) clearBtn.style.display = 'none';
+}
+
+(function() {
+    const diagram = document.getElementById('modalWindshieldDiagram');
+    const clearBtn = document.getElementById('modalClearLocationBtn');
+    if (!diagram) return;
+
+    function handleInteraction(e) {
+        e.preventDefault();
+        const rect = diagram.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = ((clientX - rect.left) / rect.width) * 100;
+        const y = ((clientY - rect.top) / rect.height) * 100;
+        placeMultiBreakDamageMarker(
+            Math.max(2, Math.min(98, x)),
+            Math.max(2, Math.min(98, y))
+        );
+    }
+
+    diagram.addEventListener('click', handleInteraction);
+    diagram.addEventListener('touchstart', handleInteraction, { passive: false });
+    if (clearBtn) clearBtn.addEventListener('click', clearMultiBreakDamageMarker);
+})();

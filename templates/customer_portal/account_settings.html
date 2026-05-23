@@ -1,721 +1,427 @@
 {% extends "customer_portal/base_customer.html" %}
 {% load static %}
 
-{% block title %}Account Settings - RS Systems{% endblock %}
+{% block title %}Account Settings | Customer Portal{% endblock %}
 
 {% block extra_css %}
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
-/* Tooltip System */
-.tooltip-trigger {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    cursor: help;
-    color: #6b7280;
-    transition: color 0.2s;
-}
-
-.tooltip-trigger:hover {
-    color: #2563eb;
-}
-
-.tooltip-content {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%) translateY(-8px);
-    background-color: #1f2937;
-    color: white;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    line-height: 1.4;
-    white-space: normal;
-    width: max-content;
-    max-width: 250px;
-    text-align: center;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.2s, visibility 0.2s;
-    z-index: 50;
-    pointer-events: none;
-}
-
-.tooltip-content::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 6px solid transparent;
-    border-top-color: #1f2937;
-}
-
-.tooltip-trigger:hover .tooltip-content {
-    opacity: 1;
-    visibility: visible;
-}
-
-/* Tab Styles */
-.tab-button {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1.5rem;
-    border-bottom: 2px solid transparent;
-    color: #6b7280;
-    font-weight: 500;
-    transition: all 0.2s;
-    cursor: pointer;
-    background: none;
-    border-top: none;
-    border-left: none;
-    border-right: none;
-}
-
-.tab-button:hover {
-    color: #2563eb;
-    background-color: #eff6ff;
-}
-
-.tab-button.active {
-    color: #2563eb;
-    border-bottom-color: #2563eb;
-    background-color: #eff6ff;
-}
-
-/* Form Styles */
-.form-group {
-    margin-bottom: 1.5rem;
-}
-
-.form-label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #374151;
-    margin-bottom: 0.5rem;
-}
-
-.form-input {
-    width: 100%;
-    padding: 0.625rem 0.875rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    transition: all 0.2s;
-    background-color: white;
-}
-
-.form-input:focus {
-    outline: none;
-    border-color: #2563eb;
-    ring: 2px;
-    ring-color: rgba(37, 99, 235, 0.1);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.form-input:disabled {
-    background-color: #f9fafb;
-    color: #9ca3af;
-    cursor: not-allowed;
-}
-
-/* Radio and Checkbox Styles */
-.radio-group, .checkbox-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-.radio-option, .checkbox-option {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 1rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.375rem;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.radio-option:hover, .checkbox-option:hover {
-    border-color: #2563eb;
-    background-color: #eff6ff;
-}
-
-.radio-option input[type="radio"]:checked ~ label,
-.checkbox-option input[type="checkbox"]:checked ~ label {
-    color: #2563eb;
-}
-
-/* Smooth transitions for conditional sections */
-.conditional-section {
-    transition: all 0.3s ease;
-    overflow: hidden;
-}
-
-.conditional-section.hidden {
-    max-height: 0;
-    opacity: 0;
-    margin: 0;
-    padding: 0;
-}
-
-.conditional-section.visible {
-    max-height: 1000px;
-    opacity: 1;
-}
-
-/* Badge Styles */
-.badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.25rem 0.625rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 500;
-}
-
-.badge-warning {
-    background-color: #fef3c7;
-    color: #92400e;
-}
-
-.badge-info {
-    background-color: #dbeafe;
-    color: #1e40af;
-}
+    .tooltip-trigger { position: relative; display: inline-flex; align-items: center; cursor: help; color: #6b7280; transition: color 0.2s; }
+    .tooltip-trigger:hover { color: #4299E1; }
+    .tooltip-content {
+        position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%) translateY(-8px);
+        background-color: #1f2937; color: white; padding: 0.5rem 0.75rem; border-radius: 0.5rem;
+        font-size: 0.75rem; line-height: 1.4; white-space: normal; width: max-content; max-width: 220px;
+        text-align: center; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s; z-index: 50; pointer-events: none;
+    }
+    .tooltip-content::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #1f2937; }
+    .tooltip-trigger:hover .tooltip-content { opacity: 1; visibility: visible; }
+    .conditional-section { transition: all 0.3s ease; overflow: hidden; }
+    .conditional-section.hidden { max-height: 0; opacity: 0; margin: 0; padding: 0; }
+    .conditional-section.visible { max-height: 1000px; opacity: 1; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <!-- Page Header -->
-        <div class="mb-6">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-900">Account Settings</h1>
-                    <p class="text-gray-600 mt-1">Manage your profile, preferences, and security</p>
-                </div>
-                <a href="{% url 'customer_dashboard' %}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                    <i class="fas fa-arrow-left mr-2"></i> Back to Dashboard
-                </a>
-            </div>
-        </div>
-
-        <!-- Tab Navigation -->
-        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="border-b border-gray-200">
-                <div class="flex">
-                    <button type="button" class="tab-button active" data-tab="personal">
-                        <i class="fas fa-user"></i>
-                        <span>Personal Info</span>
-                    </button>
-                    <button type="button" class="tab-button" data-tab="repair">
-                        <i class="fas fa-sliders"></i>
-                        <span>Repair Preferences</span>
-                    </button>
-                    <button type="button" class="tab-button" data-tab="security">
-                        <i class="fas fa-shield-alt"></i>
-                        <span>Security</span>
-                    </button>
-                    <button type="button" class="tab-button" data-tab="billing">
-                        <i class="fas fa-file-invoice-dollar"></i>
-                        <span>Billing & Invoicing</span>
-                    </button>
-                </div>
-            </div>
-
-            <form method="post">
-                {% csrf_token %}
-
-                <!-- Personal Info Tab -->
-                <div class="tab-content p-6" id="personal-tab" style="display: block;">
-                    <!-- User Information Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-blue-100 text-blue-600 p-2 rounded-lg">
-                                    <i class="fas fa-user text-xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-lg font-semibold text-gray-900">Personal Information</h3>
-                                    <p class="text-sm text-gray-600">Update your name and email address</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="form-group">
-                                <label for="first_name" class="form-label">
-                                    <i class="fas fa-user text-gray-400"></i>
-                                    First Name
-                                </label>
-                                <input type="text" class="form-input" id="first_name" name="first_name" value="{{ request.user.first_name }}" required>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="last_name" class="form-label">
-                                    <i class="fas fa-user text-gray-400"></i>
-                                    Last Name
-                                </label>
-                                <input type="text" class="form-input" id="last_name" name="last_name" value="{{ request.user.last_name }}" required>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="email" class="form-label">
-                                <i class="fas fa-envelope text-gray-400"></i>
-                                Email Address
-                            </label>
-                            <input type="email" class="form-input" id="email" name="email" value="{{ request.user.email }}" required>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="phone" class="form-label">
-                                <i class="fas fa-phone text-gray-400"></i>
-                                Phone Number
-                                <span class="tooltip-trigger">
-                                    <i class="fas fa-info-circle text-xs"></i>
-                                    <span class="tooltip-content">
-                                        Enter phone number in E.164 format (e.g., +12025551234) for SMS notifications
-                                    </span>
-                                </span>
-                            </label>
-                            <input
-                                type="tel"
-                                class="form-input"
-                                id="phone"
-                                name="phone"
-                                value="{{ customer.phone|default:'' }}"
-                                placeholder="+12025551234"
-                                pattern="^\+?1?\d{9,15}$"
-                            >
-                            {% if customer.phone_verified %}
-                                <div class="mt-2 flex items-center text-sm text-green-600">
-                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-                                    </svg>
-                                    Verified on {{ customer.phone_verified_at|date:"M d, Y" }}
-                                </div>
-                            {% elif customer.phone %}
-                                <div class="mt-2 flex items-center text-sm text-yellow-600">
-                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                                    </svg>
-                                    Not verified -
-                                    <a href="{% url 'customer_notification_preferences' %}" class="underline ml-1">Verify now</a>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <!-- Company Role Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-green-100 text-green-600 p-2 rounded-lg">
-                                    <i class="fas fa-building text-xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-lg font-semibold text-gray-900">Company Role</h3>
-                                    <p class="text-sm text-gray-600">Manage your role within your organization</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                            <input type="checkbox" class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" id="is_primary_contact" name="is_primary_contact" {% if customer_user.is_primary_contact %}checked{% endif %}>
-                            <div class="flex-1">
-                                <label for="is_primary_contact" class="text-sm font-medium text-gray-900 cursor-pointer">
-                                    I am the primary contact for this company
-                                </label>
-                                <p class="text-xs text-gray-600 mt-1">Primary contacts receive important notifications and approvals</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Repair Preferences Tab -->
-                <div class="tab-content p-6" id="repair-tab" style="display: none;">
-                    <!-- Approval Settings Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-yellow-100 text-yellow-600 p-2 rounded-lg">
-                                    <i class="fas fa-clipboard-check text-xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                        Field Repair Approval Mode
-                                        <span class="tooltip-trigger">
-                                            <i class="fas fa-circle-question text-sm"></i>
-                                            <span class="tooltip-content">
-                                                Configure how field repairs discovered during lot walking should be handled
-                                            </span>
-                                        </span>
-                                    </h3>
-                                    <p class="text-sm text-gray-600">Choose how field-discovered repairs are approved</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="radio-group">
-                            {% for radio in repair_form.field_repair_approval_mode %}
-                            <label class="radio-option">
-                                {{ radio.tag }}
-                                <div class="flex-1">
-                                    <div class="font-medium text-gray-900">{{ radio.choice_label }}</div>
-                                    <div class="text-sm text-gray-600 mt-1">
-                                        {% if 'Auto-approve all' in radio.choice_label %}
-                                        Technicians can complete repairs without waiting for approval
-                                        {% elif 'Require approval' in radio.choice_label %}
-                                        You'll review and approve each field repair before work begins
-                                        {% elif 'threshold' in radio.choice_label %}
-                                        Auto-approve repairs up to a set limit per visit
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </label>
-                            {% endfor %}
-                        </div>
-
-                        <!-- Threshold Setting (Conditional) -->
-                        <div id="threshold-setting" class="conditional-section hidden mt-4">
-                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <label for="{{ repair_form.units_per_visit_threshold.id_for_label }}" class="form-label flex items-center gap-2">
-                                    <i class="fas fa-hashtag text-blue-600"></i>
-                                    Units Per Visit Threshold
-                                    <span class="tooltip-trigger">
-                                        <i class="fas fa-circle-question text-sm"></i>
-                                        <span class="tooltip-content">
-                                            Max number of units technician can repair per visit without approval
-                                        </span>
-                                    </span>
-                                </label>
-                                <input type="number" class="form-input max-w-xs" id="{{ repair_form.units_per_visit_threshold.id_for_label }}" name="{{ repair_form.units_per_visit_threshold.name }}" value="{{ repair_form.units_per_visit_threshold.value|default:5 }}" min="1" max="50">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Lot Walking Schedule Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-green-100 text-green-600 p-2 rounded-lg">
-                                    <i class="fas fa-calendar-alt text-xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                        Lot Walking Schedule
-                                        <span class="tooltip-trigger">
-                                            <i class="fas fa-circle-question text-sm"></i>
-                                            <span class="tooltip-content">
-                                                Schedule regular lot inspections to proactively find and fix damage
-                                            </span>
-                                        </span>
-                                    </h3>
-                                    <p class="text-sm text-gray-600">Configure scheduled lot walking service</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Enable Toggle -->
-                        <div class="flex items-start gap-3 p-4 bg-gray-50 rounded-lg mb-4">
-                            <div class="flex items-center h-5">
-                                <input type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" id="{{ repair_form.lot_walking_enabled.id_for_label }}" name="{{ repair_form.lot_walking_enabled.name }}" {% if repair_form.lot_walking_enabled.value %}checked{% endif %}>
-                            </div>
-                            <div class="flex-1">
-                                <label for="{{ repair_form.lot_walking_enabled.id_for_label }}" class="text-sm font-medium text-gray-900 cursor-pointer">
-                                    Enable Lot Walking Service
-                                </label>
-                                <p class="text-xs text-gray-600 mt-1">Regular inspections help catch damage early</p>
-                            </div>
-                        </div>
-
-                        <!-- Lot Walking Details (Conditional) -->
-                        <div id="lot-walking-details" class="conditional-section hidden">
-                            <div class="bg-green-50 border border-green-200 rounded-lg p-5 space-y-4">
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <!-- Frequency -->
-                                    <div class="form-group">
-                                        <label for="{{ repair_form.lot_walking_frequency.id_for_label }}" class="form-label">
-                                            <i class="fas fa-sync text-green-600"></i>
-                                            Frequency
-                                        </label>
-                                        <select class="form-input" id="{{ repair_form.lot_walking_frequency.id_for_label }}" name="{{ repair_form.lot_walking_frequency.name }}">
-                                            {% for value, label in repair_form.lot_walking_frequency.field.choices %}
-                                            <option value="{{ value }}" {% if repair_form.lot_walking_frequency.value == value %}selected{% endif %}>{{ label }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </div>
-
-                                    <!-- Preferred Time -->
-                                    <div class="form-group">
-                                        <label for="{{ repair_form.lot_walking_time.id_for_label }}" class="form-label">
-                                            <i class="fas fa-clock text-green-600"></i>
-                                            Preferred Time
-                                        </label>
-                                        <input type="time" class="form-input" id="{{ repair_form.lot_walking_time.id_for_label }}" name="{{ repair_form.lot_walking_time.name }}" value="{{ repair_form.lot_walking_time.value|default:'' }}">
-                                    </div>
-                                </div>
-
-                                <!-- Preferred Days -->
-                                <div class="form-group">
-                                    <label class="form-label">
-                                        <i class="fas fa-calendar-week text-green-600"></i>
-                                        Preferred Days
-                                    </label>
-                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        {% for checkbox in repair_form.lot_walking_days_choices %}
-                                        <label class="flex items-center gap-2 p-3 bg-white border border-green-200 rounded-lg cursor-pointer hover:bg-green-50 transition-colors">
-                                            {{ checkbox.tag }}
-                                            <span class="text-sm text-gray-700">{{ checkbox.choice_label }}</span>
-                                        </label>
-                                        {% endfor %}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Security Tab -->
-                <div class="tab-content p-6" id="security-tab" style="display: none;">
-                    <!-- Password Change Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-red-100 text-red-600 p-2 rounded-lg">
-                                    <i class="fas fa-lock text-xl"></i>
-                                </div>
-                                <div>
-                                    <div class="flex items-center gap-2">
-                                        <h3 class="text-lg font-semibold text-gray-900">Change Password</h3>
-                                        <span class="badge badge-info">Optional</span>
-                                    </div>
-                                    <p class="text-sm text-gray-600">Update your account password for security</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                            <div class="flex gap-3">
-                                <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
-                                <div class="text-sm text-blue-900">
-                                    <p class="font-medium">Leave all password fields blank if you don't want to change your password.</p>
-                                    <p class="mt-1 text-blue-800">Your password must be at least 8 characters long and include a mix of letters and numbers for security.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="space-y-4">
-                            <div class="form-group">
-                                <label for="current_password" class="form-label">
-                                    <i class="fas fa-key text-gray-400"></i>
-                                    Current Password
-                                </label>
-                                <input type="password" class="form-input" id="current_password" name="current_password" placeholder="Enter your current password">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="new_password" class="form-label">
-                                    <i class="fas fa-lock text-gray-400"></i>
-                                    New Password
-                                    <span class="tooltip-trigger ml-1">
-                                        <i class="fas fa-circle-question text-sm"></i>
-                                        <span class="tooltip-content">
-                                            Must be at least 8 characters long with letters and numbers
-                                        </span>
-                                    </span>
-                                </label>
-                                <input type="password" class="form-input" id="new_password" name="new_password" placeholder="Enter your new password">
-                            </div>
-
-                            <div class="form-group">
-                                <label for="confirm_password" class="form-label">
-                                    <i class="fas fa-lock text-gray-400"></i>
-                                    Confirm New Password
-                                </label>
-                                <input type="password" class="form-input" id="confirm_password" name="confirm_password" placeholder="Re-enter your new password">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Billing & Invoicing Tab -->
-                <div class="tab-content p-6" id="billing-tab" style="display: none;">
-                    <!-- Invoice Preference Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6 mb-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-purple-100 text-purple-600 p-2 rounded-lg">
-                                    <i class="fas fa-file-invoice-dollar text-xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                                        Invoice Preference
-                                        <span class="tooltip-trigger">
-                                            <i class="fas fa-circle-question text-sm"></i>
-                                            <span class="tooltip-content">
-                                                Choose how repairs are grouped on invoices
-                                            </span>
-                                        </span>
-                                    </h3>
-                                    <p class="text-sm text-gray-600">Choose how your repairs are invoiced</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="radio-group">
-                            {% for radio in repair_form.invoice_preference %}
-                            {% if radio.value != 'manual' %}
-                            <label class="radio-option">
-                                {{ radio.tag }}
-                                <div class="flex-1">
-                                    <div class="font-medium text-gray-900">
-                                        {% if radio.value == 'per_ticket' %}
-                                        Per Repair
-                                        {% elif radio.value == 'batch' %}
-                                        Batch Invoicing
-                                        {% else %}
-                                        {{ radio.choice_label }}
-                                        {% endif %}
-                                    </div>
-                                    <div class="text-sm text-gray-600 mt-1">
-                                        {% if radio.value == 'per_ticket' %}
-                                        One invoice per repair — generated when each repair is completed
-                                        {% elif radio.value == 'batch' %}
-                                        Multiple repairs from the same day grouped on one invoice (recommended for fleets)
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </label>
-                            {% endif %}
-                            {% endfor %}
-                        </div>
-                    </div>
-
-                    <!-- Email & Delivery Settings Card -->
-                    <div class="bg-white border border-gray-200 rounded-lg p-6">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center gap-3">
-                                <div class="bg-blue-100 text-blue-600 p-2 rounded-lg">
-                                    <i class="fas fa-envelope text-xl"></i>
-                                </div>
-                                <div>
-                                    <h3 class="text-lg font-semibold text-gray-900">Email & Delivery Settings</h3>
-                                    <p class="text-sm text-gray-600">Configure how invoices are delivered to your team</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Billing Email -->
-                        <div class="form-group">
-                            <label for="{{ repair_form.billing_email.id_for_label }}" class="form-label">
-                                <i class="fas fa-at text-gray-400"></i>
-                                Billing Email Address
-                                <span class="tooltip-trigger">
-                                    <i class="fas fa-circle-question text-sm"></i>
-                                    <span class="tooltip-content">
-                                        Invoices will be sent to this address. Leave blank to use your account email.
-                                    </span>
-                                </span>
-                            </label>
-                            <input type="email" class="form-input max-w-md" id="{{ repair_form.billing_email.id_for_label }}" name="{{ repair_form.billing_email.name }}" value="{{ repair_form.billing_email.value|default:'' }}" placeholder="billing@yourcompany.com">
-                            <p class="text-xs text-gray-500 mt-1">Leave blank to use your primary account email</p>
-                        </div>
-
-                        <!-- Auto Email Toggle -->
-                        <div class="flex items-start gap-3 p-4 bg-gray-50 rounded-lg mb-4">
-                            <div class="flex items-center h-5">
-                                <input type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" id="{{ repair_form.auto_email_invoices.id_for_label }}" name="{{ repair_form.auto_email_invoices.name }}" {% if repair_form.auto_email_invoices.value %}checked{% endif %}>
-                            </div>
-                            <div class="flex-1">
-                                <label for="{{ repair_form.auto_email_invoices.id_for_label }}" class="text-sm font-medium text-gray-900 cursor-pointer">
-                                    Automatically Email Invoices
-                                </label>
-                                <p class="text-xs text-gray-600 mt-1">When enabled, invoices are automatically emailed as soon as they are generated</p>
-                            </div>
-                        </div>
-
-                        <!-- Include Photos Toggle -->
-                        <div class="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                            <div class="flex items-center h-5">
-                                <input type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" id="{{ repair_form.include_photos_in_invoice.id_for_label }}" name="{{ repair_form.include_photos_in_invoice.name }}" {% if repair_form.include_photos_in_invoice.value %}checked{% endif %}>
-                            </div>
-                            <div class="flex-1">
-                                <label for="{{ repair_form.include_photos_in_invoice.id_for_label }}" class="text-sm font-medium text-gray-900 cursor-pointer">
-                                    Include Repair Photos in Invoices
-                                </label>
-                                <p class="text-xs text-gray-600 mt-1">Attach before/after repair photos to invoice emails for documentation purposes</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Save Button -->
-                <div class="p-6 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-4">
-                    <p class="text-sm text-gray-600">
-                        <i class="fas fa-save text-gray-400 mr-1"></i>
-                        Changes will be saved to your account
-                    </p>
-                    <div class="flex gap-3">
-                        <a href="{% url 'customer_dashboard' %}" class="inline-flex items-center px-5 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-                            Cancel
-                        </a>
-                        <button type="submit" class="inline-flex items-center px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm">
-                            <i class="fas fa-check mr-2"></i>
-                            Save All Changes
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
+<!-- Page Header -->
+<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
+    <div>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Account Settings</h1>
+        <p class="text-sm text-gray-500 mt-0.5">Manage your profile, preferences, and security</p>
     </div>
+    <a href="{% url 'customer_dashboard' %}" class="inline-flex items-center px-4 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+        <i class="fas fa-arrow-left mr-2 text-xs"></i> Dashboard
+    </a>
 </div>
 
+<!-- Settings Card with Tabs -->
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <!-- Tab Navigation — scrollable on mobile -->
+    <div class="border-b border-gray-200 overflow-x-auto">
+        <div class="flex min-w-max">
+            <button type="button" class="settings-tab active flex items-center gap-2 px-4 sm:px-5 py-3.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap" data-tab="personal">
+                <i class="fas fa-user text-xs"></i>
+                <span>Personal</span>
+            </button>
+            <button type="button" class="settings-tab flex items-center gap-2 px-4 sm:px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap" data-tab="repair">
+                <i class="fas fa-sliders text-xs"></i>
+                <span>Preferences</span>
+            </button>
+            <button type="button" class="settings-tab flex items-center gap-2 px-4 sm:px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap" data-tab="security">
+                <i class="fas fa-shield-alt text-xs"></i>
+                <span>Security</span>
+            </button>
+            <button type="button" class="settings-tab flex items-center gap-2 px-4 sm:px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition-colors whitespace-nowrap" data-tab="billing">
+                <i class="fas fa-file-invoice-dollar text-xs"></i>
+                <span>Billing</span>
+            </button>
+        </div>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <!-- ═══ Personal Info Tab ═══ -->
+        <div class="tab-content" id="personal-tab" style="display: block;">
+            <div class="p-5 sm:p-6 space-y-6">
+                <!-- Personal Information -->
+                <div>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-user text-brand-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900">Personal Information</h3>
+                            <p class="text-xs text-gray-500">Your name and contact details</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label for="first_name" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">First Name</label>
+                            <input type="text" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="first_name" name="first_name" value="{{ request.user.first_name }}" required>
+                        </div>
+                        <div>
+                            <label for="last_name" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Last Name</label>
+                            <input type="text" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="last_name" name="last_name" value="{{ request.user.last_name }}" required>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="email" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Email Address</label>
+                        <input type="email" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="email" name="email" value="{{ request.user.email }}" required>
+                    </div>
+
+                    <div>
+                        <label for="phone" class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                            Phone Number
+                            <span class="tooltip-trigger">
+                                <i class="fas fa-info-circle text-[10px]"></i>
+                                <span class="tooltip-content">E.164 format (e.g., +12025551234) for SMS notifications</span>
+                            </span>
+                        </label>
+                        <input type="tel" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="phone" name="phone" value="{{ customer.phone|default:'' }}" placeholder="+12025551234" pattern="^\+?1?\d{9,15}$">
+                        {% if customer.phone_verified %}
+                        <p class="mt-1.5 text-xs text-green-600 flex items-center">
+                            <i class="fas fa-check-circle mr-1"></i> Verified on {{ customer.phone_verified_at|date:"M d, Y" }}
+                        </p>
+                        {% elif customer.phone %}
+                        <p class="mt-1.5 text-xs text-amber-600 flex items-center">
+                            <i class="fas fa-exclamation-triangle mr-1"></i> Not verified &mdash;
+                            <a href="{% url 'customer_notification_preferences' %}" class="underline ml-1 hover:text-amber-700">Verify now</a>
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-100 pt-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-building text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900">Company Role</h3>
+                            <p class="text-xs text-gray-500">Define your role within your organization</p>
+                        </div>
+                    </div>
+
+                    <label class="flex items-start gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                        <input type="checkbox" class="mt-0.5 h-4 w-4 text-brand-500 focus:ring-brand-500 border-gray-300 rounded" id="is_primary_contact" name="is_primary_contact" {% if customer_user.is_primary_contact %}checked{% endif %}>
+                        <div>
+                            <span class="text-sm font-medium text-gray-900">I am the primary contact for this company</span>
+                            <p class="text-xs text-gray-500 mt-0.5">Primary contacts receive repair notifications and approval requests</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ Repair Preferences Tab ═══ -->
+        <div class="tab-content" id="repair-tab" style="display: none;">
+            <div class="p-5 sm:p-6 space-y-6">
+                <!-- Approval Mode -->
+                <div>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-clipboard-check text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                                Field Repair Approval Mode
+                                <span class="tooltip-trigger">
+                                    <i class="fas fa-circle-question text-xs"></i>
+                                    <span class="tooltip-content">How field repairs discovered during lot walking are handled</span>
+                                </span>
+                            </h3>
+                            <p class="text-xs text-gray-500">Choose how field-discovered repairs are approved</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        {% for radio in repair_form.field_repair_approval_mode %}
+                        <label class="flex items-start gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-brand-300 hover:bg-brand-50/30 transition-all radio-option">
+                            {{ radio.tag }}
+                            <div class="flex-1 min-w-0">
+                                <span class="text-sm font-medium text-gray-900">{{ radio.choice_label }}</span>
+                                <p class="text-xs text-gray-500 mt-0.5">
+                                    {% if 'Auto-approve all' in radio.choice_label %}
+                                    Technicians can complete repairs without waiting for approval
+                                    {% elif 'Require approval' in radio.choice_label %}
+                                    You'll review and approve each field repair before work begins
+                                    {% elif 'threshold' in radio.choice_label %}
+                                    Auto-approve repairs up to a set limit per visit
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </label>
+                        {% endfor %}
+                    </div>
+
+                    <div id="threshold-setting" class="conditional-section hidden mt-3">
+                        <div class="bg-brand-50 border border-brand-100 rounded-xl p-4">
+                            <label for="{{ repair_form.units_per_visit_threshold.id_for_label }}" class="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                                <i class="fas fa-hashtag text-brand-500 text-[10px]"></i>
+                                Units Per Visit Threshold
+                                <span class="tooltip-trigger">
+                                    <i class="fas fa-circle-question text-[10px]"></i>
+                                    <span class="tooltip-content">Max units a technician can repair per visit without approval</span>
+                                </span>
+                            </label>
+                            <input type="number" class="w-full max-w-[120px] px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="{{ repair_form.units_per_visit_threshold.id_for_label }}" name="{{ repair_form.units_per_visit_threshold.name }}" value="{{ repair_form.units_per_visit_threshold.value|default:5 }}" min="1" max="50">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-100 pt-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-calendar-alt text-green-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                                Lot Walking Schedule
+                                <span class="tooltip-trigger">
+                                    <i class="fas fa-circle-question text-xs"></i>
+                                    <span class="tooltip-content">Schedule regular lot inspections to find and fix damage proactively</span>
+                                </span>
+                            </h3>
+                            <p class="text-xs text-gray-500">Configure scheduled lot walking service</p>
+                        </div>
+                    </div>
+
+                    <label class="flex items-start gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors mb-3">
+                        <input type="checkbox" class="mt-0.5 h-4 w-4 text-brand-500 focus:ring-brand-500 border-gray-300 rounded" id="{{ repair_form.lot_walking_enabled.id_for_label }}" name="{{ repair_form.lot_walking_enabled.name }}" {% if repair_form.lot_walking_enabled.value %}checked{% endif %}>
+                        <div>
+                            <span class="text-sm font-medium text-gray-900">Enable Lot Walking Service</span>
+                            <p class="text-xs text-gray-500 mt-0.5">Regular inspections help catch damage early</p>
+                        </div>
+                    </label>
+
+                    <div id="lot-walking-details" class="conditional-section hidden">
+                        <div class="bg-green-50 border border-green-200 rounded-xl p-5 space-y-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="{{ repair_form.lot_walking_frequency.id_for_label }}" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Frequency</label>
+                                    <select class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white" id="{{ repair_form.lot_walking_frequency.id_for_label }}" name="{{ repair_form.lot_walking_frequency.name }}">
+                                        {% for value, label in repair_form.lot_walking_frequency.field.choices %}
+                                        <option value="{{ value }}" {% if repair_form.lot_walking_frequency.value == value %}selected{% endif %}>{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="{{ repair_form.lot_walking_time.id_for_label }}" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Preferred Time</label>
+                                    <input type="time" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="{{ repair_form.lot_walking_time.id_for_label }}" name="{{ repair_form.lot_walking_time.name }}" value="{{ repair_form.lot_walking_time.value|default:'' }}">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preferred Days</label>
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {% for checkbox in repair_form.lot_walking_days_choices %}
+                                    <label class="flex items-center gap-2 p-2.5 bg-white border border-green-200 rounded-lg cursor-pointer hover:bg-green-50 transition-colors text-sm">
+                                        {{ checkbox.tag }}
+                                        <span class="text-gray-700">{{ checkbox.choice_label }}</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ Security Tab ═══ -->
+        <div class="tab-content" id="security-tab" style="display: none;">
+            <div class="p-5 sm:p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-9 h-9 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-lock text-red-600"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-900">Change Password</h3>
+                        <p class="text-xs text-gray-500">Leave blank if you don't want to change your password</p>
+                    </div>
+                </div>
+
+                <div class="bg-brand-50 border border-brand-100 rounded-xl p-4 mb-5">
+                    <div class="flex gap-3">
+                        <i class="fas fa-info-circle text-brand-500 mt-0.5 flex-shrink-0"></i>
+                        <p class="text-sm text-brand-800">Password must be at least 8 characters with a mix of letters and numbers.</p>
+                    </div>
+                </div>
+
+                <div class="space-y-4 max-w-md">
+                    <div>
+                        <label for="current_password" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Current Password</label>
+                        <input type="password" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="current_password" name="current_password" placeholder="Enter current password">
+                    </div>
+                    <div>
+                        <label for="new_password" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">New Password</label>
+                        <input type="password" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="new_password" name="new_password" placeholder="Enter new password">
+                    </div>
+                    <div>
+                        <label for="confirm_password" class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Confirm New Password</label>
+                        <input type="password" class="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="confirm_password" name="confirm_password" placeholder="Re-enter new password">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ Billing Tab ═══ -->
+        <div class="tab-content" id="billing-tab" style="display: none;">
+            <div class="p-5 sm:p-6 space-y-6">
+                <!-- Invoice Preference -->
+                <div>
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-file-invoice-dollar text-brand-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900 flex items-center gap-2">
+                                Invoice Preference
+                                <span class="tooltip-trigger">
+                                    <i class="fas fa-circle-question text-xs"></i>
+                                    <span class="tooltip-content">Choose how repairs are grouped on invoices</span>
+                                </span>
+                            </h3>
+                            <p class="text-xs text-gray-500">How your repairs are invoiced</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        {% for radio in repair_form.invoice_preference %}
+                        {% if radio.value != 'manual' %}
+                        <label class="flex items-start gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-brand-300 hover:bg-brand-50/30 transition-all radio-option">
+                            {{ radio.tag }}
+                            <div class="flex-1 min-w-0">
+                                <span class="text-sm font-medium text-gray-900">
+                                    {% if radio.value == 'per_ticket' %}Per Repair
+                                    {% elif radio.value == 'batch' %}Batch Invoicing
+                                    {% else %}{{ radio.choice_label }}{% endif %}
+                                </span>
+                                <p class="text-xs text-gray-500 mt-0.5">
+                                    {% if radio.value == 'per_ticket' %}One invoice per repair &mdash; generated when each repair is completed
+                                    {% elif radio.value == 'batch' %}Multiple repairs from the same day grouped on one invoice (recommended for fleets){% endif %}
+                                </p>
+                            </div>
+                        </label>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-100 pt-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-envelope text-blue-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900">Email & Delivery</h3>
+                            <p class="text-xs text-gray-500">How invoices are delivered to your team</p>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="{{ repair_form.billing_email.id_for_label }}" class="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                            Billing Email
+                            <span class="tooltip-trigger">
+                                <i class="fas fa-circle-question text-[10px]"></i>
+                                <span class="tooltip-content">Invoices will be sent here. Leave blank to use your account email.</span>
+                            </span>
+                        </label>
+                        <input type="email" class="w-full max-w-md px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent" id="{{ repair_form.billing_email.id_for_label }}" name="{{ repair_form.billing_email.name }}" value="{{ repair_form.billing_email.value|default:'' }}" placeholder="billing@yourcompany.com">
+                        <p class="text-xs text-gray-400 mt-1">Leave blank to use your primary email</p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="flex items-start gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                            <input type="checkbox" class="mt-0.5 h-4 w-4 text-brand-500 focus:ring-brand-500 border-gray-300 rounded" id="{{ repair_form.auto_email_invoices.id_for_label }}" name="{{ repair_form.auto_email_invoices.name }}" {% if repair_form.auto_email_invoices.value %}checked{% endif %}>
+                            <div>
+                                <span class="text-sm font-medium text-gray-900">Auto-email invoices</span>
+                                <p class="text-xs text-gray-500 mt-0.5">Invoices are emailed as soon as they're generated</p>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                            <input type="checkbox" class="mt-0.5 h-4 w-4 text-brand-500 focus:ring-brand-500 border-gray-300 rounded" id="{{ repair_form.include_photos_in_invoice.id_for_label }}" name="{{ repair_form.include_photos_in_invoice.name }}" {% if repair_form.include_photos_in_invoice.value %}checked{% endif %}>
+                            <div>
+                                <span class="text-sm font-medium text-gray-900">Include repair photos</span>
+                                <p class="text-xs text-gray-500 mt-0.5">Attach before/after photos to invoice emails</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Save Bar — sticky on mobile -->
+        <div class="p-4 sm:p-5 bg-gray-50 border-t border-gray-200 flex items-center justify-between gap-4 sticky bottom-16 md:bottom-0 z-10">
+            <p class="text-xs text-gray-500 hidden sm:block">
+                <i class="fas fa-save text-gray-400 mr-1"></i> Changes apply to all tabs
+            </p>
+            <div class="flex gap-2 w-full sm:w-auto">
+                <a href="{% url 'customer_dashboard' %}" class="flex-1 sm:flex-initial inline-flex items-center justify-center px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors">
+                    Cancel
+                </a>
+                <button type="submit" class="flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-2.5 bg-brand-500 text-white text-sm font-bold rounded-lg hover:bg-brand-600 transition-colors shadow-sm">
+                    <i class="fas fa-check mr-2"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Tab Switching
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
+    // Tab switching
+    const tabs = document.querySelectorAll('.settings-tab');
+    const contents = document.querySelectorAll('.tab-content');
 
-    tabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-
-            // Remove active class from all buttons
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-
-            // Add active class to clicked button
-            this.classList.add('active');
-
-            // Hide all tab contents
-            tabContents.forEach(content => {
-                content.style.display = 'none';
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const target = this.dataset.tab;
+            tabs.forEach(t => {
+                t.classList.remove('active', 'text-brand-600', 'border-brand-500');
+                t.classList.add('border-transparent', 'text-gray-500');
             });
-
-            // Show target tab content
-            const targetContent = document.getElementById(targetTab + '-tab');
-            if (targetContent) {
-                targetContent.style.display = 'block';
-            }
+            this.classList.add('active', 'text-brand-600', 'border-brand-500');
+            this.classList.remove('border-transparent', 'text-gray-500');
+            contents.forEach(c => c.style.display = 'none');
+            document.getElementById(target + '-tab').style.display = 'block';
         });
     });
 
-    // Threshold Setting Visibility
-    const approvalModeRadios = document.querySelectorAll('input[name="field_repair_approval_mode"]');
-    const thresholdSetting = document.getElementById('threshold-setting');
+    // Set initial active tab styling
+    const activeTab = document.querySelector('.settings-tab.active');
+    if (activeTab) {
+        activeTab.classList.add('text-brand-600', 'border-brand-500');
+        activeTab.classList.remove('border-transparent', 'text-gray-500');
+    }
 
-    function updateThresholdVisibility() {
-        const selectedMode = document.querySelector('input[name="field_repair_approval_mode"]:checked');
-        if (selectedMode && selectedMode.value === 'UNIT_THRESHOLD') {
+    // Threshold visibility
+    const thresholdSetting = document.getElementById('threshold-setting');
+    function updateThreshold() {
+        const mode = document.querySelector('input[name="field_repair_approval_mode"]:checked');
+        if (mode && mode.value === 'UNIT_THRESHOLD') {
             thresholdSetting.classList.remove('hidden');
             thresholdSetting.classList.add('visible');
         } else {
@@ -723,19 +429,13 @@ document.addEventListener('DOMContentLoaded', function() {
             thresholdSetting.classList.remove('visible');
         }
     }
+    document.querySelectorAll('input[name="field_repair_approval_mode"]').forEach(r => r.addEventListener('change', updateThreshold));
+    updateThreshold();
 
-    approvalModeRadios.forEach(radio => {
-        radio.addEventListener('change', updateThresholdVisibility);
-    });
-
-    // Initial check
-    updateThresholdVisibility();
-
-    // Lot Walking Details Visibility
+    // Lot walking visibility
     const lotWalkingEnabled = document.getElementById('{{ repair_form.lot_walking_enabled.id_for_label }}');
     const lotWalkingDetails = document.getElementById('lot-walking-details');
-
-    function updateLotWalkingVisibility() {
+    function updateLotWalking() {
         if (lotWalkingEnabled && lotWalkingDetails) {
             if (lotWalkingEnabled.checked) {
                 lotWalkingDetails.classList.remove('hidden');
@@ -746,40 +446,27 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
-
     if (lotWalkingEnabled) {
-        lotWalkingEnabled.addEventListener('change', updateLotWalkingVisibility);
-        // Initial check
-        updateLotWalkingVisibility();
+        lotWalkingEnabled.addEventListener('change', updateLotWalking);
+        updateLotWalking();
     }
 
-    // Radio Button Styling - Add checked class to parent
-    const radioInputs = document.querySelectorAll('.radio-option input[type="radio"]');
-    radioInputs.forEach(radio => {
+    // Radio option highlight
+    document.querySelectorAll('.radio-option input[type="radio"]').forEach(radio => {
         radio.addEventListener('change', function() {
-            // Remove checked class from all radio options in the same group
-            const groupName = this.getAttribute('name');
-            document.querySelectorAll(`input[name="${groupName}"]`).forEach(r => {
-                r.closest('.radio-option')?.classList.remove('border-blue-500', 'bg-blue-50');
+            const name = this.getAttribute('name');
+            document.querySelectorAll(`input[name="${name}"]`).forEach(r => {
+                r.closest('.radio-option')?.classList.remove('border-brand-300', 'bg-brand-50/30');
             });
-
-            // Add checked class to selected option
             if (this.checked) {
-                this.closest('.radio-option')?.classList.add('border-blue-500', 'bg-blue-50');
+                this.closest('.radio-option')?.classList.add('border-brand-300', 'bg-brand-50/30');
             }
         });
-
-        // Set initial state
         if (radio.checked) {
-            radio.closest('.radio-option')?.classList.add('border-blue-500', 'bg-blue-50');
+            radio.closest('.radio-option')?.classList.add('border-brand-300', 'bg-brand-50/30');
         }
     });
-
-    // Smooth scroll to validation errors if any
-    const firstError = document.querySelector('.alert-error');
-    if (firstError) {
-        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
 });
 </script>
+{% endblock %}
 {% endblock %}

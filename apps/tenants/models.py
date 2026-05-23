@@ -17,6 +17,8 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
 
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
+
 
 class SubscriptionPlan(models.Model):
     """
@@ -94,7 +96,7 @@ class SubscriptionPlan(models.Model):
         return self.features.get(feature_name, False)
 
 
-class Tenant(models.Model):
+class Tenant(AutoUpdateTimestampMixin, models.Model):
     """
     Represents a glass shop business on the RS Systems platform.
     
@@ -185,16 +187,69 @@ class Tenant(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    # Plan intent (chosen at signup, used to pre-select on upgrade)
+    intended_plan = models.CharField(
+        max_length=20, blank=True,
+        help_text='Plan slug chosen during signup, used to pre-select on upgrade'
+    )
+
     # Stripe billing
     stripe_customer_id = models.CharField(
-        max_length=50, blank=True,
+        max_length=50, blank=True, db_index=True,
         help_text="Stripe Customer ID for platform billing"
     )
     stripe_subscription_id = models.CharField(
-        max_length=50, blank=True,
+        max_length=50, blank=True, db_index=True,
         help_text="Stripe Subscription ID for platform billing"
     )
-    
+
+    # Stripe Connect — for receiving customer invoice payments
+    STRIPE_ONBOARDING_STATUS_CHOICES = [
+        ('not_started', 'Not Started'),
+        ('pending', 'Onboarding Started'),
+        ('in_review', 'In Review'),
+        ('active', 'Active'),
+        ('restricted', 'Restricted'),
+        ('disabled', 'Disabled'),
+    ]
+
+    stripe_connect_account_id = models.CharField(
+        max_length=50, blank=True, db_index=True,
+        help_text="Stripe Connect Account ID (acct_...) for receiving invoice payments"
+    )
+    stripe_onboarding_status = models.CharField(
+        max_length=20,
+        choices=STRIPE_ONBOARDING_STATUS_CHOICES,
+        default='not_started',
+        help_text="Current Stripe Connect onboarding status"
+    )
+    stripe_connect_onboarding_complete = models.BooleanField(
+        default=False,
+        help_text="Whether Stripe Connect onboarding (KYC, bank account) is fully complete"
+    )
+    stripe_connect_charges_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the connected account can accept charges"
+    )
+    stripe_connect_payouts_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the connected account can receive payouts to their bank"
+    )
+    stripe_connected_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the Stripe Connect account first became active"
+    )
+    platform_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Override global platform fee for this tenant. Null = use global default."
+    )
+
+    # Platform owner flag — exempt from subscription billing
+    is_platform_owner = models.BooleanField(
+        default=False,
+        help_text="Platform owner tenant — permanent pro plan, no subscription required"
+    )
+
     # Plan (for Phase 3 billing)
     plan = models.CharField(
         max_length=20,
@@ -252,6 +307,9 @@ class Tenant(models.Model):
             self.slug = slugify(self.name)
         if not self.subdomain:
             self.subdomain = self.slug
+
+        # AutoUpdateTimestampMixin handles updated_at injection for
+        # save(update_fields=...) calls. (CODE-253 → CODE-254)
         super().save(*args, **kwargs)
     
     def get_upload_prefix(self):
@@ -274,6 +332,8 @@ class Tenant(models.Model):
     @property
     def is_trial_expired(self):
         """Check if the free trial period has ended."""
+        if self.is_platform_owner:
+            return False
         expiry = self.trial_expiry
         if expiry is None:
             return False
@@ -324,6 +384,23 @@ class Tenant(models.Model):
     def had_paid_subscription(self):
         """True if this tenant ever had a paid Stripe subscription."""
         return bool(self.stripe_subscription_id)
+
+    @property
+    def can_accept_payments(self):
+        """True if this tenant's Stripe Connect account can accept invoice payments."""
+        return (
+            bool(self.stripe_connect_account_id)
+            and self.stripe_onboarding_status == 'active'
+            and self.stripe_connect_charges_enabled
+        )
+
+    @property
+    def can_receive_payouts(self):
+        """True if this tenant's Stripe Connect account can pay out to their bank."""
+        return (
+            bool(self.stripe_connect_account_id)
+            and self.stripe_connect_payouts_enabled
+        )
 
 
 class TenantMembership(models.Model):

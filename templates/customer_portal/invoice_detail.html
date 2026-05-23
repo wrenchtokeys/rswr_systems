@@ -48,7 +48,7 @@
                     </span>
                 {% elif invoice.status == 'SENT' %}
                     <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-blue-100 text-blue-800">
-                        📤 Sent
+                        📬 Awaiting Payment
                     </span>
                 {% elif invoice.status == 'PARTIAL' %}
                     <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold bg-yellow-100 text-yellow-800">
@@ -171,26 +171,28 @@
             {% endif %}
             {% if invoice.tax_amount > 0 %}
                 {% if invoice.state_tax_rate > 0 or invoice.county_tax_rate > 0 or invoice.city_tax_rate > 0 %}
+                {% if invoice.state_tax_rate > 0 %}
                 <div class="flex justify-between text-sm">
                     <span class="text-gray-500">State Tax ({{ invoice.state_tax_rate }}%)</span>
-                    <span class="text-gray-900 font-medium">—</span>
+                    <span class="text-gray-900 font-medium">${{ invoice.state_tax_amount|floatformat:2 }}</span>
                 </div>
+                {% endif %}
                     {% if invoice.county_tax_rate > 0 %}
                 <div class="flex justify-between text-sm">
                     <span class="text-gray-500">County Tax ({{ invoice.county_tax_rate }}%)</span>
-                    <span class="text-gray-900 font-medium">—</span>
+                    <span class="text-gray-900 font-medium">${{ invoice.county_tax_amount|floatformat:2 }}</span>
                 </div>
                     {% endif %}
                     {% if invoice.city_tax_rate > 0 %}
                 <div class="flex justify-between text-sm">
                     <span class="text-gray-500">City Tax ({{ invoice.city_tax_rate }}%)</span>
-                    <span class="text-gray-900 font-medium">—</span>
+                    <span class="text-gray-900 font-medium">${{ invoice.city_tax_amount|floatformat:2 }}</span>
                 </div>
                     {% endif %}
                     {% if invoice.special_tax_rate > 0 %}
                 <div class="flex justify-between text-sm">
                     <span class="text-gray-500">Special Tax ({{ invoice.special_tax_rate }}%)</span>
-                    <span class="text-gray-900 font-medium">—</span>
+                    <span class="text-gray-900 font-medium">${{ invoice.special_tax_amount|floatformat:2 }}</span>
                 </div>
                     {% endif %}
                 <div class="flex justify-between text-sm">
@@ -267,7 +269,7 @@
 
 <!-- Actions -->
 <div class="flex flex-col sm:flex-row gap-3 mb-8">
-    {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' and invoice.status != 'PAID' %}
+    {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' and invoice.status != 'PAID' and can_pay_online %}
     <form method="post" action="{% url 'customer_invoice_pay' invoice.id %}">
         {% csrf_token %}
         <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
@@ -284,4 +286,5 @@
     </a>
     {% endif %}
 </div>
+{% include "includes/fab_quick_actions.html" with fab_role="customer" %}
 {% endblock %}

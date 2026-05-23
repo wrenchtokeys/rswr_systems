@@ -47,7 +47,8 @@ class InvoiceTrackingService:
         return self._billing_config
     
     def create_invoice_from_repairs(self, customer, repairs, invoice_number=None, 
-                                     due_days=None, s3_key=None, auto_send=False):
+                                     due_days=None, s3_key=None, auto_send=False,
+                                     payment_terms=None):
         """
         Create a tracked Invoice from a list of repairs.
         
@@ -57,7 +58,12 @@ class InvoiceTrackingService:
             invoice_number: Optional invoice number (auto-generated if not provided)
             due_days: Days until due (default: 30)
             s3_key: S3 key where PDF is stored
-            auto_send: Mark as SENT immediately
+            auto_send: Deprecated – ignored. Invoice is always created as DRAFT.
+                       Callers must mark SENT only after email delivery is confirmed.
+                       (See AGENTS.md gotcha: "Don't mark invoices SENT before
+                       confirming email delivery")
+            payment_terms: Override payment terms for this invoice (e.g. 'NET30').
+                          If None, uses BillingConfig.default_payment_terms.
             
         Returns:
             Invoice instance
@@ -83,13 +89,27 @@ class InvoiceTrackingService:
         if not invoice_number:
             invoice_number = self._generate_invoice_number(customer)
         
-        # Get payment terms from BillingConfig
-        payment_terms = 'COD'
-        if self.billing_config:
-            payment_terms = self.billing_config.default_payment_terms
-            # Use config-based due days if caller didn't specify
+        # Get payment terms — caller override takes priority over BillingConfig
+        if payment_terms is None:
+            payment_terms = 'COD'
+            if self.billing_config:
+                payment_terms = self.billing_config.default_payment_terms
+                # Use config-based due days if caller didn't specify
+                if due_days is None:
+                    due_days = self.billing_config.due_days_for_terms
+        else:
+            # Caller specified payment_terms — derive due_days from it if not
+            # explicitly provided.  (CODE-153)
             if due_days is None:
-                due_days = self.billing_config.due_days_for_terms
+                terms_days = {
+                    'COD': 0,
+                    'DUE_ON_RECEIPT': 0,
+                    'NET15': 15,
+                    'NET30': 30,
+                    'NET45': 45,
+                    'NET60': 60,
+                }
+                due_days = terms_days.get(payment_terms, 0)
         
         due_days = due_days or 0
         due_date = timezone.now().date() + timedelta(days=due_days) if due_days > 0 else timezone.now().date()
@@ -103,8 +123,8 @@ class InvoiceTrackingService:
                 invoice_date=timezone.now().date(),
                 due_date=due_date,
                 payment_terms=payment_terms,
-                status='SENT' if auto_send else 'DRAFT',
-                sent_at=timezone.now() if auto_send else None,
+                status='DRAFT',
+                sent_at=None,
                 s3_key=s3_key or '',
             )
             
@@ -114,21 +134,40 @@ class InvoiceTrackingService:
             
             for repair in repairs:
                 discounted = repair.get_discounted_cost()
+                pricing_info = repair.get_progressive_pricing_info()
+                
+                # unit_price = base rate (1st-break price) so customer sees the
+                # "standard" rate.  discount = progressive discount + reward discount
+                # so the math is transparent: base - discount = amount charged.
+                if pricing_info['is_discounted']:
+                    progressive_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
+                    unit_price = pricing_info['base_rate']
+                    total_line_discount = progressive_savings + discounted['savings']
+                    amount = unit_price - total_line_discount
+                else:
+                    unit_price = discounted['original_cost']
+                    total_line_discount = discounted['savings']
+                    amount = discounted['final_cost']
+
+                # Build description with discount note
+                description = repair.get_invoice_description()
+                if pricing_info['is_discounted']:
+                    description += f" [multi-break rate]"
                 
                 line_item = InvoiceLineItem.objects.create(
                     invoice=invoice,
                     repair=repair,
-                    description=f"Windshield repair - Unit #{repair.unit_number} - {repair.get_damage_type_display() or 'Repair'}",
+                    description=description,
                     quantity=1,
-                    unit_price=discounted['original_cost'],
-                    discount=discounted['savings'],
-                    amount=discounted['final_cost'],
+                    unit_price=unit_price,
+                    discount=total_line_discount,
+                    amount=amount,
                     repair_date=repair.repair_date.date() if repair.repair_date else None,
                     unit_number=repair.unit_number,
                 )
                 
-                subtotal += discounted['original_cost']
-                total_discount += discounted['savings']
+                subtotal += unit_price
+                total_discount += total_line_discount
             
             # Update invoice totals
             invoice.subtotal = subtotal
@@ -321,9 +360,38 @@ class InvoiceTrackingService:
         }
     
     def _generate_invoice_number(self, customer):
-        """Generate a unique invoice number using configurable prefix."""
+        """Generate a unique invoice number using configurable prefix.
+
+        The old approach appended a timestamp (seconds precision):
+        ``{prefix}-{customer.id}-{timestamp}``.  Two concurrent invoice
+        creations for the same customer within the same second would produce
+        an identical candidate, and one would crash on the
+        UniqueConstraint(tenant, invoice_number).  (Same class of race
+        condition fixed for the tasks.py batch path in CODE-036, but that
+        fix was not carried back to this service method.)
+
+        Fix (CODE-156): Iterate from today's count upward until a free slot
+        is found — matching the safe retry-loop pattern in tasks.py.
+        """
         prefix = 'INV'
         if self.billing_config:
             prefix = self.billing_config.invoice_number_prefix or 'INV'
-        timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-        return f"{prefix}-{customer.id}-{timestamp}"
+
+        date_str = timezone.now().strftime('%Y%m%d')
+        tenant = self.tenant or customer.tenant
+
+        # Start from today's existing count + 1 and walk upward until free.
+        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        base_count = Invoice.objects.filter(
+            tenant=tenant,
+            created_at__gte=today_start,
+        ).count() + 1
+
+        for attempt in range(base_count, base_count + 500):
+            candidate = f"{prefix}-{tenant.id}-{date_str}-{attempt:03d}"
+            if not Invoice.objects.filter(tenant=tenant, invoice_number=candidate).exists():
+                return candidate
+
+        # Fallback: append microseconds for guaranteed uniqueness
+        import time
+        return f"{prefix}-{tenant.id}-{date_str}-{int(time.time() * 1000) % 1000000:06d}"

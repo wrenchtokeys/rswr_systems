@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pay Invoice — {{ company_name }}</title>
+    <style>
+        body { margin: 0; padding: 0; background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .container { max-width: 500px; margin: 60px auto; padding: 40px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
+        h1 { color: #1e40af; font-size: 24px; margin: 0 0 8px; }
+        .invoice-num { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+        .amount { font-size: 36px; font-weight: 700; color: #111827; margin: 16px 0; }
+        .message { color: #6b7280; font-size: 15px; line-height: 1.6; margin: 20px 0; }
+        .contact { margin-top: 24px; padding: 16px; background: #f9fafb; border-radius: 8px; }
+        .contact p { margin: 4px 0; font-size: 14px; color: #374151; }
+        .contact a { color: #2563eb; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ company_name }}</h1>
+        <p class="invoice-num">Invoice #{{ invoice.invoice_number }}</p>
+        <p class="amount">${{ invoice.amount_due|floatformat:2 }}</p>
+        <p class="message">{{ error_msg }}</p>
+        {% if company_phone %}
+        <div class="contact">
+            <p><strong>Contact:</strong></p>
+            <p><a href="tel:{{ company_phone }}">{{ company_phone }}</a></p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

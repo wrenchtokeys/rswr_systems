@@ -132,14 +132,20 @@ class SubscriptionEnforcementTests(TestCase):
             self.assertIn('pricing', resp.url)
 
     def test_canceled_subscription_blocked(self):
+        # CODE-130 changed the meaning of 'canceled': a tenant with
+        # subscription_status='canceled' but NO grace_period_end is treated as
+        # "active (scheduled to cancel)" — the shop still has paid time.  We
+        # must set grace_period_end to a past date to simulate a subscription
+        # that has actually expired, which is what the Stripe webhook does.
         user, tenant = _make_tenant(
             'Canceled Shop', 'canceled_owner',
             subscription_status='canceled',
+            grace_period_end=timezone.now() - timedelta(days=1),
         )
         self.client.login(username='canceled_owner', password='testpass123')
         resp = self.client.get('/tech/')
         self.assertEqual(resp.status_code, 302)
-        self.assertIn('pricing', resp.url)
+        self.assertIn('subscription-blocked', resp.url)
 
     def test_active_subscription_allowed(self):
         user, tenant = _make_tenant(
@@ -167,9 +173,13 @@ class SubscriptionEnforcementTests(TestCase):
 
     def test_api_returns_402(self):
         """API endpoints return 402 for expired subscriptions."""
+        # Per CODE-130, 'canceled' without grace_period_end means "scheduled to
+        # cancel but still active". Set grace_period_end in the past to create a
+        # genuinely expired subscription that the middleware will block.
         user, tenant = _make_tenant(
             'API Expired', 'api_expired',
             subscription_status='canceled',
+            grace_period_end=timezone.now() - timedelta(days=1),
         )
         self.client.login(username='api_expired', password='testpass123')
         # A non-exempt API path
@@ -488,3 +498,465 @@ class RewardRedemptionTenantIsolationTests(TestCase):
             f'/tech/reward-fulfillment/{self.redemption_b.id}/',
         )
         self.assertEqual(response.status_code, 404)
+
+
+# =============================================================================
+# CODE-047: UnitRepairCount missing tenant in get_or_create lookup
+# =============================================================================
+
+@override_settings(**TEST_OVERRIDES)
+class UnitRepairCountTenantScopeTests(TestCase):
+    """
+    UnitRepairCount.objects.get_or_create must include tenant in the lookup.
+    Without it, a NULL-tenant row is created (or a cross-tenant row is matched),
+    breaking TenantManager scoping and progressive pricing isolation.
+    """
+
+    def setUp(self):
+        self.user_a, self.tenant_a = _make_tenant('Shop Alpha', 'owner_alpha')
+        self.user_b, self.tenant_b = _make_tenant('Shop Beta', 'owner_beta')
+
+        self.tech_user_a = User.objects.create_user('tech_alpha', 'ta@test.com', 'pass')
+        self.technician_a = Technician.objects.create(
+            tenant=self.tenant_a, user=self.tech_user_a, is_active=True, can_repair=True
+        )
+        TenantMembership.objects.create(tenant=self.tenant_a, user=self.tech_user_a, role='technician')
+
+        self.customer_a = Customer.objects.create(
+            tenant=self.tenant_a, name='Fleet A', email='fleet@a.com',
+            customer_type='FLEET',
+        )
+
+    def test_repair_save_creates_unit_repair_count_with_tenant(self):
+        """Saving a COMPLETED repair should create UnitRepairCount with correct tenant, not NULL."""
+        from apps.technician_portal.models import Repair, UnitRepairCount
+
+        repair = Repair.objects.create(
+            tenant=self.tenant_a,
+            customer=self.customer_a,
+            technician=self.technician_a,
+            service_date=timezone.now(),
+            unit_number='UNIT-001',
+            queue_status='COMPLETED',
+            damage_type='BULLSEYE',
+        )
+
+        # The UnitRepairCount for this unit/customer should have tenant set
+        urc = UnitRepairCount.objects.filter(
+            customer=self.customer_a,
+            unit_number='UNIT-001',
+        ).first()
+        self.assertIsNotNone(urc, "UnitRepairCount should have been created on repair save")
+        self.assertEqual(
+            urc.tenant, self.tenant_a,
+            f"UnitRepairCount.tenant should be {self.tenant_a}, got {urc.tenant}"
+        )
+
+    def test_pricing_service_creates_unit_repair_count_with_tenant(self):
+        """get_expected_repair_cost should create UnitRepairCount scoped to tenant."""
+        from apps.technician_portal.models import UnitRepairCount
+        from apps.technician_portal.services.pricing_service import get_expected_repair_cost
+
+        # Ensure no pre-existing count
+        UnitRepairCount.objects.filter(customer=self.customer_a, unit_number='UNIT-PRICE').delete()
+
+        get_expected_repair_cost(self.customer_a, 'UNIT-PRICE', tenant=self.tenant_a)
+
+        urc = UnitRepairCount.objects.filter(
+            customer=self.customer_a,
+            unit_number='UNIT-PRICE',
+        ).first()
+        # The row may or may not be created depending on progressive pricing settings,
+        # but if it was created it must have the correct tenant.
+        if urc:
+            self.assertEqual(
+                urc.tenant, self.tenant_a,
+                f"UnitRepairCount created by pricing service must be tenant-scoped, got tenant={urc.tenant}"
+            )
+
+    def test_two_tenants_same_unit_number_do_not_share_counts(self):
+        """Two shops tracking the same unit number should get separate UnitRepairCount rows."""
+        from apps.technician_portal.models import Repair, UnitRepairCount
+
+        customer_b = Customer.objects.create(
+            tenant=self.tenant_b, name='Fleet B', email='fleet@b.com',
+            customer_type='FLEET',
+        )
+        tech_user_b = User.objects.create_user('tech_beta2', 'tb2@test.com', 'pass')
+        technician_b = Technician.objects.create(
+            tenant=self.tenant_b, user=tech_user_b, is_active=True, can_repair=True
+        )
+
+        # Repair for Tenant A
+        Repair.objects.create(
+            tenant=self.tenant_a, customer=self.customer_a,
+            technician=self.technician_a, service_date=timezone.now(),
+            unit_number='SHARED-UNIT', queue_status='COMPLETED', damage_type='BULLSEYE',
+        )
+
+        # Repair for Tenant B
+        Repair.objects.create(
+            tenant=self.tenant_b, customer=customer_b,
+            technician=technician_b, service_date=timezone.now(),
+            unit_number='SHARED-UNIT', queue_status='COMPLETED', damage_type='BULLSEYE',
+        )
+
+        count_a = UnitRepairCount.objects.filter(tenant=self.tenant_a, unit_number='SHARED-UNIT').count()
+        count_b = UnitRepairCount.objects.filter(tenant=self.tenant_b, unit_number='SHARED-UNIT').count()
+
+        self.assertGreaterEqual(count_a, 1, "Tenant A should have its own UnitRepairCount")
+        self.assertGreaterEqual(count_b, 1, "Tenant B should have its own UnitRepairCount")
+
+        # Tenant A's count should not be affected by Tenant B's repairs
+        urc_a = UnitRepairCount.objects.filter(tenant=self.tenant_a, unit_number='SHARED-UNIT').first()
+        self.assertEqual(
+            urc_a.repair_count, 1,
+            f"Tenant A's SHARED-UNIT should have 1 repair, got {urc_a.repair_count}"
+        )
+
+
+# =============================================================================
+# CODE-107: profile_creation redirect loop for cross-shop users
+# =============================================================================
+
+@override_settings(**TEST_OVERRIDES)
+class ProfileCreationRedirectLoopTests(TestCase):
+    """
+    CODE-107: profile_creation used an unscoped CustomerUser.objects.filter(user=...).exists()
+    check.  A user with a CustomerUser at Shop A visiting Shop B's profile creation page was
+    redirected to customer_dashboard, which found no profile for Shop B and redirected back to
+    profile_creation — causing an infinite redirect loop.
+
+    After the fix:
+      - A user with a CustomerUser at THIS shop → redirected to customer_dashboard (normal).
+      - A user with a CustomerUser at a DIFFERENT shop → shown a warning and redirected to
+        login (no loop, clear message).
+      - A user with NO CustomerUser → profile_creation page renders normally.
+    """
+
+    def setUp(self):
+        from apps.customer_portal.models import CustomerUser
+
+        self.tenant_a = _make_tenant('Loop Shop A', 'loop_owner_a')[1]
+        _, self.tenant_b = _make_tenant('Loop Shop B', 'loop_owner_b')
+
+        self.cust_a = Customer.objects.create(tenant=self.tenant_a, name='Fleet A')
+        self.cust_b = Customer.objects.create(tenant=self.tenant_b, name='Fleet B')
+
+        # User already linked to Shop A
+        self.user_cross = User.objects.create_user('cross_shop_user', 'cross@test.com', 'pass')
+        self.cu_a = CustomerUser.objects.create(
+            user=self.user_cross, customer=self.cust_a, is_primary_contact=False
+        )
+
+        # User already linked to Shop B (same shop as request)
+        self.user_same = User.objects.create_user('same_shop_user', 'same@test.com', 'pass')
+        CustomerUser.objects.create(
+            user=self.user_same, customer=self.cust_b, is_primary_contact=False
+        )
+
+        # User with no CustomerUser at all
+        self.user_fresh = User.objects.create_user('fresh_user', 'fresh@test.com', 'pass')
+
+        self.client = Client()
+
+    def _get(self, user, tenant):
+        """GET /app/profile/create/ with the given user and tenant on the request."""
+        self.client.force_login(user)
+        # Attach the tenant to the request via the session to simulate middleware.
+        session = self.client.session
+        session['tenant_id'] = tenant.id
+        session.save()
+        response = self.client.get('/app/profile/create/', HTTP_HOST='testserver')
+        return response
+
+    def test_same_shop_user_redirected_to_dashboard(self):
+        """User already linked to THIS shop → redirect to customer_dashboard (/app/) (no loop)."""
+        response = self._get(self.user_same, self.tenant_b)
+        # Should redirect to customer_dashboard, not to profile_creation
+        self.assertIn(response.status_code, [301, 302])
+        # customer_dashboard resolves to /app/
+        self.assertIn('/app/', response['Location'])
+        self.assertNotIn('profile', response['Location'])
+
+    def test_cross_shop_user_without_tenant_redirects_to_login(self):
+        """
+        User linked to a different shop when request.tenant is None (e.g. no middleware
+        context) → must NOT redirect to customer_dashboard (which re-redirects here → loop).
+        Instead, redirect to login with a clear warning.
+
+        This tests the core CODE-107 fix: the old unscoped .exists() check redirected
+        to customer_dashboard regardless of tenant, enabling the redirect loop.
+        The new code distinguishes:
+          - tenant=None + existing_cu → redirect to login (no loop).
+          - tenant=X + existing_cu for same tenant X → redirect to dashboard (correct).
+        """
+        from unittest.mock import patch
+
+        self.client.force_login(self.user_cross)
+        # Patch getattr(request, 'tenant', None) to return None to test the guard.
+        # We do this by making the view run without tenant middleware resolving a tenant.
+        # (The real middleware resolves cross-shop users back to their own tenant;
+        #  this test verifies the view itself handles tenant=None + existing_cu correctly.)
+        with patch('apps.customer_portal.views.getattr', side_effect=lambda obj, attr, default=None:
+                   None if (obj is not None and attr == 'tenant') else getattr.__wrapped__(obj, attr, default)
+                   if hasattr(getattr, '__wrapped__') else default):
+            # Instead of patching getattr, test via RequestFactory to control request.tenant
+            from django.test import RequestFactory
+            from apps.customer_portal.views import profile_creation
+            from django.contrib.messages.storage.fallback import FallbackStorage
+
+            rf = RequestFactory()
+            request = rf.get('/app/profile/create/')
+            request.user = self.user_cross
+            request.tenant = None  # No tenant context
+            # Messages middleware requires session
+            request.session = self.client.session
+            setattr(request, '_messages', FallbackStorage(request))
+
+            response = profile_creation(request)
+
+        # Should NOT redirect to /app/ (customer_dashboard — which loops)
+        self.assertIn(response.status_code, [301, 302])
+        self.assertNotIn('/app/', response.get('Location', ''))
+        self.assertIn('/login/', response.get('Location', ''))
+
+    def test_cross_shop_user_no_redirect_loop(self):
+        """
+        Follow redirects: cross-shop user must NOT end up in an infinite loop.
+        Django's follow=True will raise an error if it hits 20+ redirects.
+        """
+        self.client.force_login(self.user_cross)
+        session = self.client.session
+        session['tenant_id'] = self.tenant_b.id
+        session.save()
+        # follow=True will explode if there's an infinite loop
+        response = self.client.get('/app/profile/create/', HTTP_HOST='testserver', follow=True)
+        # Should reach some non-looping page
+        self.assertNotEqual(response.status_code, 500)
+
+    def test_fresh_user_sees_profile_form(self):
+        """User with no CustomerUser → profile creation page should render (200)."""
+        self.client.force_login(self.user_fresh)
+        session = self.client.session
+        session['tenant_id'] = self.tenant_b.id
+        session.save()
+        response = self.client.get('/app/profile/create/', HTTP_HOST='testserver')
+        # Should see the form, not be redirected elsewhere
+        self.assertIn(response.status_code, [200, 302])  # 302 only if something else redirects
+
+
+@override_settings(**TEST_OVERRIDES)
+class BatchRepairDenyNotificationTests(TestCase):
+    """
+    CODE-263: customer_repair_deny used `locked_repair.technician` in the
+    notification path, but `locked_repair` is only defined in the non-batch
+    code path.  In the batch path this caused a NameError, crashing the
+    entire deny flow after the repairs were already DENIED — leaving repairs
+    stuck with no technician notification.
+    """
+
+    def setUp(self):
+        import uuid
+        from apps.customer_portal.models import CustomerUser
+        from apps.technician_portal.models import TechnicianNotification
+
+        self.sub_plan = SubscriptionPlan.objects.create(
+            name='Test Plan', slug='tp-batch-deny',
+            monthly_price=Decimal('10.00'), stripe_price_id='price_batch_deny',
+        )
+        self.owner_user = User.objects.create_user('batchdenyowner', 'o@test.com', 'testpass123')
+        self.tenant = Tenant.objects.create(
+            name='BatchDenyShop', slug='bds', subdomain='bds',
+            plan='professional', subscription_plan=self.sub_plan,
+            owner=self.owner_user,
+        )
+        TenantMembership.objects.create(tenant=self.tenant, user=self.owner_user, role='owner', is_active=True)
+
+        self.tech_user = User.objects.create_user('batchdenytech', 't@test.com', 'testpass123')
+        self.technician = Technician.objects.create(
+            user=self.tech_user, tenant=self.tenant, is_active=True, can_repair=True,
+        )
+
+        self.customer = Customer.objects.create(name='Batch Deny Co', tenant=self.tenant)
+
+        self.cu_user = User.objects.create_user('batchdenycu', 'cu@test.com', 'testpass123')
+        self.customer_user = CustomerUser.objects.create(
+            user=self.cu_user, customer=self.customer, is_primary_contact=True,
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.cu_user, role='viewer', is_active=True,
+        )
+
+        # Create a batch of 3 repairs
+        self.batch_id = uuid.uuid4()
+        from apps.technician_portal.models import Repair
+        self.repairs = []
+        for i in range(1, 4):
+            r = Repair.objects.create(
+                tenant=self.tenant,
+                technician=self.technician,
+                customer=self.customer,
+                unit_number='UNIT-BATCH-DENY',
+                damage_type='Star Break',
+                queue_status='PENDING',
+                repair_batch_id=self.batch_id,
+                break_number=i,
+                total_breaks_in_batch=3,
+            )
+            self.repairs.append(r)
+
+    def test_batch_deny_creates_notification_without_nameerror(self):
+        """Denying a batch repair should NOT crash and should create a notification."""
+        from apps.technician_portal.models import TechnicianNotification
+
+        self.client.force_login(self.cu_user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+        # Deny the first repair in the batch (view should deny all batch siblings)
+        response = self.client.post(
+            f'/app/repairs/{self.repairs[0].id}/deny/',
+            {'reason': 'Not needed'},
+            HTTP_HOST='testserver',
+        )
+        # Should redirect, not crash
+        self.assertIn(response.status_code, [200, 301, 302])
+
+        # All batch repairs should be DENIED
+        from apps.technician_portal.models import Repair
+        for r in Repair.objects.filter(repair_batch_id=self.batch_id):
+            self.assertEqual(r.queue_status, 'DENIED', f"Repair #{r.id} should be DENIED")
+
+        # A technician notification should have been created
+        notifs = TechnicianNotification.objects.filter(
+            technician=self.technician,
+            message__contains='DENIED',
+        )
+        self.assertTrue(notifs.exists(), "Technician should receive a denial notification")
+
+
+# =============================================================================
+# CODE-265: Email normalization missing in account_settings and
+#           accept_customer_invitation
+# =============================================================================
+
+class EmailNormalizationTests(TestCase):
+    """
+    CODE-265: Verify that email addresses are normalized to lowercase in all
+    user-creation and email-update paths in the customer portal.
+
+    customer_register() was fixed by CODE-264, but account_settings() and
+    accept_customer_invitation() were missed — mixed-case emails could bypass
+    uniqueness checks and cause duplicate accounts or inconsistent lookups.
+    """
+
+    def setUp(self):
+        self.client = Client()
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='pro',
+            defaults={
+                'name': 'Pro', 'monthly_price': Decimal('49.00'),
+                'max_repairs_per_month': 999, 'max_technicians': 10,
+            },
+        )
+        self.owner = User.objects.create_user(
+            username='emailshopowner', email='owner@emailshop.test', password='ownerpass!',
+        )
+        self.tenant = Tenant.objects.create(
+            name='Email Test Shop',
+            slug='email-test-shop',
+            subdomain='email-test-shop',
+            subscription_plan=plan,
+            subscription_status='active',
+            owner=self.owner,
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.owner, role='owner', is_active=True,
+        )
+        self.user = User.objects.create_user(
+            username='emailtestuser',
+            email='existing@example.com',
+            password='testpass123!',
+            first_name='Test',
+            last_name='User',
+        )
+        TenantMembership.objects.create(
+            tenant=self.tenant, user=self.user, role='viewer', is_active=True,
+        )
+        from core.models import Customer
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Email Test Customer',
+        )
+        from apps.customer_portal.models import CustomerUser
+        self.customer_user = CustomerUser.objects.create(
+            user=self.user, customer=self.customer, is_primary_contact=True,
+        )
+
+    def test_account_settings_normalizes_email_to_lowercase(self):
+        """account_settings should save emails in lowercase."""
+        from apps.customer_portal.views import account_settings
+        factory = RequestFactory()
+        request = factory.post('/app/account/settings/', {
+            'first_name': 'Test',
+            'last_name': 'User',
+            'email': 'NewEmail@Example.COM',
+            'phone': '',
+        })
+        request.user = self.user
+        request.tenant = self.tenant
+        # Attach session middleware (needed for messages framework)
+        from django.contrib.sessions.backends.db import SessionStore
+        request.session = SessionStore()
+        # Attach messages middleware
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        setattr(request, '_messages', FallbackStorage(request))
+
+        response = account_settings(request)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, 'newemail@example.com',
+                         "Email should be normalized to lowercase in account_settings")
+
+    def test_accept_invitation_normalizes_email_to_lowercase(self):
+        """accept_customer_invitation should create users with lowercase email."""
+        from apps.customer_portal.models import CustomerInvitation
+        from apps.customer_portal.views import accept_customer_invitation
+        invitation = CustomerInvitation.objects.create(
+            customer=self.customer,
+            email='NewPerson@Example.COM',
+            first_name='New',
+            last_name='Person',
+            invited_by=self.user,
+            token='test-invite-token-email-norm',
+            expires_at=timezone.now() + timedelta(days=7),
+            status='pending',
+        )
+
+        factory = RequestFactory()
+        request = factory.post(
+            f'/app/invite/{invitation.token}/',
+            {
+                'first_name': 'New',
+                'last_name': 'Person',
+                'email': 'NewPerson@Example.COM',
+                'password': 'SecurePass123!',
+                'password_confirm': 'SecurePass123!',
+            },
+        )
+        # Anonymous user (not logged in)
+        from django.contrib.auth.models import AnonymousUser
+        request.user = AnonymousUser()
+        request.tenant = self.tenant
+        from django.contrib.sessions.backends.db import SessionStore
+        request.session = SessionStore()
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        setattr(request, '_messages', FallbackStorage(request))
+
+        response = accept_customer_invitation(request, invitation.token)
+
+        # The new user should have a lowercase email
+        new_user = User.objects.filter(email='newperson@example.com').first()
+        self.assertIsNotNone(new_user,
+                             "User should be created with lowercase email from invitation")

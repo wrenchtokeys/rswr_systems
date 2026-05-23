@@ -43,6 +43,7 @@ class StripeService:
     def __init__(self):
         self.api_key = getattr(settings, 'STRIPE_SECRET_KEY', None)
         self.webhook_secret = getattr(settings, 'STRIPE_WEBHOOK_SECRET', None)
+        self.connect_webhook_secret = getattr(settings, 'STRIPE_CONNECT_WEBHOOK_SECRET', None)
         
         if STRIPE_AVAILABLE and self.api_key:
             stripe.api_key = self.api_key
@@ -145,6 +146,12 @@ class StripeService:
                     'rs_invoice_id': str(invoice.id),
                     'rs_invoice_number': invoice.invoice_number,
                 },
+                payment_intent_data={
+                    'metadata': {
+                        'rs_invoice_id': str(invoice.id),
+                        'rs_invoice_number': invoice.invoice_number,
+                    },
+                },
                 after_completion={
                     'type': 'redirect',
                     'redirect': {
@@ -199,7 +206,10 @@ class StripeService:
                         'unit_amount': int(invoice.amount_due * 100),
                         'product_data': {
                             'name': f'Invoice {invoice.invoice_number}',
-                            'description': f'{invoice.line_items.count()} windshield repair(s) for {invoice.customer.name}',
+                            'description': (
+                                f'{invoice.line_items.count()} service(s) '
+                                f'for {invoice.customer.name}'
+                            ),
                         },
                     },
                     'quantity': 1,
@@ -243,13 +253,24 @@ class StripeService:
         if not self.webhook_secret:
             return {'success': False, 'error': 'Webhook secret not configured'}
         
-        try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, self.webhook_secret
-            )
-        except ValueError:
-            return {'success': False, 'error': 'Invalid payload'}
-        except stripe.error.SignatureVerificationError:
+        # Try platform webhook secret first, then Connect webhook secret.
+        # Connect events arrive on the same URL but are signed with the
+        # Connect endpoint's secret.
+        event = None
+        secrets_to_try = [self.webhook_secret]
+        if self.connect_webhook_secret:
+            secrets_to_try.append(self.connect_webhook_secret)
+
+        for secret in secrets_to_try:
+            try:
+                event = stripe.Webhook.construct_event(payload, sig_header, secret)
+                break
+            except stripe.error.SignatureVerificationError:
+                continue
+            except ValueError:
+                return {'success': False, 'error': 'Invalid payload'}
+
+        if event is None:
             return {'success': False, 'error': 'Invalid signature'}
         
         event_type = event['type']
@@ -266,29 +287,63 @@ class StripeService:
             return handler(data)
         
         # SaaS subscription handlers (delegated to tenants.webhooks)
+        # NOTE: These are also handled by the dedicated subscription webhook
+        # at /ap/tenants/webhooks/stripe/ with its own signing secret.
+        # We keep the delegation here as a fallback for existing single-endpoint setups.
         from apps.tenants.webhooks import handle_subscription_event
         sub_result = handle_subscription_event(event_type, data)
         if sub_result.get('handled'):
             return sub_result
-        
+
+        # Stripe Connect account updates
+        if event_type == 'account.updated':
+            from apps.tenants.services.connect_service import handle_account_updated
+            return handle_account_updated(data)
+
         logger.debug(f"Unhandled webhook: {event_type}")
         return {'success': True, 'handled': False, 'event_type': event_type}
     
     def _handle_checkout_completed(self, session):
-        """Customer completed a Checkout Session — record the payment."""
+        """Customer completed a Checkout Session — record the payment.
+
+        IMPORTANT: Stripe sends checkout.session.completed even when
+        payment_status='unpaid' (async payment methods like ACH/bank
+        transfer). In that case the money hasn't arrived yet and
+        payment_intent is None.
+
+        We must only record the payment when payment_status='paid'.
+        For 'unpaid' sessions the subsequent payment_intent.succeeded
+        event (fired when the money clears, possibly days later) is
+        the correct signal — and _handle_payment_succeeded will catch it.
+
+        Skipping unpaid sessions also prevents a double-recording bug:
+        if we naively recorded now with stripe_payment_id='' (None
+        coerced to empty string), the dedup guard in _record_stripe_payment
+        would not match the real pi_xxx id that arrives later, and the
+        invoice would be credited twice.
+        """
         metadata = session.get('metadata', {})
         invoice_id = metadata.get('rs_invoice_id')
-        
+
         if not invoice_id:
             logger.debug("No rs_invoice_id in checkout metadata")
             return {'success': True, 'handled': False}
-        
+
+        payment_status = session.get('payment_status', 'unpaid')
+        if payment_status != 'paid':
+            logger.info(
+                f"checkout.session.completed with payment_status={payment_status!r} "
+                f"for invoice {invoice_id} — deferring to payment_intent.succeeded"
+            )
+            return {'success': True, 'handled': False, 'deferred': True, 'reason': 'unpaid'}
+
         amount = Decimal(str(session.get('amount_total', 0))) / 100
-        
+        payment_intent_id = session.get('payment_intent') or ''
+
         return self._record_stripe_payment(
             invoice_id=invoice_id,
             amount=amount,
-            stripe_payment_id=session.get('payment_intent', ''),
+            stripe_payment_id=payment_intent_id,
             notes=f"Paid via Stripe Checkout ({session['id']})",
         )
     
@@ -296,18 +351,59 @@ class StripeService:
         """Payment intent succeeded — could be from Payment Link or Checkout."""
         metadata = payment_intent.get('metadata', {})
         invoice_id = metadata.get('rs_invoice_id')
-        
+
         if not invoice_id:
             return {'success': True, 'handled': False}
-        
+
         amount = Decimal(str(payment_intent.get('amount_received', 0))) / 100
-        
-        return self._record_stripe_payment(
+        payment_intent_id = payment_intent['id']
+
+        result = self._record_stripe_payment(
             invoice_id=invoice_id,
             amount=amount,
-            stripe_payment_id=payment_intent['id'],
+            stripe_payment_id=payment_intent_id,
             notes='Paid via Stripe',
         )
+
+        # Record platform fee if this was a direct charge with an application fee
+        application_fee_amount = payment_intent.get('application_fee_amount')
+        if application_fee_amount and application_fee_amount > 0:
+            try:
+                from apps.billing.models import Invoice, PlatformFeeRecord
+                invoice = Invoice.objects.get(id=invoice_id)
+                if not PlatformFeeRecord.objects.filter(payment_intent_id=payment_intent_id).exists():
+                    fee_amount = Decimal(str(application_fee_amount)) / 100
+                    # Derive fee percent directly from the actual amounts.
+                    # application_fee_amount is in cents; amount is in dollars.
+                    # fee_percent = (fee_cents / gross_cents) * 100
+                    #             = (application_fee_amount / (amount * 100)) * 100
+                    #             = application_fee_amount / amount
+                    #
+                    # NOTE: Do NOT gate this on metadata keys. The checkout
+                    # session may have been created via ConnectService (stores
+                    # 'rs_fee_percent') OR the module-level helper (stores
+                    # 'rs_fee_cents'). Computing from raw amounts is always
+                    # correct and avoids the key-name mismatch.
+                    if amount > 0:
+                        fee_percent = (Decimal(str(application_fee_amount)) / (amount * 100) * 100).quantize(Decimal('0.01'))
+                    else:
+                        fee_percent = Decimal('0.00')
+                    PlatformFeeRecord.objects.create(
+                        tenant=invoice.tenant,
+                        invoice=invoice,
+                        payment_intent_id=payment_intent_id,
+                        gross_amount=amount,
+                        fee_amount=fee_amount,
+                        fee_percent=fee_percent,
+                        stripe_account_id=payment_intent.get('on_behalf_of') or invoice.tenant.stripe_connect_account_id or '',
+                    )
+                    logger.info(
+                        f"Recorded platform fee ${fee_amount} for {invoice.invoice_number}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to record platform fee for {payment_intent_id}: {e}")
+
+        return result
     
     def _record_stripe_payment(self, invoice_id, amount, stripe_payment_id='', notes=''):
         """Record a Stripe payment against our invoice."""

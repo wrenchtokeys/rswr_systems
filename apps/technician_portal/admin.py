@@ -1,6 +1,23 @@
 import csv
 
 from django.contrib import admin
+from django.db import transaction
+
+
+def _csv_safe(value):
+    """
+    Neutralise CSV formula injection (CODE-214).
+
+    Prefix user-supplied strings that start with a spreadsheet formula trigger
+    character ('=', '+', '-', '@', tab, CR) with a single-quote so that Excel
+    / LibreOffice / Google Sheets treats the cell as text rather than executing
+    an embedded formula.  Numeric/date/None values are passed through unchanged.
+    """
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
 from django.contrib.admin.widgets import FilteredSelectMultiple
 from django.db.models import Prefetch
 from django.http import HttpResponse
@@ -9,7 +26,8 @@ from django.shortcuts import render
 from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django import forms
-from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation
+from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation, TechnicianNotification, WarrantyPolicy
+from .review_models import ReviewConfig, ReviewRequest
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -70,8 +88,15 @@ class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
     get_full_name.admin_order_field = 'user__first_name'
 
     fieldsets = (
+        ('Tenant & Account', {
+            'fields': ('tenant', 'user'),
+            'description': (
+                'Assign this technician to a shop (tenant). Without a tenant, the technician '
+                'cannot be scoped to any shop and will not appear in tenant-filtered views.'
+            ),
+        }),
         ('Basic Information', {
-            'fields': ('user', 'phone_number', 'expertise', 'is_active')
+            'fields': ('phone_number', 'expertise', 'is_active')
         }),
         ('Manager Capabilities', {
             'fields': ('is_manager', 'approval_limit', 'can_assign_work', 'can_override_pricing', 'managed_technicians'),
@@ -102,14 +127,14 @@ class TechnicianAdmin(TenantFilterMixin, admin.ModelAdmin):
 
 @admin.register(Repair)
 class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
-    list_display = ['id', 'tenant', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date']
-    list_filter = ['tenant', 'queue_status', 'service_date', 'technician']
+    list_display = ['id', 'tenant', 'customer', 'unit_number', 'technician', 'get_status_badge', 'get_price_display', 'service_date', 'skip_invoicing']
+    list_filter = ['tenant', 'queue_status', 'service_date', 'technician', 'skip_invoicing', 'is_goodwill_repair']
     search_fields = ['customer__name', 'unit_number', 'damage_type', 'technician__user__username', 'tenant__name']
     readonly_fields = ['service_date']
     date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user', 'tenant']
     list_per_page = 25
-    actions = ['export_csv']
+    actions = ['export_csv', 'bulk_delete_repairs', 'bulk_approve', 'bulk_deny', 'bulk_reset_to_pending', 'bulk_reassign_technician']
 
     def get_status_badge(self, obj):
         status_colors = {
@@ -141,7 +166,20 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
             'fields': ('technician', 'customer', 'unit_number', 'service_date')
         }),
         ('Repair Details', {
-            'fields': ('damage_type', 'description', 'queue_status')
+            'fields': ('damage_type', 'description', 'queue_status', 'is_goodwill_repair')
+        }),
+        ('Invoicing', {
+            'fields': ('skip_invoicing',),
+            'description': (
+                'Check "Skip invoicing" for repairs that were already paid outside the system '
+                '(e.g., cash on the spot, manual invoice, legacy data). '
+                'Skipped repairs are excluded from the uninvoiced-repairs list and admin '
+                '"Generate invoices" action.'
+            ),
+        }),
+        ('Warranty Claim', {
+            'fields': ('is_warranty_claim', 'warranty_original_repair'),
+            'classes': ('collapse',),
         }),
         ('Pricing', {
             'fields': ('cost', 'cost_override', 'override_reason'),
@@ -165,16 +203,226 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
         for repair in queryset.select_related('customer', 'technician__user', 'tenant'):
             writer.writerow([
                 repair.id,
-                repair.tenant.name if repair.tenant else '',
-                repair.customer.name if repair.customer else '',
-                repair.unit_number,
-                repair.technician.user.get_full_name() if repair.technician else '',
+                _csv_safe(repair.tenant.name if repair.tenant else ''),
+                _csv_safe(repair.customer.name if repair.customer else ''),
+                _csv_safe(repair.unit_number),
+                _csv_safe(repair.technician.user.get_full_name() if repair.technician else ''),
                 repair.get_queue_status_display(),
                 repair.damage_type,
                 repair.cost,
                 repair.service_date,
             ])
         return response
+
+    @admin.action(description='✅ Approve selected repairs')
+    def bulk_approve(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for repair in eligible:
+                repair.queue_status = 'APPROVED'
+                repair.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Approved {count} repair(s).'
+        if skipped:
+            msg += f' Skipped {skipped} repair(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='❌ Deny selected repairs')
+    def bulk_deny(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for repair in eligible:
+                repair.queue_status = 'DENIED'
+                repair.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Denied {count} repair(s).'
+        if skipped:
+            msg += f' Skipped {skipped} repair(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='🔄 Reset selected to Pending')
+    def bulk_reset_to_pending(self, request, queryset):
+        eligible = queryset.exclude(queue_status='COMPLETED')
+        completed_count = queryset.filter(queue_status='COMPLETED').count()
+        count = 0
+        with transaction.atomic():
+            for repair in eligible:
+                repair.queue_status = 'PENDING'
+                repair.save()
+                count += 1
+        msg = f'Reset {count} repair(s) to Pending.'
+        if completed_count:
+            msg += f' Skipped {completed_count} completed repair(s).'
+        self.message_user(request, msg)
+
+    @admin.action(description='👤 Reassign selected to technician...')
+    def bulk_reassign_technician(self, request, queryset):
+        if 'apply' in request.POST:
+            technician_id = request.POST.get('technician_id')
+            if technician_id:
+                # Determine tenant from selected repairs to scope the technician
+                # lookup.  Without tenant=, a staff user could POST an arbitrary
+                # technician_id from another shop — the dropdown is scoped but
+                # the POST handler must independently validate.  (CODE-255)
+                first_item = queryset.first()
+                tenant = first_item.tenant if first_item else None
+                tech_qs = Technician.objects.filter(id=technician_id)
+                if tenant:
+                    tech_qs = tech_qs.filter(tenant=tenant)
+                elif not request.user.is_superuser:
+                    # Non-superuser without a tenant context — deny
+                    self.message_user(request, 'Cannot reassign: no tenant context.', level='error')
+                    return None
+                tech = tech_qs.select_related('user').first()
+                if not tech:
+                    self.message_user(request, 'Selected technician not found in this shop.', level='error')
+                    return None
+                count = 0
+                with transaction.atomic():
+                    for repair in queryset:
+                        repair.technician = tech
+                        repair.save()
+                        count += 1
+                self.message_user(request, f'Reassigned {count} repair(s) to {tech.user.get_full_name()}.')
+                return None
+
+        first_item = queryset.first()
+        tenant = first_item.tenant if first_item else None
+        technicians = Technician.objects.filter(tenant=tenant, is_active=True).select_related('user') if tenant else Technician.objects.none()
+
+        return render(request, 'admin/bulk_reassign.html', {
+            'title': 'Reassign Repairs to Technician',
+            'items': queryset,
+            'item_count': queryset.count(),
+            'technicians': technicians,
+            'action': 'bulk_reassign_technician',
+            'item_type': 'repair',
+            'opts': self.model._meta,
+        })
+
+    @admin.action(description='🗑️ Bulk delete selected repairs (hard delete)')
+    def bulk_delete_repairs(self, request, queryset):
+        """
+        Hard-delete selected repairs.
+
+        This bypasses Django's default soft-delete manager because we're in the
+        admin and superusers sometimes need to permanently remove test or bad data.
+        Invoiced repairs (linked to InvoiceLineItems on active invoices) are skipped
+        to avoid orphaning billing records.
+
+        IMPORTANT: For each COMPLETED repair deleted, we must decrement the
+        UnitRepairCount.repair_count for that (tenant, customer, unit_number) tuple.
+        Without this, future repairs to that unit are priced as though the deleted
+        repairs still happened — giving incorrect progressive pricing discounts.
+        (CODE-161)
+        """
+        from apps.billing.models import InvoiceLineItem
+        from collections import defaultdict
+
+        invoiced_ids = set(
+            InvoiceLineItem.objects
+            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'])
+            .values_list('repair_id', flat=True)
+        )
+        safe_to_delete = queryset.exclude(id__in=invoiced_ids)
+
+        # Before deletion, tally how many COMPLETED repairs we're removing per
+        # (tenant, customer, unit_number) so we can decrement UnitRepairCount.
+        # Only COMPLETED repairs incremented the count (see Repair.save() logic),
+        # and only when progressive pricing was active (non-retail, use_progressive=True).
+        # We conservatively decrement for any deleted COMPLETED repair to avoid
+        # leaving inflated counts that produce incorrect future pricing.
+        completed_repairs = (
+            safe_to_delete
+            .filter(queue_status='COMPLETED')
+            .select_related('tenant', 'customer')
+            .values('tenant_id', 'customer_id', 'unit_number')
+        )
+        decrement_map = defaultdict(int)
+        for r in completed_repairs:
+            key = (r['tenant_id'], r['customer_id'], r['unit_number'])
+            decrement_map[key] += 1
+
+        deleted_count = safe_to_delete.count()
+        skipped_count = len(invoiced_ids)
+
+        safe_to_delete.delete()
+
+        # Decrement UnitRepairCount for all affected (tenant, customer, unit) combos.
+        # Clamp at 0 to avoid negative counts.
+        for (tenant_id, customer_id, unit_number), count in decrement_map.items():
+            try:
+                urc = UnitRepairCount.objects.get(
+                    tenant_id=tenant_id,
+                    customer_id=customer_id,
+                    unit_number=unit_number,
+                )
+                urc.repair_count = max(0, urc.repair_count - count)
+                urc.save(update_fields=['repair_count'])
+            except UnitRepairCount.DoesNotExist:
+                pass  # Already missing — nothing to decrement
+
+        msg = f'✅ Deleted {deleted_count} repair(s).'
+        if skipped_count:
+            msg += f' ⚠️ {skipped_count} repair(s) skipped — linked to active invoices.'
+        self.message_user(request, msg)
+
+    def delete_queryset(self, request, queryset):
+        """
+        Override the default admin 'Delete selected' action so it applies the
+        same safety logic as bulk_delete_repairs:
+
+          1. Skip repairs linked to active invoices (DRAFT/SENT/PARTIAL/PAID)
+             to avoid orphaning billing records.
+          2. Decrement UnitRepairCount for each COMPLETED repair deleted, so
+             future repairs to that unit are priced correctly.
+
+        Without this override, Django's default QuerySet.delete() would:
+          - Delete invoiced repairs (data-integrity violation)
+          - Leave UnitRepairCount inflated (progressive-pricing bug, CODE-161)
+
+        (CODE-167)
+        """
+        from apps.billing.models import InvoiceLineItem
+        from collections import defaultdict
+
+        invoiced_ids = set(
+            InvoiceLineItem.objects
+            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'])
+            .values_list('repair_id', flat=True)
+        )
+        safe_to_delete = queryset.exclude(id__in=invoiced_ids)
+
+        # Tally COMPLETED repairs to decrement UnitRepairCount after deletion.
+        completed_repairs = (
+            safe_to_delete
+            .filter(queue_status='COMPLETED')
+            .select_related('tenant', 'customer')
+            .values('tenant_id', 'customer_id', 'unit_number')
+        )
+        decrement_map = defaultdict(int)
+        for r in completed_repairs:
+            key = (r['tenant_id'], r['customer_id'], r['unit_number'])
+            decrement_map[key] += 1
+
+        safe_to_delete.delete()
+
+        # Decrement UnitRepairCount, clamped at 0.
+        for (tenant_id, customer_id, unit_number), count in decrement_map.items():
+            try:
+                urc = UnitRepairCount.objects.get(
+                    tenant_id=tenant_id,
+                    customer_id=customer_id,
+                    unit_number=unit_number,
+                )
+                urc.repair_count = max(0, urc.repair_count - count)
+                urc.save(update_fields=['repair_count'])
+            except UnitRepairCount.DoesNotExist:
+                pass
 
 
 @admin.register(Replacement)
@@ -186,6 +434,7 @@ class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
     date_hierarchy = 'service_date'
     list_select_related = ['customer', 'technician', 'technician__user', 'tenant']
     list_per_page = 25
+    actions = ['bulk_approve', 'bulk_deny', 'bulk_reset_to_pending', 'bulk_reassign_technician']
 
     def get_status_badge(self, obj):
         status_colors = {
@@ -228,6 +477,137 @@ class ReplacementAdmin(TenantFilterMixin, admin.ModelAdmin):
             'classes': ('collapse',),
         }),
     )
+
+    @admin.action(description='✅ Approve selected replacements')
+    def bulk_approve(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for item in eligible:
+                item.queue_status = 'APPROVED'
+                item.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Approved {count} replacement(s).'
+        if skipped:
+            msg += f' Skipped {skipped} replacement(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='❌ Deny selected replacements')
+    def bulk_deny(self, request, queryset):
+        eligible = queryset.filter(queue_status__in=['PENDING', 'REQUESTED'])
+        count = 0
+        with transaction.atomic():
+            for item in eligible:
+                item.queue_status = 'DENIED'
+                item.save()
+                count += 1
+        skipped = queryset.count() - count
+        msg = f'Denied {count} replacement(s).'
+        if skipped:
+            msg += f' Skipped {skipped} replacement(s) not in Pending/Requested status.'
+        self.message_user(request, msg)
+
+    @admin.action(description='🔄 Reset selected to Pending')
+    def bulk_reset_to_pending(self, request, queryset):
+        eligible = queryset.exclude(queue_status='COMPLETED')
+        completed_count = queryset.filter(queue_status='COMPLETED').count()
+        count = 0
+        with transaction.atomic():
+            for item in eligible:
+                item.queue_status = 'PENDING'
+                item.save()
+                count += 1
+        msg = f'Reset {count} replacement(s) to Pending.'
+        if completed_count:
+            msg += f' Skipped {completed_count} completed replacement(s).'
+        self.message_user(request, msg)
+
+    @admin.action(description='👤 Reassign selected to technician...')
+    def bulk_reassign_technician(self, request, queryset):
+        if 'apply' in request.POST:
+            technician_id = request.POST.get('technician_id')
+            if technician_id:
+                # Scope technician lookup to same tenant as the selected
+                # replacements — prevents cross-tenant reassignment via
+                # crafted POST.  (CODE-255)
+                first_item = queryset.first()
+                tenant = first_item.tenant if first_item else None
+                tech_qs = Technician.objects.filter(id=technician_id)
+                if tenant:
+                    tech_qs = tech_qs.filter(tenant=tenant)
+                elif not request.user.is_superuser:
+                    self.message_user(request, 'Cannot reassign: no tenant context.', level='error')
+                    return None
+                tech = tech_qs.select_related('user').first()
+                if not tech:
+                    self.message_user(request, 'Selected technician not found in this shop.', level='error')
+                    return None
+                count = 0
+                with transaction.atomic():
+                    for item in queryset:
+                        item.technician = tech
+                        item.save()
+                        count += 1
+                self.message_user(request, f'Reassigned {count} replacement(s) to {tech.user.get_full_name()}.')
+                return None
+
+        first_item = queryset.first()
+        tenant = first_item.tenant if first_item else None
+        technicians = Technician.objects.filter(tenant=tenant, is_active=True).select_related('user') if tenant else Technician.objects.none()
+
+        return render(request, 'admin/bulk_reassign.html', {
+            'title': 'Reassign Replacements to Technician',
+            'items': queryset,
+            'item_count': queryset.count(),
+            'technicians': technicians,
+            'action': 'bulk_reassign_technician',
+            'item_type': 'replacement',
+            'opts': self.model._meta,
+        })
+
+    def delete_queryset(self, request, queryset):
+        """
+        Override default 'Delete selected' to protect invoiced replacements.
+
+        Django's default delete_queryset() calls queryset.delete() which raises
+        ProtectedError for any Replacement with an InvoiceLineItem (replacement FK
+        is on_delete=PROTECT). This override mirrors the RepairAdmin pattern
+        (CODE-167) and InvoiceAdmin pattern (CODE-170):
+
+          - Skip replacements linked to active invoices (DRAFT/SENT/PARTIAL/PAID)
+          - Delete the rest instance-by-instance so any model-level signals or
+            overrides fire correctly
+          - Report counts so the admin user knows what was skipped and why
+
+        (CODE-174)
+        """
+        from apps.billing.models import InvoiceLineItem
+
+        # Protect replacements linked to ANY InvoiceLineItem — the FK is
+        # on_delete=PROTECT, so calling instance.delete() would raise
+        # ProtectedError regardless of invoice status.  Admins must remove
+        # the line item (or the invoice) before deleting the replacement.
+        invoiced_ids = set(
+            InvoiceLineItem.objects
+            .filter(replacement__in=queryset)
+            .values_list('replacement_id', flat=True)
+        )
+        safe_to_delete = queryset.exclude(id__in=invoiced_ids)
+
+        deleted_count = 0
+        for replacement in safe_to_delete:
+            replacement.delete()
+            deleted_count += 1
+
+        skipped_count = len(invoiced_ids)
+        msg = f'✅ Deleted {deleted_count} replacement(s).'
+        if skipped_count:
+            msg += (
+                f' ⚠️ {skipped_count} replacement(s) skipped — linked to active invoices. '
+                f'Remove the invoice line item(s) first before deleting.'
+            )
+        self.message_user(request, msg)
 
 
 @admin.register(Customer)
@@ -295,12 +675,12 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
         for customer in queryset.select_related('tenant'):
             writer.writerow([
                 customer.id,
-                customer.name,
-                customer.tenant.name if customer.tenant else '',
-                customer.email,
-                customer.phone,
-                customer.address,
-                getattr(customer, 'customer_type', ''),
+                _csv_safe(customer.name),
+                _csv_safe(customer.tenant.name if customer.tenant else ''),
+                _csv_safe(customer.email),
+                _csv_safe(customer.phone),
+                _csv_safe(customer.address),
+                _csv_safe(getattr(customer, 'customer_type', '')),
                 customer.tax_exempt,
             ])
         return response
@@ -310,85 +690,106 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
         """
         For each selected customer, find completed repairs not yet on any invoice
         and create a single DRAFT invoice containing all of them.
+
+        Delegates to InvoiceTrackingService.create_invoice_from_repairs() so
+        that discounts (reward redemptions) and tax (TaxService) are applied
+        correctly — matching the normal billing flow.  The previous inline
+        implementation hardcoded tax_rate=0, tax_amount=0 and skipped
+        get_discounted_cost(), so admin-generated invoices always had $0 tax
+        and wrong totals for customers with reward discounts. (CODE-121)
         """
-        from django.utils import timezone
-        from apps.billing.models import Invoice, InvoiceLineItem, BillingConfig
+        from apps.billing.models import InvoiceLineItem
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
         from apps.technician_portal.models import Repair
 
         invoices_created = 0
         repairs_billed = 0
         skipped = 0
+        errors = 0
 
         for customer in queryset.select_related('tenant'):
-            # Find completed repairs not yet linked to any invoice line item
-            unbilled_repairs = (
+            # Find completed repairs not yet on any active (non-cancelled) invoice.
+            # We intentionally do NOT exclude repairs linked to CANCELLED invoices —
+            # those repairs should be re-invoiceable.
+            # We also skip repairs flagged as skip_invoicing (already accounted for
+            # outside the normal billing flow).
+            invoiced_repair_ids = InvoiceLineItem.objects.filter(
+                repair__isnull=False,
+                invoice__tenant=customer.tenant,
+                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+            ).values_list('repair_id', flat=True)
+
+            unbilled_repairs = list(
                 Repair.objects
-                .filter(customer=customer, queue_status='COMPLETED')
-                .exclude(invoice_line_items__isnull=False)
+                .filter(customer=customer, queue_status='COMPLETED', skip_invoicing=False)
+                .exclude(id__in=invoiced_repair_ids)
                 .order_by('service_date')
             )
 
-            if not unbilled_repairs.exists():
+            if not unbilled_repairs:
                 skipped += 1
                 continue
 
-            # Get per-tenant billing config for prefix and payment terms
             try:
-                config = BillingConfig.get_for_tenant(customer.tenant)
-            except Exception:
-                config = None
-
-            # Generate a unique invoice number
-            prefix = (config.invoice_number_prefix if config else None) or 'INV'
-            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
-            invoice_number = f"{prefix}-{customer.id}-{timestamp}"
-
-            total = sum(r.cost for r in unbilled_repairs)
-
-            invoice = Invoice.objects.create(
-                tenant=customer.tenant,
-                customer=customer,
-                invoice_number=invoice_number,
-                status='DRAFT',
-                invoice_date=timezone.now().date(),
-                subtotal=total,
-                discount=0,
-                tax_rate=0,
-                tax_amount=0,
-                total=total,
-                amount_paid=0,
-                payment_terms=(config.default_payment_terms if config else 'NET30'),
-            )
-
-            for repair in unbilled_repairs:
-                InvoiceLineItem.objects.create(
-                    invoice=invoice,
-                    repair=repair,
-                    description=f"Windshield repair — Unit #{repair.unit_number}" if repair.unit_number else "Windshield repair",
-                    quantity=1,
-                    unit_price=repair.cost,
-                    discount=0,
-                    amount=repair.cost,
-                    repair_date=repair.service_date,
-                    unit_number=repair.unit_number or '',
+                # InvoiceTrackingService handles:
+                #   - invoice number generation (race-condition-safe loop)
+                #   - payment terms from BillingConfig
+                #   - get_discounted_cost() for reward-based line-item discounts
+                #   - TaxService for correct tax_rate / tax_amount / component fields
+                #   - atomic creation of invoice + line items
+                svc = InvoiceTrackingService(tenant=customer.tenant)
+                invoice = svc.create_invoice_from_repairs(
+                    customer=customer,
+                    repairs=unbilled_repairs,
                 )
-                repairs_billed += 1
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(
+                    f"Admin generate_invoices: failed for customer {customer.id} "
+                    f"({customer.name}): {e}"
+                )
+                errors += 1
+                continue
 
+            repairs_billed += len(unbilled_repairs)
             invoices_created += 1
 
         if invoices_created:
-            self.message_user(
-                request,
+            msg = (
                 f"✅ Created {invoices_created} draft invoice(s) covering {repairs_billed} repair(s). "
-                f"{skipped} customer(s) had no unbilled completed repairs.",
-                level='success',
+                f"{skipped} customer(s) had no unbilled completed repairs."
             )
+            if errors:
+                msg += f" ⚠️ {errors} customer(s) failed — check server logs."
+            self.message_user(request, msg, level='success')
         else:
-            self.message_user(
-                request,
-                f"No new invoices created — {skipped} customer(s) had no unbilled completed repairs.",
-                level='warning',
-            )
+            msg = f"No new invoices created — {skipped} customer(s) had no unbilled completed repairs."
+            if errors:
+                msg += f" ⚠️ {errors} customer(s) failed — check server logs."
+            self.message_user(request, msg, level='warning')
+
+
+@admin.register(WarrantyPolicy)
+class WarrantyPolicyAdmin(TenantFilterMixin, admin.ModelAdmin):
+    list_display = ['name', 'tenant', 'customer', 'applies_to', 'duration_type', 'duration_days', 'is_default', 'is_active']
+    list_filter = ['tenant', 'is_active', 'is_default', 'duration_type']
+    search_fields = ['name', 'tenant__name', 'customer__name']
+    list_select_related = ['tenant', 'customer']
+    list_per_page = 25
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('tenant', 'name', 'applies_to', 'customer', 'is_active', 'is_default'),
+            'description': 'Leave "Customer" blank for a tenant-wide policy. Set a customer for per-fleet overrides.',
+        }),
+        ('Duration', {
+            'fields': ('duration_type', 'duration_days'),
+            'description': 'Set warranty duration. duration_days is ignored for lifetime/none.',
+        }),
+        ('Coverage', {
+            'fields': ('covers_labor', 'covers_materials', 'coverage_description'),
+        }),
+    )
 
 
 @admin.register(UnitRepairCount)
@@ -411,9 +812,9 @@ class ViscosityRecommendationAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_per_page = 25
 
     fieldsets = (
-        ('Basic Information', {
-            'fields': ('name', 'is_active', 'display_order'),
-            'description': 'Give this rule a descriptive name and set its priority (lower number = higher priority)'
+        ('Tenant & Basic Information', {
+            'fields': ('tenant', 'name', 'is_active', 'display_order'),
+            'description': 'Assign to a shop (tenant) and give this rule a descriptive name. Lower display_order = higher priority.'
         }),
         ('Temperature Range', {
             'fields': ('min_temperature', 'max_temperature'),
@@ -450,3 +851,246 @@ class ViscosityRecommendationAdmin(TenantFilterMixin, admin.ModelAdmin):
         super().save_model(request, obj, form, change)
         if not change:
             self.message_user(request, f'Created viscosity rule: {obj.name}', level='success')
+
+
+# =============================================================================
+# TECHNICIAN NOTIFICATIONS (Debugging / Audit)
+# =============================================================================
+
+class TechnicianTenantFilterMixin:
+    """
+    Mixin for models that reach tenant through technician → tenant.
+    TechnicianNotification has no direct tenant FK but is scoped
+    via technician → tenant.
+    """
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        from apps.tenants.models import TenantMembership
+        tenant_ids = (
+            TenantMembership.objects
+            .filter(user=request.user, is_active=True)
+            .values_list('tenant_id', flat=True)
+        )
+        return qs.filter(technician__tenant__in=tenant_ids)
+
+    def get_list_filter(self, request):
+        filters = list(super().get_list_filter(request))
+        if request.user.is_superuser and 'technician__tenant' not in filters:
+            filters = ['technician__tenant'] + filters
+        return filters
+
+
+@admin.register(TechnicianNotification)
+class TechnicianNotificationAdmin(TechnicianTenantFilterMixin, admin.ModelAdmin):
+    """
+    Read-only admin for in-app technician notifications.
+
+    Useful for debugging notification delivery issues, auditing what
+    messages were sent, and bulk-clearing stale unread notifications.
+    Notifications are created programmatically — add is disabled.
+    """
+    list_display = [
+        'id', 'get_tenant', 'technician', 'message_preview',
+        'read', 'get_notification_type', 'created_at',
+    ]
+    list_filter = ['read', 'created_at']
+    search_fields = ['technician__user__username', 'technician__user__email', 'message']
+    readonly_fields = [
+        'technician', 'message', 'read', 'created_at',
+        'redemption', 'repair', 'repair_batch_id',
+    ]
+    date_hierarchy = 'created_at'
+    list_select_related = ['technician', 'technician__user', 'technician__tenant']
+    list_per_page = 50
+    ordering = ['-created_at']
+    actions = ['mark_as_read', 'mark_as_unread']
+
+    def has_add_permission(self, request):
+        # Notifications are created by business logic, not manually.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Content is immutable — only read/unread status via actions.
+        return False
+
+    def get_tenant(self, obj):
+        try:
+            return obj.technician.tenant.name
+        except AttributeError:
+            return '—'
+    get_tenant.short_description = 'Tenant'
+    get_tenant.admin_order_field = 'technician__tenant__name'
+
+    def message_preview(self, obj):
+        """Truncate long messages for the list view."""
+        if len(obj.message) > 80:
+            return obj.message[:80] + '…'
+        return obj.message
+    message_preview.short_description = 'Message'
+
+    def get_notification_type(self, obj):
+        """Show what kind of notification this is (batch / repair / reward / general)."""
+        if obj.repair_batch_id:
+            return '📦 Batch'
+        if obj.repair_id:
+            return '🔧 Repair'
+        if obj.redemption_id:
+            return '🎁 Reward'
+        return '📣 General'
+    get_notification_type.short_description = 'Type'
+
+    @admin.action(description='✅ Mark selected notifications as read')
+    def mark_as_read(self, request, queryset):
+        updated = queryset.filter(read=False).update(read=True)
+        self.message_user(request, f'✅ {updated} notification(s) marked as read.')
+
+    @admin.action(description='🔔 Mark selected notifications as unread')
+    def mark_as_unread(self, request, queryset):
+        updated = queryset.filter(read=True).update(read=False)
+        self.message_user(request, f'🔔 {updated} notification(s) marked as unread.')
+
+
+# =============================================================================
+# REVIEW REQUEST SYSTEM (CODE-208)
+# =============================================================================
+
+@admin.register(ReviewConfig)
+class ReviewConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Admin for per-tenant review request configuration.
+
+    ReviewConfig inherits from TenantConfig (abstract base with a tenant OneToOneField),
+    so TenantFilterMixin scopes superuser views correctly and non-superusers see
+    only their own shop's config.
+
+    CODE-210: Added admin registration — ReviewConfig and ReviewRequest were
+    created in CODE-208 but never registered in admin.py, making them invisible
+    to superusers in the Django admin.
+    """
+    list_display = [
+        'tenant', 'is_enabled', 'google_review_url_short',
+        'retail_cooldown_days', 'fleet_cooldown_days', 'send_delay_hours',
+    ]
+    list_filter = ['tenant', 'is_enabled']
+    search_fields = ['tenant__name', 'google_review_url']
+    list_select_related = ['tenant']
+    list_per_page = 25
+    readonly_fields = []
+
+    fieldsets = (
+        ('Tenant & Status', {
+            'fields': ('tenant', 'is_enabled'),
+        }),
+        ('Google Review Link', {
+            'fields': ('google_review_url',),
+            'description': 'Paste your Google Business review URL here.',
+        }),
+        ('Email Customisation', {
+            'fields': ('email_subject', 'email_body_template'),
+            'description': 'Leave email_body_template blank to use the default template.',
+        }),
+        ('Throttling', {
+            'fields': ('retail_cooldown_days', 'fleet_cooldown_days'),
+            'description': 'Minimum days between review requests per customer type.',
+        }),
+        ('Timing', {
+            'fields': ('send_delay_hours', 'business_hours_start', 'business_hours_end'),
+            'description': 'When to send review requests (hours in 0-23 format).',
+        }),
+    )
+
+    def google_review_url_short(self, obj):
+        url = obj.google_review_url
+        if url:
+            return url[:50] + '…' if len(url) > 50 else url
+        return '—'
+    google_review_url_short.short_description = 'Google Review URL'
+
+    def has_delete_permission(self, request, obj=None):
+        # ReviewConfig is a singleton per tenant — prevent accidental deletion.
+        return request.user.is_superuser
+
+
+@admin.register(ReviewRequest)
+class ReviewRequestAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Read-only admin for review request records.
+
+    ReviewRequest has a direct tenant FK, so TenantFilterMixin handles
+    per-tenant scoping automatically.  Records are created programmatically
+    by ReviewRequestService — add/change is disabled.
+
+    CODE-210: Added admin registration — ReviewConfig and ReviewRequest were
+    created in CODE-208 but never registered in admin.py.
+    """
+    list_display = [
+        'id', 'tenant', 'customer_link', 'status_badge',
+        'repair_link', 'scheduled_at', 'sent_at', 'clicked_at', 'created_at',
+    ]
+    list_filter = ['tenant', 'status', 'scheduled_at', 'created_at']
+    search_fields = ['customer__name', 'tenant__name', 'skip_reason']
+    date_hierarchy = 'created_at'
+    list_select_related = ['tenant', 'customer', 'repair']
+    list_per_page = 50
+    ordering = ['-created_at']
+    readonly_fields = [
+        'tenant', 'customer', 'customer_user', 'repair',
+        'status', 'skip_reason', 'token',
+        'scheduled_at', 'sent_at', 'clicked_at', 'created_at',
+    ]
+
+    fieldsets = (
+        ('Request Details', {
+            'fields': ('tenant', 'customer', 'customer_user', 'repair'),
+        }),
+        ('Status', {
+            'fields': ('status', 'skip_reason'),
+        }),
+        ('Tracking', {
+            'fields': ('token', 'scheduled_at', 'sent_at', 'clicked_at', 'created_at'),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        # Review requests are created by business logic, not manually.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Records are immutable — status updates happen via service layer.
+        return False
+
+    def customer_link(self, obj):
+        from django.urls import reverse
+        url = reverse('admin:core_customer_change', args=[obj.customer.id])
+        return format_html('<a href="{}">{}</a>', url, obj.customer.name)
+    customer_link.short_description = 'Customer'
+    customer_link.admin_order_field = 'customer__name'
+
+    def repair_link(self, obj):
+        if obj.repair:
+            from django.urls import reverse
+            url = reverse('admin:technician_portal_repair_change', args=[obj.repair.id])
+            return format_html('<a href="{}">Repair #{}</a>', url, obj.repair.id)
+        return '—'
+    repair_link.short_description = 'Repair'
+
+    def status_badge(self, obj):
+        colors = {
+            'pending': '#ffc107',
+            'sent': '#007bff',
+            'clicked': '#17a2b8',
+            'reviewed': '#28a745',
+            'skipped': '#6c757d',
+            'suppressed': '#dc3545',
+        }
+        color = colors.get(obj.status, '#6c757d')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 2px 8px; '
+            'border-radius: 4px; font-size: 11px;">{}</span>',
+            color, obj.get_status_display()
+        )
+    status_badge.short_description = 'Status'
+    status_badge.admin_order_field = 'status'

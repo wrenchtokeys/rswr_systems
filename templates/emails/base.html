@@ -180,7 +180,7 @@
 
                     <!-- Unsubscribe Link -->
                     <p style="margin: 15px 0; color: #999999; font-size: 11px;">
-                        <a href="{% block unsubscribe_url %}#{% endblock %}" style="color: #999999; text-decoration: underline;">Manage notification preferences</a>
+                        <a href="{{ base_url|default:"https://rssystems.io" }}{% block unsubscribe_url %}#{% endblock %}" style="color: #999999; text-decoration: underline;">Manage notification preferences</a>
                     </p>
                 </td>
             </tr>

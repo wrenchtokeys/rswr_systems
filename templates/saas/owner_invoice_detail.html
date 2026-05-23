@@ -12,36 +12,50 @@
         <span class="text-gray-400">/</span>
         <span class="text-gray-600">{{ invoice.invoice_number }}</span>
     </div>
-    <div class="flex items-center gap-2 flex-wrap">
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
-        <button onclick="openInvoiceEditModal()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <i class="fas fa-pen mr-2"></i>Edit Details
+        <button onclick="openInvoiceEditModal()" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-pen sm:mr-2"></i><span class="hidden sm:inline">Edit Details</span>
         </button>
         {% endif %}
         {% if invoice.status == 'DRAFT' %}
         <!-- Draft Actions -->
-        <form method="post" action="{% url 'owner_send_invoice' invoice_id=invoice.id %}" class="inline">
-            {% csrf_token %}
-            <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                <i class="fas fa-paper-plane mr-2"></i>Send Invoice
-            </button>
-        </form>
+        <button onclick="document.getElementById('send-confirm-modal').classList.remove('hidden')"
+            class="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+            <i class="fas fa-paper-plane sm:mr-2"></i><span class="hidden sm:inline">Send Invoice</span>
+        </button>
+        {% if pdf_url %}
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
+        </a>
+        {% endif %}
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
+        </a>
         {% else %}
         <!-- Sent/Active Invoice Actions -->
         {% if pdf_url %}
-        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <i class="fas fa-download mr-2"></i>Download PDF
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
         </a>
         {% endif %}
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
+        </a>
         <form method="post" action="{% url 'owner_email_invoice' invoice_id=invoice.id %}" class="inline">
             {% csrf_token %}
-            <button type="submit" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                <i class="fas fa-envelope mr-2"></i>Email Invoice
+            <button type="submit" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <i class="fas fa-envelope sm:mr-2"></i><span class="hidden sm:inline">Email Invoice</span>
             </button>
         </form>
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' and invoice.status != 'DRAFT' %}
-        <button onclick="openReminderModal()" class="inline-flex items-center px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
-            <i class="fas fa-bell mr-2"></i>Send Reminder
+        <button onclick="openReminderModal()" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
+            <i class="fas fa-bell sm:mr-2"></i><span class="hidden sm:inline">Send Reminder</span>
+        </button>
+        {% endif %}
+        {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+        <button onclick="voidInvoice()" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-lg hover:bg-red-100 transition-colors">
+            <i class="fas fa-ban sm:mr-2"></i><span class="hidden sm:inline">Void Invoice</span>
         </button>
         {% endif %}
         {% endif %}
@@ -324,7 +338,7 @@
                 </div>
 
                 <!-- Submit Button -->
-                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                     <i class="fas fa-check mr-2"></i>Record Payment
                 </button>
             </form>
@@ -455,29 +469,32 @@
                                 </span>
                             </div>
                         </div>
-                        <div class="px-4 py-3 text-sm text-gray-600">
-                            <p class="mb-2">Dear {{ invoice.customer.name }},</p>
-                            {% if invoice.status == 'OVERDUE' %}
-                            <p class="text-red-700">This is a reminder that invoice {{ invoice.invoice_number }} was due on {{ invoice.due_date|date:"F d, Y" }} and remains unpaid.</p>
-                            {% else %}
-                            <p>This is a friendly reminder that invoice {{ invoice.invoice_number }} is due on {{ invoice.due_date|date:"F d, Y" }}.</p>
-                            {% endif %}
-                            <p class="mt-2 text-gray-400 text-xs">+ Invoice details, payment link, and PDF attachment</p>
-                        </div>
                     </div>
                 </div>
 
-                <!-- What's Included -->
-                <div class="flex items-start gap-3 text-sm text-gray-600 bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <i class="fas fa-paperclip text-blue-500 mt-0.5"></i>
-                    <div>
-                        <span class="font-medium text-blue-900">Email includes:</span>
-                        <ul class="mt-1 space-y-0.5 text-blue-800">
-                            <li>• PDF invoice attached</li>
-                            <li>• Payment link (if Stripe enabled)</li>
-                            <li>• Full invoice details</li>
-                        </ul>
-                    </div>
+                <!-- Editable Message -->
+                <div>
+                    <label for="reminder-message" class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <textarea id="reminder-message" name="custom_message" rows="10"
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-mono">{% if rendered_reminder_default %}{{ rendered_reminder_default }}{% else %}Dear {{ invoice.customer.name }},
+{% if invoice.status == 'OVERDUE' %}
+This is a reminder that invoice {{ invoice.invoice_number }} was due on {{ invoice.due_date|date:"F d, Y" }} and remains unpaid.{% else %}
+This is a friendly reminder that invoice {{ invoice.invoice_number }} is due on {{ invoice.due_date|date:"F d, Y" }}.{% endif %}
+
+Invoice Details:
+- Invoice Number: {{ invoice.invoice_number }}
+- Due Date: {{ invoice.due_date|date:"F d, Y" }}
+- Total Amount: ${{ invoice.total|floatformat:2 }}
+- Amount Paid: ${{ invoice.amount_paid|floatformat:2 }}
+- Amount Due: ${{ invoice.amount_due|floatformat:2 }}
+
+Please contact us to arrange payment or if you have any questions.
+
+Thank you for your business.
+
+Best regards,
+{{ tenant.name }}{% endif %}</textarea>
+                    <p class="mt-1 text-xs text-gray-400">Edit the message or leave the default. PDF invoice and payment link are attached automatically.</p>
                 </div>
 
                 {% if not invoice.customer.email %}
@@ -493,13 +510,14 @@
 
             <!-- Footer -->
             <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row gap-3 sm:justify-end">
-                <button onclick="closeReminderModal()" class="w-full sm:w-auto px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <button onclick="closeReminderModal()" class="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
                     Cancel
                 </button>
-                <form method="post" action="{% url 'owner_send_reminder' invoice_id=invoice.id %}" class="w-full sm:w-auto">
+                <form method="post" action="{% url 'owner_send_reminder' invoice_id=invoice.id %}" class="w-full sm:w-auto" onsubmit="document.getElementById('form-custom-message').value = document.getElementById('reminder-message').value;">
                     {% csrf_token %}
+                    <input type="hidden" name="custom_message" id="form-custom-message" value="">
                     <button type="submit" {% if not invoice.customer.email %}disabled{% endif %}
-                        class="w-full px-5 py-2.5 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        class="w-full px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-md hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                         <i class="fas fa-paper-plane"></i>
                         Send Reminder
                     </button>
@@ -524,6 +542,7 @@ function closeReminderModal() {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeReminderModal();
+        document.getElementById('send-confirm-modal')?.classList.add('hidden');
     }
 });
 </script>
@@ -696,4 +715,91 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 {% endif %}
+
+{% if invoice.status == 'DRAFT' %}
+<!-- Send Confirmation Modal (CODE-112) -->
+<div id="send-confirm-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75" onclick="document.getElementById('send-confirm-modal').classList.add('hidden')"></div>
+        <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                <i class="fas fa-paper-plane text-blue-600 mr-2"></i>Send Invoice
+            </h3>
+            <div class="space-y-3 mb-6">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Invoice</span>
+                    <span class="font-medium">{{ invoice.invoice_number }}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Customer</span>
+                    <span class="font-medium">{{ invoice.customer.name }}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Total</span>
+                    <span class="font-semibold">${{ invoice.total|floatformat:2 }}</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Send to</span>
+                    {% if recipient_email %}
+                    <span class="font-medium text-green-700">{{ recipient_email }}</span>
+                    {% else %}
+                    <span class="font-medium text-red-600"><i class="fas fa-exclamation-triangle mr-1"></i>No email on file</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if recipient_email %}
+            <form method="post" action="{% url 'owner_send_invoice' invoice_id=invoice.id %}">
+                {% csrf_token %}
+                <div class="flex gap-3">
+                    <button type="submit" class="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-paper-plane mr-1"></i>Confirm &amp; Send
+                    </button>
+                    <button type="button" onclick="document.getElementById('send-confirm-modal').classList.add('hidden')"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+            {% else %}
+            <div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <p class="text-sm text-red-700">
+                    <i class="fas fa-exclamation-circle mr-1"></i>
+                    Cannot send — no email address on file for {{ invoice.customer.name }}.
+                    Add an email in the customer's settings first.
+                </p>
+            </div>
+            <button onclick="document.getElementById('send-confirm-modal').classList.add('hidden')"
+                class="w-full px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                Close
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+<script>
+function voidInvoice() {
+    if (!confirm('Void invoice {{ invoice.invoice_number }}?\n\nThis will mark it as cancelled. You can delete it afterwards.')) return;
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+    fetch('{% url "owner_invoice_void" invoice_id=invoice.id %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to void invoice');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+</script>
+{% endif %}
+{% include "includes/fab_quick_actions.html" %}
 {% endblock %}

@@ -1,7 +1,11 @@
 from django.db import models
+from django.db.models import Q
+from django.utils import timezone
 from apps.customer_portal.models import CustomerUser
+from common.models import TenantConfig
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
-class ReferralCode(models.Model):
+class ReferralCode(AutoUpdateTimestampMixin, models.Model):
     """
     Stores unique referral codes associated with customer users.
     
@@ -10,7 +14,7 @@ class ReferralCode(models.Model):
     receive reward points.
     """
     code = models.CharField(max_length=20, unique=True)
-    customer_user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE)
+    customer_user = models.OneToOneField(CustomerUser, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -79,23 +83,38 @@ class RewardType(models.Model):
         else:
             return self.name
 
-class Reward(models.Model):
+class Reward(AutoUpdateTimestampMixin, models.Model):
     """
     Tracks point balances for customers.
-    
+
     Each customer has one reward record that keeps track of their current
     point balance. Points are earned through referrals and can be spent
     on reward redemptions.
     """
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='rewards',
+        null=True,
+        blank=True,
+    )
     customer_user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE)
     points = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['customer_user'],
+                name='unique_reward_per_customer_user',
+            )
+        ]
+
     def __str__(self):
         return f"{self.customer_user.user.email} - {self.points} points"
     
-class RewardOption(models.Model):
+class RewardOption(AutoUpdateTimestampMixin, models.Model):
     """
     Defines available redemption options for customers.
 
@@ -141,6 +160,7 @@ class RewardRedemption(models.Model):
     REDEMPTION_STATUS_CHOICES = [
         ('PENDING', 'Pending'),
         ('APPROVED', 'Approved'),
+        ('SCHEDULED', 'Scheduled'),
         ('FULFILLED', 'Fulfilled'),
         ('REJECTED', 'Rejected'),
     ]
@@ -172,6 +192,18 @@ class RewardRedemption(models.Model):
     fulfilled_at = models.DateTimeField(null=True, blank=True)
     applied_to_repair = models.ForeignKey('technician_portal.Repair', on_delete=models.SET_NULL,
                                        null=True, blank=True, related_name='applied_rewards')
+    preferred_date = models.DateField(
+        null=True, blank=True,
+        help_text="Customer's preferred delivery/fulfillment date"
+    )
+    preferred_time = models.TimeField(
+        null=True, blank=True,
+        help_text="Customer's preferred time"
+    )
+    customer_notes = models.TextField(
+        blank=True,
+        help_text="Special requests from customer"
+    )
 
     class Meta:
         """
@@ -181,4 +213,96 @@ class RewardRedemption(models.Model):
 
     def __str__(self):
         return f"{self.reward.customer_user.user.email} - {self.reward_option.name} ({self.status})"
-    
+
+
+class PointTransaction(models.Model):
+    """
+    Immutable ledger of all point changes. Every earn/spend creates one row.
+    The running balance is stored in balance_after for fast reads.
+    """
+    TRANSACTION_TYPE_CHOICES = [
+        ('repair_complete', 'Repair Complete'),
+        ('referral_made', 'Referral Made'),
+        ('referral_received', 'Referral Received'),
+        ('milestone_bonus', 'Milestone Bonus'),
+        ('early_pay_bonus', 'Early Pay Bonus'),
+        ('review_bonus', 'Review Bonus'),
+        ('tier_bonus', 'Tier Bonus'),
+        ('manual_adjustment', 'Manual Adjustment'),
+        ('redemption', 'Redemption'),
+        ('expiration', 'Expiration'),
+    ]
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant', on_delete=models.CASCADE, related_name='point_transactions',
+    )
+    customer_user = models.ForeignKey(
+        'customer_portal.CustomerUser', on_delete=models.CASCADE,
+        related_name='point_transactions',
+    )
+    amount = models.IntegerField(help_text='Positive for earn, negative for spend')
+    balance_after = models.IntegerField(help_text='Running balance after this transaction')
+    transaction_type = models.CharField(max_length=30, choices=TRANSACTION_TYPE_CHOICES)
+    description = models.CharField(max_length=255)
+
+    related_repair = models.ForeignKey(
+        'technician_portal.Repair', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='point_transactions',
+    )
+    related_redemption = models.ForeignKey(
+        'rewards_referrals.RewardRedemption', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='point_transactions',
+    )
+    related_payment = models.ForeignKey(
+        'billing.Payment', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='point_transactions',
+    )
+
+    expires_at = models.DateTimeField(null=True, blank=True)
+    expired = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_point_transactions',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['customer_user', '-created_at']),
+            models.Index(fields=['tenant', 'transaction_type']),
+            models.Index(
+                fields=['expires_at'],
+                condition=models.Q(expired=False, expires_at__isnull=False),
+                name='idx_pt_unexpired',
+            ),
+        ]
+
+    def __str__(self):
+        sign = '+' if self.amount >= 0 else ''
+        return f"{self.customer_user} {sign}{self.amount} ({self.transaction_type})"
+
+
+class LoyaltyConfig(TenantConfig):
+    """Per-tenant loyalty program configuration."""
+    points_per_repair = models.PositiveIntegerField(default=50)
+    referral_bonus_referrer = models.PositiveIntegerField(default=500)
+    referral_bonus_referred = models.PositiveIntegerField(default=100)
+    milestone_5_bonus = models.PositiveIntegerField(default=250)
+    milestone_10_bonus = models.PositiveIntegerField(default=500)
+    milestone_25_bonus = models.PositiveIntegerField(default=1000)
+    points_for_review = models.PositiveIntegerField(default=100)
+    points_for_early_payment = models.PositiveIntegerField(default=25)
+    points_expiry_days = models.PositiveIntegerField(
+        default=365, help_text='0 = never expire',
+    )
+    expiry_warning_days = models.PositiveIntegerField(default=30)
+    program_name = models.CharField(max_length=100, default='Rewards')
+    is_active = models.BooleanField(default=True)
+
+    class Meta(TenantConfig.Meta):
+        verbose_name = 'Loyalty Configuration'
+        verbose_name_plural = 'Loyalty Configurations'
+
+    def __str__(self):
+        return f"{self.tenant.name} — {self.program_name}"

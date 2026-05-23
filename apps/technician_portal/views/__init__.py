@@ -27,12 +27,19 @@ from .repairs import (
     check_existing_repair,
     bulk_repair_action,
     tech_collect_payment,
+    delete_repair,
+    restore_repair,
+    archived_repairs,
+    create_warranty_claim,
+    admin_reassign_repair,
+    portal_bulk_reassign,
 )
 
 # Multi-break batch operations
 from .batch import (
     technician_batch_detail,
     technician_batch_start_work,
+    batch_complete_all,
     create_multi_break_repair,
     convert_to_batch,
 )
@@ -69,6 +76,12 @@ from .settings import (
     delete_viscosity_rule,
     toggle_viscosity_rule,
     team_overview,
+    manage_warranty_policies,
+    get_warranty_policy,
+    create_warranty_policy,
+    update_warranty_policy,
+    delete_warranty_policy,
+    toggle_warranty_policy,
 )
 
 # Notifications

@@ -106,9 +106,30 @@ class SubscriptionEnforcementMiddleware:
         # Check subscription status
         status = tenant.subscription_status
         is_trial = tenant.plan == 'trial'
+
+        # 'canceled' has two distinct meanings in our system:
+        #
+        # 1. "Scheduled to cancel" (cancel_at_period_end=True): set by
+        #    cancel_subscription() when the owner clicks "Cancel at period end".
+        #    The shop still has paid time remaining. grace_period_end is NOT set.
+        #    The Stripe `customer.subscription.deleted` webhook fires when it
+        #    actually expires, at which point status becomes 'expired' and
+        #    grace_period_end gets set.
+        #
+        # 2. "Access ended" — only reachable if something manually sets 'canceled'
+        #    with a grace_period_end. In practice, our deletion webhook sets
+        #    status='expired', so this case is rare.
+        #
+        # Bug: previously 'canceled' was unconditionally treated as expired,
+        # causing shops to be locked out immediately when they clicked "Cancel"
+        # even though they had paid days remaining. (CODE-130)
+        #
+        # Fix: treat 'canceled' as expired ONLY when grace_period_end is set,
+        # confirming the subscription has actually ended (not just scheduled to).
+        canceled_is_active = status == 'canceled' and not tenant.grace_period_end
         is_subscription_expired = (
             (is_trial and tenant.is_trial_expired)
-            or status in ('canceled', 'expired')
+            or (status in ('canceled', 'expired') and not canceled_is_active)
         )
 
         if is_subscription_expired:

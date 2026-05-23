@@ -49,12 +49,15 @@ def calculate_batch_pricing(
     # Get tenant for pricing tiers
     tenant = getattr(customer, 'tenant', None) if customer else None
     
-    # Get current repair count for this unit
+    # Get current repair count for this unit.
+    # Include tenant= so the lookup matches the unique constraint
+    # (tenant, customer, unit_number) and avoids hitting stale NULL-tenant
+    # rows or raising MultipleObjectsReturned.  (CODE-257)
     try:
-        unit_count = UnitRepairCount.objects.get(
-            customer=customer,
-            unit_number=unit_number
-        )
+        lookup = {'customer': customer, 'unit_number': unit_number}
+        if tenant is not None:
+            lookup['tenant'] = tenant
+        unit_count = UnitRepairCount.objects.get(**lookup)
         base_repair_count = unit_count.repair_count
     except UnitRepairCount.DoesNotExist:
         base_repair_count = 0

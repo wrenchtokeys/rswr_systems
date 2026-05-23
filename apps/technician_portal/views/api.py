@@ -97,7 +97,17 @@ def get_viscosity_suggestion(request):
 def update_technician_profile(request):
     """Update technician profile and password."""
     from django.shortcuts import render
-    technician = get_object_or_404(Technician, user=request.user)
+    # Scope to the current tenant so that a user enrolled at multiple shops
+    # always updates the correct Technician record (avoids MultipleObjectsReturned
+    # and cross-tenant contamination — same pattern as CODE-076 through CODE-084).
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if technician is None:
+            from django.http import Http404
+            raise Http404("Technician profile not found for this shop.")
+    else:
+        technician = get_object_or_404(Technician, user=request.user)
 
     if request.method == 'POST':
         form = TechnicianForm(request.POST, user=request.user, technician=technician)

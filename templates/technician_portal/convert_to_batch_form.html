@@ -26,6 +26,40 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
+    .windshield-diagram {
+        position: relative;
+        width: 100%;
+        padding-bottom: 45%;
+        background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+        border: 3px solid #0284c7;
+        border-radius: 12px;
+        cursor: crosshair;
+        overflow: hidden;
+        touch-action: none;
+    }
+    .damage-marker {
+        display: none;
+        position: absolute;
+        width: 20px;
+        height: 20px;
+        background: #dc2626;
+        border: 3px solid #fff;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        pointer-events: none;
+        z-index: 10;
+    }
+    .damage-marker-inner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 6px;
+        height: 6px;
+        background: #fff;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+    }
 </style>
 {% endblock %}
 
@@ -101,17 +135,34 @@
             <!-- Breaks Container (dynamically populated) -->
             <div id="breaksContainer" class="space-y-4 mb-6"></div>
 
-            <!-- Submit Button -->
+            <!-- Submit Button (Bug 2 fix: mobile-friendly stacked layout + Bug 5: completed checkbox) -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div class="flex items-center justify-between">
+                <div class="mb-4">
+                    <label class="flex items-center">
+                        <input
+                            type="checkbox"
+                            name="mark_completed"
+                            id="markCompleted"
+                            class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        >
+                        <span class="ml-2 text-sm font-medium text-gray-700">
+                            <i class="fas fa-check-circle text-green-600 mr-1"></i>
+                            Repairs already completed? (Mark all repairs in batch as COMPLETED)
+                        </span>
+                    </label>
+                    <p class="mt-1 ml-6 text-xs text-gray-500">
+                        If checked, all repairs in the batch (including the original) will be set to Completed status.
+                    </p>
+                </div>
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <a href="{% url 'repair_detail' repair.id %}"
-                       class="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors">
+                       class="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors text-center">
                         Cancel
                     </a>
                     <button
                         type="submit"
                         id="submitBtn"
-                        class="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-md transition-colors"
+                        class="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-md transition-colors text-center"
                     >
                         <i class="fas fa-check mr-2"></i>
                         Create Batch
@@ -162,11 +213,39 @@ document.getElementById('additional_breaks').addEventListener('change', function
                     </select>
                 </div>
 
+                <!-- Damage Location Diagram (Bug 1 fix: CODE-245) -->
+                <div class="pt-4 border-t border-gray-200">
+                    <h4 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Damage Location</h4>
+                    <div style="max-width: 400px;">
+                        <div class="windshield-diagram" id="windshieldDiagram_${i}" data-break-index="${i}">
+                            <div style="position: absolute; top: 8px; left: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">DRIVER</div>
+                            <div style="position: absolute; top: 8px; right: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">PASSENGER</div>
+                            <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #0369a1;">&uarr; HOOD</div>
+                            <div style="position: absolute; top: 20%; bottom: 20%; left: 50%; width: 1px; background: rgba(2,132,199,0.3);"></div>
+                            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 30px; height: 10px; background: #0284c7; border-radius: 0 0 6px 6px;"></div>
+                            <div class="damage-marker" id="damageMarker_${i}">
+                                <div class="damage-marker-inner"></div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="damage_location_x_${i}" id="damage_location_x_${i}" value="">
+                        <input type="hidden" name="damage_location_y_${i}" id="damage_location_y_${i}" value="">
+                        <div class="flex justify-between items-center mt-1.5">
+                            <p class="text-xs text-gray-500">
+                                <i class="fas fa-info-circle"></i>
+                                <span id="locationText_${i}">Tap to mark where this break is</span>
+                            </p>
+                            <button type="button" class="text-xs text-red-600 hover:text-red-800 clear-location-btn" data-break-index="${i}" style="display: none;" id="clearLocationBtn_${i}">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Technical Fields -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">
-                            Windshield Temp (°F)
+                            Windshield Temp (&deg;F)
                         </label>
                         <input
                             type="number"
@@ -275,11 +354,67 @@ document.getElementById('additional_breaks').addEventListener('change', function
             </div>
         `;
         container.appendChild(card);
+
+        // Attach damage location diagram event listeners
+        initDiagram(i);
     }
 
     // Show submit button
     document.getElementById('submitBtn').disabled = false;
 });
+
+function initDiagram(breakIndex) {
+    const diagram = document.getElementById('windshieldDiagram_' + breakIndex);
+    const marker = document.getElementById('damageMarker_' + breakIndex);
+    const xInput = document.getElementById('damage_location_x_' + breakIndex);
+    const yInput = document.getElementById('damage_location_y_' + breakIndex);
+    const locationText = document.getElementById('locationText_' + breakIndex);
+    const clearBtn = document.getElementById('clearLocationBtn_' + breakIndex);
+
+    function placeDamageMarker(xPercent, yPercent) {
+        marker.style.display = 'block';
+        marker.style.left = xPercent + '%';
+        marker.style.top = yPercent + '%';
+        xInput.value = xPercent.toFixed(1);
+        yInput.value = yPercent.toFixed(1);
+        clearBtn.style.display = 'inline';
+
+        // Readable location description
+        var vertical = yPercent < 33 ? 'upper' : (yPercent < 66 ? 'middle' : 'lower');
+        var horizontal = xPercent < 50 ? 'driver side' : 'passenger side';
+        locationText.textContent = 'Marked: ' + vertical + ' ' + horizontal;
+    }
+
+    function handleDiagramInteraction(e) {
+        e.preventDefault();
+        var rect = diagram.getBoundingClientRect();
+        var clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        var x = ((clientX - rect.left) / rect.width) * 100;
+        var y = ((clientY - rect.top) / rect.height) * 100;
+        x = Math.max(2, Math.min(98, x));
+        y = Math.max(2, Math.min(98, y));
+        placeDamageMarker(x, y);
+    }
+
+    diagram.addEventListener('click', handleDiagramInteraction);
+    diagram.addEventListener('touchstart', handleDiagramInteraction);
+
+    clearBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        marker.style.display = 'none';
+        xInput.value = '';
+        yInput.value = '';
+        locationText.textContent = 'Tap to mark where this break is';
+        clearBtn.style.display = 'none';
+    });
+}
 
 // Initially disable submit
 document.getElementById('submitBtn').disabled = true;

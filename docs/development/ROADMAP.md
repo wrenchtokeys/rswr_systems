@@ -1,97 +1,145 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: March 12, 2026*
+*Last Updated: March 25, 2026*
 
 ---
 
 ## ✅ Completed
 
-### v2.0 — Unified Permissions & Templates (Jan 30, 2026)
-Single permission system (`common/auth.py`), one base template (`base_app.html`), fixed signup/onboarding.
+### v2.10 — Loyalty System + Bug Fix Sprint (March 24, 2026)
+- **Loyalty Phase 1** — PointTransaction ledger, LoyaltyConfig (per-tenant configurable), LoyaltyService, points in customer nav, points history page
+- **Rewards bug fixes** — 4 bugs fixed from code review (is_active filter, context, routing, unique constraint)
+- **Bug fix sprint** — CODE-164 through CODE-175 (tenant isolation in rewards, race conditions, N+1 queries, admin delete_queryset gaps)
+- **PR #98** — open, pending merge
 
-### v2.1–2.2 — Billing & Invoicing (Jan 31 – Feb 4, 2026)
-Full invoicing lifecycle: auto-invoice, PDF generation, Stripe payments, payment confirmation emails, customer/owner/tech invoice portals, manual payment recording, sales tax system (state/county/city/special rates), invoice UX improvements.
+### v2.9 — Mobile UX + FAB + Stripe Connect Live (March 23, 2026)
+- **Stripe Connect approved and live** — charges_enabled, payouts_enabled, real payments flowing
+- **Mobile UI fixes** — batch buttons responsive, 44px min tap targets, wider forms
+- **Windshield damage diagram** — restored on repair, multi-break, and customer request forms
+- **FAB quick action button** — on all 19 portal pages with staggered animation
+- **Platform owner flag** — permanent pro plan for Rockstar, no subscription needed
+- **Public payment links** — HMAC-token URLs for customer payment without login
+- **Branded HTML emails** — all 11+ email types converted from plain text
+- **PRs #79-96 merged and deployed**
 
-### v2.2.1 — SaaS Subscription Billing (Feb 10-11, 2026)
-Stripe Checkout Sessions, usage enforcement (repairs/techs/customers limits), trial/expired/past-due banners, subscription webhooks, billing portal link. Security fix: plan only upgrades after payment confirmed.
+### v2.8 — Bug Fix Sprint (March 21-22, 2026)
+- CODE-113 through CODE-124 — 12 bugs fixed (shop_join IntegrityError, Decimal falsy bypass, bulk invoice mark_paid, overdue reminder format, custom email template, PDF invoice numbers, admin tax bypass, batch reward discounts, void ProtectedError, PaymentAdmin delete)
+- Signup CAPTCHA fix + plan selection UX
+- Plan pre-selection, Stripe checkout default, "Not sure yet" option, day 20 nudge email
 
-### v2.3 — Subscription Expiry UX (March 11, 2026)
-Role-aware `/subscription-blocked/` page, 30-day read-only grace period, banners for all roles, email alerts at 6 lifecycle stages, `check_subscription_alerts` management command. 31 tests.
-→ Details: [`SUBSCRIPTION_LIFECYCLE.md`](SUBSCRIPTION_LIFECYCLE.md)
+### v2.7 — Tenant Isolation Sweep (March 18-20, 2026)
+- CODE-077 through CODE-104 — Full OneToOneField tenant isolation sweep across technician portal, DRF API, clawdbot views, reminder/auto-invoice services, billing API
+- ~70+ regression tests. PR #61 merged, deployed to production.
+
+### v2.6 — Security Hardening (March 16-17, 2026)
+- CODE-049 through CODE-061 — Race conditions, financial bugs, IDOR fixes, customer portal guards
+- ~103 new regression tests. PR #60 merged.
+
+### v2.5 — Production Hardening & Live Billing (March 15-16, 2026)
+- Live Stripe keys, cache fix, login resilience, invoice payment flow
+- Phone validation, multi-break fix, duplicate repair check
+- 8 PRs merged, 8 deploys, zero downtime
 
 ### v2.4 — Admin Console Overhaul (March 11-12, 2026)
-Custom metrics dashboard, TenantFilterMixin (tenant-aware filtering), subscription management actions, CSV exports, bulk invoice generation, audit log viewer (Django LogEntry), global admin search (`/admin/search/`). Performance: select_related, autocomplete_fields, list_per_page. 41 admin tests.
+Custom metrics dashboard, TenantFilterMixin, subscription management, CSV exports, bulk invoicing, audit log, global admin search.
 
-### Bug Fixes (March 9-12, 2026)
-BUG-001 (create_repair 500), BUG-004 (custom error pages), viscosity settings 500 for owners, UX-001 through UX-011 (navbar, tables, portal preview, trial badge, onboarding, customer details, role badges, billing settings).
+### v2.3 — Subscription Expiry UX (March 11, 2026)
+Role-aware blocked page, grace period, email alerts, management command. → [`SUBSCRIPTION_LIFECYCLE.md`](SUBSCRIPTION_LIFECYCLE.md)
 
-### Infrastructure (March 11-12, 2026)
-Domain migration to rssystems.io, SendGrid domain auth, ImprovMX inbound email forwarding (contact@rssystems.io), email docs in README, OpenClaw upgrade to 2026.3.11.
-
-### Earlier Releases
-- **Manager Settings** (Nov 2025) — viscosity rules, team overview, `@manager_required`
-- **Notifications** (Oct 2025) — SendGrid email + SMS, repair lifecycle notifications
-- **Rewards & Referrals** (Jul 2025) — referral codes, points, redemption
+### v2.0–2.2 — Foundation (Jan-Feb 2026)
+Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Stripe Checkout.
 
 ---
 
-## 🔜 Next Up
+## 🔴 High Priority (Do Now)
 
-### Billing Phase 6: Automation & Polish
-- Batch invoicing for `batch` preference customers
-- Overdue auto-processing (daily check + reminder emails)
-- Aging reports (current/30/60/90+ days)
-- Statement of account per customer
-- Reminder UI in owner portal ("Send Reminder" button on overdue invoices)
-→ Details: [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md)
+### Sentry Error Tracking
+- **Status:** Integration wired in code, just needs `SENTRY_DSN` env var in EB
+- **Action:** Create free Sentry project → set DSN → deploy
+- **Impact:** Catches every 500 instantly with full traceback
 
-### Subscription Lifecycle Emails
-- Payment failed / retry coming / canceled / plan changed emails
-- Post-trial win-back emails (7d and 30d after expiry)
-- Data export option for departing users
+### Tailwind CDN → Production Build
+- **Status:** Loading from `cdn.tailwindcss.com` in production (console warning)
+- **Action:** Bundle Tailwind via PostCSS or CLI, serve from static files
+- **Impact:** Faster page loads, no external dependency
 
-### Production Hardening
-- Switch Stripe from test to live keys
-- Monitor real user signups and onboarding flow
-- Performance profiling under real load
+---
+
+## 🟡 Next Up
+
+### Loyalty System Phase 2-4
+- Phase 2: Engagement hooks (early payment bonus, review bonus, manual adjustments, expiry cron)
+- Phase 3: Tiers (Pro-only — Bronze/Silver/Gold/Platinum, point multipliers)
+- Phase 4: Dashboards (customer loyalty dashboard, owner per-customer view, liability report)
+- → [`proposals/loyalty-system-overhaul.md`](/docs/proposals/loyalty-system-overhaul.md)
+
+### Review Request System
+- Smart Google review requests after repair completion
+- Throttled per customer type (retail/fleet/already reviewed)
+- Google Business integration
+- → [`proposals/review-request-system.md`](/docs/proposals/review-request-system.md)
+
+### Website Integration Widget
+- Embeddable quote form for shop websites
+- Auto-creates customers and queues repairs
+- Flywheel with review system
+- → [`proposals/website-integration-widget.md`](/docs/proposals/website-integration-widget.md)
+
+### Stripe Connect Phase 3 — Dashboard
+- Payout history, balance, admin fee reporting
+- Connect is live, dashboard is the remaining piece
+
+---
+
+## 🟢 Growth Features
+
+### Customer Portal Improvements
+- Fleet manager: view repairs, approve, pay, history
+- Quick-approve/deny from email links
+- Customer team management
+
+### Owner Reporting & Analytics
+- Monthly revenue trends, repair volume charts
+- Technician performance
+- Customer profitability analysis
+
+### SMS Notifications (Twilio)
+- Fleet managers don't check email — text them
+- Repair approval, invoice ready, payment confirmed
+
+### CI/CD Pipeline
+- GitHub Actions: run test suite on every PR to `main`
+
+---
+
+## 🔵 Scale Prep
+
+### Redis + Celery (When Needed)
+- **Trigger:** > 50 concurrent users or email sending slows requests
+- **Details:** `docs/SCALING.md`
+
+### Auto-Scaling
+- **Trigger:** > 100 req/sec sustained
+- EB capacity → Load balanced, min=1 max=3
 
 ---
 
 ## 📋 Backlog
 
-### Near-term
-- Tech portal: payment badge on repair list (invoiced/paid indicator)
-- QR code on PDF invoices for scan-to-pay
-- Per-customer payment terms override
-- Mobile-responsive repair logging (techs are in trucks)
-
-### Medium-term
-- Customer self-service repair requests
-- Owner reporting/analytics dashboard
-- Customer portal refresh (unified styling)
-- PWA / offline mode for techs
-- Lot walking scheduler
-
-### Long-term
-- AI/ML damage assessment from photos
+- Repair form efficiency improvements → [`proposals/repair-form-efficiency.md`](/docs/proposals/repair-form-efficiency.md)
+- AI plan recommendation → [`proposals/ai-plan-recommendation.md`](/docs/proposals/ai-plan-recommendation.md)
+- Competition pool (gamification) → [`proposals/competition-pool.md`](/docs/proposals/competition-pool.md)
 - QuickBooks integration
-- Multi-location support
-- Smart technician assignment (workload + distance)
-
----
-
-## 🐦 X / Social
-
-**Active accounts:**
-- **@wrenchtokeys** (Drake) — ~1,009 followers, building in public
-- **@Amelia_claw** (Amelia) — AI dev account, 3 posts/day + engagement
-
-Strategy: [`~/clawd/x_strategy.md`]
+- QR code on PDF invoices (scan-to-pay)
+- Multi-location support per tenant
+- PWA / offline mode for techs
+- Mobile native app
 
 ---
 
 ## Related Docs
-- [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) — Detailed billing phases
+- [`SCALING.md`](/docs/SCALING.md) — Infrastructure scaling guide
 - [`SUBSCRIPTION_LIFECYCLE.md`](SUBSCRIPTION_LIFECYCLE.md) — Trial/expiry/grace period
 - [`CHANGELOG.md`](CHANGELOG.md) — Version history
+- [`proposals/`](/docs/proposals/) — Feature proposals

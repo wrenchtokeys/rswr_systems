@@ -1,312 +1,432 @@
 {% extends 'customer_portal/base_customer.html' %}
 {% load billing_tags %}
 
-{% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block title %}Repair #{{ repair.id }} | Customer Portal{% include "includes/fab_quick_actions.html" with fab_role="customer" %}
 {% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>Repair Details</h2>
-    
-    <div class="mb-4">
-        <a href="{% url 'customer_repairs' %}" class="btn btn-outline-secondary">
-            <i class="fa fa-arrow-left"></i> Back to Repairs
-        </a>
-    </div>
-    
-    {% if messages %}
-    <div class="messages mb-4">
-        {% for message in messages %}
-        <div class="alert alert-{{ message.tags }}">
-            {{ message }}
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-    
-    <div class="row">
-        <div class="col-md-8">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Repair #{{ repair.id }}</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Status:</div>
-                        <div class="col-md-8">
-                            <span class="badge {% if repair.queue_status == 'COMPLETED' %}bg-success{% elif repair.queue_status == 'IN_PROGRESS' %}bg-warning{% elif repair.queue_status == 'REQUESTED' %}bg-secondary{% elif repair.queue_status == 'DENIED' %}bg-danger{% else %}bg-primary{% endif %}">
-                                {% if repair.queue_status == 'REQUESTED' %}
-                                Submitted - Awaiting Technician
-                                {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}
-                                Scheduled for Repair
-                                {% else %}
-                                {{ repair.get_queue_status_display }}
-                                {% endif %}
-                            </span>
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Date:</div>
-                        <div class="col-md-8">{{ repair.repair_date|date:"F d, Y" }}</div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Unit Number:</div>
-                        <div class="col-md-8">{{ repair.unit_number }}</div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Damage Type:</div>
-                        <div class="col-md-8">{{ repair.damage_type }}</div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Description:</div>
-                        <div class="col-md-8">{{ repair.description }}</div>
-                    </div>
-                    
-                    {% if repair.cost %}
-                    <div class="row mb-3">
-                        {% with cost_info=repair.get_discounted_cost %}
-                        {% if cost_info.discount_applied %}
-                        <div class="col-md-4 fw-bold">Cost Information:</div>
-                        <div class="col-md-8">
-                            <div class="mb-2"><strong>Original Cost:</strong> <span class="text-decoration-line-through text-muted">${{ cost_info.original_cost }}</span></div>
-                            <div class="mb-2"><strong>Discount:</strong> <span class="text-success">{{ cost_info.discount_description }}</span></div>
-                            <div class="mb-2"><strong>Final Cost:</strong> <span class="text-primary fw-bold">${{ cost_info.final_cost }}</span></div>
-                            <div class="mb-2"><strong>Savings:</strong> <span class="text-success">${{ cost_info.savings }}</span></div>
-                            <div class="mt-2 small text-muted fst-italic">
-                                <i class="fas fa-info-circle"></i> Only one reward can be applied per repair
-                            </div>
-                        </div>
-                        {% else %}
-                        <div class="col-md-4 fw-bold">Estimated Cost:</div>
-                        <div class="col-md-8">${{ repair.cost }}</div>
-                        {% endif %}
-                        {% endwith %}
-                        {% if repair.tax_amount and repair.tax_amount > 0 %}
-                        <div class="col-md-4 fw-bold mt-2">Tax ({{ repair.tax_rate }}%):</div>
-                        <div class="col-md-8 mt-2">${{ repair.tax_amount }}</div>
-                        <div class="col-md-4 fw-bold mt-2">Total:</div>
-                        <div class="col-md-8 mt-2 fw-bold text-primary">${{ repair.total_with_tax }}</div>
-                        {% endif %}
-                    </div>
-                    {% endif %}
+<!-- Back link -->
+<a href="{% url 'customer_repairs' %}" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 font-medium mb-4 transition-colors">
+    <i class="fas fa-arrow-left mr-2 text-xs"></i> Back to Repairs
+</a>
 
-                    <!-- Invoice / Payment Status -->
-                    {% if repair.queue_status == 'COMPLETED' %}
-                    {% get_invoice_status repair as inv_status %}
-                    {% if inv_status %}
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Invoice Status:</div>
-                        <div class="col-md-8">
-                            {% if inv_status.status == 'PAID' %}
-                            <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i>Paid</span>
-                            <span class="text-muted ms-2">${{ inv_status.total|floatformat:2 }}</span>
-                            {% elif inv_status.status == 'OVERDUE' %}
-                            <span class="badge bg-danger"><i class="fas fa-exclamation-circle me-1"></i>Overdue</span>
-                            <span class="text-danger ms-2 fw-bold">${{ inv_status.amount_due|floatformat:2 }} due</span>
-                            {% elif inv_status.status == 'PARTIAL' %}
-                            <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Partially Paid</span>
-                            <span class="text-muted ms-2">${{ inv_status.amount_due|floatformat:2 }} remaining</span>
-                            {% elif inv_status.status == 'SENT' %}
-                            <span class="badge bg-primary"><i class="fas fa-paper-plane me-1"></i>Invoice Sent</span>
-                            <span class="text-muted ms-2">${{ inv_status.amount_due|floatformat:2 }} due</span>
-                            {% endif %}
-                            {% if inv_status.stripe_url and inv_status.amount_due > 0 %}
-                            <a href="{{ inv_status.stripe_url }}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">
-                                <i class="fas fa-credit-card me-1"></i>Pay Online
-                            </a>
-                            {% endif %}
-                            <div class="small text-muted mt-1">{{ inv_status.invoice_number }} · {{ inv_status.payment_terms }}</div>
+<!-- Approve/Deny CTA — THE #1 THING THEY SEE -->
+{% if repair.queue_status == 'PENDING' %}
+<div class="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 sm:p-6 mb-6">
+    <div class="flex items-start sm:items-center justify-between flex-col sm:flex-row gap-4">
+        <div class="flex items-center">
+            <div class="w-12 h-12 bg-amber-400 rounded-full flex items-center justify-center mr-4 flex-shrink-0">
+                <i class="fas fa-bell text-white text-xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-bold text-gray-900">This repair needs your approval</h2>
+                <p class="text-sm text-gray-600 mt-0.5">Review the details below, then approve or deny.</p>
+            </div>
+        </div>
+        <div class="flex gap-3 w-full sm:w-auto">
+            <form action="{% url 'customer_repair_approve' repair.id %}" method="post" class="flex-1 sm:flex-initial">
+                {% csrf_token %}
+                <input type="hidden" name="notes" value="Approved from detail page">
+                <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 bg-brand-500 text-white text-base font-bold rounded-xl hover:bg-brand-600 transition-colors shadow-lg shadow-brand-500/20">
+                    <i class="fas fa-check mr-2"></i> Approve
+                </button>
+            </form>
+            <form action="{% url 'customer_repair_deny' repair.id %}" method="post" class="flex-1 sm:flex-initial" onsubmit="return confirm('Deny this repair?');">
+                {% csrf_token %}
+                <input type="hidden" name="reason" value="Denied from detail page">
+                <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border-2 border-red-300 text-red-600 text-base font-bold rounded-xl hover:bg-red-50 transition-colors">
+                    <i class="fas fa-times mr-2"></i> Deny
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Main Content -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left: Repair Details -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Header Card -->
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h1 class="text-lg font-bold text-gray-900">Repair #{{ repair.id }}</h1>
+                <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-bold
+                    {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
+                    {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
+                    {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
+                    {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
+                    {% elif repair.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-700
+                    {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
+                    {% else %}bg-gray-100 text-gray-700{% endif %}">
+                    {% if repair.queue_status == 'REQUESTED' %}Submitted — Awaiting Technician
+                    {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}Scheduled for Repair
+                    {% else %}{{ repair.get_queue_status_display }}{% endif %}
+                </span>
+            </div>
+
+            <div class="p-5">
+                <!-- Key info grid -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase">Date</p>
+                        <p class="text-sm font-medium text-gray-900 mt-0.5">{{ repair.repair_date|date:"F d, Y" }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase">Unit Number</p>
+                        <p class="text-sm font-medium text-gray-900 mt-0.5">{{ repair.unit_number }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase">Damage Type</p>
+                        <p class="text-sm font-medium text-gray-900 mt-0.5">{{ repair.damage_type }}</p>
+                    </div>
+                </div>
+
+                {% if repair.description %}
+                <div class="mb-5">
+                    <p class="text-xs font-semibold text-gray-500 uppercase mb-1">Description</p>
+                    <p class="text-sm text-gray-700 leading-relaxed">{{ repair.description }}</p>
+                </div>
+                {% endif %}
+
+                <!-- Cost Info -->
+                {% if repair.cost %}
+                <div class="bg-gray-50 rounded-xl p-4 mb-5">
+                    <p class="text-xs font-semibold text-gray-500 uppercase mb-2">Cost Breakdown</p>
+                    {% with cost_info=repair.get_discounted_cost %}
+                    {% if cost_info.discount_applied %}
+                    <div class="space-y-1.5">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Original cost</span>
+                            <span class="text-gray-400 line-through">${{ cost_info.original_cost }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-green-600">{{ cost_info.discount_description }}</span>
+                            <span class="text-green-600 font-medium">-${{ cost_info.savings }}</span>
+                        </div>
+                        <div class="border-t border-gray-200 pt-1.5 flex justify-between text-sm">
+                            <span class="font-semibold text-gray-900">Final cost</span>
+                            <span class="font-bold text-gray-900">${{ cost_info.final_cost }}</span>
+                        </div>
+                        <p class="text-[10px] text-gray-400 italic mt-1"><i class="fas fa-info-circle mr-1"></i>One reward per repair</p>
+                    </div>
+                    {% else %}
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Estimated cost</span>
+                        <span class="font-bold text-gray-900">${{ repair.cost }}</span>
+                    </div>
+                    {% endif %}
+                    {% endwith %}
+
+                    {% if repair.tax_amount and repair.tax_amount > 0 %}
+                    <div class="border-t border-gray-200 mt-2 pt-2 space-y-1">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Tax ({{ repair.tax_rate }}%)</span>
+                            <span class="text-gray-700">${{ repair.tax_amount }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm font-bold">
+                            <span class="text-gray-900">Total</span>
+                            <span class="text-brand-500">${{ repair.total_with_tax }}</span>
                         </div>
                     </div>
-                    {% endif %}
-                    {% endif %}
-                    
-                    <!-- Photo Documentation Section -->
-                    {% if repair.damage_photo_before or repair.damage_photo_after %}
-                    <div class="row mb-3">
-                        <div class="col-12">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h6 class="fw-bold mb-0">
-                                    <i class="fa fa-camera text-primary me-2"></i>Photo Documentation 
-                                    <span class="badge bg-secondary">{{ repair.get_photo_count }} photo{{ repair.get_photo_count|pluralize }}</span>
-                                </h6>
-                                <button type="button" 
-                                        id="photoToggleBtn" 
-                                        class="btn btn-sm btn-outline-secondary"
-                                        onclick="togglePhotoSection()">
-                                    <i id="photoToggleIcon" class="fa fa-chevron-down me-1"></i>
-                                    <span id="photoToggleText">Hide Photos</span>
-                                </button>
-                            </div>
-                            <div id="photoContent" class="row">
-                                {% if repair.damage_photo_before %}
-                                <div class="col-md-6 mb-3">
-                                    <div class="card border-primary">
-                                        <div class="card-header bg-primary text-white text-center">
-                                            <small class="fw-bold">
-                                                <i class="fa fa-camera me-1"></i>Initial Photo
-                                            </small>
-                                        </div>
-                                        <div class="card-body text-center p-2">
-                                            <img src="{{ repair.damage_photo_before.url }}" 
-                                                 alt="Initial damage photo" 
-                                                 class="img-fluid rounded shadow-sm"
-                                                 style="max-height: 200px; cursor: pointer; transition: transform 0.2s;"
-                                                 onclick="openImageModal('{{ repair.damage_photo_before.url }}', 'Initial Damage Photo')"
-                                                 onmouseover="this.style.transform='scale(1.05)'"
-                                                 onmouseout="this.style.transform='scale(1)'">
-                                            <small class="text-muted d-block mt-2">Click to view full size</small>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
-                                
-                                {% if repair.damage_photo_after %}
-                                <div class="col-md-6 mb-3">
-                                    <div class="card border-success">
-                                        <div class="card-header bg-success text-white text-center">
-                                            <small class="fw-bold">
-                                                <i class="fa fa-check-circle me-1"></i>Completed Repair
-                                            </small>
-                                        </div>
-                                        <div class="card-body text-center p-2">
-                                            <img src="{{ repair.damage_photo_after.url }}" 
-                                                 alt="Completed repair photo" 
-                                                 class="img-fluid rounded shadow-sm"
-                                                 style="max-height: 200px; cursor: pointer; transition: transform 0.2s;"
-                                                 onclick="openImageModal('{{ repair.damage_photo_after.url }}', 'Completed Repair Photo')"
-                                                 onmouseover="this.style.transform='scale(1.05)'"
-                                                 onmouseout="this.style.transform='scale(1)'">
-                                            <small class="text-muted d-block mt-2">Click to view full size</small>
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-                    
-                    {% if approval %}
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Approval Status:</div>
-                        <div class="col-md-8">
-                            {% if approval.approved %}
-                            <span class="badge bg-success">Approved</span>
-                            {% else %}
-                            <span class="badge bg-danger">Denied</span>
-                            {% endif %}
-                            on {{ approval.approval_date|date:"F d, Y" }}
-                        </div>
-                    </div>
-                    
-                    {% if approval.notes %}
-                    <div class="row mb-3">
-                        <div class="col-md-4 fw-bold">Notes:</div>
-                        <div class="col-md-8">{{ approval.notes }}</div>
-                    </div>
-                    {% endif %}
                     {% endif %}
                 </div>
-                
-                {% if repair.queue_status == 'PENDING' %}
-                <div class="card-footer">
-                    <div class="d-flex justify-content-between">
-                        <a href="{% url 'customer_repair_deny' repair.id %}" class="btn btn-danger">
-                            <i class="fa fa-times"></i> Deny Repair
-                        </a>
-                        <a href="{% url 'customer_repair_approve' repair.id %}" class="btn btn-success">
-                            <i class="fa fa-check"></i> Approve Repair
-                        </a>
+                {% endif %}
+
+                <!-- Apply Reward -->
+                {% if available_rewards and not is_invoiced %}
+                <div class="bg-gradient-to-r from-brand-50 to-brand-100/50 rounded-xl p-4 mb-5 border border-brand-200">
+                    <div class="flex items-center mb-3">
+                        <div class="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
+                            <i class="fas fa-gift text-white text-sm"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-gray-900">Apply a Reward</p>
+                            <p class="text-xs text-gray-500">You have {{ available_rewards|length }} reward{{ available_rewards|length|pluralize }} available</p>
+                        </div>
                     </div>
+                    <div class="space-y-2">
+                        {% for redemption in available_rewards %}
+                        <form action="{% url 'customer_apply_reward' repair.id %}" method="post" class="flex items-center justify-between bg-white rounded-lg p-3 border border-gray-200">
+                            {% csrf_token %}
+                            <input type="hidden" name="redemption_id" value="{{ redemption.id }}">
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-medium text-gray-900">{{ redemption.reward_option.name }}</p>
+                                <p class="text-xs text-gray-500">
+                                    {% if redemption.reward_option.reward_type.discount_type == 'PERCENTAGE' %}
+                                        {{ redemption.reward_option.reward_type.discount_value }}% off
+                                    {% elif redemption.reward_option.reward_type.discount_type == 'FIXED_AMOUNT' %}
+                                        ${{ redemption.reward_option.reward_type.discount_value }} off
+                                    {% elif redemption.reward_option.reward_type.discount_type == 'FREE' %}
+                                        Free repair
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <button type="submit" class="ml-3 px-4 py-2 bg-brand-500 text-white text-xs font-bold rounded-lg hover:bg-brand-600 transition-colors flex-shrink-0" onclick="return confirm('Apply this reward to this repair?')">
+                                <i class="fas fa-check mr-1"></i> Apply
+                            </button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                    <p class="text-[10px] text-gray-400 italic mt-2"><i class="fas fa-info-circle mr-1"></i>One reward per repair. Must apply before invoicing.</p>
+                </div>
+                {% endif %}
+
+                <!-- Invoice Status -->
+                {% if repair.queue_status == 'COMPLETED' %}
+                {% get_invoice_status repair as inv_status %}
+                {% if inv_status %}
+                <div class="rounded-xl p-4 mb-5 {% if inv_status.status == 'PAID' %}bg-green-50 border border-green-200{% elif inv_status.status == 'OVERDUE' %}bg-red-50 border border-red-200{% else %}bg-blue-50 border border-blue-200{% endif %}">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <div class="flex items-center">
+                            {% if inv_status.status == 'PAID' %}
+                            <i class="fas fa-check-circle text-green-600 text-lg mr-2"></i>
+                            <div>
+                                <p class="text-sm font-semibold text-green-800">Paid</p>
+                                <p class="text-xs text-green-600">{{ inv_status.invoice_number }} &middot; ${{ inv_status.total|floatformat:2 }}</p>
+                            </div>
+                            {% elif inv_status.status == 'OVERDUE' %}
+                            <i class="fas fa-exclamation-circle text-red-600 text-lg mr-2"></i>
+                            <div>
+                                <p class="text-sm font-bold text-red-800">Overdue &mdash; ${{ inv_status.amount_due|floatformat:2 }} due</p>
+                                <p class="text-xs text-red-600">{{ inv_status.invoice_number }} &middot; {{ inv_status.payment_terms }}</p>
+                            </div>
+                            {% elif inv_status.status == 'PARTIAL' %}
+                            <i class="fas fa-clock text-amber-600 text-lg mr-2"></i>
+                            <div>
+                                <p class="text-sm font-semibold text-amber-800">Partially Paid</p>
+                                <p class="text-xs text-amber-600">{{ inv_status.invoice_number }} &middot; ${{ inv_status.amount_due|floatformat:2 }} remaining</p>
+                            </div>
+                            {% elif inv_status.status == 'SENT' %}
+                            <i class="fas fa-paper-plane text-blue-600 text-lg mr-2"></i>
+                            <div>
+                                <p class="text-sm font-semibold text-blue-800">Invoice Sent</p>
+                                <p class="text-xs text-blue-600">{{ inv_status.invoice_number }} &middot; ${{ inv_status.amount_due|floatformat:2 }} due</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% if inv_status.stripe_url and inv_status.amount_due > 0 and inv_status.can_pay_online %}
+                        <a href="{{ inv_status.stripe_url }}" target="_blank" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                            <i class="fas fa-credit-card mr-2"></i> Pay Online
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                {% endif %}
+
+                <!-- Approval History -->
+                {% if approval %}
+                <div class="rounded-xl p-4 {% if approval.approved %}bg-green-50 border border-green-200{% else %}bg-red-50 border border-red-200{% endif %}">
+                    <div class="flex items-center">
+                        {% if approval.approved %}
+                        <i class="fas fa-check-circle text-green-600 mr-2"></i>
+                        <span class="text-sm font-semibold text-green-800">Approved</span>
+                        {% else %}
+                        <i class="fas fa-times-circle text-red-600 mr-2"></i>
+                        <span class="text-sm font-semibold text-red-800">Denied</span>
+                        {% endif %}
+                        <span class="text-sm text-gray-500 ml-2">on {{ approval.approval_date|date:"F d, Y" }}</span>
+                    </div>
+                    {% if approval.notes %}
+                    <p class="text-sm text-gray-600 mt-1.5 ml-6">{{ approval.notes }}</p>
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>
         </div>
-        
-        <div class="col-md-4">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5 class="mb-0">Actions</h5>
+
+        <!-- Photo Documentation -->
+        {% if repair.damage_photo_before or repair.damage_photo_after %}
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 class="text-base font-semibold text-gray-900">
+                    <i class="fas fa-camera text-gray-400 mr-2"></i>Photos
+                    <span class="text-xs font-medium text-gray-400 ml-1">{{ repair.get_photo_count }}</span>
+                </h2>
+                <button onclick="togglePhotos()" class="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors">
+                    <span id="photo-toggle-text">Hide</span>
+                    <i id="photo-toggle-icon" class="fas fa-chevron-up ml-1 text-xs transition-transform"></i>
+                </button>
+            </div>
+            <div id="photo-content" class="p-5">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {% if repair.damage_photo_before %}
+                    <div class="group">
+                        <div class="aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 cursor-pointer" onclick="openImageModal('{{ repair.damage_photo_before.url }}', 'Initial Damage Photo')">
+                            <img src="{{ repair.damage_photo_before.url }}" alt="Initial damage" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase mt-2 text-center">
+                            <i class="fas fa-camera mr-1"></i> Before — Initial Damage
+                        </p>
+                    </div>
+                    {% endif %}
+                    {% if repair.damage_photo_after %}
+                    <div class="group">
+                        <div class="aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 cursor-pointer" onclick="openImageModal('{{ repair.damage_photo_after.url }}', 'Completed Repair Photo')">
+                            <img src="{{ repair.damage_photo_after.url }}" alt="Completed repair" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                        </div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase mt-2 text-center">
+                            <i class="fas fa-check-circle mr-1"></i> After — Repair Complete
+                        </p>
+                    </div>
+                    {% endif %}
                 </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <a href="{% url 'customer_repairs' %}" class="btn btn-outline-primary">
-                            <i class="fa fa-list"></i> View All Repairs
-                        </a>
-                        <a href="{% url 'customer_dashboard' %}" class="btn btn-outline-secondary">
-                            <i class="fa fa-home"></i> Back to Dashboard
-                        </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Right Sidebar -->
+    <div class="space-y-4">
+        <!-- Status Timeline -->
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 class="text-base font-semibold text-gray-900 mb-4">Status Timeline</h2>
+            <div class="space-y-0">
+                <!-- Submitted -->
+                <div class="flex items-start">
+                    <div class="flex flex-col items-center mr-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center {% if repair.queue_status %}bg-green-100 text-green-600{% else %}bg-gray-100 text-gray-400{% endif %}">
+                            <i class="fas fa-paper-plane text-xs"></i>
+                        </div>
+                        <div class="w-0.5 h-6 {% if repair.queue_status != 'REQUESTED' %}bg-green-300{% else %}bg-gray-200{% endif %}"></div>
+                    </div>
+                    <div class="pb-6">
+                        <p class="text-sm font-medium text-gray-900">Submitted</p>
+                        <p class="text-xs text-gray-500">{{ repair.repair_date|date:"M d, Y" }}</p>
+                    </div>
+                </div>
+
+                <!-- Pending Approval -->
+                <div class="flex items-start">
+                    <div class="flex flex-col items-center mr-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center
+                            {% if repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-600 ring-2 ring-amber-300
+                            {% elif repair.queue_status == 'APPROVED' or repair.queue_status == 'IN_PROGRESS' or repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-600
+                            {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-600
+                            {% else %}bg-gray-100 text-gray-400{% endif %}">
+                            {% if repair.queue_status == 'DENIED' %}
+                            <i class="fas fa-times text-xs"></i>
+                            {% else %}
+                            <i class="fas fa-clock text-xs"></i>
+                            {% endif %}
+                        </div>
+                        <div class="w-0.5 h-6 {% if repair.queue_status == 'APPROVED' or repair.queue_status == 'IN_PROGRESS' or repair.queue_status == 'COMPLETED' %}bg-green-300{% else %}bg-gray-200{% endif %}"></div>
+                    </div>
+                    <div class="pb-6">
+                        <p class="text-sm font-medium {% if repair.queue_status == 'PENDING' %}text-amber-700{% elif repair.queue_status == 'DENIED' %}text-red-700{% else %}text-gray-900{% endif %}">
+                            {% if repair.queue_status == 'DENIED' %}Denied{% elif repair.queue_status == 'PENDING' %}Awaiting Approval{% else %}Approved{% endif %}
+                        </p>
+                        {% if approval %}
+                        <p class="text-xs text-gray-500">{{ approval.approval_date|date:"M d, Y" }}</p>
+                        {% elif repair.queue_status == 'PENDING' %}
+                        <p class="text-xs text-amber-600 font-medium">Action required</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- In Progress -->
+                <div class="flex items-start">
+                    <div class="flex flex-col items-center mr-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center
+                            {% if repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-600 ring-2 ring-blue-300
+                            {% elif repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-600
+                            {% else %}bg-gray-100 text-gray-400{% endif %}">
+                            <i class="fas fa-wrench text-xs"></i>
+                        </div>
+                        <div class="w-0.5 h-6 {% if repair.queue_status == 'COMPLETED' %}bg-green-300{% else %}bg-gray-200{% endif %}"></div>
+                    </div>
+                    <div class="pb-6">
+                        <p class="text-sm font-medium {% if repair.queue_status == 'IN_PROGRESS' %}text-blue-700{% elif repair.queue_status == 'COMPLETED' %}text-gray-900{% else %}text-gray-400{% endif %}">
+                            In Progress
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Completed -->
+                <div class="flex items-start">
+                    <div class="flex flex-col items-center mr-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center
+                            {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-600 ring-2 ring-green-300
+                            {% else %}bg-gray-100 text-gray-400{% endif %}">
+                            <i class="fas fa-check text-xs"></i>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium {% if repair.queue_status == 'COMPLETED' %}text-green-700{% else %}text-gray-400{% endif %}">
+                            Completed
+                        </p>
+                        {% if repair.queue_status == 'COMPLETED' and repair.completed_date %}
+                        <p class="text-xs text-gray-500">{{ repair.completed_date|date:"M d, Y" }}</p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Image Modal -->
-<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="imageModalLabel">Image Preview</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body text-center">
-                <img id="modalImage" src="" alt="" class="img-fluid">
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <h2 class="text-base font-semibold text-gray-900 mb-3">Actions</h2>
+            <div class="space-y-2">
+                <a href="{% url 'customer_repairs' %}" class="flex items-center w-full px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-list mr-3 text-gray-400 w-4"></i> All Repairs
+                </a>
+                <a href="{% url 'customer_dashboard' %}" class="flex items-center w-full px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-home mr-3 text-gray-400 w-4"></i> Dashboard
+                </a>
+                <a href="{% url 'customer_request_repair' %}" class="flex items-center w-full px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-plus-circle mr-3 text-gray-400 w-4"></i> New Request
+                </a>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Image Lightbox Modal -->
+<div id="imageModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80" onclick="closeImageModal()">
+    <div class="relative max-w-4xl w-full" onclick="event.stopPropagation()">
+        <button onclick="closeImageModal()" class="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors">
+            <i class="fas fa-times text-xl"></i>
+        </button>
+        <p id="modalTitle" class="text-white text-sm font-medium mb-2 text-center"></p>
+        <img id="modalImage" src="" alt="" class="w-full rounded-xl shadow-2xl">
+    </div>
+</div>
+
+{% block extra_js %}
 <script>
-function openImageModal(imageUrl, title) {
-    document.getElementById('modalImage').src = imageUrl;
-    document.getElementById('imageModalLabel').textContent = title;
-    var imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
-    imageModal.show();
+function openImageModal(url, title) {
+    document.getElementById('modalImage').src = url;
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('imageModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
 }
 
-// Photo section toggle functionality
-function togglePhotoSection() {
-    const photoContent = document.getElementById('photoContent');
-    const toggleIcon = document.getElementById('photoToggleIcon');
-    const toggleText = document.getElementById('photoToggleText');
-    
-    const isVisible = photoContent.style.display !== 'none';
-    
-    if (isVisible) {
-        // Hide photos
-        photoContent.style.display = 'none';
-        toggleIcon.className = 'fa fa-chevron-right me-1';
-        toggleText.textContent = 'Show Photos';
-        localStorage.setItem('photoSectionCollapsed', 'true');
-    } else {
-        // Show photos
-        photoContent.style.display = 'block';
-        toggleIcon.className = 'fa fa-chevron-down me-1';
-        toggleText.textContent = 'Hide Photos';
-        localStorage.setItem('photoSectionCollapsed', 'false');
-    }
+function closeImageModal() {
+    document.getElementById('imageModal').classList.add('hidden');
+    document.body.style.overflow = '';
 }
 
-// Initialize photo section state from localStorage
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeImageModal();
+});
+
+function togglePhotos() {
+    const content = document.getElementById('photo-content');
+    const text = document.getElementById('photo-toggle-text');
+    const icon = document.getElementById('photo-toggle-icon');
+    const hidden = content.style.display === 'none';
+    content.style.display = hidden ? '' : 'none';
+    text.textContent = hidden ? 'Hide' : 'Show';
+    icon.style.transform = hidden ? '' : 'rotate(180deg)';
+    localStorage.setItem('photoSectionCollapsed', hidden ? 'false' : 'true');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    const photoContent = document.getElementById('photoContent');
-    const toggleIcon = document.getElementById('photoToggleIcon');
-    const toggleText = document.getElementById('photoToggleText');
-    
-    if (photoContent && localStorage.getItem('photoSectionCollapsed') === 'true') {
-        photoContent.style.display = 'none';
-        toggleIcon.className = 'fa fa-chevron-right me-1';
-        toggleText.textContent = 'Show Photos';
+    if (localStorage.getItem('photoSectionCollapsed') === 'true') {
+        togglePhotos();
     }
 });
 </script>
-{% endblock %} 
+{% endblock %}
+{% endblock %}

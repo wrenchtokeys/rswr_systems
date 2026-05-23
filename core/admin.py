@@ -19,10 +19,27 @@ from rs_systems.admin_mixins import TenantFilterMixin
 
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    """Enhanced admin for notifications with stats"""
+    """
+    Enhanced admin for notifications with stats.
+
+    Tenant scoping (CODE-213):
+    Notification has no direct tenant FK — it links to a tenant via its nullable
+    customer FK (customer → tenant) or its repair FK (repair → customer → tenant).
+    Without explicit get_queryset scoping a non-superuser staff user at Shop A
+    could see notifications addressed to customers/technicians at Shop B.
+
+    Fix: non-superusers see only notifications whose customer__tenant or
+    repair__customer__tenant matches one of their active TenantMemberships.
+    Notifications with both customer and repair set to null are system-level
+    and are visible to superusers only (there are very few of these).
+
+    The changelist_view stats aggregate is similarly scoped so the sidebar
+    numbers reflect only the current user's tenant data.
+    """
 
     list_display = [
         'id',
+        'get_tenant_display',
         'title_truncated',
         'recipient_display',
         'priority_badge',
@@ -53,8 +70,83 @@ class NotificationAdmin(admin.ModelAdmin):
         'template_context'
     ]
 
+    # Prevent N+1 on get_tenant_display: customer→tenant and repair→customer→tenant
+    list_select_related = ['customer__tenant', 'repair__customer__tenant']
+
     actions = ['mark_as_read', 'mark_as_unread', 'retry_delivery']
     list_per_page = 25
+
+    def get_queryset(self, request):
+        """
+        Scope notifications to the current user's tenant(s).
+
+        Superusers see all.  Non-superusers see only notifications scoped to
+        their tenant via customer__tenant or repair__customer__tenant.
+        Notifications with neither customer nor repair (pure system events)
+        are hidden from non-superusers — they have no tenant context.
+        """
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        from apps.tenants.models import TenantMembership
+        tenant_ids = list(
+            TenantMembership.objects
+            .filter(user=request.user, is_active=True)
+            .values_list('tenant_id', flat=True)
+        )
+        return qs.filter(
+            Q(customer__tenant__in=tenant_ids) |
+            Q(repair__customer__tenant__in=tenant_ids)
+        )
+
+    def get_list_filter(self, request):
+        filters = list(super().get_list_filter(request))
+        if request.user.is_superuser and 'customer__tenant' not in filters:
+            filters = ['customer__tenant'] + filters
+        return filters
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, the `customer` and `repair` dropdowns on the Notification
+        change form show ALL records across ALL tenants — a non-superuser at
+        Shop A can see (and select) Shop B's customers and repairs.
+
+        - customer → Customer (has direct tenant FK)
+        - repair → Repair (has direct tenant FK)
+        - template → NotificationTemplate (no tenant — unrestricted, fine)
+        - recipient_type → ContentType (no tenant — unrestricted, fine)
+
+        (CODE-235)
+        """
+        if not request.user.is_superuser:
+            from apps.tenants.models import TenantMembership
+            tenant_ids = list(
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
+            if db_field.name == 'customer':
+                from core.models import Customer
+                kwargs['queryset'] = Customer.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'repair':
+                from apps.technician_portal.models import Repair
+                kwargs['queryset'] = Repair.objects.filter(tenant__in=tenant_ids)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_tenant_display(self, obj):
+        """Best-effort tenant label from customer or repair→customer chain."""
+        try:
+            if obj.customer_id:
+                return obj.customer.tenant.name
+            if obj.repair_id:
+                return obj.repair.customer.tenant.name
+        except AttributeError:
+            pass
+        return '—'
+    get_tenant_display.short_description = 'Tenant'
+    get_tenant_display.admin_order_field = 'customer__tenant__name'
 
     def title_truncated(self, obj):
         return obj.title[:50] + '...' if len(obj.title) > 50 else obj.title
@@ -148,11 +240,14 @@ class NotificationAdmin(admin.ModelAdmin):
     retry_delivery.short_description = "Retry delivery for selected notifications"
 
     def changelist_view(self, request, extra_context=None):
-        """Add statistics to change list page"""
+        """Add statistics to change list page (scoped to current user's tenant)."""
         extra_context = extra_context or {}
 
-        # Aggregate stats
-        stats = Notification.objects.aggregate(
+        # Build a tenant-scoped base queryset matching get_queryset() so the
+        # stats sidebar shows numbers for the current user's data only, not
+        # the entire platform. (CODE-213)
+        base_qs = self.get_queryset(request)
+        stats = base_qs.aggregate(
             total=Count('id'),
             unread=Count('id', filter=Q(read=False)),
             urgent=Count('id', filter=Q(priority='URGENT')),
@@ -238,6 +333,8 @@ class DeliveryLogAdmin(TenantFilterMixin, admin.ModelAdmin):
         'created_at',
         'provider_name'
     ]
+
+    list_select_related = ['tenant']
 
     search_fields = [
         'notification__title',

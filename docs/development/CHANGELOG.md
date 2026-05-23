@@ -12,7 +12,7 @@ All notable changes to the RS Systems windshield repair management platform.
 
 ---
 
-## [2.5.1] - May 23, 2026
+## [2.10.1] - May 23, 2026
 
 ### Fixed — Technician Repair Form & Invoicing
 
@@ -21,10 +21,6 @@ Mobile production bugs reported from the field (iPhone via rssystems.io); deskto
 #### Batch pricing recalculated incorrectly on edit (financial)
 - `Repair.save()` re-priced COMPLETED batch repairs against the already-incremented `UnitRepairCount`, shifting every break down a tier on edit (a batch that created at $50/$40 showed $40/$35 after editing).
 - Now preserves the batch price computed at creation time for existing multi-break repairs.
-
-#### Invoice line item re-discounted on every save (financial)
-- `InvoiceLineItem.save()` used `if not self.amount`, which is truthy-false for `Decimal('0.00')`, silently recalculating the amount on re-save.
-- Changed to `if self.amount is None` so an explicitly set amount (including $0.00) is preserved.
 
 #### Broken styling / unusable form on mobile (UX)
 - `repair_form.html`, `multi_break_repair_form.html`, and 13 other technician templates each loaded the Tailwind CDN a **second** time (already loaded in `base_app.html`) plus a redundant `tailwind.config`, causing a race on slow mobile connections that left the form unstyled.
@@ -41,10 +37,91 @@ Mobile production bugs reported from the field (iPhone via rssystems.io); deskto
 - Owner invoice detail page now has an **Edit Details** button and a per-line-item edit (pencil) wired to these endpoints via AJAX. Hidden for PAID/CANCELLED invoices.
 
 #### Invoice description field
-- New `Invoice.description` text field (migration `billing.0017_invoice_description`), exposed in the admin, the invoice API, the edit UI, and PDF rendering.
+- New `Invoice.description` text field, exposed in the admin, the invoice API, the edit UI, and PDF rendering.
 
 ### Tests
 - New `tests/test_invoice_edit_api.py` (23 tests) covering the edit endpoints, description field, PDF render, and the detail-page edit UI.
+
+---
+
+## [Unreleased]
+
+### Added
+- **`TenantConfig` abstract base class** (`common/models.py`) — DRY pattern for all per-tenant config models. Provides `get_for_tenant()` classmethod and `created_at`/`updated_at` timestamps. `LoyaltyConfig` now inherits from it. All future per-tenant configs (`ReviewConfig`, `WarrantyPolicy`, etc.) must inherit from `TenantConfig`. (CODE-184, implementation-plan.md section 16)
+- **`docs/PRICING_TIERS.md`** — Canonical feature-to-plan tier matrix. Single source of truth for pricing decisions across all proposals. All proposals must reference this before features ship. (CODE-184, implementation-plan.md section 17)
+
+---
+
+## [2.10.0] - March 24, 2026
+
+### Added — Loyalty System Phase 1
+- **PointTransaction model** — immutable ledger for all point changes (earn/spend/expire)
+- **LoyaltyConfig model** — per-tenant configurable point values, program name, expiry
+- **LoyaltyService** — single entry point for all balance changes with row-level locking
+- Points balance badge in customer portal navigation
+- Points history page at `/rewards/points-history/`
+- Backfill migration for existing reward balances
+- PointTransaction + LoyaltyConfig admin pages
+
+### Changed
+- `award_completion_points()` reads from LoyaltyConfig instead of hardcoded values
+- `ReferralService.process_referral()` delegates to LoyaltyService
+- `RewardService.redeem_reward()` creates PointTransaction via LoyaltyService
+- `referral_rewards` view now routes to `dashboard.html` (was using broken `rewards_compact.html`)
+- Replaced browser `confirm()` dialog with Tailwind modal for reward redemption
+
+### Fixed
+- `referral_rewards` view missing `is_active=True` filter (deactivated options shown)
+- `reward_options` view missing `points` in context (all Redeem buttons disabled)
+- Duplicate Tailwind CDN in `rewards_compact.html`
+- `ReferralCode.customer_user` missing unique constraint (race condition for duplicate codes)
+- CODE-164 through CODE-175: tenant isolation in rewards, race conditions, N+1 queries, admin delete_queryset gaps, round-robin assignment bugs
+
+---
+
+## [2.9.0] - March 23, 2026
+
+### Added
+- **Stripe Connect live** — charges_enabled, payouts_enabled, real payments flowing
+- **FAB quick action button** — on all 19 portal pages with staggered animation
+- **Public payment links** — HMAC-token URLs for customer payment without login
+- **Branded HTML emails** — all 11+ email types converted from plain text
+- **Platform owner flag** — permanent pro plan, no subscription needed
+
+### Changed
+- Windshield damage diagram restored on repair, multi-break, and customer request forms
+- Mobile batch buttons: 44px min tap targets, grid layout
+- Wider repair + multi-break forms on mobile
+
+### Fixed
+- Stale Stripe customer IDs from test→live mode switch
+- Payment notification stale data (refresh_from_db)
+- Connect webhook endpoint (connect: false → true)
+
+---
+
+## [2.8.0] - March 21-22, 2026
+
+### Fixed
+- CODE-113 through CODE-124: 12 bugs (shop_join IntegrityError, Decimal falsy, bulk invoice mark_paid, overdue reminder format, custom email template, PDF numbers, admin tax bypass, batch rewards, void ProtectedError, PaymentAdmin delete)
+- Signup CAPTCHA fix
+- Plan pre-selection on billing page, "Not sure yet" at signup, day 20 nudge email
+
+---
+
+## [2.7.0] - March 18-20, 2026
+
+### Security
+- CODE-077 through CODE-104: Full tenant isolation sweep — unscoped OneToOneField across all portals
+- ~70+ regression tests
+
+---
+
+## [2.6.0] - March 16-17, 2026
+
+### Security
+- CODE-049 through CODE-061: Race conditions, IDOR, financial bugs, customer portal guards
+- ~103 new regression tests
 
 ---
 

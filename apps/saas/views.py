@@ -9,6 +9,7 @@ Author: Amelia (Clawdbot AI)
 """
 
 import logging
+import os
 import secrets
 from django.conf import settings
 from django.contrib import messages
@@ -20,7 +21,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import models, transaction
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.encoding import force_bytes
@@ -29,12 +30,13 @@ from common.decorators import owner_or_manager_required
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
 
 from apps.tenants.models import InviteToken, SubscriptionPlan, Tenant, TenantMembership
 from apps.tenants.services.usage_service import UsageService
 from apps.tenants.services.subscription_service import SubscriptionService, SubscriptionError
 from apps.tenants.services.signup_service import create_tenant_with_owner, SignupError
-from apps.technician_portal.models import Repair, Replacement, Technician
+from apps.technician_portal.models import Repair, Replacement, Technician, WarrantyPolicy
 from apps.customer_portal.models import CustomerUser
 from core.models import Customer
 
@@ -64,11 +66,25 @@ def _get_owner_tenant(request):
     """
     tenant = getattr(request, 'tenant', None)
     if not tenant:
+        # Use explicit priority ordering so 'owner' always beats 'manager' —
+        # alphabetical order_by('role') puts 'manager' first (m < o), which
+        # would return a manager membership at Shop B rather than an owner
+        # membership at Shop A for users who belong to multiple shops.
+        # Mirrors the annotation pattern in common/auth._get_membership. (CODE-129)
+        from django.db.models import Case, When, IntegerField, Value
         membership = (
             TenantMembership.objects
             .filter(user=request.user, is_active=True, role__in=['owner', 'manager'])
             .select_related('tenant')
-            .order_by('role')
+            .annotate(
+                role_priority=Case(
+                    When(role='owner', then=Value(0)),
+                    When(role='manager', then=Value(1)),
+                    default=Value(99),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by('role_priority')
             .first()
         )
         if membership:
@@ -86,14 +102,17 @@ def _get_owner_tenant(request):
 def _send_verification_email(request, user):
     """
     Send email verification link to a user after signup.
-    
+
+    Used for shop-join (customer portal) signups where the user IS immediately
+    logged in, and email verification is for notification preferences only.
+
     Uses Django's token generator for secure verification links.
     Fails silently to never block the signup flow.
     """
     try:
         token = default_token_generator.make_token(user)
         uid = urlsafe_base64_encode(force_bytes(user.pk))
-        
+
         # Check if user is a CustomerUser or shop owner
         try:
             from apps.customer_portal.models import CustomerUser
@@ -107,24 +126,20 @@ def _send_verification_email(request, user):
             verification_url = request.build_absolute_uri(
                 reverse('owner_confirm_email_verification', kwargs={'uidb64': uid, 'token': token})
             )
-        
-        send_mail(
-            subject='Verify your email address - RS Systems',
-            message=f'''Welcome to RS Systems!
 
-Please verify your email address by clicking the link below:
-
-{verification_url}
-
-This link will expire in 24 hours.
-
-If you didn't create an account, you can safely ignore this email.
-
-— The RS Systems Team
-''',
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject='Verify your email address — RS Systems',
             recipient_list=[user.email],
-            fail_silently=True,  # Never block signup on email failure
+            headline='Verify Your Email',
+            body_paragraphs=[
+                'Welcome to RS Systems!',
+                'Please verify your email address by clicking the button below. This link will expire in 24 hours.',
+                "If you didn't create an account, you can safely ignore this email.",
+            ],
+            button_text='✅ Verify Email',
+            button_url=verification_url,
+            fail_silently=True,
         )
         logger.info(f"Verification email sent to {user.email}")
     except Exception as e:
@@ -132,16 +147,114 @@ If you didn't create an account, you can safely ignore this email.
         logger.warning(f"Failed to send verification email to {user.email}: {e}")
 
 
+def _send_confirmation_email(request, user, tenant):
+    """
+    Send email confirmation link to a new shop owner whose account is inactive.
+
+    Unlike _send_verification_email, this email is required — the user CANNOT
+    log in until they click the link. Uses Django's built-in token generator
+    (same one as password reset) for secure one-time tokens.
+
+    Fails silently so a transient email outage never breaks signup entirely —
+    the admin can manually activate accounts if needed.
+    """
+    try:
+        token = default_token_generator.make_token(user)
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        confirm_url = request.build_absolute_uri(
+            reverse('owner_confirm_email', kwargs={'uidb64': uid, 'token': token})
+        )
+
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject='Confirm your email address — RS Systems',
+            recipient_list=[user.email],
+            headline='Confirm Your Email',
+            body_paragraphs=[
+                f'Hi {user.first_name or user.email},',
+                'Thanks for signing up for RS Systems!',
+                'To activate your account and start your 30-day free trial, please confirm your email address by clicking the button below.',
+                "This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.",
+            ],
+            button_text='🚀 Activate My Account',
+            button_url=confirm_url,
+            fail_silently=True,
+        )
+        logger.info(f"Confirmation email sent to {user.email} (account inactive, tenant={tenant.slug})")
+    except Exception as e:
+        logger.warning(f"Failed to send confirmation email to {user.email}: {e}")
+
+
 # ------------------------------------------------------------------
 # 1. Signup
 # ------------------------------------------------------------------
 
+def _verify_turnstile(request) -> bool:
+    """
+    Verify Cloudflare Turnstile CAPTCHA token server-side.
+
+    Returns True if verification passes OR if Turnstile is not configured
+    (TURNSTILE_SECRET_KEY not set — so dev/test works without keys).
+    Returns False only when keys are configured but verification fails.
+    """
+    import os
+    import urllib.request
+    import urllib.parse
+    import json
+
+    secret_key = os.environ.get('TURNSTILE_SECRET_KEY', '')
+    if not secret_key:
+        # Not configured — skip validation (dev/CI mode)
+        return True
+
+    token = request.POST.get('cf-turnstile-response', '')
+    if not token:
+        return False
+
+    try:
+        data = urllib.parse.urlencode({
+            'secret': secret_key,
+            'response': token,
+            'remoteip': request.META.get('REMOTE_ADDR', ''),
+        }).encode()
+        req = urllib.request.Request(
+            'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+            data=data,
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read())
+        return result.get('success', False)
+    except Exception as e:
+        logger.warning(f"Turnstile verification error: {e}")
+        # Fail open on network errors to avoid blocking legitimate signups
+        return True
+
+
+@ratelimit(key='ip', rate='5/h', method='POST', block=True)
 def signup_view(request):
-    """Public signup page — creates user, tenant, membership, logs in."""
+    """
+    Public signup page — creates user, tenant, membership.
+
+    The user account is created with is_active=False. A confirmation email
+    is sent. The user is NOT logged in until they click the link.
+
+    Rate-limited to 5 POST requests per IP per hour. Turnstile CAPTCHA is
+    the primary defence but is disabled in dev/CI (no secret key), so the
+    rate limit is the safety net against automated account-creation spam.
+    """
     if request.user.is_authenticated:
         return redirect('owner_dashboard')
 
+    turnstile_site_key = os.environ.get('TURNSTILE_SITE_KEY', '')
+
     if request.method == 'POST':
+        # Turnstile CAPTCHA check (skipped if env var not set)
+        if not _verify_turnstile(request):
+            messages.error(request, 'CAPTCHA verification failed. Please try again.')
+            form = SignupForm(request.POST)
+            return render(request, 'saas/signup.html', {'form': form, 'turnstile_site_key': turnstile_site_key})
+
         form = SignupForm(request.POST)
         if form.is_valid():
             try:
@@ -158,23 +271,40 @@ def signup_view(request):
                 user = result['user']
                 tenant = result['tenant']
 
-                # Log the user in
-                auth_user = authenticate(
-                    request, username=user.username, password=cd['password']
-                )
-                if auth_user:
-                    login(request, auth_user)
-                    request.session['tenant_id'] = tenant.id
+                # Save intended plan if selected
+                if cd.get('plan') and cd['plan'] != 'not_sure':
+                    tenant.intended_plan = cd['plan']
+                    tenant.save(update_fields=['intended_plan'])
 
-                # Send verification email (fails silently)
-                _send_verification_email(request, user)
+                # Set account inactive until email is confirmed
+                user.is_active = False
+                user.save(update_fields=['is_active'])
 
-                messages.success(
-                    request,
-                    f'Welcome to RS Systems, {cd["first_name"]}! '
-                    f'Your 30-day free trial has started. Check your email to verify your address.',
-                )
-                return redirect('onboarding')
+                # Send confirmation email
+                _send_confirmation_email(request, user, tenant)
+
+                # Notify site admins of new signup
+                try:
+                    from django.core.mail import mail_admins
+                    mail_admins(
+                        subject=f"New signup: {cd['first_name']} {cd['last_name']} ({tenant.name})",
+                        message=(
+                            f"New user signed up for RS Systems:\n\n"
+                            f"Name: {cd['first_name']} {cd['last_name']}\n"
+                            f"Email: {cd['email']}\n"
+                            f"Shop: {tenant.name}\n"
+                            f"Plan: {tenant.subscription_plan}\n"
+                            f"Pending email confirmation."
+                        ),
+                    )
+                except Exception:
+                    pass  # Non-fatal — don't block signup
+
+                # Don't log in yet — redirect to "check your email" page
+                return render(request, 'saas/email_confirmation_sent.html', {
+                    'email': cd['email'],
+                    'first_name': cd['first_name'],
+                })
 
             except SignupError as e:
                 messages.error(request, str(e))
@@ -187,7 +317,7 @@ def signup_view(request):
     else:
         form = SignupForm()
 
-    return render(request, 'saas/signup.html', {'form': form})
+    return render(request, 'saas/signup.html', {'form': form, 'turnstile_site_key': turnstile_site_key})
 
 
 # ------------------------------------------------------------------
@@ -258,16 +388,31 @@ def onboarding_view(request):
                         if add_self:
                             # Add the owner as a technician (use their existing user)
                             if not Technician.objects.filter(user=request.user, tenant=tenant).exists():
-                                Technician.objects.create(
-                                    tenant=tenant,
-                                    user=request.user,
-                                    phone_number=cd.get('tech_phone', '') or tenant.business_phone,
-                                    is_active=True,
-                                )
-                                from django.contrib.auth.models import Group
-                                tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                request.user.groups.add(tech_group)
-                                messages.success(request, 'You have been added as a technician!')
+                                # Guard: Technician.user is a OneToOneField — if this user
+                                # already has a Technician record at a *different* tenant
+                                # (e.g. they previously signed up for another shop), we
+                                # cannot create a second one.  Attempting to do so raises
+                                # IntegrityError (duplicate key).  Inform the user instead
+                                # of crashing.  (CODE-217)
+                                foreign_tech = Technician.objects.filter(user=request.user).exclude(tenant=tenant).first()
+                                if foreign_tech:
+                                    messages.warning(
+                                        request,
+                                        'Your account is already linked to a technician profile at another shop. '
+                                        'You can still manage this shop as an owner — add a separate technician '
+                                        'account from Settings → Team if needed.'
+                                    )
+                                else:
+                                    Technician.objects.create(
+                                        tenant=tenant,
+                                        user=request.user,
+                                        phone_number=cd.get('tech_phone', '') or tenant.business_phone,
+                                        is_active=True,
+                                    )
+                                    from django.contrib.auth.models import Group
+                                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                                    request.user.groups.add(tech_group)
+                                    messages.success(request, 'You have been added as a technician!')
                             else:
                                 messages.info(request, 'You are already set up as a technician.')
                         else:
@@ -413,7 +558,7 @@ def _get_billing_context(tenant):
         today = timezone.now().date()
         Invoice.objects.filter(
             tenant=tenant,
-            status__in=['SENT', 'PARTIAL', 'DRAFT'],
+            status__in=['SENT', 'PARTIAL'],
             due_date__lt=today,
         ).update(status='OVERDUE')
 
@@ -531,43 +676,28 @@ def owner_dashboard(request):
     billing_context = _get_billing_context(tenant)
 
     # Setup checklist for new users
-    from decimal import Decimal as D
     from apps.billing.models import TaxRate
 
     setup_steps = []
-    pricing_is_default = (
-        tenant.repair_price_1 == D('50.00') and
-        tenant.repair_price_2 == D('40.00') and
-        tenant.repair_price_3 == D('35.00') and
-        tenant.repair_price_4 == D('30.00') and
-        tenant.repair_price_5_plus == D('25.00')
-    )
     has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
     has_customers = Customer.objects.filter(tenant=tenant).exists()
     has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
-    has_business_info = bool(tenant.business_address or tenant.business_phone)
+    has_business_info = bool(tenant.business_phone and tenant.business_email)
 
     if not has_business_info:
         setup_steps.append({
             'label': 'Add your business info',
-            'desc': 'Address and phone number for invoices',
+            'desc': 'Phone number and email for invoices',
             'url': '/owner/settings/?tab=general',
             'icon': 'fas fa-building',
         })
-    if pricing_is_default:
-        setup_steps.append({
-            'label': 'Set your repair pricing',
-            'desc': 'Default pricing is $50/$40/$35/$30/$25 — update to match your rates',
-            'url': '/owner/settings/?tab=billing',
-            'icon': 'fas fa-dollar-sign',
-        })
-    if not has_tax_rates:
-        setup_steps.append({
-            'label': 'Configure sales tax',
-            'desc': 'Tax is disabled until you add a tax rate for your area',
-            'url': '/owner/settings/?tab=billing',
-            'icon': 'fas fa-receipt',
-        })
+    # NOTE: Pricing step intentionally removed. _setup_completion() treats pricing
+    # as always configured (sensible defaults exist), and checking for default values
+    # is ambiguous — a shop owner may legitimately charge $50 per repair.
+    # The "Finish setting up your shop" banner was persisting even after full setup
+    # because pricing_is_default was True even for correctly configured shops. (CODE-110)
+    # Tax step intentionally removed from setup checklist — tax is optional
+    # and many shops don't charge tax. Owners can configure it in Settings → Billing.
     if not has_customers:
         setup_steps.append({
             'label': 'Add your first customer',
@@ -585,16 +715,26 @@ def owner_dashboard(request):
 
     setup_completion = _setup_completion(tenant)
 
+    # Resolve intended plan name for trial banner
+    intended_plan_name = ''
+    if tenant.intended_plan:
+        try:
+            intended_plan_name = SubscriptionPlan.objects.get(slug=tenant.intended_plan).name
+        except SubscriptionPlan.DoesNotExist:
+            pass
+
     context = {
         'tenant': tenant,
         'membership': membership,
         'usage': usage,
         'recent_activity': recent_activity,
         'trial_days_remaining': tenant.trial_days_remaining,
-        'is_trial': tenant.plan == 'trial',
+        'is_trial': tenant.plan == 'trial' and not tenant.is_platform_owner,
         'is_trial_expired': tenant.is_trial_expired,
         'setup_steps': setup_steps,
         'setup_completion': setup_completion,
+        'intended_plan': tenant.intended_plan,
+        'intended_plan_name': intended_plan_name,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
@@ -635,7 +775,7 @@ def billing_view(request):
 
         try:
             if action == 'upgrade':
-                plan_slug = request.POST.get('plan')
+                plan_slug = request.POST.get('plan') or tenant.intended_plan
                 if plan_slug:
                     base_url = request.build_absolute_uri('/').rstrip('/')
                     result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
@@ -692,8 +832,10 @@ def billing_view(request):
         'usage': usage,
         'plans': plans,
         'current_plan': tenant.subscription_plan,
-        'is_trial': tenant.plan == 'trial',
+        'is_trial': tenant.plan == 'trial' and not tenant.is_platform_owner,
+        'is_platform_owner': tenant.is_platform_owner,
         'trial_days_remaining': tenant.trial_days_remaining,
+        'intended_plan': tenant.intended_plan if tenant.intended_plan and tenant.intended_plan != tenant.plan else '',
     }
     return render(request, 'saas/billing.html', context)
 
@@ -794,11 +936,11 @@ def replacement_create(request):
 def replacement_detail(request, pk):
     """View a glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    # Strict tenant check — deny if no tenant or tenant mismatch
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     # Build allowed status transitions for the UI
     status_transitions = []
@@ -824,11 +966,11 @@ def replacement_detail(request, pk):
 def replacement_edit(request, pk):
     """Edit an existing glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
@@ -851,26 +993,49 @@ def replacement_edit(request, pk):
 def replacement_update_status(request, pk):
     """Update the status of a glass replacement."""
     tenant = getattr(request, 'tenant', None)
-    replacement = get_object_or_404(Replacement, pk=pk)
-    
-    if not tenant or replacement.tenant_id != tenant.id:
-        messages.error(request, 'Access denied.')
-        return redirect('owner_dashboard')
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
 
     new_status = request.POST.get('status')
-    valid_statuses = ['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED']
-    
-    if new_status not in valid_statuses:
-        messages.error(request, 'Invalid status.')
-        return redirect('replacement_detail', pk=pk)
+
+    # Valid forward transitions only — no backward re-opening of closed replacements.
+    # COMPLETED replacements may already have invoice line items; re-opening them would
+    # cause the replacement to be invoiced again (double-billing).  DENIED replacements
+    # should require deliberate manual intervention, not an accidental status POST.
+    # (CODE-064: mirrors the CODE-061 guard applied to customer-portal repair views.)
+    ALLOWED_TRANSITIONS = {
+        'REQUESTED':   {'PENDING', 'APPROVED', 'DENIED'},
+        'PENDING':     {'APPROVED', 'DENIED'},
+        'APPROVED':    {'IN_PROGRESS', 'DENIED'},
+        'IN_PROGRESS': {'COMPLETED', 'DENIED'},
+        # COMPLETED and DENIED are terminal — no transitions allowed
+        'COMPLETED':   set(),
+        'DENIED':      set(),
+    }
 
     old_status = replacement.queue_status
+    allowed = ALLOWED_TRANSITIONS.get(old_status, set())
+
+    if new_status not in allowed:
+        if old_status in ('COMPLETED', 'DENIED'):
+            messages.error(
+                request,
+                f'This replacement is {replacement.get_queue_status_display()} and cannot be changed. '
+                f'Contact support if a correction is needed.'
+            )
+        else:
+            messages.error(request, f'Invalid status transition from {old_status} to {new_status}.')
+        return redirect('replacement_detail', pk=pk)
+
     replacement.queue_status = new_status
     replacement.save()
 
     status_display = replacement.get_queue_status_display()
     messages.success(request, f'Status updated to {status_display}.')
-    
+
     return redirect('replacement_detail', pk=pk)
 
 
@@ -953,8 +1118,8 @@ def billing_cancel(request):
 
 
 @owner_or_manager_required
-def billing_portal_redirect(request):
-    """GET /owner/billing/portal/ — redirect to Stripe Billing Portal."""
+def update_payment_method(request):
+    """GET /owner/update-payment-method/ — redirect to Stripe Billing Portal for card update."""
     tenant, membership = _get_owner_tenant(request)
     if not tenant or not membership:
         messages.error(request, 'Access denied.')
@@ -970,8 +1135,140 @@ def billing_portal_redirect(request):
         return redirect('billing_settings')
 
 
+@owner_or_manager_required
+def billing_portal_redirect(request):
+    """GET /owner/billing/portal/ — redirect to Stripe Billing Portal."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership:
+        messages.error(request, 'Access denied.')
+        return redirect('billing_settings')
+
+    if tenant.is_platform_owner:
+        messages.info(request, 'Platform owner accounts have a permanent plan — no billing portal needed.')
+        return redirect('billing_settings')
+
+    svc = SubscriptionService()
+    try:
+        return_url = request.build_absolute_uri('/owner/billing/')
+        portal_url = svc.create_billing_portal_session(tenant, return_url)
+        return redirect(portal_url)
+    except SubscriptionError as e:
+        messages.error(request, str(e))
+        return redirect('billing_settings')
+
+
 # ------------------------------------------------------------------
-# 9. Owner Settings
+# 9. Stripe Connect (Receive Invoice Payments)
+# ------------------------------------------------------------------
+
+@owner_or_manager_required
+def connect_setup(request):
+    """POST /owner/payments/setup/ — start Stripe Connect onboarding."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role != 'owner':
+        messages.error(request, 'Only the shop owner can set up payment processing.')
+        return redirect('owner_dashboard')
+
+    if request.method != 'POST':
+        # GET — show the setup page with current status
+        return render(request, 'saas/connect_setup.html', {
+            'tenant': tenant,
+            'membership': membership,
+        })
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    if not svc.is_enabled():
+        messages.error(request, 'Payment processing is not available at this time.')
+        return redirect('billing_settings')
+
+    try:
+        return_url = request.build_absolute_uri('/owner/payments/setup/return/')
+        refresh_url = request.build_absolute_uri('/owner/payments/setup/refresh/')
+        onboarding_url = svc.create_connect_account(tenant, return_url, refresh_url)
+        return redirect(onboarding_url)
+    except ConnectError as e:
+        messages.error(request, f'Failed to start payment setup: {e}')
+        return redirect('billing_settings')
+
+
+@owner_or_manager_required
+def connect_return(request):
+    """GET /owner/payments/setup/return/ — user returned from Stripe onboarding."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('owner_dashboard')
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    try:
+        status = svc.sync_account_status(tenant)
+        if status.get('charges_enabled'):
+            messages.success(
+                request,
+                '✅ Payment processing is set up! Your customers can now pay invoices '
+                'online and funds will go directly to your bank account.'
+            )
+        elif status.get('details_submitted'):
+            messages.info(
+                request,
+                'Your information has been submitted. Stripe is reviewing your account — '
+                'this usually takes 1-2 business days. We\'ll notify you when it\'s ready.'
+            )
+        else:
+            messages.warning(
+                request,
+                'It looks like you didn\'t complete all the setup steps. '
+                'Click "Set Up Payments" to continue where you left off.'
+            )
+    except ConnectError as e:
+        messages.error(request, f'Error checking account status: {e}')
+
+    return redirect('billing_settings')
+
+
+@owner_or_manager_required
+def connect_refresh(request):
+    """GET /owner/payments/setup/refresh/ — onboarding link expired, create new one."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role != 'owner':
+        return redirect('billing_settings')
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    try:
+        return_url = request.build_absolute_uri('/owner/payments/setup/return/')
+        refresh_url = request.build_absolute_uri('/owner/payments/setup/refresh/')
+        onboarding_url = svc.create_connect_account(tenant, return_url, refresh_url)
+        return redirect(onboarding_url)
+    except ConnectError as e:
+        messages.error(request, f'Failed to restart payment setup: {e}')
+        return redirect('billing_settings')
+
+
+@owner_or_manager_required
+def connect_dashboard(request):
+    """GET /owner/payments/dashboard/ — redirect to Stripe Express Dashboard."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('owner_dashboard')
+
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
+    try:
+        dashboard_url = svc.create_login_link(tenant)
+        return redirect(dashboard_url)
+    except ConnectError as e:
+        messages.error(request, f'Unable to access payment dashboard: {e}')
+        return redirect('billing_settings')
+
+
+# ------------------------------------------------------------------
+# 10. Owner Settings
 # ------------------------------------------------------------------
 
 @owner_or_manager_required
@@ -1048,7 +1345,9 @@ def owner_settings_view(request):
             # Update shop location + tax rate breakdown
             try:
                 from decimal import Decimal, InvalidOperation
+                from apps.billing.models import TaxRate as _TaxRate
                 config = BillingConfig.get_for_tenant(tenant)
+                config.company_address = request.POST.get('company_address', '').strip()
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
                 config.company_zip = request.POST.get('company_zip', '').strip()
@@ -1060,7 +1359,7 @@ def owner_settings_view(request):
                     except (InvalidOperation, ValueError):
                         return Decimal(default)
 
-                config.state_tax_rate = _dec('state_tax_rate', '6.500')
+                config.state_tax_rate = _dec('state_tax_rate', '0')
                 config.county_tax_rate = _dec('county_tax_rate', '0')
                 config.city_tax_rate = _dec('city_tax_rate', '0')
                 config.special_tax_rate = _dec('special_tax_rate', '0')
@@ -1077,7 +1376,51 @@ def owner_settings_view(request):
 
                 config.save()
                 from django.core.cache import cache
-                cache.delete('billing_config_tax')
+                cache.delete(f'billing_config_tax_{tenant.pk}')
+
+                # CODE-103: sync TaxRate records so TaxService.is_tax_enabled() works.
+                # TaxService checks TaxRate.objects.filter(tenant=tenant, is_active=True)
+                # NOT BillingConfig.tax_enabled — so we MUST create/update a TaxRate row
+                # or tax will never actually be applied to invoices even when the rate is set.
+                if config.default_tax_rate > 0:
+                    # CODE-131: Create TaxRate even without city/state.
+                    # TaxService checks TaxRate rows, not BillingConfig — without
+                    # a row, tax is silently never applied.
+                    _city = config.company_city or ''
+                    _state = config.company_state or ''
+
+                    # Try to find existing row for this tenant
+                    existing = _TaxRate.objects.filter(tenant=tenant).first()
+                    if not existing and _city and _state:
+                        existing = _TaxRate.objects.filter(
+                            tenant=tenant, city__iexact=_city, state__iexact=_state
+                        ).first()
+                    if existing:
+                        existing.state_rate = config.state_tax_rate
+                        existing.county_rate = config.county_tax_rate
+                        existing.city_rate = config.city_tax_rate
+                        existing.special_rate = config.special_tax_rate
+                        existing.is_active = True
+                        if _city:
+                            existing.city = _city
+                        if _state:
+                            existing.state = _state
+                        existing.save()
+                    else:
+                        _TaxRate.objects.create(
+                            tenant=tenant,
+                            city=_city,
+                            state=_state,
+                            state_rate=config.state_tax_rate,
+                            county_rate=config.county_tax_rate,
+                            city_rate=config.city_tax_rate,
+                            special_rate=config.special_tax_rate,
+                            is_active=True,
+                        )
+                elif config.default_tax_rate <= 0:
+                    # No rate → deactivate all TaxRate rows for this tenant
+                    _TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+
                 messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
             except Exception as e:
                 logger.error(f"Error updating billing config: {e}")
@@ -1114,11 +1457,51 @@ def owner_settings_view(request):
             # Update batch invoicing configuration
             try:
                 config = BillingConfig.get_for_tenant(tenant)
-                config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
-                config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
+
+                # Validate frequency against canonical choices — an unrecognised
+                # value would be silently saved and then cause batch invoicing to
+                # never run (the task's _should_run_batch_today() returns False for
+                # any unknown frequency).  (CODE-201)
+                raw_freq = request.POST.get('batch_invoice_frequency', 'disabled')
+                valid_frequencies = {code for code, _ in BillingConfig.BATCH_FREQUENCY_CHOICES}
+                if raw_freq not in valid_frequencies:
+                    messages.error(
+                        request,
+                        f'Invalid batch invoice frequency: {raw_freq!r}. '
+                        f'Must be one of: {", ".join(sorted(valid_frequencies))}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+
+                raw_day = request.POST.get('batch_invoice_day', '1')
+                try:
+                    batch_day = int(raw_day)
+                except (ValueError, TypeError):
+                    messages.error(request, 'Batch invoice day must be a number.')
+                    return redirect('/owner/settings/?tab=billing')
+
+                # Validate day range based on frequency:
+                #   weekly/biweekly → 0-6 (Monday=0, Sunday=6)
+                #   monthly         → 1-28
+                #   disabled        → day is irrelevant, accept any valid int
+                if raw_freq in ('weekly', 'biweekly') and not (0 <= batch_day <= 6):
+                    messages.error(
+                        request,
+                        f'Batch invoice day must be 0–6 for weekly/bi-weekly scheduling '
+                        f'(0=Monday … 6=Sunday). Got: {batch_day}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+                if raw_freq == 'monthly' and not (1 <= batch_day <= 28):
+                    messages.error(
+                        request,
+                        f'Batch invoice day must be 1–28 for monthly scheduling. Got: {batch_day}.'
+                    )
+                    return redirect('/owner/settings/?tab=billing')
+
+                config.batch_invoice_frequency = raw_freq
+                config.batch_invoice_day = batch_day
                 config.batch_invoice_auto_send = request.POST.get('batch_invoice_auto_send') == '1'
                 config.save(update_fields=['batch_invoice_frequency', 'batch_invoice_day', 'batch_invoice_auto_send'])
-                
+
                 if config.batch_invoice_frequency != 'disabled':
                     messages.success(request, f'Batch invoicing enabled: {config.batch_invoice_frequency} on day {config.batch_invoice_day}.')
                 else:
@@ -1127,6 +1510,38 @@ def owner_settings_view(request):
                 logger.error(f"Error updating batch invoice settings: {e}")
                 messages.error(request, 'Could not update batch invoice settings.')
             return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'email_templates':
+            try:
+                config = BillingConfig.get_for_tenant(tenant)
+                config.invoice_email_template = request.POST.get('invoice_email_template', '').strip()
+                config.reminder_email_template = request.POST.get('reminder_email_template', '').strip()
+                config.save(update_fields=['invoice_email_template', 'reminder_email_template'])
+                messages.success(request, 'Email templates saved.')
+            except Exception as e:
+                logger.error(f"Error saving email templates: {e}")
+                messages.error(request, 'Could not save email templates.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'review_settings':
+            try:
+                from apps.technician_portal.review_models import ReviewConfig
+                review_config = ReviewConfig.get_for_tenant(tenant)
+                review_config.is_enabled = request.POST.get('review_enabled') == 'on'
+                review_config.google_review_url = request.POST.get('google_review_url', '').strip()
+                review_config.email_subject = (
+                    request.POST.get('email_subject', '').strip()
+                    or "How was your experience with {shop_name}?"
+                )
+                review_config.email_body_template = request.POST.get('email_body_template', '').strip()
+                review_config.save(update_fields=[
+                    'is_enabled', 'google_review_url', 'email_subject', 'email_body_template',
+                ])
+                messages.success(request, 'Review settings saved.')
+            except Exception as e:
+                logger.error(f"Error saving review settings: {e}")
+                messages.error(request, 'Could not save review settings.')
+            return redirect('/owner/settings/?tab=reviews')
 
         # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
@@ -1172,10 +1587,9 @@ def owner_settings_view(request):
     for cust in customers:
         cust.portal_user = customer_users.get(cust.id)
 
-    # Tax rates for Billing tab
-    tax_rates = TaxRate.objects.filter(
-        models.Q(tenant=tenant) | models.Q(tenant__isnull=True)
-    ).order_by('state', 'city')
+    # Tax rates were removed from owner_settings.html (billing tab now uses BillingConfig
+    # component rates directly).  This query was fetching 349+ shared AR reference rows
+    # on every settings page load for no reason — CODE-101.
     try:
         billing_config = BillingConfig.get_for_tenant(tenant)
         tax_enabled = billing_config.tax_enabled
@@ -1191,6 +1605,48 @@ def owner_settings_view(request):
         tenant=tenant, primary_technician__isnull=False
     ).exists()
 
+    # Overdue reminder day choices (checkboxes) and active selections
+    reminder_day_choices = [
+        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
+        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
+        ('60', '2 months'), ('90', '3 months'),
+    ]
+    active_reminder_days = []
+    if billing_config and billing_config.overdue_reminder_days:
+        active_reminder_days = [
+            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
+        ]
+
+    # Batch invoicing: month day choices for dropdown.
+    # Use proper ordinal logic: 11/12/13 are always "th" (not "st"/"nd"/"rd"),
+    # then cycle by last digit.  The inline ternary chain previously used
+    # `d == 1`, `d == 2`, `d == 3` which produced "11st", "12nd", "21th", etc.
+    # (CODE-148)
+    def _ordinal_suffix(n):
+        if 10 <= n % 100 <= 20:
+            return 'th'
+        return {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+    batch_month_days = [{'value': d, 'label': f'{d}{_ordinal_suffix(d)} of the month'} for d in range(1, 29)]
+
+    # Review request settings + recent requests
+    from apps.technician_portal.review_models import ReviewConfig, ReviewRequest
+    review_config = ReviewConfig.get_for_tenant(tenant)
+    recent_review_requests = (
+        ReviewRequest.objects
+        .filter(tenant=tenant)
+        .select_related('customer', 'repair')
+        .order_by('-created_at')[:10]
+    )
+
+    # Warranty policies for the Warranty tab
+    warranty_policies = (
+        WarrantyPolicy.objects
+        .filter(tenant=tenant)
+        .select_related('customer')
+        .order_by('applies_to', 'name')
+    )
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1198,11 +1654,18 @@ def owner_settings_view(request):
         'shop_join_url': shop_join_url,
         'customers': customers,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
-        'tax_rates': tax_rates,
         'tax_enabled': tax_enabled,
         'billing_config': billing_config,
         'active_tab': active_tab,
         'any_customer_has_primary_tech': any_customer_has_primary_tech,
+        'reminder_day_choices': reminder_day_choices,
+        'active_reminder_days': active_reminder_days,
+        'batch_month_days': batch_month_days,
+        'review_config': review_config,
+        'recent_review_requests': recent_review_requests,
+        'warranty_policies': warranty_policies,
+        'warranty_applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
+        'warranty_duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -1228,8 +1691,8 @@ def invite_member(request):
     last_name = request.POST.get('last_name', '').strip()
     role = request.POST.get('role', 'viewer')
 
-    # Usage limit check for technicians
-    if role == 'technician' and tenant:
+    # Usage limit check for technicians AND managers (both consume Technician seats)
+    if role in ('technician', 'manager') and tenant:
         from apps.tenants.services.usage_service import UsageService
         can_add, limit_msg = UsageService(tenant).can_add_technician()
         if not can_add:
@@ -1253,6 +1716,15 @@ def invite_member(request):
         messages.error(request, 'Invalid role selected.')
         return redirect('owner_settings')
 
+    # Privilege escalation guard: managers cannot invite other managers.
+    # Only shop owners can grant manager-level access.  Without this check,
+    # a manager can run the invite flow with role=manager (the role validation
+    # above allows it) and create a peer manager without the owner's knowledge.
+    # (CODE-206)
+    if membership.role == 'manager' and role == 'manager':
+        messages.error(request, 'Only the shop owner can invite managers.')
+        return redirect('owner_settings')
+
     # Check if user already exists
     user = User.objects.filter(email=email).first()
     if not user:
@@ -1273,12 +1745,91 @@ def invite_member(request):
     if existing:
         if existing.is_active:
             messages.warning(request, f'{email} is already a team member.')
+            return redirect('owner_settings')
         else:
+            # Re-activate the membership with the new role
             existing.is_active = True
             existing.role = role
             existing.save()
-            messages.success(request, f'{email} has been re-added to the team.')
-        return redirect('owner_settings')
+
+            # Re-activate / update Technician record if they need tech portal access.
+            # Without this, the re-added member's Technician.is_active stays False and
+            # they cannot log in to the technician portal.  Also sync is_manager and
+            # can_repair/can_replace to reflect the new role + ability checkboxes.
+            with transaction.atomic():
+                if role in ('technician', 'manager'):
+                    from django.contrib.auth.models import Group
+                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+                    user.groups.add(tech_group)
+
+                    # Update or create the Technician record for this tenant
+                    Technician.objects.update_or_create(
+                        user=user,
+                        tenant=tenant,
+                        defaults={
+                            'is_active': True,
+                            'is_manager': (role == 'manager'),
+                            'can_repair': can_repair,
+                            'can_replace': can_replace,
+                        },
+                    )
+                else:
+                    # Non-tech role: deactivate any lingering Technician record
+                    try:
+                        tech = Technician.objects.get(user=user, tenant=tenant)
+                        tech.is_active = False
+                        tech.save(update_fields=['is_active'])
+                    except Technician.DoesNotExist:
+                        pass
+
+                # Create a fresh InviteToken so they get a password-reset link.
+                # (Their old token may have expired or been consumed.)
+                from apps.tenants.models import InviteToken
+                invite_token = InviteToken(
+                    tenant=tenant,
+                    user=user,
+                    role=role,
+                    invited_by=request.user,
+                )
+                invite_token.save()
+
+            invite_url = request.build_absolute_uri(f"/invite/{invite_token.token}/")
+
+            # Try to send a fresh invite email so they can regain access
+            email_sent = False
+            try:
+                from django.core.mail import send_mail
+                from django.conf import settings
+
+                inviter_name = request.user.get_full_name() or request.user.email
+                subject = f"You've been re-added to {tenant.name} on RS Systems"
+                from core.email_utils import send_branded_email
+                send_branded_email(
+                    subject=subject,
+                    recipient_list=[email],
+                    headline=f"Welcome Back to {tenant.name}!",
+                    body_paragraphs=[
+                        f"Hi {user.first_name or user.email},",
+                        f"{inviter_name} has re-added you to {tenant.name} as a {role}.",
+                        "Click the button below to set your password and get back in. This link expires in 7 days.",
+                    ],
+                    button_text='🔑 Set Password & Log In',
+                    button_url=invite_url,
+                    tenant=tenant,
+                )
+                email_sent = True
+            except Exception as e:
+                logger.warning(f"Failed to send re-invite email to {email}: {e}")
+
+            if email_sent:
+                messages.success(request, f'{email} has been re-added to the team. A fresh invite email has been sent.')
+            else:
+                messages.success(
+                    request,
+                    f'{email} has been re-added to the team. '
+                    f'Email could not be sent. Share this link manually: {invite_url}'
+                )
+            return redirect('owner_settings')
 
     with transaction.atomic():
         TenantMembership.objects.create(
@@ -1323,21 +1874,20 @@ def invite_member(request):
 
         inviter_name = request.user.get_full_name() or request.user.email
         subject = f"You're invited to join {tenant.name} on RS Systems"
-        body = (
-            f"Hi {first_name},\n\n"
-            f"{inviter_name} has invited you to join {tenant.name} as a {role}.\n\n"
-            f"Click here to set your password and get started:\n"
-            f"{invite_url}\n\n"
-            f"This link expires in 7 days.\n\n"
-            f"— RS Systems"
-        )
 
-        send_mail(
+        from core.email_utils import send_branded_email
+        send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
-            fail_silently=False,
+            headline=f"You're Invited to {tenant.name}!",
+            body_paragraphs=[
+                f"Hi {first_name},",
+                f"{inviter_name} has invited you to join {tenant.name} as a {role}.",
+                "Click the button below to set your password and get started. This link expires in 7 days.",
+            ],
+            button_text='🚀 Accept Invitation',
+            button_url=invite_url,
+            tenant=tenant,
         )
         email_sent = True
     except Exception as e:
@@ -1363,11 +1913,78 @@ def invite_member(request):
 # 10. Shop Join — Customer Self-Signup (Phase 4)
 # ------------------------------------------------------------------
 
+@ratelimit(key='ip', rate='10/h', method='POST', block=False)
 def shop_join_view(request, slug):
     """Public page: /join/<slug>/ — customer self-signup for a shop's portal."""
+    from apps.customer_portal.models import CustomerUser as CustomerUserModel
     tenant = get_object_or_404(Tenant, slug=slug, is_active=True)
 
+    # If the user is already authenticated, check if they already have a
+    # customer record at this tenant.  If so, redirect them to the portal.
+    # If not, create one automatically so they don't get stuck with a
+    # "please log in" error that leads nowhere.  (CODE-093)
+    if request.user.is_authenticated:
+        existing_cu = CustomerUserModel.objects.filter(
+            user=request.user, customer__tenant=tenant
+        ).first()
+        if existing_cu:
+            request.session['tenant_id'] = tenant.id
+            messages.info(request, f"You already have access to {tenant.name}.")
+            return redirect('customer_dashboard')
+
+        # Check if user already has a CustomerUser at a DIFFERENT shop.
+        # CustomerUser.user is a OneToOneField — only one CustomerUser record
+        # per Django User globally. Creating a second one would crash with
+        # IntegrityError. (CODE-113)
+        any_cu = CustomerUserModel.objects.filter(user=request.user).select_related('customer__tenant').first()
+        if any_cu:
+            other_shop = any_cu.customer.tenant.name if any_cu.customer and any_cu.customer.tenant else 'another shop'
+            messages.warning(
+                request,
+                f"Your account is already linked to {other_shop}. "
+                f"Customer portal accounts are tied to a single shop. "
+                f"To access {tenant.name}'s portal, please ask the shop admin "
+                f"to invite you using a different email address."
+            )
+            return redirect('customer_dashboard')
+
+        # Authenticated user, no customer record at any shop — create one automatically
+        with transaction.atomic():
+            customer_name = (
+                request.user.get_full_name() or request.user.email
+            )
+            # Avoid duplicate customer names within this tenant
+            if Customer.objects.filter(tenant=tenant, name=customer_name).exists():
+                customer_name = f"{customer_name} ({request.user.email})"
+            customer = Customer.objects.create(
+                tenant=tenant,
+                name=customer_name,
+                customer_type='RETAIL',
+                email=request.user.email,
+            )
+            CustomerUserModel.objects.create(
+                user=request.user,
+                customer=customer,
+                is_primary_contact=True,
+            )
+            TenantMembership.objects.get_or_create(
+                tenant=tenant,
+                user=request.user,
+                defaults={'role': 'viewer'},
+            )
+        request.session['tenant_id'] = tenant.id
+        messages.success(request, f"Welcome to {tenant.name}! Your portal account is ready.")
+        return redirect('customer_dashboard')
+
     if request.method == 'POST':
+        # Enforce IP-based rate limit (set by @ratelimit decorator)
+        if getattr(request, 'limited', False):
+            return render(request, 'saas/shop_join.html', {
+                'tenant': tenant,
+                'errors': ['Too many registration attempts. Please try again later.'],
+                'form_data': {},
+            })
+
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
         email = request.POST.get('email', '').strip().lower()
@@ -1395,9 +2012,15 @@ def shop_join_view(request, slug):
             except ValidationError as e:
                 errors.extend(e.messages)
 
-        # Check email uniqueness
+        # Check email uniqueness.  Note: if the user finds this error, they
+        # should log in at /login/?next=/join/<slug>/ — after login the view
+        # will detect their existing account and create a CustomerUser record
+        # automatically (see the is_authenticated branch at the top of this view).
         if email and User.objects.filter(email=email).exists():
-            errors.append('An account with this email already exists. Please log in instead.')
+            errors.append(
+                'An account with this email already exists. '
+                'Please log in to access this portal.'
+            )
 
         if errors:
             return render(request, 'saas/shop_join.html', {
@@ -1511,6 +2134,16 @@ def update_team_member(request, membership_id):
     # Only owners can change roles
     if new_role != target.role and my_membership.role != 'owner':
         messages.error(request, 'Only the shop owner can change member roles.')
+        return redirect('owner_settings')
+
+    # Managers can only update technicians — not other managers or owners.
+    # Without this check, a manager can POST with role=manager (matching the
+    # target's current role so the role-change guard above doesn't fire) and
+    # silently modify a peer manager's can_repair/can_replace abilities.
+    # Only the shop owner should be able to edit manager or owner records.
+    # (CODE-212)
+    if my_membership.role == 'manager' and target.role in ('manager', 'owner'):
+        messages.error(request, 'Managers can only update technician team members.')
         return redirect('owner_settings')
 
     # Validate role
@@ -1666,21 +2299,20 @@ def resend_invite(request, membership_id):
 
         inviter_name = request.user.get_full_name() or request.user.email
         subject = f"Reminder: You're invited to join {tenant.name} on RS Systems"
-        body = (
-            f"Hi {target.user.first_name},\n\n"
-            f"{inviter_name} has re-sent your invitation to join {tenant.name} as a {target.get_role_display()}.\n\n"
-            f"Click here to set your password and get started:\n"
-            f"{invite_url}\n\n"
-            f"This link expires in 7 days.\n\n"
-            f"— RS Systems"
-        )
 
-        send_mail(
+        from core.email_utils import send_branded_email
+        send_branded_email(
             subject=subject,
-            message=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[target.user.email],
-            fail_silently=False,
+            headline=f"Reminder: Join {tenant.name}",
+            body_paragraphs=[
+                f"Hi {target.user.first_name},",
+                f"{inviter_name} has re-sent your invitation to join {tenant.name} as a {target.get_role_display()}.",
+                "Click the button below to set your password and get started. This link expires in 7 days.",
+            ],
+            button_text='🚀 Accept Invitation',
+            button_url=invite_url,
+            tenant=tenant,
         )
         email_sent = True
     except Exception as e:
@@ -1718,7 +2350,7 @@ def owner_invoice_list(request):
     # This catches invoices that became overdue since last check
     Invoice.objects.filter(
         customer__tenant=tenant,
-        status__in=['SENT', 'PARTIAL', 'DRAFT'],
+        status__in=['SENT', 'PARTIAL'],
         due_date__lt=timezone.now().date(),
     ).update(status='OVERDUE')
 
@@ -1825,6 +2457,17 @@ def owner_invoice_list(request):
                 'total': info['total'],
             })
 
+    # Default payment terms for invoice creation modal (CODE-153)
+    from apps.billing.models import BillingConfig
+    try:
+        billing_config = BillingConfig.get_for_tenant(tenant)
+        default_payment_terms = billing_config.default_payment_terms
+    except Exception:
+        default_payment_terms = 'COD'
+    terms_display = dict(BillingConfig.PAYMENT_TERMS_CHOICES).get(
+        default_payment_terms, default_payment_terms
+    )
+
     context = {
         'tenant': tenant,
         'invoices': invoices,
@@ -1837,6 +2480,8 @@ def owner_invoice_list(request):
         'payments_month_amount': payments_month_amount,
         'invoices_this_month': invoices_this_month,
         'uninvoiced_customers': uninvoiced_customers,
+        'default_payment_terms': default_payment_terms,
+        'default_payment_terms_display': terms_display,
     }
     return render(request, 'saas/owner_invoices.html', context)
 
@@ -1859,10 +2504,28 @@ def owner_invoice_detail(request, invoice_id):
         if choice[0] != 'STRIPE'
     ]
 
-    # PDF download URL
-    pdf_url = None
-    if invoice.s3_key:
-        pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+    # PDF download URL — use model method so bucket name is read from settings,
+    # not hardcoded.  Works correctly in dev/prod/staging.
+    pdf_url = invoice.get_pdf_url()
+
+    # Resolve recipient email for send confirmation preview (CODE-112)
+    recipient_email = None
+    try:
+        prefs = invoice.customer.repair_preferences
+        recipient_email = prefs.billing_email or invoice.customer.email
+    except Exception:
+        recipient_email = invoice.customer.email
+
+    # Render saved reminder template if one exists (CODE-113)
+    rendered_reminder_default = ''
+    try:
+        config = BillingConfig.get_for_tenant(tenant)
+        if config.reminder_email_template:
+            from apps.billing.services.reminder_service import ReminderService
+            svc = ReminderService(tenant=tenant)
+            rendered_reminder_default = svc._render_template(config.reminder_email_template, invoice)
+    except Exception:
+        pass
 
     context = {
         'tenant': tenant,
@@ -1872,6 +2535,8 @@ def owner_invoice_detail(request, invoice_id):
         'payment_methods': payment_methods,
         'payment_terms_choices': BillingConfig.PAYMENT_TERMS_CHOICES,
         'pdf_url': pdf_url,
+        'recipient_email': recipient_email,
+        'rendered_reminder_default': rendered_reminder_default,
         'today': timezone.now().date(),
     }
     return render(request, 'saas/owner_invoice_detail.html', context)
@@ -1907,13 +2572,6 @@ def owner_record_payment(request, invoice_id):
         messages.error(request, 'Payment amount must be greater than zero.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
-    if amount > invoice.amount_due:
-        messages.error(
-            request,
-            f'Payment amount (${amount}) exceeds the amount due (${invoice.amount_due}).'
-        )
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
-
     if invoice.status in ('PAID', 'CANCELLED'):
         messages.error(request, f'Cannot record payment — invoice is {invoice.get_status_display()}.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
@@ -1935,10 +2593,31 @@ def owner_record_payment(request, invoice_id):
             return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
     # Create the Payment record
+    # NOTE: The amount_due check must happen INSIDE the transaction with a row-level
+    # lock (select_for_update) to prevent a TOCTOU race where two concurrent payment
+    # submissions both read the same stale amount_due and both pass validation,
+    # resulting in overpayment. (CODE-056)
     try:
         with transaction.atomic():
+            # Re-read the invoice under an exclusive row lock so our amount_due
+            # check reflects any concurrent payment that may have just committed.
+            invoice_locked = Invoice.objects.select_for_update().get(pk=invoice.id)
+
+            # Re-check status inside the lock (it could have changed concurrently)
+            if invoice_locked.status in ('PAID', 'CANCELLED'):
+                raise ValueError(
+                    f'Cannot record payment — invoice is {invoice_locked.get_status_display()}.'
+                )
+
+            # Validate amount against the fresh, locked amount_due
+            if amount > invoice_locked.amount_due:
+                raise ValueError(
+                    f'Payment amount (${amount}) exceeds the remaining balance '
+                    f'(${invoice_locked.amount_due}).'
+                )
+
             payment = Payment.objects.create(
-                invoice=invoice,
+                invoice=invoice_locked,
                 amount=amount,
                 payment_date=payment_date,
                 payment_method=payment_method,
@@ -1946,7 +2625,7 @@ def owner_record_payment(request, invoice_id):
                 notes=notes,
                 recorded_by=request.user,
             )
-            # Payment.save() already calls _update_invoice_totals()
+            # Payment.save() already calls _update_invoice_totals() with its own lock
 
         # Send payment confirmation emails (best-effort, don't fail the request)
         try:
@@ -1962,6 +2641,10 @@ def owner_record_payment(request, invoice_id):
             f'{payment.get_payment_method_display()}.'
         )
 
+    except ValueError as e:
+        # Validation error raised inside the transaction (race condition guard,
+        # overpayment check, status check).  Surface the specific message to the user.
+        messages.error(request, str(e))
     except Exception as e:
         logger.error(f"Error recording payment for invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while recording the payment. Please try again.')
@@ -2100,12 +2783,29 @@ def owner_toggle_tax(request):
         return redirect('/owner/settings/?tab=billing')
 
     try:
+        from django.core.cache import cache
+        from apps.billing.models import TaxRate
+
         config = BillingConfig.get_for_tenant(tenant)
         config.tax_enabled = not config.tax_enabled
         config.save()
-        from django.core.cache import cache
-        cache.delete('billing_config_tax')
-        
+        cache.delete(f'billing_config_tax_{tenant.pk}')
+
+        # CODE-099: Sync TaxRate.is_active with the new tax_enabled state.
+        # TaxService.is_tax_enabled() for tenant-aware paths checks
+        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() —
+        # it does NOT read BillingConfig.tax_enabled.  Without this sync,
+        # toggling tax off via this button leaves active TaxRate records so
+        # tax still gets charged on every invoice.  Toggling back on would
+        # then show no rates active (all still deactivated from the first
+        # disable), so it also needs to reactivate existing rates.
+        if not config.tax_enabled:
+            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+        else:
+            # Re-enable all rates for this tenant when tax is turned back on.
+            # The owner can fine-tune individual rates on the tax rates page.
+            TaxRate.objects.filter(tenant=tenant).update(is_active=True)
+
         status = 'enabled' if config.tax_enabled else 'disabled'
         messages.success(request, f'Sales tax calculation {status}.')
     except Exception as e:
@@ -2132,48 +2832,67 @@ def owner_send_invoice(request, invoice_id):
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
     try:
-        # Update status to SENT
-        invoice.status = 'SENT'
-        invoice.sent_at = timezone.now()
-        invoice.save(update_fields=['status', 'sent_at'])
-        
-        # Try to email the invoice
+        # Resolve recipient email
+        recipient = None
+        try:
+            prefs = invoice.customer.repair_preferences
+            recipient = prefs.billing_email or invoice.customer.email
+        except Exception:
+            recipient = invoice.customer.email
+
+        # CODE-112: Block send entirely if no email on file
+        if not recipient:
+            messages.error(
+                request,
+                f'Cannot send invoice — no email address on file for {invoice.customer.name}. '
+                f'Add an email in the customer\'s settings first.'
+            )
+            return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+        # Attempt email delivery
         email_sent = False
         try:
             from apps.billing.services.invoice_email_service import InvoiceEmailService
             email_service = InvoiceEmailService(tenant=tenant)
-            
-            # Get recipient email
-            recipient = None
-            try:
-                prefs = invoice.customer.repair_preferences
-                recipient = prefs.billing_email or invoice.customer.email
-            except Exception:
-                recipient = invoice.customer.email
-            
-            if recipient:
-                # Get repair IDs from line items
-                repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-                
-                if repair_ids:
-                    success, msg = email_service.send_invoice_email(
-                        customer_id=invoice.customer.id,
-                        recipient_email=recipient,
-                        repair_ids=repair_ids,
-                    )
-                    email_sent = success
-                    if not success:
-                        logger.warning(f"Invoice email failed: {msg}")
-                else:
-                    logger.warning(f"No repair IDs found on invoice {invoice.invoice_number} for email")
+
+            repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
+
+            # Pass stored invoice metadata so the emailed PDF matches the owner's records (CODE-120).
+            from datetime import datetime as _dt2
+            _sd2 = invoice.invoice_date
+            if _sd2 and not isinstance(_sd2, _dt2):
+                from django.utils import timezone as _tz2
+                _stored_dt2 = _tz2.make_aware(_dt2.combine(_sd2, _dt2.min.time()))
+            else:
+                _stored_dt2 = _sd2
+
+            success, msg = email_service.send_invoice_email(
+                customer_id=invoice.customer.id,
+                recipient_email=recipient,
+                repair_ids=repair_ids if repair_ids else None,
+                invoice_number=invoice.invoice_number,
+                invoice_date=_stored_dt2,
+            )
+            email_sent = success
+            if not success:
+                logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
         except Exception as e:
             logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
-        
+
+        # CODE-112: Only mark SENT if email actually delivered.
+        # If email fails, leave as DRAFT so the owner knows it didn't go out.
         if email_sent:
-            messages.success(request, f'Invoice {invoice.invoice_number} sent and emailed to customer.')
+            invoice.status = 'SENT'
+            invoice.sent_at = timezone.now()
+            invoice.save(update_fields=['status', 'sent_at'])
+            messages.success(request, f'Invoice {invoice.invoice_number} sent to {recipient}.')
         else:
-            messages.success(request, f'Invoice {invoice.invoice_number} marked as sent. (Email delivery may have failed - check customer email settings)')
-            
+            messages.error(
+                request,
+                f'Invoice {invoice.invoice_number} could NOT be sent — email delivery to {recipient} failed. '
+                f'The invoice remains as a draft. Please check the email address and try again.'
+            )
+
     except Exception as e:
         logger.error(f"Error sending invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while sending the invoice.')
@@ -2196,6 +2915,10 @@ def owner_email_invoice(request, invoice_id):
         messages.error(request, 'Cannot email a draft invoice. Send it first.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
+    if invoice.status == 'CANCELLED':
+        messages.error(request, 'Cannot email a cancelled (voided) invoice.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         email_service = InvoiceEmailService(tenant=tenant)
@@ -2214,11 +2937,23 @@ def owner_email_invoice(request, invoice_id):
             return redirect('owner_invoice_detail', invoice_id=invoice.id)
         
         repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-        
+
+        # Pass stored invoice metadata so the PDF attached to the email shows the
+        # same invoice number and date that the owner sees in the portal (CODE-120).
+        from datetime import datetime as _dt
+        _stored_date = invoice.invoice_date
+        if _stored_date and not isinstance(_stored_date, _dt):
+            from django.utils import timezone as _tz
+            _stored_dt = _tz.make_aware(_dt.combine(_stored_date, _dt.min.time()))
+        else:
+            _stored_dt = _stored_date
+
         success, msg = email_service.send_invoice_email(
             customer_id=invoice.customer.id,
             recipient_email=recipient,
             repair_ids=repair_ids if repair_ids else None,
+            invoice_number=invoice.invoice_number,
+            invoice_date=_stored_dt,
         )
         
         if success:
@@ -2234,6 +2969,7 @@ def owner_email_invoice(request, invoice_id):
 
 
 @owner_or_manager_required
+@require_POST
 def owner_send_reminder(request, invoice_id):
     """POST /owner/invoices/<id>/reminder/ — send payment reminder to customer."""
     tenant, membership = _get_owner_tenant(request)
@@ -2242,32 +2978,50 @@ def owner_send_reminder(request, invoice_id):
         return redirect('signup')
 
     invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
-    
+
     if invoice.status in ['PAID', 'CANCELLED', 'DRAFT']:
         messages.error(request, f'Cannot send reminder for {invoice.get_status_display().lower()} invoice.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
-    if not invoice.customer.email:
+    # Resolve the actual recipient — prefer CustomerRepairPreference.billing_email
+    # over customer.email so fleet customers with a dedicated AP address receive the
+    # reminder at the right inbox.  (CODE-128: guard was checking customer.email only,
+    # which blocked reminders for customers whose *only* email is billing_email.)
+    _reminder_recipient = None
+    try:
+        _reminder_prefs = invoice.customer.repair_preferences
+        _reminder_recipient = _reminder_prefs.billing_email or invoice.customer.email
+    except Exception:
+        _reminder_recipient = invoice.customer.email
+
+    if not _reminder_recipient:
         messages.error(request, 'No email address found for this customer.')
         return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+    # CODE-113: Accept optional custom message from editable textarea
+    custom_message = request.POST.get('custom_message', '').strip()
 
     try:
         from apps.billing.services.reminder_service import ReminderService
         reminder_service = ReminderService(tenant=tenant)
-        
+
         # Determine reminder type based on invoice status
         if invoice.status == 'OVERDUE' or (invoice.due_date and invoice.due_date < timezone.now().date()):
             reminder_type = 'overdue'
         else:
             reminder_type = 'due_soon'
-        
-        result = reminder_service.send_reminder(invoice, reminder_type)
-        
+
+        result = reminder_service.send_reminder(
+            invoice, reminder_type,
+            custom_body=custom_message if custom_message else None,
+        )
+
         if result.get('success'):
-            messages.success(request, f'Payment reminder sent to {invoice.customer.email}.')
+            # Show the actual recipient address so the owner knows where it went
+            messages.success(request, f'Payment reminder sent to {_reminder_recipient}.')
         else:
             messages.error(request, f'Failed to send reminder: {result.get("error", "Unknown error")}')
-            
+
     except Exception as e:
         logger.error(f"Error sending reminder for invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while sending the reminder.')
@@ -2360,18 +3114,62 @@ def owner_aging_report_csv(request):
         status__in=['SENT', 'PARTIAL', 'OVERDUE'],
     ).select_related('customer').order_by('due_date')
 
+    from decimal import Decimal
+
+    def _csv_safe(value):
+        """
+        Neutralise CSV formula injection.
+
+        Spreadsheet applications (Excel, LibreOffice, Google Sheets) treat a
+        cell value as a formula when it starts with '=', '+', '-', or '@'.
+        An attacker with control over user-supplied data (e.g. a customer name
+        like '=HYPERLINK(...)') could embed a payload that executes when an
+        accountant opens the exported file.
+
+        Fix: prefix any cell whose string representation starts with a formula
+        trigger character with a single-quote (').  The single-quote is the
+        standard spreadsheet escape; it forces the cell to be treated as text.
+        Numeric/date/None values are left untouched — only strings are checked.
+        (CODE-214)
+        """
+        if not isinstance(value, str):
+            return value
+        if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+            return "'" + value
+        return value
+
+    # Sanitise the tenant name used in the filename and header row.
+    # A shop name containing a double-quote would break the Content-Disposition
+    # header; strip/replace potentially dangerous characters.
+    safe_tenant_name = tenant.name.replace('"', '').replace('\n', '').replace('\r', '').replace(' ', '_')
+
     response = HttpResponse(content_type='text/csv')
-    response['Content-Disposition'] = f'attachment; filename="aging_report_{today}.csv"'
+    response['Content-Disposition'] = f'attachment; filename="{safe_tenant_name}_AR_Aging_{today}.csv"'
     writer = csv.writer(response)
-    writer.writerow(['Invoice #', 'Customer', 'Invoice Date', 'Due Date', 'Amount Due', 'Days Overdue', 'Bucket'])
+
+    # Header with report info
+    writer.writerow([f'AR Aging Report — {tenant.name}'])
+    writer.writerow([f'Generated: {today.strftime("%B %d, %Y")}'])
+    writer.writerow([])
+
+    # Column headers
+    writer.writerow([
+        'Customer', 'Invoice #', 'Invoice Date', 'Due Date',
+        'Total', 'Paid', 'Amount Due', 'Status',
+        'Days Overdue', 'Aging Bucket', 'Customer Email', 'Customer Phone',
+    ])
 
     bucket_label = {
         'current': 'Current',
-        '1_30': '1-30 days',
-        '31_60': '31-60 days',
-        '61_90': '61-90 days',
-        '90_plus': '90+ days',
+        '1_30': '1-30 Days',
+        '31_60': '31-60 Days',
+        '61_90': '61-90 Days',
+        '90_plus': '90+ Days',
     }
+
+    # Track bucket totals
+    bucket_totals = {k: Decimal('0.00') for k in bucket_label}
+    grand_total = Decimal('0.00')
 
     for inv in outstanding:
         days_old = (today - inv.due_date).days if inv.due_date else 0
@@ -2386,15 +3184,32 @@ def owner_aging_report_csv(request):
         else:
             bucket = '90_plus'
 
+        amount_due = inv.amount_due
+        bucket_totals[bucket] += amount_due
+        grand_total += amount_due
+
         writer.writerow([
-            inv.invoice_number,
-            inv.customer.name,
-            inv.invoice_date.strftime('%Y-%m-%d'),
-            inv.due_date.strftime('%Y-%m-%d') if inv.due_date else '',
-            f'{float(inv.amount_due):.2f}',
+            _csv_safe(inv.customer.name),
+            _csv_safe(inv.invoice_number),
+            inv.invoice_date.strftime('%m/%d/%Y'),
+            inv.due_date.strftime('%m/%d/%Y') if inv.due_date else '',
+            f'{float(inv.total):.2f}',
+            f'{float(inv.amount_paid):.2f}',
+            f'{float(amount_due):.2f}',
+            inv.get_status_display(),
             max(0, days_old),
             bucket_label[bucket],
+            _csv_safe(inv.customer.email or ''),
+            _csv_safe(inv.customer.phone or ''),
         ])
+
+    # Summary section
+    writer.writerow([])
+    writer.writerow(['SUMMARY'])
+    for key, label in bucket_label.items():
+        writer.writerow([label, '', '', '', '', '', f'{float(bucket_totals[key]):.2f}'])
+    writer.writerow([])
+    writer.writerow(['Total Outstanding', '', '', '', '', '', f'{float(grand_total):.2f}'])
 
     return response
 
@@ -2412,14 +3227,25 @@ def owner_customer_statement(request, customer_id):
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=tenant)
 
-    # All invoices for this customer, oldest first
+    # All invoices for this customer, oldest first.
+    # CODE-264: Add tenant filter for defense-in-depth tenant isolation (same
+    # pattern as CODE-255/262 applied to other invoice queries).
     invoices = Invoice.objects.filter(
         customer=customer,
+        tenant=tenant,
     ).prefetch_related('payments').order_by('invoice_date', 'created_at')
 
-    # All payments for this customer, chronological
+    # All payments for this customer, chronological.
+    # CODE-264: Add tenant filter via invoice__tenant for defense-in-depth.
+    # Also exclude payments for soft-deleted invoices: Payment's FK join
+    # bypasses InvoiceSoftDeleteManager, so without the deleted_at guard a
+    # soft-deleted invoice's payments appear as credits while the matching
+    # debit (the invoice itself) is excluded — creating an imbalanced
+    # running balance and overstating how much the customer has paid.
     payments = Payment.objects.filter(
         invoice__customer=customer,
+        invoice__tenant=tenant,
+        invoice__deleted_at__isnull=True,
     ).select_related('invoice').order_by('payment_date', 'created_at')
 
     # Build a unified timeline for running balance
@@ -2591,6 +3417,18 @@ def owner_setup_view(request):
 
     completion = _setup_completion(tenant)
 
+    # Overdue reminder day choices (checkboxes) and active selections
+    reminder_day_choices = [
+        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
+        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
+        ('60', '2 months'), ('90', '3 months'),
+    ]
+    active_reminder_days = []
+    if billing_config and billing_config.overdue_reminder_days:
+        active_reminder_days = [
+            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
+        ]
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -2599,6 +3437,8 @@ def owner_setup_view(request):
         'viscosity_rules': viscosity_rules,
         'completion': completion,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
+        'reminder_day_choices': reminder_day_choices,
+        'active_reminder_days': active_reminder_days,
     }
     return render(request, 'saas/owner_setup.html', context)
 
@@ -2705,24 +3545,54 @@ def owner_setup_save_tax(request):
         else:
             config.save(update_fields=['tax_enabled'])
 
+        # Deactivate all TaxRates when tax is disabled.
+        # TaxService.calculate_tax() determines "tax enabled" by checking
+        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() — it
+        # does NOT consult BillingConfig.tax_enabled for tenant-aware paths.
+        # Without this, disabling tax via setup leaves active TaxRate records
+        # so tax keeps being charged on every invoice even when the owner
+        # toggled it off. (CODE-099)
+        if not tax_enabled:
+            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
+
         # Create or update tenant TaxRate if enabled and we have location
-        if tax_enabled and total > 0 and city and state:
-            existing = TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).first()
+        if tax_enabled and total > 0:
+            # CODE-131: Create TaxRate even without city/state.
+            # TaxService checks TaxRate.objects.filter(tenant, is_active=True) —
+            # without a row, tax is silently never applied despite UI showing "Enabled".
+            # Use empty strings for city/state if not provided; owner can update later.
+            lookup_city = city or ''
+            lookup_state = state or ''
+
+            # Include is_active=False rows in the lookup: if the owner is
+            # re-enabling a previously deactivated rate we reactivate it
+            # rather than creating a duplicate entry.
+            existing = TaxRate.objects.filter(tenant=tenant).first()
+            if not existing and lookup_city and lookup_state:
+                existing = TaxRate.objects.filter(
+                    tenant=tenant, city__iexact=lookup_city, state__iexact=lookup_state
+                ).first()
             if existing:
                 existing.state_rate = state_rate
                 existing.county_rate = county_rate
                 existing.city_rate = city_rate
                 existing.special_rate = special_rate
+                existing.is_active = True  # re-activate if it was deactivated
+                if lookup_city:
+                    existing.city = lookup_city
+                if lookup_state:
+                    existing.state = lookup_state
                 existing.save()
             else:
                 TaxRate.objects.create(
                     tenant=tenant,
-                    city=city,
-                    state=state,
+                    city=lookup_city,
+                    state=lookup_state,
                     state_rate=state_rate,
                     county_rate=county_rate,
                     city_rate=city_rate,
                     special_rate=special_rate,
+                    is_active=True,
                 )
 
         return JsonResponse({'success': True, 'message': 'Tax settings saved!'})
@@ -2743,14 +3613,61 @@ def owner_setup_save_billing(request):
         from apps.billing.models import BillingConfig
 
         config = BillingConfig.get_for_tenant(tenant)
-        config.default_payment_terms = request.POST.get('default_payment_terms', 'COD')
+
+        # Validate default_payment_terms against canonical choices.
+        # An unrecognised value is silently saved to the DB and causes invoice
+        # creation to use Django's CharField default instead of the intended
+        # terms, producing incorrect due dates.  Mirror the validation applied
+        # in owner_settings_view.  (CODE-202)
+        raw_terms = request.POST.get('default_payment_terms', 'COD')
+        valid_terms = {code for code, _ in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if raw_terms not in valid_terms:
+            return JsonResponse(
+                {'success': False, 'error': f'Invalid payment terms: {raw_terms!r}. '
+                                            f'Must be one of: {", ".join(sorted(valid_terms))}.'},
+                status=400,
+            )
+
+        # Validate batch_invoice_frequency — an unrecognised value is silently
+        # saved and causes _should_run_batch_today() to return False forever,
+        # so no batch invoices ever run.  The same validation lives in
+        # owner_settings_view (CODE-201) but was missing here in the setup
+        # wizard endpoint.  (CODE-202)
+        raw_freq = request.POST.get('batch_invoice_frequency', 'disabled')
+        valid_frequencies = {code for code, _ in BillingConfig.BATCH_FREQUENCY_CHOICES}
+        if raw_freq not in valid_frequencies:
+            return JsonResponse(
+                {'success': False, 'error': f'Invalid batch invoice frequency: {raw_freq!r}. '
+                                            f'Must be one of: {", ".join(sorted(valid_frequencies))}.'},
+                status=400,
+            )
+
+        # Validate batch_invoice_day range based on frequency.
+        try:
+            batch_day = int(request.POST.get('batch_invoice_day', '1'))
+        except (ValueError, TypeError):
+            return JsonResponse(
+                {'success': False, 'error': 'Batch invoice day must be a number.'},
+                status=400,
+            )
+        if raw_freq in ('weekly', 'biweekly') and not (0 <= batch_day <= 6):
+            return JsonResponse(
+                {'success': False, 'error': f'Batch invoice day must be 0–6 for weekly/bi-weekly '
+                                            f'scheduling (0=Monday … 6=Sunday). Got: {batch_day}.'},
+                status=400,
+            )
+        if raw_freq == 'monthly' and not (1 <= batch_day <= 28):
+            return JsonResponse(
+                {'success': False, 'error': f'Batch invoice day must be 1–28 for monthly scheduling. '
+                                            f'Got: {batch_day}.'},
+                status=400,
+            )
+
+        config.default_payment_terms = raw_terms
         config.overdue_reminder_enabled = request.POST.get('overdue_reminder_enabled') == '1'
         config.overdue_reminder_days = request.POST.get('overdue_reminder_days', '7,14,30').strip()
-        config.batch_invoice_frequency = request.POST.get('batch_invoice_frequency', 'disabled')
-        try:
-            config.batch_invoice_day = int(request.POST.get('batch_invoice_day', '1'))
-        except (ValueError, TypeError):
-            config.batch_invoice_day = 1
+        config.batch_invoice_frequency = raw_freq
+        config.batch_invoice_day = batch_day
         config.save(update_fields=[
             'default_payment_terms', 'overdue_reminder_enabled', 'overdue_reminder_days',
             'batch_invoice_frequency', 'batch_invoice_day',
@@ -2813,13 +3730,59 @@ def owner_setup_save_viscosity(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+def owner_confirm_email(request, uidb64, token):
+    """
+    GET /confirm-email/<uidb64>/<token>/
+
+    Activate a shop owner account that was created with is_active=False.
+
+    This is the link from the confirmation email sent at signup.  On success:
+      - Sets user.is_active = True
+      - Logs the user in
+      - Redirects to onboarding
+
+    On failure (bad/expired token): shows an error and a link to resend.
+    """
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        # Activate the account
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=['is_active'])
+
+        # Log the user in (bypass password check — token is the credential here)
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+        # Find their tenant to set the session
+        from apps.tenants.models import TenantMembership
+        membership = TenantMembership.objects.filter(
+            user=user, role='owner'
+        ).select_related('tenant').first()
+        if membership:
+            request.session['tenant_id'] = membership.tenant.id
+
+        messages.success(request, "Email confirmed! Welcome to RS Systems. Let's get your shop set up.")
+        return redirect('onboarding')
+    else:
+        return render(request, 'saas/email_confirmation_invalid.html', {
+            'uidb64': uidb64,
+        })
+
+
 def owner_confirm_email_verification(request, uidb64, token):
     """
     GET /owner/verify-email/<uidb64>/<token>/
 
-    Process email verification token for a shop owner.  No login required —
-    the link is sent immediately after signup, before the session is fully
-    established on all devices.  The token itself authenticates the action.
+    Process email verification token for a shop owner who is already active.
+    This endpoint is used when the owner clicks the verification link from
+    the old-style _send_verification_email() helper (e.g. shop_join flow).
 
     Unlike customer/technician verification there is no email_verified flag
     to persist for owners (email verification doesn't gate any owner feature).
@@ -2844,6 +3807,44 @@ def owner_confirm_email_verification(request, uidb64, token):
     return redirect('signup')
 
 
+@ratelimit(key='ip', rate='3/h', method='GET', block=True)
+def resend_confirmation_email(request, uidb64):
+    """
+    GET /confirm-email/<uidb64>/resend/
+
+    Resend the account confirmation email for an inactive account.
+    The user must not yet be active (prevents abuse by active users).
+
+    Rate-limited to 3 requests per IP per hour to prevent:
+    - Email bombing inactive users
+    - SendGrid quota exhaustion (uidb64 is trivially enumerable)
+    """
+    from django.utils.http import urlsafe_base64_decode
+
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is None or user.is_active:
+        messages.error(request, 'Invalid request or account already active.')
+        return redirect('signup')
+
+    # Find tenant for the email helper
+    from apps.tenants.models import TenantMembership
+    membership = TenantMembership.objects.filter(user=user).select_related('tenant').first()
+    tenant = membership.tenant if membership else None
+
+    _send_confirmation_email(request, user, tenant)
+
+    return render(request, 'saas/email_confirmation_sent.html', {
+        'email': user.email,
+        'first_name': user.first_name,
+        'resent': True,
+    })
+
+
 @owner_or_manager_required
 @require_POST
 def owner_setup_save_assignment(request):
@@ -2863,3 +3864,765 @@ def owner_setup_save_assignment(request):
     except Exception as e:
         logger.error(f"Setup save assignment error: {e}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# =====================================================================
+# Invoice Bulk Actions & PDF Download (CODE-112)
+# =====================================================================
+
+@owner_or_manager_required
+@require_POST
+def owner_invoice_bulk_action(request):
+    """POST /owner/invoices/bulk/ — bulk mark-paid or delete invoices."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+
+    import json
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'success': False, 'error': 'Invalid request.'}, status=400)
+
+    action = data.get('action')
+    invoice_ids = data.get('invoice_ids', [])
+
+    if not invoice_ids:
+        return JsonResponse({'success': False, 'error': 'No invoices selected.'}, status=400)
+
+    # Always scope to tenant
+    invoices = Invoice.objects.filter(id__in=invoice_ids, customer__tenant=tenant)
+
+    if action == 'mark_paid':
+        # CODE-115: Create a Payment record for each invoice so payment history
+        # is complete and paid_at is correctly set via Payment.save() →
+        # _update_invoice_totals() → invoice.update_status().
+        # Previously this action wrote amount_paid/status directly with no
+        # Payment row and no paid_at stamp — payment history tab was empty and
+        # the paid_at field was always NULL for bulk-paid invoices.
+        updated = 0
+        from django.utils import timezone as _tz
+        payable = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT'])
+        for inv in payable.select_related('customer'):
+            remaining = inv.amount_due
+            if remaining <= 0:
+                continue
+            try:
+                with transaction.atomic():
+                    Payment.objects.create(
+                        invoice=inv,
+                        amount=remaining,
+                        payment_method='OTHER',
+                        notes='Bulk marked as paid by shop owner',
+                        recorded_by=request.user,
+                        payment_date=_tz.now().date(),
+                    )
+                    # Payment.save() → _update_invoice_totals() sets paid_at
+                    # and status='PAID' via invoice.update_status(). No manual
+                    # status/amount_paid overwrite needed.
+            except Exception as e:
+                logger.warning(f"Bulk mark_paid: could not create payment for invoice {inv.id}: {e}")
+            else:
+                updated += 1
+        return JsonResponse({
+            'success': True,
+            'message': f'{updated} invoice(s) marked as paid.',
+        })
+
+    elif action == 'void':
+        # Void invoices that aren't already PAID, CANCELLED, or PARTIAL.
+        # (CODE-123) PARTIAL invoices have recorded payments — voiding them
+        # silently orphans those Payment records and prevents future deletion
+        # (Payment.invoice uses on_delete=PROTECT).  Owners must remove
+        # payments first, which demotes the invoice to SENT/OVERDUE, and then
+        # they can void it.
+        voidable = invoices.exclude(status__in=['PAID', 'PARTIAL', 'CANCELLED'])
+        voided_count = voidable.count()
+        skipped_paid = invoices.filter(status__in=['PAID', 'CANCELLED']).count()
+        skipped_partial = invoices.filter(status='PARTIAL').count()
+        voidable.update(status='CANCELLED')
+        msg = f'{voided_count} invoice(s) voided.'
+        if skipped_paid:
+            msg += f' {skipped_paid} paid/already-voided invoice(s) were skipped.'
+        if skipped_partial:
+            msg += (
+                f' {skipped_partial} partially-paid invoice(s) were skipped — '
+                'remove the payments first, then void.'
+            )
+        return JsonResponse({'success': True, 'message': msg})
+
+    elif action == 'delete':
+        # Allow deleting DRAFT and CANCELLED (voided) invoices.
+        # (CODE-123) Payment.invoice uses on_delete=PROTECT, so we must skip
+        # any invoice that still has payment records — deleting it would raise
+        # a ProtectedError and crash with a 500.  Collect safe-to-delete IDs
+        # by excluding invoices that have any associated payments.
+        from django.db.models import ProtectedError as _ProtectedError
+        from apps.billing.models import Payment as _Payment
+
+        candidate_qs = invoices.filter(status__in=['DRAFT', 'CANCELLED'])
+        # IDs of candidates that still have payments attached
+        has_payments_ids = set(
+            _Payment.objects.filter(invoice__in=candidate_qs)
+            .values_list('invoice_id', flat=True)
+            .distinct()
+        )
+        safe_to_delete = candidate_qs.exclude(id__in=has_payments_ids)
+        payment_blocked = len(has_payments_ids)
+
+        deleted_count = safe_to_delete.count()
+        skipped_active = invoices.exclude(status__in=['DRAFT', 'CANCELLED']).count()
+
+        # Perform the delete via instance loop so Invoice.delete() fires
+        # (which cleans up S3 objects).  QuerySet.delete() bypasses model
+        # overrides — see AGENTS.md gotcha.  (CODE-152)
+        try:
+            for inv in safe_to_delete:
+                inv.delete()
+        except _ProtectedError:
+            return JsonResponse(
+                {'success': False, 'error': 'Delete failed: one or more invoices have payment records.'},
+                status=400,
+            )
+
+        msg = f'{deleted_count} invoice(s) deleted.'
+        if skipped_active:
+            msg += f' {skipped_active} active invoice(s) were skipped (void first, then delete).'
+        if payment_blocked:
+            msg += (
+                f' {payment_blocked} voided invoice(s) with recorded payments were skipped — '
+                'remove the payments first.'
+            )
+        return JsonResponse({'success': True, 'message': msg})
+
+    else:
+        return JsonResponse({'success': False, 'error': f'Unknown action: {action}'}, status=400)
+
+
+@owner_or_manager_required
+def owner_invoice_pdf(request, invoice_id):
+    """GET /owner/invoices/<id>/pdf/ — generate and download invoice PDF on demand."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+
+    try:
+        from apps.billing.services.invoice_service import InvoiceService
+
+        service = InvoiceService(tenant=tenant)
+        repair_ids = list(
+            invoice.line_items
+            .exclude(repair_id__isnull=True)
+            .values_list('repair_id', flat=True)
+        )
+
+        # Pass the stored invoice_number and invoice_date so the PDF content matches
+        # what the owner sees in the portal and what was emailed to the customer.
+        # Without this, each download regenerates a brand-new invoice number
+        # (e.g. INV-5-20260321123456) that doesn't match the record (CODE-120).
+        from datetime import datetime as dt
+        stored_date = invoice.invoice_date
+        if stored_date and not isinstance(stored_date, dt):
+            # invoice_date is a date; convert to datetime for InvoiceData
+            from django.utils import timezone as tz_util
+            stored_dt = tz_util.make_aware(dt.combine(stored_date, dt.min.time()))
+        else:
+            stored_dt = stored_date
+
+        pdf_bytes, invoice_data = service.generate_invoice(
+            customer_id=invoice.customer.id,
+            repair_ids=repair_ids if repair_ids else None,
+            invoice_number=invoice.invoice_number,
+            invoice_date=stored_dt,
+            invoice_status=invoice.status,
+        )
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="invoice_{invoice.invoice_number}.pdf"'
+        return response
+
+    except Exception as e:
+        logger.error(f"PDF generation failed for invoice {invoice.invoice_number}: {e}")
+        messages.error(request, f'Could not generate PDF: {e}')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_invoice_void(request, invoice_id):
+    """POST /owner/invoices/<id>/void/ — void a single invoice."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+
+    if invoice.status == 'PAID':
+        return JsonResponse({'success': False, 'error': 'Cannot void a paid invoice.'}, status=400)
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'success': False, 'error': 'Invoice is already voided.'}, status=400)
+
+    # (CODE-123) Block voiding partially-paid invoices.  A PARTIAL invoice has
+    # real money recorded against it; voiding without removing those payments
+    # leaves orphaned Payment records that prevent the invoice from ever being
+    # deleted and misrepresent the shop's financials.  The owner must delete or
+    # reverse the payments first, at which point the invoice reverts to
+    # SENT/OVERDUE and can then be voided normally.
+    if invoice.status == 'PARTIAL':
+        payment_count = invoice.payments.count()
+        return JsonResponse(
+            {
+                'success': False,
+                'error': (
+                    f'Cannot void a partially-paid invoice. '
+                    f'{payment_count} payment(s) are recorded against it. '
+                    'Please remove or reverse the payment(s) first, '
+                    'then void the invoice.'
+                ),
+            },
+            status=400,
+        )
+
+    invoice.status = 'CANCELLED'
+    invoice.save(update_fields=['status'])
+    return JsonResponse({'success': True, 'message': f'Invoice {invoice.invoice_number} voided.'})
+
+
+@owner_or_manager_required
+def owner_generate_invoice_from_repair(request, repair_id):
+    """
+    POST /owner/invoices/generate-from-repair/<repair_id>/
+    
+    One-click invoice generation from the repair detail page.
+    Creates a draft invoice for the repair, then redirects to the invoice
+    detail page where the owner can review, edit, and send.
+    """
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request.')
+        return redirect('technician_dashboard')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('technician_dashboard')
+
+    from apps.technician_portal.models import Repair
+    repair = get_object_or_404(Repair, id=repair_id, tenant=tenant)
+
+    # Validate: must be completed
+    if repair.queue_status != 'COMPLETED':
+        messages.error(request, 'Only completed repairs can be invoiced.')
+        return redirect('repair_detail', repair_id=repair.id)
+
+    # Multi-break batch: include ALL sibling repairs from the same batch.
+    # A multi-break job (e.g. 3 chips on one windshield) creates separate Repair
+    # records sharing the same repair_batch_id. Invoicing only the clicked repair
+    # would miss the other breaks and undercharge. (CODE-226)
+    if repair.repair_batch_id:
+        all_batch_repairs = list(
+            Repair.objects.filter(
+                tenant=tenant,
+                repair_batch_id=repair.repair_batch_id,
+            ).order_by('break_number')
+        )
+        batch_repairs = [r for r in all_batch_repairs if r.queue_status == 'COMPLETED']
+        # CODE-247: Warn if some siblings are not yet completed
+        excluded_count = len(all_batch_repairs) - len(batch_repairs)
+        if excluded_count > 0:
+            messages.warning(
+                request,
+                f'{excluded_count} of {len(all_batch_repairs)} batch repairs are not yet completed '
+                f'and were excluded from this invoice.'
+            )
+    else:
+        batch_repairs = [repair]
+
+    # Validate: not already invoiced (check all repairs in the batch)
+    from apps.billing.models import InvoiceLineItem
+    already_invoiced_repair = None
+    for r in batch_repairs:
+        if InvoiceLineItem.objects.filter(
+            repair=r,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).exists():
+            already_invoiced_repair = r
+            break
+
+    if already_invoiced_repair:
+        line_item = InvoiceLineItem.objects.filter(
+            repair=already_invoiced_repair,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).select_related('invoice').first()
+        existing_invoice = line_item.invoice
+
+        # CODE-249: If the existing invoice is a DRAFT and this is a batch,
+        # check if any batch siblings are missing from the invoice. This happens
+        # when the invoice was created before the batch fix (CODE-226) — only 1
+        # repair was included. Auto-add missing siblings to the draft invoice.
+        if existing_invoice.status == 'DRAFT' and repair.repair_batch_id:
+            invoiced_repair_ids = set(
+                InvoiceLineItem.objects.filter(invoice=existing_invoice)
+                .values_list('repair_id', flat=True)
+            )
+            missing_repairs = [r for r in batch_repairs if r.id not in invoiced_repair_ids]
+
+            if missing_repairs:
+                from decimal import Decimal as D
+                for mr in missing_repairs:
+                    discounted = mr.get_discounted_cost()
+                    pricing_info = mr.get_progressive_pricing_info()
+                    
+                    if pricing_info['is_discounted']:
+                        prog_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
+                        unit_price = pricing_info['base_rate']
+                        total_disc = prog_savings + discounted['savings']
+                        amount = unit_price - total_disc
+                    else:
+                        unit_price = discounted['original_cost']
+                        total_disc = discounted['savings']
+                        amount = discounted['final_cost']
+                    
+                    description = mr.get_invoice_description()
+                    if pricing_info['is_discounted']:
+                        description += " [multi-break rate]"
+                    
+                    InvoiceLineItem.objects.create(
+                        invoice=existing_invoice,
+                        repair=mr,
+                        description=description,
+                        quantity=1,
+                        unit_price=unit_price,
+                        discount=total_disc,
+                        amount=amount,
+                        repair_date=mr.repair_date.date() if mr.repair_date else None,
+                        unit_number=mr.unit_number,
+                    )
+
+                # Recalculate invoice totals
+                all_line_items = InvoiceLineItem.objects.filter(invoice=existing_invoice)
+                existing_invoice.subtotal = sum(li.unit_price for li in all_line_items)
+                existing_invoice.discount = sum(li.discount for li in all_line_items)
+                existing_invoice.total = existing_invoice.subtotal - existing_invoice.discount
+
+                # Re-apply tax
+                try:
+                    from apps.billing.services.tax_service import TaxService
+                    tax_svc = TaxService(tenant=existing_invoice.tenant)
+                    tax_svc.apply_tax_to_invoice(existing_invoice)
+                except Exception:
+                    pass
+
+                existing_invoice.save()
+                messages.success(
+                    request,
+                    f'Added {len(missing_repairs)} missing batch repair(s) to existing invoice '
+                    f'{existing_invoice.invoice_number}. Review below.'
+                )
+                return redirect('owner_invoice_detail', invoice_id=existing_invoice.id)
+
+        # If invoice is not DRAFT but batch has missing siblings, warn the user
+        if existing_invoice.status != 'DRAFT' and repair.repair_batch_id:
+            invoiced_repair_ids = set(
+                InvoiceLineItem.objects.filter(invoice=existing_invoice)
+                .values_list('repair_id', flat=True)
+            )
+            missing_count = sum(1 for r in batch_repairs if r.id not in invoiced_repair_ids)
+            if missing_count > 0:
+                messages.warning(
+                    request,
+                    f'This invoice is missing {missing_count} batch repair(s) but cannot be '
+                    f'auto-updated because it\'s already {existing_invoice.get_status_display()}. '
+                    f'Void this invoice and regenerate to include all batch repairs.'
+                )
+
+        messages.info(request, 'This repair (or part of its batch) has already been invoiced.')
+        return redirect('owner_invoice_detail', invoice_id=existing_invoice.id)
+
+    # Generate the invoice — accept optional payment_terms override (CODE-153)
+    req_payment_terms = request.POST.get('payment_terms') or None
+    if req_payment_terms:
+        from apps.billing.models import BillingConfig
+        valid_terms = {code for code, _label in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if req_payment_terms not in valid_terms:
+            req_payment_terms = None  # fall back to default
+
+    try:
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        tracking_svc = InvoiceTrackingService(tenant=tenant)
+        invoice = tracking_svc.create_invoice_from_repairs(
+            customer=repair.customer,
+            repairs=batch_repairs,
+            payment_terms=req_payment_terms,
+        )
+        repair_count = len(batch_repairs)
+        if repair_count > 1:
+            messages.success(request, f'Invoice {invoice.invoice_number} created for {repair_count} repairs (multi-break batch). Review and send below.')
+        else:
+            messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('repair_detail', repair_id=repair.id)
+    except Exception as e:
+        logger.error(f"Error generating invoice from repair {repair_id}: {e}", exc_info=True)
+        messages.error(request, 'Could not generate invoice. Please try again.')
+        return redirect('repair_detail', repair_id=repair.id)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Loyalty Phase 2: Manual Point Adjustment + Point Liability Report
+# (CODE-197)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@owner_or_manager_required
+@require_POST
+def owner_loyalty_adjust_points(request, customer_user_id):
+    """
+    POST /owner/loyalty/customers/<customer_user_id>/adjust/
+
+    Manually award or deduct loyalty points for a specific customer.
+    Restricted to owners and managers of the same tenant.
+
+    Form fields:
+        amount  (int, non-zero — positive = award, negative = deduct)
+        reason  (str, required — stored in PointTransaction.description)
+
+    Returns JSON:
+        { "success": true, "new_balance": 450, "transaction_id": 99 }
+      or
+        { "success": false, "error": "..." }
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+    from apps.customer_portal.models import CustomerUser
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Unauthorized.'}, status=403)
+
+    # Unscoped get_object_or_404 is forbidden — always include tenant= scoping.
+    # CustomerUser doesn't have a direct tenant FK but we reach it via customer__tenant.
+    try:
+        cu = CustomerUser.objects.select_related('customer', 'user').get(
+            pk=customer_user_id,
+            customer__tenant=tenant,
+        )
+    except CustomerUser.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Customer not found.'}, status=404)
+
+    # Parse and validate inputs
+    try:
+        raw_amount = request.POST.get('amount', '')
+        amount = int(raw_amount)
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Amount must be a non-zero integer.'}, status=400)
+
+    reason = request.POST.get('reason', '').strip()
+
+    try:
+        pt = LoyaltyService.manual_adjustment(
+            customer_user=cu,
+            amount=amount,
+            reason=reason,
+            created_by=request.user,
+            tenant=tenant,
+        )
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception as exc:
+        logger.error('owner_loyalty_adjust_points: unexpected error for cu=%s: %s', customer_user_id, exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': 'An unexpected error occurred.'}, status=500)
+
+    return JsonResponse({
+        'success': True,
+        'new_balance': pt.balance_after,
+        'transaction_id': pt.pk,
+        'amount': pt.amount,
+        'description': pt.description,
+    })
+
+
+@owner_or_manager_required
+def owner_loyalty_liability_report(request):
+    """
+    GET /owner/loyalty/liability/
+
+    JSON endpoint returning the point liability report for the authenticated
+    owner's tenant. Restricted to owners and managers.
+
+    Response:
+        {
+            "tenant_name": "Rockstar Windshield Repair",
+            "total_outstanding_points": 1200,
+            "total_issued_lifetime": 5400,
+            "total_redeemed_lifetime": 3800,
+            "total_expired_lifetime": 200,
+            "total_manually_adjusted": 100,
+            "active_customer_count": 7,
+            "customers": [
+                {
+                    "customer_user_id": 3,
+                    "email": "fleet@eos.com",
+                    "customer_name": "EOS Trucking",
+                    "current_balance": 450,
+                    "lifetime_earned": 1200,
+                    "lifetime_redeemed": 700,
+                    "lifetime_expired": 50,
+                },
+                ...
+            ]
+        }
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'error': 'Unauthorized.'}, status=403)
+
+    report = LoyaltyService.get_point_liability_report(tenant)
+    report['tenant_name'] = tenant.name
+
+    return JsonResponse(report)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Loyalty Dashboard — Owner HTML Page
+# ──────────────────────────────────────────────────────────────────────────────
+
+@owner_or_manager_required
+def owner_loyalty_dashboard(request):
+    """
+    GET  /owner/loyalty/          — render the loyalty dashboard
+    POST /owner/loyalty/config/   — handled separately (see owner_loyalty_save_config)
+    """
+    from apps.rewards_referrals.services import LoyaltyService
+    from apps.rewards_referrals.models import LoyaltyConfig, PointTransaction
+    from django.db.models import Sum, Q
+    from django.utils import timezone
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return redirect('owner_dashboard')
+
+    # Liability report (customer list + totals)
+    report = LoyaltyService.get_point_liability_report(tenant)
+
+    # Points awarded this month
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    points_this_month = (
+        PointTransaction.objects
+        .filter(tenant=tenant, created_at__gte=month_start, amount__gt=0)
+        .aggregate(total=Sum('amount'))['total'] or 0
+    )
+
+    config = LoyaltyConfig.get_for_tenant(tenant)
+
+    ctx = {
+        'tenant': tenant,
+        'report': report,
+        'points_this_month': points_this_month,
+        'config': config,
+    }
+    return render(request, 'saas/owner_loyalty.html', ctx)
+
+
+@owner_or_manager_required
+@require_POST
+def owner_loyalty_save_config(request):
+    """
+    POST /owner/loyalty/config/
+    Save LoyaltyConfig fields: is_active, points_per_repair, points_expiry_days.
+    """
+    from apps.rewards_referrals.models import LoyaltyConfig
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'Unauthorized.'}, status=403)
+
+    config = LoyaltyConfig.get_for_tenant(tenant)
+
+    errors = []
+
+    # Toggle
+    config.is_active = request.POST.get('is_active') == 'true'
+
+    # points_per_repair
+    try:
+        ppr = int(request.POST.get('points_per_repair', config.points_per_repair))
+        if ppr < 0:
+            raise ValueError
+        config.points_per_repair = ppr
+    except (ValueError, TypeError):
+        errors.append('Points per repair must be a non-negative integer.')
+
+    # points_expiry_days
+    try:
+        ped = int(request.POST.get('points_expiry_days', config.points_expiry_days))
+        if ped < 0:
+            raise ValueError
+        config.points_expiry_days = ped
+    except (ValueError, TypeError):
+        errors.append('Points expiry days must be a non-negative integer (0 = never).')
+
+    if errors:
+        return JsonResponse({'success': False, 'errors': errors}, status=400)
+
+    config.save()
+    return JsonResponse({
+        'success': True,
+        'is_active': config.is_active,
+        'points_per_repair': config.points_per_repair,
+        'points_expiry_days': config.points_expiry_days,
+    })
+
+
+# ─────────────────────────────────────────────
+# Warranty Policy CRUD (owner/manager only)
+# ─────────────────────────────────────────────
+
+@owner_or_manager_required
+def owner_warranty_create(request):
+    """POST /owner/settings/warranty/create/ — create a new warranty policy."""
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    name = request.POST.get('name', '').strip()
+    applies_to = request.POST.get('applies_to', 'all_repairs')
+    duration_type = request.POST.get('duration_type', 'custom_days')
+    coverage_description = request.POST.get('coverage_description', '').strip()
+    is_active = request.POST.get('is_active') == 'on'
+    is_default = request.POST.get('is_default') == 'on'
+    covers_labor = request.POST.get('covers_labor') == 'on'
+    covers_materials = request.POST.get('covers_materials') == 'on'
+
+    try:
+        duration_days = int(request.POST.get('duration_days', 365))
+    except (ValueError, TypeError):
+        duration_days = 365
+
+    # Validate applies_to
+    valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+    if applies_to not in valid_applies:
+        messages.error(request, 'Invalid "Applies To" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    # Validate duration_type
+    valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+    if duration_type not in valid_duration_types:
+        messages.error(request, 'Invalid "Duration Type" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    if not name:
+        messages.error(request, 'Policy name is required.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    try:
+        WarrantyPolicy.objects.create(
+            tenant=tenant,
+            name=name,
+            applies_to=applies_to,
+            duration_type=duration_type,
+            duration_days=duration_days,
+            coverage_description=coverage_description,
+            is_active=is_active,
+            is_default=is_default,
+            covers_labor=covers_labor,
+            covers_materials=covers_materials,
+        )
+        messages.success(request, f'Warranty policy "{name}" created.')
+    except Exception as e:
+        logger.error(f"Error creating warranty policy: {e}")
+        messages.error(request, f'Could not create policy: {e}')
+
+    return redirect('/owner/settings/?tab=warranty')
+
+
+@owner_or_manager_required
+def owner_warranty_edit(request, policy_id):
+    """POST /owner/settings/warranty/<id>/edit/ — update an existing warranty policy."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    policy = get_object_or_404(WarrantyPolicy, pk=policy_id, tenant=tenant)
+
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    name = request.POST.get('name', '').strip()
+    applies_to = request.POST.get('applies_to', policy.applies_to)
+    duration_type = request.POST.get('duration_type', policy.duration_type)
+    coverage_description = request.POST.get('coverage_description', '').strip()
+    is_active = request.POST.get('is_active') == 'on'
+    is_default = request.POST.get('is_default') == 'on'
+    covers_labor = request.POST.get('covers_labor') == 'on'
+    covers_materials = request.POST.get('covers_materials') == 'on'
+
+    try:
+        duration_days = int(request.POST.get('duration_days', policy.duration_days))
+    except (ValueError, TypeError):
+        duration_days = policy.duration_days
+
+    valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
+    if applies_to not in valid_applies:
+        messages.error(request, 'Invalid "Applies To" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    # Validate duration_type
+    valid_duration_types = [c[0] for c in WarrantyPolicy.WARRANTY_DURATION_CHOICES]
+    if duration_type not in valid_duration_types:
+        messages.error(request, 'Invalid "Duration Type" value.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    if not name:
+        messages.error(request, 'Policy name is required.')
+        return redirect('/owner/settings/?tab=warranty')
+
+    try:
+        policy.name = name
+        policy.applies_to = applies_to
+        policy.duration_type = duration_type
+        policy.duration_days = duration_days
+        policy.coverage_description = coverage_description
+        policy.is_active = is_active
+        policy.is_default = is_default
+        policy.covers_labor = covers_labor
+        policy.covers_materials = covers_materials
+        policy.save()
+        messages.success(request, f'Warranty policy "{name}" updated.')
+    except Exception as e:
+        logger.error(f"Error updating warranty policy {policy_id}: {e}")
+        messages.error(request, f'Could not update policy: {e}')
+
+    return redirect('/owner/settings/?tab=warranty')
+
+
+@owner_or_manager_required
+def owner_warranty_toggle(request, policy_id):
+    """POST /owner/settings/warranty/<id>/toggle/ — soft toggle is_active."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    policy = get_object_or_404(WarrantyPolicy, pk=policy_id, tenant=tenant)
+
+    if request.method != 'POST':
+        return redirect('/owner/settings/?tab=warranty')
+
+    policy.is_active = not policy.is_active
+    policy.save(update_fields=['is_active'])
+    status = 'activated' if policy.is_active else 'deactivated'
+    messages.success(request, f'Policy "{policy.name}" {status}.')
+    return redirect('/owner/settings/?tab=warranty')

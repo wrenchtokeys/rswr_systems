@@ -11,6 +11,7 @@ Created: 2026-01-27
 """
 from __future__ import annotations
 
+import html
 import io
 import os
 import boto3
@@ -19,7 +20,7 @@ from typing import List, Optional, Tuple, Dict
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.core.mail import EmailMessage
+from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.utils import timezone
 
 from apps.technician_portal.models import Repair
@@ -142,6 +143,37 @@ class InvoiceEmailService:
         
         return attachments
     
+    def _render_invoice_template(self, template_str, invoice_data) -> str:
+        """Render a shop-defined invoice email template.
+
+        Supports the same placeholders documented in BillingConfig.invoice_email_template
+        help_text:
+          {customer_name}, {invoice_number}, {total}, {invoice_date}, {company_name}
+
+        Falls back to the original hardcoded body if rendering fails (e.g. unknown
+        placeholder in a legacy template).
+        """
+        company_name = ''
+        if self.tenant:
+            try:
+                from apps.billing.models import BillingConfig
+                config = BillingConfig.get_for_tenant(self.tenant)
+                company_name = config.company_name or self.tenant.name
+            except Exception:
+                company_name = self.tenant.name
+
+        try:
+            return template_str.format(
+                customer_name=invoice_data.customer_name,
+                invoice_number=invoice_data.invoice_number,
+                total=f'${invoice_data.total:,.2f}',
+                invoice_date=invoice_data.invoice_date.strftime('%B %d, %Y') if invoice_data.invoice_date else 'N/A',
+                company_name=company_name,
+            )
+        except (KeyError, IndexError, ValueError):
+            # Unknown placeholder or malformed template — fall back to default body.
+            return ''
+
     def _build_email_body(self, invoice_data, include_photos: bool,
                           payment_link: str = None) -> str:
         """Build the email body text"""
@@ -192,6 +224,23 @@ class InvoiceEmailService:
             "",
         ])
         
+        # Portal link — always include so customer can view invoice online.
+        # Use BASE_URL from settings so multi-tenant deployments with a custom
+        # domain get the correct link, not a hardcoded rssystems.io URL.
+        # (CODE-178: plain-text email body was missing the BASE_URL fallback that
+        # _build_html_email already had — caused wrong domain for non-RS tenants.)
+        invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
+        _base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+        if invoice_id:
+            portal_url = f"{_base_url}/app/invoices/{invoice_id}/"
+        else:
+            portal_url = f"{_base_url}/app/invoices/"
+        lines.extend([
+            "📄 View Invoice Online:",
+            portal_url,
+            "",
+        ])
+
         # Stripe payment link
         if payment_link:
             lines.extend([
@@ -229,7 +278,9 @@ class InvoiceEmailService:
         days: int = 30,
         include_photos: bool = True,
         cc_emails: Optional[List[str]] = None,
-        subject_prefix: str = "[RS Systems]"
+        subject_prefix: str = "[RS Systems]",
+        invoice_number: Optional[str] = None,
+        invoice_date=None,
     ) -> Tuple[bool, str]:
         """
         Send an invoice email with PDF and photo attachments.
@@ -242,6 +293,11 @@ class InvoiceEmailService:
             include_photos: Whether to attach repair photos
             cc_emails: Optional CC recipients
             subject_prefix: Email subject prefix
+            invoice_number: Stored invoice number to embed in PDF (CODE-120).
+                Pass Invoice.invoice_number when re-sending for an existing invoice
+                so the PDF content matches the record. When None a new number is
+                generated (used during initial invoice creation).
+            invoice_date: Stored invoice date to embed in PDF (CODE-120).
             
         Returns:
             Tuple of (success: bool, message: str)
@@ -252,7 +308,9 @@ class InvoiceEmailService:
             pdf_bytes, invoice_data = self.invoice_service.generate_invoice(
                 customer_id=customer_id,
                 repair_ids=repair_ids,
-                start_date=start_date
+                start_date=start_date,
+                invoice_number=invoice_number,
+                invoice_date=invoice_date,
             )
             
             if not invoice_data.line_items:
@@ -268,51 +326,84 @@ class InvoiceEmailService:
                 )
                 photos = self._get_photo_attachments(list(repairs))
             
-            # Look up Stripe payment link from invoice record (if exists)
-            # We search by repair_ids since the invoice_number in invoice_data
-            # is freshly generated and won't match the DB record.
+            # Look up Stripe payment link from invoice record (if exists).
+            # GATE: Only include payment link if tenant has active Stripe Connect.
+            # No Connect = no payment link in email.
             payment_link = None
-            try:
-                from apps.billing.models import InvoiceLineItem
-                line_qs = InvoiceLineItem.objects.all()
-                if self.tenant:
-                    line_qs = line_qs.filter(invoice__tenant=self.tenant)
-                if repair_ids:
-                    line_item = line_qs.filter(
-                        repair_id__in=repair_ids,
-                        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
-                    ).select_related('invoice').first()
-                    if line_item and line_item.invoice.stripe_hosted_url:
-                        payment_link = line_item.invoice.stripe_hosted_url
-                else:
-                    # Fallback: find most recent invoice for this customer
-                    from apps.billing.models import Invoice
-                    inv_qs = Invoice.objects.filter(
-                        customer_id=customer_id,
-                        stripe_hosted_url__gt='',
-                    )
-                    if self.tenant:
-                        inv_qs = inv_qs.filter(tenant=self.tenant)
-                    invoice_record = inv_qs.order_by('-created_at').first()
+            tenant_can_pay = (
+                self.tenant and self.tenant.can_accept_payments
+            ) if self.tenant else False
+
+            if tenant_can_pay:
+                try:
+                    from apps.billing.models import InvoiceLineItem, Invoice
+
+                    # Find the invoice record
+                    invoice_record = None
+                    if repair_ids:
+                        line_qs = InvoiceLineItem.objects.all()
+                        if self.tenant:
+                            line_qs = line_qs.filter(invoice__tenant=self.tenant)
+                        line_item = line_qs.filter(
+                            repair_id__in=repair_ids,
+                            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
+                        ).select_related('invoice').first()
+                        if line_item:
+                            invoice_record = line_item.invoice
+                    else:
+                        inv_qs = Invoice.objects.filter(
+                            customer_id=customer_id,
+                            status__in=['SENT', 'PARTIAL'],
+                        )
+                        if self.tenant:
+                            inv_qs = inv_qs.filter(tenant=self.tenant)
+                        invoice_record = inv_qs.order_by('-created_at').first()
+
                     if invoice_record:
-                        payment_link = invoice_record.stripe_hosted_url
-            except Exception:
-                pass
+                        # Generate public payment URL (HMAC-token based, no login needed)
+                        # This URL will redirect to Stripe Checkout if available,
+                        # or show a fallback page with contact info.
+                        try:
+                            from rs_systems.views import generate_payment_token
+                            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                            token = generate_payment_token(invoice_record.id)
+                            payment_link = f"{base_url}/pay/{invoice_record.id}/{token}/"
+                        except Exception as e:
+                            logger.warning(f"Could not generate payment URL: {e}")
+                            _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                            payment_link = f"{_fb_base}/app/invoices/{invoice_record.id}/"
+                except Exception:
+                    pass
             
-            # Build email
+            # Build email — use shop-defined template if configured (CODE-119)
             subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
-            body = self._build_email_body(
-                invoice_data, include_photos=len(photos) > 0,
-                payment_link=payment_link
-            )
+            body = ''
+            if self.tenant:
+                try:
+                    from apps.billing.models import BillingConfig
+                    cfg = BillingConfig.get_for_tenant(self.tenant)
+                    if cfg.invoice_email_template:
+                        body = self._render_invoice_template(cfg.invoice_email_template, invoice_data)
+                except Exception:
+                    pass
+            if not body:
+                body = self._build_email_body(
+                    invoice_data, include_photos=len(photos) > 0,
+                    payment_link=payment_link
+                )
             
-            email = EmailMessage(
+            # Build HTML version of the email
+            html_body = self._build_html_email(invoice_data, payment_link=payment_link,
+                                                include_photos=len(photos) > 0)
+
+            email = EmailMultiAlternatives(
                 subject=subject,
-                body=body,
+                body=body,  # plain text fallback
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 to=[recipient_email],
                 cc=cc_emails or [],
             )
+            email.attach_alternative(html_body, 'text/html')
             
             # Attach PDF
             pdf_filename = f"Invoice_{invoice_data.customer_name.replace(' ', '_')}_{invoice_data.invoice_number}.pdf"
@@ -343,6 +434,152 @@ class InvoiceEmailService:
         except Exception as e:
             return False, f"Error sending email: {str(e)}"
     
+    def _build_html_email(self, invoice_data, payment_link=None, include_photos=False) -> str:
+        """Build an HTML email with clickable buttons."""
+        invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
+        # Use the same public pay URL for "View Invoice" (no login required)
+        if payment_link:
+            portal_url = payment_link
+        elif invoice_id:
+            try:
+                from rs_systems.views import generate_payment_token
+                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                token = generate_payment_token(invoice_id)
+                portal_url = f"{base_url}/pay/{invoice_id}/{token}/"
+            except Exception:
+                _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                portal_url = f"{_fb_base}/app/invoices/{invoice_id}/"
+        else:
+            _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+            portal_url = f"{_fb_base}/app/invoices/"
+
+        # Company info — escape all user-controlled strings before embedding in HTML
+        # (CODE-232: XSS in invoice email HTML body)
+        company_name = html.escape('RS Systems')
+        company_address = ''
+        company_phone = ''
+        if self.tenant:
+            company_name = html.escape(self.tenant.name or 'RS Systems')
+            company_address = html.escape(self.tenant.business_address or '')
+            company_phone = html.escape(self.tenant.business_phone or '')
+
+        # Line items HTML
+        items_html = ''
+        for item in invoice_data.line_items:
+            unit_esc = html.escape(str(item.unit_number))
+            damage_esc = html.escape(str(item.damage_type))
+            items_html += f'''
+            <tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">Unit {unit_esc}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{damage_esc}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;text-align:right;">${item.final_cost:.2f}</td>
+            </tr>'''
+
+        # Tax info
+        tax_html = ''
+        if hasattr(invoice_data, 'tax_amount') and invoice_data.tax_amount > 0:
+            rate_display = f"{invoice_data.tax_rate:.3f}".rstrip('0').rstrip('.')
+            tax_html = f'''
+            <tr>
+                <td colspan="2" style="padding:6px 12px;font-size:14px;color:#6b7280;text-align:right;">Tax ({rate_display}%)</td>
+                <td style="padding:6px 12px;font-size:14px;color:#374151;text-align:right;">${invoice_data.tax_amount:.2f}</td>
+            </tr>'''
+
+        # Discount info
+        discount_html = ''
+        if invoice_data.total_discount > 0:
+            discount_html = f'''
+            <tr>
+                <td colspan="2" style="padding:6px 12px;font-size:14px;color:#059669;text-align:right;">Discount</td>
+                <td style="padding:6px 12px;font-size:14px;color:#059669;text-align:right;">-${invoice_data.total_discount:.2f}</td>
+            </tr>'''
+
+        # Payment button
+        pay_button_html = ''
+        if payment_link:
+            pay_button_html = f'''
+            <div style="text-align:center;margin:24px 0;">
+                <a href="{payment_link}" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
+                    💳 Pay Invoice — ${invoice_data.total:.2f}
+                </a>
+            </div>'''
+
+        # Escape remaining user-controlled values used in the HTML template
+        cust_name_esc = html.escape(str(invoice_data.customer_name))
+        inv_number_esc = html.escape(str(invoice_data.invoice_number))
+        pay_terms_esc = html.escape(str(invoice_data.payment_terms_display))
+
+        html_doc = f'''<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+
+<!-- Header -->
+<div style="background-color:#1e40af;padding:24px;border-radius:12px 12px 0 0;text-align:center;">
+    <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">{company_name}</h1>
+    <p style="margin:4px 0 0;color:#93c5fd;font-size:14px;">Invoice #{inv_number_esc}</p>
+</div>
+
+<!-- Body -->
+<div style="background-color:#ffffff;padding:24px;border:1px solid #e5e7eb;border-top:none;">
+
+    <p style="font-size:15px;color:#374151;margin:0 0 16px;">
+        Hi {cust_name_esc},<br><br>
+        Here's your invoice for recent windshield repair services.
+    </p>
+
+    <!-- Invoice Details -->
+    <div style="background-color:#f9fafb;border-radius:8px;padding:16px;margin-bottom:20px;">
+        <table style="width:100%;font-size:14px;color:#6b7280;">
+            <tr><td style="padding:4px 0;">Invoice #</td><td style="text-align:right;font-weight:600;color:#111827;">{inv_number_esc}</td></tr>
+            <tr><td style="padding:4px 0;">Date</td><td style="text-align:right;">{invoice_data.invoice_date.strftime('%B %d, %Y')}</td></tr>
+            <tr><td style="padding:4px 0;">Payment Terms</td><td style="text-align:right;">{pay_terms_esc}</td></tr>
+        </table>
+    </div>
+
+    <!-- Line Items -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr style="background-color:#f3f4f6;">
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Unit</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Service</th>
+            <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Amount</th>
+        </tr>
+        {items_html}
+        {discount_html}
+        {tax_html}
+        <tr style="background-color:#eff6ff;">
+            <td colspan="2" style="padding:12px;font-size:16px;font-weight:700;color:#1e40af;text-align:right;">Total Due</td>
+            <td style="padding:12px;font-size:16px;font-weight:700;color:#1e40af;text-align:right;">${invoice_data.total:.2f}</td>
+        </tr>
+    </table>
+
+    {pay_button_html}
+
+    <!-- View Online Link -->
+    <div style="text-align:center;margin:16px 0;">
+        <a href="{portal_url}" style="display:inline-block;padding:10px 24px;background-color:#ffffff;color:#2563eb;text-decoration:none;font-size:14px;font-weight:500;border:2px solid #2563eb;border-radius:8px;">
+            📄 View Invoice Online
+        </a>
+    </div>
+
+    <p style="font-size:13px;color:#9ca3af;text-align:center;margin:20px 0 0;">
+        A PDF copy of this invoice is attached to this email.
+    </p>
+</div>
+
+<!-- Footer -->
+<div style="padding:16px 24px;text-align:center;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;background-color:#f9fafb;">
+    <p style="margin:0;font-size:13px;color:#6b7280;font-weight:600;">{company_name}</p>
+    {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_address + "</p>" if company_address else ""}
+    {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_phone + "</p>" if company_phone else ""}
+</div>
+
+</div>
+</body>
+</html>'''
+        return html_doc
+
     def preview_invoice_email(
         self,
         customer_id: int,

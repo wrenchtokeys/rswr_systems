@@ -97,10 +97,23 @@ class SubscriptionService:
                     tenant.save(update_fields=['stripe_subscription_id'])
             
             # Step 1: Create or retrieve Stripe Customer
+            customer = None
             if tenant.stripe_customer_id:
-                customer = stripe.Customer.retrieve(tenant.stripe_customer_id)
-                logger.info(f"Retrieved Stripe customer {customer.id} for tenant {tenant.slug}")
-            else:
+                try:
+                    customer = stripe.Customer.retrieve(tenant.stripe_customer_id)
+                    logger.info(f"Retrieved Stripe customer {customer.id} for tenant {tenant.slug}")
+                except stripe.error.InvalidRequestError as e:
+                    if 'No such customer' in str(e):
+                        logger.warning(
+                            f"Stale stripe_customer_id '{tenant.stripe_customer_id}' "
+                            f"for tenant {tenant.slug} — clearing and creating new customer"
+                        )
+                        tenant.stripe_customer_id = ''
+                        tenant.stripe_subscription_id = ''
+                    else:
+                        raise
+
+            if not customer:
                 customer = stripe.Customer.create(
                     name=tenant.name,
                     email=tenant.business_email or tenant.owner.email,
@@ -292,9 +305,15 @@ class SubscriptionService:
                     end_behavior='release',  # Release back to regular subscription after
                     phases=[
                         {
-                            # Current phase: keep current plan until period end
+                            # Current phase: keep current plan until period end.
+                            # IMPORTANT: start_date must NOT be in the past.
+                            # 'now' is the correct token for "start immediately"
+                            # when the phase covers an already-active period.
+                            # Using subscription.current_period_start (a past
+                            # Unix timestamp) causes Stripe to reject the request
+                            # with InvalidRequestError.  (CODE-229)
                             'items': [{'price': current_plan.stripe_price_id}],
-                            'start_date': subscription.current_period_start,
+                            'start_date': 'now',
                             'end_date': current_period_end,
                         },
                         {
@@ -500,8 +519,22 @@ class SubscriptionService:
             return session.url
             
         except stripe.error.InvalidRequestError as e:
+            error_str = str(e)
             logger.error(f"Invalid request creating billing portal for {tenant.slug}: {e}")
-            raise SubscriptionError(f"Could not open billing portal: {str(e)}")
+            # Stale customer ID from a different Stripe mode (test vs live)
+            if 'No such customer' in error_str:
+                logger.warning(
+                    f"Clearing stale stripe_customer_id '{tenant.stripe_customer_id}' "
+                    f"for tenant {tenant.slug} (wrong Stripe mode)"
+                )
+                tenant.stripe_customer_id = ''
+                tenant.stripe_subscription_id = ''
+                tenant.save(update_fields=['stripe_customer_id', 'stripe_subscription_id'])
+                raise SubscriptionError(
+                    "Your billing account was linked to a previous Stripe environment. "
+                    "It has been reset — please subscribe to a plan to set up billing."
+                )
+            raise SubscriptionError(f"Could not open billing portal: {error_str}")
         except stripe.error.StripeError as e:
             logger.error(f"Stripe error creating billing portal for {tenant.slug}: {e}")
             raise SubscriptionError("Payment service error. Please try again later.")

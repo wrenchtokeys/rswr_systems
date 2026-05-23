@@ -24,10 +24,12 @@ from io import BytesIO
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import sys
 
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
+
 logger = logging.getLogger(__name__)
 
 
-class EmailBrandingConfig(models.Model):
+class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
     """
     Singleton model for email template branding customization.
 

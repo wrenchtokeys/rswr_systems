@@ -93,6 +93,24 @@ class AdminPageLoadTests(TestCase):
     def test_notification_changelist(self):
         self._assert_page_ok('admin:core_notification_changelist')
 
+    def test_review_config_changelist(self):
+        """
+        ReviewConfig admin changelist should return 200.
+
+        CODE-210: ReviewConfig and ReviewRequest were added in CODE-208 but
+        never registered in admin.py. This test would have failed before the
+        fix because the URL would not exist (404/NoReverseMatch).
+        """
+        self._assert_page_ok('admin:technician_portal_reviewconfig_changelist')
+
+    def test_review_request_changelist(self):
+        """
+        ReviewRequest admin changelist should return 200.
+
+        CODE-210: Companion test to test_review_config_changelist.
+        """
+        self._assert_page_ok('admin:technician_portal_reviewrequest_changelist')
+
 
 class AdminDashboardTests(TestCase):
     """Custom dashboard metrics render correctly."""
@@ -275,6 +293,31 @@ class InvoiceCSVExportTests(TestCase):
         self.assertEqual(rows[0][0], 'Invoice #')
         self.assertEqual(rows[1][0], 'INV-0001')
         self.assertEqual(rows[1][1], 'Invoice Customer')
+
+    def test_invoice_changelist_with_amount_due(self):
+        """
+        Regression test for CODE-076.
+
+        InvoiceAdmin.amount_due_display() used format_html with a {:,.2f}
+        format spec directly on a Decimal.  format_html wraps all positional
+        args with conditional_escape() before applying the format, converting
+        the Decimal to a SafeString first, which raises:
+            ValueError: Unknown format code 'f' for object of type 'SafeString'
+
+        The fix: pre-format the number with f-string, then pass the result to
+        format_html so only a plain string is escaped-and-inserted.
+
+        This test ensures the Invoice changelist loads (200) when at least one
+        invoice has amount_due > 0 (i.e. total > amount_paid).
+        """
+        url = reverse('admin:billing_invoice_changelist')
+        response = self.client.get(url)
+        self.assertEqual(
+            response.status_code, 200,
+            "Invoice admin changelist crashed — likely amount_due_display format bug"
+        )
+        # Verify the amount-due cell was rendered with the red-span markup
+        self.assertContains(response, 'color: red;')
 
 
 class CustomerCSVExportTests(TestCase):

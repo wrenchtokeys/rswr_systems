@@ -11,6 +11,7 @@ Author: Amelia (Clawdbot AI)
 import json
 from datetime import datetime, timedelta
 from decimal import Decimal
+from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.csrf import csrf_exempt
@@ -128,7 +129,12 @@ def list_invoices(request):
     if request.GET.get('outstanding', '').lower() == 'true':
         invoices = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE'])
 
-    invoices = invoices.select_related('customer').order_by('-invoice_date')[:50]
+    invoices = (
+        invoices
+        .select_related('customer')
+        .annotate(line_item_count=Count('line_items'))
+        .order_by('-invoice_date')[:50]
+    )
 
     return JsonResponse({
         'invoices': [{
@@ -142,7 +148,7 @@ def list_invoices(request):
             'amount_due': float(inv.amount_due),
             'status': inv.status,
             'stripe_hosted_url': inv.stripe_hosted_url or None,
-            'line_item_count': inv.line_items.count(),
+            'line_item_count': inv.line_item_count,
         } for inv in invoices],
         'count': len(invoices),
     })
@@ -205,11 +211,24 @@ def create_invoice(request, customer_id):
     try:
         due_days = data.get('due_days', 30)
         send_email = data.get('auto_email', False)
+
+        # Optional payment-terms override (CODE-153).  Validate against
+        # the canonical choices list to prevent arbitrary values.
+        from apps.billing.models import BillingConfig
+        req_payment_terms = data.get('payment_terms')  # None = use default
+        valid_terms = {code for code, _label in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if req_payment_terms and req_payment_terms not in valid_terms:
+            return JsonResponse(
+                {'error': f'Invalid payment_terms: {req_payment_terms}'},
+                status=400,
+            )
+
         invoice = tracking.create_invoice_from_repairs(
             customer=customer,
             repairs=repairs,
-            due_days=due_days,
-            auto_send=send_email,  # SENT if emailing, DRAFT otherwise
+            due_days=due_days if req_payment_terms is None else None,
+            auto_send=send_email,
+            payment_terms=req_payment_terms,
         )
         # Ensure invoice is associated with the tenant
         if not invoice.tenant_id:
@@ -225,7 +244,8 @@ def create_invoice(request, customer_id):
     # Generate PDF and save to S3
     try:
         from apps.billing.services.invoice_service import InvoiceService
-        invoice_service = InvoiceService()
+        # Pass tenant so InvoiceService loads correct BillingConfig. (CODE-092)
+        invoice_service = InvoiceService(tenant=tenant)
         repair_ids = [r.id for r in repairs]
         pdf_bytes, invoice_data = invoice_service.generate_invoice(
             customer_id=customer_id,
@@ -254,23 +274,45 @@ def create_invoice(request, customer_id):
             from apps.billing.services.stripe_service import StripeService
             stripe_svc = StripeService()
             if stripe_svc.is_enabled() and invoice.amount_due > 0:
-                stripe_result = stripe_svc.create_payment_link(invoice)
+                # Use connected payment if tenant has Stripe Connect set up
+                if invoice.tenant and invoice.tenant.can_accept_payments:
+                    from apps.tenants.services.connect_service import ConnectService
+                    connect_svc = ConnectService()
+                    stripe_result = connect_svc.create_connected_payment_link(invoice)
+                # Fall back to platform payment link
+                if not stripe_result:
+                    stripe_result = stripe_svc.create_payment_link(invoice)
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Stripe link failed for {invoice.invoice_number}: {e}")
 
-    # Optionally email
+    # Optionally email — mark SENT only after confirmed delivery (CODE-096)
     if send_email and customer.email:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         try:
             email_svc = InvoiceEmailService(tenant=tenant)
-            email_svc.send_invoice_email(
+            success, msg = email_svc.send_invoice_email(
                 customer_id=customer_id,
                 recipient_email=customer.email,
                 repair_ids=repair_ids
             )
-        except Exception:
-            pass
+            if success:
+                import django.utils.timezone as _tz
+                invoice.status = 'SENT'
+                invoice.sent_at = _tz.now()
+                invoice.save(update_fields=['status', 'sent_at'])
+            else:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    f"Invoice {invoice.invoice_number}: auto_email requested but "
+                    f"delivery failed — keeping DRAFT. Reason: {msg}"
+                )
+        except Exception as _e:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                f"Invoice {invoice.invoice_number}: email exception — keeping DRAFT. "
+                f"Error: {_e}"
+            )
 
     try:
         return JsonResponse({
@@ -332,24 +374,33 @@ def send_invoice_email(request, invoice_id):
 
     if invoice.status == 'PAID':
         return JsonResponse({'error': f'Invoice {invoice.invoice_number} is already paid'}, status=400)
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'error': f'Invoice {invoice.invoice_number} is cancelled and cannot be sent'}, status=400)
 
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         email_svc = InvoiceEmailService(tenant=tenant)
         repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
-        email_svc.send_invoice_email(
+        success, msg = email_svc.send_invoice_email(
             customer_id=invoice.customer_id,
             recipient_email=recipient_email,
             repair_ids=repair_ids if repair_ids else None,
             cc_emails=cc_emails if cc_emails else None,
         )
-        
-        # Update invoice status to SENT if it was DRAFT
+
+        if not success:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Email send returned failure for {invoice.invoice_number}: {msg}"
+            )
+            return JsonResponse({'error': f'Email failed: {msg}'}, status=500)
+
+        # Update invoice status to SENT if it was DRAFT (only on confirmed delivery)
         if invoice.status == 'DRAFT':
             invoice.status = 'SENT'
             invoice.sent_at = timezone.now()
             invoice.save(update_fields=['status', 'sent_at'])
-        
+
         all_recipients = [recipient_email] + (cc_emails or [])
         return JsonResponse({'success': True, 'sent_to': ', '.join(all_recipients)})
     except Exception as e:
@@ -379,25 +430,49 @@ def send_invoice_email_batch(request):
     from apps.billing.services.invoice_email_service import InvoiceEmailService
     email_svc = InvoiceEmailService(tenant=tenant)
 
+    # Fetch all requested invoices in one query (with customer & line items prefetched)
+    # to avoid N individual .get() calls + lazy FK traversals inside the loop.
+    invoice_map = {
+        inv.id: inv
+        for inv in Invoice.objects.filter(
+            id__in=invoice_ids, tenant=tenant
+        ).select_related('customer').prefetch_related('line_items')
+    }
+
     results = []
     for inv_id in invoice_ids:
+        invoice = invoice_map.get(inv_id)
+        if invoice is None:
+            results.append({'id': inv_id, 'success': False, 'error': 'Not found'})
+            continue
         try:
-            invoice = Invoice.objects.get(id=inv_id, tenant=tenant)
             if invoice.status == 'PAID':
                 results.append({'id': inv_id, 'success': False, 'error': 'Already paid'})
+                continue
+            if invoice.status == 'CANCELLED':
+                results.append({'id': inv_id, 'success': False, 'error': 'Invoice is cancelled'})
                 continue
             if not invoice.customer.email:
                 results.append({'id': inv_id, 'success': False, 'error': 'No email'})
                 continue
-            repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
-            email_svc.send_invoice_email(
+            repair_ids = [item.repair_id for item in invoice.line_items.all()]
+            sent_ok, sent_msg = email_svc.send_invoice_email(
                 customer_id=invoice.customer_id,
                 recipient_email=invoice.customer.email,
                 repair_ids=repair_ids if repair_ids else None,
             )
-            results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
-        except Invoice.DoesNotExist:
-            results.append({'id': inv_id, 'success': False, 'error': 'Not found'})
+            if sent_ok:
+                # Promote DRAFT → SENT on confirmed delivery (mirrors single-send logic).
+                # Without this, batch-sent invoices stay DRAFT: they appear in
+                # "unsent" filters, automated reminders don't trigger, and the
+                # sent_at timestamp is never recorded. (CODE-182)
+                if invoice.status == 'DRAFT':
+                    invoice.status = 'SENT'
+                    invoice.sent_at = timezone.now()
+                    invoice.save(update_fields=['status', 'sent_at'])
+                results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
+            else:
+                results.append({'id': inv_id, 'success': False, 'error': sent_msg})
         except Exception as e:
             results.append({'id': inv_id, 'success': False, 'error': str(e)})
 
@@ -507,15 +582,55 @@ def record_payment(request, invoice_id):
             return JsonResponse({'error': 'Invalid date. Use YYYY-MM-DD'}, status=400)
 
     try:
-        service = InvoiceTrackingService(tenant=tenant)
-        payment = service.record_payment(
-            invoice=invoice,
-            amount=data['amount'],
-            payment_method=data.get('payment_method', 'OTHER').upper(),
-            reference_number=data.get('reference_number', ''),
-            notes=data.get('notes', ''),
-            payment_date=payment_date,
-        )
+        from decimal import Decimal as _Decimal, InvalidOperation as _InvalidOperation
+        from django.db import transaction as _transaction
+
+        # Parse and validate amount up front before acquiring any lock
+        try:
+            payment_amount = _Decimal(str(data['amount']))
+        except (_InvalidOperation, TypeError, ValueError):
+            return JsonResponse({'error': 'Invalid amount value'}, status=400)
+
+        if payment_amount <= _Decimal('0'):
+            return JsonResponse({'error': 'Payment amount must be greater than zero'}, status=400)
+
+        # Guard: cannot pay a cancelled or already-paid invoice
+        if invoice.status in ('PAID', 'CANCELLED'):
+            return JsonResponse(
+                {'error': f'Cannot record payment — invoice is {invoice.get_status_display()}.'},
+                status=400,
+            )
+
+        # Use a row-level lock (SELECT FOR UPDATE) to prevent a TOCTOU race
+        # where two concurrent API requests both read the same stale amount_due
+        # and both pass the overpayment check, resulting in amount_paid > total.
+        # The UI endpoint (owner_record_payment in saas/views.py) already uses
+        # this pattern; the API must be consistent.  (CODE-155)
+        with _transaction.atomic():
+            invoice_locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
+
+            # Re-check status inside the lock
+            if invoice_locked.status in ('PAID', 'CANCELLED'):
+                raise ValueError(
+                    f'Cannot record payment — invoice is {invoice_locked.get_status_display()}.'
+                )
+
+            # Validate against the fresh, locked amount_due to prevent overpayment
+            if payment_amount > invoice_locked.amount_due:
+                raise ValueError(
+                    f'Payment amount (${payment_amount}) exceeds the remaining balance '
+                    f'(${invoice_locked.amount_due}).'
+                )
+
+            service = InvoiceTrackingService(tenant=tenant)
+            payment = service.record_payment(
+                invoice=invoice_locked,
+                amount=payment_amount,
+                payment_method=data.get('payment_method', 'OTHER').upper(),
+                reference_number=data.get('reference_number', ''),
+                notes=data.get('notes', ''),
+                payment_date=payment_date,
+            )
 
         invoice.refresh_from_db()
 
@@ -565,6 +680,32 @@ def cancel_invoice(request, invoice_id):
 
     if invoice.status == 'PAID':
         return JsonResponse({'error': 'Cannot cancel a paid invoice'}, status=400)
+
+    if invoice.status == 'CANCELLED':
+        return JsonResponse({'error': 'Invoice is already cancelled'}, status=400)
+
+    # (CODE-204) Block cancellation of PARTIAL invoices via API — mirrors the UI guard
+    # added in CODE-123 for owner_invoice_void().  A PARTIAL invoice has real Payment
+    # records pointing at it; calling invoice.cancel() sets status='CANCELLED' but leaves
+    # those Payment rows intact.  The Payment.invoice FK uses on_delete=PROTECT, so the
+    # invoice can then never be deleted, and invoice.amount_paid stays non-zero on a
+    # "cancelled" invoice — misleading financials and a permanent data integrity violation.
+    # The caller must remove or reverse all payments first (via the record_payment API or
+    # admin), at which point the invoice status drops back to SENT/OVERDUE and can be
+    # cancelled normally.
+    if invoice.status == 'PARTIAL':
+        payment_count = invoice.payments.count()
+        return JsonResponse(
+            {
+                'error': (
+                    f'Cannot cancel a partially-paid invoice. '
+                    f'{payment_count} payment(s) are recorded against it. '
+                    'Remove or reverse the payment(s) first, '
+                    'then cancel the invoice.'
+                )
+            },
+            status=400,
+        )
 
     try:
         data = json.loads(request.body) if request.body else {}

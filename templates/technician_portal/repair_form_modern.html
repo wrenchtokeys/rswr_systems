@@ -99,7 +99,7 @@
                         <div class="ml-3">
                             <p class="text-sm text-blue-700 font-medium">Photo Requirements for Completed Repairs:</p>
                             <ul class="mt-2 text-sm text-blue-700 space-y-1">
-                                <li><i class="fas fa-check-circle text-blue-500 mr-1"></i> <strong>After photo is REQUIRED</strong> to complete a repair{% if not user.is_staff and user.technician and not user.technician.is_manager %} (managers can override){% endif %}</li>
+                                <li><i class="fas fa-check-circle text-blue-500 mr-1"></i> <strong>After photo is REQUIRED</strong> to complete a repair{% if not user.is_staff and not is_admin and not current_technician.is_manager %} (managers can override){% endif %}</li>
                                 <li><i class="fas fa-info-circle text-blue-500 mr-1"></i> <strong>Before photo is recommended</strong> for documentation purposes</li>
                             </ul>
                         </div>

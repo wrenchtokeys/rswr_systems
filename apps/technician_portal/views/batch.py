@@ -17,6 +17,7 @@ from apps.technician_portal.models import Technician, Repair, UnitRepairCount, T
 from apps.customer_portal.models import CustomerRepairPreference
 from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
+from common.auth import get_user_role
 from apps.technician_portal.services.batch_pricing_service import calculate_batch_pricing
 from common.utils import convert_heic_to_jpeg
 
@@ -26,12 +27,24 @@ logger = logging.getLogger(__name__)
 @technician_required
 def technician_batch_detail(request, batch_id):
     """Display all repairs in a batch with batch actions for technician."""
-    # Admins/owners without a Technician profile are allowed by @technician_required;
-    # guard with getattr to avoid RelatedObjectDoesNotExist for those users.
-    technician = getattr(request.user, 'technician', None)
-    user_is_admin = is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None))
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
-    batch_summary = Repair.get_batch_summary(batch_id)
+    # Use tenant-scoped Technician lookup so that a manager/tech from Shop A who
+    # visits Shop B's batch URL gets the Shop B Technician record (or None), NOT
+    # Shop A's record.  Using the unscoped OneToOneField reverse accessor
+    # (request.user.technician) would return Shop A's record, causing:
+    #   1. technician.is_manager evaluated with Shop A's flag in a Shop B context
+    #   2. manages_technician() called on Shop B repairs using Shop A's M2M table
+    #   3. TechnicianNotification auto-read logic tagging the wrong shop's notifications
+    # (Same family as CODE-077 through CODE-088.)
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
+
+    # Pass tenant so cross-tenant batch access is blocked at the DB layer.
+    batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
     if not batch_summary:
         messages.error(request, "Batch not found.")
         return redirect('technician_dashboard')
@@ -74,11 +87,27 @@ def technician_batch_detail(request, batch_id):
             unread_batch_notifications.update(read=True)
             logger.info(f"Auto-marked {unread_count} batch notification(s) as read for technician {technician.user.username}")
 
+    # CODE-248: Determine if there are incomplete repairs that can be completed
+    has_incomplete = any(
+        r.queue_status in ('APPROVED', 'IN_PROGRESS')
+        for r in repairs
+    )
+    can_complete_all = has_incomplete and (user_is_admin or any(
+        r.technician == technician and r.queue_status in ('APPROVED', 'IN_PROGRESS')
+        for r in repairs
+    ))
+
+    # CODE-247: Determine if batch can be invoiced (all completed, user is admin/owner)
+    all_completed = all(r.queue_status == 'COMPLETED' for r in repairs)
+    can_generate_invoice = all_completed and user_is_admin and len(repairs) > 0
+
     return render(request, 'technician_portal/batch_detail.html', {
         'batch_summary': batch_summary,
         'repairs': batch_summary['repairs'],
         'technician': technician,
         'can_start_work': can_start_work,
+        'can_complete_all': can_complete_all,
+        'can_generate_invoice': can_generate_invoice,
         'is_admin': user_is_admin,
     })
 
@@ -87,11 +116,22 @@ def technician_batch_detail(request, batch_id):
 @transaction.atomic
 def technician_batch_start_work(request, batch_id):
     """Start work on all repairs in a batch at once."""
-    # Guard: admin/owner users without a Technician record are allowed through
-    # @technician_required but don't have a .technician reverse relation.
-    technician = getattr(request.user, 'technician', None)
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
-    batch_summary = Repair.get_batch_summary(batch_id)
+    # Use tenant-scoped Technician lookup (same fix as technician_batch_detail above).
+    # The unscoped OneToOneField accessor (request.user.technician) would return the
+    # wrong shop's Technician record for cross-tenant users.  The guard
+    # `repair.technician == technician` would then never match Shop B repairs, causing
+    # legitimate technicians to see "No repairs were started" even for their own batches
+    # if their Technician record was somehow resolved via the wrong shop's context.
+    # (Same family as CODE-077 through CODE-088.)
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
+
+    batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
     if not batch_summary:
         messages.error(request, "Batch not found.")
         return redirect('technician_dashboard')
@@ -100,7 +140,11 @@ def technician_batch_start_work(request, batch_id):
     started_count = 0
 
     for repair in repairs:
-        if repair.queue_status == 'APPROVED' and repair.technician == technician:
+        if repair.queue_status != 'APPROVED':
+            continue
+        # Admins/owners can start any repair in the batch.
+        # Technicians (and managers) can only start repairs assigned to them.
+        if user_is_admin or repair.technician == technician:
             repair.queue_status = 'IN_PROGRESS'
             repair.save()
             started_count += 1
@@ -124,15 +168,84 @@ def technician_batch_start_work(request, batch_id):
 
 
 @technician_required
+@transaction.atomic
+def batch_complete_all(request, batch_id):
+    """Mark all APPROVED/IN_PROGRESS repairs in a batch as COMPLETED (CODE-248)."""
+    if request.method != 'POST':
+        messages.error(request, "Invalid request.")
+        return redirect('technician_dashboard')
+
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    technician = (
+        Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if tenant else None
+    )
+
+    batch_summary = Repair.get_batch_summary(batch_id, tenant=tenant)
+    if not batch_summary:
+        messages.error(request, "Batch not found.")
+        return redirect('technician_dashboard')
+
+    repairs = batch_summary['all_repairs']
+    completed_count = 0
+
+    for repair in repairs:
+        if repair.queue_status not in ('APPROVED', 'IN_PROGRESS'):
+            continue
+        if user_is_admin or repair.technician == technician:
+            repair.queue_status = 'COMPLETED'
+            repair.save()
+            completed_count += 1
+
+    if completed_count > 0:
+        messages.success(
+            request,
+            f"Marked {completed_count} break{'s' if completed_count > 1 else ''} as completed in Unit {batch_summary['unit_number']} batch."
+        )
+    else:
+        messages.warning(request, "No repairs were completed. They may already be completed or not assigned to you.")
+
+    return redirect('technician_batch_detail', batch_id=batch_id)
+
+
+@technician_required
 def create_multi_break_repair(request):
     """Create multiple repairs (breaks) on the same unit in one session."""
-    user_is_admin = is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None))
+    tenant = getattr(request, 'tenant', None)
+    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
+
+    # Plan limit check — batch creation must respect the same monthly
+    # repair cap as single-repair creation (CODE-243).  Without this,
+    # technicians on a capped plan could bypass limits by using the
+    # multi-break flow instead of the single-repair form.
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, limit_msg)
+            return redirect('technician_dashboard')
+
     if request.method == 'POST':
         try:
             customer_id = request.POST.get('customer')
             unit_number = request.POST.get('unit_number')
             repair_date_str = request.POST.get('repair_date', request.POST.get('service_date'))
             breaks_count = int(request.POST.get('breaks_count', 0))
+
+            # Cap break count to prevent abuse / accidental mass-creation.
+            # A single windshield rarely has more than ~10 breaks; 20 is generous.
+            # Without this guard, a crafted POST with breaks_count=10000 would
+            # create 10k Repair rows in one atomic transaction.  (CODE-240)
+            MAX_BREAKS_PER_UNIT = 20
+            if breaks_count > MAX_BREAKS_PER_UNIT:
+                error_msg = f"Break count ({breaks_count}) exceeds the maximum of {MAX_BREAKS_PER_UNIT} per unit."
+                logger.warning(f"[MULTI-BREAK] Break count exceeds limit - breaks={breaks_count}, max={MAX_BREAKS_PER_UNIT}")
+                messages.error(request, error_msg)
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                return redirect('create_multi_break_repair')
 
             logger.info(f"[MULTI-BREAK] Request received - customer_id={customer_id}, unit={unit_number}, date={repair_date_str}, breaks={breaks_count}")
 
@@ -179,27 +292,46 @@ def create_multi_break_repair(request):
             batch_id = uuid.uuid4()
             created_repairs = []
 
-            # Determine technician
+            # Determine technician — always use tenant-scoped lookup to prevent
+            # cross-tenant Technician assignment (CODE-084 / same family as CODE-082).
             if user_is_admin:
                 tech_id = request.POST.get('technician_id')
                 if not tech_id:
-                    messages.error(request, "As an admin, you must select a technician.")
-                    return redirect('create_multi_break_repair')
-                try:
-                    tech_qs = Technician.objects.filter(id=tech_id)
-                    if tenant:
-                        tech_qs = tech_qs.filter(tenant=tenant)
-                    else:
-                        tech_qs = tech_qs.none()
-                    technician = tech_qs.get()
-                except Technician.DoesNotExist:
-                    messages.error(request, "Invalid technician selected.")
-                    return redirect('create_multi_break_repair')
+                    # Admin who is also a technician — look up their tenant-scoped record.
+                    technician = Technician.objects.filter(
+                        user=request.user, tenant=tenant
+                    ).first() if tenant else None
+                    if not technician:
+                        error_msg = "As an admin, you must select a technician."
+                        messages.error(request, error_msg)
+                        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                            return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                        return redirect('create_multi_break_repair')
+                else:
+                    try:
+                        tech_qs = Technician.objects.filter(id=tech_id)
+                        if tenant:
+                            tech_qs = tech_qs.filter(tenant=tenant)
+                        else:
+                            tech_qs = tech_qs.none()
+                        technician = tech_qs.get()
+                    except Technician.DoesNotExist:
+                        error_msg = "Invalid technician selected."
+                        messages.error(request, error_msg)
+                        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                            return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                        return redirect('create_multi_break_repair')
             else:
-                try:
-                    technician = request.user.technician
-                except AttributeError:
-                    messages.error(request, "You don't have a technician profile to create repairs.")
+                # Non-admin: scope lookup to current tenant to avoid assigning a
+                # cross-tenant Technician record to this shop's repair.
+                technician = Technician.objects.filter(
+                    user=request.user, tenant=tenant
+                ).first() if tenant else None
+                if not technician:
+                    error_msg = "You don't have a technician profile to create repairs."
+                    messages.error(request, error_msg)
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse({'success': False, 'error': error_msg}, status=400)
                     return redirect('technician_dashboard')
 
             logger.info(f"[MULTI-BREAK] Starting atomic transaction for {breaks_count} breaks")
@@ -223,6 +355,10 @@ def create_multi_break_repair(request):
                     windshield_temp = request.POST.get(f'breaks[{i}][windshield_temperature]', '')
                     resin_viscosity = request.POST.get(f'breaks[{i}][resin_viscosity]', '')
 
+                    # Damage location
+                    damage_loc_x = request.POST.get(f'breaks[{i}][damage_location_x]', '')
+                    damage_loc_y = request.POST.get(f'breaks[{i}][damage_location_y]', '')
+
                     # Manager override fields
                     cost_override = request.POST.get(f'breaks[{i}][cost_override]', '')
                     override_reason = request.POST.get(f'breaks[{i}][override_reason]', '')
@@ -242,17 +378,40 @@ def create_multi_break_repair(request):
                     if cost_override:
                         try:
                             override_amount = Decimal(cost_override)
-                            if not (technician.is_manager and technician.can_override_pricing):
-                                messages.error(request, f"Break {i+1}: You don't have permission to override prices.")
-                                return redirect('create_multi_break_repair')
-                            if not override_reason:
-                                messages.error(request, f"Break {i+1}: Override reason is required when setting a custom price.")
-                                return redirect('create_multi_break_repair')
-                            if technician.approval_limit and override_amount > technician.approval_limit:
-                                messages.error(
-                                    request,
-                                    f"Break {i+1}: Override amount ${override_amount} exceeds your approval limit of ${technician.approval_limit}."
+                            # Determine the *requesting user's* role (not the assigned technician's).
+                            # Previously this checked `technician.is_manager` which is wrong when an
+                            # owner/admin assigns a repair to a plain tech: the assigned tech's
+                            # permissions were checked instead of the submitter's. (CODE-042)
+                            _req_tenant = getattr(request, 'tenant', None)
+                            requesting_role = get_user_role(request.user, tenant=_req_tenant)
+                            if requesting_role in ('superuser', 'owner'):
+                                # Owners/superusers can always override; no approval_limit applies.
+                                pass
+                            elif requesting_role == 'manager':
+                                # Managers: must have override permission, reason, and stay within limit.
+                                # Use tenant-scoped Technician lookup so a manager from another
+                                # shop cannot bleed their can_override_pricing=True into this tenant.
+                                requesting_tech = (
+                                    Technician.objects.filter(user=request.user, tenant=_req_tenant).first()
+                                    if _req_tenant else None
                                 )
+                                if not (requesting_tech and requesting_tech.can_override_pricing):
+                                    messages.error(request, f"Break {i+1}: You don't have permission to override prices.")
+                                    return redirect('create_multi_break_repair')
+                                if not override_reason:
+                                    messages.error(request, f"Break {i+1}: Override reason is required when setting a custom price.")
+                                    return redirect('create_multi_break_repair')
+                                # Use `is not None` so approval_limit=0 still enforces the
+                                # limit; a truthy check treats 0 as "no limit". (CODE-114)
+                                if requesting_tech.approval_limit is not None and override_amount > requesting_tech.approval_limit:
+                                    messages.error(
+                                        request,
+                                        f"Break {i+1}: Override amount ${override_amount} exceeds your approval limit of ${requesting_tech.approval_limit}."
+                                    )
+                                    return redirect('create_multi_break_repair')
+                            else:
+                                # Technicians and viewers cannot override pricing.
+                                messages.error(request, f"Break {i+1}: You don't have permission to override prices.")
                                 return redirect('create_multi_break_repair')
                             break_price = override_amount
                         except (ValueError, InvalidOperation):
@@ -278,7 +437,9 @@ def create_multi_break_repair(request):
                         break_number=i + 1,
                         total_breaks_in_batch=breaks_count,
                         cost=break_price,
-                        queue_status='PENDING'
+                        queue_status='PENDING',
+                        damage_location_x=float(damage_loc_x) if damage_loc_x else None,
+                        damage_location_y=float(damage_loc_y) if damage_loc_y else None,
                     )
 
                     # Check customer preferences for auto-approval
@@ -368,10 +529,28 @@ def create_multi_break_repair(request):
 
         else:
             customer_qs = customer_qs.none()
+        # Get technicians for admin selector
+        technicians = []
+        if user_is_admin:
+            tech_qs = Technician.objects.filter(is_active=True).select_related('user')
+            if tenant:
+                tech_qs = tech_qs.filter(tenant=tenant)
+            technicians = tech_qs.order_by('user__first_name')
+
+        # Use tenant-scoped Technician lookup so that a user who is a manager at
+        # Shop A but a plain technician at Shop B sees the correct override fields.
+        # `user.technician` (bare OneToOneField) resolves globally and would expose
+        # Shop A's manager privileges in Shop B's form.  (CODE-100)
+        current_technician = (
+            Technician.objects.filter(user=request.user, tenant=tenant).first()
+            if tenant else None
+        )
         return render(request, 'technician_portal/multi_break_repair_form.html', {
             'is_admin': user_is_admin,
             'customers': customer_qs.order_by('name'),
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
+            'technicians': technicians,
+            'current_technician': current_technician,
         })
 
 
@@ -390,11 +569,17 @@ def convert_to_batch(request, repair_id):
     original_repair = get_object_or_404(qs, id=repair_id)
 
     if not user_is_admin:
-        if not hasattr(request.user, 'technician'):
+        # Scope the Technician lookup to the current tenant — unscoped
+        # request.user.technician resolves via OneToOneField and could return
+        # a record from a different shop (CODE-084 / same family as CODE-082).
+        current_tech = Technician.objects.filter(
+            user=request.user, tenant=tenant
+        ).first() if tenant else None
+        if not current_tech:
             messages.error(request, "You don't have permission to modify this repair.")
             return redirect('repair_detail', repair_id=repair_id)
 
-        if original_repair.technician_id != request.user.technician.id:
+        if original_repair.technician_id != current_tech.id:
             messages.error(request, "You can only modify repairs assigned to you.")
             return redirect('repair_detail', repair_id=repair_id)
 
@@ -406,12 +591,27 @@ def convert_to_batch(request, repair_id):
         messages.error(request, "Only approved or in-progress repairs can be converted to batches.")
         return redirect('repair_detail', repair_id=repair_id)
 
+    # Plan limit check — converting to batch creates additional Repair rows,
+    # so it must respect the same monthly cap as single-repair creation (CODE-243).
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, limit_msg)
+            return redirect('repair_detail', repair_id=repair_id)
+
     if request.method == 'POST':
         try:
             additional_breaks = int(request.POST.get('additional_breaks', 0))
 
             if additional_breaks < 1:
                 messages.error(request, "You must add at least 1 additional break.")
+                return redirect('convert_to_batch', repair_id=repair_id)
+
+            # Cap additional breaks to prevent mass-creation abuse (CODE-240)
+            # Total batch size = 1 (original) + additional_breaks
+            if additional_breaks > 19:  # 1 + 19 = 20 max total
+                messages.error(request, f"Too many breaks ({additional_breaks + 1} total). Maximum is 20 per unit.")
                 return redirect('convert_to_batch', repair_id=repair_id)
 
             batch_id = uuid.uuid4()
@@ -454,13 +654,35 @@ def convert_to_batch(request, repair_id):
                     try:
                         override_cost_decimal = Decimal(override_cost)
 
-                        if user_is_admin:
+                        # Determine the *requesting user's* role (not the assigned
+                        # technician's).  Previously this checked
+                        # `request.user.technician.is_manager` which is wrong for two
+                        # reasons:
+                        # 1. The attribute is not tenant-scoped — a user who is Manager
+                        #    at Shop A but plain Technician at Shop B could have
+                        #    is_manager=True from the OneToOne Technician record for Shop A
+                        #    and bypass the price-override guard on Shop B repairs.
+                        # 2. Owners/superusers who have no Technician record would
+                        #    AttributeError at `request.user.technician` if user_is_admin
+                        #    were ever False (defensive fix).
+                        # (CODE-059)
+                        requesting_role = get_user_role(request.user, tenant=tenant)
+                        if requesting_role in ('superuser', 'owner'):
+                            # Owners/superusers can always override; no approval_limit.
                             cost = override_cost_decimal
-                        elif hasattr(request.user, 'technician') and request.user.technician.is_manager and request.user.technician.can_override_pricing:
-                            tech = request.user.technician
+                        elif requesting_role == 'manager':
+                            # Use tenant-scoped lookup so a manager from another shop
+                            # cannot bleed their can_override_pricing=True into this
+                            # tenant via the OneToOne Technician relation. (CODE-059)
+                            requesting_tech = (
+                                Technician.objects.filter(user=request.user, tenant=tenant).first()
+                                if tenant else None
+                            )
+                            if not (requesting_tech and requesting_tech.can_override_pricing):
+                                raise ValueError("You don't have permission to override prices")
                             # approval_limit=None means unlimited; comparison requires non-None
-                            if tech.approval_limit is not None and override_cost_decimal > tech.approval_limit:
-                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${tech.approval_limit}")
+                            if requesting_tech.approval_limit is not None and override_cost_decimal > requesting_tech.approval_limit:
+                                raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${requesting_tech.approval_limit}")
                             cost = override_cost_decimal
                         else:
                             raise ValueError("Only managers with override pricing permission can override prices")
@@ -471,6 +693,10 @@ def convert_to_batch(request, repair_id):
                     except (InvalidOperation, ValueError) as e:
                         raise ValueError(f"Invalid override cost for break {break_number}: {str(e)}")
 
+                # Damage location coordinates (CODE-245)
+                damage_loc_x = request.POST.get(f'damage_location_x_{i}', '')
+                damage_loc_y = request.POST.get(f'damage_location_y_{i}', '')
+
                 new_repair = Repair(
                     tenant=original_repair.tenant,  # Copy tenant from original repair
                     customer=original_repair.customer,
@@ -479,6 +705,15 @@ def convert_to_batch(request, repair_id):
                     damage_type=damage_type,
                     service_date=original_repair.service_date,
                     cost=cost,
+                    # CODE-181: Persist cost_override so Repair.save() doesn't
+                    # recalculate the price from the pricing service and silently
+                    # discard the manager's override.  Repair.save() checks
+                    # `if self.cost_override is not None` to use the manual price;
+                    # without this field set, the override was accepted, stored in
+                    # `cost` here, then wiped out on the next save() call (e.g. when
+                    # the repair is COMPLETED).  Mirrors the pattern used correctly in
+                    # create_multi_break_repair (line ~195 of this file).
+                    cost_override=Decimal(override_cost) if override_cost else None,
                     queue_status=original_repair.queue_status,
                     repair_batch_id=batch_id,
                     break_number=break_number,
@@ -488,6 +723,8 @@ def convert_to_batch(request, repair_id):
                     resin_viscosity=request.POST.get(f'resin_viscosity_{i}') or '',
                     drilled_before_repair=request.POST.get(f'drilled_before_repair_{i}') == 'on',
                     override_reason=override_reason if override_cost else '',
+                    damage_location_x=float(damage_loc_x) if damage_loc_x else None,
+                    damage_location_y=float(damage_loc_y) if damage_loc_y else None,
                 )
 
                 photo_before = request.FILES.get(f'photo_before_{i}')
@@ -506,12 +743,23 @@ def convert_to_batch(request, repair_id):
 
                 logger.info(f"Created additional repair {new_repair.id} - Break {break_number}/{total_breaks_in_batch}")
 
+            # CODE-248: If 'mark_completed' checkbox is checked, set all
+            # repairs in the batch (including original) to COMPLETED.
+            mark_completed = request.POST.get('mark_completed') == 'on'
+            if mark_completed:
+                for r in created_repairs:
+                    if r.queue_status != 'COMPLETED':
+                        r.queue_status = 'COMPLETED'
+                        r.save()
+                logger.info(f"Batch {batch_id}: All {len(created_repairs)} repairs marked COMPLETED per tech request")
+
             total_cost = sum(r.cost for r in created_repairs)
 
+            status_note = " All repairs marked as completed." if mark_completed else ""
             messages.success(
                 request,
                 f"Successfully converted to batch! Added {additional_breaks} break{'s' if additional_breaks > 1 else ''} "
-                f"to Unit {original_repair.unit_number} (${total_cost:.2f} total)."
+                f"to Unit {original_repair.unit_number} (${total_cost:.2f} total).{status_note}"
             )
 
             return redirect('technician_batch_detail', batch_id=batch_id)

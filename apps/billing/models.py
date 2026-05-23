@@ -12,19 +12,23 @@ Tracks:
 Author: Amelia (Clawdbot AI)
 """
 
-from django.db import models
+import logging
+from django.db import models, transaction
 from django.utils import timezone
 from django.core.validators import MinValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
 from decimal import Decimal
 from apps.tenants.managers import TenantManager
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
 # BILLING CONFIGURATION (Per-Tenant)
 # =============================================================================
 
-class BillingConfig(models.Model):
+class BillingConfig(AutoUpdateTimestampMixin, models.Model):
     """
     Per-tenant billing configuration — controls company info on invoices,
     default payment terms, and other billing defaults for each shop.
@@ -115,6 +119,22 @@ class BillingConfig(models.Model):
         max_length=20,
         default='INV',
         help_text='Prefix for auto-generated invoice numbers (e.g., INV → INV-1-20260131...)',
+    )
+
+    # === EMAIL TEMPLATES (editable defaults) ===
+    invoice_email_template = models.TextField(
+        blank=True,
+        default='',
+        help_text='Default email body when sending an invoice. '
+                  'Use {customer_name}, {invoice_number}, {total}, {invoice_date}, {company_name} as placeholders. '
+                  'Leave blank to use the system default.',
+    )
+    reminder_email_template = models.TextField(
+        blank=True,
+        default='',
+        help_text='Default email body for payment reminders. '
+                  'Use {customer_name}, {invoice_number}, {total}, {amount_due}, {due_date}, {days_overdue}, {company_name} as placeholders. '
+                  'Leave blank to use the system default.',
     )
 
     # === SALES TAX ===
@@ -270,7 +290,16 @@ class BillingConfig(models.Model):
 # INVOICE
 # =============================================================================
 
-class Invoice(models.Model):
+class InvoiceSoftDeleteManager(TenantManager):
+    """
+    Default manager for Invoice — automatically excludes soft-deleted records.
+    Use Invoice.all_objects for unfiltered access (including deleted).
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
+class Invoice(AutoUpdateTimestampMixin, models.Model):
     """
     Tracks invoices sent to customers.
     
@@ -389,7 +418,13 @@ class Invoice(models.Model):
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
+    # Soft-delete — set to a timestamp to mark as deleted (not visible in default queryset)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this invoice is soft-deleted and excluded from normal querysets"
+    )
+
     # Description / Notes
     description = models.TextField(
         blank=True,
@@ -400,9 +435,11 @@ class Invoice(models.Model):
         blank=True,
         help_text="Internal notes (not shown to customer)"
     )
-    
-    # Tenant-aware manager
-    objects = TenantManager()
+
+    # Soft-delete manager (default — excludes deleted records)
+    objects = InvoiceSoftDeleteManager()
+    # Unfiltered manager — use when you need deleted records too
+    all_objects = TenantManager()
     
     class Meta:
         ordering = ['-invoice_date', '-created_at']
@@ -420,12 +457,72 @@ class Invoice(models.Model):
     
     def __str__(self):
         return f"{self.invoice_number} - {self.customer.name} - ${self.total}"
-    
+
+    # ------------------------------------------------------------------
+    # S3 cleanup on delete (CODE-152)
+    # ------------------------------------------------------------------
+    def delete(self, *args, **kwargs):
+        """Delete the invoice and its S3 PDF object (if any).
+
+        Voided (CANCELLED) invoices keep their PDF for audit trail — the S3
+        object is only removed when the record is actually deleted (DRAFT or
+        already-voided invoices).
+        """
+        self._delete_s3_object()
+        super().delete(*args, **kwargs)
+
+    def _delete_s3_object(self):
+        """Remove the S3 object for this invoice's PDF, if one exists."""
+        if not self.s3_key:
+            return
+        try:
+            from django.conf import settings
+            bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+            if not bucket:
+                return
+            import boto3
+            from botocore.exceptions import ClientError
+            s3_client = boto3.client('s3')
+            s3_client.delete_object(Bucket=bucket, Key=self.s3_key)
+            logger.info(f"Deleted S3 object: s3://{bucket}/{self.s3_key}")
+        except Exception as e:
+            # Log but don't block deletion — orphaned S3 objects are
+            # preferable to a stuck invoice that can't be deleted.
+            logger.warning(f"Failed to delete S3 object {self.s3_key}: {e}")
+
     @property
     def amount_due(self):
         """Amount still owed on this invoice."""
         return self.total - self.amount_paid
-    
+
+    @property
+    def state_tax_amount(self):
+        """Calculated state tax amount from rate × subtotal."""
+        if not self.state_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.state_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def county_tax_amount(self):
+        """Calculated county tax amount from rate × subtotal."""
+        if not self.county_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.county_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def city_tax_amount(self):
+        """Calculated city tax amount from rate × subtotal."""
+        if not self.city_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.city_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def special_tax_amount(self):
+        """Calculated special district tax amount from rate × subtotal."""
+        if not self.special_tax_rate or not self.subtotal:
+            return Decimal('0.00')
+        return (self.subtotal * self.special_tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+
     @property
     def is_overdue(self):
         """Check if invoice is past due."""
@@ -463,6 +560,36 @@ class Invoice(models.Model):
         if reason:
             self.internal_notes += f"\n[Cancelled] {reason}"
         self.save()
+
+    def get_pdf_url(self):
+        """
+        Return the URL for the invoice PDF, or None if no PDF has been stored.
+
+        Reads the bucket/domain from Django settings so this works correctly in
+        every environment (dev, staging, prod) and survives bucket renames.
+
+        Priority order:
+        1. AWS_S3_CUSTOM_DOMAIN setting  (e.g. 'mybucket.s3.amazonaws.com')
+        2. AWS_STORAGE_BUCKET_NAME       (constructs domain from bucket name)
+        3. Falls back to None if neither is configured (local/dev without S3)
+        """
+        if not self.s3_key:
+            return None
+
+        from django.conf import settings
+
+        # Try AWS_S3_CUSTOM_DOMAIN first (set by production.py when USE_S3=True)
+        custom_domain = getattr(settings, 'AWS_S3_CUSTOM_DOMAIN', None)
+        if custom_domain:
+            return f"https://{custom_domain}/{self.s3_key}"
+
+        # Fallback: construct from bucket name
+        bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+        if bucket:
+            region = getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1')
+            return f"https://{bucket}.s3.{region}.amazonaws.com/{self.s3_key}"
+
+        return None
 
 
 class InvoiceLineItem(models.Model):
@@ -515,9 +642,19 @@ class InvoiceLineItem(models.Model):
         return f"{self.description} - ${self.amount}"
     
     def save(self, *args, **kwargs):
-        # Auto-calculate amount only when it has never been set.
-        # Using `is None` instead of `not self.amount` so that an explicitly
-        # set amount of $0.00 is preserved and not recalculated on re-save.
+        # Auto-calculate amount only when it has not been explicitly set (None).
+        #
+        # BUG (CODE-151): The old guard was `if not self.amount:` which is True for
+        # both None AND Decimal('0.00').  This caused line items with a deliberately
+        # computed amount of $0.00 — e.g. FREE_SERVICE reward redemptions where
+        # get_discounted_cost() returns final_cost=Decimal(0) — to have their amount
+        # overridden to (unit_price × quantity - discount) on every save().
+        # For a free repair (discount=0, unit_price=50) that means $0 becomes $50,
+        # effectively silently dropping the customer's reward discount from invoices.
+        #
+        # Fix: use `is None` so only genuinely unset amounts are auto-computed.
+        # Callers that explicitly pass amount=Decimal('0.00') (e.g. FREE rewards,
+        # fully-discounted line items) now retain that value.
         if self.amount is None:
             self.amount = (self.unit_price * self.quantity) - self.discount
         super().save(*args, **kwargs)
@@ -589,17 +726,78 @@ class Payment(models.Model):
         super().save(*args, **kwargs)
         # Update invoice payment total and status
         self._update_invoice_totals()
-    
+
+    def delete(self, *args, **kwargs):
+        # Capture invoice_id before deletion so we can reconcile after.
+        # Payment.invoice FK uses on_delete=PROTECT so the invoice row
+        # will still exist after this payment is removed.
+        invoice_id = self.invoice_id
+        super().delete(*args, **kwargs)
+        # Recompute invoice totals now that this payment is gone.
+        # Uses the same SELECT FOR UPDATE pattern as _update_invoice_totals to
+        # be safe under concurrent operations.
+        # (CODE-118: without this, deleting a payment left invoice.amount_paid
+        # stale — a PAID invoice would remain PAID even with $0 payments.)
+        with transaction.atomic():
+            try:
+                invoice = Invoice.objects.select_for_update().get(pk=invoice_id)
+            except Invoice.DoesNotExist:
+                return
+            total_paid = invoice.payments.aggregate(
+                total=models.Sum('amount')
+            )['total'] or Decimal('0.00')
+            invoice.amount_paid = total_paid
+            # Recompute status — must handle PAID demotion here since
+            # update_status() never demotes an already-PAID invoice back to
+            # SENT/PARTIAL (it was designed for forward-only transitions).
+            if invoice.status != 'CANCELLED':
+                if total_paid >= invoice.total:
+                    invoice.status = 'PAID'
+                    if not invoice.paid_at:
+                        invoice.paid_at = timezone.now()
+                elif total_paid > 0:
+                    invoice.status = 'PARTIAL'
+                    invoice.paid_at = None
+                else:
+                    # No money received — revert to SENT or OVERDUE.
+                    # Check due_date directly (not invoice.is_overdue which
+                    # short-circuits on PAID/CANCELLED status).
+                    invoice.paid_at = None
+                    is_past_due = (
+                        invoice.due_date is not None
+                        and timezone.now().date() > invoice.due_date
+                    )
+                    if is_past_due:
+                        invoice.status = 'OVERDUE'
+                    elif invoice.status in ('PAID', 'PARTIAL'):
+                        # Revert to SENT — no money received any more
+                        invoice.status = 'SENT'
+                    # DRAFT stays DRAFT, OVERDUE stays OVERDUE if already set
+            invoice.save()
+
     def _update_invoice_totals(self):
-        """Update the invoice's amount_paid and status."""
-        invoice = self.invoice
-        total_paid = invoice.payments.aggregate(
-            total=models.Sum('amount')
-        )['total'] or Decimal('0.00')
-        
-        invoice.amount_paid = total_paid
-        invoice.update_status()
-        invoice.save()
+        """
+        Update the invoice's amount_paid and status.
+
+        Uses SELECT FOR UPDATE to prevent a race condition where two concurrent
+        payments both read the same stale aggregate and one overwrites the
+        other's work, leaving amount_paid under-counted.
+
+        Example: customer pays via Stripe webhook AND a technician records a
+        cash payment at the same moment. Without the lock both transactions
+        would read the same SUM and the final write would lose one payment.
+        """
+        with transaction.atomic():
+            # Lock the invoice row for the duration of the read-aggregate-write
+            # sequence so concurrent payments serialise here instead of racing.
+            invoice = Invoice.objects.select_for_update().get(pk=self.invoice_id)
+            total_paid = invoice.payments.aggregate(
+                total=models.Sum('amount')
+            )['total'] or Decimal('0.00')
+
+            invoice.amount_paid = total_paid
+            invoice.update_status()
+            invoice.save()
 
 
 # =============================================================================
@@ -666,3 +864,112 @@ class TaxRate(models.Model):
         if self.state:
             self.state = self.state.strip().upper()
         super().save(*args, **kwargs)
+
+
+# =============================================================================
+# PLATFORM CONFIG (Singleton)
+# =============================================================================
+
+class PlatformConfig(AutoUpdateTimestampMixin, models.Model):
+    """
+    Singleton — global platform settings for Stripe Connect fee routing.
+
+    Use PlatformConfig.get() to fetch (creates with defaults if missing).
+    """
+    default_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        help_text="Default platform fee % on invoice payments (e.g. 2.50 = 2.5%)"
+    )
+    competition_pool_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the competition pool feature is active"
+    )
+    competition_pool_fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        help_text="% of subscription payments routed to competition pool"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Platform Configuration'
+        verbose_name_plural = 'Platform Configuration'
+
+    def __str__(self):
+        return f'Platform Config (fee: {self.default_fee_percent}%)'
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton: always use pk=1
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Platform configuration cannot be deleted.')
+
+    @classmethod
+    def get(cls):
+        """Get (or create with defaults) the singleton PlatformConfig."""
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @classmethod
+    def get_solo(cls):
+        """Alias for get() — singleton accessor."""
+        return cls.get()
+
+
+# =============================================================================
+# PLATFORM FEE RECORDS
+# =============================================================================
+
+class PlatformFeeRecord(models.Model):
+    """
+    Tracks every platform fee collected on invoice payments.
+
+    Created when a connected charge succeeds. Used for reporting,
+    audit trail, and future competition pool calculations.
+    """
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='platform_fee_records',
+    )
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name='platform_fee_records',
+    )
+    payment_intent_id = models.CharField(
+        max_length=255, db_index=True,
+        help_text="Stripe PaymentIntent ID (pi_...)"
+    )
+    gross_amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Total payment amount in dollars"
+    )
+    fee_amount = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        help_text="Platform fee collected in dollars"
+    )
+    fee_percent = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        help_text="Fee rate at time of charge (percentage)"
+    )
+    stripe_account_id = models.CharField(
+        max_length=50,
+        help_text="Shop's connected account ID (acct_...)"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Platform Fee Record'
+        verbose_name_plural = 'Platform Fee Records'
+        indexes = [
+            models.Index(fields=['tenant', 'created_at']),
+        ]
+
+    def __str__(self):
+        return (
+            f"Fee ${self.fee_amount} ({self.fee_percent}%) on "
+            f"{self.invoice.invoice_number} → {self.stripe_account_id}"
+        )

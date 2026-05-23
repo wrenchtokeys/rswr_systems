@@ -71,6 +71,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'common.context_processors.portal_access',
+                'common.context_processors.customer_loyalty',
             ],
         },
     },
@@ -106,8 +107,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle',
+        'common.throttles.ResilientAnonRateThrottle',
+        'common.throttles.ResilientUserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '20/minute',
@@ -171,6 +172,12 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssyste
 DEFAULT_FROM_NAME = os.environ.get('DEFAULT_FROM_NAME', 'RS Systems')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
+# Site admins — receive new signup notifications and error reports
+ADMINS = [
+    ('Drake', os.environ.get('ADMIN_EMAIL', 'wdrakeduncan@gmail.com')),
+]
+MANAGERS = ADMINS
+
 # =========================================
 # SMS CONFIGURATION (AWS SNS)
 # =========================================
@@ -182,10 +189,20 @@ SMS_ENABLED = os.environ.get('SMS_ENABLED', 'False').lower() == 'true'
 # STRIPE CONFIGURATION
 # =========================================
 
-STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
-STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
-STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
-STRIPE_TEST_MODE = STRIPE_SECRET_KEY.startswith('sk_test_') if STRIPE_SECRET_KEY else True
+# STRIPE_MODE: set to 'test' or 'live' to switch between key sets
+STRIPE_MODE = os.environ.get('STRIPE_MODE', 'live')
+
+if STRIPE_MODE == 'test':
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('TEST_STRIPE_PUBLISHABLE_KEY', '')
+    STRIPE_SECRET_KEY = os.environ.get('TEST_STRIPE_SECRET_KEY', '')
+else:
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', '')
+    STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
+
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')  # Billing/invoice webhooks
+STRIPE_CONNECT_WEBHOOK_SECRET = os.environ.get('STRIPE_CONNECT_WEBHOOK_SECRET', '')  # Connect account webhooks
+STRIPE_SUBSCRIPTION_WEBHOOK_SECRET = os.environ.get('STRIPE_SUBSCRIPTION_WEBHOOK_SECRET', '')  # SaaS subscription webhooks
+STRIPE_TEST_MODE = STRIPE_MODE == 'test'
 
 # =========================================
 # INVOICE DEFAULTS

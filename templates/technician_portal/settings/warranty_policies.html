@@ -1,0 +1,392 @@
+{% extends "base_app.html" %}
+{% load static %}
+
+{% block title %}Warranty Policies{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/components/manager-settings.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <!-- Header -->
+    <div class="settings-header">
+        <div class="header-content">
+            <div class="header-icon">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <div>
+                <h1 class="settings-title">Warranty Policies</h1>
+                <p class="settings-subtitle">Define warranty terms for different repair types</p>
+            </div>
+        </div>
+        <button class="btn-primary" id="addPolicyBtn">
+            <i class="fas fa-plus"></i>
+            Add New Policy
+        </button>
+    </div>
+
+    <!-- Explanation -->
+    <div class="bg-cyan-50 border border-cyan-200 rounded-lg p-4 mb-6">
+        <p class="text-sm text-cyan-800 mb-2"><strong>How it works:</strong> When a repair is marked complete, the system automatically assigns a warranty based on the damage type. Lifetime warranties have no expiry; custom-day warranties count from the completion date.</p>
+        <p class="text-sm text-cyan-700">You can have one policy per damage type plus an "All Repairs" fallback default. Mark a policy as <strong>default</strong> to use it when no damage-type-specific policy exists.</p>
+    </div>
+
+    <!-- Policies Grid -->
+    <div id="policiesGrid" class="rules-grid">
+        {% for policy in policies %}
+        <div class="rule-card {% if not policy.is_active %}inactive{% endif %}" data-policy-id="{{ policy.id }}">
+            <div class="rule-card-header">
+                <div class="rule-name-with-priority">
+                    {% if policy.is_default %}
+                    <span class="priority-badge priority-1" title="Default policy — applies when no type-specific policy exists">
+                        DEFAULT
+                    </span>
+                    {% endif %}
+                    <div class="rule-name">
+                        <i class="fas fa-shield-alt"></i>
+                        {{ policy.name }}
+                    </div>
+                </div>
+                <div class="rule-status-toggle">
+                    <label class="toggle-switch">
+                        <input type="checkbox" {% if policy.is_active %}checked{% endif %}
+                               onchange="togglePolicy({{ policy.id }}, this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="rule-card-body">
+                <!-- Applies To -->
+                <div class="rule-detail">
+                    <span class="detail-label">Applies To</span>
+                    <span class="detail-value">{{ policy.get_applies_to_display }}</span>
+                </div>
+
+                <!-- Duration -->
+                <div class="rule-detail">
+                    <span class="detail-label">Duration</span>
+                    <span class="detail-value">
+                        {% if policy.duration_type == 'lifetime' %}
+                            <span class="viscosity-badge badge-green"><i class="fas fa-infinity"></i> Lifetime</span>
+                        {% elif policy.duration_type == 'custom_days' %}
+                            {{ policy.duration_days }} days
+                        {% else %}
+                            No Warranty
+                        {% endif %}
+                    </span>
+                </div>
+
+                <!-- Coverage -->
+                <div class="rule-detail">
+                    <span class="detail-label">Coverage</span>
+                    <span class="detail-value">
+                        {% if policy.covers_labor and policy.covers_materials %}
+                            Labor &amp; Materials
+                        {% elif policy.covers_labor %}
+                            Labor only
+                        {% elif policy.covers_materials %}
+                            Materials only
+                        {% else %}
+                            —
+                        {% endif %}
+                    </span>
+                </div>
+
+                {% if policy.coverage_description %}
+                <!-- Description -->
+                <div class="rule-detail full-width">
+                    <span class="detail-label">Terms</span>
+                    <span class="detail-value">{{ policy.coverage_description|truncatechars:120 }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="rule-card-footer">
+                <button class="btn-edit" onclick="editPolicy({{ policy.id }})">
+                    <i class="fas fa-edit"></i>
+                    Edit
+                </button>
+                <button class="btn-delete" onclick="deletePolicy({{ policy.id }}, '{{ policy.name|escapejs }}')">
+                    <i class="fas fa-trash-alt"></i>
+                    Delete
+                </button>
+            </div>
+        </div>
+        {% empty %}
+        <div class="empty-state">
+            <i class="fas fa-shield-alt"></i>
+            <h3>No Warranty Policies Found</h3>
+            <p>Click "Add New Policy" to create your first warranty policy.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Back Button -->
+    <div class="settings-actions">
+        <a href="{% url 'manager_settings_dashboard' %}" class="btn-secondary">
+            <i class="fas fa-arrow-left"></i>
+            Back to Settings
+        </a>
+    </div>
+</div>
+
+<!-- Add/Edit Policy Modal -->
+<div id="policyModal" class="modal" style="display: none;">
+    <div class="modal-overlay" onclick="closeModal()"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Add New Policy</h2>
+            <button class="modal-close" onclick="closeModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form id="policyForm" class="modal-body">
+            {% csrf_token %}
+            <input type="hidden" id="policyId" name="policy_id">
+
+            <div class="form-section">
+                <h3 class="section-title">Basic Information</h3>
+                <div class="form-group">
+                    <label for="policyName">Policy Name <span class="required">*</span></label>
+                    <input type="text" id="policyName" name="name" class="form-input"
+                           placeholder="e.g. Standard Glass Warranty" required>
+                </div>
+                <div class="form-group">
+                    <label for="appliesTo">Applies To <span class="required">*</span></label>
+                    <select id="appliesTo" name="applies_to" class="form-input" required>
+                        {% for value, label in applies_to_choices %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3 class="section-title">Duration</h3>
+                <div class="form-group">
+                    <label for="durationType">Duration Type <span class="required">*</span></label>
+                    <select id="durationType" name="duration_type" class="form-input" required
+                            onchange="toggleDurationDays(this.value)">
+                        {% for value, label in duration_type_choices %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" id="durationDaysGroup">
+                    <label for="durationDays">Duration (days)</label>
+                    <input type="number" id="durationDays" name="duration_days" class="form-input"
+                           min="1" value="365" placeholder="e.g. 365">
+                    <small class="field-hint">Number of days from repair completion date</small>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3 class="section-title">Coverage</h3>
+                <div class="form-group">
+                    <label for="coverageDescription">Coverage Description</label>
+                    <textarea id="coverageDescription" name="coverage_description" class="form-input"
+                              rows="3" placeholder="Customer-facing warranty terms shown on invoices..."></textarea>
+                </div>
+                <div class="field-grid field-grid-2">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="coversLabor" name="covers_labor" checked>
+                            <span>Covers Labor</span>
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="coversMaterials" name="covers_materials" checked>
+                            <span>Covers Materials</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3 class="section-title">Settings</h3>
+                <div class="field-grid field-grid-2">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="isDefault" name="is_default">
+                            <span>Default Policy</span>
+                        </label>
+                        <small class="field-hint">Applied when no damage-type-specific policy exists</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="isActive" name="is_active" checked>
+                            <span>Active</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="closeModal()">
+                Cancel
+            </button>
+            <button type="submit" class="btn-primary" form="policyForm" id="savePolicyBtn">
+                <i class="fas fa-save"></i>
+                Save Policy
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Success/Error Messages -->
+<div id="messageToast" class="message-toast" style="display: none;">
+    <i class="fas fa-check-circle"></i>
+    <span id="messageText"></span>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const URLS = {
+    create: "{% url 'create_warranty_policy' %}",
+    getBase: "{% url 'get_warranty_policy' 0 %}".replace('/0/', '/'),
+    updateBase: "{% url 'update_warranty_policy' 0 %}".replace('/0/', '/'),
+    deleteBase: "{% url 'delete_warranty_policy' 0 %}".replace('/0/', '/'),
+    toggleBase: "{% url 'toggle_warranty_policy' 0 %}".replace('/0/', '/'),
+};
+
+function getCsrf() {
+    return document.querySelector('[name=csrfmiddlewaretoken]').value;
+}
+
+function showToast(msg, isError=false) {
+    const toast = document.getElementById('messageToast');
+    const text = document.getElementById('messageText');
+    const icon = toast.querySelector('i');
+    text.textContent = msg;
+    icon.className = isError ? 'fas fa-exclamation-circle' : 'fas fa-check-circle';
+    toast.style.display = 'flex';
+    toast.style.background = isError ? '#ef4444' : '#10b981';
+    setTimeout(() => { toast.style.display = 'none'; }, 4000);
+}
+
+function toggleDurationDays(durationType) {
+    const group = document.getElementById('durationDaysGroup');
+    group.style.display = durationType === 'custom_days' ? 'block' : 'none';
+}
+
+function openAddModal() {
+    document.getElementById('modalTitle').textContent = 'Add New Policy';
+    document.getElementById('policyId').value = '';
+    document.getElementById('policyForm').reset();
+    document.getElementById('coversLabor').checked = true;
+    document.getElementById('coversMaterials').checked = true;
+    document.getElementById('isActive').checked = true;
+    document.getElementById('isDefault').checked = false;
+    toggleDurationDays('custom_days');
+    document.getElementById('policyModal').style.display = 'flex';
+}
+
+async function editPolicy(id) {
+    try {
+        const resp = await fetch(URLS.getBase + id + '/', {headers: {'X-CSRFToken': getCsrf()}});
+        const data = await resp.json();
+        if (!data.success) { showToast(data.error, true); return; }
+        const p = data.policy;
+        document.getElementById('modalTitle').textContent = 'Edit Policy';
+        document.getElementById('policyId').value = p.id;
+        document.getElementById('policyName').value = p.name;
+        document.getElementById('appliesTo').value = p.applies_to;
+        document.getElementById('durationType').value = p.duration_type;
+        document.getElementById('durationDays').value = p.duration_days;
+        document.getElementById('coverageDescription').value = p.coverage_description || '';
+        document.getElementById('coversLabor').checked = p.covers_labor;
+        document.getElementById('coversMaterials').checked = p.covers_materials;
+        document.getElementById('isDefault').checked = p.is_default;
+        document.getElementById('isActive').checked = p.is_active;
+        toggleDurationDays(p.duration_type);
+        document.getElementById('policyModal').style.display = 'flex';
+    } catch (e) {
+        showToast('Error loading policy', true);
+    }
+}
+
+async function deletePolicy(id, name) {
+    if (!confirm(`Delete warranty policy "${name}"? This cannot be undone.`)) return;
+    try {
+        const resp = await fetch(URLS.deleteBase + id + '/delete/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf()},
+        });
+        const data = await resp.json();
+        if (data.success) {
+            document.querySelector(`[data-policy-id="${id}"]`)?.remove();
+            showToast(data.message);
+        } else {
+            showToast(data.error, true);
+        }
+    } catch (e) {
+        showToast('Error deleting policy', true);
+    }
+}
+
+async function togglePolicy(id, checked) {
+    try {
+        const resp = await fetch(URLS.toggleBase + id + '/toggle/', {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf()},
+        });
+        const data = await resp.json();
+        if (data.success) {
+            const card = document.querySelector(`[data-policy-id="${id}"]`);
+            if (card) card.classList.toggle('inactive', !data.is_active);
+            showToast(data.message);
+        } else {
+            showToast(data.error, true);
+        }
+    } catch (e) {
+        showToast('Error toggling policy', true);
+    }
+}
+
+function closeModal() {
+    document.getElementById('policyModal').style.display = 'none';
+}
+
+document.getElementById('addPolicyBtn').addEventListener('click', openAddModal);
+
+document.getElementById('policyForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const id = document.getElementById('policyId').value;
+    const payload = {
+        name: document.getElementById('policyName').value,
+        applies_to: document.getElementById('appliesTo').value,
+        duration_type: document.getElementById('durationType').value,
+        duration_days: parseInt(document.getElementById('durationDays').value) || 365,
+        coverage_description: document.getElementById('coverageDescription').value,
+        covers_labor: document.getElementById('coversLabor').checked,
+        covers_materials: document.getElementById('coversMaterials').checked,
+        is_default: document.getElementById('isDefault').checked,
+        is_active: document.getElementById('isActive').checked,
+    };
+
+    const url = id ? (URLS.updateBase + id + '/update/') : URLS.create;
+    try {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrf()},
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            closeModal();
+            showToast(data.message);
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showToast(data.error, true);
+        }
+    } catch (err) {
+        showToast('Error saving policy', true);
+    }
+});
+</script>
+{% endblock %}

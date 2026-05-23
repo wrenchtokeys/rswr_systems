@@ -45,28 +45,57 @@ class ReminderService:
             return qs.filter(tenant=self.tenant)
         return qs.none()
     
-    def send_reminder(self, invoice, reminder_type='overdue'):
+    def send_reminder(self, invoice, reminder_type='overdue', custom_body=None):
         """
         Send a payment reminder for an invoice with PDF attached.
         
         Args:
             invoice: Invoice model instance
             reminder_type: 'overdue', 'due_soon', 'payment_received'
+            custom_body: Optional custom message body (overrides default template)
             
         Returns:
             dict: Send result
         """
-        if not invoice.customer.email:
+        # Prefer billing_email from CustomerRepairPreference when set — fleet customers
+        # often have a dedicated AP email that differs from their general contact email.
+        # Consistent with the manual invoice send flow in saas/views.py. (CODE-127)
+        _recipient_email = None
+        try:
+            _prefs = invoice.customer.repair_preferences
+            _recipient_email = _prefs.billing_email or invoice.customer.email
+        except Exception:
+            _recipient_email = invoice.customer.email
+
+        if not _recipient_email:
             return {'success': False, 'error': 'Customer has no email address'}
         
-        # Build email content
+        # Build email content — use custom body if provided (CODE-113)
         subject, body = self._build_reminder_email(invoice, reminder_type)
+        if custom_body:
+            body = custom_body
+        elif self.tenant:
+            # Check for saved template in BillingConfig
+            try:
+                from apps.billing.models import BillingConfig
+                config = BillingConfig.get_for_tenant(self.tenant)
+                if config.reminder_email_template:
+                    body = self._render_template(config.reminder_email_template, invoice)
+            except Exception:
+                pass  # Fall back to default
         
         # Generate PDF attachment
         pdf_bytes = None
         try:
             from apps.billing.services.invoice_service import InvoiceService
-            invoice_service = InvoiceService()
+            # Pass tenant so InvoiceService loads the correct BillingConfig (company name,
+            # address, payment terms).  Without tenant, InvoiceService() skips
+            # BillingConfig and generates PDFs with blank company info — same root
+            # cause as CODE-090 (clawdbot views).  (CODE-092)
+            invoice_tenant = getattr(invoice, 'tenant', None) or getattr(
+                getattr(invoice, 'customer', None), 'tenant', None
+            )
+            invoice_service = InvoiceService(tenant=invoice_tenant)
             repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
             pdf_bytes, _ = invoice_service.generate_invoice(
                 customer_id=invoice.customer_id,
@@ -79,7 +108,7 @@ class ReminderService:
         # Send via SendGrid or Django's email backend
         try:
             success = self._send_email(
-                to_email=invoice.customer.email,
+                to_email=_recipient_email,
                 subject=subject,
                 body=body,
                 invoice=invoice,
@@ -87,10 +116,15 @@ class ReminderService:
             )
             
             if success:
-                # Log the reminder
-                invoice.internal_notes += f"\n[Reminder] {reminder_type} sent at {timezone.now()}"
-                invoice.save()
-                
+                # Log the reminder — only update internal_notes so we never
+                # overwrite status/totals/paid_at with a stale in-memory value.
+                # PDF generation + SMTP can take a few seconds; a full save()
+                # could clobber a payment that arrived during that window.
+                # Matches the pattern used in tasks._send_overdue_reminder().
+                # (CODE-171)
+                invoice.internal_notes = (invoice.internal_notes or '') + f"\n[Reminder] {reminder_type} sent at {timezone.now()}"
+                invoice.save(update_fields=['internal_notes'])
+
                 logger.info(f"Sent {reminder_type} reminder for invoice {invoice.invoice_number}")
                 return {'success': True, 'reminder_type': reminder_type}
             else:
@@ -185,7 +219,16 @@ class ReminderService:
         Returns:
             dict: Send result
         """
-        if not invoice.customer.email:
+        # Prefer billing_email from CustomerRepairPreference when set — same logic
+        # as send_reminder() above.  (CODE-127)
+        _pc_recipient = None
+        try:
+            _pc_prefs = invoice.customer.repair_preferences
+            _pc_recipient = _pc_prefs.billing_email or invoice.customer.email
+        except Exception:
+            _pc_recipient = invoice.customer.email
+
+        if not _pc_recipient:
             return {'success': False, 'error': 'Customer has no email address'}
         
         subject = f"Payment Received - Invoice {invoice.invoice_number}"
@@ -217,7 +260,7 @@ Invoice Status: {invoice.get_status_display()}
                 from apps.billing.models import BillingConfig
                 _config = BillingConfig.get_for_tenant(_tenant)
                 if _config:
-                    _company_name = _config.company_name or ""
+                    _company_name = _config.company_name or _tenant.name or ""
             except Exception:
                 pass
             if not _company_name:
@@ -233,7 +276,7 @@ Best regards,
         
         try:
             success = self._send_email(
-                to_email=invoice.customer.email,
+                to_email=_pc_recipient,
                 subject=subject,
                 body=body,
                 invoice=invoice
@@ -243,6 +286,46 @@ Best regards,
             logger.error(f"Error sending payment confirmation: {e}")
             return {'success': False, 'error': str(e)}
     
+    def _render_template(self, template_str, invoice):
+        """Render a user-defined email template with invoice placeholders."""
+        from django.utils import timezone
+        today = timezone.now().date()
+        days_overdue = max(0, (today - invoice.due_date).days) if invoice.due_date else 0
+
+        company_name = ''
+        if self.tenant:
+            try:
+                from apps.billing.models import BillingConfig
+                config = BillingConfig.get_for_tenant(self.tenant)
+                company_name = config.company_name or self.tenant.name
+            except Exception:
+                company_name = self.tenant.name
+
+        try:
+            return template_str.format(
+                customer_name=invoice.customer.name,
+                invoice_number=invoice.invoice_number,
+                total=f'${invoice.total:,.2f}',
+                amount_due=f'${invoice.amount_due:,.2f}',
+                due_date=invoice.due_date.strftime('%B %d, %Y') if invoice.due_date else 'N/A',
+                days_overdue=days_overdue,
+                company_name=company_name,
+            )
+        except (KeyError, IndexError, ValueError) as exc:
+            # User-editable template contains unknown placeholders or malformed
+            # braces (e.g. a stray "{").  Log a warning so the shop owner's
+            # custom template failure is visible in logs rather than silently
+            # swallowed, and return empty string so callers fall back to the
+            # default template.  Same pattern as invoice_email_service.py and
+            # billing/tasks.py.  (CODE-256)
+            logger.warning(
+                "Malformed reminder_email_template for tenant %s: %r — %s",
+                self.tenant.pk if self.tenant else '?',
+                template_str[:200],
+                exc,
+            )
+            return ''
+
     def _build_reminder_email(self, invoice, reminder_type):
         """Build reminder email subject and body."""
         
@@ -311,8 +394,8 @@ Please contact us to arrange payment or if you have any questions.
                 from apps.billing.models import BillingConfig
                 config = BillingConfig.get_for_tenant(_reminder_tenant)
                 if config:
-                    company_name = config.company_name or ""
-                    company_phone = config.company_phone or ""
+                    company_name = config.company_name or _reminder_tenant.name or ""
+                    company_phone = config.company_phone or _reminder_tenant.business_phone or ""
                     company_website = config.company_website or ""
             except Exception:
                 pass
@@ -393,22 +476,26 @@ Please contact us to arrange payment or if you have any questions.
                 logger.error(f"SendGrid error: {e}")
                 # Fall through to Django email
         
-        # Fallback to Django's email backend
+        # Fallback to Django's email backend (branded HTML)
         try:
-            from django.core.mail import EmailMessage
-            
-            email = EmailMessage(
-                subject=subject,
-                body=body,
-                from_email=self.from_email,
-                to=[to_email],
-            )
-            
-            # Attach PDF if provided
+            from core.email_utils import send_branded_email
+
+            attachments = []
             if pdf_attachment and invoice:
-                email.attach(f"Invoice_{invoice.invoice_number}.pdf", pdf_attachment, 'application/pdf')
-            
-            email.send(fail_silently=False)
+                attachments.append(
+                    (f"Invoice_{invoice.invoice_number}.pdf", pdf_attachment, 'application/pdf')
+                )
+
+            tenant = getattr(invoice, 'tenant', None) if invoice else None
+            send_branded_email(
+                subject=subject,
+                recipient_list=[to_email],
+                headline=subject,
+                body_paragraphs=[body],
+                tenant=tenant,
+                attachments=attachments,
+                from_email=self.from_email,
+            )
             return True
             
         except Exception as e:

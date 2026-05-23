@@ -641,6 +641,24 @@ class UsageServiceTest(BaseTestCase):
         self.tech_user.save()
         self.assertEqual(self.usage.count_active_technicians(), 0)
 
+    def test_count_active_technicians_excludes_deactivated_tech_record(self):
+        """
+        Regression test for CODE-045: Technician.is_active=False must not count
+        toward plan seat limits even when the underlying user account is active.
+
+        Scenario: shop owner deactivates a seasonal technician via team management.
+        deactivate_team_member() sets tech.is_active=False + membership.is_active=False
+        but leaves user.is_active=True (the user account itself isn't deleted).
+        Before the fix, count_active_technicians() only checked user__is_active and
+        would still count this tech, blocking the owner from inviting a replacement.
+        """
+        from apps.technician_portal.models import Technician
+        # user account stays active, only Technician record is deactivated
+        Technician.objects.filter(user=self.tech_user, tenant=self.tenant).update(
+            is_active=False
+        )
+        self.assertEqual(self.usage.count_active_technicians(), 0)
+
     def test_count_customers(self):
         """Counts customers for tenant."""
         self.assertEqual(self.usage.count_customers(), 1)
@@ -1533,3 +1551,122 @@ class SubscriptionUpgradeDowngradeTest(BaseTestCase):
         # Same price means NOT an upgrade (99 > 99 is False)
         is_upgrade = plan_b.monthly_price > (plan_a.monthly_price or 0)
         self.assertFalse(is_upgrade)
+
+
+# ======================================================================
+# CODE-171 — TenantAdmin N+1 queries for 'owner' and 'subscription_plan'
+# ======================================================================
+
+class TenantAdminListSelectRelatedTest(TestCase):
+    """
+    Regression test for CODE-171.
+
+    TenantAdmin.list_display includes 'owner' (FK→User) and 'subscription_plan'
+    (FK→SubscriptionPlan). Without list_select_related, the Django admin
+    change-list fires one extra SELECT per tenant row for each of those FKs —
+    an N+1 query pattern that degrades linearly with tenant count.
+
+    Fix: add list_select_related = ['owner', 'subscription_plan'] to TenantAdmin.
+    """
+
+    def test_tenant_admin_has_list_select_related(self):
+        """TenantAdmin must declare list_select_related to avoid N+1 queries."""
+        from apps.tenants.admin import TenantAdmin
+        lsr = getattr(TenantAdmin, 'list_select_related', None)
+        self.assertIsNotNone(
+            lsr,
+            "TenantAdmin.list_select_related is missing — admin list view will fire "
+            "N+1 queries for 'owner' and 'subscription_plan' columns."
+        )
+        # Must cover both FK columns present in list_display
+        self.assertIn(
+            'owner', lsr,
+            "TenantAdmin.list_select_related must include 'owner' (FK→User) "
+            "to prevent per-row SELECT for each tenant's owner."
+        )
+        self.assertIn(
+            'subscription_plan', lsr,
+            "TenantAdmin.list_select_related must include 'subscription_plan' "
+            "(FK→SubscriptionPlan) to prevent per-row SELECT for each tenant."
+        )
+
+    def test_tenant_admin_changelist_query_count(self):
+        """
+        Admin change-list for N tenants should NOT fire 2*N extra queries for
+        owner + subscription_plan lookups.  With list_select_related, the join
+        happens in the initial SELECT so the query count stays constant.
+        """
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+        from django.contrib.auth.models import User
+        from apps.tenants.admin import TenantAdmin
+        from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
+        from decimal import Decimal
+
+        # Create a superuser for the admin request
+        superuser = User.objects.create_superuser(
+            username='su_code171', email='su171@test.com', password='pass'
+        )
+
+        # Create a plan and a handful of tenants
+        plan, _ = SubscriptionPlan.objects.get_or_create(
+            slug='trial-171',
+            defaults=dict(
+                name='Trial 171',
+                monthly_price=Decimal('0.00'),
+                max_repairs_per_month=50,
+                max_technicians=2,
+                max_customers=10,
+                max_storage_mb=100,
+                trial_days=30,
+                display_order=99,
+                features={},
+            ),
+        )
+
+        owners = []
+        tenants_created = []
+        for i in range(4):
+            owner = User.objects.create_user(
+                username=f'owner_171_{i}',
+                email=f'owner171_{i}@test.com',
+                password='pass',
+            )
+            owners.append(owner)
+            t = Tenant.objects.create(
+                name=f'Shop 171 {i}',
+                slug=f'shop-171-{i}',
+                subdomain=f'shop171{i}',
+                owner=owner,
+                plan='trial',
+                subscription_plan=plan,
+                subscription_status='trialing',
+            )
+            tenants_created.append(t)
+
+        # Simulate admin changelist request
+        factory = RequestFactory()
+        request = factory.get('/admin/tenants/tenant/')
+        request.user = superuser
+
+        site = AdminSite()
+        admin_instance = TenantAdmin(Tenant, site)
+
+        with CaptureQueriesContext(connection) as ctx:
+            qs = admin_instance.get_queryset(request)
+            # Materialise the queryset to trigger the SELECT
+            list(qs)
+
+        num_queries = len(ctx.captured_queries)
+
+        # With list_select_related the ORM issues a single query with JOINs.
+        # Without it, it would fire 1 (base) + 4*owner + 4*subscription_plan = 9+.
+        # We allow up to 3 queries (e.g. base + deferred counts) as a loose bound.
+        self.assertLessEqual(
+            num_queries, 3,
+            f"TenantAdmin.get_queryset() fired {num_queries} queries for 4 tenants. "
+            f"Expected ≤3 with list_select_related. Queries:\n"
+            + "\n".join(q['sql'][:120] for q in ctx.captured_queries)
+        )

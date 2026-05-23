@@ -296,7 +296,7 @@
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">State (2-letter)</label>
-                <input type="text" name="state" value="{{ billing_config.company_state|default:'AR' }}"
+                <input type="text" name="state" value="{{ billing_config.company_state|default:'' }}"
                        maxlength="2"
                        class="form-input w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:ring focus:ring-blue-100 focus:outline-none uppercase"
                        placeholder="AR">
@@ -305,7 +305,7 @@
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">State Rate %</label>
-                <input type="number" name="state_rate" value="{{ billing_config.state_tax_rate|default:'6.500' }}"
+                <input type="number" name="state_rate" value="{{ billing_config.state_tax_rate|default:'0' }}"
                        step="0.001" min="0" max="20"
                        class="form-input w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:ring focus:ring-blue-100 focus:outline-none">
               </div>
@@ -402,10 +402,10 @@
               <label class="block text-sm font-medium text-gray-700 mb-1">Batch Invoice Frequency</label>
               <select name="batch_invoice_frequency"
                       class="form-input w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:ring focus:ring-blue-100 focus:outline-none">
-                <option value="disabled" {% if billing_config.batch_invoice_frequency == 'disabled' %}selected{% endif %}>Disabled</option>
-                <option value="weekly" {% if billing_config.batch_invoice_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
-                <option value="biweekly" {% if billing_config.batch_invoice_frequency == 'biweekly' %}selected{% endif %}>Bi-weekly</option>
-                <option value="monthly" {% if billing_config.batch_invoice_frequency == 'monthly' %}selected{% endif %}>Monthly</option>
+                <option value="disabled" {% if billing_config.batch_invoice_frequency == 'disabled' %}selected{% endif %}>Off — invoice manually</option>
+                <option value="weekly" {% if billing_config.batch_invoice_frequency == 'weekly' %}selected{% endif %}>Every week</option>
+                <option value="biweekly" {% if billing_config.batch_invoice_frequency == 'biweekly' %}selected{% endif %}>Every 2 weeks</option>
+                <option value="monthly" {% if billing_config.batch_invoice_frequency == 'monthly' %}selected{% endif %}>Once a month</option>
               </select>
             </div>
           </div>
@@ -439,12 +439,22 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Reminder Days (after due date)</label>
-            <input type="text" name="overdue_reminder_days"
-                   value="{{ billing_config.overdue_reminder_days|default:'7,14,30' }}"
-                   placeholder="7,14,30"
-                   class="form-input w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-400 focus:ring focus:ring-blue-100 focus:outline-none">
-            <p class="text-xs text-gray-400 mt-1">Comma-separated days after due date (e.g. 7,14,30)</p>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Send reminders after invoice is overdue by:</label>
+            <input type="hidden" name="overdue_reminder_days" id="setup-reminder-days-hidden" value="{{ billing_config.overdue_reminder_days|default:'7,14,30' }}">
+            <div class="flex flex-wrap gap-2">
+              {% for day_val, day_label in reminder_day_choices %}
+              <label class="relative cursor-pointer">
+                <input type="checkbox" name="setup_reminder_day_check" value="{{ day_val }}"
+                    class="sr-only peer"
+                    {% if day_val in active_reminder_days %}checked{% endif %}>
+                <div class="px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
+                    peer-checked:bg-blue-50 peer-checked:border-blue-400 peer-checked:text-blue-700
+                    bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300">
+                  {{ day_label }}
+                </div>
+              </label>
+              {% endfor %}
+            </div>
           </div>
 
           <div class="flex justify-end pt-2">
@@ -725,6 +735,16 @@ function toggleTaxFields(checked) {
     fields.classList.add('hidden');
   }
 }
+
+// === Overdue Reminder Checkboxes (setup page) ===
+document.addEventListener('change', function(e) {
+  if (e.target.name === 'setup_reminder_day_check') {
+    const checks = document.querySelectorAll('input[name="setup_reminder_day_check"]:checked');
+    const days = Array.from(checks).map(c => c.value).sort((a, b) => parseInt(a) - parseInt(b));
+    const hidden = document.getElementById('setup-reminder-days-hidden');
+    if (hidden) hidden.value = days.join(',');
+  }
+});
 
 // Open first incomplete section on load
 (function() {

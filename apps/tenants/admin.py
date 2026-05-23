@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from .models import Tenant, TenantMembership, SubscriptionPlan
 from apps.technician_portal.models import ViscosityRecommendation
 from apps.billing.models import BillingConfig
+from rs_systems.admin_mixins import TenantFilterMixin
 
 
 class TenantMembershipInline(admin.TabularInline):
@@ -48,6 +49,9 @@ class TenantAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     autocomplete_fields = ['owner']
     inlines = [TenantMembershipInline, ViscosityRecommendationInline, BillingConfigInline]
+    # Prevent N+1 queries for 'owner' (FK→User) and 'subscription_plan' (FK→SubscriptionPlan)
+    # in the list view.  Without this, Django fires 2 extra SELECTs per tenant row.
+    list_select_related = ['owner', 'subscription_plan']
     list_per_page = 25
     readonly_fields = [
         'created_at', 'updated_at', 'trial_started_at',
@@ -59,6 +63,7 @@ class TenantAdmin(admin.ModelAdmin):
         'extend_trial_30_days',
         'activate_subscription',
         'deactivate_subscription',
+        'bulk_delete_tenants',
     ]
     fieldsets = (
         (None, {
@@ -69,6 +74,7 @@ class TenantAdmin(admin.ModelAdmin):
         }),
         ('Subscription', {
             'fields': (
+                'is_platform_owner',
                 'plan', 'subscription_plan', 'subscription_status',
                 'trial_started_at',
                 'grace_period_end',
@@ -77,6 +83,18 @@ class TenantAdmin(admin.ModelAdmin):
                 'is_in_grace_period_display',
                 'grace_days_remaining_display',
             ),
+        }),
+        ('Stripe Connect (Payment Processing)', {
+            'fields': (
+                'stripe_connect_account_id',
+                'stripe_onboarding_status',
+                'stripe_connect_charges_enabled',
+                'stripe_connect_payouts_enabled',
+                'stripe_connect_onboarding_complete',
+                'stripe_connected_at',
+                'platform_fee_percent',
+            ),
+            'classes': ('collapse',),
         }),
         ('Alerts', {
             'fields': ('subscription_alerts_sent',),
@@ -158,10 +176,56 @@ class TenantAdmin(admin.ModelAdmin):
             updated += 1
         self.message_user(request, f'{updated} tenant(s) deactivated with 30-day grace period.')
 
+    @admin.action(description='🗑️ Bulk delete selected tenants (irreversible — test shops only)')
+    def bulk_delete_tenants(self, request, queryset):
+        """
+        Hard-delete selected tenants and all related data (CASCADE).
+
+        This is a superuser-only safety valve for removing test shops.
+        Real production shops should be deactivated, not deleted.
+        Only tenants with no active Stripe subscription are eligible.
+        """
+        from django.contrib import messages as _msgs
+
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                '❌ Only superusers can bulk-delete tenants.',
+                level=_msgs.ERROR,
+            )
+            return
+
+        # Skip tenants with active Stripe subscriptions to prevent billing orphans
+        skipped_stripe = queryset.exclude(stripe_subscription_id='').exclude(
+            stripe_subscription_id__isnull=True
+        ).count()
+        safe = queryset.filter(
+            stripe_subscription_id__in=['', None]
+        )
+
+        deleted = safe.count()
+        safe.delete()
+
+        msg = f'🗑️ {deleted} tenant(s) deleted.'
+        if skipped_stripe:
+            msg += f' ⚠️ {skipped_stripe} tenant(s) skipped — active Stripe subscription. Cancel in Stripe first.'
+        self.message_user(request, msg)
+
 
 @admin.register(TenantMembership)
-class TenantMembershipAdmin(admin.ModelAdmin):
+class TenantMembershipAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Admin for TenantMembership.
+
+    Uses TenantFilterMixin so that non-superuser staff only see memberships
+    for their own shop(s). Without this, a staff-level admin user at Shop A
+    could read (and modify) Shop B's team roster — a tenant data leak.
+    (CODE-125)
+    """
+
     list_display = ['user', 'tenant', 'role', 'is_active', 'joined_at']
+    # 'tenant' is intentionally omitted here — TenantFilterMixin.get_list_filter()
+    # adds it automatically for superusers and strips it for non-superusers.
     list_filter = ['role', 'is_active']
     search_fields = ['user__username', 'user__email', 'tenant__name']
     autocomplete_fields = ['user', 'tenant']

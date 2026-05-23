@@ -37,7 +37,7 @@
 
 {% block content %}
 <div class="min-h-screen bg-gray-50">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="max-w-5xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <!-- Header -->
             <div class="px-6 py-4 border-b border-gray-200 bg-green-600 text-white rounded-t-lg">
@@ -45,7 +45,7 @@
                 <p class="text-green-100 text-sm mt-1">Create multiple repairs for the same unit in one session</p>
             </div>
 
-            <div class="p-6">
+            <div class="p-3 sm:p-6">
                 <form id="multiBreakForm" method="post" enctype="multipart/form-data">
                     {% csrf_token %}
 
@@ -99,6 +99,26 @@
                                     class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                                 >
                             </div>
+
+                            {% if is_admin %}
+                            <!-- Technician Selector (Admin Only) -->
+                            <div>
+                                <label for="technician_id" class="block text-sm font-medium text-gray-700 mb-1">
+                                    Assign Technician
+                                </label>
+                                <select
+                                    id="technician_id"
+                                    name="technician_id"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                >
+                                    <option value="">Select Technician (or self)</option>
+                                    {% for tech in technicians %}
+                                    <option value="{{ tech.id }}">{{ tech.user.get_full_name|default:tech.user.username }}</option>
+                                    {% endfor %}
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1">Leave blank to assign to yourself</p>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -279,6 +299,35 @@
                 </div>
             </div>
 
+            <!-- Damage Location Diagram -->
+            <div class="pt-4 border-t border-gray-200">
+                <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Damage Location</h3>
+                <div style="max-width: 400px;">
+                    <div id="modalWindshieldDiagram"
+                         style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 3px solid #0284c7; border-radius: 12px; cursor: crosshair; overflow: hidden; touch-action: none;">
+                        <div style="position: absolute; top: 8px; left: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">DRIVER</div>
+                        <div style="position: absolute; top: 8px; right: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">PASSENGER</div>
+                        <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #0369a1;">↑ HOOD</div>
+                        <div style="position: absolute; top: 20%; bottom: 20%; left: 50%; width: 1px; background: rgba(2,132,199,0.3);"></div>
+                        <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 30px; height: 10px; background: #0284c7; border-radius: 0 0 6px 6px;"></div>
+                        <div id="modalDamageMarker" style="display: none; position: absolute; width: 20px; height: 20px; background: #dc2626; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none; z-index: 10;">
+                            <div style="position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%);"></div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="modal_damage_location_x" value="">
+                    <input type="hidden" id="modal_damage_location_y" value="">
+                    <div class="flex justify-between items-center mt-1.5">
+                        <p class="text-xs text-gray-500">
+                            <i class="fas fa-info-circle"></i>
+                            <span id="modalLocationText">Tap to mark where this break is</span>
+                        </p>
+                        <button type="button" id="modalClearLocationBtn" class="text-xs text-red-600 hover:text-red-800" style="display: none;">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Technical Conditions Section -->
             <div class="pt-4 border-t border-gray-200 space-y-4">
                 <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Technical Conditions</h3>
@@ -365,7 +414,7 @@
             </div>
 
             <!-- Manager Price Override Section -->
-            {% if user.technician.is_manager and user.technician.can_override_pricing %}
+            {% if current_technician and current_technician.is_manager and current_technician.can_override_pricing %}
             <div class="pt-4 border-t border-gray-200 bg-purple-50 -mx-6 px-6 py-4 rounded">
                 <h3 class="text-sm font-semibold text-purple-900 uppercase tracking-wide mb-3">
                     <i class="fas fa-shield-alt mr-1"></i> Price Override (Manager Only)
@@ -388,9 +437,9 @@
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
                             placeholder="Leave blank for auto-pricing"
                         >
-                        {% if user.technician.approval_limit %}
+                        {% if current_technician and current_technician.approval_limit is not None %}
                         <p class="mt-1 text-xs text-gray-600">
-                            Your approval limit: <span class="font-semibold">${{ user.technician.approval_limit }}</span>
+                            Your approval limit: <span class="font-semibold">${{ current_technician.approval_limit }}</span>
                         </p>
                         {% endif %}
                     </div>

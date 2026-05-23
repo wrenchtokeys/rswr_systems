@@ -35,19 +35,32 @@ def get_tenant_repair_price(tenant, repair_count: int) -> Decimal:
 
     Returns:
         Decimal: The repair cost based on tenant configuration
+
+    Note: Tenant repair_price fields are non-nullable DecimalFields with a
+    positive default, so they are never None.  However we must NOT use a bare
+    truthiness check (``tenant.repair_price_1 or DEFAULT_PRICING[1]``) because
+    ``Decimal('0.00')`` is falsy — a tenant that deliberately sets a $0 price
+    tier (e.g. for free-service or warranty accounts) would silently receive
+    the $50 system default instead.  Checking ``is not None`` is the correct
+    pattern (documented in AGENTS.md: "Decimal('0.00') is falsy in Python").
     """
     if tenant:
         if repair_count == 1:
-            return tenant.repair_price_1 or DEFAULT_PRICING[1]
+            val = tenant.repair_price_1
+            return val if val is not None else DEFAULT_PRICING[1]
         elif repair_count == 2:
-            return tenant.repair_price_2 or DEFAULT_PRICING[2]
+            val = tenant.repair_price_2
+            return val if val is not None else DEFAULT_PRICING[2]
         elif repair_count == 3:
-            return tenant.repair_price_3 or DEFAULT_PRICING[3]
+            val = tenant.repair_price_3
+            return val if val is not None else DEFAULT_PRICING[3]
         elif repair_count == 4:
-            return tenant.repair_price_4 or DEFAULT_PRICING[4]
+            val = tenant.repair_price_4
+            return val if val is not None else DEFAULT_PRICING[4]
         else:
-            return tenant.repair_price_5_plus or DEFAULT_PRICE_5_PLUS
-    
+            val = tenant.repair_price_5_plus
+            return val if val is not None else DEFAULT_PRICE_5_PLUS
+
     return DEFAULT_PRICING.get(repair_count, DEFAULT_PRICE_5_PLUS)
 
 
@@ -172,7 +185,10 @@ def get_expected_repair_cost(customer: Customer, unit_number: str, tenant=None) 
         return calculate_repair_cost(customer, 1, tenant), 1
     
     # Fleet customers with progressive pricing enabled
+    # Include tenant in lookup so the created row is tenant-scoped (missing tenant
+    # caused NULL-tenant rows to be created, breaking TenantManager scoping).
     unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+        tenant=tenant,
         customer=customer,
         unit_number=unit_number,
         defaults={'repair_count': 0}
@@ -201,11 +217,14 @@ def can_manager_override_price(technician, proposed_amount: Decimal) -> bool:
     if not technician.is_manager:
         return False
 
-    # If technician has approval limit, check against it
-    if technician.approval_limit:
+    # If technician has approval limit, check against it.
+    # Use `is not None` — approval_limit=Decimal('0.00') is a valid "zero cap"
+    # that blocks all overrides, but a bare truthiness check treats 0.00 as
+    # "no limit" (Decimal falsy bug documented in AGENTS.md).
+    if technician.approval_limit is not None:
         return proposed_amount <= technician.approval_limit
 
-    # If no limit set, allow override (for senior managers)
+    # approval_limit is None → unlimited (senior managers)
     return True
 
 
@@ -226,12 +245,16 @@ def apply_pricing_to_repair(repair: 'Repair') -> None:
         repair.cost = repair.cost_override
         return
 
-    # Get the current repair count for this unit
+    # Get the current repair count for this unit.
+    # Include tenant= so the lookup matches the unique constraint
+    # (tenant, customer, unit_number) — consistent with get_or_create above
+    # and avoids hitting stale NULL-tenant rows.  (CODE-257)
     try:
-        unit_repair_count = UnitRepairCount.objects.get(
-            customer=repair.customer,
-            unit_number=repair.unit_number
-        )
+        lookup = {'customer': repair.customer, 'unit_number': repair.unit_number}
+        tenant = getattr(repair, 'tenant', None)
+        if tenant is not None:
+            lookup['tenant'] = tenant
+        unit_repair_count = UnitRepairCount.objects.get(**lookup)
         repair_count = unit_repair_count.repair_count
     except UnitRepairCount.DoesNotExist:
         repair_count = 1  # First repair for this unit

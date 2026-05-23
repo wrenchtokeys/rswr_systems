@@ -2,8 +2,10 @@ from django.db import models
 from django.template import Template, Context
 from django.utils.safestring import mark_safe
 
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 
-class NotificationTemplate(models.Model):
+
+class NotificationTemplate(AutoUpdateTimestampMixin, models.Model):
     """
     Reusable notification templates with variable substitution.
 
@@ -123,6 +125,13 @@ class NotificationTemplate(models.Model):
             dict: Rendered content for all channels
         """
         from django.template.loader import render_to_string
+        from django.conf import settings
+
+        # Inject base_url for absolute links in email templates
+        if 'base_url' not in context_dict:
+            context_dict['base_url'] = getattr(
+                settings, 'SITE_URL', 'https://rssystems.io'
+            ).rstrip('/')
 
         context = Context(context_dict)
 
@@ -139,9 +148,16 @@ class NotificationTemplate(models.Model):
                 # Render as inline template syntax
                 return Template(content).render(context)
 
+        # Use autoescape=False to prevent double-escaping when the rendered
+        # message is later displayed in Django templates (which auto-escape).
+        # The context values (customer name, unit number, etc.) are internal
+        # data from our own models, not raw user input.
+        from django.template import engines
+        plain_context = Context(context_dict, autoescape=False)
+
         return {
-            'title': Template(self.title_template).render(context),
-            'message': Template(self.message_template).render(context),
+            'title': Template(self.title_template).render(plain_context),
+            'message': Template(self.message_template).render(plain_context),
             'email_subject': Template(self.email_subject_template).render(context) if self.email_subject_template else '',
             'email_html': render_template_field(self.email_html_template),
             'email_text': render_template_field(self.email_text_template),

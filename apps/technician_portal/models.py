@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.db.models.signals import post_save
@@ -7,6 +9,7 @@ from django.core.validators import FileExtensionValidator, RegexValidator
 from decimal import Decimal
 from core.models import Customer
 from apps.tenants.managers import TenantManager
+from rs_systems.model_mixins import AutoUpdateTimestampMixin
 import logging
 
 logger = logging.getLogger(__name__)
@@ -173,9 +176,17 @@ class Technician(models.Model):
         return self.managed_technicians.count()
 
     def can_approve_amount(self, amount):
-        """Check if this manager can override pricing up to a given amount"""
-        if not self.is_manager or not self.approval_limit:
+        """Check if this manager can override pricing up to a given amount.
+
+        ``approval_limit=None`` means no cap (unlimited).  A truthy check would
+        also block managers with approval_limit=0, but 0 is a valid "zero cap"
+        value so we use an explicit ``is None`` test instead.  (CODE-114)
+        """
+        if not self.is_manager:
             return False
+        if self.approval_limit is None:
+            # No cap set — any amount is allowed.
+            return True
         return amount <= self.approval_limit
 
     def manages_technician(self, technician):
@@ -185,16 +196,32 @@ class Technician(models.Model):
         return self.managed_technicians.filter(id=technician.id).exists()
 
     def get_team_repairs(self):
-        """Get all repairs assigned to technicians this manager supervises"""
+        """Get all repairs assigned to technicians this manager supervises.
+
+        Always scoped to this manager's tenant — prevents cross-tenant data
+        leakage even if a cross-tenant Technician somehow ended up in the
+        managed_technicians M2M (e.g. via admin bypass or direct DB edit).
+        (CODE-255)
+        """
         if not self.is_manager:
             return Repair.objects.none()
         managed_tech_ids = self.managed_technicians.values_list('id', flat=True)
-        return Repair.objects.filter(technician_id__in=managed_tech_ids)
+        qs = Repair.objects.filter(technician_id__in=managed_tech_ids)
+        if self.tenant_id:
+            qs = qs.filter(tenant_id=self.tenant_id)
+        else:
+            qs = qs.none()
+        return qs
 
     def update_performance_stats(self):
-        """Update performance statistics based on completed repairs"""
+        """Update performance statistics based on completed repairs.
+
+        Scoped to this technician's tenant for defence-in-depth. (CODE-255)
+        """
         from django.db.models import Avg
         completed_repairs = self.repair_set.filter(queue_status='COMPLETED')
+        if self.tenant_id:
+            completed_repairs = completed_repairs.filter(tenant_id=self.tenant_id)
         self.repairs_completed = completed_repairs.count()
         # Note: average_repair_time calculation would need repair start/end timestamps
         self.save()
@@ -310,7 +337,7 @@ class GlassService(models.Model):
         blank=True,
         help_text="Reason for price override (required when using custom price)"
     )
-    queue_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    queue_status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', db_index=True)
     
     # Photo documentation fields
     customer_submitted_photo = models.ImageField(
@@ -395,8 +422,137 @@ class GlassService(models.Model):
 
 
 # =============================================================================
+# WARRANTY POLICY MODEL
+# =============================================================================
+
+class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
+    """
+    Per-tenant warranty terms. Shops define their own policies per damage type.
+
+    Each tenant can have one policy per damage_type (or an 'all_repairs' default).
+    Only one policy per tenant may be marked is_default=True — the custom save()
+    enforces this by deactivating other defaults.
+    """
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='warranty_policies',
+    )
+
+    # IMPORTANT: These values MUST match Repair.DAMAGE_TYPE_CHOICES exactly
+    # (see DAMAGE_TYPE_CHOICES below) so that WarrantyService can match
+    # repair.damage_type to the correct policy.
+    APPLIES_TO_CHOICES = [
+        ('Chip', 'Chip Repair'),
+        ('Crack', 'Crack Repair'),
+        ('Star Break', 'Star Break'),
+        ("Bull's Eye", "Bull's Eye"),
+        ('Combination Break', 'Combination Break'),
+        ('Half-Moon', 'Half-Moon'),
+        ('Other', 'Other'),
+        ('all_repairs', 'All Repairs (default)'),
+    ]
+    applies_to = models.CharField(max_length=30, choices=APPLIES_TO_CHOICES, default='all_repairs')
+
+    name = models.CharField(max_length=200, help_text="e.g. 'Standard Glass Warranty'")
+
+    WARRANTY_DURATION_CHOICES = [
+        ('lifetime', 'Lifetime'),
+        ('custom_days', 'Custom (days)'),
+        ('none', 'No Warranty'),
+    ]
+    duration_type = models.CharField(
+        max_length=20, choices=WARRANTY_DURATION_CHOICES, default='custom_days',
+    )
+    duration_days = models.PositiveIntegerField(
+        default=365,
+        help_text="Days from completion. Ignored if duration_type is lifetime or none.",
+    )
+
+    coverage_description = models.TextField(
+        blank=True,
+        help_text="Customer-facing warranty terms shown on invoices/emails",
+    )
+
+    covers_labor = models.BooleanField(default=True)
+    covers_materials = models.BooleanField(default=True)
+
+    is_default = models.BooleanField(
+        default=False,
+        help_text="If True, this policy applies when no damage-type-specific policy exists.",
+    )
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Per-customer override — if set, this policy applies only to that customer.
+    # Null = tenant-wide policy (applies to all customers).
+    customer = models.ForeignKey(
+        'core.Customer', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='warranty_policies',
+        help_text="If set, this policy applies only to this customer (fleet override).",
+    )
+
+    objects = TenantManager()
+
+    class Meta:
+        unique_together = ['tenant', 'name']
+        ordering = ['applies_to']
+        verbose_name_plural = 'warranty policies'
+
+    def __str__(self):
+        suffix = f" [{self.customer.name}]" if self.customer_id else ""
+        return f"{self.name} ({self.tenant.name}){suffix}"
+
+    def save(self, *args, **kwargs):
+        # Enforce only one default per tenant
+        if self.is_default:
+            WarrantyPolicy.objects.filter(
+                tenant=self.tenant, is_default=True,
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+    def get_expiry_date(self, completion_date):
+        """Calculate warranty expiration from repair completion date."""
+        if self.duration_type == 'lifetime':
+            return None  # Never expires
+        if self.duration_type == 'none':
+            return completion_date  # Already expired
+        return completion_date + timedelta(days=self.duration_days)
+
+    @property
+    def terms_summary(self):
+        """One-line summary of warranty terms for invoices."""
+        if self.duration_type == 'lifetime':
+            duration = "Lifetime"
+        elif self.duration_type == 'none':
+            return ""
+        else:
+            duration = f"{self.duration_days} days"
+        parts = [f"{self.name}: {duration}"]
+        coverage = []
+        if self.covers_labor:
+            coverage.append("labor")
+        if self.covers_materials:
+            coverage.append("materials")
+        if coverage:
+            parts.append(f"covers {' + '.join(coverage)}")
+        return " — ".join(parts)
+
+
+# =============================================================================
 # REPAIR MODEL
 # =============================================================================
+
+class RepairSoftDeleteManager(TenantManager):
+    """
+    Default manager for Repair — automatically excludes soft-deleted records.
+    Use Repair.all_objects for unfiltered access (including deleted).
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
 
 class Repair(GlassService):
     """
@@ -410,10 +566,12 @@ class Repair(GlassService):
     - Retail: identified by vehicle (year/make/model)
     - Walk-in: minimal info
     """
-    
-    # Tenant-aware manager
-    objects = TenantManager()
-    
+
+    # Soft-delete manager (default — excludes deleted records)
+    objects = RepairSoftDeleteManager()
+    # Unfiltered manager — use when you need deleted records too
+    all_objects = TenantManager()
+
     # Keep QUEUE_CHOICES as alias for backward compatibility
     QUEUE_CHOICES = GlassService.STATUS_CHOICES
     
@@ -486,6 +644,69 @@ class Repair(GlassService):
         help_text="Skip this repair when listing uninvoiced work (e.g., already paid outside system)"
     )
 
+    # Soft-delete — set to a timestamp to mark as deleted (not visible in default queryset)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this repair is soft-deleted and excluded from normal querysets"
+    )
+
+    # =========================================================================
+    # WARRANTY TRACKING FIELDS
+    # =========================================================================
+    warranty_policy = models.ForeignKey(
+        WarrantyPolicy, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='repairs',
+        help_text="Warranty policy applied to this repair on completion",
+    )
+    warranty_expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Warranty expiration. Null with a policy = lifetime warranty.",
+    )
+    warranty_void = models.BooleanField(default=False)
+    warranty_void_reason = models.CharField(
+        max_length=255, null=True, blank=True,
+        help_text="Reason warranty was voided (e.g. new impact damage)",
+    )
+
+    # Warranty claim fields
+    is_warranty_claim = models.BooleanField(
+        default=False,
+        help_text="This repair is a warranty claim against an original repair",
+    )
+    warranty_original_repair = models.ForeignKey(
+        'self', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='warranty_claims',
+        help_text="Original repair this warranty claim is for",
+    )
+
+    # Goodwill repair — out-of-warranty courtesy repair (not a warranty claim)
+    is_goodwill_repair = models.BooleanField(
+        default=False,
+        help_text="Courtesy repair outside warranty — excluded from loyalty points",
+    )
+
+    @property
+    def has_warranty(self):
+        """True if this repair has an active, non-expired, non-voided warranty."""
+        if not self.warranty_policy_id:
+            return False
+        if self.warranty_void:
+            return False
+        # Lifetime warranty: expires_at is None but policy exists
+        if self.warranty_expires_at is None:
+            return True
+        return self.warranty_expires_at > timezone.now()
+
+    @property
+    def warranty_expiring_soon(self):
+        """True if warranty expires within 30 days (for badge display)."""
+        if not self.has_warranty:
+            return False
+        if self.warranty_expires_at is None:
+            return False  # Lifetime — never expiring
+        days_left = (self.warranty_expires_at - timezone.now()).days
+        return 0 < days_left <= 30
+
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
     # The field was renamed to service_date in the abstract base class.
@@ -543,8 +764,14 @@ class Repair(GlassService):
                     # No preferences set - default to requiring approval
                     pass
 
-            # Get or create the unit repair count
+            # Get or create the unit repair count.
+            # IMPORTANT: include tenant in the lookup so the created row is
+            # tenant-scoped.  Omitting tenant caused new rows to be saved with
+            # tenant=NULL (the field is nullable for migration compat), which
+            # breaks TenantManager scoping and could produce duplicate NULL-tenant
+            # rows on PostgreSQL (where NULL != NULL in unique constraints).
             unit_repair_count, created = UnitRepairCount.objects.get_or_create(
+                tenant=self.tenant,
                 customer=self.customer,
                 unit_number=self.unit_number,
                 defaults={'repair_count': 0}
@@ -618,16 +845,31 @@ class Repair(GlassService):
             # Save after the cost calculation
             super().save(*args, **kwargs)
 
-            # Update the original status after saving
-            self.original_status = self.queue_status
-
-            # Apply rewards and award points AFTER save (requires pk to access relationships)
+            # Apply rewards and run post-completion hooks AFTER save (requires
+            # pk to access relationships).
+            # IMPORTANT: update original_status AFTER calling apply_available_rewards()
+            # and post_completion_hooks() so that hooks can distinguish a first-time
+            # COMPLETED transition from a re-save of an already-COMPLETED repair.
+            # Previously, original_status was updated BEFORE the calls, so the guard
+            # inside loyalty_hook (`if original_status == 'COMPLETED': return`)
+            # always fired on first completion — customers never earned points. (CODE-166)
             if self.queue_status == 'COMPLETED':
-                # Check for available rewards to apply automatically
+                # Check for available rewards to apply automatically.
                 self.apply_available_rewards()
 
-                # Award points to customer for completed repair
-                self.award_completion_points()
+                # Run all post-completion hooks (loyalty, warranty, review
+                # requests, etc.) via the orchestrator.  Each hook is isolated —
+                # a failure in one does NOT block the others.
+                # original_status is intentionally still set to the PRE-save
+                # status here so hooks can detect a first-time COMPLETED
+                # transition. It is updated below, after hooks complete.
+                from apps.technician_portal.hooks import post_completion_hooks
+                post_completion_hooks(self)
+
+            # Update the original status AFTER rewards/points processing so that
+            # any subsequent save() on the same in-memory instance (e.g. in tests)
+            # correctly identifies it as already-COMPLETED and skips re-awarding.
+            self.original_status = self.queue_status
         else:
             # Just save without updating repair counts
             super().save(*args, **kwargs)
@@ -693,62 +935,186 @@ class Repair(GlassService):
     
     def award_completion_points(self):
         """
+        [DEPRECATED — superseded by apps.technician_portal.hooks.loyalty_hook]
+
         Award points to customer when repair is completed.
-        
+
+        This method is no longer called from Repair.save(). The loyalty logic
+        has been extracted to hooks.loyalty_hook() and is invoked via the
+        post_completion_hooks() orchestrator in hooks.py.
+
+        Kept for backwards compatibility (tests reference it via comments and
+        the method may be called directly in custom management commands).  Do
+        NOT add new callers — use post_completion_hooks() or loyalty_hook()
+        directly instead.
+
+        Reads point values from LoyaltyConfig and delegates to LoyaltyService.
         Awards base points per repair plus milestone bonuses for multiple repairs.
         Only awards points once per repair completion to prevent duplicate awards.
         """
         try:
-            from apps.rewards_referrals.models import Reward
+            from apps.rewards_referrals.models import LoyaltyConfig
+            from apps.rewards_referrals.services import LoyaltyService
             from apps.customer_portal.models import CustomerUser
-            
-            # Skip if already awarded points for this repair (check if this is a status change to COMPLETED)
+
+            # Skip if already awarded points for this repair
             if hasattr(self, 'original_status') and self.original_status == 'COMPLETED':
                 return
-            
-            # Find the customer user associated with this repair
+
+            # Find the customer user associated with this repair.
+            # Prefer the primary contact (CODE-169).
             customer_users = CustomerUser.objects.filter(customer=self.customer)
-            
+
             if not customer_users.exists():
                 return
-                
-            customer_user = customer_users.first()
-            
-            # Get or create reward record for this customer
-            reward, created = Reward.objects.get_or_create(
-                customer_user=customer_user,
-                defaults={'points': 0}
+
+            customer_user = (
+                customer_users.filter(is_primary_contact=True).first()
+                or customer_users.first()
             )
-            
-            # Base points per repair completion
-            base_points = 50
-            
-            # Calculate milestone bonus based on total completed repairs for this customer
+
+            tenant = self.customer.tenant
+            config = LoyaltyConfig.get_for_tenant(tenant)
+
+            # Base points from config
+            base_points = config.points_per_repair
+
+            # Award base points
+            LoyaltyService.award_points(
+                customer_user=customer_user,
+                amount=base_points,
+                transaction_type='repair_complete',
+                description=f'Repair completed — Unit #{self.unit_number}',
+                tenant=tenant,
+                related_repair=self,
+            )
+
+            # Calculate milestone bonus based on total completed repairs
             completed_repairs_count = Repair.objects.filter(
                 customer=self.customer,
                 queue_status='COMPLETED'
             ).count()
-            
+
             milestone_bonus = 0
             if completed_repairs_count == 5:
-                milestone_bonus = 250  # 5th repair bonus
+                milestone_bonus = config.milestone_5_bonus
             elif completed_repairs_count == 10:
-                milestone_bonus = 500  # 10th repair bonus
-            elif completed_repairs_count % 25 == 0:  # Every 25th repair
-                milestone_bonus = 1000
-            
+                milestone_bonus = config.milestone_10_bonus
+            elif completed_repairs_count >= 25 and completed_repairs_count % 25 == 0:
+                milestone_bonus = config.milestone_25_bonus
+
+            if milestone_bonus > 0:
+                LoyaltyService.award_points(
+                    customer_user=customer_user,
+                    amount=milestone_bonus,
+                    transaction_type='milestone_bonus',
+                    description=f'Milestone bonus — {completed_repairs_count} repairs completed',
+                    tenant=tenant,
+                    related_repair=self,
+                )
+
             total_points = base_points + milestone_bonus
-            
-            # Award the points
-            reward.points += total_points
-            reward.save()
-            
             logger.info(f"Awarded {total_points} points to {customer_user.user.email} for repair completion")
             if milestone_bonus > 0:
                 logger.info(f"Milestone bonus of {milestone_bonus} points awarded!")
 
         except Exception as e:
             logger.error(f"Error awarding completion points: {e}")
+
+    def get_damage_location_label(self):
+        """Return human-readable damage location from X/Y coordinates.
+        
+        The windshield diagram is 0-100% on both axes:
+        - X: 0 = driver side, 100 = passenger side
+        - Y: 0 = top (roof), 100 = bottom (hood)
+        """
+        if self.damage_location_x is None or self.damage_location_y is None:
+            return ''
+        
+        x = self.damage_location_x
+        y = self.damage_location_y
+        
+        # Horizontal position
+        if x < 35:
+            h_pos = 'driver side'
+        elif x > 65:
+            h_pos = 'passenger side'
+        else:
+            h_pos = 'center'
+        
+        # Vertical position
+        if y < 35:
+            v_pos = 'upper'
+        elif y > 65:
+            v_pos = 'lower'
+        else:
+            v_pos = ''
+        
+        if v_pos:
+            return f"{v_pos} {h_pos}"
+        return h_pos
+
+    def get_invoice_description(self):
+        """Generate a descriptive line item string for invoices.
+        
+        Includes break number (for batches) and damage location if available.
+        Examples:
+            'Windshield repair - Unit #100 - Chip'
+            'Windshield repair - Unit #100 - Break 2 of 3 - Chip (passenger side)'
+        """
+        parts = [f"Windshield repair - Unit #{self.unit_number}"]
+        
+        if self.is_part_of_batch and self.break_number:
+            if self.total_breaks_in_batch:
+                parts.append(f"Break {self.break_number} of {self.total_breaks_in_batch}")
+            else:
+                parts.append(f"Break {self.break_number}")
+        
+        damage = self.get_damage_type_display() or 'Repair'
+        location = self.get_damage_location_label()
+        if location:
+            parts.append(f"{damage} ({location})")
+        else:
+            parts.append(damage)
+        
+        return ' - '.join(parts)
+
+    def get_progressive_pricing_info(self):
+        """Return progressive pricing context for this repair.
+        
+        Returns dict with base_rate, actual_cost, is_discounted, and explanation.
+        Used to show customers why break 2 costs $40 instead of $50.
+        """
+        from decimal import Decimal
+        
+        if not self.is_part_of_batch or not self.break_number:
+            return {
+                'base_rate': self.cost,
+                'actual_cost': self.cost,
+                'is_discounted': False,
+                'explanation': '',
+            }
+        
+        # Get the first-break price for comparison
+        tenant = self.tenant
+        try:
+            from apps.technician_portal.services.pricing_service import get_tenant_repair_price
+            first_break_price = get_tenant_repair_price(tenant, 1)
+        except Exception:
+            first_break_price = Decimal('50.00')
+        
+        is_discounted = self.cost < first_break_price
+        explanation = ''
+        if is_discounted:
+            savings = first_break_price - self.cost
+            explanation = f"Multi-break discount (break {self.break_number}): -${savings}"
+        
+        return {
+            'base_rate': first_break_price,
+            'actual_cost': self.cost,
+            'is_discounted': is_discounted,
+            'explanation': explanation,
+        }
 
     # Batch repair helper methods
     @property
@@ -757,22 +1123,38 @@ class Repair(GlassService):
         return (self.repair_batch_id is not None and self.total_breaks_in_batch and self.total_breaks_in_batch > 1) or self.is_multi_break_estimate
 
     @classmethod
-    def get_batch_repairs(cls, batch_id):
-        """Get all repairs in a batch, ordered by break number."""
+    def get_batch_repairs(cls, batch_id, tenant=None):
+        """Get all repairs in a batch, ordered by break number.
+
+        Args:
+            batch_id: UUID of the batch.
+            tenant: Tenant instance to scope the lookup. When provided, only repairs
+                    belonging to that tenant are returned. Callers with a request
+                    context SHOULD pass ``tenant`` to prevent cross-tenant batch
+                    access (IDOR via batch UUID).
+        """
         if not batch_id:
             return cls.objects.none()
-        return cls.objects.filter(repair_batch_id=batch_id).order_by('break_number')
+        qs = cls.objects.filter(repair_batch_id=batch_id)
+        if tenant is not None:
+            qs = qs.filter(tenant=tenant)
+        return qs.order_by('break_number')
 
     @classmethod
-    def get_batch_summary(cls, batch_id):
+    def get_batch_summary(cls, batch_id, tenant=None):
         """
         Get summary information for a batch of repairs.
         Returns dict with: total_cost, break_count, unit_number, customer, statuses, all_repairs
+
+        Args:
+            batch_id: UUID of the batch.
+            tenant: Tenant instance to scope the lookup. Pass this whenever a request
+                    context is available so cross-tenant batch access is impossible.
         """
         if not batch_id:
             return None
 
-        repairs = cls.get_batch_repairs(batch_id)
+        repairs = cls.get_batch_repairs(batch_id, tenant=tenant)
         if not repairs.exists():
             return None
 
@@ -785,7 +1167,12 @@ class Repair(GlassService):
         # CRITICAL FIX: Use Decimal('0') as start value to avoid int + Decimal TypeError
         # Previously: sum(repair.cost for repair in repairs) defaulted to int 0
         total_cost = sum((repair.cost for repair in repairs), Decimal('0'))
-        statuses = list(repairs.values_list('queue_status', flat=True).distinct())
+        # Use order_by() to clear the queryset ordering before calling .distinct() so
+        # that PostgreSQL doesn't include break_number in the SELECT alongside
+        # queue_status.  Without this, DISTINCT ON (queue_status, break_number) returns
+        # one row per repair even when all have the same status — making all_same_status
+        # always False for normal batches (pre-existing bug; also fixed in CODE-142).
+        statuses = list(repairs.order_by().values_list('queue_status', flat=True).distinct())
 
         # Calculate progress
         repairs_list = list(repairs)
@@ -821,7 +1208,68 @@ class Repair(GlassService):
             'approved_count': approved_count,
             'progress_percentage': progress_percentage,
         }
-            
+
+    @classmethod
+    def build_batch_summary_from_repairs(cls, batch_id, repairs_list):
+        """
+        Build the same summary dict as ``get_batch_summary()`` from a pre-fetched list
+        of repairs (already loaded from the DB).  Avoids any additional DB queries.
+
+        Used by the technician dashboard to bulk-fetch all batch repairs in a single
+        query and then compute summaries in Python — eliminating the N+1 that occurred
+        when ``get_batch_summary()`` was called once per batch inside a loop (CODE-142).
+
+        Args:
+            batch_id: UUID of the batch (used as the 'batch_id' key in the result).
+            repairs_list: Iterable of Repair instances belonging to this batch.
+                          Must be non-empty. Caller is responsible for pre-loading
+                          'customer' via select_related if the customer attribute is used.
+
+        Returns:
+            dict matching the shape returned by ``get_batch_summary()``, or None if
+            ``repairs_list`` is empty.
+        """
+        if not repairs_list:
+            return None
+
+        first_repair = repairs_list[0]
+
+        total_cost = sum((r.cost for r in repairs_list), Decimal('0'))
+
+        # Collect distinct statuses preserving insertion order (dict trick keeps order in Python 3.7+).
+        # Using a set would work for the count but loses the deterministic first-element needed
+        # for current_status when all_same_status is True.
+        statuses_set = list(dict.fromkeys(r.queue_status for r in repairs_list))
+        completed_count = sum(1 for r in repairs_list if r.queue_status == 'COMPLETED')
+        in_progress_count = sum(1 for r in repairs_list if r.queue_status == 'IN_PROGRESS')
+        approved_count = sum(1 for r in repairs_list if r.queue_status == 'APPROVED')
+        total_count = len(repairs_list)
+        progress_percentage = int((completed_count / total_count * 100)) if total_count > 0 else 0
+
+        max_break_number = max((r.break_number for r in repairs_list if r.break_number), default=None)
+        if max_break_number:
+            break_count = max_break_number
+        else:
+            break_count = first_repair.total_breaks_in_batch if first_repair.total_breaks_in_batch else total_count
+
+        return {
+            'batch_id': batch_id,
+            'customer': first_repair.customer,
+            'unit_number': first_repair.unit_number,
+            'service_date': first_repair.service_date,
+            'break_count': break_count,
+            'total_cost': total_cost,
+            'statuses': statuses_set,
+            'all_same_status': len(statuses_set) == 1,
+            'current_status': statuses_set[0] if len(statuses_set) == 1 else 'MIXED',
+            'all_repairs': repairs_list,
+            'repairs': repairs_list,
+            'completed_count': completed_count,
+            'in_progress_count': in_progress_count,
+            'approved_count': approved_count,
+            'progress_percentage': progress_percentage,
+        }
+
     def get_discounted_cost(self):
         """Calculate the final cost with any applied rewards/discounts"""
         from decimal import Decimal
@@ -908,6 +1356,17 @@ class Repair(GlassService):
             models.Index(fields=['customer', 'unit_number']),
             models.Index(fields=['technician']),
             models.Index(fields=['service_date']),
+            # Partial index for soft-delete filter: RepairSoftDeleteManager always
+            # appends deleted_at__isnull=True.  Without an index every query
+            # does a post-filter pass on an unindexed column.  The partial index
+            # covers only live (non-deleted) repairs — which is 99%+ of queries.
+            # The composite (tenant_id, queue_status) covers the most common
+            # portal filter pattern: tenant + status.  (CODE-109)
+            models.Index(
+                fields=['tenant', 'queue_status'],
+                condition=models.Q(deleted_at__isnull=True),
+                name='repair_live_tenant_status_idx',
+            ),
         ]
 
     def __str__(self):
@@ -1107,7 +1566,15 @@ class Replacement(GlassService):
             # A new windshield means fresh repair pricing for that unit
             if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
                 try:
+                    # Include tenant in the filter to respect tenant isolation.
+                    # Without this, completing a replacement for Tenant A could
+                    # reset Tenant B's repair count if both share a customer
+                    # with the same unit_number.  The Repair model's save()
+                    # already includes tenant= in its UnitRepairCount lookup
+                    # (see line ~756) — this brings Replacement into parity.
+                    # (CODE-230)
                     unit_repair_count = UnitRepairCount.objects.filter(
+                        tenant=self.tenant,
                         customer=self.customer,
                         unit_number=self.unit_number
                     ).first()
@@ -1178,7 +1645,7 @@ class TechnicianNotification(models.Model):
         verbose_name_plural = 'Technician Notifications'
 
 
-class ViscosityRecommendation(models.Model):
+class ViscosityRecommendation(AutoUpdateTimestampMixin, models.Model):
     """
     Configurable temperature-based resin viscosity recommendations.
     Managers can configure these rules through the settings UI.
@@ -1328,3 +1795,7 @@ class ViscosityRecommendation(models.Model):
                 }
 
         return None
+
+
+# Review request models live in a separate file to keep this module manageable.
+from apps.technician_portal.review_models import ReviewConfig, ReviewRequest  # noqa: E402, F401

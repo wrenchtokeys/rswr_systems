@@ -7,7 +7,7 @@ from django.contrib.contenttypes.models import ContentType
 from core.models import Customer
 from apps.technician_portal.models import Repair, Replacement, UnitRepairCount, TechnicianNotification, Technician
 from apps.rewards_referrals.models import ReferralCode, RewardOption, RewardRedemption, Referral
-from apps.rewards_referrals.services import ReferralService, RewardService
+from apps.rewards_referrals.services import LoyaltyService, ReferralService, RewardService
 from apps.billing.models import Invoice
 from .forms import RepairPreferenceForm, CustomerNotificationPreferenceForm
 from .models import CustomerRepairPreference
@@ -34,12 +34,42 @@ from common.utils import convert_heic_to_jpeg
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from core.services.sms_service import SMSService
 
 logger = logging.getLogger(__name__)
 
 # Custom decorator to ensure only customers can access views
+def _get_customer_user_for_tenant(request):
+    """
+    Return the CustomerUser for the current user scoped to the current tenant.
+
+    CustomerUser.user is a OneToOneField so at most one CustomerUser record can
+    exist per user.  The per-tenant scope (customer__tenant=tenant) is still
+    important: it validates that the user's CustomerUser actually belongs to the
+    shop currently in the request context.  Without this check, a customer at
+    Shop A who navigates to Shop B's customer portal URL would get their
+    CustomerUser back (for Shop A) and the view would silently operate on the
+    wrong shop's data.  (CODE-102)
+
+    Returns None if:
+    - The user has no CustomerUser record at all, OR
+    - The user's CustomerUser belongs to a different tenant than the current one.
+
+    Falls back to a simple filter (no tenant scope) when there is no tenant
+    context on the request (tests, admin-only environments).
+    """
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        return CustomerUser.objects.filter(
+            user=request.user, customer__tenant=tenant
+        ).select_related('customer__tenant').first()
+    # No tenant context — fall back to unscoped lookup (tests / admin-only paths)
+    return CustomerUser.objects.filter(user=request.user).select_related('customer__tenant').first()
+
+
 def customer_required(view_func):
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
@@ -47,15 +77,16 @@ def customer_required(view_func):
         if not request.user.is_authenticated:
             messages.info(request, "Please log in to access the customer portal.")
             return redirect('login')
-            
-        # Check if user has a customer profile
-        try:
-            customer_user = CustomerUser.objects.get(user=request.user)
-            return view_func(request, *args, **kwargs)
-        except CustomerUser.DoesNotExist:
+
+        # Check if user has a customer profile scoped to the current tenant.
+        # Use the tenant-aware helper to avoid MultipleObjectsReturned for users
+        # who have joined more than one shop. (CODE-102)
+        customer_user = _get_customer_user_for_tenant(request)
+        if customer_user is None:
             # Redirect user to profile creation if they don't have a profile
             messages.info(request, "Please complete your profile setup to access customer features.")
             return redirect('profile_creation')
+        return view_func(request, *args, **kwargs)
     return _wrapped_view
 
 def rebuild_unit_repair_counts(customer):
@@ -74,9 +105,10 @@ def rebuild_unit_repair_counts(customer):
     # Delete existing counts for this customer
     UnitRepairCount.objects.filter(customer=customer).delete()
     
-    # Create new counts
+    # Create new counts (include tenant so rows are properly scoped)
     for repair in repair_counts:
         UnitRepairCount.objects.create(
+            tenant=customer.tenant,
             customer=customer,
             unit_number=repair['unit_number'],
             repair_count=repair['count']
@@ -87,7 +119,7 @@ def rebuild_unit_repair_counts(customer):
 @customer_required
 def customer_dashboard(request):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Check if we need to rebuild unit repair counts for this customer
@@ -102,12 +134,31 @@ def customer_dashboard(request):
         # Filter by both customer AND tenant to prevent cross-tenant leakage
         tenant = customer.tenant
         base_qs = Repair.objects.filter(customer=customer, tenant=tenant)
-        active_repairs = base_qs.exclude(queue_status='COMPLETED').exclude(queue_status='DENIED').count()
-        completed_repairs = base_qs.filter(queue_status='COMPLETED').count()
-        pending_approval = base_qs.filter(queue_status='PENDING').count()
-        
-        # Get total spent on completed repairs
-        total_spent = base_qs.filter(queue_status='COMPLETED').aggregate(sum=Sum('cost'))['sum'] or 0
+
+        # CODE-141: Collapse 7 individual COUNT/SUM queries into one aggregate() call.
+        # Each separate .count()/.filter().count()/.aggregate() hit the DB independently.
+        # A single annotated aggregate eliminates 6 round-trips per dashboard load.
+        from decimal import Decimal as _Decimal
+        from django.db.models import DecimalField as _DecimalField
+        from django.db.models.functions import Coalesce
+        agg = base_qs.aggregate(
+            _requested=Count('id', filter=Q(queue_status='REQUESTED')),
+            _pending=Count('id', filter=Q(queue_status='PENDING')),
+            _approved=Count('id', filter=Q(queue_status='APPROVED')),
+            _in_progress=Count('id', filter=Q(queue_status='IN_PROGRESS')),
+            _completed=Count('id', filter=Q(queue_status='COMPLETED')),
+            _denied=Count('id', filter=Q(queue_status='DENIED')),
+            # Coalesce default must be Decimal to match Sum(DecimalField) output type.
+            _total_spent=Coalesce(
+                Sum('cost', filter=Q(queue_status='COMPLETED')),
+                _Decimal('0'),
+                output_field=_DecimalField(),
+            ),
+        )
+        completed_repairs = agg['_completed']
+        pending_approval = agg['_pending']
+        active_repairs = agg['_requested'] + agg['_pending'] + agg['_approved'] + agg['_in_progress']
+        total_spent = agg['_total_spent']
         
         # Get recent repairs (limited to 5) for the customer
         recent_repairs = base_qs.select_related('technician__user').order_by('-service_date')[:5]
@@ -128,15 +179,49 @@ def customer_dashboard(request):
             queue_status='PENDING'
         ).select_related('technician__user').order_by('-service_date')
 
-        # Group batched repairs and separate individual repairs
+        # Group batched repairs and separate individual repairs.
+        # CODE-168: Bulk-fetch all batch siblings in ONE query to avoid ~4 DB
+        # queries per unique batch ID (same N+1 fixed for technician dashboard
+        # in CODE-142).  Strategy mirrors the technician dashboard fix:
+        #   1. Collect all unique batch IDs from the PENDING repairs list.
+        #   2. Fetch every sibling repair for those batches in a single queryset.
+        #   3. Group in Python by batch_id.
+        #   4. Build summaries via build_batch_summary_from_repairs() — zero
+        #      additional DB queries.
+        # Without this fix, a customer with N unique pending batches causes ~4N
+        # DB queries on every dashboard load.
+        _awaiting_list = list(repairs_awaiting_approval)
+        _pending_batch_ids = {
+            r.repair_batch_id
+            for r in _awaiting_list
+            if r.is_part_of_batch and r.repair_batch_id
+        }
+
+        _prefetched_pending_batches: dict = {}
+        if _pending_batch_ids:
+            _sibling_qs = Repair.objects.filter(
+                repair_batch_id__in=_pending_batch_ids,
+            ).select_related('customer', 'technician__user').order_by('break_number')
+            if tenant:
+                _sibling_qs = _sibling_qs.filter(tenant=tenant)
+            for _r in _sibling_qs:
+                _prefetched_pending_batches.setdefault(_r.repair_batch_id, []).append(_r)
+
         batch_repairs = {}  # Dictionary: batch_id -> batch_summary
         individual_repairs = []  # List of non-batched repairs
 
-        for repair in repairs_awaiting_approval:
+        for repair in _awaiting_list:
             if repair.is_part_of_batch:
                 # Only add batch summary once (for the first repair in batch we encounter)
                 if repair.repair_batch_id not in batch_repairs:
-                    batch_summary = Repair.get_batch_summary(repair.repair_batch_id)
+                    _siblings = _prefetched_pending_batches.get(repair.repair_batch_id)
+                    if _siblings:
+                        batch_summary = Repair.build_batch_summary_from_repairs(
+                            repair.repair_batch_id, _siblings
+                        )
+                    else:
+                        # Fallback to legacy path (should not be hit after bulk-fetch)
+                        batch_summary = Repair.get_batch_summary(repair.repair_batch_id, tenant=tenant)
                     if batch_summary:
                         batch_repairs[repair.repair_batch_id] = batch_summary
             else:
@@ -148,13 +233,13 @@ def customer_dashboard(request):
             'completed_repairs': completed_repairs,
             'pending_approval': pending_approval,
             'total_spent': total_spent,
-            # Detailed repair status counts for the visualization
-            'repairs_requested': base_qs.filter(queue_status='REQUESTED').count(),
+            # Detailed repair status counts for the visualization (from single aggregate — CODE-141)
+            'repairs_requested': agg['_requested'],
             'repairs_pending': pending_approval,
-            'repairs_approved': base_qs.filter(queue_status='APPROVED').count(),
-            'repairs_in_progress': base_qs.filter(queue_status='IN_PROGRESS').count(),
+            'repairs_approved': agg['_approved'],
+            'repairs_in_progress': agg['_in_progress'],
             'repairs_completed': completed_repairs,
-            'repairs_denied': base_qs.filter(queue_status='DENIED').count(),
+            'repairs_denied': agg['_denied'],
         }
         
         # Get referral and reward information
@@ -168,16 +253,35 @@ def customer_dashboard(request):
         # Get reward points balance
         reward_points = RewardService.get_reward_balance(customer_user)
         
-        # Get outstanding invoices for the customer
-        outstanding_invoices = Invoice.objects.filter(
+        # Get outstanding invoices for the customer.
+        # CODE-149: aggregate on the FULL queryset BEFORE slicing so outstanding_total
+        # reflects ALL unpaid invoices, not just the first 5 shown on the dashboard.
+        # Slicing (`[:5]`) causes Django to wrap the queryset in a subquery, so
+        # aggregate() on the sliced version only sums the limited rows, not all of them.
+        # CODE-159: Use Sum('total') - Sum('amount_paid') to correctly reflect the
+        # remaining balance for PARTIAL invoices.  Using Sum('total') alone overstates
+        # the outstanding amount — a $500 invoice with $300 already paid would be
+        # counted as $500 owed instead of $200.  Mirrors the correct formula used in
+        # the owner invoice list (owner_invoice_list in saas/views.py).
+        # CODE-262: Add tenant filter for defense-in-depth tenant isolation.
+        # CODE-255 added tenant= to the invoice list/detail/pay views but
+        # missed the dashboard's outstanding invoices query.
+        _outstanding_qs = Invoice.objects.filter(
             customer=customer,
+            tenant=tenant,
             status__in=['SENT', 'OVERDUE', 'PARTIAL']
-        ).order_by('due_date')[:5]
-        outstanding_total = outstanding_invoices.aggregate(
-            total=Sum('total')
-        )['total'] or 0
+        ).order_by('due_date')
+        _outstanding_agg = _outstanding_qs.aggregate(
+            _total=Sum('total'),
+            _paid=Sum('amount_paid'),
+        )
+        outstanding_total = (
+            (_outstanding_agg['_total'] or 0) - (_outstanding_agg['_paid'] or 0)
+        )
+        outstanding_invoices = _outstanding_qs[:5]  # Display slice AFTER aggregate
         overdue_count = Invoice.objects.filter(
             customer=customer,
+            tenant=tenant,
             status='OVERDUE'
         ).count()
         
@@ -208,17 +312,41 @@ def customer_dashboard(request):
         context.update(get_notification_context(customer))
 
         return render(request, 'customer_portal/dashboard.html', context)
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @login_required
 def profile_creation(request):
-    # Check if user already has a CustomerUser profile
-    if CustomerUser.objects.filter(user=request.user).exists():
-        return redirect('customer_dashboard')
-
+    # Check if user already has a CustomerUser profile scoped to THIS tenant.
+    # CustomerUser.user is a OneToOneField (one per User globally), so we must
+    # distinguish three cases to avoid an infinite redirect loop:
+    #
+    #   A) Already linked to this tenant → redirect to dashboard (setup done).
+    #   B) Linked to a *different* shop → cannot create a second CustomerUser;
+    #      show a clear message instead of looping dashboard ↔ profile_creation.
+    #   C) No CustomerUser yet → let them proceed with the form.
+    #
+    # The old code used an *unscoped* .exists() check: a user with a CustomerUser
+    # at Shop A visiting Shop B was redirected to customer_dashboard, which found
+    # no profile for Shop B, then redirected back here — causing an infinite loop.
+    # (CODE-107: fix redirect loop in profile_creation for cross-shop users)
     tenant = getattr(request, 'tenant', None)
+    existing_cu = CustomerUser.objects.filter(user=request.user).select_related('customer__tenant').first()
+    if existing_cu:
+        if tenant and existing_cu.customer.tenant_id == tenant.id:
+            # Case A — already set up for this shop.
+            return redirect('customer_dashboard')
+        # Case B — linked to a different shop; redirect with explanation.
+        other_shop = existing_cu.customer.tenant
+        messages.warning(
+            request,
+            f"Your account is already linked to {existing_cu.customer.name}"
+            + (f" ({other_shop.name})" if other_shop and other_shop != tenant else "")
+            + ". Customer portal accounts can only be linked to one shop. "
+            "If you need access here, please ask the shop to invite you."
+        )
+        return redirect('login')
     tenant_customers = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
 
     if request.method == 'POST':
@@ -255,10 +383,24 @@ def profile_creation(request):
         
         # Create CustomerUser record
         try:
+            is_primary = request.POST.get('is_primary_contact') == 'True'
+            # If this user wants to be the primary contact, demote any existing
+            # primary first.  Without this step, two CustomerUsers for the same
+            # company can simultaneously hold is_primary_contact=True, making
+            # notification routing non-deterministic.
+            # This mirrors the demotion logic in:
+            #   - account_settings() (CODE-116)
+            #   - accept_customer_invitation() and set_primary_contact()
+            # Only applies when joining an EXISTING company; new companies have
+            # no existing primary to demote.
+            if is_primary and not is_new_company:
+                CustomerUser.objects.filter(
+                    customer=customer, is_primary_contact=True
+                ).update(is_primary_contact=False)
             customer_user = CustomerUser.objects.create(
                 user=request.user,
                 customer=customer,
-                is_primary_contact=request.POST.get('is_primary_contact') == 'True'
+                is_primary_contact=is_primary,
             )
             
             # Process referral code if it exists in the session
@@ -295,7 +437,7 @@ def profile_creation(request):
 @customer_required
 def customer_repairs(request):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Get filter parameters
@@ -308,10 +450,16 @@ def customer_repairs(request):
 
         # Get all repairs for this customer with optimization
         # Also filter by tenant to prevent cross-tenant data leakage
-        repairs = Repair.objects.filter(
+        # CODE-249: Use a separate base queryset for stats so they always reflect
+        # global totals, regardless of active filters. Previously stats were
+        # computed on the filtered queryset — filtering to e.g. "COMPLETED"
+        # made pending_approval=0, which is misleading. Mirrors the correct
+        # pattern already used in customer_replacements().
+        base_repairs = Repair.objects.filter(
             customer=customer,
             tenant=customer.tenant,
-        ).select_related('technician__user')
+        )
+        repairs = base_repairs.select_related('technician__user')
 
         # Apply status filters
         if status_filter != 'all':
@@ -352,27 +500,48 @@ def customer_repairs(request):
         if sort_by in valid_sorts:
             repairs = repairs.order_by(sort_by)
 
-        # Calculate summary statistics
-        total_repairs = repairs.count()
+        # Calculate summary statistics from the UNFILTERED base queryset so
+        # stat badges always show global totals. (CODE-249)
+        from decimal import Decimal
+        month_start = timezone.now().date().replace(day=1)
+        stats_agg = base_repairs.aggregate(
+            total_repairs=Count('id'),
+            pending_approval=Count('id', filter=Q(queue_status='PENDING')),
+            in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
+            completed_this_month=Count(
+                'id',
+                filter=Q(queue_status='COMPLETED', service_date__gte=month_start),
+            ),
+            total_cost=Sum('cost', filter=Q(queue_status='COMPLETED')),
+        )
         stats = {
-            'total_repairs': total_repairs,
-            'pending_approval': repairs.filter(queue_status='PENDING').count(),
-            'in_progress': repairs.filter(queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
-            'completed_this_month': repairs.filter(
-                queue_status='COMPLETED',
-                service_date__gte=timezone.now().date().replace(day=1)
-            ).count(),
-            'total_cost': repairs.filter(queue_status='COMPLETED').aggregate(
-                total=models.Sum('cost')
-            )['total'] or 0
+            'total_repairs': stats_agg['total_repairs'] or 0,
+            'pending_approval': stats_agg['pending_approval'] or 0,
+            'in_progress': stats_agg['in_progress'] or 0,
+            'completed_this_month': stats_agg['completed_this_month'] or 0,
+            'total_cost': stats_agg['total_cost'] or Decimal('0.00'),
         }
+        total_repairs = stats['total_repairs']
 
-        # Check which repairs were customer-initiated and mark them
-        repair_ids = list(repairs.values_list('id', flat=True))
-        customer_initiated_approvals = RepairApproval.objects.filter(
-            repair_id__in=repair_ids,
-            notes="Auto-approved as customer initiated the request"
-        ).values_list('repair_id', flat=True)
+        # Evaluate the queryset once into a list.
+        # The queryset is used in two consecutive loops (flag-setting, then
+        # batch-grouping).  If we iterate the unevaluated queryset twice, Django
+        # fires two separate DB queries AND the Python objects produced by loop 1
+        # are discarded — loop 2 creates fresh objects that never received the
+        # `.customer_initiated` attribute, so templates either raise AttributeError
+        # or silently show the wrong value. (CODE-176)
+        repairs = list(repairs)
+
+        # Check which repairs were customer-initiated and mark them.
+        # IDs are extracted in Python (free — list already in memory) instead of
+        # firing a third DB round-trip via .values_list('id', flat=True).
+        repair_ids = [r.id for r in repairs]
+        customer_initiated_approvals = set(
+            RepairApproval.objects.filter(
+                repair_id__in=repair_ids,
+                notes="Auto-approved as customer initiated the request"
+            ).values_list('repair_id', flat=True)
+        )
 
         # Add a flag to each repair indicating if it was customer initiated
         for repair in repairs:
@@ -439,7 +608,13 @@ def customer_repairs(request):
         # Each batch counts as 1 item, each individual repair counts as 1 item
         all_items = batch_summaries + [{'type': 'individual', 'repair': r} for r in individual_repairs_list]
 
-        page_size = int(request.GET.get('page_size', 50))
+        # Guard: int() raises ValueError on non-numeric input (e.g. ?page_size=abc).
+        # Without this guard, an invalid page_size causes a 500 error instead of
+        # silently falling back to the default.  (CODE-205)
+        try:
+            page_size = int(request.GET.get('page_size', 50))
+        except (ValueError, TypeError):
+            page_size = 50
         if page_size not in [20, 50, 100]:
             page_size = 50
 
@@ -468,14 +643,14 @@ def customer_repairs(request):
             'batch_count': len(batch_summaries),
             'individual_count': len(individual_repairs_list),
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @customer_required
 def customer_repair_detail(request, repair_id):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
@@ -491,146 +666,301 @@ def customer_repair_detail(request, repair_id):
         
         # Mark if this was a customer-initiated repair
         repair.customer_initiated = customer_initiated
-        
+
+        # Available monetary rewards the customer can apply (before invoicing)
+        available_rewards = []
+        is_invoiced = repair.invoice_line_items.exists()
+        if not is_invoiced and repair.queue_status not in ('COMPLETED', 'DENIED'):
+            # Only show APPROVED rewards — PENDING (not yet approved by shop),
+            # REJECTED, and FULFILLED (already used) must not be selectable.
+            # Previously this filtered status__in=['PENDING', 'FULFILLED'] which
+            # showed unapproved and already-fulfilled rewards.  The correct status
+            # is 'APPROVED', matching _get_available_monetary_rewards().  (CODE-251)
+            available_rewards = RewardRedemption.objects.filter(
+                reward__customer_user=customer_user,
+                status='APPROVED',
+                applied_to_repair__isnull=True,
+                reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
+            ).select_related('reward_option', 'reward_option__reward_type')
+
         return render(request, 'customer_portal/repair_detail.html', {
             'repair': repair,
             'customer': customer,
-            'approval': approval
+            'approval': approval,
+            'available_rewards': available_rewards,
+            'is_invoiced': is_invoiced,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+@customer_required
+def customer_apply_reward(request, repair_id):
+    """POST-only: customer applies a monetary reward to a repair before invoicing."""
+    if request.method != 'POST':
+        return redirect('customer_repair_detail', repair_id=repair_id)
+
+    try:
+        customer_user = _get_customer_user_for_tenant(request)
+        customer = customer_user.customer
+        repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: cannot apply after invoicing
+        if repair.invoice_line_items.exists():
+            messages.error(request, "This repair has already been invoiced. Rewards cannot be applied.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        # Guard: cannot apply to denied/completed repairs
+        if repair.queue_status in ('COMPLETED', 'DENIED'):
+            messages.error(request, "Rewards cannot be applied to completed or denied repairs.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        redemption_id = request.POST.get('redemption_id')
+        if not redemption_id:
+            messages.error(request, "No reward selected.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        # Verify the redemption belongs to this customer, is APPROVED, and is
+        # not yet applied.  The status='APPROVED' guard prevents applying a
+        # PENDING (unapproved), REJECTED, or FULFILLED redemption via a crafted
+        # POST.  Previously the status was not checked here — only the display
+        # queryset filtered by status.  (CODE-251)
+        redemption = get_object_or_404(
+            RewardRedemption,
+            id=redemption_id,
+            reward__customer_user=customer_user,
+            status='APPROVED',
+            applied_to_repair__isnull=True,
+            reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
+        )
+
+        # Check this repair doesn't already have a reward applied
+        if repair.applied_rewards.exists():
+            messages.error(request, "This repair already has a reward applied. Only one reward per repair.")
+            return redirect('customer_repair_detail', repair_id=repair_id)
+
+        # Apply the reward
+        redemption.applied_to_repair = repair
+        redemption.save()
+
+        messages.success(request, f'Reward "{redemption.reward_option.name}" applied to Repair #{repair.id}.')
+        return redirect('customer_repair_detail', repair_id=repair_id)
+
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
 
 @customer_required
 def customer_repair_approve(request, repair_id):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: only PENDING or REQUESTED repairs can be approved by the customer.
+        # The template hides the button for other statuses but there is no server-side
+        # check, so a direct POST could corrupt COMPLETED, IN_PROGRESS, or DENIED
+        # repairs by overwriting queue_status → 'APPROVED'. (CODE-061)
+        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+            messages.warning(request, "This repair cannot be approved — it is not pending approval.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
         
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
             
-            # Create or update the approval
-            approval, created = RepairApproval.objects.get_or_create(
-                repair=repair,
-                defaults={
-                    'approved': True,
-                    'approved_by': customer_user,
-                    'approval_date': timezone.now(),
-                    'notes': notes
-                }
-            )
-            
-            if not created:
-                approval.approved = True
-                approval.approved_by = customer_user
-                approval.approval_date = timezone.now()
-                approval.notes = notes
-                approval.save()
-            
-            # Update the repair status
-            repair.queue_status = 'APPROVED'
+            # CODE-262: If repair is part of a batch, approve ALL siblings.
+            # Fleet managers expect "approve" to cover the whole job, not one chip.
+            is_batch = repair.is_part_of_batch
+            batch_id = repair.repair_batch_id if is_batch else None
 
-            # IMPORTANT: Ensure technician is preserved
-            # PENDING repairs should already have a technician (the one who found the damage)
-            # This prevents NULL technician errors later
-            if not repair.technician:
-                # This shouldn't happen, but log it for debugging
-                logger = logging.getLogger(__name__)
-                logger.warning(f"Repair #{repair.id} approved but has no technician assigned")
+            with transaction.atomic():
+                if is_batch and batch_id:
+                    # Lock ALL batch siblings for atomic approval
+                    repairs_to_approve = list(
+                        Repair.objects.select_for_update().filter(
+                            repair_batch_id=batch_id,
+                            tenant=customer.tenant,
+                            queue_status__in=('PENDING', 'REQUESTED'),
+                        ).select_related('technician')
+                    )
+                else:
+                    locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+                    if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This repair has already been processed.")
+                        return redirect('customer_repair_detail', repair_id=repair.id)
+                    repairs_to_approve = [locked_repair]
 
-            repair.save()
+                if not repairs_to_approve:
+                    messages.warning(request, "This repair has already been processed.")
+                    return redirect('customer_repair_detail', repair_id=repair.id)
 
-            # Create notification for technician
-            if repair.technician:
-                TechnicianNotification.objects.create(
-                    technician=repair.technician,
-                    message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
-                    read=False,
-                    repair=repair
-                )
+                for r in repairs_to_approve:
+                    RepairApproval.objects.update_or_create(
+                        repair=r,
+                        defaults={
+                            'approved': True,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': notes or (f'Batch approval ({len(repairs_to_approve)} breaks)' if is_batch else ''),
+                        }
+                    )
+                    r.queue_status = 'APPROVED'
+                    if not r.technician:
+                        logger.warning(f"Repair #{r.id} approved but has no technician assigned")
+                    r.save()
 
-            messages.success(request, "Repair has been approved successfully. The technician can now complete the work.")
+            # Create notification for technician (outside transaction — best effort)
+            technician = repairs_to_approve[0].technician if repairs_to_approve else None
+            if technician:
+                if is_batch and len(repairs_to_approve) > 1:
+                    TechnicianNotification.objects.create(
+                        technician=technician,
+                        message=f"✅ Batch of {len(repairs_to_approve)} breaks APPROVED by {customer.name} - Unit {repair.unit_number}.",
+                        read=False,
+                        repair=repairs_to_approve[0],
+                        repair_batch_id=batch_id,
+                    )
+                else:
+                    TechnicianNotification.objects.create(
+                        technician=technician,
+                        message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                        read=False,
+                        repair=repairs_to_approve[0],
+                    )
+
+            approved_count = len(repairs_to_approve)
+            if is_batch and approved_count > 1:
+                messages.success(request, f"All {approved_count} breaks in this batch have been approved. The technician can now complete the work.")
+            else:
+                messages.success(request, "Repair has been approved successfully. The technician can now complete the work.")
             return redirect('customer_repair_detail', repair_id=repair.id)
         
         return render(request, 'customer_portal/repair_approve.html', {
             'repair': repair,
             'customer': customer
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @customer_required
 def customer_repair_deny(request, repair_id):
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
+
+        # Guard: only PENDING or REQUESTED repairs can be denied by the customer.
+        # Without this check, a direct POST could flip a COMPLETED repair to DENIED,
+        # breaking invoicing and losing data. (CODE-061)
+        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+            messages.warning(request, "This repair cannot be denied — it is not pending approval.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
         
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
             
-            # Create or update the approval record to mark as denied
-            approval, created = RepairApproval.objects.get_or_create(
-                repair=repair,
-                defaults={
-                    'approved': False,
-                    'approved_by': customer_user,
-                    'approval_date': timezone.now(),
-                    'notes': reason
-                }
-            )
-            
-            if not created:
-                approval.approved = False
-                approval.approved_by = customer_user
-                approval.approval_date = timezone.now()
-                approval.notes = reason
-                approval.save()
-            
-            # Update the repair status to indicate it was denied
-            # Using a special value for DENIED to distinguish from regular PENDING
-            repair.queue_status = 'DENIED'  # You'll need to add this to the model choices
-            repair.save()
+            # CODE-262: If repair is part of a batch, deny ALL siblings.
+            is_batch = repair.is_part_of_batch
+            batch_id = repair.repair_batch_id if is_batch else None
 
-            # Create notification for technician
-            if repair.technician:
-                denial_message = f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}."
-                if reason:
-                    denial_message += f" Reason: {reason}"
-                TechnicianNotification.objects.create(
-                    technician=repair.technician,
-                    message=denial_message,
-                    read=False,
-                    repair=repair
+            restored = []
+            with transaction.atomic():
+                if is_batch and batch_id:
+                    repairs_to_deny = list(
+                        Repair.objects.select_for_update().filter(
+                            repair_batch_id=batch_id,
+                            tenant=customer.tenant,
+                            queue_status__in=('PENDING', 'REQUESTED'),
+                        ).select_related('technician')
+                    )
+                else:
+                    locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
+                    if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This repair has already been processed.")
+                        return redirect('customer_repair_detail', repair_id=repair.id)
+                    repairs_to_deny = [locked_repair]
+
+                if not repairs_to_deny:
+                    messages.warning(request, "This repair has already been processed.")
+                    return redirect('customer_repair_detail', repair_id=repair.id)
+
+                for r in repairs_to_deny:
+                    RepairApproval.objects.update_or_create(
+                        repair=r,
+                        defaults={
+                            'approved': False,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': reason or (f'Batch denial ({len(repairs_to_deny)} breaks)' if is_batch else ''),
+                        }
+                    )
+                    r.queue_status = 'DENIED'
+                    r.save()
+                    restored.extend(_restore_reward_for_repair(r))
+
+            for redemption in restored:
+                messages.info(
+                    request,
+                    f'Your "{redemption.reward_option.name}" reward has been restored and can be used on your next repair.'
                 )
 
-            messages.success(request, "Repair request has been denied.")
+            # Create notification for technician (outside transaction — best effort)
+            technician = repairs_to_deny[0].technician if repairs_to_deny else None
+            denied_count = len(repairs_to_deny)
+            if technician:
+                if is_batch and denied_count > 1:
+                    denial_message = f"❌ Batch of {denied_count} breaks DENIED by {customer.name} - Unit {repair.unit_number}."
+                    if reason:
+                        denial_message += f" Reason: {reason}"
+                else:
+                    denial_message = f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}."
+                    if reason:
+                        denial_message += f" Reason: {reason}"
+                # CODE-263: Use `technician` (extracted from repairs_to_deny[0]
+                # above) instead of `locked_repair.technician`.  `locked_repair`
+                # is only defined in the non-batch code path — in the batch path
+                # it was a NameError that crashed the entire deny flow, leaving
+                # repairs stuck in DENIED status with no technician notification.
+                TechnicianNotification.objects.create(
+                    technician=technician,
+                    message=denial_message,
+                    read=False,
+                    repair=repairs_to_deny[0],
+                    **({"repair_batch_id": batch_id} if is_batch and batch_id else {}),
+                )
+
+            if is_batch and denied_count > 1:
+                messages.success(request, f"All {denied_count} breaks in this batch have been denied.")
+            else:
+                messages.success(request, "Repair request has been denied.")
             return redirect('customer_repair_detail', repair_id=repair.id)
         
         return render(request, 'customer_portal/repair_deny.html', {
             'repair': repair,
             'customer': customer
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
 
 # Multi-Break Batch Views
 @customer_required
 def customer_batch_detail(request, batch_id):
     """Display all repairs in a batch with batch approval options"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        # Get batch summary
-        batch_summary = Repair.get_batch_summary(batch_id)
+        # Scope batch lookup to this customer's tenant so cross-tenant batch
+        # access via guessed UUID is blocked at the DB layer.
+        batch_summary = Repair.get_batch_summary(batch_id, tenant=customer.tenant)
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
@@ -641,73 +971,106 @@ def customer_batch_detail(request, batch_id):
             'customer': customer,
             'repairs': batch_summary['all_repairs'],
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @customer_required
-@transaction.atomic
 def customer_batch_approve(request, batch_id):
     """Approve all repairs in a batch (all-or-nothing transaction)"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        # Get batch summary
-        batch_summary = Repair.get_batch_summary(batch_id)
+        # Scope to tenant to prevent cross-tenant IDOR via batch UUID.
+        batch_summary = Repair.get_batch_summary(batch_id, tenant=customer.tenant)
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
             return redirect('customer_dashboard')
 
-        if request.method == 'POST':
-            repairs = batch_summary['all_repairs']
-            approved_count = 0
-            technician = None
+        # Guard: batch can only be approved when ALL repairs are pending approval.
+        # Without this, a direct POST on a COMPLETED or DENIED batch would overwrite
+        # every repair's queue_status back to APPROVED. (CODE-061)
+        approvable_statuses = {'PENDING', 'REQUESTED'}
+        batch_statuses = set(batch_summary.get('statuses', []))
+        if not batch_statuses.issubset(approvable_statuses):
+            messages.warning(request, "This batch cannot be approved — not all repairs are pending approval.")
+            return redirect('customer_dashboard')
 
-            # Approve all repairs in the batch
-            for repair in repairs:
-                # Create or update approval record
-                approval, created = RepairApproval.objects.get_or_create(
-                    repair=repair,
-                    defaults={
-                        'approved': True,
-                        'approved_by': customer_user,
-                        'approval_date': timezone.now(),
-                        'notes': f'Batch approval for {batch_summary["break_count"]} breaks'
-                    }
+        if request.method == 'POST':
+            # Use a transaction + row-level locks to prevent double-click race
+            # conditions that create duplicate RepairApproval records and
+            # TechnicianNotification records.  The single-repair views were
+            # fixed in CODE-223 and replacements in CODE-234, but the batch
+            # views were missed — they used @transaction.atomic without
+            # select_for_update().  (CODE-254)
+            technician = None
+            approved_count = 0
+            break_count = batch_summary['break_count']
+            unit_number = batch_summary['unit_number']
+            total_cost = batch_summary['total_cost']
+
+            with transaction.atomic():
+                # Re-fetch all batch repairs with row-level locks
+                locked_repairs = list(
+                    Repair.objects.select_for_update().filter(
+                        repair_batch_id=batch_id,
+                        tenant=customer.tenant,
+                    ).select_related('technician')
                 )
 
-                if not created:
-                    approval.approved = True
-                    approval.approved_by = customer_user
-                    approval.approval_date = timezone.now()
-                    approval.notes = f'Batch approval for {batch_summary["break_count"]} breaks'
-                    approval.save()
+                if not locked_repairs:
+                    messages.error(request, "Batch not found.")
+                    return redirect('customer_dashboard')
 
-                # Update repair status
-                repair.queue_status = 'APPROVED'
-                repair.save()
+                # Re-check ALL statuses inside the lock — a concurrent request
+                # may have already approved/denied some or all repairs.
+                for repair in locked_repairs:
+                    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This batch has already been processed.")
+                        return redirect('customer_dashboard')
 
-                # Track technician for batch notification
-                if repair.technician:
-                    technician = repair.technician
+                # All repairs are still pending — approve them
+                for repair in locked_repairs:
+                    approval, created = RepairApproval.objects.get_or_create(
+                        repair=repair,
+                        defaults={
+                            'approved': True,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': f'Batch approval for {break_count} breaks'
+                        }
+                    )
 
-                approved_count += 1
+                    if not created:
+                        approval.approved = True
+                        approval.approved_by = customer_user
+                        approval.approval_date = timezone.now()
+                        approval.notes = f'Batch approval for {break_count} breaks'
+                        approval.save()
 
-            # Create single grouped notification for the entire batch
+                    repair.queue_status = 'APPROVED'
+                    repair.save()
+
+                    if repair.technician:
+                        technician = repair.technician
+
+                    approved_count += 1
+
+            # Create single grouped notification outside the transaction (best effort)
             if technician:
                 TechnicianNotification.objects.create(
                     technician=technician,
-                    message=f"✅ Batch of {batch_summary['break_count']} breaks APPROVED by {customer.name} - Unit {batch_summary['unit_number']} (${batch_summary['total_cost']:.2f} total)",
+                    message=f"✅ Batch of {break_count} breaks APPROVED by {customer.name} - Unit {unit_number} (${total_cost:.2f} total)",
                     read=False,
-                    repair=repairs[0],  # Link to first repair in batch
-                    repair_batch_id=batch_id  # Store batch_id for batch notification
+                    repair=locked_repairs[0],
+                    repair_batch_id=batch_id
                 )
 
             messages.success(
                 request,
-                f"Successfully approved all {approved_count} breaks for Unit {batch_summary['unit_number']} (${batch_summary['total_cost']:.2f} total)."
+                f"Successfully approved all {approved_count} breaks for Unit {unit_number} (${total_cost:.2f} total)."
             )
             return redirect('customer_dashboard')
 
@@ -717,77 +1080,116 @@ def customer_batch_approve(request, batch_id):
             'customer': customer,
         })
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 @customer_required
-@transaction.atomic
 def customer_batch_deny(request, batch_id):
     """Deny all repairs in a batch (all-or-nothing transaction)"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        # Get batch summary
-        batch_summary = Repair.get_batch_summary(batch_id)
+        # Scope to tenant to prevent cross-tenant IDOR via batch UUID.
+        batch_summary = Repair.get_batch_summary(batch_id, tenant=customer.tenant)
 
         if not batch_summary or batch_summary['customer'] != customer:
             messages.error(request, "Batch not found or you don't have access to it.")
             return redirect('customer_dashboard')
 
+        # Guard: only deny batches that are still in a pending state.
+        # Without this, a direct POST on a COMPLETED batch would overwrite every
+        # repair's queue_status back to DENIED. (CODE-061)
+        deniable_statuses = {'PENDING', 'REQUESTED'}
+        batch_statuses = set(batch_summary.get('statuses', []))
+        if not batch_statuses.issubset(deniable_statuses):
+            messages.warning(request, "This batch cannot be denied — not all repairs are pending approval.")
+            return redirect('customer_dashboard')
+
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
-            repairs = batch_summary['all_repairs']
-            denied_count = 0
+            # Use a transaction + row-level locks to prevent double-click race
+            # conditions.  Mirrors the fix applied to customer_batch_approve in
+            # CODE-254.
             technician = None
+            denied_count = 0
+            break_count = batch_summary['break_count']
+            unit_number = batch_summary['unit_number']
+            restored_rewards = []
 
-            # Deny all repairs in the batch
-            for repair in repairs:
-                # Create or update approval record
-                approval, created = RepairApproval.objects.get_or_create(
-                    repair=repair,
-                    defaults={
-                        'approved': False,
-                        'approved_by': customer_user,
-                        'approval_date': timezone.now(),
-                        'notes': reason or f'Batch denial for {batch_summary["break_count"]} breaks'
-                    }
+            with transaction.atomic():
+                # Re-fetch all batch repairs with row-level locks
+                locked_repairs = list(
+                    Repair.objects.select_for_update().filter(
+                        repair_batch_id=batch_id,
+                        tenant=customer.tenant,
+                    ).select_related('technician')
                 )
 
-                if not created:
-                    approval.approved = False
-                    approval.approved_by = customer_user
-                    approval.approval_date = timezone.now()
-                    approval.notes = reason or f'Batch denial for {batch_summary["break_count"]} breaks'
-                    approval.save()
+                if not locked_repairs:
+                    messages.error(request, "Batch not found.")
+                    return redirect('customer_dashboard')
 
-                # Update repair status
-                repair.queue_status = 'DENIED'
-                repair.save()
+                # Re-check ALL statuses inside the lock
+                for repair in locked_repairs:
+                    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                        messages.warning(request, "This batch has already been processed.")
+                        return redirect('customer_dashboard')
 
-                # Track technician for batch notification
-                if repair.technician:
-                    technician = repair.technician
+                # All repairs are still pending — deny them
+                for repair in locked_repairs:
+                    approval, created = RepairApproval.objects.get_or_create(
+                        repair=repair,
+                        defaults={
+                            'approved': False,
+                            'approved_by': customer_user,
+                            'approval_date': timezone.now(),
+                            'notes': reason or f'Batch denial for {break_count} breaks'
+                        }
+                    )
 
-                denied_count += 1
+                    if not created:
+                        approval.approved = False
+                        approval.approved_by = customer_user
+                        approval.approval_date = timezone.now()
+                        approval.notes = reason or f'Batch denial for {break_count} breaks'
+                        approval.save()
 
-            # Create single grouped notification for the entire batch
+                    repair.queue_status = 'DENIED'
+                    repair.save()
+
+                    # Auto-restore any applied reward (CODE-210)
+                    restored_rewards.extend(_restore_reward_for_repair(repair))
+
+                    if repair.technician:
+                        technician = repair.technician
+
+                    denied_count += 1
+
+            # Show restored reward messages outside transaction
+            for redemption in restored_rewards:
+                messages.info(
+                    request,
+                    f'Your "{redemption.reward_option.name}" reward has been restored and can be used on your next repair.'
+                )
+
+            # Create single grouped notification outside the transaction (best effort)
             if technician:
-                denial_message = f"❌ Batch of {batch_summary['break_count']} breaks DENIED by {customer.name} - Unit {batch_summary['unit_number']}"
+                denial_message = f"❌ Batch of {break_count} breaks DENIED by {customer.name} - Unit {unit_number}"
                 if reason:
                     denial_message += f" - Reason: {reason}"
                 TechnicianNotification.objects.create(
                     technician=technician,
                     message=denial_message,
                     read=False,
-                    repair=repairs[0],  # Link to first repair in batch
-                    repair_batch_id=batch_id  # Store batch_id for batch notification
+                    repair=locked_repairs[0],
+                    repair_batch_id=batch_id
                 )
 
             messages.success(
                 request,
-                f"Denied all {denied_count} breaks for Unit {batch_summary['unit_number']}."
+                f"Denied all {denied_count} breaks for Unit {unit_number}."
             )
             return redirect('customer_dashboard')
 
@@ -797,7 +1199,7 @@ def customer_batch_deny(request, batch_id):
             'customer': customer,
         })
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -810,28 +1212,40 @@ def customer_batch_deny(request, batch_id):
 def customer_replacements(request):
     """List all glass replacements for this customer."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Get filter parameters
         status_filter = request.GET.get('status', '')
 
-        # Get all replacements for this customer (tenant-scoped)
-        replacements = Replacement.objects.filter(customer=customer, tenant=customer.tenant).select_related(
-            'technician__user'
-        ).order_by('-service_date', '-id')
+        # Get all replacements for this customer (tenant-scoped) — unfiltered base
+        # queryset used for stats so filter badge counts are always global totals.
+        base_replacements = Replacement.objects.filter(
+            customer=customer, tenant=customer.tenant
+        )
 
-        # Apply status filter
+        # One aggregated query for all stat counts (avoids 4 separate COUNTs).
+        # pending = PENDING; in_progress = APPROVED + IN_PROGRESS; completed = COMPLETED.
+        from django.db.models import Case, When, IntegerField, Value
+        status_counts = base_replacements.aggregate(
+            total=Count('id'),
+            pending=Count(Case(When(queue_status='PENDING', then=1), output_field=IntegerField())),
+            in_progress=Count(Case(When(queue_status__in=['APPROVED', 'IN_PROGRESS'], then=1), output_field=IntegerField())),
+            completed=Count(Case(When(queue_status='COMPLETED', then=1), output_field=IntegerField())),
+        )
+        stats = {
+            'total': status_counts['total'],
+            'pending': status_counts['pending'],
+            'in_progress': status_counts['in_progress'],
+            'completed': status_counts['completed'],
+        }
+
+        # Build the display queryset (may be further filtered by status_filter)
+        replacements = base_replacements.select_related('technician__user').order_by('-service_date', '-id')
+
+        # Apply status filter for the list only — does NOT affect stats above
         if status_filter:
             replacements = replacements.filter(queue_status=status_filter)
-
-        # Calculate stats
-        stats = {
-            'total': replacements.count(),
-            'pending': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='PENDING').count(),
-            'in_progress': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status__in=['APPROVED', 'IN_PROGRESS']).count(),
-            'completed': Replacement.objects.filter(customer=customer, tenant=customer.tenant, queue_status='COMPLETED').count(),
-        }
 
         # Pagination
         paginator = Paginator(replacements, 25)
@@ -856,7 +1270,7 @@ def customer_replacements(request):
             'status_filter': status_filter,
             'status_choices': status_choices,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -865,7 +1279,7 @@ def customer_replacements(request):
 def customer_replacement_detail(request, replacement_id):
     """View details of a single replacement."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
@@ -874,7 +1288,7 @@ def customer_replacement_detail(request, replacement_id):
             'replacement': replacement,
             'customer': customer,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -883,7 +1297,7 @@ def customer_replacement_detail(request, replacement_id):
 def customer_replacement_approve(request, replacement_id):
     """Approve a pending replacement."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
@@ -896,15 +1310,29 @@ def customer_replacement_approve(request, replacement_id):
         if request.method == 'POST':
             notes = request.POST.get('notes', '')
 
-            # Update replacement status
-            replacement.queue_status = 'APPROVED'
-            replacement.save()
+            # Use a transaction + row-level lock to prevent double-click races
+            # that could create duplicate notifications or corrupt status.
+            # Mirrors the select_for_update() pattern added to repair approve/deny
+            # in CODE-223.  (CODE-234)
+            with transaction.atomic():
+                locked_replacement = Replacement.objects.select_for_update().get(pk=replacement.pk)
 
-            # Create notification for technician
-            if replacement.technician:
+                # Re-check status inside the lock so a concurrent approval/denial
+                # that committed between the initial get_object_or_404 and here
+                # doesn't get overwritten.
+                if locked_replacement.queue_status not in ['PENDING', 'REQUESTED']:
+                    messages.warning(request, "This replacement has already been processed.")
+                    return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+                # Update replacement status
+                locked_replacement.queue_status = 'APPROVED'
+                locked_replacement.save()
+
+            # Create notification for technician (outside transaction — best effort)
+            if locked_replacement.technician:
                 TechnicianNotification.objects.create(
-                    technician=replacement.technician,
-                    message=f"✅ Replacement #{replacement.id} APPROVED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}",
+                    technician=locked_replacement.technician,
+                    message=f"✅ Replacement #{locked_replacement.id} APPROVED by {customer.name} - {locked_replacement.get_glass_position_display()} on Unit {locked_replacement.unit_number}",
                     read=False,
                 )
 
@@ -915,7 +1343,7 @@ def customer_replacement_approve(request, replacement_id):
             'replacement': replacement,
             'customer': customer,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -924,7 +1352,7 @@ def customer_replacement_approve(request, replacement_id):
 def customer_replacement_deny(request, replacement_id):
     """Deny a pending replacement."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
@@ -937,17 +1365,28 @@ def customer_replacement_deny(request, replacement_id):
         if request.method == 'POST':
             reason = request.POST.get('reason', '')
 
-            # Update replacement status
-            replacement.queue_status = 'DENIED'
-            replacement.save()
+            # Use a transaction + row-level lock to prevent double-click races.
+            # Mirrors the select_for_update() pattern added to repair deny in
+            # CODE-223.  (CODE-234)
+            with transaction.atomic():
+                locked_replacement = Replacement.objects.select_for_update().get(pk=replacement.pk)
 
-            # Create notification for technician
-            if replacement.technician:
-                denial_message = f"❌ Replacement #{replacement.id} DENIED by {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}"
+                # Re-check status inside the lock
+                if locked_replacement.queue_status not in ['PENDING', 'REQUESTED']:
+                    messages.warning(request, "This replacement has already been processed.")
+                    return redirect('customer_replacement_detail', replacement_id=replacement.id)
+
+                # Update replacement status
+                locked_replacement.queue_status = 'DENIED'
+                locked_replacement.save()
+
+            # Create notification for technician (outside transaction — best effort)
+            if locked_replacement.technician:
+                denial_message = f"❌ Replacement #{locked_replacement.id} DENIED by {customer.name} - {locked_replacement.get_glass_position_display()} on Unit {locked_replacement.unit_number}"
                 if reason:
                     denial_message += f". Reason: {reason}"
                 TechnicianNotification.objects.create(
-                    technician=replacement.technician,
+                    technician=locked_replacement.technician,
                     message=denial_message,
                     read=False,
                 )
@@ -959,7 +1398,7 @@ def customer_replacement_deny(request, replacement_id):
             'replacement': replacement,
             'customer': customer,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1000,6 +1439,7 @@ def is_suspicious_username(username):
 
     return False
 
+@ratelimit(key='ip', rate='10/h', method='POST', block=False)
 def customer_register(request):
     if request.user.is_authenticated:
         return redirect('customer_dashboard')
@@ -1045,14 +1485,31 @@ def customer_register(request):
         if password != confirm_password:
             return render_with_form_data("Passwords do not match")
 
-        if len(password) < 8:
-            return render_with_form_data("Password must be at least 8 characters long")
+        # Use Django's full password validators (CommonPasswordValidator,
+        # NumericPasswordValidator, MinimumLengthValidator, etc.) instead of
+        # a bare length check so weak passwords like "password1" are rejected.
+        # (CODE-188: customer_register used len(password) < 8; this matches the
+        # validation used in shop_join_view and accept_invite.)
+        try:
+            temp_user = User(username=username, email=email, first_name=first_name, last_name=last_name)
+            validate_password(password, user=temp_user)
+        except DjangoValidationError as e:
+            return render_with_form_data(' '.join(e.messages))
 
         if User.objects.filter(username=username).exists():
             return render_with_form_data("Username already exists")
 
-        if User.objects.filter(email=email).exists():
+        # Case-insensitive check to prevent duplicate accounts with the
+        # same email in different cases (e.g. "Test@example.com" vs
+        # "test@example.com").  Matches the iexact check used in
+        # accept_customer_invitation().  (CODE-264)
+        if User.objects.filter(email__iexact=email).exists():
             return render_with_form_data("Email already exists")
+
+        # Normalize email to lowercase before creating the user so lookups
+        # and uniqueness checks are consistent regardless of input case.
+        # (CODE-264)
+        email = email.lower()
 
         # Create user
         user = User.objects.create_user(
@@ -1082,12 +1539,20 @@ def customer_register(request):
 def edit_company(request):
     # Get the customer user record
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         if request.method == 'POST':
             # Update customer information
-            customer.name = request.POST.get('name', '').lower()
+            # NOTE: Do NOT lowercase the name — customer names must preserve case
+            # (e.g. "EOS Trucking" must not become "eos trucking"). The .lower()
+            # that was here previously was a copy-paste bug from username
+            # normalization logic.  (CODE-078)
+            new_name = request.POST.get('name', '').strip()
+            if not new_name:
+                messages.error(request, "Company name is required.")
+                return render(request, 'customer_portal/edit_company.html', {'customer': customer})
+            customer.name = new_name
             customer.email = request.POST.get('email', '')
             customer.phone = request.POST.get('phone', '')
             customer.address = request.POST.get('address', '')
@@ -1106,7 +1571,7 @@ def edit_company(request):
         return render(request, 'customer_portal/edit_company.html', {
             'customer': customer
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1125,7 +1590,7 @@ def request_repair(request):
     """
     # Get the customer user record
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         if request.method == 'POST':
@@ -1133,28 +1598,83 @@ def request_repair(request):
             is_batch = request.POST.get('batch_submission') == 'true'
 
             if is_batch:
-                return handle_batch_repair_request(request, customer)
+                return handle_batch_repair_request(request, customer, customer_user)
             else:
                 # Legacy single repair submission (for backwards compatibility)
-                return handle_single_repair_request(request, customer)
+                return handle_single_repair_request(request, customer, customer_user)
+
+        # Fetch available monetary rewards (APPROVED, not yet applied to a repair)
+        available_rewards = _get_available_monetary_rewards(customer_user)
 
         # Render the repair request form
-        return render(request, 'customer_portal/request_repair.html')
-    except CustomerUser.DoesNotExist:
+        return render(request, 'customer_portal/request_repair.html', {
+            'available_rewards': available_rewards,
+        })
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
 
-def handle_single_repair_request(request, customer):
+def _get_available_monetary_rewards(customer_user):
+    """
+    Return APPROVED, unapplied monetary redemptions for this customer.
+    Monetary = REPAIR_DISCOUNT, REPLACEMENT_DISCOUNT, FREE_SERVICE.
+    """
+    monetary_categories = ('REPAIR_DISCOUNT', 'REPLACEMENT_DISCOUNT', 'FREE_SERVICE')
+    return RewardRedemption.objects.filter(
+        reward__customer_user=customer_user,
+        status='APPROVED',
+        applied_to_repair__isnull=True,
+        reward_option__reward_type__category__in=monetary_categories,
+    ).select_related('reward_option', 'reward_option__reward_type')
+
+
+def _restore_reward_for_repair(repair):
+    """
+    If a repair has an applied reward redemption, unapply it and restore to APPROVED.
+    Returns the redemption if restored, None otherwise.
+    """
+    redemptions = RewardRedemption.objects.filter(applied_to_repair=repair)
+    restored = []
+    for redemption in redemptions:
+        redemption.applied_to_repair = None
+        redemption.status = 'APPROVED'
+        redemption.fulfilled_at = None
+        redemption.save()
+        restored.append(redemption)
+    return restored
+
+
+def handle_single_repair_request(request, customer, customer_user=None):
     """Handle traditional single repair request submission"""
+    # Plan limit check — customer-submitted repairs count toward the tenant's
+    # monthly cap just like technician-created ones (CODE-243).
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, "This shop has reached its repair limit for the month. Please contact the shop for assistance.")
+            return render(request, 'customer_portal/request_repair.html', {
+                'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
+            })
+
     unit_number = request.POST.get('unit_number', '')
     description = request.POST.get('description', '')
     damage_type = request.POST.get('damage_type', '')
     damage_photo = request.FILES.get('damage_photo_before')
 
+    # Pre-compute available rewards so ALL error-path renders include them.
+    # CODE-211: Previously the error paths called render() with no context, so the
+    # reward selection UI disappeared on validation failure — customers who had
+    # selected a reward lost it from the form and were confused about what happened.
+    _rewards_ctx = {
+        'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
+    }
+
     if not unit_number:
         messages.error(request, "Unit number is required.")
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
     # Provide defaults for optional fields
     if not damage_type:
@@ -1167,7 +1687,7 @@ def handle_single_repair_request(request, customer):
         photo_valid, photo_error = validate_repair_photo(damage_photo)
         if not photo_valid:
             messages.error(request, photo_error)
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
         damage_photo = convert_heic_to_jpeg(damage_photo)
 
     # Find available technician (scoped to tenant)
@@ -1175,7 +1695,7 @@ def handle_single_repair_request(request, customer):
     technician = get_available_technician(tenant=tenant)
     if not technician:
         messages.error(request, "No technicians available. Please try again later.")
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
     # Create the repair
     try:
@@ -1191,6 +1711,22 @@ def handle_single_repair_request(request, customer):
             queue_status='REQUESTED'
         )
 
+        # Apply selected monetary reward if provided
+        apply_reward_id = request.POST.get('apply_reward')
+        if apply_reward_id and customer_user:
+            try:
+                redemption = RewardRedemption.objects.get(
+                    id=apply_reward_id,
+                    reward__customer_user=customer_user,
+                    status='APPROVED',
+                    applied_to_repair__isnull=True,
+                )
+                redemption.applied_to_repair = repair
+                redemption.save()
+                messages.info(request, f'Reward "{redemption.reward_option.name}" applied to this repair.')
+            except RewardRedemption.DoesNotExist:
+                pass  # Silently skip if reward no longer available
+
         # Auto-assign technician based on tenant strategy
         from apps.tenants.services.assignment_service import auto_assign_repair
         assigned_tech = auto_assign_repair(repair)
@@ -1201,33 +1737,66 @@ def handle_single_repair_request(request, customer):
         return redirect('customer_dashboard')
     except Exception as e:
         messages.error(request, f"Error creating repair request: {str(e)}")
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
 
-def handle_batch_repair_request(request, customer):
+def handle_batch_repair_request(request, customer, customer_user=None):
     """Handle multi-unit batch repair request submission"""
     import json
     import uuid
+
+    # Pre-compute available rewards so ALL error-path renders include them.
+    # CODE-216: Without this, the reward section disappeared when batch submission
+    # hit any validation error — mirrors the same fix applied to handle_single_repair_request
+    # in CODE-211.
+    _rewards_ctx = {
+        'available_rewards': _get_available_monetary_rewards(customer_user) if customer_user else [],
+    }
+
+    # Plan limit check — customer-submitted batch repairs count toward the
+    # tenant's monthly cap just like technician-created ones (CODE-243).
+    tenant = getattr(request, 'tenant', None)
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, "This shop has reached its repair limit for the month. Please contact the shop for assistance.")
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
     try:
         # Parse units data from JSON
         units_data_json = request.POST.get('units_data')
         if not units_data_json:
             messages.error(request, "No repair data provided.")
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
         units_data = json.loads(units_data_json)
 
         if not units_data or len(units_data) == 0:
             messages.error(request, "Please add at least one unit to submit.")
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
+
+        # Guard against abuse: cap the number of units and breaks per request.
+        # A windshield rarely has more than ~10 breaks; 20 is generous.  Without
+        # this cap, a malicious POST with breakCount=10000 across 500 units
+        # would create 5 million Repair rows in a single atomic transaction,
+        # exhausting DB connections and disk.  (CODE-240)
+        MAX_UNITS_PER_REQUEST = 50
+        MAX_BREAKS_PER_UNIT = 20
+
+        if len(units_data) > MAX_UNITS_PER_REQUEST:
+            error_msg = f"Too many units submitted ({len(units_data)}). Maximum is {MAX_UNITS_PER_REQUEST} per request."
+            messages.error(request, error_msg)
+            if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'error': error_msg}, status=400)
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
         # Find available technician (scoped to tenant)
         tenant = getattr(request, 'tenant', None)
         technician = get_available_technician(tenant=tenant)
         if not technician:
             messages.error(request, "No technicians available. Please try again later.")
-            return render(request, 'customer_portal/request_repair.html')
+            return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
         # Create all repairs atomically
         created_repairs = []
@@ -1240,8 +1809,26 @@ def handle_batch_repair_request(request, customer):
                 has_multiple_breaks = unit_data.get('hasMultipleBreaks', False)
                 break_count = unit_data.get('breakCount')
 
+                # Get damage location (optional)
+                damage_loc_x = unit_data.get('damageLocationX')
+                damage_loc_y = unit_data.get('damageLocationY')
+                damage_location_x = float(damage_loc_x) if damage_loc_x else None
+                damage_location_y = float(damage_loc_y) if damage_loc_y else None
+
                 if not unit_number:
                     continue  # Skip invalid entries
+
+                # Clamp break_count to prevent abuse (CODE-240)
+                if break_count is not None:
+                    try:
+                        break_count = int(break_count)
+                    except (ValueError, TypeError):
+                        break_count = None
+                    else:
+                        if break_count > MAX_BREAKS_PER_UNIT:
+                            break_count = MAX_BREAKS_PER_UNIT
+                        elif break_count < 1:
+                            break_count = None
 
                 # Get photo if provided
                 photo_file = None
@@ -1275,7 +1862,9 @@ def handle_batch_repair_request(request, customer):
                             queue_status='REQUESTED',
                             repair_batch_id=batch_id,
                             break_number=break_num,
-                            total_breaks_in_batch=break_count
+                            total_breaks_in_batch=break_count,
+                            damage_location_x=damage_location_x if break_num == 1 else None,
+                            damage_location_y=damage_location_y if break_num == 1 else None,
                         )
                         created_repairs.append(repair)
                 elif has_multiple_breaks:
@@ -1290,7 +1879,9 @@ def handle_batch_repair_request(request, customer):
                         customer_submitted_photo=photo_file,
                         customer_notes=notes,
                         queue_status='REQUESTED',
-                        is_multi_break_estimate=True
+                        is_multi_break_estimate=True,
+                        damage_location_x=damage_location_x,
+                        damage_location_y=damage_location_y,
                     )
                     created_repairs.append(repair)
                 else:
@@ -1304,7 +1895,9 @@ def handle_batch_repair_request(request, customer):
                         damage_type=damage_type,
                         customer_submitted_photo=photo_file,
                         customer_notes=notes,
-                        queue_status='REQUESTED'
+                        queue_status='REQUESTED',
+                        damage_location_x=damage_location_x,
+                        damage_location_y=damage_location_y,
                     )
                     created_repairs.append(repair)
 
@@ -1346,7 +1939,7 @@ def handle_batch_repair_request(request, customer):
                 'success': False,
                 'error': 'Invalid request data format.'
             }, status=400)
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
     except Exception as e:
         logging.error(f"Error creating batch repair request: {str(e)}")
         messages.error(request, f"Error creating repair requests: {str(e)}")
@@ -1356,7 +1949,7 @@ def handle_batch_repair_request(request, customer):
                 'success': False,
                 'error': f"Error creating repair requests: {str(e)}"
             }, status=500)
-        return render(request, 'customer_portal/request_repair.html')
+        return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
 
 def validate_repair_photo(photo_file):
@@ -1389,6 +1982,12 @@ def get_available_technician(tenant=None):
     Get an available technician using round-robin assignment.
     Scoped to tenant if provided.
 
+    Only returns technicians that are active and can perform repairs.
+    Without these filters, deactivated technicians or managers with
+    can_repair=False could be assigned to customer-requested repairs —
+    invisible to the correct technicians and alarming to the ones who
+    no longer work at the shop. (CODE-160)
+
     Returns:
         Technician object or None if no technicians available
     """
@@ -1397,6 +1996,10 @@ def get_available_technician(tenant=None):
         technicians = technicians.filter(tenant=tenant)
     else:
         technicians = technicians.none()
+    # Only assign to technicians who are active and able to do repairs.
+    # Previously missing — could assign to deactivated staff or managers
+    # with can_repair=False.
+    technicians = technicians.filter(is_active=True, can_repair=True)
     technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')
@@ -1433,7 +2036,7 @@ def repair_pricing_api(request):
         return JsonResponse({'error': 'POST request required'}, status=405)
 
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Parse request body
@@ -1532,7 +2135,7 @@ def repair_pricing_api(request):
             'uses_custom_pricing': uses_custom_pricing
         })
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
@@ -1548,7 +2151,7 @@ def repair_pricing_api(request):
 def account_settings(request):
     # Get the customer user record
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         user = request.user
         customer = customer_user.customer
 
@@ -1580,44 +2183,13 @@ def account_settings(request):
             new_password = request.POST.get('new_password', '')
             confirm_password = request.POST.get('confirm_password', '')
             
-            # Validate and save user info
-            if email and email != user.email:
-                if User.objects.filter(email=email).exclude(id=user.id).exists():
-                    messages.error(request, "This email is already in use by another account.")
-                    repair_form = RepairPreferenceForm(instance=repair_prefs)
-                    return render(request, 'customer_portal/account_settings.html', {
-                        'customer_user': customer_user,
-                        'repair_form': repair_form,
-                    })
-                user.email = email
-                # Reset email verification when email changes
-                if customer.email_verified:
-                    messages.info(request, "Email address changed. Please verify your new email address.")
-                customer.email_verified = False
-                customer.email_verified_at = None
-                # Also update notification preferences
-                prefs, created = CustomerNotificationPreference.objects.get_or_create(customer=customer)
-                prefs.email_verified = False
-                prefs.email_verified_at = None
-                prefs.save()
-            
-            user.first_name = first_name
-            user.last_name = last_name
-
-            # Handle phone number update
-            if phone != customer.phone:
-                if customer.phone_verified:
-                    messages.info(request, "Phone number changed. Please verify your new phone number.")
-                customer.phone = phone
-                customer.phone_verified = False
-                customer.phone_verified_at = None
-                # Also update notification preferences
-                prefs, created = CustomerNotificationPreference.objects.get_or_create(customer=customer)
-                prefs.phone_verified = False
-                prefs.phone_verified_at = None
-                prefs.save()
-
-            # Handle password change if provided
+            # --- PASSWORD VALIDATION FIRST ---
+            # Must validate the password change BEFORE mutating and saving any
+            # contact-verification state (prefs.email_verified, prefs.phone_verified).
+            # Previously, prefs.save() was called eagerly inside the email/phone
+            # change blocks, then the password check returned early — leaving
+            # CustomerNotificationPreference.phone_verified=False while
+            # Customer.phone_verified stayed True (desync). (CODE-154)
             if current_password and new_password and confirm_password:
                 if not user.check_password(current_password):
                     messages.error(request, "Current password is incorrect.")
@@ -1635,24 +2207,96 @@ def account_settings(request):
                         'repair_form': repair_form,
                     })
 
-                if len(new_password) < 8:
-                    messages.error(request, "Password must be at least 8 characters long.")
+                # Use Django's full password validation (length, common passwords,
+                # entirely numeric, etc.) instead of a bare length check.
+                # Same pattern as customer_register() and accept_customer_invitation()
+                # fixed in CODE-188. A bare `len() < 8` check accepted passwords
+                # like "password1" or "12345678".  (CODE-190)
+                from django.core.exceptions import ValidationError as DjangoValidationError
+                try:
+                    validate_password(new_password, user=user)
+                except DjangoValidationError as e:
+                    for msg in e.messages:
+                        messages.error(request, msg)
                     repair_form = RepairPreferenceForm(instance=repair_prefs)
                     return render(request, 'customer_portal/account_settings.html', {
                         'customer_user': customer_user,
                         'repair_form': repair_form,
                     })
-                
+
                 user.set_password(new_password)
                 update_session_auth_hash(request, user)  # Keep user logged in
+
+            # --- VALIDATE AND STAGE all contact/user changes ---
+            # Collect any notification-preference mutations into a pending dict so
+            # we can save them together with customer/user at the very end.
+            # This prevents partial state if a later step raises an exception.
+            prefs_updates = {}  # field → value
+
+            if email and email.lower() != user.email.lower():
+                # Case-insensitive check to prevent duplicate accounts with the
+                # same email in different cases.  Matches the iexact check used in
+                # accept_customer_invitation().  (CODE-264)
+                if User.objects.filter(email__iexact=email).exclude(id=user.id).exists():
+                    messages.error(request, "This email is already in use by another account.")
+                    repair_form = RepairPreferenceForm(instance=repair_prefs)
+                    return render(request, 'customer_portal/account_settings.html', {
+                        'customer_user': customer_user,
+                        'repair_form': repair_form,
+                    })
+                # Normalize email to lowercase before saving so lookups
+                # and uniqueness checks are consistent regardless of input case.
+                # (CODE-265: account_settings was missed by CODE-264 which only
+                # normalized in customer_register and accept_customer_invitation.)
+                user.email = email.lower()
+                # Reset email verification when email changes
+                if customer.email_verified:
+                    messages.info(request, "Email address changed. Please verify your new email address.")
+                customer.email_verified = False
+                customer.email_verified_at = None
+                prefs_updates['email_verified'] = False
+                prefs_updates['email_verified_at'] = None
             
-            # Update primary contact status
+            user.first_name = first_name
+            user.last_name = last_name
+
+            # Handle phone number update
+            if phone != customer.phone:
+                if customer.phone_verified:
+                    messages.info(request, "Phone number changed. Please verify your new phone number.")
+                customer.phone = phone
+                customer.phone_verified = False
+                customer.phone_verified_at = None
+                prefs_updates['phone_verified'] = False
+                prefs_updates['phone_verified_at'] = None
+            
+            # Update primary contact status.
+            # If this user is claiming primary contact, first demote any existing
+            # primary for this customer — mirrors the pattern used in the owner
+            # portal's set_primary_contact() and accept_customer_invitation().
+            # Without this demotion, multiple CustomerUsers can have
+            # is_primary_contact=True simultaneously, causing ambiguous notification
+            # routing (repairs.py filters to primary for approval records).
+            # (CODE-116)
+            if is_primary_contact and not customer_user.is_primary_contact:
+                CustomerUser.objects.filter(
+                    customer=customer, is_primary_contact=True
+                ).exclude(pk=customer_user.pk).update(is_primary_contact=False)
             customer_user.is_primary_contact = is_primary_contact
-            
+
             try:
                 user.save()
                 customer_user.save()
-                customer.save()  # Save phone changes and verification status
+                customer.save()  # Save phone/email verification status changes
+                # Apply notification-preference verification resets (collected above)
+                # in one update so they are always in sync with the Customer row.
+                if prefs_updates:
+                    prefs_obj, _ = CustomerNotificationPreference.objects.get_or_create(
+                        customer=customer
+                    )
+                    for field, value in prefs_updates.items():
+                        setattr(prefs_obj, field, value)
+                    prefs_obj.save(update_fields=list(prefs_updates.keys()))
                 messages.success(request, "Account settings updated successfully!")
                 return redirect('customer_dashboard')
             except Exception as e:
@@ -1666,7 +2310,7 @@ def account_settings(request):
             'customer_user': customer_user,
             'repair_form': repair_form,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1674,33 +2318,41 @@ def account_settings(request):
 def unit_repair_data_api(request):
     """API endpoint to provide unit repair data for visualizations"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
-        # Get all unit repair counts for this customer
-        unit_repairs = UnitRepairCount.objects.filter(customer=customer)
-        
+        # Get all unit repair counts for this customer, scoped to the tenant.
+        # Always include tenant in the filter to prevent cross-tenant data leakage
+        # in edge cases where a user has CustomerUser records at multiple shops.
+        tenant = customer.tenant
+        unit_repairs = UnitRepairCount.objects.filter(customer=customer, tenant=tenant)
+
         # If no unit repair counts exist, create them from repairs data
         if not unit_repairs.exists():
             # Get counts directly from Repair model (tenant-scoped)
             repair_counts = Repair.objects.filter(
                 customer=customer,
-                tenant=customer.tenant,
+                tenant=tenant,
                 queue_status='COMPLETED'  # Only count completed repairs
             ).values('unit_number').annotate(
                 count=Count('id')
             ).order_by('-count')
-            
-            # Create UnitRepairCount records if needed
+
+            # Create UnitRepairCount records if needed.
+            # Include tenant in the lookup keys (not just defaults) so the lookup
+            # itself is tenant-scoped.  Omitting it would create NULL-tenant rows
+            # or silently match a NULL-tenant row left by an older codepath, so the
+            # correct tenant would never be set.  (Same pattern as customers.py mark_unit_replaced.)
             for repair in repair_counts:
                 UnitRepairCount.objects.update_or_create(
+                    tenant=tenant,
                     customer=customer,
                     unit_number=repair['unit_number'],
                     defaults={'repair_count': repair['count']}
                 )
-            
-            # Refresh the queryset
-            unit_repairs = UnitRepairCount.objects.filter(customer=customer)
+
+            # Refresh the queryset (tenant-scoped)
+            unit_repairs = UnitRepairCount.objects.filter(customer=customer, tenant=tenant)
         
         # Format the data for the chart
         data = [
@@ -1714,7 +2366,7 @@ def unit_repair_data_api(request):
         logger.debug(f"API Response (unit-repair-data): {len(data)} units")
 
         return JsonResponse(data, safe=False)
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
         logger.error(f"Error in unit_repair_data_api: {str(e)}")
@@ -1724,13 +2376,19 @@ def unit_repair_data_api(request):
 def repair_cost_data_api(request):
     """API endpoint to provide repair frequency data for visualizations"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
-        # Get all repairs for this customer (tenant-scoped)
+        # Get only COMPLETED repairs for this customer (tenant-scoped).
+        # Previously this fetched ALL repairs regardless of queue_status, so
+        # PENDING, DENIED, IN_PROGRESS, etc. were counted as "repairs done" in
+        # the monthly frequency chart — inflating the numbers and making them
+        # inconsistent with the unit_repair_data_api endpoint which correctly
+        # filters on queue_status='COMPLETED'.  (CODE-215)
         repairs = Repair.objects.filter(
             customer=customer,
             tenant=customer.tenant,
+            queue_status='COMPLETED',
         ).order_by('service_date')
         
         # Group repairs by month and count them
@@ -1770,7 +2428,7 @@ def repair_cost_data_api(request):
         logger.debug(f"API Response (repair-cost-data): {len(data)} months")
 
         return JsonResponse(data, safe=False)
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         return JsonResponse({'error': 'Customer profile not found'}, status=404)
     except Exception as e:
         logger.error(f"Error in repair_cost_data_api: {str(e)}")
@@ -1780,7 +2438,15 @@ def repair_cost_data_api(request):
 def customer_rewards_redirect(request):
     """Customer rewards and referrals dashboard"""
     try:
-        customer_user = CustomerUser.objects.select_related('customer__tenant').get(user=request.user)
+        # Use tenant-scoped helper to prevent cross-tenant data leakage.
+        # The old code used an unscoped CustomerUser.objects.get(user=request.user),
+        # which bypassed tenant isolation: a user linked to Shop A visiting Shop B's
+        # portal URL would have @customer_required deny them access, but if that
+        # guard ever changes or has an edge case, the unscoped lookup could return
+        # Shop A's CustomerUser and render Shop B's rewards page with Shop A data.
+        # Using _get_customer_user_for_tenant() is the consistent, safe pattern
+        # used throughout this file. (CODE-162)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         tenant = customer.tenant
 
@@ -1821,7 +2487,28 @@ def customer_rewards_redirect(request):
         
         return render(request, 'customer_portal/referrals/dashboard.html', context)
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+@customer_required
+def customer_points_history(request):
+    """Points transaction history for the current customer."""
+    try:
+        customer_user = _get_customer_user_for_tenant(request)
+        from apps.rewards_referrals.models import LoyaltyConfig
+        tenant = customer_user.customer.tenant
+        config = LoyaltyConfig.get_for_tenant(tenant)
+
+        transactions = LoyaltyService.get_transaction_history(customer_user, limit=50)
+        context = {
+            'transactions': transactions,
+            'points': LoyaltyService.get_balance(customer_user),
+            'lifetime_earned': LoyaltyService.get_lifetime_earned(customer_user),
+            'program_name': config.program_name,
+        }
+        return render(request, 'customer_portal/referrals/points_history.html', context)
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -1833,7 +2520,7 @@ def customer_bulk_action(request):
         return redirect('customer_repairs')
 
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
         # Get action type (approve or deny)
@@ -1849,23 +2536,41 @@ def customer_bulk_action(request):
             messages.error(request, "No repairs selected.")
             return redirect('customer_repairs')
 
-        # Validate and process repairs with transaction safety
-        with transaction.atomic():
-            # Get all repairs and ensure they belong to this customer (tenant-scoped)
-            repairs = Repair.objects.filter(
-                id__in=repair_ids,
-                customer=customer,
-                tenant=customer.tenant,
-                queue_status='PENDING'
-            ).select_related('technician')
+        # Validate and process repairs with transaction safety.
+        # Use select_for_update() to prevent a double-click / concurrent request
+        # race that could create duplicate TechnicianNotification records or
+        # corrupt repair status.  The single-repair views were fixed in CODE-223
+        # and replacements in CODE-234, but the bulk action was missed.  (CODE-236)
+        notifications_to_create = []  # collect notifications outside the lock
 
-            if not repairs.exists():
+        with transaction.atomic():
+            # Get all repairs and ensure they belong to this customer (tenant-scoped).
+            # Include REQUESTED repairs — customer-initiated repairs start as REQUESTED
+            # and should be approvable via bulk action.  Consistent with single-repair
+            # customer_repair_approve() which also accepts {'PENDING', 'REQUESTED'}.
+            # (CODE-065: previously only 'PENDING', so REQUESTED repairs were silently
+            # dropped from bulk actions without any warning to the user.)
+            repairs = list(
+                Repair.objects.select_for_update().filter(
+                    id__in=repair_ids,
+                    customer=customer,
+                    tenant=customer.tenant,
+                    queue_status__in=['PENDING', 'REQUESTED']
+                ).select_related('technician')
+            )
+
+            if not repairs:
                 messages.error(request, "No valid repairs found to process.")
                 return redirect('customer_repairs')
 
             processed_count = 0
 
             for repair in repairs:
+                # Re-check status inside the lock — a concurrent request may have
+                # already transitioned this repair.
+                if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    continue
+
                 if action == 'approve':
                     # Create or update approval
                     approval, created = RepairApproval.objects.get_or_create(
@@ -1874,7 +2579,7 @@ def customer_bulk_action(request):
                             'approved': True,
                             'approved_by': customer_user,
                             'approval_date': timezone.now(),
-                            'notes': f'Bulk approved via multi-select'
+                            'notes': 'Bulk approved via multi-select'
                         }
                     )
 
@@ -1882,20 +2587,22 @@ def customer_bulk_action(request):
                         approval.approved = True
                         approval.approved_by = customer_user
                         approval.approval_date = timezone.now()
-                        approval.notes = f'Bulk approved via multi-select'
+                        approval.notes = 'Bulk approved via multi-select'
                         approval.save()
 
                     # Update repair status
                     repair.queue_status = 'APPROVED'
                     repair.save()
 
-                    # Create notification for technician
+                    # Queue notification for technician (created outside the lock)
                     if repair.technician:
-                        TechnicianNotification.objects.create(
-                            technician=repair.technician,
-                            message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
-                            read=False,
-                            repair=repair
+                        notifications_to_create.append(
+                            TechnicianNotification(
+                                technician=repair.technician,
+                                message=f"✅ Repair #{repair.id} APPROVED by {customer.name} - Unit {repair.unit_number}. You can now complete the work.",
+                                read=False,
+                                repair=repair,
+                            )
                         )
 
                 else:  # deny
@@ -1906,7 +2613,7 @@ def customer_bulk_action(request):
                             'approved': False,
                             'approved_by': customer_user,
                             'approval_date': timezone.now(),
-                            'notes': f'Bulk denied via multi-select'
+                            'notes': 'Bulk denied via multi-select'
                         }
                     )
 
@@ -1914,34 +2621,52 @@ def customer_bulk_action(request):
                         approval.approved = False
                         approval.approved_by = customer_user
                         approval.approval_date = timezone.now()
-                        approval.notes = f'Bulk denied via multi-select'
+                        approval.notes = 'Bulk denied via multi-select'
                         approval.save()
 
                     # Update repair status
                     repair.queue_status = 'DENIED'
                     repair.save()
 
-                    # Create notification for technician
+                    # Queue notification for technician (created outside the lock)
                     if repair.technician:
-                        TechnicianNotification.objects.create(
-                            technician=repair.technician,
-                            message=f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}.",
-                            read=False,
-                            repair=repair
+                        notifications_to_create.append(
+                            TechnicianNotification(
+                                technician=repair.technician,
+                                message=f"❌ Repair #{repair.id} DENIED by {customer.name} - Unit {repair.unit_number}.",
+                                read=False,
+                                repair=repair,
+                            )
                         )
 
                 processed_count += 1
 
-            # Success message
-            action_word = "approved" if action == 'approve' else "denied"
-            messages.success(
-                request,
-                f"Successfully {action_word} {processed_count} repair{'' if processed_count == 1 else 's'}."
-            )
+        # Create technician notifications outside the transaction to avoid
+        # holding the row lock longer than necessary (best effort, same
+        # pattern as CODE-223 / CODE-234).
+        for notif in notifications_to_create:
+            try:
+                notif.save()
+            except Exception:
+                logger.warning(
+                    "Failed to create technician notification for repair %s",
+                    notif.repair_id, exc_info=True,
+                )
+
+        # Success message — must be OUTSIDE the notification loop.
+        # Previously this was indented inside the for-loop, causing:
+        #   (a) one success toast per notification (duplicate messages), or
+        #   (b) no toast at all when notifications_to_create was empty
+        #       (e.g. repairs with no assigned technician).  (CODE-241)
+        action_word = "approved" if action == 'approve' else "denied"
+        messages.success(
+            request,
+            f"Successfully {action_word} {processed_count} repair{'' if processed_count == 1 else 's'}."
+        )
 
         return redirect('customer_repairs')
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
     except Exception as e:
@@ -1999,9 +2724,9 @@ def customer_notification_preferences(request):
     - Enable batch mode for pending approvals
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Customer profile not found.")
         return redirect('customer_dashboard')
 
@@ -2056,9 +2781,9 @@ def customer_verify_email(request):
     Adapted from technician portal verify_email view.
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Unable to verify email.")
         return redirect('customer_notification_preferences')
 
@@ -2073,12 +2798,18 @@ def customer_verify_email(request):
 
     # Send verification email
     try:
-        send_mail(
-            subject='Verify your email address - RS Systems',
-            message=f'Click this link to verify your email address: {verification_url}',
-            from_email=settings.DEFAULT_FROM_EMAIL,
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject='Verify your email address — RS Systems',
             recipient_list=[request.user.email],
-            fail_silently=False,
+            headline='Verify Your Email',
+            body_paragraphs=[
+                f'Hi {request.user.first_name or request.user.email},',
+                'Please verify your email address by clicking the button below so you can receive invoices and notifications.',
+                'This link will expire in 24 hours.',
+            ],
+            button_text='✅ Verify Email',
+            button_url=verification_url,
         )
         messages.success(request, f"Verification email sent to {request.user.email}")
     except Exception as e:
@@ -2096,9 +2827,9 @@ def customer_verify_phone(request):
     Adapted from technician portal verify_phone view.
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Unable to verify phone.")
         return redirect('customer_notification_preferences')
 
@@ -2168,7 +2899,7 @@ def customer_confirm_email_verification(request, uidb64, token):
             prefs.save()
 
             messages.success(request, "Email verified successfully! You can now receive email notifications.")
-        except CustomerUser.DoesNotExist:
+        except (CustomerUser.DoesNotExist, AttributeError):
             messages.error(request, "Customer profile not found.")
     else:
         messages.error(request, "Invalid or expired verification link. Please request a new verification email.")
@@ -2208,7 +2939,7 @@ def customer_confirm_phone_verification(request):
         # Verify code
         if code == stored_code:
             try:
-                customer_user = CustomerUser.objects.get(user=request.user)
+                customer_user = _get_customer_user_for_tenant(request)
                 customer = customer_user.customer
 
                 if customer.phone == stored_number:
@@ -2233,7 +2964,7 @@ def customer_confirm_phone_verification(request):
                     request.session.pop('customer_phone_verification_expires', None)
                 else:
                     messages.error(request, "Phone number has changed. Please request a new verification code.")
-            except CustomerUser.DoesNotExist:
+            except (CustomerUser.DoesNotExist, AttributeError):
                 messages.error(request, "Customer profile not found.")
         else:
             messages.error(request, "Invalid verification code. Please try again.")
@@ -2250,9 +2981,9 @@ def customer_notification_history(request):
     Paginated list with filters (read/unread, category).
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.error(request, "Customer profile not found.")
         return redirect('customer_dashboard')
 
@@ -2300,7 +3031,7 @@ def customer_notification_history(request):
 def customer_mark_notification_read(request, notification_id):
     """Mark single notification as read (customer portal)"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         customer_ct = ContentType.objects.get_for_model(Customer)
 
@@ -2330,7 +3061,7 @@ def customer_mark_notification_read(request, notification_id):
 def customer_mark_all_read(request):
     """Mark all notifications as read for customer"""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         customer_ct = ContentType.objects.get_for_model(Customer)
 
@@ -2361,7 +3092,7 @@ def customer_get_unread_count(request):
     Cache TTL: 2 minutes (same as technician portal).
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         customer_ct = ContentType.objects.get_for_model(Customer)
 
@@ -2420,18 +3151,35 @@ def customer_get_unread_count(request):
 def customer_invoices(request):
     """List all invoices for the logged-in customer (excluding drafts)."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        invoices = Invoice.objects.filter(
-            customer=customer
-        ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
+        # CODE-255: Add tenant filter for defense-in-depth tenant isolation.
+        # Customer FK is already tenant-scoped, but every query must include
+        # an explicit tenant= filter per project conventions (AGENTS.md).
+        invoices = list(
+            Invoice.objects.filter(
+                customer=customer,
+                tenant=customer.tenant,
+            ).exclude(status='DRAFT').order_by('-invoice_date', '-created_at')
+        )
+
+        # Pre-compute summary counts for the template — Django templates cannot
+        # increment counters (|add in a loop just renders "1" each iteration).
+        paid_count = sum(1 for inv in invoices if inv.status == 'PAID')
+        outstanding_count = sum(
+            1 for inv in invoices if inv.status in ('SENT', 'PARTIAL', 'OVERDUE')
+        )
+        overdue_count = sum(1 for inv in invoices if inv.status == 'OVERDUE')
 
         return render(request, 'customer_portal/invoices.html', {
             'invoices': invoices,
             'customer': customer,
+            'paid_count': paid_count,
+            'outstanding_count': outstanding_count,
+            'overdue_count': overdue_count,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2440,10 +3188,11 @@ def customer_invoices(request):
 def customer_invoice_detail(request, invoice_id):
     """Full receipt view for a single invoice."""
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
+        # CODE-255: Include tenant filter for defense-in-depth tenant isolation.
+        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer, tenant=customer.tenant)
 
         # Don't let customers see draft invoices
         if invoice.status == 'DRAFT':
@@ -2453,10 +3202,15 @@ def customer_invoice_detail(request, invoice_id):
         line_items = invoice.line_items.all().order_by('id')
         payments = invoice.payments.all().order_by('-payment_date')
 
-        # Build PDF URL if s3_key exists
-        pdf_url = None
-        if invoice.s3_key:
-            pdf_url = f"https://rs-systems-media-20251029.s3.amazonaws.com/{invoice.s3_key}"
+        # Build PDF URL if s3_key exists — use model method so bucket name is
+        # read from settings, not hardcoded.  Works correctly in dev/prod/staging.
+        pdf_url = invoice.get_pdf_url()
+
+        # Determine if online payment is available (tenant has active Connect)
+        can_pay_online = (
+            invoice.tenant
+            and invoice.tenant.can_accept_payments
+        )
 
         return render(request, 'customer_portal/invoice_detail.html', {
             'invoice': invoice,
@@ -2464,8 +3218,9 @@ def customer_invoice_detail(request, invoice_id):
             'payments': payments,
             'pdf_url': pdf_url,
             'customer': customer,
+            'can_pay_online': can_pay_online,
         })
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2477,10 +3232,11 @@ def customer_invoice_pay(request, invoice_id):
         return redirect('customer_invoice_detail', invoice_id=invoice_id)
 
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
 
-        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer)
+        # CODE-255: Include tenant filter for defense-in-depth tenant isolation.
+        invoice = get_object_or_404(Invoice, id=invoice_id, customer=customer, tenant=customer.tenant)
 
         # Validate the invoice can be paid
         if invoice.status in ('CANCELLED', 'PAID', 'DRAFT'):
@@ -2491,28 +3247,50 @@ def customer_invoice_pay(request, invoice_id):
             messages.info(request, "This invoice is already fully paid.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
+        # HARD GATE: No online payments unless shop has active Stripe Connect.
+        # This is the critical safety check — no Connect = no online payment.
+        tenant = getattr(invoice, 'tenant', None)
+        if not tenant or not tenant.can_accept_payments:
+            messages.error(
+                request,
+                "Online payments are not available for this shop. "
+                "Please contact them directly for payment options."
+            )
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
+
         # If there's already a Stripe hosted URL, redirect there
         if invoice.stripe_hosted_url:
             return redirect(invoice.stripe_hosted_url)
 
-        # Create a Stripe checkout session
-        from apps.billing.services.stripe_service import StripeService
+        # Create a direct charge checkout session on the shop's connected account
+        from apps.tenants.services.connect_service import ConnectService, ConnectError
 
-        stripe_svc = StripeService()
+        connect_svc = ConnectService()
 
-        if not stripe_svc.is_enabled():
-            messages.error(request, "Online payments are not currently available. Please contact us for payment options.")
+        if not connect_svc.is_enabled():
+            messages.error(request, "Online payments are not currently available. Please contact the shop for payment options.")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
         base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         success_url = f"{base_url}/app/invoices/{invoice.id}/?payment=success"
         cancel_url = f"{base_url}/app/invoices/{invoice.id}/?payment=cancelled"
 
-        result = stripe_svc.create_checkout_session(
-            invoice,
-            success_url=success_url,
-            cancel_url=cancel_url,
-        )
+        try:
+            result = connect_svc.create_connected_checkout_session(
+                invoice,
+                success_url=success_url,
+                cancel_url=cancel_url,
+            )
+        except ConnectError as e:
+            logger.error(
+                f"Connected checkout hard-blocked for {invoice.invoice_number}: {e}"
+            )
+            messages.error(
+                request,
+                "This shop has not completed payment setup. "
+                "Please contact them directly for payment options."
+            )
+            return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
         if result.get('success'):
             return redirect(result['checkout_url'])
@@ -2522,7 +3300,7 @@ def customer_invoice_pay(request, invoice_id):
             messages.error(request, f"Could not initiate payment: {error_msg}")
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2560,20 +3338,48 @@ def accept_customer_invitation(request, token):
             )
             return redirect('owner_dashboard')
         
-        # Check if they already have a CustomerUser record
+        # Check if they already have a CustomerUser record.
+        # CustomerUser.user is a OneToOneField — one CustomerUser per User globally.
+        # We must check what shop they're already linked to:
+        #   - Same customer → they're already set up here, redirect.
+        #   - Different customer, same tenant → portal access at this shop (different account).
+        #   - Different tenant → current schema doesn't support multi-shop customers;
+        #     show a clear, actionable message instead of "Contact support".
+        # (CODE-106: replaced unscoped .first() with explicit checks to surface the right
+        # message in each case, and avoid the misleading "Contact support" dead-end.)
         existing = CustomerUser.objects.filter(user=request.user).first()
+        invite_tenant = invitation.customer.tenant
+
         if existing:
             if existing.customer == invitation.customer:
+                # Already linked to exactly this customer — nothing to do.
                 messages.info(request, f"You're already set up for {invitation.customer.name}.")
-            else:
-                messages.warning(
-                    request, 
-                    f"You're already linked to {existing.customer.name}. "
-                    f"Contact support if you need access to {invitation.customer.name}."
+                return redirect('customer_dashboard')
+
+            if existing.customer.tenant == invite_tenant:
+                # Linked to a *different* customer at the same shop — redirect with context.
+                messages.info(
+                    request,
+                    f"You already have portal access to {invite_tenant.name} "
+                    f"under {existing.customer.name}. Contact your shop admin to update your account."
                 )
+                return redirect('customer_dashboard')
+
+            # Linked to a customer at a different shop.  The CustomerUser model uses a
+            # OneToOneField to User, so a second CustomerUser row isn't possible.
+            # Give a clear explanation instead of the unhelpful "Contact support" dead-end.
+            messages.warning(
+                request,
+                f"Your account is currently linked to {existing.customer.name} "
+                f"({existing.customer.tenant.name if existing.customer.tenant else 'another shop'}). "
+                f"Customer portal accounts can only be linked to one shop. "
+                f"If you need access to {invitation.customer.name}, please contact "
+                f"{invite_tenant.name} and ask them to set up a new account for you."
+            )
             return redirect('customer_dashboard')
-        
-        # Link existing user to customer
+
+        # No existing CustomerUser — safe to create one.
+        # Link existing user to this invitation's customer.
         # Primary status is set explicitly by the owner when sending the invite.
         # No auto-promotion — the owner decides who is primary.
         if invitation.is_primary_contact:
@@ -2585,6 +3391,20 @@ def accept_customer_invitation(request, token):
             customer=invitation.customer,
             is_primary_contact=invitation.is_primary_contact,
         )
+        # Create a TenantMembership so the middleware can resolve this tenant
+        # via session-based lookup (_get_tenant_by_id).  Without this, every
+        # request falls back to _get_customer_tenant().first() — non-deterministic
+        # for multi-shop customers and an extra DB round-trip per request.
+        # Matches the pattern used in shop_join_view() (CODE-104).
+        from apps.tenants.models import TenantMembership as _TM
+        tenant_for_invite = invitation.customer.tenant
+        if tenant_for_invite:
+            _TM.objects.get_or_create(
+                tenant=tenant_for_invite,
+                user=request.user,
+                defaults={'role': 'viewer', 'is_active': True},
+            )
+            request.session['tenant_id'] = tenant_for_invite.id
         invitation.mark_accepted(request.user)
         messages.success(request, f"Welcome! You now have access to {invitation.customer.name}.")
         return redirect('customer_dashboard')
@@ -2593,7 +3413,10 @@ def accept_customer_invitation(request, token):
     if request.method == 'POST':
         first_name = request.POST.get('first_name', '').strip()
         last_name = request.POST.get('last_name', '').strip()
-        email = request.POST.get('email', invitation.email).strip()
+        # Normalize email to lowercase so lookups and uniqueness checks
+        # are consistent regardless of input case.  (CODE-265: this path was
+        # missed by CODE-264 which only normalized in customer_register.)
+        email = request.POST.get('email', invitation.email).strip().lower()
         password = request.POST.get('password', '')
         password_confirm = request.POST.get('password_confirm', '')
         
@@ -2604,10 +3427,21 @@ def accept_customer_invitation(request, token):
             errors.append("First name is required.")
         if not password:
             errors.append("Password is required.")
-        if len(password) < 8:
-            errors.append("Password must be at least 8 characters.")
         if password != password_confirm:
             errors.append("Passwords do not match.")
+        # Use Django's full password validators instead of bare length check.
+        # (CODE-188: accept_customer_invitation used len(password) < 8; this
+        # matches the validation used in shop_join_view and accept_invite so
+        # common/numeric passwords like "password1" are properly rejected.)
+        if password and not errors:
+            try:
+                temp_user = User(
+                    username='temp', email=email,
+                    first_name=first_name, last_name=last_name,
+                )
+                validate_password(password, user=temp_user)
+            except DjangoValidationError as e:
+                errors.extend(e.messages)
         if User.objects.filter(email__iexact=email).exists():
             errors.append("An account with this email already exists. Please log in instead.")
         
@@ -2644,7 +3478,23 @@ def accept_customer_invitation(request, token):
                     customer=invitation.customer,
                     is_primary_contact=invitation.is_primary_contact,
                 )
-                
+
+                # Create a TenantMembership so the middleware can resolve this
+                # tenant via session-based lookup (_get_tenant_by_id).
+                # Without this, every request falls back to _get_customer_tenant()
+                # which uses .first() — non-deterministic for multi-shop users
+                # and an extra DB round-trip per request.
+                # Matches the pattern used in shop_join_view() (CODE-104).
+                from apps.tenants.models import TenantMembership as _TM
+                tenant_for_invite = invitation.customer.tenant
+                if tenant_for_invite:
+                    _TM.objects.get_or_create(
+                        tenant=tenant_for_invite,
+                        user=user,
+                        defaults={'role': 'viewer', 'is_active': True},
+                    )
+                    request.session['tenant_id'] = tenant_for_invite.id
+
                 # Mark invitation as accepted
                 invitation.mark_accepted(user)
                 
@@ -2688,7 +3538,7 @@ def customer_team(request):
     Allows customers to invite their own team members (dispatchers, managers).
     """
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         # Get all team members (CustomerUser records for this customer)
@@ -2700,13 +3550,17 @@ def customer_team(request):
             status='pending'
         ).order_by('-created_at')
         
-        # Mark expired invitations
-        for inv in pending_invitations:
-            if not inv.is_valid:
-                inv.status = 'expired'
-                inv.save(update_fields=['status'])
-        
-        # Refresh to get updated statuses
+        # Bulk-expire stale invitations in a single UPDATE — avoids per-row
+        # double-write caused by the old loop pattern where CustomerInvitation.is_valid
+        # already saves when it detects expiry, and then the loop body saved a second
+        # time.  (CODE-146)
+        CustomerInvitation.objects.filter(
+            customer=customer,
+            status='pending',
+            expires_at__lt=timezone.now(),
+        ).update(status='expired')
+
+        # Refresh to get non-expired pending invitations only
         pending_invitations = CustomerInvitation.objects.filter(
             customer=customer,
             status='pending'
@@ -2718,7 +3572,7 @@ def customer_team(request):
             'current_user': customer_user,
         })
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2732,7 +3586,7 @@ def customer_invite_team_member(request):
         return redirect('customer_team')
     
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         email = request.POST.get('email', '').strip().lower()
@@ -2792,7 +3646,7 @@ def customer_invite_team_member(request):
         
         return redirect('customer_team')
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
     except Exception as e:
@@ -2810,7 +3664,7 @@ def customer_cancel_invitation(request, invitation_id):
         return redirect('customer_team')
     
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         invitation = get_object_or_404(
@@ -2826,7 +3680,7 @@ def customer_cancel_invitation(request, invitation_id):
         messages.success(request, f"Invitation to {invitation.email} cancelled.")
         return redirect('customer_team')
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 
@@ -2840,7 +3694,7 @@ def customer_resend_invitation(request, invitation_id):
         return redirect('customer_team')
     
     try:
-        customer_user = CustomerUser.objects.get(user=request.user)
+        customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
         
         invitation = get_object_or_404(
@@ -2863,7 +3717,7 @@ def customer_resend_invitation(request, invitation_id):
         
         return redirect('customer_team')
         
-    except CustomerUser.DoesNotExist:
+    except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
 

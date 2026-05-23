@@ -36,6 +36,7 @@ ALERT_SUB_EXPIRED = 'subscription_expired'
 ALERT_GRACE_15_DAYS = 'grace_period_15_days'
 ALERT_GRACE_5_DAYS = 'grace_period_5_days'
 ALERT_GRACE_ENDED = 'grace_period_ended'
+ALERT_TRIAL_PLAN_NUDGE = 'trial_plan_nudge'
 
 
 def _get_recipient_emails(tenant):
@@ -53,9 +54,13 @@ def _get_recipient_emails(tenant):
     return list(emails)
 
 
-def _send_alert(tenant, alert_key, subject, body, dry_run=False):
+def _send_alert(tenant, alert_key, subject, body, dry_run=False,
+                headline=None, paragraphs=None, button_text=None, button_url=None):
     """
     Send an alert email if it hasn't been sent already.
+
+    If headline + paragraphs are provided, sends a branded HTML email.
+    Otherwise falls back to plain text (for backwards compat).
 
     Returns True if the alert was sent (or would be sent in dry_run).
     """
@@ -75,23 +80,40 @@ def _send_alert(tenant, alert_key, subject, body, dry_run=False):
         )
         return True
 
-    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
     try:
-        send_mail(
-            subject=subject,
-            message=body,
-            from_email=from_email,
-            recipient_list=recipients,
-            fail_silently=False,
-        )
+        if headline and paragraphs:
+            from core.email_utils import send_branded_email
+            send_branded_email(
+                subject=subject,
+                recipient_list=recipients,
+                headline=headline,
+                body_paragraphs=paragraphs,
+                button_text=button_text,
+                button_url=button_url,
+                tenant=tenant,
+            )
+        else:
+            # Fallback: wrap plain-text body in branded template
+            from core.email_utils import send_branded_email
+            send_branded_email(
+                subject=subject,
+                recipient_list=recipients,
+                headline=subject,
+                body_paragraphs=[body] if body else ['A subscription event occurred.'],
+                tenant=tenant,
+            )
     except Exception as e:
         logger.error(
             f"Failed to send alert '{alert_key}' for tenant {tenant.slug}: {e}"
         )
         return False
 
-    # Record the alert as sent
+    # Record the alert as sent — update both DB and in-memory object
+    # so subsequent _send_alert calls in the same run see the updated dict.
+    # Without updating tenant.subscription_alerts_sent, a None→{} fallback
+    # creates an unlinked dict and later alerts overwrite earlier ones in the DB.
     alerts_sent[alert_key] = timezone.now().isoformat()
+    tenant.subscription_alerts_sent = alerts_sent
     Tenant.objects.filter(pk=tenant.pk).update(subscription_alerts_sent=alerts_sent)
     logger.info(f"Sent alert '{alert_key}' to {recipients} for tenant {tenant.slug}")
     return True
@@ -150,15 +172,16 @@ class Command(BaseCommand):
                 if _send_alert(
                     tenant, ALERT_TRIAL_7_DAYS,
                     subject=f"Your {tenant.name} trial ends in 7 days",
-                    body=(
-                        f"Hi {_owner_name(tenant)},\n\n"
-                        f"Your free trial for {tenant.name} ends in 7 days "
-                        f"({tenant.trial_expiry.strftime('%B %d, %Y')}).\n\n"
-                        f"Upgrade now to keep your data and avoid any service interruption:\n"
-                        f"https://rssystems.io/owner/billing/\n\n"
-                        f"— RS Systems"
-                    ),
+                    body='',
                     dry_run=dry_run,
+                    headline='Your Trial Ends Soon',
+                    paragraphs=[
+                        f"Hi {_owner_name(tenant)},",
+                        f"Your free trial for {tenant.name} ends in 7 days ({tenant.trial_expiry.strftime('%B %d, %Y')}).",
+                        "Upgrade now to keep your data and avoid any service interruption.",
+                    ],
+                    button_text='⬆️ Upgrade Now',
+                    button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
 
@@ -166,44 +189,64 @@ class Command(BaseCommand):
                 if _send_alert(
                     tenant, ALERT_TRIAL_1_DAY,
                     subject=f"Your {tenant.name} trial expires tomorrow!",
-                    body=(
-                        f"Hi {_owner_name(tenant)},\n\n"
-                        f"Your free trial for {tenant.name} expires tomorrow "
-                        f"({tenant.trial_expiry.strftime('%B %d, %Y')}).\n\n"
-                        f"Don't lose access to your shop data! Upgrade today:\n"
-                        f"https://rssystems.io/owner/billing/\n\n"
-                        f"— RS Systems"
-                    ),
+                    body='',
                     dry_run=dry_run,
+                    headline='Trial Expires Tomorrow!',
+                    paragraphs=[
+                        f"Hi {_owner_name(tenant)},",
+                        f"Your free trial for {tenant.name} expires tomorrow ({tenant.trial_expiry.strftime('%B %d, %Y')}).",
+                        "Don't lose access to your shop data! Upgrade today.",
+                    ],
+                    button_text='⬆️ Upgrade Today',
+                    button_url='https://rssystems.io/owner/billing/',
+                ):
+                    sent += 1
+
+        # --- Nudge email for 'not sure' signups around day 20 ---
+        if (tenant.plan == 'trial' and tenant.trial_expiry and not tenant.is_trial_expired
+                and not tenant.intended_plan):
+            days_until_expiry = (tenant.trial_expiry.date() - today).days
+            if 0 < days_until_expiry <= 10:
+                if _send_alert(
+                    tenant, ALERT_TRIAL_PLAN_NUDGE,
+                    subject=f"Which plan is right for {tenant.name}?",
+                    body='',
+                    dry_run=dry_run,
+                    headline='Find Your Perfect Plan',
+                    paragraphs=[
+                        f"Hi {_owner_name(tenant)},",
+                        f"Your trial has {days_until_expiry} day{'s' if days_until_expiry != 1 else ''} left.",
+                        "We have options for shops of all sizes — from solo techs to large fleets. Browse our plans to find the right fit for your shop.",
+                    ],
+                    button_text='📋 View Plans',
+                    button_url='https://rssystems.io/pricing/',
                 ):
                     sent += 1
 
         # --- Trial just expired ---
         if tenant.plan == 'trial' and tenant.is_trial_expired:
-            # Distinguish real trial expiry from post-cancellation revert
             if not tenant.had_paid_subscription:
                 alert_key = ALERT_TRIAL_EXPIRED
                 subject = f"Your {tenant.name} free trial has expired"
-                body = (
-                    f"Hi {_owner_name(tenant)},\n\n"
-                    f"Your free trial for {tenant.name} has expired.\n\n"
-                    f"You have 30 days of read-only access to your data before your account "
-                    f"is fully locked. Upgrade now to restore full access:\n"
-                    f"https://rssystems.io/owner/billing/\n\n"
-                    f"— RS Systems"
-                )
+                headline = 'Trial Expired'
+                paragraphs = [
+                    f"Hi {_owner_name(tenant)},",
+                    f"Your free trial for {tenant.name} has expired.",
+                    "You have 30 days of read-only access to your data before your account is fully locked. Upgrade now to restore full access.",
+                ]
             else:
                 alert_key = ALERT_SUB_EXPIRED
                 subject = f"Your {tenant.name} subscription has ended"
-                body = (
-                    f"Hi {_owner_name(tenant)},\n\n"
-                    f"Your subscription for {tenant.name} has ended.\n\n"
-                    f"You have 30 days of read-only access to your data. "
-                    f"Reactivate now to restore full access:\n"
-                    f"https://rssystems.io/owner/billing/\n\n"
-                    f"— RS Systems"
-                )
-            if _send_alert(tenant, alert_key, subject=subject, body=body, dry_run=dry_run):
+                headline = 'Subscription Ended'
+                paragraphs = [
+                    f"Hi {_owner_name(tenant)},",
+                    f"Your subscription for {tenant.name} has ended.",
+                    "You have 30 days of read-only access to your data. Reactivate now to restore full access.",
+                ]
+            if _send_alert(tenant, alert_key, subject=subject, body='', dry_run=dry_run,
+                           headline=headline, paragraphs=paragraphs,
+                           button_text='🔄 Reactivate Now',
+                           button_url='https://rssystems.io/owner/billing/'):
                 sent += 1
 
         # --- Subscription expired (paid subscription deleted via webhook) ---
@@ -211,15 +254,16 @@ class Command(BaseCommand):
             if _send_alert(
                 tenant, ALERT_SUB_EXPIRED,
                 subject=f"Your {tenant.name} subscription has expired",
-                body=(
-                    f"Hi {_owner_name(tenant)},\n\n"
-                    f"Your RS Systems subscription for {tenant.name} has expired.\n\n"
-                    f"You have 30 days of read-only access to your data. "
-                    f"Reactivate now to restore full access:\n"
-                    f"https://rssystems.io/owner/billing/\n\n"
-                    f"— RS Systems"
-                ),
+                body='',
                 dry_run=dry_run,
+                headline='Subscription Expired',
+                paragraphs=[
+                    f"Hi {_owner_name(tenant)},",
+                    f"Your RS Systems subscription for {tenant.name} has expired.",
+                    "You have 30 days of read-only access to your data. Reactivate now to restore full access.",
+                ],
+                button_text='🔄 Reactivate Now',
+                button_url='https://rssystems.io/owner/billing/',
             ):
                 sent += 1
 
@@ -232,16 +276,16 @@ class Command(BaseCommand):
                 if _send_alert(
                     tenant, ALERT_GRACE_15_DAYS,
                     subject=f"15 days of read-only access remaining for {tenant.name}",
-                    body=(
-                        f"Hi {_owner_name(tenant)},\n\n"
-                        f"You have 15 days of read-only access remaining for {tenant.name}.\n\n"
-                        f"After {grace_end.strftime('%B %d, %Y')}, your account will be fully "
-                        f"locked and you'll need to contact support to recover your data.\n\n"
-                        f"Reactivate your subscription now:\n"
-                        f"https://rssystems.io/owner/billing/\n\n"
-                        f"— RS Systems"
-                    ),
+                    body='',
                     dry_run=dry_run,
+                    headline='Read-Only Access Ending Soon',
+                    paragraphs=[
+                        f"Hi {_owner_name(tenant)},",
+                        f"You have 15 days of read-only access remaining for {tenant.name}.",
+                        f"After {grace_end.strftime('%B %d, %Y')}, your account will be fully locked and you'll need to contact support to recover your data.",
+                    ],
+                    button_text='🔄 Reactivate Now',
+                    button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
 
@@ -249,16 +293,16 @@ class Command(BaseCommand):
                 if _send_alert(
                     tenant, ALERT_GRACE_5_DAYS,
                     subject=f"⚠️ Your read-only access ends in {days_remaining} days — {tenant.name}",
-                    body=(
-                        f"Hi {_owner_name(tenant)},\n\n"
-                        f"Your read-only access for {tenant.name} ends in {days_remaining} "
-                        f"day{'s' if days_remaining != 1 else ''}.\n\n"
-                        f"After {grace_end.strftime('%B %d, %Y')}, you will lose access to "
-                        f"your shop's data entirely. Upgrade now to avoid this:\n"
-                        f"https://rssystems.io/owner/billing/\n\n"
-                        f"— RS Systems"
-                    ),
+                    body='',
                     dry_run=dry_run,
+                    headline=f'⚠️ {days_remaining} Days Left',
+                    paragraphs=[
+                        f"Hi {_owner_name(tenant)},",
+                        f"Your read-only access for {tenant.name} ends in {days_remaining} day{'s' if days_remaining != 1 else ''}.",
+                        f"After {grace_end.strftime('%B %d, %Y')}, you will lose access to your shop's data entirely.",
+                    ],
+                    button_text='⬆️ Upgrade Now',
+                    button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
 
@@ -272,17 +316,17 @@ class Command(BaseCommand):
                 if _send_alert(
                     tenant, ALERT_GRACE_ENDED,
                     subject=f"Your read-only access has ended — {tenant.name}",
-                    body=(
-                        f"Hi {_owner_name(tenant)},\n\n"
-                        f"Your read-only access period for {tenant.name} has ended.\n\n"
-                        f"You no longer have access to your shop's data in RS Systems. "
-                        f"Upgrade your subscription to regain access:\n"
-                        f"https://rssystems.io/owner/billing/\n\n"
-                        f"If you need help recovering your data, contact us at "
-                        f"contact@rssystems.io\n\n"
-                        f"— RS Systems"
-                    ),
+                    body='',
                     dry_run=dry_run,
+                    headline='Access Ended',
+                    paragraphs=[
+                        f"Hi {_owner_name(tenant)},",
+                        f"Your read-only access period for {tenant.name} has ended.",
+                        "You no longer have access to your shop's data in RS Systems. Upgrade your subscription to regain access.",
+                        "If you need help recovering your data, contact us at contact@rssystems.io",
+                    ],
+                    button_text='🔄 Reactivate',
+                    button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
 

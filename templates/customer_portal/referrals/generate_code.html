@@ -1,92 +1,112 @@
-{% extends 'base.html' %}
+{% extends 'customer_portal/base_customer.html' %}
 {% load static %}
 
-{% block title %}Generate Referral Code{% endblock %}
+{% block title %}Generate Referral Code | Customer Portal{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="row mb-4">
-        <div class="col">
-            <h1 class="h2 mb-0">Generate Referral Code</h1>
-            <p class="text-muted">Create a unique referral code to share with friends</p>
-        </div>
-    </div>
+<!-- Back link -->
+<a href="{% url 'customer_rewards' %}" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 font-medium mb-4 transition-colors">
+    <i class="fas fa-arrow-left mr-2 text-xs"></i> Back to Referrals
+</a>
 
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="card-title mb-0">Referral Code</h5>
-                </div>
-                <div class="card-body">
-                    {% if existing_code %}
-                        <div class="alert alert-warning">
-                            <strong>Note:</strong> You already have an existing referral code.
-                        </div>
-                        
-                        <div class="mb-4 text-center">
-                            <h3 class="mb-3 p-3 bg-light rounded">{{ existing_code }}</h3>
-                            <button class="btn btn-primary" id="copyCode" data-code="{{ existing_code }}">
-                                <i class="fas fa-copy mr-1"></i> Copy Code
-                            </button>
-                        </div>
-                        
-                        <p class="text-center">
-                            <a href="{% url 'referral_rewards' %}" class="btn btn-outline-primary">
-                                <i class="fas fa-arrow-left mr-1"></i> Back to Referrals Dashboard
-                            </a>
-                        </p>
-                    {% else %}
-                        <div class="alert alert-info">
-                            <p>
-                                <strong>How referrals work:</strong>
-                            </p>
-                            <ol class="mb-0">
-                                <li>Generate your unique referral code</li>
-                                <li>Share your code with friends and family</li>
-                                <li>When they sign up using your code, you'll earn 500 reward points!</li>
-                                <li>They'll also receive 100 bonus points as a welcome gift</li>
-                            </ol>
-                        </div>
-                        
-                        <form action="{% url 'generate_referral_code' %}" method="post" class="text-center">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-ticket-alt mr-1"></i> Generate My Referral Code
-                            </button>
-                        </form>
-                    {% endif %}
-                </div>
+<div class="max-w-lg mx-auto">
+    {% if existing_code %}
+    <!-- Code Already Generated -->
+    <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden text-center">
+        <div class="bg-gradient-to-r from-brand-500 to-brand-600 px-6 py-6">
+            <div class="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                <i class="fas fa-check text-white text-2xl"></i>
+            </div>
+            <h1 class="text-xl font-bold text-white">Your Code is Ready!</h1>
+            <p class="text-brand-100 text-sm mt-1">Share it with other businesses to earn points</p>
+        </div>
+
+        <div class="p-6 sm:p-8">
+            <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl px-6 py-5 mb-6">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Your Referral Code</p>
+                <p class="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-[0.15em] font-mono">{{ existing_code }}</p>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2 mb-6">
+                <button id="copyCode" data-code="{{ existing_code }}"
+                        class="flex-1 inline-flex items-center justify-center px-5 py-3 bg-brand-500 text-white text-sm font-bold rounded-xl hover:bg-brand-600 transition-colors shadow-sm">
+                    <i class="fas fa-copy mr-2"></i> Copy Code
+                </button>
+                <a href="{% url 'customer_rewards' %}"
+                   class="flex-1 inline-flex items-center justify-center px-5 py-3 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors">
+                    <i class="fas fa-arrow-left mr-2"></i> Back to Dashboard
+                </a>
             </div>
         </div>
     </div>
+    {% else %}
+    <!-- Generate Code -->
+    <div class="bg-white rounded-2xl border border-gray-200 overflow-hidden text-center">
+        <div class="p-6 sm:p-8">
+            <div class="w-16 h-16 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-ticket-alt text-brand-500 text-2xl"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">Generate Your Referral Code</h1>
+            <p class="text-sm text-gray-500 mb-6 max-w-sm mx-auto">Create a unique code to share with other businesses and start earning rewards.</p>
+
+            <!-- How it Works -->
+            <div class="bg-brand-50 border border-brand-100 rounded-xl p-5 text-left mb-6">
+                <p class="text-sm font-semibold text-brand-800 mb-3">How referrals work</p>
+                <div class="space-y-3">
+                    <div class="flex items-start">
+                        <div class="w-6 h-6 bg-brand-500 rounded-full flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
+                            <span class="text-white text-xs font-bold">1</span>
+                        </div>
+                        <p class="text-sm text-brand-700">Generate your unique referral code</p>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="w-6 h-6 bg-brand-500 rounded-full flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
+                            <span class="text-white text-xs font-bold">2</span>
+                        </div>
+                        <p class="text-sm text-brand-700">Share your code with other businesses</p>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="w-6 h-6 bg-brand-500 rounded-full flex items-center justify-center mr-3 flex-shrink-0 mt-0.5">
+                            <span class="text-white text-xs font-bold">3</span>
+                        </div>
+                        <p class="text-sm text-brand-700">You earn <strong>500 points</strong>, they get <strong>100 bonus points</strong></p>
+                    </div>
+                </div>
+            </div>
+
+            <form action="{% url 'generate_referral_code' %}" method="post">
+                {% csrf_token %}
+                <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3.5 bg-brand-500 text-white text-base font-bold rounded-xl hover:bg-brand-600 transition-colors shadow-lg shadow-brand-500/20">
+                    <i class="fas fa-magic mr-2"></i> Generate My Code
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Copy referral code to clipboard
-        const copyBtn = document.getElementById('copyCode');
-        if (copyBtn) {
-            copyBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                const code = this.getAttribute('data-code');
-                navigator.clipboard.writeText(code).then(() => {
-                    // Show success message
-                    const originalText = this.innerHTML;
-                    this.innerHTML = '<i class="fas fa-check mr-1"></i> Copied!';
-                    this.classList.remove('btn-primary');
-                    this.classList.add('btn-success');
-                    
-                    setTimeout(() => {
-                        this.innerHTML = originalText;
-                        this.classList.remove('btn-success');
-                        this.classList.add('btn-primary');
-                    }, 2000);
-                });
+document.addEventListener('DOMContentLoaded', function() {
+    const copyBtn = document.getElementById('copyCode');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const code = this.getAttribute('data-code');
+            navigator.clipboard.writeText(code).then(() => {
+                const originalHTML = this.innerHTML;
+                this.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
+                this.classList.remove('bg-brand-500', 'hover:bg-brand-600');
+                this.classList.add('bg-green-600');
+                setTimeout(() => {
+                    this.innerHTML = originalHTML;
+                    this.classList.remove('bg-green-600');
+                    this.classList.add('bg-brand-500', 'hover:bg-brand-600');
+                }, 2000);
             });
-        }
-    });
+        });
+    }
+});
 </script>
-{% endblock %} 
+{% endblock %}

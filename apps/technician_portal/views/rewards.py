@@ -9,7 +9,6 @@ from apps.technician_portal.models import Technician, Repair
 from apps.customer_portal.models import CustomerUser
 from apps.rewards_referrals.models import RewardRedemption
 from apps.rewards_referrals.services import RewardFulfillmentService
-from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 
 import logging
@@ -21,7 +20,16 @@ logger = logging.getLogger(__name__)
 def reward_fulfillment_detail(request, redemption_id):
     """View details of a reward redemption and mark as fulfilled."""
     tenant = getattr(request, 'tenant', None)
-    technician = get_object_or_404(Technician, user=request.user)
+    # Scope to current tenant — unscoped get_object_or_404(Technician, user=request.user)
+    # would resolve to whichever Technician row exists for the user, which may belong to
+    # a different shop (same pattern as CODE-077 through CODE-082).
+    if tenant:
+        technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    else:
+        try:
+            technician = request.user.technician
+        except Technician.DoesNotExist:
+            technician = None
 
     # Scope redemption to the current tenant via the customer chain.
     # RewardRedemption has no direct tenant FK; path is
@@ -36,33 +44,46 @@ def reward_fulfillment_detail(request, redemption_id):
         redemption_qs = RewardRedemption.objects.none()
     redemption = get_object_or_404(redemption_qs, id=redemption_id)
 
-    is_assigned_technician = (redemption.assigned_technician == technician)
+    # A technician without a profile (None) should never match the assigned
+    # technician slot — even when the redemption is also unassigned (None).
+    # Previously, None == None evaluated to True, making any admin/owner
+    # without a Technician row appear as "assigned" and then crashing in
+    # mark_as_fulfilled() with AttributeError on None.user.  (CODE-176)
+    is_assigned_technician = (
+        technician is not None
+        and redemption.assigned_technician is not None
+        and redemption.assigned_technician == technician
+    )
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     can_fulfill = is_assigned_technician or is_admin
 
-    # Get customer repairs for applying reward
+    # Get customer repairs for applying reward.
+    #
+    # CODE-180: Previously this looked up the Customer via email:
+    #   customer_qs.get(email=customer_email)
+    # Customer.email is NOT unique — two fleet accounts at the same shop can
+    # share an AP email address, which raises MultipleObjectsReturned (500 crash).
+    # The CustomerUser already has a direct FK to Customer, so we resolve the
+    # customer through the ORM relationship instead.  This is both correct and
+    # cheaper (one fewer DB query).
     customer_repairs = []
-    if redemption.reward and redemption.reward.customer_user and redemption.reward.customer_user.user:
-        customer_email = redemption.reward.customer_user.user.email
+    if redemption.reward and redemption.reward.customer_user:
         try:
-            customer_qs = Customer.objects.all()
-            if tenant:
-                customer_qs = customer_qs.filter(tenant=tenant)
-
-            else:
-                customer_qs = customer_qs.none()
-            customer = customer_qs.get(email=customer_email)
-            repair_qs = Repair.objects.filter(
-                customer=customer,
-                queue_status__in=['APPROVED', 'IN_PROGRESS']
-            )
-            if tenant:
-                repair_qs = repair_qs.filter(tenant=tenant)
-
-            else:
-                repair_qs = repair_qs.none()
-            customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-service_date')
-        except Customer.DoesNotExist:
+            customer = redemption.reward.customer_user.customer
+            # Guard: ensure the customer belongs to the current tenant.
+            # The redemption queryset above is already tenant-scoped, so this
+            # should always hold, but an explicit check avoids surprises if the
+            # chain is unexpectedly broken.
+            if tenant and customer.tenant_id != tenant.id:
+                customer = None
+            if customer:
+                repair_qs = Repair.objects.filter(
+                    customer=customer,
+                    queue_status__in=['APPROVED', 'IN_PROGRESS'],
+                    tenant=tenant,
+                ) if tenant else Repair.objects.none()
+                customer_repairs = repair_qs.select_related('customer', 'technician').order_by('-service_date')
+        except Exception:
             pass
 
     if request.method == 'POST':
@@ -118,13 +139,15 @@ def apply_reward_to_repair(request, repair_id):
             qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
     else:
-        if not hasattr(request.user, 'technician'):
+        # Scope to current tenant; unscoped request.user.technician may resolve
+        # to a Technician from a different shop (same pattern as CODE-077/082).
+        scoped_tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+        if scoped_tech is None:
             messages.error(request, "You don't have a technician profile.")
             return redirect('technician_dashboard')
-        qs = Repair.objects.filter(technician=request.user.technician)
+        qs = Repair.objects.filter(technician=scoped_tech)
         if tenant:
             qs = qs.filter(tenant=tenant)
-
         else:
             qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
@@ -153,9 +176,11 @@ def apply_reward_to_repair(request, repair_id):
             messages.error(request, "This reward belongs to a different customer and cannot be applied to this repair.")
             return redirect('repair_detail', repair_id=repair.id)
 
+        # Resolve current-tenant technician for assignment — never unscoped.
+        acting_tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
         success, message = repair.apply_reward(
             redemption,
-            technician=getattr(request.user, 'technician', None),
+            technician=acting_tech,
             auto_fulfill=auto_fulfill
         )
 

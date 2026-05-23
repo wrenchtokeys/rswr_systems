@@ -130,10 +130,14 @@ def _assign_smart(service, tenant, service_type='repair'):
         return None
 
     active_statuses = ['PENDING', 'APPROVED', 'IN_PROGRESS', 'REQUESTED']
+    # The reverse relation from Technician → Repair/Replacement uses Django's
+    # default lowercase model name ('repair', 'replacement'), NOT 'repairs'/'replacements'.
+    # Using 'repairs' raises FieldError at runtime; fixed to 'repair'/'replacement'. (CODE-163)
+    count_field = 'replacement' if service_type == 'replacement' else 'repair'
     tech_with_load = eligible.annotate(
         active_repairs=Count(
-            'repairs',
-            filter=Q(repairs__queue_status__in=active_statuses),
+            count_field,
+            filter=Q(**{f'{count_field}__queue_status__in': active_statuses}),
         )
     ).order_by('active_repairs', 'id')
 
@@ -152,18 +156,35 @@ def _assign_smart(service, tenant, service_type='repair'):
 
 
 def _assign_round_robin(service, tenant, service_type='repair'):
-    """Rotate through eligible technicians by ID order."""
-    from apps.technician_portal.models import Repair
+    """Rotate through eligible technicians by ID order.
+
+    The "last assigned" anchor must come from the same service type being
+    assigned.  Using Repair history when assigning a Replacement (and vice
+    versa) breaks the rotation for tenants that only do one service type —
+    ``last_service`` is always None and the same technician always receives
+    the first slot.  It also cross-contaminates rotation state between the
+    two service types for tenants that do both.  (CODE-172)
+    """
+    from apps.technician_portal.models import Repair, Replacement
 
     eligible = _get_eligible_techs(tenant, service_type)
     if not eligible.exists():
         return None
 
-    # Find the most recently assigned tech for this tenant
-    last_service = Repair.objects.filter(
-        tenant=tenant,
-        technician__isnull=False,
-    ).order_by('-created_at').first()
+    # Find the most recently assigned tech for the same service type.
+    # Both Repair and Replacement inherit service_date from GlassService (no
+    # created_at on either model).  Order by ('-service_date', '-id') so ties
+    # are broken deterministically.
+    if service_type == 'replacement':
+        last_service = Replacement.objects.filter(
+            tenant=tenant,
+            technician__isnull=False,
+        ).order_by('-service_date', '-id').first()
+    else:
+        last_service = Repair.objects.filter(
+            tenant=tenant,
+            technician__isnull=False,
+        ).order_by('-service_date', '-id').first()
 
     eligible_list = list(eligible.order_by('id'))
 

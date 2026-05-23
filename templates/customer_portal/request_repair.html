@@ -162,6 +162,44 @@
                     </ul>
                 </div>
 
+                <!-- Available Rewards (CODE-210) -->
+                {% if available_rewards %}
+                <div class="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-lg p-4 mb-4">
+                    <h3 class="text-sm font-semibold text-amber-900 mb-2 flex items-center">
+                        <i class="fas fa-gift mr-2 text-amber-600"></i>
+                        Available Rewards
+                    </h3>
+                    <p class="text-xs text-amber-700 mb-3">Select a reward to apply to this repair request</p>
+                    <div id="rewardSelectionList" class="space-y-2">
+                        {% for redemption in available_rewards %}
+                        <label class="flex items-start p-2 bg-white rounded border border-amber-100 hover:border-amber-300 cursor-pointer transition-colors">
+                            <input type="radio" name="apply_reward" value="{{ redemption.id }}"
+                                   class="mt-1 h-4 w-4 text-amber-600 focus:ring-amber-500 border-gray-300">
+                            <div class="ml-3">
+                                <span class="text-sm font-medium text-gray-900">{{ redemption.reward_option.name }}</span>
+                                {% if redemption.reward_option.reward_type %}
+                                <span class="text-xs text-amber-600 ml-1">
+                                    {% if redemption.reward_option.reward_type.discount_type == 'PERCENTAGE' %}
+                                        ({{ redemption.reward_option.reward_type.discount_value }}% off)
+                                    {% elif redemption.reward_option.reward_type.discount_type == 'FIXED_AMOUNT' %}
+                                        (${{ redemption.reward_option.reward_type.discount_value }} off)
+                                    {% elif redemption.reward_option.reward_type.discount_type == 'FREE' %}
+                                        (Free)
+                                    {% endif %}
+                                </span>
+                                {% endif %}
+                                <p class="text-xs text-gray-500 mt-0.5">Redeemed {{ redemption.created_at|date:"M j" }}</p>
+                            </div>
+                        </label>
+                        {% endfor %}
+                        <button type="button" onclick="document.querySelectorAll('input[name=apply_reward]').forEach(r => r.checked = false)"
+                                class="text-xs text-gray-500 hover:text-gray-700 mt-1">
+                            <i class="fas fa-times"></i> Clear selection
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Submit Form -->
                 <form id="batchRepairForm" method="post" class="space-y-4">
                     {% csrf_token %}
@@ -234,6 +272,37 @@
                     <p class="mt-1 text-xs text-gray-500">If unsure, our technician will assess the damage type</p>
                 </div>
 
+                <!-- Damage Location Diagram -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                        Damage Location <span class="text-gray-500">(Optional — tap to mark)</span>
+                    </label>
+                    <div style="max-width: 400px;">
+                        <div id="modalWindshieldDiagram"
+                             style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 3px solid #0284c7; border-radius: 12px; cursor: crosshair; overflow: hidden; touch-action: none;">
+                            <div style="position: absolute; top: 8px; left: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">DRIVER</div>
+                            <div style="position: absolute; top: 8px; right: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">PASSENGER</div>
+                            <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #0369a1;">↑ HOOD</div>
+                            <div style="position: absolute; top: 20%; bottom: 20%; left: 50%; width: 1px; background: rgba(2,132,199,0.3);"></div>
+                            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 30px; height: 10px; background: #0284c7; border-radius: 0 0 6px 6px;"></div>
+                            <div id="modalDamageMarker" style="display: none; position: absolute; width: 20px; height: 20px; background: #dc2626; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none; z-index: 10;">
+                                <div style="position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%);"></div>
+                            </div>
+                        </div>
+                        <input type="hidden" id="modalDamageLocationX" value="">
+                        <input type="hidden" id="modalDamageLocationY" value="">
+                        <div class="flex justify-between items-center mt-1.5">
+                            <p class="text-xs text-gray-500">
+                                <i class="fas fa-info-circle"></i>
+                                <span id="modalLocationText">Tap where the damage is on the windshield</span>
+                            </p>
+                            <button type="button" id="modalClearLocationBtn" class="text-xs text-red-600 hover:text-red-800" style="display: none;">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Notes -->
                 <div>
                     <label for="modalNotes" class="block text-sm font-medium text-gray-700 mb-1">
@@ -241,7 +310,7 @@
                     </label>
                     <textarea id="modalNotes" rows="3"
                               class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                              placeholder="Location on windshield, urgency, special instructions..."
+                              placeholder="Urgency, special instructions..."
                               maxlength="1000"></textarea>
                 </div>
 

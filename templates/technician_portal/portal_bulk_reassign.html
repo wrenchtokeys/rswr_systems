@@ -1,0 +1,63 @@
+{% extends "base_app.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200 bg-purple-600 text-white rounded-t-lg">
+                <h1 class="text-xl font-semibold">Bulk Reassign Repairs</h1>
+                <p class="text-purple-100 text-sm mt-1">{{ repairs|length }} repair{{ repairs|length|pluralize }} selected</p>
+            </div>
+            <div class="p-6">
+                <div class="mb-4 max-h-48 overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="text-xs text-gray-500 uppercase bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left">ID</th>
+                                <th class="px-3 py-2 text-left">Customer</th>
+                                <th class="px-3 py-2 text-left">Unit</th>
+                                <th class="px-3 py-2 text-left">Status</th>
+                                <th class="px-3 py-2 text-left">Current Tech</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            {% for repair in repairs %}
+                            <tr>
+                                <td class="px-3 py-2 font-mono">#{{ repair.id }}</td>
+                                <td class="px-3 py-2">{{ repair.customer.name }}</td>
+                                <td class="px-3 py-2">{{ repair.unit_number }}</td>
+                                <td class="px-3 py-2">{{ repair.get_queue_status_display }}</td>
+                                <td class="px-3 py-2">{{ repair.technician.user.get_full_name|default:"Unassigned" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    {% for repair in repairs %}
+                    <input type="hidden" name="repair_ids" value="{{ repair.id }}">
+                    {% endfor %}
+                    <div class="mb-6">
+                        <label for="technician_id" class="block text-sm font-medium text-gray-700 mb-2">Reassign all to:</label>
+                        <select name="technician_id" id="technician_id" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                            {% for tech in available_technicians %}
+                            <option value="{{ tech.id }}">{{ tech.user.get_full_name }} ({{ tech.user.email }})</option>
+                            {% empty %}
+                            <option value="" disabled>No active technicians available</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-purple-600 text-white text-sm font-semibold rounded-md hover:bg-purple-700 transition-colors">
+                            <i class="fas fa-user-edit mr-2"></i>Reassign {{ repairs|length }} Repair{{ repairs|length|pluralize }}
+                        </button>
+                        <a href="{% url 'repair_list' %}" class="text-sm text-gray-500 hover:text-gray-700">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -13,11 +13,14 @@ Updated: 2026-01-27 - Royal blue styling, logo support
 """
 
 import io
+import logging
 import os
 import urllib.request
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional, Dict, Any, Tuple
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -59,6 +62,7 @@ class InvoiceLineItem:
     has_photos: bool
     before_photo_url: Optional[str] = None
     after_photo_url: Optional[str] = None
+    repair_obj: object = None
 
 
 @dataclass
@@ -130,9 +134,9 @@ class InvoiceService:
             if billing_cfg is None:
                 raise ValueError("No tenant available")
             self.COMPANY_NAME = billing_cfg.company_name or (self.tenant.name if self.tenant else "")
-            self.COMPANY_ADDRESS = billing_cfg.full_address
-            self.COMPANY_PHONE = billing_cfg.company_phone or ""
-            self.COMPANY_EMAIL = billing_cfg.company_email or ""
+            self.COMPANY_ADDRESS = billing_cfg.full_address or (self.tenant.business_address if self.tenant else "")
+            self.COMPANY_PHONE = billing_cfg.company_phone or (self.tenant.business_phone if self.tenant else "")
+            self.COMPANY_EMAIL = billing_cfg.company_email or (self.tenant.business_email if self.tenant else "")
             self.COMPANY_WEBSITE = billing_cfg.company_website or ""
             self.DEFAULT_PAYMENT_TERMS = billing_cfg.default_payment_terms
             self.DEFAULT_DUE_DAYS = billing_cfg.due_days_for_terms
@@ -314,7 +318,7 @@ class InvoiceService:
         )
         if self.tenant:
             queryset = queryset.filter(tenant=self.tenant)
-        queryset = queryset.select_related('customer', 'technician', 'technician__user')
+        queryset = queryset.select_related('customer', 'technician', 'technician__user', 'warranty_policy')
         
         if repair_ids:
             queryset = queryset.filter(id__in=repair_ids)
@@ -353,7 +357,8 @@ class InvoiceService:
             discount_description=discounted['discount_description'] if discounted['discount_applied'] else '',
             has_photos=repair.has_photos(),
             before_photo_url=repair.damage_photo_before.url if repair.damage_photo_before else None,
-            after_photo_url=repair.damage_photo_after.url if repair.damage_photo_after else None
+            after_photo_url=repair.damage_photo_after.url if repair.damage_photo_after else None,
+            repair_obj=repair,
         )
     
     def _generate_invoice_number(self, customer_id: int) -> str:
@@ -368,7 +373,9 @@ class InvoiceService:
         repair_ids: Optional[List[int]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        invoice_description: str = ""
+        invoice_description: str = "",
+        invoice_number: Optional[str] = None,
+        invoice_date: Optional[datetime] = None,
     ) -> InvoiceData:
         """
         Build complete invoice data structure from repairs.
@@ -378,6 +385,9 @@ class InvoiceService:
             repair_ids: Optional specific repairs to include
             start_date: Optional date range start
             end_date: Optional date range end
+            invoice_number: Override invoice number (use stored value when re-generating PDF
+                for an existing invoice so the number in the PDF matches records).
+            invoice_date: Override invoice date (use stored value when re-generating PDF).
             
         Returns:
             InvoiceData object ready for PDF generation
@@ -453,9 +463,16 @@ class InvoiceService:
             'NET60': 'Net 60',
         }
         
+        # Use caller-supplied values when re-generating a PDF for an existing invoice
+        # so the number and date in the PDF match the stored Invoice record.
+        # Without this, every PDF download shows a brand-new number like
+        # INV-5-20260321123456 instead of the original INV-5-20260101080000.
+        resolved_invoice_number = invoice_number or self._generate_invoice_number(customer_id)
+        resolved_invoice_date = invoice_date if invoice_date is not None else timezone.now()
+
         return InvoiceData(
-            invoice_number=self._generate_invoice_number(customer_id),
-            invoice_date=timezone.now(),
+            invoice_number=resolved_invoice_number,
+            invoice_date=resolved_invoice_date,
             customer_name=customer.name,  # Preserve original casing
             customer_email=customer.email,
             customer_address='\n'.join(address_parts) if address_parts else None,
@@ -474,13 +491,134 @@ class InvoiceService:
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
         )
     
-    def generate_pdf(self, invoice_data: InvoiceData, include_photos: bool = True) -> bytes:
+    def _apply_watermark(self, pdf_buffer, status_text, color_hex, diagonal=True):
+        """Overlay a watermark ON TOP of an existing PDF."""
+        from reportlab.lib import colors as rl_colors
+        from reportlab.pdfgen import canvas as rl_canvas
+        try:
+            from PyPDF2 import PdfReader, PdfWriter
+        except ImportError:
+            # PyPDF2 not available — fall back to no watermark
+            logger.warning("PyPDF2 not installed — cannot apply watermark")
+            return pdf_buffer
+
+        # Create watermark PDF
+        watermark_buffer = io.BytesIO()
+        c = rl_canvas.Canvas(watermark_buffer, pagesize=letter)
+        stamp_color = rl_colors.HexColor(color_hex)
+
+        if diagonal:
+            c.saveState()
+            c.translate(letter[0] / 2, letter[1] / 2)
+            c.rotate(45)
+            c.setFont('Helvetica-Bold', 120)
+            c.setFillColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.25
+            ))
+            c.drawCentredString(0, 0, status_text)
+            c.restoreState()
+        else:
+            # Top-right corner badge
+            badge_w, badge_h = 120, 28
+            x = letter[0] - badge_w - 36
+            y = letter[1] - badge_h - 36
+            c.saveState()
+            c.setFillColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.12
+            ))
+            c.roundRect(x, y, badge_w, badge_h, 6, fill=1, stroke=0)
+            c.setStrokeColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.4
+            ))
+            c.setLineWidth(1)
+            c.roundRect(x, y, badge_w, badge_h, 6, fill=0, stroke=1)
+            c.setFont('Helvetica-Bold', 14)
+            c.setFillColor(rl_colors.Color(
+                stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.7
+            ))
+            c.drawCentredString(x + badge_w / 2, y + 8, status_text)
+            c.restoreState()
+
+        c.save()
+        watermark_buffer.seek(0)
+
+        # Merge watermark on top of each page
+        reader = PdfReader(pdf_buffer)
+        watermark_reader = PdfReader(watermark_buffer)
+        watermark_page = watermark_reader.pages[0]
+        writer = PdfWriter()
+
+        for page in reader.pages:
+            page.merge_page(watermark_page)
+            writer.add_page(page)
+
+        output = io.BytesIO()
+        writer.write(output)
+        return output
+
+    def _make_status_stamp_callback(self, status_text, color_hex, diagonal=True):
+        """Create an onPage callback that draws a watermark stamp.
+        
+        Args:
+            status_text: Text to display (e.g. 'PAID', 'VOID', 'OVERDUE')
+            color_hex: Color for the stamp
+            diagonal: If True, draw at 45° across the page. If False, draw as
+                a subtle banner at the top right corner.
+        """
+        from reportlab.lib import colors as rl_colors
+
+        def _stamp(canvas, doc):
+            if not status_text:
+                return
+            canvas.saveState()
+            stamp_color = rl_colors.HexColor(color_hex)
+
+            if diagonal:
+                # Big diagonal watermark (PAID, VOID) — drawn OVER content
+                canvas.translate(letter[0] / 2, letter[1] / 2)
+                canvas.rotate(45)
+                canvas.setFont('Helvetica-Bold', 120)
+                canvas.setFillColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.25
+                ))
+                canvas.drawCentredString(0, 0, status_text)
+            else:
+                # Top-right corner badge (OVERDUE — visible but not aggressive)
+                badge_w, badge_h = 120, 28
+                x = letter[0] - badge_w - 36  # 0.5" from right edge
+                y = letter[1] - badge_h - 36  # 0.5" from top
+                # Background pill
+                canvas.setFillColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.12
+                ))
+                canvas.roundRect(x, y, badge_w, badge_h, 6, fill=1, stroke=0)
+                # Border
+                canvas.setStrokeColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.4
+                ))
+                canvas.setLineWidth(1)
+                canvas.roundRect(x, y, badge_w, badge_h, 6, fill=0, stroke=1)
+                # Text
+                canvas.setFont('Helvetica-Bold', 14)
+                canvas.setFillColor(rl_colors.Color(
+                    stamp_color.red, stamp_color.green, stamp_color.blue, alpha=0.7
+                ))
+                canvas.drawCentredString(x + badge_w / 2, y + 8, status_text)
+
+            canvas.restoreState()
+
+        return _stamp
+
+    def generate_pdf(self, invoice_data: InvoiceData, include_photos: bool = True,
+                     invoice_status: str = '') -> bytes:
         """
         Generate PDF invoice from InvoiceData.
         
         Args:
             invoice_data: Complete invoice data
             include_photos: Whether to include repair photos
+            invoice_status: Optional invoice status (PAID, OVERDUE, CANCELLED)
+                to stamp on the PDF as a diagonal watermark.
             
         Returns:
             PDF file as bytes
@@ -744,6 +882,48 @@ class InvoiceService:
         
         story.append(totals_table)
         
+        # Warranty Terms Section
+        warranty_terms = []
+        for item in invoice_data.line_items:
+            if hasattr(item, 'repair_obj') and item.repair_obj and item.repair_obj.warranty_policy:
+                policy = item.repair_obj.warranty_policy
+                summary = getattr(policy, 'terms_summary', '')
+                if summary:
+                    warranty_terms.append(f"WARRANTY: {summary}")
+                else:
+                    term = f"Unit {item.unit_number}: {policy.name}"
+                    if policy.duration_type == 'lifetime':
+                        term += " \u2014 Lifetime Warranty"
+                    elif policy.duration_type == 'custom_days':
+                        term += f" \u2014 {policy.duration_days}-day Warranty"
+                    if policy.coverage_description:
+                        term += f" ({policy.coverage_description})"
+                    warranty_terms.append(term)
+
+        if warranty_terms:
+            story.append(Spacer(1, 20))
+            story.append(Paragraph(
+                "<b>Warranty Terms</b>",
+                ParagraphStyle(
+                    name='WarrantyHeader',
+                    parent=self.styles['Normal'],
+                    fontSize=11,
+                    textColor=colors.HexColor('#065f46'),
+                )
+            ))
+            story.append(Spacer(1, 5))
+            for term in warranty_terms:
+                story.append(Paragraph(
+                    f"\u26d1 {term}",
+                    ParagraphStyle(
+                        name='WarrantyTerm',
+                        parent=self.styles['Normal'],
+                        fontSize=9,
+                        textColor=colors.HexColor('#374151'),
+                        leftIndent=10,
+                    )
+                ))
+
         # Footer note (configurable via BillingConfig)
         footer_text = getattr(self, 'INVOICE_FOOTER', 'Thank you for your business!')
         story.append(Spacer(1, 40))
@@ -758,8 +938,26 @@ class InvoiceService:
             )
         ))
         
-        # Build PDF
+        # Build PDF — add status watermark stamp if applicable
+        # (label, color, diagonal?)
+        stamp_map = {
+            'PAID': ('PAID', '#22C55E', True),         # green diagonal
+            'OVERDUE': ('OVERDUE', '#EF4444', False),   # red corner badge (not aggressive)
+            'CANCELLED': ('VOID', '#991B1B', True),     # dark red diagonal
+        }
+        stamp_callback = None
+        if invoice_status in stamp_map:
+            label, color, diagonal = stamp_map[invoice_status]
+            stamp_callback = self._make_status_stamp_callback(label, color, diagonal=diagonal)
+
         doc.build(story)
+
+        # Apply watermark AFTER building — draws on top of content
+        if invoice_status in stamp_map:
+            label, color, diagonal = stamp_map[invoice_status]
+            buffer.seek(0)
+            buffer = self._apply_watermark(buffer, label, color, diagonal)
+            buffer.seek(0)
         
         # Get the PDF bytes
         pdf_bytes = buffer.getvalue()
@@ -774,7 +972,10 @@ class InvoiceService:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         include_photos: bool = False,  # Photos disabled by default for now
-        invoice_description: str = ""
+        invoice_description: str = "",
+        invoice_number: Optional[str] = None,
+        invoice_date: Optional[datetime] = None,
+        invoice_status: str = '',
     ) -> Tuple[bytes, InvoiceData]:
         """
         Generate a complete invoice PDF.
@@ -785,6 +986,10 @@ class InvoiceService:
             start_date: Optional date range start  
             end_date: Optional date range end
             include_photos: Whether to embed photos (increases file size)
+            invoice_number: Override invoice number (pass the stored Invoice.invoice_number
+                when re-generating a PDF for an existing invoice so the PDF content matches
+                the number shown in the owner portal and emailed to the customer).
+            invoice_date: Override invoice date (pass Invoice.invoice_date for same reason).
             
         Returns:
             Tuple of (PDF bytes, InvoiceData)
@@ -794,10 +999,13 @@ class InvoiceService:
             repair_ids=repair_ids,
             start_date=start_date,
             end_date=end_date,
-            invoice_description=invoice_description
+            invoice_description=invoice_description,
+            invoice_number=invoice_number,
+            invoice_date=invoice_date,
         )
 
-        pdf_bytes = self.generate_pdf(invoice_data, include_photos=include_photos)
+        pdf_bytes = self.generate_pdf(invoice_data, include_photos=include_photos,
+                                       invoice_status=invoice_status)
         
         return pdf_bytes, invoice_data
 
@@ -805,12 +1013,20 @@ class InvoiceService:
 # Convenience functions
 def generate_customer_invoice(
     customer_id: int,
+    tenant=None,
     repair_ids: Optional[List[int]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None
 ) -> Tuple[bytes, InvoiceData]:
-    """Convenience function to generate an invoice"""
-    service = InvoiceService()
+    """Convenience function to generate an invoice.
+    
+    Args:
+        tenant: Required. The Tenant instance to scope the invoice to.
+                Without it, repairs are unscoped and branding info is blank.
+    """
+    if tenant is None:
+        logger.warning("generate_customer_invoice called without tenant — invoice will lack company info")
+    service = InvoiceService(tenant=tenant)
     return service.generate_invoice(
         customer_id=customer_id,
         repair_ids=repair_ids,
@@ -819,7 +1035,14 @@ def generate_customer_invoice(
     )
 
 
-def get_invoiceable_repairs(customer_id: int) -> QuerySet:
-    """Get all completed repairs that can be invoiced for a customer"""
-    service = InvoiceService()
+def get_invoiceable_repairs(customer_id: int, tenant=None) -> QuerySet:
+    """Get all completed repairs that can be invoiced for a customer.
+    
+    Args:
+        tenant: Required. The Tenant instance to scope queries to.
+                Without it, repairs from ALL tenants may be returned.
+    """
+    if tenant is None:
+        logger.warning("get_invoiceable_repairs called without tenant — results may be unscoped")
+    service = InvoiceService(tenant=tenant)
     return service.get_completed_repairs(customer_id=customer_id)

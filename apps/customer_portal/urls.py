@@ -19,6 +19,7 @@ urlpatterns = [
     path('repairs/<int:repair_id>/approve/', views.customer_repair_approve, name='customer_repair_approve'),
     path('repairs/<int:repair_id>/deny/', views.customer_repair_deny, name='customer_repair_deny'),
     path('repairs/request/', views.request_repair, name='customer_request_repair'),
+    path('repairs/<int:repair_id>/apply-reward/', views.customer_apply_reward, name='customer_apply_reward'),
     path('repairs/bulk-action/', views.customer_bulk_action, name='customer_bulk_action'),
 
     # Replacements management
@@ -49,6 +50,7 @@ urlpatterns = [
     
     # Rewards and referrals dashboard
     path('rewards/', views.customer_rewards_redirect, name='customer_rewards'),
+    path('rewards/points-history/', views.customer_points_history, name='customer_points_history'),
     
     # API endpoints for data visualization
     path('api/unit-repair-data/', views.unit_repair_data_api, name='unit_repair_data_api'),

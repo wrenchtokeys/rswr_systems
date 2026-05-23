@@ -1,0 +1,35 @@
+{% extends "base_auth.html" %}
+
+{% block title %}Confirmation Link Invalid | RS Systems{% endblock %}
+
+{% block content %}
+<div class="flex min-h-screen bg-gray-50 items-center justify-center px-6 py-12">
+    <div class="w-full max-w-md">
+        <div class="bg-white rounded-xl shadow-lg p-8 text-center">
+            <!-- Icon -->
+            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-exclamation-triangle text-red-500 text-2xl"></i>
+            </div>
+
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">Link Expired or Invalid</h2>
+            <p class="text-gray-500 mb-6">
+                This confirmation link is no longer valid. It may have expired (links are valid
+                for 24 hours) or already been used.
+            </p>
+
+            <a href="{% url 'resend_confirmation_email' uidb64=uidb64 %}"
+               class="inline-block w-full py-3 px-4 border border-transparent rounded-lg shadow-sm
+                      text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700
+                      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                      transition-colors mb-4">
+                <i class="fas fa-paper-plane mr-2"></i>
+                Send a New Confirmation Email
+            </a>
+
+            <a href="{% url 'login' %}" class="text-sm text-gray-500 hover:text-gray-700 underline">
+                Already confirmed? Log in
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

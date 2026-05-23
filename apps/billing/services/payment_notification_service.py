@@ -152,35 +152,43 @@ class PaymentNotificationService:
             return False
 
         try:
-            status_text = 'PAID IN FULL' if invoice.status == 'PAID' else f'${invoice.amount_due} remaining'
+            status_text = 'PAID IN FULL' if invoice.status == 'PAID' else f'${invoice.amount_due:.2f} remaining'
 
             subject = (
-                f"💰 Payment: ${payment.amount} from {customer.name} "
+                f"💰 Payment: ${payment.amount:.2f} from {customer.name} "
                 f"({status_text})"
             )
 
-            body = (
-                f"Payment received!\n\n"
-                f"Customer:       {customer.name}\n"
-                f"Invoice:        {invoice.invoice_number}\n"
-                f"Amount:         ${payment.amount}\n"
-                f"Method:         {payment.get_payment_method_display()}\n"
-                f"Date:           {payment.payment_date}\n"
-                f"{'Reference:      ' + payment.reference_number + chr(10) if payment.reference_number else ''}"
-                f"\n"
-                f"Invoice Total:  ${invoice.total}\n"
-                f"Total Paid:     ${invoice.amount_paid}\n"
-                f"Balance:        ${invoice.amount_due}\n"
-                f"Status:         {invoice.get_status_display()}\n"
-            )
+            tenant = getattr(invoice, 'tenant', None)
 
-            email = EmailMultiAlternatives(
+            detail_rows = [
+                ('Customer', customer.name),
+                ('Invoice', invoice.invoice_number),
+                ('Amount', f'${payment.amount:.2f}'),
+                ('Method', payment.get_payment_method_display()),
+                ('Date', str(payment.payment_date)),
+            ]
+            if payment.reference_number:
+                detail_rows.append(('Reference', payment.reference_number))
+            detail_rows.extend([
+                ('', ''),  # spacer
+                ('Invoice Total', f'${invoice.total:.2f}'),
+                ('Total Paid', f'${invoice.amount_paid:.2f}'),
+                ('Balance', f'${invoice.amount_due:.2f}'),
+                ('Status', invoice.get_status_display()),
+            ])
+
+            from core.email_utils import send_branded_email
+            send_branded_email(
                 subject=subject,
-                body=body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[owner_email],
+                recipient_list=[owner_email],
+                headline=f'Payment Received — ${payment.amount:.2f}',
+                body_paragraphs=[
+                    f'{customer.name} just paid ${payment.amount:.2f} on invoice {invoice.invoice_number}.',
+                ],
+                detail_rows=detail_rows,
+                tenant=tenant,
             )
-            email.send()
 
             logger.info(
                 f"Owner notified of ${payment.amount} payment from {customer.name}"
@@ -201,6 +209,12 @@ class PaymentNotificationService:
         Returns:
             dict: {customer_sent: bool, owner_sent: bool}
         """
+        # Refresh the invoice from DB to get post-payment totals.
+        # Payment.save() calls _update_invoice_totals() which updates
+        # amount_paid/status in the DB, but the in-memory invoice object
+        # on `payment.invoice` may still hold stale pre-payment values.
+        payment.invoice.refresh_from_db()
+
         result = {
             'customer_sent': False,
             'owner_sent': False,

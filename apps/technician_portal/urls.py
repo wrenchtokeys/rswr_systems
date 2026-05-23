@@ -22,14 +22,20 @@ urlpatterns = [
     path('repairs/<int:repair_id>/update/', views.update_repair, name='update_repair'),
     path('repairs/<int:repair_id>/update-status/', views.update_queue_status, name='update_queue_status'),
     path('repairs/<int:repair_id>/collect-payment/', views.tech_collect_payment, name='tech_collect_payment'),
+    path('repairs/<int:repair_id>/delete/', views.delete_repair, name='delete_repair'),
+    path('repairs/<int:repair_id>/restore/', views.restore_repair, name='restore_repair'),
+    path('repairs/archived/', views.archived_repairs, name='archived_repairs'),
     path('check-existing-repair/', views.check_existing_repair, name='check_existing_repair'),
     path('repairs/bulk-action/', views.bulk_repair_action, name='tech_bulk_repair_action'),
+    path('repairs/<int:repair_id>/reassign/', views.admin_reassign_repair, name='admin_reassign_repair'),
+    path('repairs/bulk-reassign/', views.portal_bulk_reassign, name='portal_bulk_reassign'),
     path('api/batch-pricing/', views.get_batch_pricing_json, name='get_batch_pricing'),
     path('api/viscosity-suggestion/', views.get_viscosity_suggestion, name='get_viscosity_suggestion'),
 
     # Multi-break batch management (technician portal)
     path('batch/<uuid:batch_id>/', views.technician_batch_detail, name='technician_batch_detail'),
     path('batch/<uuid:batch_id>/start-work/', views.technician_batch_start_work, name='technician_batch_start_work'),
+    path('batch/<uuid:batch_id>/complete-all/', views.batch_complete_all, name='batch_complete_all'),
     
     # Customer management
     path('customers/', views.customer_list, name='technician_customers'),
@@ -59,10 +65,14 @@ urlpatterns = [
     path('verify-email/<str:uidb64>/<str:token>/', views.confirm_email_verification, name='confirm_email_verification'),
     path('verify-phone/confirm/', views.confirm_phone_verification, name='confirm_phone_verification'),
 
+    # Warranty Claim
+    path('repairs/<int:repair_id>/warranty-claim/', views.create_warranty_claim, name='create_warranty_claim'),
+
     # Manager Settings
     path('settings/', views.manager_settings_dashboard, name='manager_settings_dashboard'),
     path('settings/viscosity/', views.manage_viscosity_rules, name='manage_viscosity_rules'),
     path('settings/team/', views.team_overview, name='team_overview'),
+    path('settings/warranty/', views.manage_warranty_policies, name='manage_warranty_policies'),
 
     # Manager Settings API endpoints
     path('settings/api/viscosity/create/', views.create_viscosity_rule, name='create_viscosity_rule'),
@@ -70,4 +80,11 @@ urlpatterns = [
     path('settings/api/viscosity/<int:rule_id>/update/', views.update_viscosity_rule, name='update_viscosity_rule'),
     path('settings/api/viscosity/<int:rule_id>/delete/', views.delete_viscosity_rule, name='delete_viscosity_rule'),
     path('settings/api/viscosity/<int:rule_id>/toggle/', views.toggle_viscosity_rule, name='toggle_viscosity_rule'),
+
+    # Warranty Policy API endpoints
+    path('settings/api/warranty/create/', views.create_warranty_policy, name='create_warranty_policy'),
+    path('settings/api/warranty/<int:policy_id>/', views.get_warranty_policy, name='get_warranty_policy'),
+    path('settings/api/warranty/<int:policy_id>/update/', views.update_warranty_policy, name='update_warranty_policy'),
+    path('settings/api/warranty/<int:policy_id>/delete/', views.delete_warranty_policy, name='delete_warranty_policy'),
+    path('settings/api/warranty/<int:policy_id>/toggle/', views.toggle_warranty_policy, name='toggle_warranty_policy'),
 ]

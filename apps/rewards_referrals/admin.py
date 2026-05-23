@@ -2,7 +2,16 @@ from django.contrib import admin
 from django.db.models import Count
 from django.utils import timezone
 from rs_systems.admin_mixins import TenantFilterMixin
-from .models import ReferralCode, Referral, Reward, RewardOption, RewardRedemption, RewardType
+from .models import (
+    LoyaltyConfig,
+    PointTransaction,
+    ReferralCode,
+    Referral,
+    Reward,
+    RewardOption,
+    RewardRedemption,
+    RewardType,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -41,6 +50,46 @@ class CustomerUserTenantFilterMixin:
                 filters = [tenant_filter] + filters
         return filters
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, admin change forms show ALL records across ALL tenants
+        in FK dropdown menus — a cross-tenant data leak.
+
+        Handles two cases:
+        1. FK targets with a direct 'tenant' field (e.g. RewardOption)
+        2. FK targets that reach tenant via customer (e.g. CustomerUser → customer → tenant)
+
+        (CODE-233)
+        """
+        if not request.user.is_superuser:
+            related_model = db_field.related_model
+            tenant_ids = self._get_user_tenant_ids(request)
+
+            # Case 1: target model has a direct 'tenant' FK
+            has_direct_tenant = any(
+                f.name == 'tenant'
+                for f in related_model._meta.get_fields()
+                if hasattr(f, 'name') and hasattr(f, 'related_model')
+            )
+            if has_direct_tenant:
+                kwargs['queryset'] = related_model._default_manager.filter(
+                    tenant__in=tenant_ids
+                )
+            else:
+                # Case 2: target reaches tenant via 'customer' FK
+                has_customer = any(
+                    f.name == 'customer'
+                    for f in related_model._meta.get_fields()
+                    if hasattr(f, 'name') and hasattr(f, 'related_model')
+                )
+                if has_customer:
+                    kwargs['queryset'] = related_model._default_manager.filter(
+                        customer__tenant__in=tenant_ids
+                    )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_tenant_display(self, obj):
         """Helper for list_display: shows tenant name."""
         try:
@@ -69,8 +118,8 @@ class RewardOptionAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_per_page = 25
 
     fieldsets = [
-        ('Basic Information', {
-            'fields': ['name', 'description', 'points_required', 'is_active']
+        ('Tenant & Basic Information', {
+            'fields': ['tenant', 'name', 'description', 'points_required', 'is_active']
         }),
         ('Reward Type', {
             'fields': ['reward_type']
@@ -184,6 +233,48 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
             return f"Unit #{obj.applied_to_repair.unit_number} - {obj.applied_to_repair.damage_type}"
         return "Not applied"
     get_applied_to_repair.short_description = 'Applied To Repair'
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        RewardRedemptionAdmin uses autocomplete_fields for reward_option,
+        assigned_technician, applied_to_repair, and processed_by.  The
+        autocomplete *search* results are scoped by the target admin's
+        get_queryset() (e.g. TechnicianAdmin uses TenantFilterMixin), but the
+        form's ModelChoiceField validation is NOT — it defaults to the
+        model's full queryset.  A non-superuser can bypass the autocomplete UI
+        and POST an arbitrary cross-tenant FK id; Django validates it against
+        the unrestricted queryset and silently accepts it.
+
+        Fix: scope reward_option, assigned_technician, and applied_to_repair
+        to the current user's tenant(s).  processed_by (User) is left
+        unrestricted since it has no tenant FK and is auto-set in save_model.
+
+        (CODE-234)
+        """
+        if not request.user.is_superuser:
+            from apps.tenants.models import TenantMembership
+            tenant_ids = list(
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
+            if db_field.name == 'reward_option':
+                from apps.rewards_referrals.models import RewardOption
+                kwargs['queryset'] = RewardOption.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'assigned_technician':
+                from apps.technician_portal.models import Technician
+                kwargs['queryset'] = Technician.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'applied_to_repair':
+                from apps.technician_portal.models import Repair
+                kwargs['queryset'] = Repair.objects.filter(tenant__in=tenant_ids)
+            elif db_field.name == 'reward':
+                from apps.rewards_referrals.models import Reward
+                kwargs['queryset'] = Reward.objects.filter(
+                    customer_user__customer__tenant__in=tenant_ids
+                )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     def save_model(self, request, obj, form, change):
         if change and 'status' in form.changed_data:
@@ -325,6 +416,32 @@ class ReferralAdmin(admin.ModelAdmin):
             filters = ['referral_code__customer_user__customer__tenant'] + filters
         return filters
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """
+        Restrict FK dropdowns to the user's tenant(s) for non-superusers.
+
+        Without this, the referral_code and customer_user dropdowns show ALL
+        records across ALL tenants — a cross-tenant data leak.  (CODE-233)
+        """
+        if not request.user.is_superuser:
+            from apps.tenants.models import TenantMembership
+            tenant_ids = (
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
+            if db_field.name == 'referral_code':
+                from apps.rewards_referrals.models import ReferralCode
+                kwargs['queryset'] = ReferralCode.objects.filter(
+                    customer_user__customer__tenant__in=tenant_ids
+                )
+            elif db_field.name == 'customer_user':
+                from apps.customer_portal.models import CustomerUser
+                kwargs['queryset'] = CustomerUser.objects.filter(
+                    customer__tenant__in=tenant_ids
+                )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     def get_tenant_display(self, obj):
         try:
             return obj.referral_code.customer_user.customer.tenant.name
@@ -366,3 +483,68 @@ class RewardTypeAdmin(admin.ModelAdmin):
             'fields': ['discount_type', 'discount_value']
         }),
     ]
+
+
+@admin.register(LoyaltyConfig)
+class LoyaltyConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """Admin for per-tenant loyalty program configuration."""
+    list_display = ['tenant', 'program_name', 'points_per_repair', 'is_active', 'updated_at']
+    list_filter = ['is_active']
+    search_fields = ['tenant__name', 'program_name']
+    list_select_related = ['tenant']
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = [
+        ('Tenant', {
+            'fields': ['tenant', 'program_name', 'is_active']
+        }),
+        ('Point Values', {
+            'fields': [
+                'points_per_repair',
+                'referral_bonus_referrer', 'referral_bonus_referred',
+                'milestone_5_bonus', 'milestone_10_bonus', 'milestone_25_bonus',
+                'points_for_review', 'points_for_early_payment',
+            ]
+        }),
+        ('Expiry', {
+            'fields': ['points_expiry_days', 'expiry_warning_days']
+        }),
+        ('Timestamps', {
+            'fields': ['created_at', 'updated_at'],
+            'classes': ['collapse']
+        }),
+    ]
+
+
+@admin.register(PointTransaction)
+class PointTransactionAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """Admin for the immutable point ledger."""
+    list_display = [
+        'tenant', 'get_customer_email', 'amount', 'balance_after',
+        'transaction_type', 'description', 'created_at',
+    ]
+    list_filter = ['tenant', 'transaction_type', 'created_at']
+    search_fields = ['customer_user__user__email', 'description']
+    list_select_related = ['tenant', 'customer_user__user']
+    readonly_fields = [
+        'tenant', 'customer_user', 'amount', 'balance_after',
+        'transaction_type', 'description', 'related_repair',
+        'related_redemption', 'related_payment', 'expires_at',
+        'expired', 'created_at', 'created_by',
+    ]
+    date_hierarchy = 'created_at'
+    list_per_page = 50
+
+    def get_customer_email(self, obj):
+        return obj.customer_user.user.email
+    get_customer_email.short_description = 'Customer'
+    get_customer_email.admin_order_field = 'customer_user__user__email'
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

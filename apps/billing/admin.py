@@ -12,14 +12,30 @@ Author: Amelia (Clawdbot AI)
 
 import csv
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db.models import Count
 from django.http import HttpResponse
 from django.utils.html import format_html
 from django.urls import reverse
 from decimal import Decimal
 
-from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate
+
+def _csv_safe(value):
+    """
+    Neutralise CSV formula injection.
+
+    Spreadsheet applications treat a cell value as a formula when it starts
+    with '=', '+', '-', or '@'.  Prefix such strings with a single-quote (')
+    to force text mode.  Mirrors the same helper in technician_portal/admin.py
+    and saas/views.py (CODE-214).
+    """
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
+
+from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate, PlatformConfig, PlatformFeeRecord
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -97,11 +113,19 @@ class BillingConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
 
 
 class InvoiceLineItemInline(admin.TabularInline):
-    """Inline display of line items on invoice."""
+    """Inline display of line items on invoice.
+
+    repair_date and unit_number are stored on the line item itself (denormalized
+    from the linked repair at creation time) so they persist even if the repair
+    is edited later.  They were listed in readonly_fields but NOT in fields,
+    which meant Django never rendered them in the tabular inline — admins had no
+    way to see which date/unit a line item corresponded to without clicking
+    through to the repair.  Added to fields so they actually appear.  (CODE-197)
+    """
     model = InvoiceLineItem
     extra = 0
     readonly_fields = ['repair_link', 'repair_date', 'unit_number']
-    fields = ['description', 'quantity', 'unit_price', 'discount', 'amount', 'repair_link']
+    fields = ['description', 'unit_number', 'repair_date', 'quantity', 'unit_price', 'discount', 'amount', 'repair_link']
     
     def repair_link(self, obj):
         if obj.repair:
@@ -194,7 +218,12 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     def amount_due_display(self, obj):
         due = obj.amount_due
         if due > 0:
-            return format_html('<span style="color: red;">${:,.2f}</span>', due)
+            # format_html wraps args with conditional_escape() before applying
+            # format specs, converting Decimal → SafeString first, which makes
+            # {:,.2f} fail with "Unknown format code 'f' for object of type
+            # 'SafeString'".  Pre-format the number so format_html gets a plain
+            # string to escape-and-insert. (CODE-076)
+            return format_html('<span style="color: red;">${}</span>', f'{due:,.2f}')
         return format_html('<span style="color: green;">$0.00</span>')
     amount_due_display.short_description = 'Due'
     
@@ -226,7 +255,7 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
     line_item_count.short_description = 'Items'
     line_item_count.admin_order_field = '_line_items_count'
     
-    actions = ['mark_as_sent', 'mark_as_overdue', 'export_csv']
+    actions = ['mark_as_sent', 'mark_as_overdue', 'bulk_mark_as_paid', 'bulk_void', 'bulk_delete_invoices', 'export_csv']
 
     @admin.action(description='📥 Export selected invoices as CSV')
     def export_csv(self, request, queryset):
@@ -240,11 +269,11 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
         ])
         for inv in queryset.select_related('customer'):
             writer.writerow([
-                inv.invoice_number,
-                inv.customer.name if inv.customer else '',
+                _csv_safe(inv.invoice_number),
+                _csv_safe(inv.customer.name if inv.customer else ''),
                 inv.invoice_date,
                 inv.due_date,
-                inv.payment_terms,
+                _csv_safe(inv.payment_terms),
                 inv.status,
                 inv.subtotal,
                 inv.tax_amount,
@@ -268,6 +297,132 @@ class InvoiceAdmin(TenantFilterMixin, admin.ModelAdmin):
             status__in=['SENT', 'PARTIAL']
         ).update(status='OVERDUE')
         self.message_user(request, f'{updated} invoice(s) marked as overdue.')
+
+    @admin.action(description='✅ Bulk mark selected invoices as Paid')
+    def bulk_mark_as_paid(self, request, queryset):
+        """
+        Create a Payment record for each unpaid invoice so payment history and
+        paid_at are correctly set.  Mirrors the logic in owner_invoice_bulk_action.
+        """
+        from django.utils import timezone as _tz
+        from django.db import transaction
+
+        payable = queryset.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT'])
+        updated = 0
+        for inv in payable:
+            remaining = inv.amount_due
+            if remaining <= 0:
+                continue
+            try:
+                with transaction.atomic():
+                    Payment.objects.create(
+                        invoice=inv,
+                        amount=remaining,
+                        payment_method='OTHER',
+                        notes='Bulk marked as paid via admin',
+                        recorded_by=request.user,
+                        payment_date=_tz.now().date(),
+                    )
+                updated += 1
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Admin bulk_mark_as_paid: could not create payment for invoice {inv.id}: {e}"
+                )
+        self.message_user(request, f'✅ {updated} invoice(s) marked as paid.')
+
+    @admin.action(description='🚫 Bulk void (cancel) selected invoices')
+    def bulk_void(self, request, queryset):
+        """
+        Void invoices that aren't already PAID, CANCELLED, or PARTIAL.
+        PARTIAL invoices are skipped — they have recorded payments that would be
+        orphaned.  Owners must remove payments first.
+        """
+        voidable = queryset.exclude(status__in=['PAID', 'PARTIAL', 'CANCELLED'])
+        voided = voidable.count()
+        skipped_paid = queryset.filter(status__in=['PAID', 'CANCELLED']).count()
+        skipped_partial = queryset.filter(status='PARTIAL').count()
+        voidable.update(status='CANCELLED')
+        msg = f'🚫 {voided} invoice(s) voided.'
+        if skipped_paid:
+            msg += f' {skipped_paid} already-paid/voided invoice(s) skipped.'
+        if skipped_partial:
+            msg += f' {skipped_partial} partially-paid invoice(s) skipped — remove payments first.'
+        self.message_user(request, msg)
+
+    @admin.action(description='🗑️ Bulk delete DRAFT and CANCELLED invoices')
+    def bulk_delete_invoices(self, request, queryset):
+        """
+        Delete draft and voided (cancelled) invoices that have no payments.
+        Active/paid invoices and invoices with payment records are skipped.
+        """
+        from django.db.models import ProtectedError
+
+        candidates = queryset.filter(status__in=['DRAFT', 'CANCELLED'])
+        has_payments_ids = set(
+            Payment.objects.filter(invoice__in=candidates)
+            .values_list('invoice_id', flat=True)
+            .distinct()
+        )
+        safe = candidates.exclude(id__in=has_payments_ids)
+        skipped_active = queryset.exclude(status__in=['DRAFT', 'CANCELLED']).count()
+        skipped_payments = len(has_payments_ids)
+        deleted = safe.count()
+
+        # Use instance loop so Invoice.delete() fires and S3 cleanup runs.
+        # QuerySet.delete() bypasses model overrides (see AGENTS.md gotcha).
+        # (CODE-158: mirrors the same fix applied to owner_invoice_bulk_action
+        # in saas/views.py via CODE-152; the admin action was missed then.)
+        try:
+            for inv in safe:
+                inv.delete()
+        except ProtectedError:
+            self.message_user(
+                request,
+                '❌ Delete failed: one or more invoices have payment records.',
+                level=messages.ERROR,
+            )
+            return
+
+        msg = f'🗑️ {deleted} invoice(s) deleted.'
+        if skipped_active:
+            msg += f' {skipped_active} active invoice(s) skipped (void first).'
+        if skipped_payments:
+            msg += f' {skipped_payments} voided invoice(s) with payments skipped.'
+        self.message_user(request, msg)
+
+    def delete_queryset(self, request, queryset):
+        """
+        Override the default admin 'Delete selected' action to apply the same
+        safety logic as bulk_delete_invoices.
+
+        Django's default QuerySet.delete() bypasses Python-level model .delete()
+        overrides, so without this:
+          1. ANY invoice status could be deleted (including PAID/SENT/PARTIAL) —
+             not just DRAFT/CANCELLED.
+          2. Invoice.delete() (which calls _delete_s3_object()) never fires,
+             orphaning PDF objects in S3.
+          3. Payment records are NOT checked — invoices with payments could be
+             deleted, leaving orphaned Payment rows pointing at a ghost invoice.
+
+        This mirrors the same bug fixed for RepairAdmin (CODE-167) and
+        PaymentAdmin.  InvoiceAdmin was the last admin class with a bulk-delete
+        action that lacked a matching delete_queryset() override.
+
+        (CODE-168)
+        """
+        candidates = queryset.filter(status__in=['DRAFT', 'CANCELLED'])
+        has_payments_ids = set(
+            Payment.objects.filter(invoice__in=candidates)
+            .values_list('invoice_id', flat=True)
+            .distinct()
+        )
+        safe = candidates.exclude(id__in=has_payments_ids)
+
+        # Iterate instance-by-instance so Invoice.delete() fires for each row,
+        # which calls _delete_s3_object() to clean up PDF objects in S3.
+        for inv in safe:
+            inv.delete()
 
 
 @admin.register(Payment)
@@ -307,6 +462,24 @@ class PaymentAdmin(TenantFilterMixin, admin.ModelAdmin):
     amount_display.short_description = 'Amount'
     amount_display.admin_order_field = 'amount'
 
+    def delete_queryset(self, request, queryset):
+        """
+        Override admin bulk-delete to call Payment.delete() on each instance.
+
+        Django's default QuerySet.delete() fires a SQL DELETE directly, bypassing
+        Python-level model .delete() overrides.  Payment.delete() (added in
+        CODE-118) reconciles invoice.amount_paid / status after each payment is
+        removed — without this override, bulk deletion via the admin changelist
+        would leave invoices stuck as PAID with $0 payments, or with stale
+        amount_paid balances.
+
+        We iterate instance-by-instance here to ensure the reconciliation logic
+        fires for every deleted row.  This is safe because admin bulk-delete is
+        low-frequency (it's a manual superuser action) and the dataset is small.
+        """
+        for payment in queryset:
+            payment.delete()
+
 
 # =============================================================================
 # TAX RATES
@@ -326,6 +499,9 @@ class TaxRateAdmin(TenantFilterMixin, admin.ModelAdmin):
     readonly_fields = ['total_rate']
 
     fieldsets = (
+        ('Tenant', {
+            'fields': ('tenant',),
+        }),
         ('Location', {
             'fields': ('city', 'county', 'state', 'zip_code'),
         }),
@@ -336,3 +512,109 @@ class TaxRateAdmin(TenantFilterMixin, admin.ModelAdmin):
             'fields': ('effective_date', 'is_active'),
         }),
     )
+
+
+# =============================================================================
+# PLATFORM CONFIGURATION (Singleton)
+# =============================================================================
+
+@admin.register(PlatformConfig)
+class PlatformConfigAdmin(admin.ModelAdmin):
+    """
+    Admin for the global platform Stripe Connect fee configuration.
+    This is a singleton model — only one record ever exists (pk=1).
+    Only superusers should edit this.
+    """
+    list_display = ['default_fee_percent', 'competition_pool_enabled', 'competition_pool_fee_percent', 'updated_at']
+    readonly_fields = ['updated_at']
+
+    fieldsets = (
+        ('Stripe Connect Fees', {
+            'fields': ('default_fee_percent',),
+            'description': (
+                'Platform fee percentage charged on each connected-account invoice payment '
+                '(e.g. 2.50 = 2.5%). Set to 0.00 to disable.'
+            ),
+        }),
+        ('Competition Pool', {
+            'fields': ('competition_pool_enabled', 'competition_pool_fee_percent'),
+            'description': (
+                'When enabled, a portion of subscription revenue is routed to a competition prize pool.'
+            ),
+        }),
+        ('Metadata', {
+            'fields': ('updated_at',),
+            'classes': ('collapse',),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        # Prevent manual creation via admin — singleton is auto-created on first access.
+        # Allow add only if no record exists yet (e.g. fresh DB).
+        return request.user.is_superuser and not PlatformConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        # PlatformConfig.delete() raises ValidationError — reflect that in admin.
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
+# =============================================================================
+# PLATFORM FEE RECORDS (Audit Log)
+# =============================================================================
+
+@admin.register(PlatformFeeRecord)
+class PlatformFeeRecordAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Read-only admin for platform fee collection records.
+
+    PlatformFeeRecord is created automatically when a connected-account Stripe
+    payment succeeds. This admin provides superusers with an audit trail and
+    lets shop owners see their own fee history.
+    """
+    list_display = [
+        'id', 'tenant', 'invoice_link', 'fee_amount_display', 'fee_percent',
+        'gross_amount_display', 'stripe_account_id', 'created_at',
+    ]
+    list_filter = ['tenant', 'created_at']
+    search_fields = ['tenant__name', 'payment_intent_id', 'invoice__invoice_number', 'stripe_account_id']
+    readonly_fields = [
+        'tenant', 'invoice', 'payment_intent_id', 'gross_amount', 'fee_amount',
+        'fee_percent', 'stripe_account_id', 'created_at',
+    ]
+    date_hierarchy = 'created_at'
+    list_select_related = ['tenant', 'invoice']
+    list_per_page = 50
+    ordering = ['-created_at']
+
+    def has_add_permission(self, request):
+        # Fee records are created programmatically — never manually.
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Fee records are audit trail — superusers only.
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        # Read-only — fee records must not be edited.
+        return False
+
+    def invoice_link(self, obj):
+        if obj.invoice:
+            url = reverse('admin:billing_invoice_change', args=[obj.invoice.id])
+            return format_html('<a href="{}">{}</a>', url, obj.invoice.invoice_number)
+        return '—'
+    invoice_link.short_description = 'Invoice'
+    invoice_link.admin_order_field = 'invoice__invoice_number'
+
+    def fee_amount_display(self, obj):
+        return f"${obj.fee_amount:,.2f}"
+    fee_amount_display.short_description = 'Fee'
+    fee_amount_display.admin_order_field = 'fee_amount'
+
+    def gross_amount_display(self, obj):
+        return f"${obj.gross_amount:,.2f}"
+    gross_amount_display.short_description = 'Gross'
+    gross_amount_display.admin_order_field = 'gross_amount'

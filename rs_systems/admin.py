@@ -1,4 +1,4 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 from django.contrib.admin.models import LogEntry, ADDITION, CHANGE, DELETION
@@ -40,15 +40,54 @@ class UserTenantFilter(admin.SimpleListFilter):
 class UserAdmin(BaseUserAdmin):
     list_display = ['username', 'email', 'first_name', 'last_name', 'is_staff', 'get_role', 'get_tenant', 'is_active', 'date_joined']
     list_filter = ['is_staff', 'is_active', 'date_joined', 'groups', UserTenantFilter]
-    actions = ['make_technician', 'make_customer', 'make_dual_role', 'deactivate_users', 'activate_users']
+    actions = ['make_technician', 'make_customer', 'make_dual_role', 'deactivate_users', 'activate_users', 'bulk_delete_users']
+
+    def get_queryset(self, request):
+        """
+        Prefetch Technician and CustomerUser reverse relations to eliminate N+1
+        queries in get_role() and get_tenant().
+
+        Without this fix, every row in the 25-user changelist issued up to 4 extra
+        queries (2× exists()/first() for role + 2× first() for tenant) — up to 100
+        queries per page load.  prefetch_related collapses all of those to 2 extra
+        bulk queries regardless of page size. (CODE-097 N+1 fix)
+
+        Both Technician and CustomerUser have OneToOneField → User, so Django's
+        prefetch_related works via the reverse descriptor names 'technician' and
+        'customeruser'.  After prefetching, accessing obj.technician or
+        obj.customeruser hits the in-process cache, not the database.
+        """
+        from django.db.models import Prefetch
+        qs = super().get_queryset(request)
+        return qs.prefetch_related(
+            Prefetch(
+                'technician',
+                queryset=Technician.objects.select_related('tenant'),
+            ),
+            Prefetch(
+                'customeruser',
+                queryset=CustomerUser.objects.select_related('customer__tenant'),
+            ),
+        )
 
     def get_role(self, obj):
-        """Display the user's role (Technician, Customer, or Admin)"""
+        """
+        Display the user's role (Technician, Customer, or Admin).
+
+        Uses the prefetch_related cache populated by get_queryset() — no extra
+        DB queries per row.
+        """
         if obj.is_staff and obj.is_superuser:
             return 'Admin'
 
-        is_technician = Technician.objects.filter(user=obj).exists()
-        is_customer = CustomerUser.objects.filter(user=obj).exists()
+        # Access reverse OneToOneField via prefetch cache.  Django raises
+        # RelatedObjectDoesNotExist (a subclass of AttributeError) when the
+        # related object doesn't exist — use getattr with a sentinel to detect.
+        _missing = object()
+        tech = getattr(obj, 'technician', _missing)
+        cu = getattr(obj, 'customeruser', _missing)
+        is_technician = tech is not _missing and tech is not None
+        is_customer = cu is not _missing and cu is not None
 
         if is_technician and is_customer:
             return 'Tech & Customer'
@@ -61,14 +100,18 @@ class UserAdmin(BaseUserAdmin):
     get_role.short_description = 'Role'
 
     def get_tenant(self, obj):
-        """Display the user's tenant/shop via Technician or CustomerUser."""
-        # Technician has a direct tenant FK
-        tech = Technician.objects.filter(user=obj).select_related('tenant').first()
-        if tech and tech.tenant:
+        """
+        Display the user's tenant/shop via Technician or CustomerUser.
+
+        Uses the prefetch_related cache populated by get_queryset() — no extra
+        DB queries per row.
+        """
+        _missing = object()
+        tech = getattr(obj, 'technician', _missing)
+        if tech is not _missing and tech is not None and tech.tenant:
             return tech.tenant.name
-        # CustomerUser reaches tenant via customer → tenant
-        cu = CustomerUser.objects.filter(user=obj).select_related('customer__tenant').first()
-        if cu and cu.customer and cu.customer.tenant:
+        cu = getattr(obj, 'customeruser', _missing)
+        if cu is not _missing and cu is not None and cu.customer and cu.customer.tenant:
             return cu.customer.tenant.name
         return '—'
     get_tenant.short_description = 'Tenant / Shop'
@@ -126,6 +169,48 @@ class UserAdmin(BaseUserAdmin):
         count = queryset.update(is_active=True)
         self.message_user(request, f'{count} users were successfully activated.')
     activate_users.short_description = 'Activate selected users'
+
+    @admin.action(description='🗑️ Bulk delete selected users (superuser only)')
+    def bulk_delete_users(self, request, queryset):
+        """
+        Hard-delete selected users.
+
+        Superuser-only. Protects against accidental deletion by skipping:
+        - The requesting user themselves
+        - Superusers and staff users
+        - Tenant owners (deleting an owner would orphan the tenant)
+        """
+        from apps.tenants.models import Tenant
+
+        if not request.user.is_superuser:
+            self.message_user(
+                request,
+                '❌ Only superusers can bulk-delete users.',
+                level=messages.ERROR,
+            )
+            return
+
+        owner_ids = set(Tenant.objects.values_list('owner_id', flat=True))
+
+        # Build safe set: exclude self, staff/superusers, and tenant owners
+        safe = queryset.exclude(
+            id=request.user.id
+        ).exclude(
+            is_staff=True
+        ).exclude(
+            is_superuser=True
+        ).exclude(
+            id__in=owner_ids
+        )
+
+        skipped = queryset.count() - safe.count()
+        deleted = safe.count()
+        safe.delete()
+
+        msg = f'🗑️ {deleted} user(s) deleted.'
+        if skipped:
+            msg += f' ⚠️ {skipped} user(s) skipped (self, staff, superusers, or tenant owners).'
+        self.message_user(request, msg)
     
     def get_urls(self):
         urls = super().get_urls()
@@ -245,6 +330,15 @@ class AuditLogAdmin(admin.ModelAdmin):
     """
     Read-only admin view over Django's built-in action log.
     Shows who changed what and when, across all admin-managed models.
+
+    Tenant scoping (CODE-231):
+    LogEntry has no direct tenant FK, but every entry records which user
+    performed the action.  Non-superuser staff should only see log entries
+    made by users who belong to the same tenant(s) — otherwise a Shop A
+    admin could read object_repr strings revealing Shop B's customer names,
+    invoice numbers, and repair details.
+
+    Superusers see all log entries across all tenants.
     """
 
     list_display = [
@@ -257,6 +351,32 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_select_related = ['user', 'content_type']
     list_per_page = 50
     ordering = ['-action_time']
+
+    def get_queryset(self, request):
+        """
+        Scope audit log entries to the current user's tenant(s).
+
+        Non-superusers only see log entries made by users who share at least
+        one active TenantMembership with them.  This prevents cross-tenant
+        data leakage through object_repr and change_message strings.
+        """
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        from apps.tenants.models import TenantMembership
+        # Get all tenant IDs the current user belongs to
+        my_tenant_ids = (
+            TenantMembership.objects
+            .filter(user=request.user, is_active=True)
+            .values_list('tenant_id', flat=True)
+        )
+        # Get all user IDs who are members of those same tenants
+        co_tenant_user_ids = (
+            TenantMembership.objects
+            .filter(tenant_id__in=my_tenant_ids, is_active=True)
+            .values_list('user_id', flat=True)
+        )
+        return qs.filter(user_id__in=co_tenant_user_ids)
 
     # No adding, editing, or deleting audit records
     def has_add_permission(self, request):
@@ -308,6 +428,13 @@ def _global_search_view(request):
     Search across Customers, Repairs, Invoices, and Users in one shot.
     Results are grouped by model type.
     Accessible at /admin/search/
+
+    Tenant scoping (CODE-157):
+    - Superusers see all data across all tenants.
+    - Non-superuser staff see only data belonging to their own tenant(s)
+      (via TenantMembership). Without this restriction a staff user from
+      Shop A could discover customers, repairs, invoices, and user accounts
+      from Shop B simply by searching.
     """
     query = request.GET.get('q', '').strip()
     results = {}
@@ -317,22 +444,66 @@ def _global_search_view(request):
         from apps.technician_portal.models import Repair
         from django.db.models import Q
 
-        customers = Customer.objects.filter(
-            Q(name__icontains=query) | Q(email__icontains=query)
-        ).select_related('tenant')[:20]
+        if request.user.is_superuser:
+            # Superusers: unrestricted access across all tenants.
+            tenant_ids = None
+        else:
+            # Non-superuser staff: restrict to their own tenant(s).
+            from apps.tenants.models import TenantMembership
+            tenant_ids = list(
+                TenantMembership.objects
+                .filter(user=request.user, is_active=True)
+                .values_list('tenant_id', flat=True)
+            )
 
-        repairs = Repair.objects.filter(
-            Q(unit_number__icontains=query) | Q(customer__name__icontains=query)
-        ).select_related('customer', 'tenant')[:20]
+        def _scope_qs(qs, tenant_field):
+            """Apply tenant filter to queryset unless user is superuser."""
+            if tenant_ids is None:
+                return qs
+            return qs.filter(**{f"{tenant_field}__in": tenant_ids})
 
-        invoices = Invoice.objects.filter(
-            Q(invoice_number__icontains=query) | Q(customer__name__icontains=query)
-        ).select_related('customer', 'tenant')[:20]
-
-        users = User.objects.filter(
-            Q(username__icontains=query) | Q(email__icontains=query) |
-            Q(first_name__icontains=query) | Q(last_name__icontains=query)
+        customers = _scope_qs(
+            Customer.objects.filter(
+                Q(name__icontains=query) | Q(email__icontains=query)
+            ).select_related('tenant'),
+            'tenant',
         )[:20]
+
+        repairs = _scope_qs(
+            Repair.objects.filter(
+                Q(unit_number__icontains=query) | Q(customer__name__icontains=query)
+            ).select_related('customer', 'tenant'),
+            'tenant',
+        )[:20]
+
+        invoices = _scope_qs(
+            Invoice.objects.filter(
+                Q(invoice_number__icontains=query) | Q(customer__name__icontains=query)
+            ).select_related('customer', 'tenant'),
+            'tenant',
+        )[:20]
+
+        # Users: superusers see all; non-superusers see only users in their tenant(s)
+        # (technicians and customer users belonging to the same shop).
+        if tenant_ids is None:
+            users = User.objects.filter(
+                Q(username__icontains=query) | Q(email__icontains=query) |
+                Q(first_name__icontains=query) | Q(last_name__icontains=query)
+            )[:20]
+        else:
+            from apps.customer_portal.models import CustomerUser as _CU
+            tech_user_ids = Technician.objects.filter(
+                tenant_id__in=tenant_ids
+            ).values_list('user_id', flat=True)
+            cu_user_ids = _CU.objects.filter(
+                customer__tenant_id__in=tenant_ids
+            ).values_list('user_id', flat=True)
+            users = User.objects.filter(
+                Q(id__in=tech_user_ids) | Q(id__in=cu_user_ids)
+            ).filter(
+                Q(username__icontains=query) | Q(email__icontains=query) |
+                Q(first_name__icontains=query) | Q(last_name__icontains=query)
+            )[:20]
 
         results = {
             'customers': customers,
@@ -356,8 +527,11 @@ _original_get_urls = admin.AdminSite.get_urls
 
 def _custom_get_urls(self):
     original_urls = _original_get_urls(self)
+    from rs_systems.admin_connect_views import admin_connect_accounts_view, admin_platform_config_view
     custom = [
         path('search/', self.admin_view(_global_search_view), name='global_search'),
+        path('connect-accounts/', self.admin_view(admin_connect_accounts_view), name='admin_connect_accounts'),
+        path('platform-config/', self.admin_view(admin_platform_config_view), name='admin_platform_config'),
     ]
     return custom + original_urls
 
