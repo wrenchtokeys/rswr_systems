@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import html
 import io
+import logging
 import os
 import boto3
 from datetime import datetime, timedelta
@@ -24,6 +25,8 @@ from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.utils import timezone
 
 from apps.technician_portal.models import Repair
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

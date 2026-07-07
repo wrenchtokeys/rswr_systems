@@ -86,7 +86,7 @@ if USE_S3:
             },
         },
         "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+            "BACKEND": "rs_systems.storage.ForgivingManifestStaticFilesStorage",
         },
     }
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
@@ -96,7 +96,7 @@ else:
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },
         "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+            "BACKEND": "rs_systems.storage.ForgivingManifestStaticFilesStorage",
         },
     }
     MEDIA_URL = '/media/'

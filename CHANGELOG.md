@@ -2,6 +2,14 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-07-06 (Production 500 on repair form — staticfiles manifest race)
+
+### Fixed
+- **CODE-266 (root cause)** — `/tech/repairs/create/` returned 500 in production: gunicorn started **before** the postdeploy hook ran `collectstatic`, so workers on freshly-booted instances (autoscaling scale-up, immutable updates) loaded an empty staticfiles manifest and cached it for the life of the process. Every `{% static %}` render then raised `ValueError: Missing staticfiles manifest entry`. Collectstatic moved to `.platform/hooks/predeploy/01_collectstatic.sh` (runs against `/var/app/staging` before the app flips and the web service starts, on deploys *and* scale-up self-startup). Removed the now-redundant `leader_only` container command (`.ebextensions/06_static_files.config`) and the postdeploy collectstatic. Same failure signature hit `admin/css/base.css` on the previous instance July 2–4.
+- **CODE-266 (resilience)** — Static storage switched to `rs_systems.storage.ForgivingManifestStaticFilesStorage` (`manifest_strict = False`): a missing manifest entry now falls back to hashing the file on disk instead of turning the whole page into a 500.
+- **CODE-266 (error handler)** — `create_repair()`'s render-failure fallback crashed with `NameError: name 'settings' is not defined` (`settings.DEBUG` check without the import), replacing the intended diagnostic page with a raw 500. Import added.
+- **CODE-267** — `InvoiceEmailService` called `logger.warning()` but the module never defined `logger`. The `NameError` was swallowed by an outer `except Exception: pass`, silently dropping the Stripe payment link from invoice emails whenever payment-token generation failed. Module logger added. (Found via pyflakes undefined-name audit; the audit found no other real instances.)
+
 ## [Unreleased] — 2026-03-26 (Sprint 7 — Cleanup & Registry)
 
 ### Added
