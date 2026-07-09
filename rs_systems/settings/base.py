@@ -160,15 +160,22 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 
 # =========================================
-# EMAIL CONFIGURATION (SendGrid)
+# EMAIL CONFIGURATION (SMTP)
 # =========================================
+# Defaults to SendGrid; overridable via env so switching providers
+# (e.g. Amazon SES: EMAIL_HOST=email-smtp.us-east-1.amazonaws.com,
+# EMAIL_HOST_USER=<SES SMTP username>, EMAIL_HOST_PASSWORD=<SES SMTP
+# password>) is an `eb setenv`, not a code deploy.
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.sendgrid.net'
-EMAIL_PORT = 587
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.sendgrid.net')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'apikey'
-EMAIL_HOST_PASSWORD = os.environ.get('SENDGRID_API_KEY')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'apikey')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD') or os.environ.get('SENDGRID_API_KEY')
+# Cap SMTP connection time — without this a slow/unreachable provider
+# hangs the web worker for the request that triggered the email.
+EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', 10))
 
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
 DEFAULT_FROM_NAME = os.environ.get('DEFAULT_FROM_NAME', 'RS Systems')

@@ -132,6 +132,34 @@ class TechnicianRegistrationForm(UserCreationForm):
             )
         return user
     
+def _clean_customer_email(form):
+    """Shared email cleaning for customer forms.
+
+    Returns None for blank input (the DB stores "no email" as NULL — the
+    unique_customer_email_per_tenant constraint only ignores NULL, so ''
+    must never be saved). Raises a friendly ValidationError when another
+    customer in the same tenant already uses the address; without this the
+    conditional unique constraint surfaces as an IntegrityError 500, since
+    Django's ModelForm validation skips constraints that have a condition.
+    """
+    email = (form.cleaned_data.get('email') or '').strip()
+    if not email:
+        return None
+    tenant = form.tenant or getattr(form.instance, 'tenant', None)
+    qs = Customer.objects.filter(email__iexact=email)
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    if form.instance.pk:
+        qs = qs.exclude(pk=form.instance.pk)
+    existing = qs.first()
+    if existing:
+        raise forms.ValidationError(
+            f'"{existing.name}" already uses this email address. '
+            'Each customer needs a unique email.'
+        )
+    return email
+
+
 class CustomerForm(forms.ModelForm):
     """Form for creating customers with optional portal invitation."""
     
@@ -235,6 +263,9 @@ class CustomerForm(forms.ModelForm):
             raise forms.ValidationError('Batch invoice day must be between 1 and 28.')
         return day
 
+    def clean_email(self):
+        return _clean_customer_email(self)
+
     def clean_phone(self):
         """Normalize phone to digits-only, accept common formats."""
         import re
@@ -293,6 +324,9 @@ class CustomerEditForm(forms.ModelForm):
         self.fields['email'].widget.attrs['placeholder'] = 'billing@company.com'
         self.fields['phone'].widget.attrs['placeholder'] = '+1 (555) 123-4567'
         self.fields['tax_exempt_certificate'].widget.attrs['placeholder'] = 'Certificate number (if exempt)'
+
+    def clean_email(self):
+        return _clean_customer_email(self)
 
 class CustomDateTimeInput(DateTimeInput):
     input_type = 'datetime-local'

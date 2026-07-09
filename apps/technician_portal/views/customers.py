@@ -4,6 +4,7 @@ Customer management views for the technician portal.
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
+from django.db import IntegrityError, transaction
 from django.db.models import Q, Count
 from django.views.decorators.http import require_POST
 
@@ -495,9 +496,23 @@ def edit_customer(request, customer_id):
     if request.method == 'POST':
         form = CustomerEditForm(request.POST, instance=customer, tenant=tenant)
         if form.is_valid():
-            form.save()
-            messages.success(request, f"Customer '{customer.name}' updated successfully.")
-            return redirect('customer_detail', customer_id=customer_id)
+            try:
+                # Savepoint so a constraint violation doesn't poison the
+                # surrounding transaction before we re-render the form.
+                with transaction.atomic():
+                    form.save()
+            except IntegrityError:
+                # Safety net for races the form's clean_email check can miss —
+                # the conditional unique constraints on (tenant, email) and
+                # (tenant, name) otherwise surface as a 500.
+                form.add_error(
+                    None,
+                    'Another customer already uses that name or email. '
+                    'Please choose a different one.'
+                )
+            else:
+                messages.success(request, f"Customer '{customer.name}' updated successfully.")
+                return redirect('customer_detail', customer_id=customer_id)
     else:
         form = CustomerEditForm(instance=customer, tenant=tenant)
     

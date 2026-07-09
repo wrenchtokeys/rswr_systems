@@ -136,4 +136,9 @@ class Customer(models.Model):
         # or "Penske" is incorrect for display
         if self.name:
             self.name = self.name.strip()
+        # Store "no email" as NULL, never ''. The unique_customer_email_per_tenant
+        # constraint only ignores NULL, so a second customer saved with '' raises
+        # IntegrityError (500) even though both have "no email".
+        if self.email is not None:
+            self.email = self.email.strip() or None
         super().save(*args, **kwargs)
