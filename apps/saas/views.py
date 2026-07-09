@@ -1976,6 +1976,8 @@ def shop_join_view(request, slug):
         messages.success(request, f"Welcome to {tenant.name}! Your portal account is ready.")
         return redirect('customer_dashboard')
 
+    turnstile_site_key = os.environ.get('TURNSTILE_SITE_KEY', '')
+
     if request.method == 'POST':
         # Enforce IP-based rate limit (set by @ratelimit decorator)
         if getattr(request, 'limited', False):
@@ -1983,6 +1985,7 @@ def shop_join_view(request, slug):
                 'tenant': tenant,
                 'errors': ['Too many registration attempts. Please try again later.'],
                 'form_data': {},
+                'turnstile_site_key': turnstile_site_key,
             })
 
         first_name = request.POST.get('first_name', '').strip()
@@ -1994,6 +1997,10 @@ def shop_join_view(request, slug):
         confirm_password = request.POST.get('confirm_password', '')
 
         errors = []
+
+        # Same CAPTCHA gate as owner signup (no-op when keys unconfigured)
+        if not _verify_turnstile(request):
+            errors.append('CAPTCHA verification failed. Please try again.')
 
         if not first_name or not last_name:
             errors.append('First and last name are required.')
@@ -2016,7 +2023,7 @@ def shop_join_view(request, slug):
         # should log in at /login/?next=/join/<slug>/ — after login the view
         # will detect their existing account and create a CustomerUser record
         # automatically (see the is_authenticated branch at the top of this view).
-        if email and User.objects.filter(email=email).exists():
+        if email and User.objects.filter(email__iexact=email).exists():
             errors.append(
                 'An account with this email already exists. '
                 'Please log in to access this portal.'
@@ -2033,6 +2040,7 @@ def shop_join_view(request, slug):
                     'phone': phone or '',
                     'company_name': company_name,
                 },
+                'turnstile_site_key': turnstile_site_key,
             })
 
         # All good — create everything
@@ -2102,9 +2110,13 @@ def shop_join_view(request, slug):
                     'phone': phone or '',
                     'company_name': company_name,
                 },
+                'turnstile_site_key': turnstile_site_key,
             })
 
-    return render(request, 'saas/shop_join.html', {'tenant': tenant})
+    return render(request, 'saas/shop_join.html', {
+        'tenant': tenant,
+        'turnstile_site_key': turnstile_site_key,
+    })
 
 
 # ------------------------------------------------------------------
@@ -3753,7 +3765,8 @@ def owner_confirm_email(request, uidb64, token):
 
     if user is not None and default_token_generator.check_token(user, token):
         # Activate the account
-        if not user.is_active:
+        first_activation = not user.is_active
+        if first_activation:
             user.is_active = True
             user.save(update_fields=['is_active'])
 
@@ -3768,12 +3781,31 @@ def owner_confirm_email(request, uidb64, token):
         if membership:
             request.session['tenant_id'] = membership.tenant.id
 
+        # Welcome email goes out on activation (not at signup — the account
+        # isn't usable until now)
+        if first_activation and membership:
+            try:
+                from apps.tenants.views import _send_welcome_email
+                plan = membership.tenant.subscription_plan
+                _send_welcome_email(user, membership.tenant,
+                                    plan.trial_days if plan else 30)
+            except Exception as e:
+                logger.warning(f"Welcome email failed for {user.email}: {e}")
+
         messages.success(request, "Email confirmed! Welcome to RS Systems. Let's get your shop set up.")
         return redirect('onboarding')
-    else:
-        return render(request, 'saas/email_confirmation_invalid.html', {
-            'uidb64': uidb64,
-        })
+
+    # Token invalid. If the account is already active, the most common cause
+    # is clicking the link a second time (login on first use rotates
+    # last_login, which invalidates the token). Don't show a scary error —
+    # the account is fine, they just need to log in.
+    if user is not None and user.is_active:
+        messages.info(request, 'Your email is already confirmed — just log in.')
+        return redirect('login')
+
+    return render(request, 'saas/email_confirmation_invalid.html', {
+        'uidb64': uidb64,
+    })
 
 
 def owner_confirm_email_verification(request, uidb64, token):

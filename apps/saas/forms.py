@@ -29,6 +29,7 @@ class SignupForm(forms.Form):
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': 'e.g. Quick Fix Auto Glass',
+            'autocomplete': 'organization',
         }),
     )
     first_name = forms.CharField(
@@ -36,6 +37,7 @@ class SignupForm(forms.Form):
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': 'First name',
+            'autocomplete': 'given-name',
         }),
     )
     last_name = forms.CharField(
@@ -43,12 +45,14 @@ class SignupForm(forms.Form):
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': 'Last name',
+            'autocomplete': 'family-name',
         }),
     )
     email = forms.EmailField(
         widget=forms.EmailInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': 'you@yourbusiness.com',
+            'autocomplete': 'email',
         }),
     )
     password = forms.CharField(
@@ -56,12 +60,14 @@ class SignupForm(forms.Form):
         widget=forms.PasswordInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': '••••••••',
+            'autocomplete': 'new-password',
         }),
     )
     password_confirm = forms.CharField(
         widget=forms.PasswordInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': '••••••••',
+            'autocomplete': 'new-password',
         }),
         label='Confirm password',
     )
@@ -76,7 +82,7 @@ class SignupForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        plan_choices = [('', '--- Select a plan ---')]
+        plan_choices = [('', "I'll decide during my trial")]
         plan_choices += [
             (p.slug, p.name)
             for p in SubscriptionPlan.objects.filter(is_active=True).exclude(slug='trial').order_by('display_order')
@@ -87,7 +93,9 @@ class SignupForm(forms.Form):
 
     def clean_email(self):
         email = self.cleaned_data['email'].strip().lower()
-        if User.objects.filter(email=email).exists():
+        # iexact: mixed-case duplicates (e.g. created via admin) must not
+        # slip past this check — duplicate emails break login-by-email.
+        if User.objects.filter(email__iexact=email).exists():
             raise ValidationError('An account with this email already exists.')
         return email
 

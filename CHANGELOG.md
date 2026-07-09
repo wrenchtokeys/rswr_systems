@@ -2,6 +2,25 @@
 
 All notable changes to RS Systems are documented here.
 
+## [Unreleased] — 2026-07-08 (Auth & signup hardening — two-pass audit)
+
+### Fixed
+- **CODE-268** — Login brute-force protection was a no-op: `login_router` called `is_ratelimited()` without `increment=True`, so the attempt counter never advanced and the 30/h limit could never trigger. Fixed, and added a per-account limit (10 attempts / 15 min keyed on the submitted identifier) to blunt password spraying from distributed IPs.
+- **CODE-269** — `POST /api/tenants/signup/` bypassed both the Turnstile CAPTCHA and email confirmation: it created a fully **active** account and returned a DRF auth token immediately. Now matches the UI flow — account is inactive until the emailed confirmation link is clicked, and no token is issued. (No external consumers; tests updated.)
+- **CODE-270** — Login could 500: user lookup used `User.objects.get(email=...)` (raises `MultipleObjectsReturned` on duplicate emails, which the exact-case uniqueness checks at signup allowed to exist). All email-uniqueness checks (`SignupForm`, `signup_service`, API signup, `shop_join_view`) are now `iexact`, and login uses `filter().first()` with a duplicate warning log.
+- **CODE-271** — Users who tried to log in before confirming their email were told "Invalid email or password" (ModelBackend silently rejects inactive users) — with the *correct* password. Now shows "your email hasn't been confirmed" plus a resend link, revealed only after the password verifies so it can't be used to enumerate accounts.
+- **CODE-272** — Clicking the confirmation email link a second time showed the scary "invalid link" page (first click rotates `last_login`, invalidating the token). Already-active users are now redirected to login with "already confirmed — just log in." The welcome email also moved from signup-time (dead code since CODE-269) to actual activation.
+- **CODE-273** — Retired `TokenAuthentication` from the DRF config. Nothing issues tokens (CODE-269 removed the last path; `api-token-auth/` has been commented out for ages) and no client sends `Authorization: Token` — but tokens minted through the old unauthenticated signup never expire. Disabling the auth class renders them inert.
+- **CODE-274** — `/password-reset/` and `/admin/password_reset/` accepted unlimited POSTs (email-bombing arbitrary users + SendGrid quota burn). New `RateLimitedPasswordResetView` enforces 5/IP/hour; the reset template now renders real error messages instead of a hardcoded one.
+- **CODE-275** — Customer self-signup at `/join/<slug>/` had no CAPTCHA (only a 10/h IP rate limit) while owner signup had Turnstile. Now runs the same `_verify_turnstile` gate (still skips when keys unconfigured, so dev/CI unaffected).
+
+### Changed
+- Signup plan question marked optional ("Which plan interests you? *(optional)*", default "I'll decide during my trial") with copy clarifying every account starts with a free 30-day trial, no card required. Field kept — it drives the owner-dashboard trial banner and day-20 nudge email.
+- Login sessions now expire at browser close by default (shop computers are often shared); new "Keep me logged in for 30 days" checkbox opts into a persistent session.
+- Login, signup, shop-join, and password-reset forms got proper `autocomplete` attributes (`username`, `current-password`, `new-password`, `email`, …) so password managers behave.
+
+See `AUTH_FIXES.md` for the tracking doc (includes deferred items: TOTP 2FA, signup entry-point consolidation).
+
 ## [Unreleased] — 2026-07-06 (Production 500 on repair form — staticfiles manifest race)
 
 ### Fixed

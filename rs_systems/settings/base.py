@@ -100,7 +100,9 @@ LOGOUT_REDIRECT_URL = '/login/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        # TokenAuthentication removed: nothing issues tokens anymore, but
+        # tokens minted by the old unauthenticated API signup never expire —
+        # disabling the auth class renders them inert.
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [

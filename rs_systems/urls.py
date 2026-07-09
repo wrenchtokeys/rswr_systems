@@ -59,7 +59,7 @@ urlpatterns = [
     path('api/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 
     # Admin and authentication
-    path('admin/password_reset/', auth_views.PasswordResetView.as_view(
+    path('admin/password_reset/', views.RateLimitedPasswordResetView.as_view(
         template_name='registration/password_reset_form.html',
         email_template_name='registration/password_reset_email.html',
         subject_template_name='registration/password_reset_subject.txt',
@@ -101,7 +101,7 @@ urlpatterns = [
     path('invite/<uuid:token>/', views.accept_invite, name='accept_invite'),
 
     # Password reset flow
-    path('password-reset/', auth_views.PasswordResetView.as_view(
+    path('password-reset/', views.RateLimitedPasswordResetView.as_view(
         template_name='registration/password_reset_form.html',
         email_template_name='registration/password_reset_email.html',
         subject_template_name='registration/password_reset_subject.txt',

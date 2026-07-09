@@ -944,12 +944,15 @@ class TenantAPITest(BaseTestCase):
         data = response.json()
         self.assertIn('user', data)
         self.assertIn('tenant', data)
-        self.assertIn('token', data)
+        # No auth token until email is confirmed — issuing one here would
+        # let signups bypass email confirmation entirely.
+        self.assertNotIn('token', data)
         self.assertEqual(data['user']['email'], 'newowner@test.com')
         self.assertEqual(data['tenant']['name'], 'New Glass Shop')
 
         # Verify database objects
         user = User.objects.get(email='newowner@test.com')
+        self.assertFalse(user.is_active)  # inactive until email confirmed
         tenant = Tenant.objects.get(slug=data['tenant']['slug'])
         self.assertEqual(tenant.owner, user)
         self.assertTrue(

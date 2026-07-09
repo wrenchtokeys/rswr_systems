@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
@@ -148,10 +149,21 @@ def login_router(request):
     if request.method == 'POST':
         # Rate limiting — uses cache backend, wrapped in try/except so a
         # cache misconfiguration never takes down login entirely.
+        # increment=True is required: without it the counter never advances
+        # and the limit can never trigger.
         try:
             from django_ratelimit.core import is_ratelimited
-            if is_ratelimited(request, key='ip', rate='30/h', method='POST',
-                              group='login_router'):
+            limited_by_ip = is_ratelimited(
+                request, key='ip', rate='30/h', method='POST',
+                group='login_router', increment=True,
+            )
+            # Per-account limit — blunts password spraying against a single
+            # account from many IPs.
+            limited_by_account = is_ratelimited(
+                request, key='post:email', rate='10/15m', method='POST',
+                group='login_router_account', increment=True,
+            )
+            if limited_by_ip or limited_by_account:
                 context['error'] = 'Too many login attempts. Please try again later.'
                 return render(request, 'saas/login.html', context)
         except Exception:
@@ -167,17 +179,17 @@ def login_router(request):
             context['error'] = 'Please enter your username or email and password.'
             return render(request, 'saas/login.html', context)
 
-        # Find user by email or username
+        # Find user by email or username. Use filter().first() rather than
+        # get() — User.email has no DB-level unique constraint, so duplicate
+        # (or mixed-case) emails would make get() raise MultipleObjectsReturned
+        # and turn a login attempt into a 500.
         User = get_user_model()
-        login_id_lower = login_id.lower()
-        try:
-            user_obj = User.objects.get(email=login_id_lower)
-        except User.DoesNotExist:
-            try:
-                # Try username (case-insensitive)
-                user_obj = User.objects.get(username__iexact=login_id)
-            except User.DoesNotExist:
-                user_obj = None
+        email_matches = User.objects.filter(email__iexact=login_id).order_by('id')
+        if len(email_matches) > 1:
+            logger.warning(f"Duplicate email on login: {login_id} matches {len(email_matches)} users")
+        user_obj = email_matches.first()
+        if user_obj is None:
+            user_obj = User.objects.filter(username__iexact=login_id).order_by('id').first()
 
         if user_obj is None:
             # Log failed attempt
@@ -189,6 +201,23 @@ def login_router(request):
         # Check if user has an unusable password (invited but not yet accepted)
         if not user_obj.has_usable_password():
             context['error'] = 'Your account has not been set up yet. Please check your email for an invite link, or contact your shop owner.'
+            return render(request, 'saas/login.html', context)
+
+        # Unconfirmed signup — ModelBackend rejects inactive users, so without
+        # this check they'd see "Invalid email or password" after entering the
+        # correct one. Only reveal the unconfirmed state when the password is
+        # right, so this can't be used to enumerate accounts.
+        if not user_obj.is_active:
+            if user_obj.check_password(password):
+                from django.utils.encoding import force_bytes
+                from django.utils.http import urlsafe_base64_encode
+                uidb64 = urlsafe_base64_encode(force_bytes(user_obj.pk))
+                context['error'] = 'Your email address has not been confirmed yet. Please check your inbox for the confirmation link.'
+                context['resend_url'] = f'/confirm-email/{uidb64}/resend/'
+            else:
+                from apps.security.models import LoginAttempt
+                LoginAttempt.log_attempt(request, login_id, False, 'unified', 'Invalid credentials')
+                context['error'] = 'Invalid email or password.'
             return render(request, 'saas/login.html', context)
 
         # Authenticate
@@ -204,6 +233,13 @@ def login_router(request):
         LoginAttempt.log_attempt(request, login_id, True, 'unified')
 
         login(request, user)
+
+        # Session lifetime: expires at browser close unless "remember me"
+        # was checked (shop computers are often shared).
+        if request.POST.get('remember_me'):
+            request.session.set_expiry(60 * 60 * 24 * 30)  # 30 days
+        else:
+            request.session.set_expiry(0)  # browser session
 
         # Check for ?next= redirect (validate to prevent open redirect attacks)
         next_url = request.POST.get('next', '') or request.GET.get('next', '')
@@ -231,6 +267,26 @@ def login_router(request):
 def logout_view(request):
     logout(request)
     return redirect('login')
+
+
+class RateLimitedPasswordResetView(auth_views.PasswordResetView):
+    """
+    PasswordResetView with an IP rate limit. Unlimited POSTs here mean
+    email-bombing arbitrary users and burning SendGrid quota.
+    """
+
+    def post(self, request, *args, **kwargs):
+        try:
+            from django_ratelimit.core import is_ratelimited
+            if is_ratelimited(request, key='ip', rate='5/h', method='POST',
+                              group='password_reset', increment=True):
+                form = self.get_form()
+                form.add_error(None, 'Too many password reset requests. Please try again later.')
+                return self.form_invalid(form)
+        except Exception:
+            # Cache backend unavailable — don't block password resets
+            logger.warning("Rate limiting unavailable for password reset (cache backend error)")
+        return super().post(request, *args, **kwargs)
 
 @ratelimit(key='ip', rate='20/h', method='POST', block=False)
 def accept_invite(request, token):

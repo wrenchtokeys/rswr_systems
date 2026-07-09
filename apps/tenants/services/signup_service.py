@@ -92,8 +92,9 @@ def create_tenant_with_owner(
     """
     email = email.strip().lower()
 
-    # Validate uniqueness
-    if User.objects.filter(email=email).exists():
+    # Validate uniqueness (iexact — mixed-case duplicates would break
+    # login-by-email, which looks users up case-insensitively)
+    if User.objects.filter(email__iexact=email).exists():
         raise SignupError('An account with this email already exists.')
 
     # Generate username if not provided

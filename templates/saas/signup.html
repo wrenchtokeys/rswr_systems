@@ -135,11 +135,13 @@
                         {% endif %}
                     </div>
 
-                    <!-- Plan selection -->
+                    <!-- Plan selection (optional — informational only) -->
                     <div>
-                        <label for="id_plan" class="block text-sm font-medium text-gray-700 mb-1">Which plan interests you?</label>
+                        <label for="id_plan" class="block text-sm font-medium text-gray-700 mb-1">
+                            Which plan interests you? <span class="font-normal text-gray-400">(optional)</span>
+                        </label>
                         {{ form.plan }}
-                        <p class="mt-1 text-xs text-gray-500">(You can change this later)</p>
+                        <p class="mt-1 text-xs text-gray-500">Just curious — every account starts with a free 30-day trial, no credit card required. You won't be charged or committed to anything here.</p>
                     </div>
 
                     {% if form.non_field_errors %}

@@ -26,7 +26,6 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
-from rest_framework.authtoken.models import Token
 from rest_framework.throttling import SimpleRateThrottle
 
 from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
@@ -164,7 +163,9 @@ def signup(request):
             "phone": "555-123-4567"  // optional
         }
 
-    Returns user info, tenant info, trial details, and auth token.
+    Returns user info, tenant info, and trial details. The account stays
+    inactive until the emailed confirmation link is clicked — no auth token
+    is issued at signup (same policy as the UI signup flow).
     """
     data = request.data
 
@@ -196,7 +197,7 @@ def signup(request):
         except DjangoValidationError:
             errors['email'] = 'Enter a valid email address.'
 
-    if email and User.objects.filter(email=email).exists():
+    if email and User.objects.filter(email__iexact=email).exists():
         errors['email'] = 'An account with this email already exists.'
 
     # Password
@@ -234,16 +235,21 @@ def signup(request):
         user = result['user']
         tenant = result['tenant']
 
-        # Create auth token (API-specific — UI uses session auth)
-        token, _ = Token.objects.get_or_create(user=user)
+        # Match the UI signup flow: account stays inactive until the email
+        # confirmation link is clicked. Previously this endpoint returned an
+        # auth token for an active account immediately, letting anyone bypass
+        # both the CAPTCHA and email confirmation by POSTing here directly.
+        user.is_active = False
+        user.save(update_fields=['is_active'])
 
-        # Send welcome email (non-blocking)
+        from apps.saas.views import _send_confirmation_email
+        _send_confirmation_email(request, user, tenant)
+
         trial_plan = tenant.subscription_plan
         trial_days = trial_plan.trial_days if trial_plan else 30
-        _send_welcome_email(user, tenant, trial_days)
 
         logger.info(
-            f"New signup: {user.email} — tenant '{tenant.name}' (slug={tenant.slug})"
+            f"New signup (API): {user.email} — tenant '{tenant.name}' (slug={tenant.slug}), pending email confirmation"
         )
 
         return Response({
@@ -261,8 +267,7 @@ def signup(request):
                 'name': trial_plan.name if trial_plan else 'Trial',
                 'days_remaining': trial_days,
             },
-            'token': token.key,
-            'message': 'Welcome to RS Systems! Your 30-day free trial has started.',
+            'message': 'Almost there! Check your email and click the confirmation link to activate your account and start your 30-day free trial.',
         }, status=status.HTTP_201_CREATED)
 
     except SignupError as e:
