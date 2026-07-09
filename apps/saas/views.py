@@ -2852,6 +2852,44 @@ def owner_send_invoice(request, invoice_id):
         except Exception:
             recipient = invoice.customer.email
 
+        # Inline email capture — the send modal shows an email field when the
+        # customer has no address on file, so the owner can add one and send
+        # in a single step instead of hunting for the customer edit page.
+        submitted_email = request.POST.get('email', '').strip()
+        if submitted_email and not recipient:
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError as _EmailValidationError
+            from django.db import IntegrityError as _IntegrityError
+            try:
+                validate_email(submitted_email)
+            except _EmailValidationError:
+                messages.error(request, f'"{submitted_email}" is not a valid email address.')
+                return redirect('owner_invoice_detail', invoice_id=invoice.id)
+            duplicate = Customer.objects.filter(
+                tenant=tenant, email__iexact=submitted_email
+            ).exclude(pk=invoice.customer.pk).exists()
+            if duplicate:
+                messages.error(
+                    request,
+                    'Another customer already uses that email address. '
+                    'Please use a different one.'
+                )
+                return redirect('owner_invoice_detail', invoice_id=invoice.id)
+            try:
+                # Savepoint so a duplicate slipping past the check above (race)
+                # doesn't poison the surrounding transaction.
+                with transaction.atomic():
+                    invoice.customer.email = submitted_email
+                    invoice.customer.save(update_fields=['email'])
+            except _IntegrityError:
+                messages.error(
+                    request,
+                    'Another customer already uses that email address. '
+                    'Please use a different one.'
+                )
+                return redirect('owner_invoice_detail', invoice_id=invoice.id)
+            recipient = submitted_email
+
         # CODE-112: Block send entirely if no email on file
         if not recipient:
             messages.error(

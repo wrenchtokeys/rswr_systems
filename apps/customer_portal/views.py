@@ -19,7 +19,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import login, authenticate
 from django.utils import timezone
 from django.db.models import Sum, Q, Count
-from django.db import models, transaction
+from django.db import models, transaction, IntegrityError
 from django.contrib.auth import update_session_auth_hash
 from functools import wraps
 from django.http import JsonResponse
@@ -1561,9 +1561,18 @@ def edit_company(request):
             customer.zip_code = request.POST.get('zip_code', '')
             
             try:
-                customer.save()
+                # Savepoint so a constraint violation doesn't poison the
+                # surrounding transaction before we re-render with an error.
+                with transaction.atomic():
+                    customer.save()
                 messages.success(request, "Company information updated successfully!")
                 return redirect('customer_dashboard')
+            except IntegrityError:
+                messages.error(
+                    request,
+                    "Another customer already uses that name or email. "
+                    "Please contact your shop if you believe this is an error."
+                )
             except Exception as e:
                 messages.error(request, f"Error updating company: {str(e)}")
         
