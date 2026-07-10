@@ -799,8 +799,22 @@ class Repair(GlassService):
                 is_first_completion = not self.pk or self.original_status != 'COMPLETED'
 
                 if is_first_completion and not skip_progressive:
-                    unit_repair_count.repair_count += 1
-                    unit_repair_count.save()
+                    # Atomic read-modify-write under a row lock. The plain
+                    # `+= 1; save()` was a lost-update race: two technicians
+                    # completing repairs on the same unit concurrently could
+                    # both read count=2 and both write 3 — one increment lost,
+                    # both repairs priced at the same tier, and every future
+                    # repair on the unit overpriced by one tier. The lock also
+                    # serializes the pricing read below, so each completion
+                    # prices with its own unique post-increment value. (C5)
+                    from django.db import transaction as db_transaction
+                    with db_transaction.atomic():
+                        locked_count = UnitRepairCount.objects.select_for_update().get(
+                            pk=unit_repair_count.pk
+                        )
+                        locked_count.repair_count += 1
+                        locked_count.save()
+                    unit_repair_count.repair_count = locked_count.repair_count
 
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
