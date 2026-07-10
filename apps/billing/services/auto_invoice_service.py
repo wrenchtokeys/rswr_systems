@@ -153,8 +153,17 @@ class AutoInvoiceService:
                     result['invoice_id'] = invoice_record.id
                     logger.info(f"Created invoice record #{invoice_record.id}")
                 except Exception as e:
-                    # Log but don't fail - PDF was generated successfully
-                    logger.warning(f"Could not create invoice record: {e}")
+                    # A missing Invoice row means the repair still counts as
+                    # "uninvoiced": if we email the customer anyway, they pay
+                    # an invoice the system has no record of, and the next
+                    # batch run bills the repair AGAIN. Surface it loudly and
+                    # (below) do NOT email. (C6)
+                    logger.error(
+                        f"Could not create invoice record for repair #{repair.id} "
+                        f"(invoice {invoice_data.invoice_number}): {e} — "
+                        f"invoice email suppressed to avoid double-billing"
+                    )
+                    result['error'] = f"Invoice record creation failed: {e}"
                 
                 # Generate Stripe payment link if Stripe is configured
                 if invoice_record:
@@ -168,10 +177,13 @@ class AutoInvoiceService:
                 
                 logger.info(f"Auto-generated invoice {invoice_data.invoice_number} for repair #{repair.id} -> s3://{self.s3_bucket}/{s3_key}")
                 
-                # Check if we should email; mark invoice SENT only on success
+                # Check if we should email; mark invoice SENT only on success.
+                # NEVER email when the Invoice record failed to create (C6):
+                # the customer would pay an invoice the system can't track,
+                # and the repair would be billed again on the next batch run.
                 try:
                     prefs = repair.customer.repair_preferences
-                    if prefs.auto_email_invoices:
+                    if prefs.auto_email_invoices and invoice_record:
                         email_result = self._send_invoice_email(
                             repair=repair,
                             pdf_bytes=pdf_bytes,
@@ -235,7 +247,10 @@ class AutoInvoiceService:
         Returns:
             str: S3 key or local path if successful, None otherwise
         """
-        date_str = datetime.now().strftime('%Y-%m-%d')
+        # timezone.localdate(), not naive datetime.now(): the filename date
+        # must match the invoice_date the shop sees, not the server's UTC
+        # clock (off by one after 7pm Central). (C7)
+        date_str = timezone.localdate().strftime('%Y-%m-%d')
         filename = f"invoice_{invoice_number}_{date_str}.pdf"
         
         # Try S3 first
