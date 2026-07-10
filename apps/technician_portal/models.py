@@ -574,7 +574,25 @@ class Repair(GlassService):
 
     # Keep QUEUE_CHOICES as alias for backward compatibility
     QUEUE_CHOICES = GlassService.STATUS_CHOICES
-    
+
+    # D1: legal status transitions, enforced in save(). The load-bearing
+    # rule is that COMPLETED is TERMINAL: completion increments the unit
+    # repair counter, prices the repair, and awards loyalty points — a
+    # COMPLETED -> APPROVED -> COMPLETED cycle re-fires all of those
+    # (original_status refreshes on every save, defeating the hooks'
+    # idempotency guards) and lets points/counters be inflated at will.
+    # Forward jumps are deliberately permissive (a manager can accept a
+    # REQUESTED repair straight to COMPLETED for on-the-spot field work);
+    # DENIED can be re-opened but must pass through approval again.
+    ALLOWED_STATUS_TRANSITIONS = {
+        'REQUESTED': {'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED'},
+        'PENDING': {'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED'},
+        'APPROVED': {'PENDING', 'IN_PROGRESS', 'COMPLETED', 'DENIED'},
+        'IN_PROGRESS': {'APPROVED', 'COMPLETED'},
+        'COMPLETED': set(),  # terminal — never leaves COMPLETED
+        'DENIED': {'PENDING', 'APPROVED'},
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.original_status = self.queue_status
@@ -731,6 +749,24 @@ class Repair(GlassService):
         return cost + tax
 
     def save(self, *args, **kwargs):
+        # D1: enforce the status state machine at the MODEL layer so the
+        # admin, batch flows, and API paths can't bypass it (a view-only
+        # check would). Applies only to real transitions on existing rows;
+        # creation may start at any status (field repairs are created
+        # directly as COMPLETED).
+        if self.pk and self.original_status != self.queue_status:
+            from django.core.exceptions import ValidationError
+            allowed = self.ALLOWED_STATUS_TRANSITIONS.get(self.original_status, set())
+            if self.queue_status not in allowed:
+                raise ValidationError(
+                    f"Illegal repair status transition "
+                    f"{self.original_status} → {self.queue_status}. "
+                    f"Completed repairs cannot change status."
+                    if self.original_status == 'COMPLETED' else
+                    f"Illegal repair status transition "
+                    f"{self.original_status} → {self.queue_status}."
+                )
+
         # BATCH INTEGRITY VALIDATION: Ensure batch data is consistent
         if self.repair_batch_id:
             # If part of a batch, break_number and total_breaks_in_batch must be set

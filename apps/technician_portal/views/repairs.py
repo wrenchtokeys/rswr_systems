@@ -718,6 +718,20 @@ def update_queue_status(request, repair_id):
     if request.method == 'POST':
         new_status = request.POST.get('status')
         if new_status in dict(Repair.QUEUE_CHOICES):
+            # D1: friendly rejection before the model layer raises. The
+            # model's state machine (Repair.ALLOWED_STATUS_TRANSITIONS) is
+            # the real enforcement — this just turns a would-be 500 into a
+            # message. Blocks e.g. COMPLETED -> APPROVED -> COMPLETED
+            # cycling, which re-awarded loyalty points on every cycle.
+            if new_status != old_status:
+                _allowed = Repair.ALLOWED_STATUS_TRANSITIONS.get(old_status, set())
+                if new_status not in _allowed:
+                    messages.error(
+                        request,
+                        f"Cannot change a {repair.get_queue_status_display()} "
+                        f"repair to {dict(Repair.QUEUE_CHOICES)[new_status]}."
+                    )
+                    return redirect('repair_detail', repair_id=repair.id)
             if old_status == 'REQUESTED':
                 # Auto-assign to the manager accepting the repair.
                 # Use the tenant-scoped `technician` already resolved above so we
@@ -809,7 +823,17 @@ def update_queue_status(request, repair_id):
                         tenant=tenant,
                         queue_status='PENDING',
                     ).exclude(pk=repair.pk)
-                    sibling_count = sibling_repairs.update(queue_status=new_status)
+                    # D2: per-repair save(), not a queryset .update(). Bulk
+                    # update skips Repair.save() and post_save signals, so
+                    # siblings silently changed status with no customer
+                    # notification and no tax/pricing bookkeeping. N+1 is
+                    # acceptable at batch sizes (<= 20 breaks).
+                    sibling_count = 0
+                    with transaction.atomic():
+                        for sibling in sibling_repairs:
+                            sibling.queue_status = new_status
+                            sibling.save()
+                            sibling_count += 1
                     if sibling_count > 0:
                         action = 'approved' if new_status == 'APPROVED' else 'denied'
                         messages.info(request, f"Also {action} {sibling_count} other break(s) in this batch.")
