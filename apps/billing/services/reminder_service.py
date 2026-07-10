@@ -84,7 +84,13 @@ class ReminderService:
             except Exception:
                 pass  # Fall back to default
         
-        # Generate PDF attachment
+        # Generate PDF attachment — render THE stored invoice, never a fresh
+        # one. The old generate_invoice() call omitted the invoice_number/
+        # invoice_date overrides, so the attached PDF carried a new number,
+        # today's date, and recomputed totals; and for replacement-only
+        # invoices (repair_ids empty -> None) the repair lookback ran
+        # UNBOUNDED, billing the customer's entire completed-repair history
+        # in a dunning email. (A5, shares root cause with A4)
         pdf_bytes = None
         try:
             from apps.billing.services.invoice_service import InvoiceService
@@ -96,11 +102,7 @@ class ReminderService:
                 getattr(invoice, 'customer', None), 'tenant', None
             )
             invoice_service = InvoiceService(tenant=invoice_tenant)
-            repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-            pdf_bytes, _ = invoice_service.generate_invoice(
-                customer_id=invoice.customer_id,
-                repair_ids=repair_ids if repair_ids else None,
-            )
+            pdf_bytes, _ = invoice_service.generate_invoice_from_record(invoice)
         except Exception as e:
             logger.warning(f"Could not generate PDF for reminder: {e}")
             # Continue without PDF - still send the reminder
