@@ -159,8 +159,8 @@ USE_HTTPS=False
 #### 3. Database Initialization
 
 ```bash
-# Set up database with migrations and initial data
-python manage.py setup_db
+# Apply database migrations
+python manage.py migrate
 
 # Create user groups and permissions
 python manage.py setup_groups
@@ -378,7 +378,7 @@ deleted = Repair.all_objects.filter(tenant=tenant, deleted_at__isnull=False)
 
 **Never filter `deleted_at` manually in views** — the default manager handles it. Only use `all_objects` when you intentionally need deleted records (archived page, restore logic, purge command).
 
-See [SOFT_DELETE.md](./SOFT_DELETE.md) for full documentation.
+See [SOFT_DELETE.md](./development/SOFT_DELETE.md) for full documentation.
 
 ### Repair Workflow Implementation
 

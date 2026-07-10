@@ -87,10 +87,3 @@ eb logs --stream
 # View env vars
 eb printenv
 ```
-
-## Legacy Files (Archived)
-
-- `celery-worker.service` — Celery worker systemd unit (no longer used)
-- `celery-beat.service` — Celery beat scheduler systemd unit (no longer used)
-
-These files are kept for historical reference. Do not reinstall them.
