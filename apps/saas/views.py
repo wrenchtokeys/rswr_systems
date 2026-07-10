@@ -2905,23 +2905,16 @@ def owner_send_invoice(request, invoice_id):
             from apps.billing.services.invoice_email_service import InvoiceEmailService
             email_service = InvoiceEmailService(tenant=tenant)
 
-            repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-
-            # Pass stored invoice metadata so the emailed PDF matches the owner's records (CODE-120).
-            from datetime import datetime as _dt2
-            _sd2 = invoice.invoice_date
-            if _sd2 and not isinstance(_sd2, _dt2):
-                from django.utils import timezone as _tz2
-                _stored_dt2 = _tz2.make_aware(_dt2.combine(_sd2, _dt2.min.time()))
-            else:
-                _stored_dt2 = _sd2
-
+            # A4: pass the Invoice record so the PDF renders from the
+            # invoice's OWN line items and stored totals. The old
+            # repair_ids/invoice_number plumbing made replacement-only
+            # invoices unsendable (no repair line items -> 30-day repair
+            # lookback -> "no completed repairs" or a PDF full of
+            # unrelated repairs).
             success, msg = email_service.send_invoice_email(
                 customer_id=invoice.customer.id,
                 recipient_email=recipient,
-                repair_ids=repair_ids if repair_ids else None,
-                invoice_number=invoice.invoice_number,
-                invoice_date=_stored_dt2,
+                invoice=invoice,
             )
             email_sent = success
             if not success:

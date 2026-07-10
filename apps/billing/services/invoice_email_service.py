@@ -284,10 +284,11 @@ class InvoiceEmailService:
         subject_prefix: str = "[RS Systems]",
         invoice_number: Optional[str] = None,
         invoice_date=None,
+        invoice=None,
     ) -> Tuple[bool, str]:
         """
         Send an invoice email with PDF and photo attachments.
-        
+
         Args:
             customer_id: Customer ID to invoice
             recipient_email: Primary recipient email
@@ -301,27 +302,48 @@ class InvoiceEmailService:
                 so the PDF content matches the record. When None a new number is
                 generated (used during initial invoice creation).
             invoice_date: Stored invoice date to embed in PDF (CODE-120).
-            
+            invoice: Existing Invoice model record. When provided, the PDF is
+                rendered from the invoice's OWN line items and stored totals
+                (A4) — never from a repair lookback. Always pass this when
+                sending an invoice that already exists; the repair-lookback
+                path below is only for generating a NEW invoice.
+
         Returns:
             Tuple of (success: bool, message: str)
         """
         try:
-            # Generate invoice
-            start_date = timezone.now() - timedelta(days=days) if not repair_ids else None
-            pdf_bytes, invoice_data = self.invoice_service.generate_invoice(
-                customer_id=customer_id,
-                repair_ids=repair_ids,
-                start_date=start_date,
-                invoice_number=invoice_number,
-                invoice_date=invoice_date,
-            )
-            
-            if not invoice_data.line_items:
-                return False, "No completed repairs found for invoicing"
-            
-            # Get repairs for photo attachments
+            if invoice is not None:
+                # A4: render the existing record. A replacement-only invoice
+                # (no repair-backed line items) must send fine, and the PDF
+                # must never contain repairs that aren't on this invoice.
+                pdf_bytes, invoice_data = self.invoice_service.generate_invoice_from_record(invoice)
+                if not invoice_data.line_items:
+                    return False, "Invoice has no line items"
+                repair_ids = list(
+                    invoice.line_items.exclude(repair_id__isnull=True)
+                    .values_list('repair_id', flat=True)
+                )
+                start_date = None
+            else:
+                # Generate a NEW invoice from completed repairs
+                start_date = timezone.now() - timedelta(days=days) if not repair_ids else None
+                pdf_bytes, invoice_data = self.invoice_service.generate_invoice(
+                    customer_id=customer_id,
+                    repair_ids=repair_ids,
+                    start_date=start_date,
+                    invoice_number=invoice_number,
+                    invoice_date=invoice_date,
+                )
+
+                if not invoice_data.line_items:
+                    return False, "No completed repairs found for invoicing"
+
+            # Get repairs for photo attachments. In the existing-invoice path,
+            # only the invoice's own repair-backed line items may contribute
+            # photos — with no repair line items there are no photos (never
+            # fall back to an unbounded repair query here).
             photos = []
-            if include_photos:
+            if include_photos and (invoice is None or repair_ids):
                 repairs = self.invoice_service.get_completed_repairs(
                     customer_id=customer_id,
                     repair_ids=repair_ids,
@@ -343,7 +365,10 @@ class InvoiceEmailService:
 
                     # Find the invoice record
                     invoice_record = None
-                    if repair_ids:
+                    if invoice is not None:
+                        # Existing-record path: this IS the invoice being sent.
+                        invoice_record = invoice
+                    elif repair_ids:
                         line_qs = InvoiceLineItem.objects.all()
                         if self.tenant:
                             line_qs = line_qs.filter(invoice__tenant=self.tenant)
