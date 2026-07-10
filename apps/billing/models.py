@@ -723,10 +723,24 @@ class Payment(models.Model):
         help_text="User who recorded this payment"
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         ordering = ['-payment_date', '-created_at']
-    
+        constraints = [
+            # C2: Stripe delivers checkout.session.completed and
+            # payment_intent.succeeded concurrently (and retries on
+            # timeout) with the same pi_... id. The application-level
+            # .exists() precheck is a check-then-create race; this partial
+            # unique index is the only thing that actually prevents a
+            # double-credited payment. Empty string = manual payment,
+            # exempt.
+            models.UniqueConstraint(
+                fields=['stripe_payment_id'],
+                condition=~models.Q(stripe_payment_id=''),
+                name='unique_stripe_payment_id_when_set',
+            ),
+        ]
+
     def __str__(self):
         return f"${self.amount} on {self.invoice.invoice_number} via {self.get_payment_method_display()}"
     
