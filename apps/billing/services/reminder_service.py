@@ -80,7 +80,14 @@ class ReminderService:
                 from apps.billing.models import BillingConfig
                 config = BillingConfig.get_for_tenant(self.tenant)
                 if config.reminder_email_template:
-                    body = self._render_template(config.reminder_email_template, invoice)
+                    # _render_template returns '' on a malformed template so
+                    # callers can fall back — actually fall back, instead of
+                    # overwriting the default body with the empty string and
+                    # sending a blank dunning email. Mirrors
+                    # invoice_email_service.py's `if not body:` guard. (C1)
+                    rendered = self._render_template(config.reminder_email_template, invoice)
+                    if rendered:
+                        body = rendered
             except Exception:
                 pass  # Fall back to default
         
