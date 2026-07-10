@@ -58,7 +58,7 @@ Sent alerts tracked via `subscription_alerts_sent` JSONField on `Tenant` (not a 
 | Grace urgent | 5 days before grace ends | "Final reminder — your access ends in 5 days" |
 | Grace ended | Day grace period ends | "Your RS Systems access has been suspended" |
 
-Email sent from: `notifications@rssystems.io` (SendGrid, domain-authenticated for rssystems.io)
+Email sent from: `notifications@rssystems.io` (Amazon SES, domain-verified and DKIM-signed for rssystems.io)
 
 **Implementation notes:**
 - Uses `subscription_alerts_sent` JSONField on `Tenant` to track which alerts have fired (prevents duplicate sends)
@@ -117,7 +117,7 @@ From the `/subscription-blocked/` page:
 ---
 
 ## Related Docs
-- [`BILLING_ROADMAP.md`](/BILLING_ROADMAP.md) — Phase 7: SaaS subscription billing
+- [`BILLING_ROADMAP.md`](/docs/archive/BILLING_ROADMAP.md) — Phase 7: SaaS subscription billing
 - [`ROADMAP.md`](ROADMAP.md) — Project roadmap and feature backlog
 - `apps/tenants/subscription_middleware.py` — Current enforcement logic
 - `apps/tenants/models.py` — Tenant.is_trial_expired, trial_days_remaining, grace_period_end

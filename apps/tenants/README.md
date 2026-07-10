@@ -330,7 +330,7 @@ apps/tenants/
 - `check_subscription_alerts` management command (scheduled via EB cron):
   - Sends expiry warning at 7 days, 3 days, and 1 day before trial end
   - Sends "your trial has expired" email on day-of
-- Emails sent from `notifications@rssystems.io` via SendGrid
+- Emails sent from `notifications@rssystems.io` via Amazon SES
 
 ### Subscription Middleware
 The `SubscriptionEnforcementMiddleware` runs after `TenantMiddleware` and:

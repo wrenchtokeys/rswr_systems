@@ -76,7 +76,7 @@ def status(request):
             'stripe': stripe_service.is_enabled(),
             'stripe_test_mode': getattr(settings, 'STRIPE_TEST_MODE', True),
             's3': True,
-            'sendgrid': bool(getattr(settings, 'SENDGRID_API_KEY', None)),
+            'ses': bool(getattr(settings, 'EMAIL_HOST_PASSWORD', None)),
         },
         'api': {
             'billing': '/api/billing/',

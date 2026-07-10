@@ -149,7 +149,7 @@ TIME_ZONE = os.environ.get('TIME_ZONE', 'America/Chicago')
 # Set USE_REAL_EMAIL=True to actually send emails
 USE_REAL_EMAIL = os.environ.get('USE_REAL_EMAIL', 'False').lower() == 'true'
 
-if not USE_REAL_EMAIL or not (os.environ.get('EMAIL_HOST_PASSWORD') or os.environ.get('SENDGRID_API_KEY')):
+if not USE_REAL_EMAIL or not os.environ.get('EMAIL_HOST_PASSWORD'):
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
     # Emails will be printed to console instead of sent
 

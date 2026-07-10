@@ -231,11 +231,11 @@ This lets the owner know the ball is in the customer's court — useful for foll
 | Email clients block images entirely → miss opens | Medium — some customers invisible | Click tracking still works; future SES/SendGrid webhooks provide delivery confirmation |
 | Bot/scanner pre-fetching → false positives | Low | Rate limit per token; ignore known bot user agents (Barracuda, Mimecast, etc.) |
 | HTML email rendering issues | Low | Keep HTML simple; test against Litmus/Email on Acid basics; plain text fallback always works |
-| SendGrid credits exhausted (current state) | **Blocking** — can't send emails at all right now | This feature is ready to ship as soon as email sending is restored (SES migration or SendGrid upgrade) |
+| ~~SendGrid credits exhausted~~ | Resolved 2026-07-09 | No longer blocking: email now sends via Amazon SES (production access, 50k/day) |
 
 ## Dependencies
 
-- **Email sending must work** — SendGrid credits are currently exhausted. This feature ships whenever we have a working email provider (SES migration is the plan).
+- ~~**Email sending must work**~~ — resolved 2026-07-09. Email sends via Amazon SES (production access granted; 50,000 msg/day).
 - No new Python packages required
 - No architecture changes — fits cleanly into existing billing app
 

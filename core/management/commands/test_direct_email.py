@@ -1,8 +1,11 @@
 """
-Management command to test email sending directly via SendGrid.
+Management command to test email sending directly via Amazon SES.
+
+Sends a multipart (text + HTML) message through the configured backend,
+which exercises a different path than `test_ses` (plain `send_mail`).
 
 This helps diagnose whether email issues are due to:
-1. SendGrid configuration problems
+1. SES configuration problems
 2. Network/firewall issues
 
 Usage:
@@ -18,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Test email sending directly via SendGrid'
+    help = 'Test email sending directly via Amazon SES'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -37,7 +40,7 @@ class Command(BaseCommand):
         self.stdout.write(f'Email Host: {settings.EMAIL_HOST}')
         self.stdout.write(f'Email Port: {settings.EMAIL_PORT}')
         self.stdout.write(f'Email User: {settings.EMAIL_HOST_USER}')
-        self.stdout.write(f'SendGrid API Key: {"SET" if settings.EMAIL_HOST_PASSWORD else "NOT SET"}')
+        self.stdout.write(f'SES SMTP password: {"SET" if settings.EMAIL_HOST_PASSWORD else "NOT SET"}')
         self.stdout.write('')
 
         try:
@@ -46,9 +49,9 @@ class Command(BaseCommand):
             from django.utils import timezone
 
             text_content = '''
-This is a test email sent directly via SendGrid.
+This is a test email sent directly via Amazon SES.
 
-If you receive this email, SendGrid is configured correctly.
+If you receive this email, SES is configured correctly.
 
 Timestamp: {timestamp}
 Environment: Production
@@ -65,10 +68,10 @@ Environment: Production
 </head>
 <body>
     <h2>🎉 Test Email Received!</h2>
-    <p class="success">SendGrid is configured correctly!</p>
+    <p class="success">Amazon SES is configured correctly!</p>
 
     <div class="info">
-        <p><strong>This email was sent directly via SendGrid.</strong></p>
+        <p><strong>This email was sent directly via Amazon SES.</strong></p>
         <p>If you receive this, your email configuration is working correctly.</p>
     </div>
 
@@ -95,7 +98,7 @@ Environment: Production
                 self.stdout.write(self.style.SUCCESS(f'Check {recipient_email} for the test email.'))
                 self.stdout.write('')
                 self.stdout.write(self.style.WARNING('If you receive this email but NOT notification emails:'))
-                self.stdout.write('→ SendGrid is working correctly')
+                self.stdout.write('→ SES is working correctly')
                 self.stdout.write('→ Check notification preferences and email verification settings')
             else:
                 self.stdout.write(self.style.ERROR(f'\n❌ Email send returned 0 (no emails sent)'))
@@ -104,10 +107,10 @@ Environment: Production
             self.stdout.write(self.style.ERROR(f'\n❌ Email send failed: {str(e)}'))
             self.stdout.write('')
             self.stdout.write(self.style.WARNING('Common issues:'))
-            self.stdout.write('1. Invalid SENDGRID_API_KEY environment variable')
-            self.stdout.write('2. SendGrid account suspended or restricted')
+            self.stdout.write('1. Invalid EMAIL_HOST_USER / EMAIL_HOST_PASSWORD (SES SMTP credentials)')
+            self.stdout.write('2. SES account paused, or sending disabled for the identity')
             self.stdout.write('3. Network/firewall blocking port 587')
-            self.stdout.write('4. FROM address not verified in SendGrid')
+            self.stdout.write('4. FROM address domain not verified in SES')
 
             import traceback
             self.stdout.write('')

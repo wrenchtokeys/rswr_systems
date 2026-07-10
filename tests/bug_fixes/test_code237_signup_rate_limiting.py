@@ -5,7 +5,7 @@ Bugs found:
 1. resend_confirmation_email was a public GET endpoint with no rate limiting.
    Since uidb64 is just base64(user_pk) — sequential integers — an attacker could
    enumerate all PKs and trigger unlimited confirmation emails, exhausting the
-   SendGrid quota (50k/month) and email-bombing inactive users.
+   SES quota (50k/day) and email-bombing inactive users.
 
 2. signup_view POST was also unprotected (Turnstile is disabled in dev/CI).
 

@@ -64,7 +64,7 @@ python manage.py setup_simplified_rewards    # Seed 4 default reward options
 
 ### Notification & Billing Commands
 ```bash
-python manage.py test_ses email@example.com   # Test SendGrid delivery
+python manage.py test_ses email@example.com   # Test Amazon SES delivery
 
 # Billing (also scheduled via EB cron)
 python manage.py process_batch_invoices       # Generate batch invoices
@@ -271,8 +271,11 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_STORAGE_BUCKET_NAME=...
 AWS_S3_REGION_NAME=us-east-1
 
-# SendGrid (email)
-SENDGRID_API_KEY=SG....
+# Amazon SES (email) — SMTP credentials, NOT an AWS access key pair.
+# Generate at: SES Console > SMTP settings > Create SMTP credentials
+EMAIL_HOST=email-smtp.us-east-1.amazonaws.com
+EMAIL_HOST_USER=...
+EMAIL_HOST_PASSWORD=...
 DEFAULT_FROM_EMAIL=notifications@rssystems.io
 ```
 

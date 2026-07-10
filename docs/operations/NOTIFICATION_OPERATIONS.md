@@ -6,7 +6,7 @@
 **Audience**: DevOps Team, Backend Engineers, On-Call Engineers
 
 > **Architecture**: Notifications are **synchronous** — no Celery workers, no Redis, no background queues.
-> Emails deliver inline via SendGrid during the request. Billing tasks run as management commands
+> Emails deliver inline via Amazon SES during the request. Billing tasks run as management commands
 > via EB cron (not notification tasks).
 
 ---
@@ -276,7 +276,7 @@ Expected entries:
 
 **Investigation**:
 ```bash
-# Test SendGrid connectivity
+# Test Amazon SES connectivity
 python manage.py test_ses admin@rssystems.io
 
 # Check delivery logs
@@ -287,7 +287,11 @@ for log in NotificationDeliveryLog.objects.filter(status__in=['failed','failed_p
 "
 ```
 
-**Resolution**: Check `SENDGRID_API_KEY` env var in EB (`eb printenv | grep SENDGRID`). Update with `eb setenv SENDGRID_API_KEY=SG....`
+**Resolution**: Check the SES SMTP credentials in EB (`eb printenv | grep EMAIL_HOST`). Update with
+`eb setenv EMAIL_HOST_USER=... EMAIL_HOST_PASSWORD=...`. Also confirm the account is not paused:
+`aws sesv2 get-account --region us-east-1` (`SendingEnabled` must be `true`), and check the
+suppression list if a specific recipient never receives mail:
+`aws sesv2 get-suppressed-destination --email-address <recipient> --region us-east-1`
 
 ### 2. EB Cron Not Running
 
@@ -336,7 +340,7 @@ for e in errors:
 
 - [Deployment Guide](../deployment/AWS_DEPLOYMENT.md)
 - [Notification System Docs](../development/notifications/README.md)
-- [Billing Roadmap](../../BILLING_ROADMAP.md)
+- [Billing Roadmap](../archive/BILLING_ROADMAP.md)
 
 ---
 

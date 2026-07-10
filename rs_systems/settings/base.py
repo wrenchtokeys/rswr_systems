@@ -162,17 +162,19 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 # =========================================
 # EMAIL CONFIGURATION (SMTP)
 # =========================================
-# Defaults to SendGrid; overridable via env so switching providers
-# (e.g. Amazon SES: EMAIL_HOST=email-smtp.us-east-1.amazonaws.com,
-# EMAIL_HOST_USER=<SES SMTP username>, EMAIL_HOST_PASSWORD=<SES SMTP
-# password>) is an `eb setenv`, not a code deploy.
+# Amazon SES over SMTP. Overridable via env so switching providers or
+# regions is an `eb setenv`, not a code deploy.
+#
+# EMAIL_HOST_USER / EMAIL_HOST_PASSWORD are SES *SMTP credentials*, which
+# are NOT the same as an AWS access key pair. Generate them under
+# SES Console > SMTP settings > Create SMTP credentials.
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'smtp.sendgrid.net')
+EMAIL_HOST = os.environ.get('EMAIL_HOST', 'email-smtp.us-east-1.amazonaws.com')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', 587))
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'apikey')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD') or os.environ.get('SENDGRID_API_KEY')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 # Cap SMTP connection time — without this a slow/unreachable provider
 # hangs the web worker for the request that triggered the email.
 EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', 10))

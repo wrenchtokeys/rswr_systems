@@ -222,8 +222,10 @@
 **Key Settings**:
 
 ```bash
-# Email (SendGrid)
-SENDGRID_API_KEY=SG....
+# Email (Amazon SES over SMTP)
+EMAIL_HOST=email-smtp.us-east-1.amazonaws.com
+EMAIL_HOST_USER=<SES SMTP username>
+EMAIL_HOST_PASSWORD=<SES SMTP password>
 DEFAULT_FROM_EMAIL=notifications@rssystems.io
 
 # AWS S3 (media/photos)
@@ -245,7 +247,7 @@ LOCAL_DATABASE_URL=postgresql://...  # dev only
 - `DEBUG=True`
 
 **Production**: `rs_systems/settings/production.py`
-- SendGrid email backend
+- Amazon SES email backend (SMTP)
 - PostgreSQL required
 - `DEBUG=False`, S3 media, hardened security
 
@@ -405,7 +407,7 @@ LOCAL_DATABASE_URL=postgresql://...  # dev only
 ### Issue: Emails not sending
 
 **Check**:
-1. `SENDGRID_API_KEY` set? Run `python manage.py test_ses your@email.com`
+1. `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` set? Run `python manage.py test_ses your@email.com`
 2. Email backend configured? (Console backend prints to terminal in dev)
 3. Contact verified? (Email Verified checkbox)
 4. Preferences enabled? (User notification preferences)
@@ -446,7 +448,7 @@ Before going to production:
 - [ ] All customer emails/phones in E.164 format
 - [ ] All technician emails/phones in E.164 format
 - [ ] Email/phone verification enabled for all users
-- [ ] SendGrid API key configured (`SENDGRID_API_KEY`)
+- [ ] SES SMTP credentials configured (`EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`)
 - [ ] `DEFAULT_FROM_EMAIL=notifications@rssystems.io`
 - [ ] Notification templates previewed and approved
 - [ ] Test emails sent successfully (`python manage.py test_ses`)

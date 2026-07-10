@@ -3887,7 +3887,7 @@ def resend_confirmation_email(request, uidb64):
 
     Rate-limited to 3 requests per IP per hour to prevent:
     - Email bombing inactive users
-    - SendGrid quota exhaustion (uidb64 is trivially enumerable)
+    - SES quota exhaustion (uidb64 is trivially enumerable)
     """
     from django.utils.http import urlsafe_base64_decode
 

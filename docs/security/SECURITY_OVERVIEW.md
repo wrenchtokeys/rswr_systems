@@ -377,7 +377,7 @@ print(f"Date joined: {user.date_joined}")
 **Cost**: ~$20-50/month
 
 **Email Verification** ($5/month)
-- AWS SES (62,000 emails/month free) or SendGrid (100/day free)
+- AWS SES (pay-per-use; ~$0.10 per 1,000 emails)
 - Email verification on registration
 - Password reset via email
 - Security alerts
@@ -638,7 +638,7 @@ Run tests: `python manage.py test tests.security`
 If `.env` file was ever exposed, rotate:
 - RDS database password
 - AWS IAM access keys
-- SendGrid API key
+- SES SMTP credentials (`EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD`)
 - Stripe webhook secret
 
 ---
