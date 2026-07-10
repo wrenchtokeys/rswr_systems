@@ -3,7 +3,36 @@
 **Repo:** `rs_systems_branch2` — multi-tenant Django SaaS for auto glass repair shops
 **Audit branch:** `fix/customer-email-and-invoice-send`
 **Scope:** security, business-logic correctness, dead code, documentation hygiene
-**Status:** findings verified against source; **no fixes applied yet**
+**Status:** **EXECUTED 2026-07-10** on branch `fix/audit-remediation-2026-07` — see record below
+
+---
+
+## Execution record — 2026-07-10
+
+One commit per task on `fix/audit-remediation-2026-07` (each cites its ID).
+Regression tests in `tests/bug_fixes/test_{a1,a2,a3,a4,a5}_*.py`,
+`test_b1_invoice_pdf_tenant_scope.py`, `test_b_security_fixes.py`,
+`test_c_billing_secondary.py`, `test_d_workflow_state.py` — every A-task and
+B3/B4 verified failing-first.
+
+| Task | Status | Note |
+|---|---|---|
+| A1–A5 | **FIXED** | A4/A5 via new `InvoiceService.generate_invoice_from_record()` |
+| B1 | **FIXED — was live HIGH** | Bucket policy allowed public read on `invoices/*`; policy scoped to `media/*` same day (2026-07-10, backup of old policy retained); app now serves PDFs via ownership-checked views + 300s presigned URLs |
+| B2 | **FIXED** | Staff-gated, tenant-scoped, no tracebacks; both diagnostic endpoints DEBUG-only |
+| B3 | **FIXED** | POST guard added; full sweep found no other unguarded mutating GET views |
+| B4 | **FIXED** | Welcome bonus once per customer_user |
+| B5 | **NOT-REPRODUCED** | `CustomerRepairPreference` has no `tenant` field (scoped via `customer` OneToOne); `fields='__all__'` never exposed a tenant FK |
+| B6 | **PARTIAL — human** | Key ID scrubbed from CHANGELOG; deleting the root key needs the AWS IAM console |
+| C1–C7 | **FIXED** | C2/C3/C7 include migrations billing.0022–0024; C7 also sets production `TIME_ZONE` env-configurable, default `America/Chicago` |
+| D1 | **FIXED** | `ALLOWED_STATUS_TRANSITIONS` enforced in `Repair.save()`; COMPLETED terminal |
+| D2 | **FIXED** | Sibling propagation via per-repair `save()` |
+| D3 | **PARTIAL (option b)** | Quiet hours documented as suppression (in-app notification remains); honest log. Deferred-delivery queue = follow-up |
+| D4 | **FIXED** | Email copy corrected (product decision: no trial grace); `unpaid`→`expired`+grace; biweekly epoch-anchored |
+| E1–E8 | **DONE** | E5 partial: `repair_form_modern.html`+JS **kept** — audit premise false, live `repair_form.html` references both JS files; `dashboard_visualizations.css` kept (README ref) |
+| E9 | **DEFERRED** | Not a pure duplicate (runs in `/var/app/current` at keys 98/99); static machinery changed same day (d431a5ac) — retire deliberately later |
+| F1–F7 | **DONE** | F6: `docs/operations/SES_OPERATIONS.md` written; F7 no-op (already current) |
+| Data cleanup | **PREPARED — human decision** | `manage.py audit_remediation_data` (read-only) + `scripts/remediation_data_cleanup.sql` (transaction, ROLLBACK by default). Run against a backup, review, then production — AFTER deploying these fixes |
 
 Every finding below was confirmed by reading the actual code path, not by grep alone. Line
 numbers were re-verified on 2026-07-09 against the working tree. If a line number has drifted,
