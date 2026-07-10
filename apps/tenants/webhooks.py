@@ -318,7 +318,13 @@ def _handle_subscription_updated(subscription):
         # payment clears.  (CODE-228)
         'incomplete': 'trialing',
         'incomplete_expired': 'expired',
-        'unpaid': 'past_due',
+        # 'unpaid' is Stripe's TERMINAL "payment retries exhausted" state.
+        # Mapping it to 'past_due' (warn-only) let the tenant keep full
+        # access indefinitely, for free, until Stripe eventually deleted
+        # the subscription. Map to 'expired' — a blocking state; the grace
+        # period is granted below so the owner gets read-only access and
+        # the upgrade path instead of a hard lockout. (D4)
+        'unpaid': 'expired',
     }
     new_status = status_map.get(stripe_status, tenant.subscription_status)
     
@@ -328,7 +334,15 @@ def _handle_subscription_updated(subscription):
         # Just update status, don't change plan
         tenant.subscription_status = new_status
         tenant.stripe_subscription_id = subscription_id
-        tenant.save(update_fields=['subscription_status', 'stripe_subscription_id'])
+        update_fields = ['subscription_status', 'stripe_subscription_id']
+        # D4: 'unpaid' maps to the blocking 'expired' state — grant the
+        # standard 30-day read-only grace period (if none is running) so
+        # the owner can still reach their data and the reactivation flow,
+        # matching what _handle_subscription_deleted does.
+        if stripe_status == 'unpaid' and not tenant.grace_period_end:
+            tenant.grace_period_end = timezone.now() + timezone.timedelta(days=30)
+            update_fields.append('grace_period_end')
+        tenant.save(update_fields=update_fields)
         logger.info(
             f"subscription.updated: Tenant {tenant.slug} status={new_status} "
             f"(plan unchanged, waiting for payment)"

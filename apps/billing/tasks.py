@@ -327,9 +327,14 @@ def _should_run_batch_today(config, today):
         return today.weekday() == config.batch_invoice_day
     
     elif config.batch_invoice_frequency == 'biweekly':
-        # Run every other week (even week numbers)
-        week_num = today.isocalendar()[1]
-        return today.weekday() == config.batch_invoice_day and week_num % 2 == 0
+        # Run every other week, anchored to a fixed epoch Monday. ISO week
+        # parity (isocalendar()[1] % 2) breaks across 53-week years: week 53
+        # is odd and week 1 of the next year is also odd, producing either
+        # two consecutive runs or a three-week gap at the boundary. (D4)
+        from datetime import date as _date
+        _BIWEEKLY_EPOCH = _date(2024, 1, 1)  # a Monday
+        weeks_since_epoch = (today - _BIWEEKLY_EPOCH).days // 7
+        return today.weekday() == config.batch_invoice_day and weeks_since_epoch % 2 == 0
     
     elif config.batch_invoice_frequency == 'monthly':
         return today.day == config.batch_invoice_day
