@@ -75,7 +75,7 @@ def daily_report(request):
         except ValueError:
             return JsonResponse({'error': 'Invalid date. Use YYYY-MM-DD'}, status=400)
     else:
-        report_date = timezone.now().date()
+        report_date = timezone.localdate()
 
     return JsonResponse(ReportService(tenant).generate_daily_report(report_date))
 
@@ -97,7 +97,7 @@ def weekly_report(request):
         except ValueError:
             return JsonResponse({'error': 'Invalid date. Use YYYY-MM-DD'}, status=400)
     else:
-        today = timezone.now().date()
+        today = timezone.localdate()
         week_start = today - timedelta(days=today.weekday())
 
     return JsonResponse(ReportService(tenant).generate_weekly_report(week_start))

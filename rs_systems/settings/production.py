@@ -186,7 +186,14 @@ if not USE_S3:
     AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
 
-TIME_ZONE = 'UTC'
+# Local business timezone (C7). With USE_TZ=True, storage stays UTC; this
+# only controls what "today" means for DateFields, invoice dates, due-date
+# arithmetic, aging buckets, and the overdue cron. It was 'UTC', which gave
+# a Central-time shop invoices dated tomorrow for any work saved after 7pm
+# (and off-by-one due dates / aging from then on). Matches development's
+# default; override with the TIME_ZONE env var if a deployment ever serves
+# a different region.
+TIME_ZONE = os.environ.get('TIME_ZONE', 'America/Chicago')
 
 # Celery removed — notifications are synchronous; batch billing runs via management commands.
 

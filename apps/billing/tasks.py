@@ -43,7 +43,7 @@ def process_overdue_invoices():
     
     Runs for all tenants with overdue_reminder_enabled=True.
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     processed_count = 0
     reminder_count = 0
     
@@ -257,7 +257,7 @@ def process_batch_invoices():
     
     Only processes customers with invoice_preference='batch'.
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     invoices_created = 0
     
     tenants = Tenant.objects.filter(is_active=True)
@@ -409,7 +409,7 @@ def _create_batch_invoice(tenant, customer, config):
                 tenant=tenant,
                 customer=customer,
                 invoice_number=invoice_number,
-                invoice_date=timezone.now().date(),
+                invoice_date=timezone.localdate(),
                 due_date=due_date,
                 payment_terms=effective_payment_terms,
                 status='DRAFT',
@@ -567,7 +567,7 @@ def _calculate_due_date(config, payment_terms_override=None):
             ``config.default_payment_terms``.  Allows customer-specific terms
             to affect the due date (CODE-219).
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     
     terms_days = {
         'COD': 0,
@@ -698,7 +698,7 @@ def generate_aging_report(tenant_id=None):
     Returns dict with aging buckets: current, 30, 60, 90+ days.
     Can be called for a specific tenant or all tenants.
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     
     if tenant_id:
         tenants = Tenant.objects.filter(id=tenant_id, is_active=True)

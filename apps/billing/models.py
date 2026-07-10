@@ -339,7 +339,7 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
     )
     
     # Dates
-    invoice_date = models.DateField(default=timezone.now)
+    invoice_date = models.DateField(default=timezone.localdate)
     due_date = models.DateField(null=True, blank=True)
     
     # Payment terms
@@ -537,7 +537,7 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         """Check if invoice is past due."""
         if self.status in ('PAID', 'CANCELLED'):
             return False
-        if self.due_date and timezone.now().date() > self.due_date:
+        if self.due_date and timezone.localdate() > self.due_date:
             return True
         return False
     
@@ -704,7 +704,7 @@ class Payment(models.Model):
         max_digits=10, decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))]
     )
-    payment_date = models.DateField(default=timezone.now)
+    payment_date = models.DateField(default=timezone.localdate)
     payment_method = models.CharField(
         max_length=20, choices=PAYMENT_METHOD_CHOICES, default='OTHER'
     )
@@ -796,7 +796,7 @@ class Payment(models.Model):
                     invoice.paid_at = None
                     is_past_due = (
                         invoice.due_date is not None
-                        and timezone.now().date() > invoice.due_date
+                        and timezone.localdate() > invoice.due_date
                     )
                     if is_past_due:
                         invoice.status = 'OVERDUE'
@@ -867,7 +867,7 @@ class TaxRate(models.Model):
         help_text="Auto-calculated: state + county + city + special"
     )
 
-    effective_date = models.DateField(default=timezone.now)
+    effective_date = models.DateField(default=timezone.localdate)
     is_active = models.BooleanField(default=True)
 
     # Tenant-aware manager

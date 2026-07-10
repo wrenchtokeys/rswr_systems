@@ -222,7 +222,7 @@ class Command(BaseCommand):
         
         for tenant in self._get_active_tenants():
             service = ReportService(tenant=tenant)
-            report = service.generate_daily_report(timezone.now().date())
+            report = service.generate_daily_report(timezone.localdate())
             
             self.stdout.write(f"\n  [{tenant.name}] {report['summary']}")
             self.stdout.write(

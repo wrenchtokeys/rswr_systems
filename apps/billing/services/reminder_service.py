@@ -153,7 +153,7 @@ class ReminderService:
         """
         from apps.billing.models import Invoice
         
-        today = timezone.now().date()
+        today = timezone.localdate()
         results = {'sent': 0, 'skipped': 0, 'errors': 0}
         
         for days_before in self.REMINDER_SCHEDULE['before_due']:
@@ -190,7 +190,7 @@ class ReminderService:
         """
         from apps.billing.models import Invoice
         
-        today = timezone.now().date()
+        today = timezone.localdate()
         results = {'sent': 0, 'skipped': 0, 'errors': 0}
         
         for days_after in self.REMINDER_SCHEDULE['after_due']:
@@ -298,7 +298,7 @@ Best regards,
     def _render_template(self, template_str, invoice):
         """Render a user-defined email template with invoice placeholders."""
         from django.utils import timezone
-        today = timezone.now().date()
+        today = timezone.localdate()
         days_overdue = max(0, (today - invoice.due_date).days) if invoice.due_date else 0
 
         company_name = ''
@@ -483,7 +483,7 @@ Please contact us to arrange payment or if you have any questions.
         """
         from apps.billing.models import Invoice
         
-        today = timezone.now().date()
+        today = timezone.localdate()
         
         # Due soon (next 7 days)
         due_soon = self._filter(Invoice.objects).filter(
