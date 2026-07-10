@@ -240,8 +240,10 @@ class RepairApproveAtomicityTests(TestCase):
 
     def test_approve_requested_repair(self):
         """REQUESTED repairs (customer self-submitted) can also be approved."""
-        self.repair.queue_status = 'REQUESTED'
-        self.repair.save()
+        # Queryset update: PENDING -> REQUESTED is not a legal runtime
+        # transition (D1); real REQUESTED repairs are created that way.
+        Repair.objects.filter(pk=self.repair.pk).update(queue_status='REQUESTED')
+        self.repair.refresh_from_db()
         self.client.post(
             f'/app/repairs/{self.repair.id}/approve/',
             {'notes': 'approved from requested'},
@@ -251,8 +253,9 @@ class RepairApproveAtomicityTests(TestCase):
 
     def test_deny_requested_repair(self):
         """REQUESTED repairs can also be denied."""
-        self.repair.queue_status = 'REQUESTED'
-        self.repair.save()
+        # Queryset update — see test_approve_requested_repair.
+        Repair.objects.filter(pk=self.repair.pk).update(queue_status='REQUESTED')
+        self.repair.refresh_from_db()
         self.client.post(
             f'/app/repairs/{self.repair.id}/deny/',
             {'reason': 'denied from requested'},

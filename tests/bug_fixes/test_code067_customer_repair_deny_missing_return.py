@@ -180,8 +180,11 @@ class CustomerRepairDenyMissingReturnTest(TestCase):
 
     def test_post_deny_requested_repair(self):
         """POST also denies a REQUESTED (customer-initiated) repair."""
-        self.repair.queue_status = "REQUESTED"
-        self.repair.save()
+        # Set up state via queryset update: PENDING -> REQUESTED is not a
+        # legal runtime transition (D1 state machine); real REQUESTED
+        # repairs are CREATED in that status.
+        Repair.objects.filter(pk=self.repair.pk).update(queue_status="REQUESTED")
+        self.repair.refresh_from_db()
         self.client.login(username="deny_test_cu", password="testpass123")
         response = self.client.post(self._url(), {"reason": "Not needed anymore"})
         self.assertEqual(response.status_code, 302)

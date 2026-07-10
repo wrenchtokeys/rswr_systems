@@ -167,11 +167,13 @@ class TestProcessOverdueInvoicesLoopResilient(unittest.TestCase):
         inv1.invoice_number = 'INV-001'
         inv1.id = 1
         inv1.due_date = today - timedelta(days=7)
+        inv1.last_reminder_days_overdue = None  # C3 tier tracking: none sent yet
 
         inv2 = MagicMock()
         inv2.invoice_number = 'INV-002'
         inv2.id = 2
         inv2.due_date = today - timedelta(days=7)
+        inv2.last_reminder_days_overdue = None
 
         # filter().update() for overdue status update — return 0 so we don't
         # conflate with the reminder count.

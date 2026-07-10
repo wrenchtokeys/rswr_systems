@@ -172,10 +172,12 @@ class SendInvoiceReplacementOnlyTests(TestCase):
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
-        # repair_ids should contain the repair's id (not None)
-        self.assertIn('repair_ids', call_kwargs)
-        self.assertIsNotNone(call_kwargs['repair_ids'])
-        self.assertIn(repair.id, call_kwargs['repair_ids'])
+        # Since A4, owner_send_invoice passes the Invoice record itself and
+        # the service renders the invoice's OWN line items (repair-backed
+        # ones included) — the repair_ids plumbing this test originally
+        # asserted is gone. The CODE-060 invariant (email is attempted, not
+        # silently skipped) is unchanged.
+        self.assertEqual(call_kwargs.get('invoice'), invoice)
 
     @patch('apps.billing.services.invoice_email_service.InvoiceEmailService.send_invoice_email')
     def test_replacement_only_invoice_calls_email_with_none(self, mock_send):
@@ -298,8 +300,10 @@ class SendInvoiceReplacementOnlyTests(TestCase):
 
         mock_send.assert_called_once()
         call_kwargs = mock_send.call_args[1]
-        self.assertIsNotNone(call_kwargs.get('repair_ids'))
-        self.assertEqual(call_kwargs['repair_ids'], [repair.id])
+        # Since A4 the whole Invoice record is passed; the service renders
+        # ALL of the invoice's own line items (repair + replacement) — see
+        # test_repair_only_invoice_calls_email_with_repair_ids.
+        self.assertEqual(call_kwargs.get('invoice'), invoice)
 
     @patch('apps.billing.services.invoice_email_service.InvoiceEmailService.send_invoice_email')
     def test_no_email_when_no_recipient(self, mock_send):

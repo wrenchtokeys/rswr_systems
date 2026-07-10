@@ -132,14 +132,15 @@ class SubscriptionEnforcementTests(TestCase):
             self.assertIn('pricing', resp.url)
 
     def test_canceled_subscription_blocked(self):
-        # CODE-130 changed the meaning of 'canceled': a tenant with
-        # subscription_status='canceled' but NO grace_period_end is treated as
-        # "active (scheduled to cancel)" — the shop still has paid time.  We
-        # must set grace_period_end to a past date to simulate a subscription
-        # that has actually expired, which is what the Stripe webhook does.
+        # A subscription that has ACTUALLY ended is status='expired' with a
+        # past grace_period_end — that is what the Stripe deletion webhook
+        # sets. (Previously this test used 'canceled' + past stamp; since A3
+        # a stale past stamp on a 'canceled' tenant means "paid days remain"
+        # and is ACTIVE — that combination was the CODE-130 residual lockout
+        # bug, not a legitimately ended subscription.)
         user, tenant = _make_tenant(
             'Canceled Shop', 'canceled_owner',
-            subscription_status='canceled',
+            subscription_status='expired',
             grace_period_end=timezone.now() - timedelta(days=1),
         )
         self.client.login(username='canceled_owner', password='testpass123')
@@ -173,12 +174,12 @@ class SubscriptionEnforcementTests(TestCase):
 
     def test_api_returns_402(self):
         """API endpoints return 402 for expired subscriptions."""
-        # Per CODE-130, 'canceled' without grace_period_end means "scheduled to
-        # cancel but still active". Set grace_period_end in the past to create a
-        # genuinely expired subscription that the middleware will block.
+        # A genuinely expired subscription is status='expired' with a past
+        # grace_period_end (what the deletion webhook sets). 'canceled' with
+        # a stale past stamp is ACTIVE since A3 (paid days remain).
         user, tenant = _make_tenant(
             'API Expired', 'api_expired',
-            subscription_status='canceled',
+            subscription_status='expired',
             grace_period_end=timezone.now() - timedelta(days=1),
         )
         self.client.login(username='api_expired', password='testpass123')

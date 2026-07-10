@@ -29,6 +29,9 @@ def _make_tenant(status, grace_period_end=None, stripe_sub_id='sub_abc123', plan
     tenant = MagicMock(spec=Tenant)
     tenant.subscription_status = status
     tenant.grace_period_end = grace_period_end
+    # The middleware (since A3) reads effective_grace_period_end and compares
+    # it to now; on the real model the property mirrors grace_period_end.
+    tenant.effective_grace_period_end = grace_period_end
     tenant.plan = plan
     tenant.stripe_subscription_id = stripe_sub_id
     # is_trial_expired only relevant for trial plan
@@ -124,10 +127,17 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         # Grace period allows GETs (read-only mode)
         self.get_response.assert_called_once_with(request)
 
-    def test_canceled_with_expired_grace_period_blocks_all(self):
+    def test_canceled_with_stale_grace_period_still_active(self):
         """
-        STATUS: canceled, grace_period_end in the past (grace period ended)
-        EXPECTED: all access blocked — redirected to /subscription-blocked/.
+        STATUS: canceled, grace_period_end in the past (STALE stamp).
+
+        EXPECTATION CHANGED by A3 (remediation plan 2026-07-09): this exact
+        state was the residual CODE-130 lockout — a lapse+resubscribe cycle
+        left a past-dated stamp on a paying tenant, and their next 'cancel
+        at period end' locked them out immediately despite paid days
+        remaining. A past grace stamp on a 'canceled' tenant is now
+        equivalent to no stamp: ACTIVE. ('expired' + past stamp still
+        blocks — covered below.)
         """
         grace_end = timezone.now() - timedelta(days=1)
         tenant = _make_tenant('canceled', grace_period_end=grace_end)
@@ -136,10 +146,8 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
 
         response = self.middleware(request)
 
-        self.get_response.assert_not_called()
-        # Should redirect to subscription-blocked
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('subscription-blocked', response['Location'])
+        self.get_response.assert_called_once_with(request)
+        self.assertEqual(response.status_code, 200)
 
     # -------------------------------------------------------------------------
     # 'expired' status: always restricted (normal deletion flow)
