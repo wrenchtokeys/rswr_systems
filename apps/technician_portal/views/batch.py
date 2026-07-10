@@ -116,6 +116,13 @@ def technician_batch_detail(request, batch_id):
 @transaction.atomic
 def technician_batch_start_work(request, batch_id):
     """Start work on all repairs in a batch at once."""
+    # State-changing action must not execute on GET — a GET here bypasses
+    # CSRF protection entirely (e.g. an <img src=...> on any page a
+    # logged-in technician visits). Same guard as batch_complete_all. (B3)
+    if request.method != 'POST':
+        messages.error(request, "Invalid request.")
+        return redirect('technician_dashboard')
+
     tenant = getattr(request, 'tenant', None)
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 

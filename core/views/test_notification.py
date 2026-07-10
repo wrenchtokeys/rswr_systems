@@ -1,18 +1,23 @@
 from django.http import JsonResponse
-from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from core.services.notification_service import NotificationService
 from core.models import Notification
 from django.utils import timezone
 
 
-@login_required
+@staff_member_required
 def test_notification(request):
     """
     Test endpoint to manually trigger a notification.
-    Access at: /test-notification/
+    Access at: /test-notification/ (mounted only when DEBUG; staff-only)
 
     This will create a test notification and attempt to send it via email.
     Returns JSON with diagnostic information.
+
+    SECURITY (B2): staff-gated (was login_required — any customer-portal
+    user could hit it), the sample repair is tenant-scoped (was
+    Repair.objects.first(), leaking another tenant's oldest repair), and
+    tracebacks are logged server-side, never returned in the response.
     """
     user = request.user
 
@@ -60,8 +65,11 @@ def test_notification(request):
                 'available_templates': list(NotificationTemplate.objects.filter(active=True).values_list('name', flat=True))
             })
 
-        # Get any repair to use as test data, or create minimal context
-        repair = Repair.objects.first()
+        # Get a repair to use as test data, or create minimal context.
+        # MUST be tenant-scoped: an unscoped .first() returns the oldest
+        # repair in the whole system — almost certainly another tenant's.
+        tenant = getattr(request, 'tenant', None)
+        repair = Repair.objects.filter(tenant=tenant).first() if tenant else None
 
         if repair:
             # IMPORTANT: Only pass JSON-serializable values (strings, numbers, booleans)
@@ -111,10 +119,10 @@ def test_notification(request):
             'message': 'Test notification created. Check your email and the notification diagnostic for delivery status.' if notification else 'Notification was not created - check logs for details.'
         })
     except Exception as e:
+        # Log the full traceback server-side; never return it to the client.
         logger.error(f"Failed to create test notification: {str(e)}")
         logger.error(traceback.format_exc())
         return JsonResponse({
             'success': False,
             'error': f'Failed to create notification: {str(e)}',
-            'traceback': traceback.format_exc()
         })

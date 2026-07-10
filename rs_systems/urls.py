@@ -46,10 +46,6 @@ urlpatterns = [
     path('pay/<int:invoice_id>/<str:token>/', views.public_pay_invoice, name='public_pay_invoice'),
     # setup-database/ removed — security risk (unauthenticated DB setup with hardcoded creds)
 
-    # Test/diagnostic endpoints (for debugging)
-    path('test-notification/', test_notification, name='test_notification'),
-    path('check-notification-prefs/', check_notification_prefs, name='check_notification_prefs'),
-
     # API endpoints
     path('api/', include('apps.technician_portal.api.urls')),
 
@@ -126,3 +122,12 @@ urlpatterns = [
 # Serve media files in development and AWS EB (when not using S3)
 if settings.DEBUG or (not getattr(settings, 'USE_S3', False)):
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+# Test/diagnostic endpoints — development only (B2). They trigger on-demand
+# emails and expose config internals; production has no business serving
+# them. The views are additionally staff-gated / self-data-only.
+if settings.DEBUG:
+    urlpatterns += [
+        path('test-notification/', test_notification, name='test_notification'),
+        path('check-notification-prefs/', check_notification_prefs, name='check_notification_prefs'),
+    ]

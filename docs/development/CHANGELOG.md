@@ -32,7 +32,7 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ### Follow-ups (not done here)
 - Cancel the SendGrid subscription, then drop `include:sendgrid.net` from the `rssystems.io` SPF record (SPF permits only 10 DNS lookups).
-- Rotate the **root** AWS access key found in the local `~/.aws/credentials` (`AKIA6FFYEZ3YDMUCIGIG`); it belongs to no IAM user. The application's own `.env` correctly uses the scoped `rs-systems-ses-user`.
+- Rotate (better: delete) the **root** AWS access key found in the local `~/.aws/credentials` default profile; it belongs to no IAM user. Root accounts should have no access keys at all. The application's own `.env` correctly uses the scoped `rs-systems-ses-user`. *(Key ID scrubbed from this doc per B6, 2026-07-10.)*
 - Consider wiring SES bounce/complaint notifications to an SNS topic. Today the account-level suppression list absorbs them, which satisfies AWS's requirement but gives no in-app visibility.
 
 ---
