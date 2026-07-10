@@ -74,6 +74,49 @@ class TaxService:
             .first()
         )
 
+    def _resolve_tax_rate(self, tenant, customer=None):
+        """
+        Resolve the TaxRate for a customer by LOCATION, as the TaxRate model
+        documents ("Lookup by city+state when calculating invoice tax"):
+
+        1. exact city + state match
+        2. state-level match (rows with a blank/other city won't match; the
+           newest active row for the state is used)
+        3. tenant default (newest active rate) — previous behavior
+
+        The old behavior used only #3: a shop serving Little Rock (6.5%)
+        and North Little Rock (7.0%) charged EVERY customer whichever rate
+        was added most recently — under-collection the shop eats, or
+        over-collection that's a refund and a compliance problem. (C4)
+
+        Returns None when the tenant has no active rates (tax disabled —
+        documented behavior that tests depend on).
+        """
+        from apps.billing.models import TaxRate
+        qs = TaxRate.objects.filter(tenant=tenant, is_active=True)
+
+        if customer is not None:
+            city = (getattr(customer, 'city', '') or '').strip()
+            state = (getattr(customer, 'state', '') or '').strip().upper()
+            if city and state:
+                match = (
+                    qs.filter(city__iexact=city, state__iexact=state)
+                    .order_by('-effective_date', '-id')
+                    .first()
+                )
+                if match:
+                    return match
+            if state:
+                match = (
+                    qs.filter(state__iexact=state)
+                    .order_by('-effective_date', '-id')
+                    .first()
+                )
+                if match:
+                    return match
+
+        return self._get_tenant_default_tax_rate(tenant)
+
     def is_tax_enabled(self, tenant=None):
         """
         Check whether tax calculation is enabled for the given tenant.
@@ -129,9 +172,9 @@ class TaxService:
             result['exempt'] = True
             return result
 
-        # Tenant-aware path: use tenant's TaxRate
+        # Tenant-aware path: resolve by customer location, then tenant default (C4)
         if tenant:
-            tax_rate = self._get_tenant_default_tax_rate(tenant)
+            tax_rate = self._resolve_tax_rate(tenant, customer)
             if tax_rate is None:
                 # No tax rates configured for this tenant = tax disabled
                 return result
