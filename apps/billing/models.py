@@ -413,6 +413,15 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         help_text="Stripe hosted invoice URL for customer"
     )
     
+    # Overdue reminder tracking — highest reminder tier (days overdue)
+    # already sent. Makes the daily reminder cron idempotent (safe to run
+    # twice in a day) and catch-up-capable (a missed cron day still sends
+    # the skipped tier). (C3)
+    last_reminder_days_overdue = models.IntegerField(
+        null=True, blank=True,
+        help_text="Highest overdue-reminder tier (in days) already sent for this invoice",
+    )
+
     # Timestamps
     sent_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
