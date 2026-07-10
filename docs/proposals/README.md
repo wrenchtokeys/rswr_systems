@@ -28,24 +28,24 @@ Each proposal includes:
 ### ✅ Shipped
 | Proposal | Status | Notes |
 |----------|--------|-------|
-| [Stripe Connect Implementation](stripe-connect-implementation-plan.md) | ✅ Shipped | Phases 1-2 live, Connect approved March 2026 |
-| [Stripe Connect Multi-Tenant](stripe-connect-multi-tenant-payments.md) | ✅ Shipped | Superseded by implementation plan above |
+| [Stripe Connect Implementation](stripe-connect-implementation-plan.md) | ✅ Shipped | Phases 1-2 live, Connect approved March 2026. Canonical Connect reference — see `docs/development/CHANGELOG.md` 2026-03-17 entry |
+| [Stripe Connect Multi-Tenant](../archive/proposals/stripe-connect-multi-tenant-payments.md) | ✅ Shipped, archived | Earlier destination-transfer design, superseded by the implementation plan above (direct charges instead); moved to archive |
+| [Customer Billing Preferences](../archive/proposals/customer-billing-preferences-ux.md) | ✅ Shipped, archived | CODE-209: `_save_billing_preferences()`, `CustomerRepairPreference`; moved to archive |
 
 ### 🚧 Partially Shipped
 | Proposal | Status | Notes |
 |----------|--------|-------|
 | [Loyalty System Overhaul](loyalty-system-overhaul.md) | Phases 1-2 shipped | Phase 1: ledger, LoyaltyConfig, LoyaltyService. Phase 2: reconcile command, expire command, liability report, manual adjustment. Phases 3-4 (tiers, dashboards) pending |
 | [Warranty System](warranty-system.md) | Phase 1 shipped | Policies, claim workflow, repair badges, invoice terms, completion hook. Phase 2 (per-customer overrides, goodwill flag, stats cache) pending |
+| [Review Request System](review-request-system.md) | Phase 1 shipped (CODE-208) | `ReviewRequestService`, `ReviewConfig`, `ReviewRequest` models. Phase 2/3 (actual Google Reviews API) pending |
+| [Reward Redemption UX](reward-redemption-ux-overhaul.md) | Phase 1 shipped (CODE-210) | `preferred_date`/`preferred_time` on physical rewards, auto-restore points on denial |
 
 ### 🟡 Awaiting Review
 | Proposal | Status | Notes |
 |----------|--------|-------|
-| [Review Request System](review-request-system.md) | Draft | Smart Google review requests after repair completion. Ties into website widget flywheel |
 | [Website Integration Widget](website-integration-widget.md) | Draft | Embeddable quote form for shop websites |
 | [Repair Form Efficiency](repair-form-efficiency.md) | Draft | 12 ideas for repair form, 7 for replacement, 5 for multi-break |
 | [AI Plan Recommendation](ai-plan-recommendation.md) | Draft | Rule-based plan suggestions during trial |
-| [Customer Billing Preferences](customer-billing-preferences-ux.md) | Draft | Payment terms/prefs on customer create form |
-| [Reward Redemption UX](reward-redemption-ux-overhaul.md) | Draft | Modal for redemptions (partially addressed by LOYALTY-003 confirm modal) |
 | [Invoice Email Tracking](invoice-email-tracking.md) | Draft | Open/click tracking on invoice emails |
 | [AI Email Template Assistant](ai-email-template-assistant.md) | Draft | AI-generated email templates per shop |
 

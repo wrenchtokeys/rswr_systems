@@ -780,7 +780,7 @@ python manage.py test apps.technician_portal.tests.TestRepairModel.test_pricing
 - [Coverage.py](https://coverage.readthedocs.io/)
 
 ### Internal Docs
-- [Development Workflow](/docs/development/WORKFLOW_IMPLEMENTATION.md)
+- [Changelog](/docs/development/CHANGELOG.md)
 - [Deployment Checklist](/docs/deployment/PRODUCTION_CHECKLIST.md)
 - [Security Testing](/docs/security/SECURITY_OVERVIEW.md)
 

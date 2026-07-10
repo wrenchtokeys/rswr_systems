@@ -1,5 +1,9 @@
 # Customer Portal API Documentation
 
+> **Note:** written before multi-tenant isolation was added (see `apps/tenants/README.md`).
+> Endpoints below are described as they worked pre-tenancy; verify tenant-scoping against
+> current views before relying on this for security-sensitive details.
+
 ## Overview
 This document describes the API endpoints powering the RSWR Systems Customer Portal's interactive data visualizations and features. These APIs provide authenticated access to repair metrics, unit data, and status information.
 

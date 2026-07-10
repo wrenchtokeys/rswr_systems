@@ -120,14 +120,13 @@ Every cache read/write is a SQL query against the `django_cache` table in RDS.
 
 ---
 
-### 6. Stripe — Single Account → Connect Platform
+### 6. Stripe Connect — Onboarding & Fee Collection
 
-**Current:** All payments flow to a single Stripe account. No multi-tenant payment routing.
+**Current:** Stripe Connect shipped and live (March 2026) — direct charges with per-tenant `application_fee_amount`, see `docs/proposals/stripe-connect-implementation-plan.md`. Remaining scale question is onboarding throughput and Phase 3 dashboard reporting as tenant count grows.
 
 | Milestone | Action |
 |-----------|--------|
-| First external shop signs up | **Implement Stripe Connect** |
-| External shops need to receive customer payments | Required — see `docs/proposals/stripe-connect-multi-tenant-payments.md` |
+| Tenant Connect-onboarding volume grows | Watch `PlatformFeeRecord` table growth and webhook processing latency |
 
 ---
 
