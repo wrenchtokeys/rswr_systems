@@ -23,26 +23,28 @@ Documentation index for the RS Systems windshield repair management platform.
 ### `security/`
 - [SECURITY_OVERVIEW.md](security/SECURITY_OVERVIEW.md) -- Security features and roadmap
 - [INCIDENT_RESPONSE.md](security/INCIDENT_RESPONSE.md) -- Emergency response procedures
-- [TENANT_ISOLATION_AUDIT.md](security/TENANT_ISOLATION_AUDIT.md) -- Multi-tenant isolation audit
 
 ### `development/`
 - [ROADMAP.md](development/ROADMAP.md) -- Project roadmap (completed, next up, backlog)
-- [CHANGELOG.md](development/CHANGELOG.md) -- Version history
+- [CHANGELOG.md](development/CHANGELOG.md) -- Version history (canonical changelog)
 - [UI_DESIGN_GUIDE.md](development/UI_DESIGN_GUIDE.md) -- Design system and UI components
 - [FRONTEND_GUIDE.md](development/FRONTEND_GUIDE.md) -- CSS architecture, D3.js visualizations, linting
 - [TESTING.md](development/TESTING.md) -- Testing procedures
-- [TIMEZONE_HANDLING.md](development/TIMEZONE_HANDLING.md) -- Multi-timezone support
-- [WORKFLOW_IMPLEMENTATION.md](development/WORKFLOW_IMPLEMENTATION.md) -- Sprint tracking and phases
 - [MANAGER_SETTINGS_ROADMAP.md](development/MANAGER_SETTINGS_ROADMAP.md) -- Manager settings feature plan
-- [VISCOSITY_RULES_AUTO_PRIORITY.md](development/VISCOSITY_RULES_AUTO_PRIORITY.md) -- Viscosity auto-priority system
 - [SUBSCRIPTION_LIFECYCLE.md](development/SUBSCRIPTION_LIFECYCLE.md) -- Trial/subscription lifecycle plan
 - [notifications/README.md](development/notifications/README.md) -- Notification system docs (architecture, setup, testing)
 
 ### `operations/`
 - [NOTIFICATION_OPERATIONS.md](operations/NOTIFICATION_OPERATIONS.md) -- Daily ops guide + troubleshooting runbook
+- [INCIDENT_2026-07-06_REPAIR_FORM_500.md](operations/INCIDENT_2026-07-06_REPAIR_FORM_500.md) -- Staticfiles-manifest-race incident report
 
-### `strategy/`
-- [SAAS_NOTIFICATION_STRATEGY.md](strategy/SAAS_NOTIFICATION_STRATEGY.md) -- SaaS notification strategy
+### `proposals/`
+- [README.md](proposals/README.md) -- Feature proposal index with shipped/draft status tracking
+
+### `archive/`
+Historical/superseded docs kept for reference — not actively maintained. See
+[archive/](archive/) for the full list (past audits, retired roadmaps, one-time test plans,
+superseded strategy docs).
 
 ### `user-guides/`
 - [ADMIN_GUIDE.md](user-guides/ADMIN_GUIDE.md) -- Administrator interface

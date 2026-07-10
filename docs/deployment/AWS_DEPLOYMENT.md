@@ -772,5 +772,5 @@ eb terminate ENVIRONMENT_NAME
 ## Architecture Notes (Current)
 
 - **No Celery / No Redis**: Notifications are synchronous. Billing tasks run as management commands via EB cron (`.ebextensions/11_billing_cron.config`).
-- **Email**: SendGrid (`notifications@rssystems.io`). No AWS SES in active use.
+- **Email**: Amazon SES over SMTP (`notifications@rssystems.io`), `us-east-1`. Domain `rssystems.io` is verified and DKIM-signed; the account has production access (50,000 msg/day, 14 msg/sec).
 - **Settings**: `rs_systems.settings.production` (three-file layout: base/development/production).

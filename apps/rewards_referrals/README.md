@@ -1,5 +1,9 @@
 # Referral and Rewards System
 
+> **Note:** written before multi-tenant isolation was added. `RewardOption` and related
+> models are tenant-scoped via FK (see `apps/tenants/README.md` and CLAUDE.md's
+> "Reward Integration" section) — that isn't reflected below.
+
 ## Overview
 
 The Referral and Rewards System is a comprehensive solution for managing customer referrals and rewards within the RS Systems platform. It enables customers to refer others to the service, earn points for successful referrals, and redeem these points for various rewards, discounts, and services.

@@ -244,7 +244,7 @@ Each `Customer` (fleet account) can have multiple `CustomerUser` accounts (diffe
 
 ### Notification System
 
-8 repair lifecycle templates fire via `core.services.notification_service`. Templates are seeded in migration `0018_seed_repair_notification_templates`. Each template supports email (SendGrid) with per-user notification preferences. Customer notifications are company-scoped — all `CustomerUser` accounts for a company see the same notification feed.
+8 repair lifecycle templates fire via `core.services.notification_service`. Templates are seeded in migration `0018_seed_repair_notification_templates`. Each template supports email (Amazon SES) with per-user notification preferences. Customer notifications are company-scoped — all `CustomerUser` accounts for a company see the same notification feed.
 
 Preference management: `/app/notifications/preferences/`
 History: `/app/notifications/history/`
@@ -334,7 +334,7 @@ Configure state/county/city tax rates at Settings → Billing → Tax Rates. Tax
 - **Frontend:** Tailwind CSS, Bootstrap, D3.js (data visualizations)
 - **Payments:** Stripe (subscriptions + invoice payments)
 - **Storage:** AWS S3 (photos, invoices)
-- **Email (outbound):** SendGrid (notifications, invitations, invoices) — sends from `notifications@rssystems.io`
+- **Email (outbound):** Amazon SES (notifications, invitations, invoices) — sends from `notifications@rssystems.io`
 - **Email (inbound):** ImprovMX (forwards `contact@rssystems.io` to Gmail)
 - **DNS:** AWS Route 53
 - **Deployment:** AWS EC2 + Elastic Beanstalk
@@ -359,8 +359,10 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_STORAGE_BUCKET_NAME=...
 AWS_S3_REGION_NAME=us-east-1
 
-# SendGrid (optional — for outbound email delivery)
-SENDGRID_API_KEY=SG....
+# Amazon SES (outbound email) — SES SMTP credentials, not an AWS access key pair
+EMAIL_HOST=email-smtp.us-east-1.amazonaws.com
+EMAIL_HOST_USER=...
+EMAIL_HOST_PASSWORD=...
 DEFAULT_FROM_EMAIL=notifications@rssystems.io
 ```
 
@@ -398,22 +400,26 @@ See the [`docs/`](docs/) directory for detailed guides:
 - [Deployment Guide](docs/deployment/AWS_DEPLOYMENT.md)
 - [Security Overview](docs/security/SECURITY_OVERVIEW.md)
 - [Developer Guide](docs/DEVELOPER_GUIDE.md)
-- [User Flows](docs/USER_FLOWS.md)
+- [User Flows](docs/user-guides/USER_FLOWS.md)
 - [API Docs](docs/user-guides/ADMIN_GUIDE.md) — or visit `/api/schema/swagger-ui/`
 
 ---
 
 ## Email Configuration
 
-### Outbound (SendGrid)
+### Outbound (Amazon SES)
 - Sends from: `notifications@rssystems.io`
-- Domain authenticated via `em50.rssystems.io` CNAME records (DKIM + SPF)
+- Transport: SES SMTP (`email-smtp.us-east-1.amazonaws.com:587`, STARTTLS)
+- Domain `rssystems.io` verified in SES with Easy DKIM (3 CNAME tokens)
+- Account has production access: 50,000 messages/day, 14 messages/second
+- Bounces and complaints are handled by the SES account-level suppression list
 - Used for: repair notifications, invoice delivery, invitation emails, subscription alerts
 
 ### Inbound (ImprovMX)
 - `contact@rssystems.io` forwards to the team inbox (Gmail)
 - MX records on Route 53: `mx1.improvmx.com` / `mx2.improvmx.com`
-- SPF record includes both `sendgrid.net` and `spf.improvmx.com`
+- SPF record currently: `v=spf1 include:amazonses.com include:sendgrid.net include:spf.improvmx.com ~all`
+- Once the SendGrid subscription is cancelled, drop `include:sendgrid.net` (SPF allows only 10 DNS lookups)
 
 ---
 

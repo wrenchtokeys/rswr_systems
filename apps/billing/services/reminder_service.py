@@ -105,7 +105,7 @@ class ReminderService:
             logger.warning(f"Could not generate PDF for reminder: {e}")
             # Continue without PDF - still send the reminder
         
-        # Send via SendGrid or Django's email backend
+        # Send via Django's email backend (Amazon SES over SMTP)
         try:
             success = self._send_email(
                 to_email=_recipient_email,
@@ -428,55 +428,18 @@ Please contact us to arrange payment or if you have any questions.
     
     def _send_email(self, to_email, subject, body, invoice=None, pdf_attachment=None):
         """
-        Send email via SendGrid or Django's email backend.
-        
+        Send email via Django's email backend (Amazon SES over SMTP).
+
         Args:
             to_email: Recipient email
             subject: Email subject
             body: Plain text body
             invoice: Invoice object (for PDF filename)
             pdf_attachment: PDF bytes to attach
-            
+
         Returns:
             bool: True if sent successfully
         """
-        # Try SendGrid first
-        sendgrid_key = getattr(settings, 'SENDGRID_API_KEY', None)
-        
-        if sendgrid_key:
-            try:
-                from sendgrid import SendGridAPIClient
-                from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
-                import base64
-                
-                message = Mail(
-                    from_email=self.from_email,
-                    to_emails=to_email,
-                    subject=subject,
-                    plain_text_content=body
-                )
-                
-                # Attach PDF if provided
-                if pdf_attachment and invoice:
-                    encoded_pdf = base64.b64encode(pdf_attachment).decode()
-                    attachment = Attachment(
-                        FileContent(encoded_pdf),
-                        FileName(f"Invoice_{invoice.invoice_number}.pdf"),
-                        FileType('application/pdf'),
-                        Disposition('attachment')
-                    )
-                    message.attachment = attachment
-                
-                sg = SendGridAPIClient(sendgrid_key)
-                response = sg.send(message)
-                
-                return response.status_code in [200, 201, 202]
-                
-            except Exception as e:
-                logger.error(f"SendGrid error: {e}")
-                # Fall through to Django email
-        
-        # Fallback to Django's email backend (branded HTML)
         try:
             from core.email_utils import send_branded_email
 

@@ -395,8 +395,8 @@ print(stats)
 
 **Investigation:**
 ```bash
-# Check SendGrid API key
-eb printenv | grep SENDGRID
+# Check SES SMTP credentials
+eb printenv | grep EMAIL_HOST
 
 # Check notification priority
 python manage.py shell
@@ -406,7 +406,7 @@ python manage.py shell
 ```
 
 **Resolution:**
-- Verify `SENDGRID_API_KEY` is set correctly
+- Verify `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` are set correctly
 - Check Django logs for exceptions during delivery
 - Verify notification priority allows email delivery
 

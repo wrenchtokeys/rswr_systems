@@ -272,7 +272,7 @@ def logout_view(request):
 class RateLimitedPasswordResetView(auth_views.PasswordResetView):
     """
     PasswordResetView with an IP rate limit. Unlimited POSTs here mean
-    email-bombing arbitrary users and burning SendGrid quota.
+    email-bombing arbitrary users and burning SES quota.
     """
 
     def post(self, request, *args, **kwargs):

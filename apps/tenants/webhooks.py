@@ -467,7 +467,7 @@ def _notify_owners_and_managers(tenant, event_type, context):
     """
     Send email notification to ALL owners AND managers about subscription events.
 
-    Uses SendGrid if configured, otherwise logs a warning.
+    Uses the configured email backend (Amazon SES over SMTP).
     """
     try:
         from django.conf import settings as django_settings

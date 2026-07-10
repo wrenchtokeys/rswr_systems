@@ -57,6 +57,15 @@
 - Embeddable quote form for shop websites → auto-creates customers + repairs
 - → [`proposals/website-integration-widget.md`](proposals/website-integration-widget.md)
 
+### Review Request System
+- **Status:** Phase 1 shipped (CODE-208) — `ReviewRequestService`, `ReviewConfig`, `ReviewRequest` models
+- **Remaining:** Phase 2/3 — actual Google Reviews API integration
+- → [`proposals/review-request-system.md`](proposals/review-request-system.md)
+
+### Reward Redemption UX Overhaul
+- **Status:** Phase 1 shipped (CODE-210) — `preferred_date`/`preferred_time` on physical rewards, auto-restore points on denial
+- → [`proposals/reward-redemption-ux-overhaul.md`](proposals/reward-redemption-ux-overhaul.md)
+
 ### Stripe Connect Phase 3 — Dashboard
 - **Status:** Connect is live, dashboard (payout history, balance, fee reporting) still pending
 - → [`proposals/stripe-connect-implementation-plan.md`](proposals/stripe-connect-implementation-plan.md)
@@ -69,8 +78,6 @@
 |----------|-------------|-----|
 | Repair Form Efficiency | 12 ideas for faster repair entry | `proposals/repair-form-efficiency.md` |
 | AI Plan Recommendation | Suggest plans based on trial usage | `proposals/ai-plan-recommendation.md` |
-| Customer Billing Preferences | Payment terms on customer create form | `proposals/customer-billing-preferences-ux.md` |
-| Reward Redemption UX | Better redemption modal (partially done) | `proposals/reward-redemption-ux-overhaul.md` |
 | Invoice Email Tracking | Open/click tracking on invoices | `proposals/invoice-email-tracking.md` |
 | AI Email Template Assistant | AI-generated emails per shop | `proposals/ai-email-template-assistant.md` |
 | Competition Pool | Gamification between techs | `proposals/competition-pool.md` |
@@ -95,6 +102,24 @@
 - Customer portal views: 30+ views, only ~16 tests
 - ConnectService payment routing: lightly tested
 - 8 pre-existing test failures in test_step5_nav / test_step3_signup / test_rewards / test_user_flow
+
+### Admin fieldsets missing tenant (low priority)
+- Repair, Replacement, Customer, Invoice, TaxRate, UnitRepairCount, DeliveryLog have `tenant` in
+  `list_display`/`list_filter` but not in `fieldsets`. These models are primarily created via SaaS
+  views (not admin) and mostly have auto-set logic, so this isn't a data-integrity risk — just an
+  admin UX gap for superusers creating records manually.
+  (From `docs/archive/BUG_AUDIT_2026-03-29_to_04-01.md`.)
+
+### Missing db_index on frequently filtered fields
+- `queue_status` on Repair (via GlassService) — filtered in many views and admin
+- `status` on Invoice, CustomerInvitation, ReviewRequest, RewardRedemption
+- `is_active` on Tenant, Technician, ViscosityRecommendation, TaxRate, etc.
+- **Impact:** performance — queries scan more rows than needed on larger datasets. Not urgent now
+  (small data) but should be addressed before scale.
+
+### Security admin models not registered
+- `LoginAttempt`, `SecurityAuditLog`, and `customer_portal.ApprovalToken` have no admin registration.
+  Low priority — likely intentional for audit/token models, but worth a look if debugging needs arise.
 
 ---
 

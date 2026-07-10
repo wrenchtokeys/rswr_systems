@@ -167,7 +167,10 @@ CACHES = {
 # =========================================
 
 EMAIL_USE_SSL = False  # Use TLS on port 587, not SSL
-EMAIL_RATE_LIMIT = int(os.environ.get('EMAIL_RATE_LIMIT', 100))
+
+# SES caps this account at 14 messages/second. Nothing reads this setting
+# today; it is here so a future sender honours that ceiling.
+EMAIL_RATE_LIMIT = int(os.environ.get('EMAIL_RATE_LIMIT', 14))
 
 # =========================================
 # SMS (Production overrides)

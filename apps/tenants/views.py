@@ -13,7 +13,6 @@ Author: Amelia (Clawdbot AI)
 """
 
 import logging
-import os
 import re
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
@@ -110,12 +109,12 @@ def _generate_unique_slug(business_name):
 
 
 def _send_welcome_email(user, tenant, trial_days=30):
-    """Send a welcome email via SendGrid/SMTP if configured."""
-    sendgrid_key = os.environ.get('SENDGRID_API_KEY')
-    if not sendgrid_key:
-        logger.info(f"No SENDGRID_API_KEY — skipping welcome email for {user.email}")
-        return
+    """Send a welcome email via the configured email backend.
 
+    No provider-credential gate here: in development the console backend
+    handles delivery, and in production a missing/incorrect credential
+    surfaces as a logged warning below rather than a silent no-op.
+    """
     try:
         from core.email_utils import send_branded_email
 

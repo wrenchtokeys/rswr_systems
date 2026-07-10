@@ -5,7 +5,7 @@
 > Status:  Complete
 > Priority: High  core revenue feature
 
- **For how billing works, see [BILLING_GUIDE.md](docs/BILLING_GUIDE.md)**
+ **For how billing works, see [BILLING_GUIDE.md](../BILLING_GUIDE.md)**
 
 ## Current State (What Exists)
 
@@ -312,4 +312,4 @@ Separate from customer billing  this is charging glass shops to use RS Systems.
 - [ ] Trial expiration email alerts (7d, 3d, 1d before + day-of + win-back at 7d and 30d after)
 - [ ] Soft landing page for expired trials (show data stats, upgrade CTA, export option)
 - **Data retention policy**: Keep all tenant data indefinitely after expiration. No automated cleanup.
-- See [`docs/development/SUBSCRIPTION_LIFECYCLE.md`](docs/development/SUBSCRIPTION_LIFECYCLE.md) for full lifecycle plan
+- See [`docs/development/SUBSCRIPTION_LIFECYCLE.md`](../development/SUBSCRIPTION_LIFECYCLE.md) for full lifecycle plan
