@@ -790,21 +790,33 @@ class Repair(GlassService):
             skip_progressive = is_retail or not use_progressive
             
             if self.queue_status == 'COMPLETED':
-                if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
-                    # Only increment repair count if using progressive pricing
-                    if not skip_progressive:
-                        unit_repair_count.repair_count += 1
-                        unit_repair_count.save()
+                # A repair is priced exactly once — on its first transition into
+                # COMPLETED. Any later save (edit form attaching a photo, a
+                # COMPLETED→COMPLETED status post, the Django admin) must not
+                # re-price it: the UnitRepairCount has moved on since, so a
+                # recalculation would silently reprice repair #1 at the tier of
+                # repair #N, diverging from the invoice already sent. (A1)
+                is_first_completion = not self.pk or self.original_status != 'COMPLETED'
+
+                if is_first_completion and not skip_progressive:
+                    unit_repair_count.repair_count += 1
+                    unit_repair_count.save()
 
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
                     self.cost = self.cost_override
+                elif not is_first_completion:
+                    # Already priced when it first completed — never re-price.
+                    pass
                 elif self.pk and is_multi_break and self.cost:
                     # BATCH REPAIR FIX: Preserve batch pricing calculated at creation time.
                     # Batch pricing is set correctly by calculate_batch_pricing() when the
                     # batch is first created. Re-saving should not recalculate because the
                     # UnitRepairCount has already been incremented by all breaks in the batch,
                     # which would shift every break to the wrong pricing tier.
+                    # (Largely redundant now that the not-first-completion guard above
+                    # exists, but it still protects the pk-set completion path for
+                    # batches whose cost was fixed at creation.)
                     pass
                 else:
                     from .services.pricing_service import calculate_repair_cost
