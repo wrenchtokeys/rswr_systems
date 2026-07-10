@@ -124,9 +124,27 @@ class SubscriptionEnforcementMiddleware:
         # causing shops to be locked out immediately when they clicked "Cancel"
         # even though they had paid days remaining. (CODE-130)
         #
-        # Fix: treat 'canceled' as expired ONLY when grace_period_end is set,
-        # confirming the subscription has actually ended (not just scheduled to).
-        canceled_is_active = status == 'canceled' and not tenant.grace_period_end
+        # Fix: treat 'canceled' as expired ONLY when a grace period is
+        # CURRENT (grace_period_end in the future), confirming the
+        # subscription has actually ended (not just scheduled to).
+        #
+        # Raw truthiness is not enough: a lapse + resubscribe cycle can leave
+        # a STALE grace_period_end in the past on a paying tenant (reactivation
+        # paths now clear it, but pre-fix data exists). A past stamp on a
+        # 'canceled' tenant means the old grace is history, not that this
+        # cancellation has taken effect — treat it like no stamp at all.
+        # For a genuinely 'expired' tenant the logic below is unchanged: a
+        # past grace stamp still means BLOCKED. (A3)
+        #
+        # State table ('canceled' / 'expired' × grace stamp):
+        #   canceled + none or past stamp   -> ACTIVE (paid days remain)
+        #   canceled + future stamp         -> read-only grace
+        #   expired  + future stamp         -> read-only grace
+        #   expired  + none or past stamp   -> BLOCKED
+        from django.utils import timezone
+        _grace_end = tenant.effective_grace_period_end
+        grace_is_current = bool(_grace_end and _grace_end >= timezone.now())
+        canceled_is_active = status == 'canceled' and not grace_is_current
         is_subscription_expired = (
             (is_trial and tenant.is_trial_expired)
             or (status in ('canceled', 'expired') and not canceled_is_active)

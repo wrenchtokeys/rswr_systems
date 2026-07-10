@@ -181,8 +181,12 @@ def _handle_checkout_completed(session):
     # Update tenant with subscription info AND plan (payment is now confirmed)
     tenant.stripe_subscription_id = subscription_id
     tenant.subscription_status = 'active'
-    
-    update_fields = ['stripe_subscription_id', 'subscription_status']
+    # Reactivation clears any grace period from a previous lapse. A stale
+    # grace_period_end left on an active tenant makes the middleware treat
+    # their NEXT "cancel at period end" as an immediate lockout. (A3)
+    tenant.grace_period_end = None
+
+    update_fields = ['stripe_subscription_id', 'subscription_status', 'grace_period_end']
     
     if plan:
         tenant.plan = plan.slug
@@ -226,12 +230,15 @@ def _handle_invoice_paid(invoice):
 
     # Update tenant status to active
     tenant.subscription_status = 'active'
+    # A successful payment reactivates: clear any grace period left over
+    # from a previous lapse so it can't lock the tenant out later. (A3)
+    tenant.grace_period_end = None
 
     # Update subscription ID if it changed
     if subscription_id and tenant.stripe_subscription_id != subscription_id:
         tenant.stripe_subscription_id = subscription_id
 
-    tenant.save(update_fields=['subscription_status', 'stripe_subscription_id'])
+    tenant.save(update_fields=['subscription_status', 'stripe_subscription_id', 'grace_period_end'])
 
     logger.info(
         f"invoice.paid: Tenant {tenant.slug} subscription payment successful. "
@@ -358,10 +365,18 @@ def _handle_subscription_updated(subscription):
 
     tenant.subscription_status = new_status
     tenant.stripe_subscription_id = subscription_id
-    tenant.save(update_fields=[
+    update_fields = [
         'subscription_status', 'stripe_subscription_id',
         'plan', 'subscription_plan',
-    ])
+    ]
+    # Moving to a live status clears any grace period left from a previous
+    # lapse (see _handle_checkout_completed). Do NOT clear when the status
+    # is 'canceled' (cancel_at_period_end) — a currently-running grace
+    # period must keep its read-only semantics. (A3)
+    if new_status in ('active', 'trialing'):
+        tenant.grace_period_end = None
+        update_fields.append('grace_period_end')
+    tenant.save(update_fields=update_fields)
 
     logger.info(
         f"subscription.updated: Tenant {tenant.slug} status={new_status}"
