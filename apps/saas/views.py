@@ -2516,9 +2516,11 @@ def owner_invoice_detail(request, invoice_id):
         if choice[0] != 'STRIPE'
     ]
 
-    # PDF download URL — use model method so bucket name is read from settings,
-    # not hardcoded.  Works correctly in dev/prod/staging.
-    pdf_url = invoice.get_pdf_url()
+    # PDF download URL — always the tenant-scoped Django view, never a raw
+    # S3 object URL. Invoice keys are predictable and the bucket is private
+    # on invoices/*; the view mints a short-TTL presigned URL after the
+    # ownership check. (B1)
+    pdf_url = reverse('owner_invoice_pdf', args=[invoice.id]) if invoice.s3_key else None
 
     # Resolve recipient email for send confirmation preview (CODE-112)
     recipient_email = None
@@ -4064,7 +4066,22 @@ def owner_invoice_bulk_action(request):
 
 @owner_or_manager_required
 def owner_invoice_pdf(request, invoice_id):
-    """GET /owner/invoices/<id>/pdf/ — generate and download invoice PDF on demand."""
+    """
+    GET /owner/invoices/<id>/pdf/ — serve the invoice PDF, tenant-scoped.
+
+    This view is the ONLY sanctioned way to hand out an invoice PDF (B1):
+    the ownership check above the presigned-URL mint is what keeps one
+    tenant's invoices unreachable from another tenant's session. Never
+    expose raw S3 object URLs in templates — the bucket keys are
+    predictable (invoices/<customer_id>/<year>/<number>.pdf) and the
+    bucket must stay private on the invoices/ prefix.
+
+    Behavior:
+    - archived copy exists (s3_key) and ?fresh is not set: redirect to a
+      short-TTL presigned URL for the exact bytes emailed to the customer
+    - otherwise: render the stored Invoice record on demand (A4 path —
+      the invoice's OWN line items, never a repair lookback)
+    """
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
         messages.error(request, 'No shop found.')
@@ -4072,36 +4089,21 @@ def owner_invoice_pdf(request, invoice_id):
 
     invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
 
+    force_fresh = 'fresh' in request.GET
+    if invoice.s3_key and not force_fresh:
+        try:
+            from apps.billing.services.invoice_storage_service import InvoiceStorageService
+            presigned = InvoiceStorageService().get_invoice_url(invoice.s3_key, expires_in=300)
+            if presigned:
+                return redirect(presigned)
+        except Exception as e:
+            logger.warning(f"Presigned URL failed for invoice {invoice.invoice_number}: {e}")
+        # fall through to on-demand render
+
     try:
         from apps.billing.services.invoice_service import InvoiceService
-
         service = InvoiceService(tenant=tenant)
-        repair_ids = list(
-            invoice.line_items
-            .exclude(repair_id__isnull=True)
-            .values_list('repair_id', flat=True)
-        )
-
-        # Pass the stored invoice_number and invoice_date so the PDF content matches
-        # what the owner sees in the portal and what was emailed to the customer.
-        # Without this, each download regenerates a brand-new invoice number
-        # (e.g. INV-5-20260321123456) that doesn't match the record (CODE-120).
-        from datetime import datetime as dt
-        stored_date = invoice.invoice_date
-        if stored_date and not isinstance(stored_date, dt):
-            # invoice_date is a date; convert to datetime for InvoiceData
-            from django.utils import timezone as tz_util
-            stored_dt = tz_util.make_aware(dt.combine(stored_date, dt.min.time()))
-        else:
-            stored_dt = stored_date
-
-        pdf_bytes, invoice_data = service.generate_invoice(
-            customer_id=invoice.customer.id,
-            repair_ids=repair_ids if repair_ids else None,
-            invoice_number=invoice.invoice_number,
-            invoice_date=stored_dt,
-            invoice_status=invoice.status,
-        )
+        pdf_bytes, _ = service.generate_invoice_from_record(invoice)
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="invoice_{invoice.invoice_number}.pdf"'

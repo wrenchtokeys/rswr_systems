@@ -563,7 +563,15 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
 
     def get_pdf_url(self):
         """
-        Return the URL for the invoice PDF, or None if no PDF has been stored.
+        Return the raw (UNSIGNED) S3 object URL for the invoice PDF, or None.
+
+        SECURITY (B1): do NOT put this URL in templates or hand it to users.
+        The bucket is private on the invoices/ prefix, so this URL 403s for
+        anyone; and if the bucket were ever public, the keys are predictable
+        (invoices/<customer_id>/<year>/<number>.pdf) — an enumerable
+        cross-tenant leak. Serve PDFs through the ownership-checked views
+        (owner_invoice_pdf / customer_invoice_pdf), which mint short-TTL
+        presigned URLs. Kept only for internal/diagnostic use.
 
         Reads the bucket/domain from Django settings so this works correctly in
         every environment (dev, staging, prod) and survives bucket renames.

@@ -22,7 +22,7 @@ from django.db.models import Sum, Q, Count
 from django.db import models, transaction, IntegrityError
 from django.contrib.auth import update_session_auth_hash
 from functools import wraps
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from collections import defaultdict
 from datetime import datetime, timedelta
 from django.urls import reverse
@@ -3211,9 +3211,11 @@ def customer_invoice_detail(request, invoice_id):
         line_items = invoice.line_items.all().order_by('id')
         payments = invoice.payments.all().order_by('-payment_date')
 
-        # Build PDF URL if s3_key exists — use model method so bucket name is
-        # read from settings, not hardcoded.  Works correctly in dev/prod/staging.
-        pdf_url = invoice.get_pdf_url()
+        # PDF download URL — always the ownership-checked Django view, never
+        # a raw S3 object URL. Invoice keys are predictable and the bucket is
+        # private on invoices/*; the view mints a short-TTL presigned URL
+        # only after confirming this customer owns the invoice. (B1)
+        pdf_url = reverse('customer_invoice_pdf', args=[invoice.id])
 
         # Determine if online payment is available (tenant has active Connect)
         can_pay_online = (
@@ -3232,6 +3234,53 @@ def customer_invoice_detail(request, invoice_id):
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+@customer_required
+def customer_invoice_pdf(request, invoice_id):
+    """
+    GET /app/invoices/<id>/pdf/ — serve the invoice PDF, ownership-checked.
+
+    The ONLY sanctioned way to hand a customer their invoice PDF (B1):
+    the customer/tenant scoping here is what keeps other companies'
+    invoices unreachable. Never expose raw S3 object URLs — the keys are
+    predictable and the bucket is private on invoices/*.
+    """
+    try:
+        customer_user = _get_customer_user_for_tenant(request)
+        customer = customer_user.customer
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+    invoice = get_object_or_404(
+        Invoice, id=invoice_id, customer=customer, tenant=customer.tenant
+    )
+    if invoice.status == 'DRAFT':
+        messages.warning(request, "This invoice is not available.")
+        return redirect('customer_invoices')
+
+    if invoice.s3_key:
+        try:
+            from apps.billing.services.invoice_storage_service import InvoiceStorageService
+            presigned = InvoiceStorageService().get_invoice_url(invoice.s3_key, expires_in=300)
+            if presigned:
+                return redirect(presigned)
+        except Exception as e:
+            logger.warning(f"Presigned URL failed for invoice {invoice.invoice_number}: {e}")
+        # fall through to on-demand render
+
+    try:
+        from apps.billing.services.invoice_service import InvoiceService
+        service = InvoiceService(tenant=customer.tenant)
+        pdf_bytes, _ = service.generate_invoice_from_record(invoice)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="invoice_{invoice.invoice_number}.pdf"'
+        return response
+    except Exception as e:
+        logger.error(f"PDF generation failed for invoice {invoice.invoice_number}: {e}")
+        messages.error(request, 'Could not generate the invoice PDF.')
+        return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
 
 @customer_required
