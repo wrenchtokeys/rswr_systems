@@ -275,11 +275,20 @@ class NotificationService:
         if not category_map.get(notification.category, True):
             return False
 
-        # Check quiet hours for non-urgent notifications
+        # Check quiet hours for non-urgent notifications.
+        # NOTE (D3): quiet hours SUPPRESSES the email/SMS — nothing ever
+        # re-sends it later. The in-app Notification record has already
+        # been created, so the user still sees it in their feed; they
+        # opted in to not being emailed/texted during these hours.
+        # A true deferred-delivery queue (send after quiet hours end)
+        # does not exist yet — if built, hook it here. Until then the log
+        # must not claim a "delay" that never resolves.
         if notification.priority != Notification.PRIORITY_URGENT:
             if NotificationService._is_quiet_hours(preferences):
                 logger.info(
-                    f"Notification {notification.id} delayed by quiet hours"
+                    f"Notification {notification.id}: email/SMS suppressed by "
+                    f"quiet hours (in-app notification remains; no deferred "
+                    f"re-send is scheduled)"
                 )
                 return False
 
