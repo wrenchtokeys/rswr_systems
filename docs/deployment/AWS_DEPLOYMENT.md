@@ -203,7 +203,7 @@ curl -I https://app.yourdomain.com
 ### Session Security
 
 ```python
-# settings_aws.py
+# rs_systems/settings/production.py
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
@@ -223,7 +223,7 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 If issues occur, disable security temporarily:
 
 ```python
-# settings_aws.py
+# rs_systems/settings/production.py
 # Temporarily disable for troubleshooting
 SECURE_SSL_REDIRECT = False  # Re-enable when HTTPS works
 SESSION_COOKIE_SECURE = False  # Re-enable with HTTPS

@@ -122,7 +122,7 @@ Every cache read/write is a SQL query against the `django_cache` table in RDS.
 
 ### 6. Stripe Connect — Onboarding & Fee Collection
 
-**Current:** Stripe Connect shipped and live (March 2026) — direct charges with per-tenant `application_fee_amount`, see `docs/proposals/stripe-connect-implementation-plan.md`. Remaining scale question is onboarding throughput and Phase 3 dashboard reporting as tenant count grows.
+**Current:** Stripe Connect shipped and live (March 2026) — direct charges with per-tenant `application_fee_amount`, see `docs/archive/stripe-connect-implementation-plan.md`. Remaining scale question is onboarding throughput and Phase 3 dashboard reporting as tenant count grows.
 
 | Milestone | Action |
 |-----------|--------|

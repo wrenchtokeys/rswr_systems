@@ -11,6 +11,8 @@ Documentation index for the RS Systems windshield repair management platform.
 | [BILLING_GUIDE.md](BILLING_GUIDE.md) | Invoicing, payments, Stripe setup, sales tax |
 | [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) | System architecture, code standards, API development |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and solutions |
+| [PRICING_TIERS.md](PRICING_TIERS.md) | Feature-to-plan tier matrix (prices/limits: root README is canonical) |
+| [SCALING.md](SCALING.md) | Infrastructure scaling triggers and playbook |
 
 ---
 
@@ -29,13 +31,15 @@ Documentation index for the RS Systems windshield repair management platform.
 - [CHANGELOG.md](development/CHANGELOG.md) -- Version history (canonical changelog)
 - [UI_DESIGN_GUIDE.md](development/UI_DESIGN_GUIDE.md) -- Design system and UI components
 - [FRONTEND_GUIDE.md](development/FRONTEND_GUIDE.md) -- CSS architecture, D3.js visualizations, linting
-- [TESTING.md](development/TESTING.md) -- Testing procedures
-- [MANAGER_SETTINGS_ROADMAP.md](development/MANAGER_SETTINGS_ROADMAP.md) -- Manager settings feature plan
+- [TESTING.md](development/TESTING.md) -- Testing procedures (canonical testing doc)
+- [SOFT_DELETE.md](development/SOFT_DELETE.md) -- Soft-delete/restore reference (repairs, invoices)
 - [SUBSCRIPTION_LIFECYCLE.md](development/SUBSCRIPTION_LIFECYCLE.md) -- Trial/subscription lifecycle plan
-- [notifications/README.md](development/notifications/README.md) -- Notification system docs (architecture, setup, testing)
+- [ADMIN_DASHBOARD_GUIDE.md](development/ADMIN_DASHBOARD_GUIDE.md) -- Django admin notification dashboard
+- [notifications/README.md](development/notifications/README.md) -- Notification system docs (architecture, configuration, testing)
 
 ### `operations/`
 - [NOTIFICATION_OPERATIONS.md](operations/NOTIFICATION_OPERATIONS.md) -- Daily ops guide + troubleshooting runbook
+- [SES_OPERATIONS.md](operations/SES_OPERATIONS.md) -- Amazon SES email delivery runbook (reputation, sending pauses)
 - [INCIDENT_2026-07-06_REPAIR_FORM_500.md](operations/INCIDENT_2026-07-06_REPAIR_FORM_500.md) -- Staticfiles-manifest-race incident report
 
 ### `proposals/`

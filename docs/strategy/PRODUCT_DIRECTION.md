@@ -4,7 +4,7 @@
 
 **Last Updated:** June 12, 2026
 **Status:** Proposed — pending Drake's review
-**Supersedes nothing** — complements `docs/TODO.md` (feature backlog), `docs/development/ROADMAP.md` (infrastructure), and `BILLING_ROADMAP.md` (billing phases, now largely complete).
+**Supersedes nothing** — complements `docs/development/ROADMAP.md` (roadmap + feature backlog; absorbed the former `docs/TODO.md`) and `BILLING_ROADMAP.md` (billing phases, now largely complete).
 
 ---
 
@@ -45,7 +45,7 @@ The 90-day plan below sequences these as: **growth quick wins → operational ga
 ### Known gaps (the raw material for this plan)
 
 - **Acquisition/retention features designed but unbuilt:** review request system, website widget, trial-expiry email campaign — all have written proposals in `docs/proposals/`.
-- **Operational features missing entirely:** scheduling/calendar, estimates/quotes, customer communication log — flagged 🔴 in `docs/TODO.md`, no proposals yet.
+- **Operational features missing entirely:** scheduling/calendar, estimates/quotes, customer communication log — flagged in `docs/development/ROADMAP.md` ("Absorbed from TODO.md" section), no proposals yet.
 - **Engagement features mid-flight:** loyalty Phases 3–4 (tiers, dashboards), warranty Phase 2, Stripe Connect Phase 3 dashboard.
 - **Platform health debt:** Sentry needs only `SENTRY_DSN` set in EB; Tailwind still loads from CDN in production; no CI pipeline; 8 pre-existing test failures; customer portal has ~16 tests covering 30+ views.
 - **Stale docs:** `BILLING_ROADMAP.md` still lists Phase 7 webhook work and the `STRIPE_WEBHOOK_SECRET` blocker as open, but both shipped in February–March. Needs a status pass.

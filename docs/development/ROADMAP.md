@@ -1,7 +1,7 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: March 25, 2026*
+*Last Updated: July 10, 2026 (absorbed TODO.md; core sections last revised March 25, 2026)*
 
 ---
 
@@ -135,6 +135,32 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 - Multi-location support per tenant
 - PWA / offline mode for techs
 - Mobile native app
+
+---
+
+## Absorbed from TODO.md (2026-07-10)
+
+Items folded in from the deleted `docs/TODO.md` that weren't already tracked here or in
+`docs/proposals/README.md`.
+
+### Missing operational features (proposals needed)
+- **Customer communication log** — no record of calls/texts/conversations per customer; shops track this in their heads
+- **Scheduling / calendar** — repairs have a date but no calendar view, time slots, or route planning; minimum viable: daily view of who's going where
+- **Estimates / quotes** — no quote workflow before a repair (quote → customer approves → converts to repair)
+
+### Infrastructure / code health
+- **Test coverage gaps** — customer portal (30+ views, ~16 tests), ConnectService payment routing lightly tested, 8 pre-existing failures in test_step5_nav / test_step3_signup / test_rewards / test_user_flow
+- **Missing `db_index` on frequently filtered fields** — `queue_status` on Repair; `status` on Invoice, CustomerInvitation, ReviewRequest, RewardRedemption; `is_active` on Tenant, Technician, etc. Not urgent at current data size; address before scale
+- **Admin fieldsets missing `tenant`** (low priority) — Repair, Replacement, Customer, Invoice, TaxRate, UnitRepairCount, DeliveryLog show `tenant` in list views but not fieldsets; admin UX gap only
+- **Security admin models not registered** (low priority) — `LoginAttempt`, `SecurityAuditLog`, `customer_portal.ApprovalToken` have no admin registration; likely intentional
+
+### Backlog additions
+- White-label branding (custom colors/logo per shop beyond name)
+- Public API for third-party integrations
+- AI damage assessment from photos
+- Lot-walking scheduler (route optimization for parking-lot jobs)
+- Vehicle history across time by VIN
+- Parts inventory (resin, blades, seals — probably overkill for most shops)
 
 ---
 

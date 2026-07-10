@@ -1,5 +1,7 @@
 # RS Systems Test Suite
 
+> **Canonical testing doc:** [docs/development/TESTING.md](../docs/development/TESTING.md) — commands, patterns, and procedures live there. This file only describes the directory layout of `tests/`.
+
 Organized testing structure for the RS Systems windshield repair application.
 
 ## Directory Structure

@@ -336,7 +336,7 @@ celery -A rs_systems worker -l info
 
 ## Soft-Delete and Invoice Archiving
 
-Invoices can be soft-deleted as a side effect of deleting a repair. See [SOFT_DELETE.md](./SOFT_DELETE.md) for the full reference.
+Invoices can be soft-deleted as a side effect of deleting a repair. See [SOFT_DELETE.md](./development/SOFT_DELETE.md) for the full reference.
 
 ### Key points for billing
 

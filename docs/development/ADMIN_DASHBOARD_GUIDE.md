@@ -419,7 +419,7 @@ python manage.py shell
 # Check template exists
 ls -la templates/admin/core/notification/change_list.html
 
-# Check template path in settings.py
+# Check template path in rs_systems/settings/base.py
 python manage.py shell
 >>> from django.conf import settings
 >>> print(settings.TEMPLATES[0]['DIRS'])
