@@ -96,8 +96,7 @@ class Command(BaseCommand):
             ))
 
         self.stdout.write(self.style.MIGRATE_HEADING(
-            "\n=== C2: duplicate stripe_payment_id rows (MUST be resolved "
-            "before migration 0022 can apply in production) ==="
+            "\n=== C2: duplicate stripe_payment_id rows ==="
         ))
         dups = (
             Payment.objects
@@ -119,6 +118,30 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(
                 "  -> keep one row per stripe_payment_id, delete the extras, and "
                 "re-check invoice.amount_paid afterwards."
+            ))
+
+        # Migration 0022 renames later duplicates to '<stripe_id>-dup<pk>' so
+        # the unique constraint can apply without failing the deploy. If this
+        # audit runs AFTER 0022, the duplicates show up here instead of above.
+        renamed = (
+            Payment.objects
+            .filter(stripe_payment_id__contains='-dup')
+            .select_related('invoice')
+            .order_by('id')
+        )
+        self.stdout.write(
+            f"{renamed.count()} duplicate row(s) renamed by migration 0022 "
+            "(stripe_payment_id LIKE '%-dup%')"
+        )
+        for p in renamed:
+            self.stdout.write(
+                f"  payment_id={p.id} invoice={p.invoice.invoice_number} "
+                f"amount={p.amount} stripe_id={p.stripe_payment_id}"
+            )
+        if renamed:
+            self.stdout.write(self.style.WARNING(
+                "  -> each renamed row is a webhook double-count: delete it and "
+                "re-check the invoice's amount_paid/status (cleanup script C2)."
             ))
 
         self.stdout.write(self.style.SUCCESS("\nAudit complete — nothing was modified."))

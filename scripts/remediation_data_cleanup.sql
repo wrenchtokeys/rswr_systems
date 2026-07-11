@@ -84,14 +84,26 @@ WHERE sub.id = u.id
   AND u.repair_count > sub.actual;
 
 -- -----------------------------------------------------------------------------
--- C2: duplicate stripe payments. NO generic UPDATE here — if the audit
--- command reported duplicates, resolve each by hand (keep one Payment per
--- stripe_payment_id, delete extras, then recompute the invoice):
+-- C2: duplicate stripe payments. Migration billing.0022 does NOT fail on
+-- duplicates: it keeps the earliest Payment per stripe_payment_id and renames
+-- each later duplicate to '<stripe_id>-dup<pk>' so the unique constraint can
+-- apply. Those renamed rows ARE the webhook double-counts. Find them:
+
+SELECT p.id AS payment_id, p.stripe_payment_id, p.amount,
+       i.id AS invoice_id, i.invoice_number, i.amount_paid, i.total, i.status
+FROM billing_payment p
+JOIN billing_invoice i ON i.id = p.invoice_id
+WHERE p.stripe_payment_id LIKE '%-dup%'
+ORDER BY p.id;
+
+-- NO generic UPDATE here — resolve each by hand: delete the renamed row,
+-- then recompute the invoice it double-counted:
 --
---   DELETE FROM billing_payment WHERE id = <extra_row_id>;
---   -- then recheck: SELECT amount_paid, total, status FROM billing_invoice WHERE id = <invoice_id>;
---
--- Migration billing.0022 will FAIL to apply while duplicates exist.
+--   DELETE FROM billing_payment WHERE id = <renamed_row_id>;
+--   UPDATE billing_invoice SET amount_paid = (
+--       SELECT COALESCE(SUM(amount), 0) FROM billing_payment WHERE invoice_id = <invoice_id>
+--   ) WHERE id = <invoice_id>;
+--   -- then recheck status: SELECT amount_paid, total, status FROM billing_invoice WHERE id = <invoice_id>;
 -- -----------------------------------------------------------------------------
 
 -- Review everything above, then uncomment:
