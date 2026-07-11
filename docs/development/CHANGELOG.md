@@ -14,6 +14,15 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-07-11 — Infra: removed unused Redis (ElastiCache)
+
+### Technical
+- **Deleted the `rs-systems-redis` ElastiCache cluster** (cache.t3.micro, ~$12/mo). Production caching uses Django `DatabaseCache` (the `django_cache` table), **not** Redis — the `redis` package isn't installed and `CACHES` in `rs_systems/settings/production.py` points at the DB backend. The cluster was unused.
+- Removed the now-dead `REDIS_URL` and `REDIS_CACHE_URL` variables from the `rs-systems-production` Elastic Beanstalk environment. They were set but ignored (the app only uses Redis if the package is installed). To reintroduce Redis later, follow the note already in `production.py` (install `redis`, set `REDIS_URL`, recreate the cluster).
+- Context: part of a 2026-07 AWS cost cleanup on account `973196283632`. Unrelated to rs-systems, the Rockstar marketing site was migrated off Elastic Beanstalk to AWS Amplify in the same pass; rs-systems infra (EB env, RDS, ALB) was left untouched.
+
+---
+
 ## 2026-07-09 — SendGrid → Amazon SES migration
 
 ### Changed
