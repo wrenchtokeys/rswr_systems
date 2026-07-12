@@ -161,19 +161,25 @@ Customers access the portal to track repairs, approve work orders, and view invo
 
 ### Using the Portal
 
-5. **Dashboard** at `/app/`  overview of active repairs, pending approvals, stats
+5. **Dashboard** at `/app/`  overview of recent services (repairs and replacements, with type badges), pending approvals, combined stats
 6. **My Repairs** at `/app/repairs/`  full repair history with filtering
    - See each repair's status: Requested  Pending  Approved  In Progress  Completed
    - Click any repair for full details including photos
-7. **Approve/Deny repairs**  when a technician discovers damage in the field:
-   - You'll see pending approval items on your dashboard
+   - **My Replacements** at `/app/replacements/`  same for glass replacements
+7. **Approve/Deny services**  when a technician discovers damage in the field, or the shop prices a replacement:
+   - You'll see pending approval items (repairs and replacements) on your dashboard
    - Click to review details, then approve or deny
    - Batch approvals available for multi-break repairs
 8. **Request a Repair** at `/app/repairs/request/`  submit a new repair request
    - Describe the damage, add photos, specify urgency
    - Shop receives the request and assigns a technician
-9. **Rewards**  view referral codes, earned points, available rewards
-10. **Account Settings** at `/app/account/settings/`  update profile, change password, notification preferences
+9. **Request a Replacement** at `/app/replacements/request/`  request a full glass replacement
+   - Both request pages share a "Chip or Crack Repair ↔ Full Glass Replacement" toggle
+   - Pick the vehicle/unit, which glass (windshield, side, rear, sunroof, …), describe what happened, optionally attach a photo
+   - No pricing at request time  the shop confirms the exact glass and price, which then comes back to you for approval
+   - The shop is notified in-app and by email
+10. **Rewards**  view referral codes, earned points, available rewards
+11. **Account Settings** at `/app/account/settings/`  update profile, change password, notification preferences
 
 ### Login
 
