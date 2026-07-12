@@ -232,7 +232,11 @@ class Command(BaseCommand):
                 paragraphs = [
                     f"Hi {_owner_name(tenant)},",
                     f"Your free trial for {tenant.name} has expired.",
-                    "You have 30 days of read-only access to your data before your account is fully locked. Upgrade now to restore full access.",
+                    # D4: expired trials are blocked immediately (no grace
+                    # period exists for trials — the trial itself was the
+                    # grace). The old copy promised "30 days of read-only
+                    # access" the middleware never granted.
+                    "Your account is now locked, but your data is safe. Upgrade any time to pick up right where you left off.",
                 ]
             else:
                 alert_key = ALERT_SUB_EXPIRED

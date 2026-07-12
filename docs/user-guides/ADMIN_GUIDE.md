@@ -961,8 +961,8 @@ Since November 2025, the system automatically deletes photos when repairs are de
 pip list | grep django-cleanup
 # Should show: django-cleanup==9.0.0
 
-# Check settings.py
-grep -A 20 "INSTALLED_APPS" rs_systems/settings.py | grep django_cleanup
+# Check rs_systems/settings/base.py
+grep -A 40 "INSTALLED_APPS" rs_systems/settings/base.py | grep django_cleanup
 # Should show: 'django_cleanup.apps.CleanupConfig',
 ```
 

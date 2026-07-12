@@ -28,7 +28,7 @@ Each proposal includes:
 ### ✅ Shipped
 | Proposal | Status | Notes |
 |----------|--------|-------|
-| [Stripe Connect Implementation](stripe-connect-implementation-plan.md) | ✅ Shipped | Phases 1-2 live, Connect approved March 2026. Canonical Connect reference — see `docs/development/CHANGELOG.md` 2026-03-17 entry |
+| [Stripe Connect Implementation](../archive/stripe-connect-implementation-plan.md) | ✅ Shipped, archived | Phases 1-2 live, Connect approved March 2026. Canonical Connect reference — see `docs/development/CHANGELOG.md` 2026-03-17 entry |
 | [Stripe Connect Multi-Tenant](../archive/proposals/stripe-connect-multi-tenant-payments.md) | ✅ Shipped, archived | Earlier destination-transfer design, superseded by the implementation plan above (direct charges instead); moved to archive |
 | [Customer Billing Preferences](../archive/proposals/customer-billing-preferences-ux.md) | ✅ Shipped, archived | CODE-209: `_save_billing_preferences()`, `CustomerRepairPreference`; moved to archive |
 
@@ -39,6 +39,7 @@ Each proposal includes:
 | [Warranty System](warranty-system.md) | Phase 1 shipped | Policies, claim workflow, repair badges, invoice terms, completion hook. Phase 2 (per-customer overrides, goodwill flag, stats cache) pending |
 | [Review Request System](review-request-system.md) | Phase 1 shipped (CODE-208) | `ReviewRequestService`, `ReviewConfig`, `ReviewRequest` models. Phase 2/3 (actual Google Reviews API) pending |
 | [Reward Redemption UX](reward-redemption-ux-overhaul.md) | Phase 1 shipped (CODE-210) | `preferred_date`/`preferred_time` on physical rewards, auto-restore points on denial |
+| [Manager Settings Roadmap](MANAGER_SETTINGS_ROADMAP.md) | Phase 1 shipped (Nov 2025) | Manager settings dashboard live; later phases pending |
 
 ### 🟡 Awaiting Review
 | Proposal | Status | Notes |

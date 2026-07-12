@@ -80,11 +80,24 @@ class ReminderService:
                 from apps.billing.models import BillingConfig
                 config = BillingConfig.get_for_tenant(self.tenant)
                 if config.reminder_email_template:
-                    body = self._render_template(config.reminder_email_template, invoice)
+                    # _render_template returns '' on a malformed template so
+                    # callers can fall back — actually fall back, instead of
+                    # overwriting the default body with the empty string and
+                    # sending a blank dunning email. Mirrors
+                    # invoice_email_service.py's `if not body:` guard. (C1)
+                    rendered = self._render_template(config.reminder_email_template, invoice)
+                    if rendered:
+                        body = rendered
             except Exception:
                 pass  # Fall back to default
         
-        # Generate PDF attachment
+        # Generate PDF attachment — render THE stored invoice, never a fresh
+        # one. The old generate_invoice() call omitted the invoice_number/
+        # invoice_date overrides, so the attached PDF carried a new number,
+        # today's date, and recomputed totals; and for replacement-only
+        # invoices (repair_ids empty -> None) the repair lookback ran
+        # UNBOUNDED, billing the customer's entire completed-repair history
+        # in a dunning email. (A5, shares root cause with A4)
         pdf_bytes = None
         try:
             from apps.billing.services.invoice_service import InvoiceService
@@ -96,11 +109,7 @@ class ReminderService:
                 getattr(invoice, 'customer', None), 'tenant', None
             )
             invoice_service = InvoiceService(tenant=invoice_tenant)
-            repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-            pdf_bytes, _ = invoice_service.generate_invoice(
-                customer_id=invoice.customer_id,
-                repair_ids=repair_ids if repair_ids else None,
-            )
+            pdf_bytes, _ = invoice_service.generate_invoice_from_record(invoice)
         except Exception as e:
             logger.warning(f"Could not generate PDF for reminder: {e}")
             # Continue without PDF - still send the reminder
@@ -144,7 +153,7 @@ class ReminderService:
         """
         from apps.billing.models import Invoice
         
-        today = timezone.now().date()
+        today = timezone.localdate()
         results = {'sent': 0, 'skipped': 0, 'errors': 0}
         
         for days_before in self.REMINDER_SCHEDULE['before_due']:
@@ -181,7 +190,7 @@ class ReminderService:
         """
         from apps.billing.models import Invoice
         
-        today = timezone.now().date()
+        today = timezone.localdate()
         results = {'sent': 0, 'skipped': 0, 'errors': 0}
         
         for days_after in self.REMINDER_SCHEDULE['after_due']:
@@ -289,7 +298,7 @@ Best regards,
     def _render_template(self, template_str, invoice):
         """Render a user-defined email template with invoice placeholders."""
         from django.utils import timezone
-        today = timezone.now().date()
+        today = timezone.localdate()
         days_overdue = max(0, (today - invoice.due_date).days) if invoice.due_date else 0
 
         company_name = ''
@@ -474,7 +483,7 @@ Please contact us to arrange payment or if you have any questions.
         """
         from apps.billing.models import Invoice
         
-        today = timezone.now().date()
+        today = timezone.localdate()
         
         # Due soon (next 7 days)
         due_soon = self._filter(Invoice.objects).filter(

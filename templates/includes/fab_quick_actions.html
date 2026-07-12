@@ -86,9 +86,17 @@ Override items by passing fab_role="owner"|"tech"|"customer".
             <span class="fab-menu-label">Request Repair</span>
             <div class="fab-menu-circle" style="background:#16a34a;"><i class="fas fa-tools"></i></div>
         </a>
+        <a href="{% url 'customer_request_replacement' %}" class="fab-menu-item">
+            <span class="fab-menu-label">Request Replacement</span>
+            <div class="fab-menu-circle" style="background:#9333ea;"><i class="fas fa-car"></i></div>
+        </a>
         <a href="{% url 'customer_repairs' %}" class="fab-menu-item">
             <span class="fab-menu-label">My Repairs</span>
             <div class="fab-menu-circle" style="background:#2563eb;"><i class="fas fa-list"></i></div>
+        </a>
+        <a href="{% url 'customer_replacements' %}" class="fab-menu-item">
+            <span class="fab-menu-label">My Replacements</span>
+            <div class="fab-menu-circle" style="background:#0891b2;"><i class="fas fa-car-side"></i></div>
         </a>
         <a href="{% url 'customer_invoices' %}" class="fab-menu-item">
             <span class="fab-menu-label">My Invoices</span>

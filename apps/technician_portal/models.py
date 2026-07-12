@@ -574,7 +574,25 @@ class Repair(GlassService):
 
     # Keep QUEUE_CHOICES as alias for backward compatibility
     QUEUE_CHOICES = GlassService.STATUS_CHOICES
-    
+
+    # D1: legal status transitions, enforced in save(). The load-bearing
+    # rule is that COMPLETED is TERMINAL: completion increments the unit
+    # repair counter, prices the repair, and awards loyalty points — a
+    # COMPLETED -> APPROVED -> COMPLETED cycle re-fires all of those
+    # (original_status refreshes on every save, defeating the hooks'
+    # idempotency guards) and lets points/counters be inflated at will.
+    # Forward jumps are deliberately permissive (a manager can accept a
+    # REQUESTED repair straight to COMPLETED for on-the-spot field work);
+    # DENIED can be re-opened but must pass through approval again.
+    ALLOWED_STATUS_TRANSITIONS = {
+        'REQUESTED': {'PENDING', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED'},
+        'PENDING': {'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'DENIED'},
+        'APPROVED': {'PENDING', 'IN_PROGRESS', 'COMPLETED', 'DENIED'},
+        'IN_PROGRESS': {'APPROVED', 'COMPLETED'},
+        'COMPLETED': set(),  # terminal — never leaves COMPLETED
+        'DENIED': {'PENDING', 'APPROVED'},
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.original_status = self.queue_status
@@ -731,6 +749,24 @@ class Repair(GlassService):
         return cost + tax
 
     def save(self, *args, **kwargs):
+        # D1: enforce the status state machine at the MODEL layer so the
+        # admin, batch flows, and API paths can't bypass it (a view-only
+        # check would). Applies only to real transitions on existing rows;
+        # creation may start at any status (field repairs are created
+        # directly as COMPLETED).
+        if self.pk and self.original_status != self.queue_status:
+            from django.core.exceptions import ValidationError
+            allowed = self.ALLOWED_STATUS_TRANSITIONS.get(self.original_status, set())
+            if self.queue_status not in allowed:
+                raise ValidationError(
+                    f"Illegal repair status transition "
+                    f"{self.original_status} → {self.queue_status}. "
+                    f"Completed repairs cannot change status."
+                    if self.original_status == 'COMPLETED' else
+                    f"Illegal repair status transition "
+                    f"{self.original_status} → {self.queue_status}."
+                )
+
         # BATCH INTEGRITY VALIDATION: Ensure batch data is consistent
         if self.repair_batch_id:
             # If part of a batch, break_number and total_breaks_in_batch must be set
@@ -790,21 +826,47 @@ class Repair(GlassService):
             skip_progressive = is_retail or not use_progressive
             
             if self.queue_status == 'COMPLETED':
-                if not self.pk or (self.pk and self.original_status != 'COMPLETED'):
-                    # Only increment repair count if using progressive pricing
-                    if not skip_progressive:
-                        unit_repair_count.repair_count += 1
-                        unit_repair_count.save()
+                # A repair is priced exactly once — on its first transition into
+                # COMPLETED. Any later save (edit form attaching a photo, a
+                # COMPLETED→COMPLETED status post, the Django admin) must not
+                # re-price it: the UnitRepairCount has moved on since, so a
+                # recalculation would silently reprice repair #1 at the tier of
+                # repair #N, diverging from the invoice already sent. (A1)
+                is_first_completion = not self.pk or self.original_status != 'COMPLETED'
+
+                if is_first_completion and not skip_progressive:
+                    # Atomic read-modify-write under a row lock. The plain
+                    # `+= 1; save()` was a lost-update race: two technicians
+                    # completing repairs on the same unit concurrently could
+                    # both read count=2 and both write 3 — one increment lost,
+                    # both repairs priced at the same tier, and every future
+                    # repair on the unit overpriced by one tier. The lock also
+                    # serializes the pricing read below, so each completion
+                    # prices with its own unique post-increment value. (C5)
+                    from django.db import transaction as db_transaction
+                    with db_transaction.atomic():
+                        locked_count = UnitRepairCount.objects.select_for_update().get(
+                            pk=unit_repair_count.pk
+                        )
+                        locked_count.repair_count += 1
+                        locked_count.save()
+                    unit_repair_count.repair_count = locked_count.repair_count
 
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
                     self.cost = self.cost_override
+                elif not is_first_completion:
+                    # Already priced when it first completed — never re-price.
+                    pass
                 elif self.pk and is_multi_break and self.cost:
                     # BATCH REPAIR FIX: Preserve batch pricing calculated at creation time.
                     # Batch pricing is set correctly by calculate_batch_pricing() when the
                     # batch is first created. Re-saving should not recalculate because the
                     # UnitRepairCount has already been incremented by all breaks in the batch,
                     # which would shift every break to the wrong pricing tier.
+                    # (Largely redundant now that the not-first-completion guard above
+                    # exists, but it still protects the pk-set completion path for
+                    # batches whose cost was fixed at creation.)
                     pass
                 else:
                     from .services.pricing_service import calculate_repair_cost

@@ -10,13 +10,15 @@
 <div class="min-h-screen bg-gray-50 py-8">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
+        {% include "customer_portal/includes/service_type_toggle.html" with active="repair" %}
+
         <!-- Header -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
             <div class="px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-t-lg">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h1 class="text-2xl font-bold">Request Repair</h1>
-                        <p class="text-blue-100 text-sm mt-1">Submit repair requests for multiple units at once</p>
+                        <h1 class="text-2xl font-bold">Request Chip or Crack Repair</h1>
+                        <p class="text-blue-100 text-sm mt-1">Submit repair requests for one or more units</p>
                     </div>
                     <a href="{% url 'customer_dashboard' %}"
                        class="inline-flex items-center px-4 py-2 border border-white border-opacity-30 text-white text-sm font-medium rounded-lg hover:bg-white hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-all">

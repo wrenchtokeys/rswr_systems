@@ -553,9 +553,10 @@ class ConvertToBatchMarkCompletedTest(FieldWorkflowTestBase):
         repair = self._make_repair(queue_status='APPROVED')
         request = self._convert_request(repair, mark_completed=True)
 
-        with patch('apps.technician_portal.views.batch.UnitRepairCount.objects.get_or_create') as mock_urc:
-            mock_urc.return_value = (MagicMock(repair_count=1, save=MagicMock()), True)
-            response = convert_to_batch(request, repair_id=repair.id)
+        # No get_or_create mock: since C5, completion locks the real
+        # UnitRepairCount row (select_for_update on its pk), which a
+        # MagicMock cannot satisfy. Real rows exercise the actual path.
+        response = convert_to_batch(request, repair_id=repair.id)
 
         repair.refresh_from_db()
         self.assertEqual(repair.queue_status, 'COMPLETED',
@@ -612,9 +613,8 @@ class ConvertToBatchMarkCompletedTest(FieldWorkflowTestBase):
         repair = self._make_repair(queue_status='IN_PROGRESS')
         request = self._convert_request(repair, mark_completed=True)
 
-        with patch('apps.technician_portal.views.batch.UnitRepairCount.objects.get_or_create') as mock_urc:
-            mock_urc.return_value = (MagicMock(repair_count=1, save=MagicMock()), True)
-            response = convert_to_batch(request, repair_id=repair.id)
+        # No get_or_create mock — see test_checkbox_marks_all_batch_repairs_completed.
+        response = convert_to_batch(request, repair_id=repair.id)
 
         repair.refresh_from_db()
         self.assertEqual(repair.queue_status, 'COMPLETED')

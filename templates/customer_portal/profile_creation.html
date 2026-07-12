@@ -254,7 +254,11 @@
         <!-- Help Text -->
         <div class="mt-6 text-center">
             <p class="text-sm text-gray-600">
-                Need help? <a href="#" class="text-blue-600 hover:text-blue-700 font-medium">Contact Support</a>
+                {% if request.tenant.business_email %}
+                Need help? <a href="mailto:{{ request.tenant.business_email }}" class="text-blue-600 hover:text-blue-700 font-medium">Contact {{ request.tenant.name }}</a>
+                {% else %}
+                Need help? Contact your glass shop directly.
+                {% endif %}
             </p>
         </div>
     </div>

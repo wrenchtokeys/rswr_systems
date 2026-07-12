@@ -339,7 +339,7 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
     )
     
     # Dates
-    invoice_date = models.DateField(default=timezone.now)
+    invoice_date = models.DateField(default=timezone.localdate)
     due_date = models.DateField(null=True, blank=True)
     
     # Payment terms
@@ -413,6 +413,15 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         help_text="Stripe hosted invoice URL for customer"
     )
     
+    # Overdue reminder tracking — highest reminder tier (days overdue)
+    # already sent. Makes the daily reminder cron idempotent (safe to run
+    # twice in a day) and catch-up-capable (a missed cron day still sends
+    # the skipped tier). (C3)
+    last_reminder_days_overdue = models.IntegerField(
+        null=True, blank=True,
+        help_text="Highest overdue-reminder tier (in days) already sent for this invoice",
+    )
+
     # Timestamps
     sent_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
@@ -528,7 +537,7 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         """Check if invoice is past due."""
         if self.status in ('PAID', 'CANCELLED'):
             return False
-        if self.due_date and timezone.now().date() > self.due_date:
+        if self.due_date and timezone.localdate() > self.due_date:
             return True
         return False
     
@@ -563,7 +572,15 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
 
     def get_pdf_url(self):
         """
-        Return the URL for the invoice PDF, or None if no PDF has been stored.
+        Return the raw (UNSIGNED) S3 object URL for the invoice PDF, or None.
+
+        SECURITY (B1): do NOT put this URL in templates or hand it to users.
+        The bucket is private on the invoices/ prefix, so this URL 403s for
+        anyone; and if the bucket were ever public, the keys are predictable
+        (invoices/<customer_id>/<year>/<number>.pdf) — an enumerable
+        cross-tenant leak. Serve PDFs through the ownership-checked views
+        (owner_invoice_pdf / customer_invoice_pdf), which mint short-TTL
+        presigned URLs. Kept only for internal/diagnostic use.
 
         Reads the bucket/domain from Django settings so this works correctly in
         every environment (dev, staging, prod) and survives bucket renames.
@@ -687,7 +704,7 @@ class Payment(models.Model):
         max_digits=10, decimal_places=2,
         validators=[MinValueValidator(Decimal('0.01'))]
     )
-    payment_date = models.DateField(default=timezone.now)
+    payment_date = models.DateField(default=timezone.localdate)
     payment_method = models.CharField(
         max_length=20, choices=PAYMENT_METHOD_CHOICES, default='OTHER'
     )
@@ -715,10 +732,24 @@ class Payment(models.Model):
         help_text="User who recorded this payment"
     )
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
         ordering = ['-payment_date', '-created_at']
-    
+        constraints = [
+            # C2: Stripe delivers checkout.session.completed and
+            # payment_intent.succeeded concurrently (and retries on
+            # timeout) with the same pi_... id. The application-level
+            # .exists() precheck is a check-then-create race; this partial
+            # unique index is the only thing that actually prevents a
+            # double-credited payment. Empty string = manual payment,
+            # exempt.
+            models.UniqueConstraint(
+                fields=['stripe_payment_id'],
+                condition=~models.Q(stripe_payment_id=''),
+                name='unique_stripe_payment_id_when_set',
+            ),
+        ]
+
     def __str__(self):
         return f"${self.amount} on {self.invoice.invoice_number} via {self.get_payment_method_display()}"
     
@@ -765,7 +796,7 @@ class Payment(models.Model):
                     invoice.paid_at = None
                     is_past_due = (
                         invoice.due_date is not None
-                        and timezone.now().date() > invoice.due_date
+                        and timezone.localdate() > invoice.due_date
                     )
                     if is_past_due:
                         invoice.status = 'OVERDUE'
@@ -836,7 +867,7 @@ class TaxRate(models.Model):
         help_text="Auto-calculated: state + county + city + special"
     )
 
-    effective_date = models.DateField(default=timezone.now)
+    effective_date = models.DateField(default=timezone.localdate)
     is_active = models.BooleanField(default=True)
 
     # Tenant-aware manager

@@ -43,7 +43,7 @@ def process_overdue_invoices():
     
     Runs for all tenants with overdue_reminder_enabled=True.
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     processed_count = 0
     reminder_count = 0
     
@@ -75,12 +75,30 @@ def process_overdue_invoices():
             
             for invoice in overdue_invoices:
                 days_overdue = (today - invoice.due_date).days
-                
-                # Check if we should send a reminder today
-                if days_overdue in reminder_days:
+
+                # C3: tier-based instead of exact-day-match. The old
+                # `days_overdue in reminder_days` had two failure modes:
+                # running the command twice in a day double-emailed the
+                # customer, and a cron miss on the exact day an invoice hit
+                # a tier meant that tier was NEVER sent. Now: send when the
+                # invoice has crossed a tier that hasn't been sent yet
+                # (tracked in last_reminder_days_overdue), at most one
+                # reminder (the highest crossed tier) per run.
+                last_sent_tier = (
+                    invoice.last_reminder_days_overdue
+                    if invoice.last_reminder_days_overdue is not None else -1
+                )
+                eligible_tiers = [
+                    t for t in reminder_days
+                    if days_overdue >= t and t > last_sent_tier
+                ]
+                if eligible_tiers:
+                    tier = max(eligible_tiers)
                     try:
                         sent = _send_overdue_reminder(invoice, config, days_overdue)
                         if sent:
+                            invoice.last_reminder_days_overdue = tier
+                            invoice.save(update_fields=['last_reminder_days_overdue'])
                             reminder_count += 1
                     except Exception as inv_exc:
                         # Log and continue — one broken invoice/template must not
@@ -239,7 +257,7 @@ def process_batch_invoices():
     
     Only processes customers with invoice_preference='batch'.
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     invoices_created = 0
     
     tenants = Tenant.objects.filter(is_active=True)
@@ -309,9 +327,14 @@ def _should_run_batch_today(config, today):
         return today.weekday() == config.batch_invoice_day
     
     elif config.batch_invoice_frequency == 'biweekly':
-        # Run every other week (even week numbers)
-        week_num = today.isocalendar()[1]
-        return today.weekday() == config.batch_invoice_day and week_num % 2 == 0
+        # Run every other week, anchored to a fixed epoch Monday. ISO week
+        # parity (isocalendar()[1] % 2) breaks across 53-week years: week 53
+        # is odd and week 1 of the next year is also odd, producing either
+        # two consecutive runs or a three-week gap at the boundary. (D4)
+        from datetime import date as _date
+        _BIWEEKLY_EPOCH = _date(2024, 1, 1)  # a Monday
+        weeks_since_epoch = (today - _BIWEEKLY_EPOCH).days // 7
+        return today.weekday() == config.batch_invoice_day and weeks_since_epoch % 2 == 0
     
     elif config.batch_invoice_frequency == 'monthly':
         return today.day == config.batch_invoice_day
@@ -391,7 +414,7 @@ def _create_batch_invoice(tenant, customer, config):
                 tenant=tenant,
                 customer=customer,
                 invoice_number=invoice_number,
-                invoice_date=timezone.now().date(),
+                invoice_date=timezone.localdate(),
                 due_date=due_date,
                 payment_terms=effective_payment_terms,
                 status='DRAFT',
@@ -549,7 +572,7 @@ def _calculate_due_date(config, payment_terms_override=None):
             ``config.default_payment_terms``.  Allows customer-specific terms
             to affect the due date (CODE-219).
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     
     terms_days = {
         'COD': 0,
@@ -680,7 +703,7 @@ def generate_aging_report(tenant_id=None):
     Returns dict with aging buckets: current, 30, 60, 90+ days.
     Can be called for a specific tenant or all tenants.
     """
-    today = timezone.now().date()
+    today = timezone.localdate()
     
     if tenant_id:
         tenants = Tenant.objects.filter(id=tenant_id, is_active=True)

@@ -32,11 +32,11 @@ class InvoiceEmailEvent(models.Model):
     
     EVENT_TYPES = [
         ('SENT', 'Email Sent'),
-        ('DELIVERED', 'Delivered'),       # Future: SendGrid/SES webhooks
+        ('DELIVERED', 'Delivered'),       # Future: SES webhooks
         ('OPENED', 'Opened'),
         ('CLICKED', 'Link Clicked'),
-        ('BOUNCED', 'Bounced'),           # Future: SendGrid/SES webhooks
-        ('COMPLAINED', 'Marked as Spam'), # Future: SendGrid/SES webhooks
+        ('BOUNCED', 'Bounced'),           # Future: SES webhooks
+        ('COMPLAINED', 'Marked as Spam'), # Future: SES webhooks
     ]
     
     invoice = models.ForeignKey(
@@ -206,7 +206,7 @@ This lets the owner know the ball is in the customer's court — useful for foll
 14. Dashboard widget: "X invoices viewed but unpaid" — nudge for follow-up
 
 ### Future (not in scope now)
-- **SendGrid/SES webhook integration** — get DELIVERED, BOUNCED, COMPLAINED events from the email provider (much more reliable than pixel tracking alone)
+- **SES webhook integration** — get DELIVERED, BOUNCED, COMPLAINED events from the email provider (much more reliable than pixel tracking alone)
 - **Aggregate analytics** — "Average time from sent to viewed: 4.2 hours" per customer
 - **Auto-reminder triggers** — "If not opened after 3 days, auto-send reminder"
 
@@ -228,7 +228,7 @@ This lets the owner know the ball is in the customer's court — useful for foll
 |------|--------|------------|
 | Apple Mail Privacy Protection pre-fetches pixels → false opens | Low — inflates open count slightly | Show "Viewed (may include auto-opens)" tooltip; deduplicate by IP within short window |
 | Gmail image proxy caches pixel → miss repeat opens | Low — first open still tracked | Accept limitation; note in docs |
-| Email clients block images entirely → miss opens | Medium — some customers invisible | Click tracking still works; future SES/SendGrid webhooks provide delivery confirmation |
+| Email clients block images entirely → miss opens | Medium — some customers invisible | Click tracking still works; future SES webhooks provide delivery confirmation |
 | Bot/scanner pre-fetching → false positives | Low | Rate limit per token; ignore known bot user agents (Barracuda, Mimecast, etc.) |
 | HTML email rendering issues | Low | Keep HTML simple; test against Litmus/Email on Acid basics; plain text fallback always works |
 | ~~SendGrid credits exhausted~~ | Resolved 2026-07-09 | No longer blocking: email now sends via Amazon SES (production access, 50k/day) |

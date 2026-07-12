@@ -1,5 +1,7 @@
 # Feature-to-Plan Tier Matrix
 
+> **Note:** The plan/price table in the root [README.md](../README.md#subscription-plans) is canonical for prices and limits; this doc is the detailed feature-to-tier matrix.
+
 **Last updated:** 2026-03-25
 **Author:** Amelia
 **Purpose:** Single source of truth for which features are available on each subscription plan. All proposals MUST reference this document before features ship to ensure consistent tier gating.

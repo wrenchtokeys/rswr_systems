@@ -1,5 +1,10 @@
 # Billing & Payments Roadmap
 
+> **Archived (intentionally).** This roadmap is complete and kept for historical reference.
+> Inbound links from live docs (`apps/billing/README.md`, `SUBSCRIPTION_LIFECYCLE.md`,
+> `CHANGELOG.md`, `NOTIFICATION_OPERATIONS.md`) are historical references, not signs this
+> doc is current. For how billing works today, see [BILLING_GUIDE.md](../BILLING_GUIDE.md).
+
 > Created: Jan 31, 2026  Amelia
 > Last updated: February 11, 2026
 > Status:  Complete

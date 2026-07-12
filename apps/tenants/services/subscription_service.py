@@ -422,8 +422,11 @@ class SubscriptionService:
             )
             
             tenant.subscription_status = 'active'
-            tenant.save(update_fields=['subscription_status'])
-            
+            # Clear any grace period from a previous lapse — a stale stamp
+            # locks the tenant out on their next cancellation. (A3)
+            tenant.grace_period_end = None
+            tenant.save(update_fields=['subscription_status', 'grace_period_end'])
+
             logger.info(f"Subscription reactivated for tenant {tenant.slug}")
             
             return {

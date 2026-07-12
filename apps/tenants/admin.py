@@ -162,7 +162,11 @@ class TenantAdmin(admin.ModelAdmin):
 
     @admin.action(description='✅ Activate subscription')
     def activate_subscription(self, request, queryset):
-        updated = queryset.update(subscription_status='active', is_active=True)
+        # grace_period_end=None: activation clears any grace period from a
+        # previous lapse, matching the webhook reactivation paths. (A3)
+        updated = queryset.update(
+            subscription_status='active', is_active=True, grace_period_end=None,
+        )
         self.message_user(request, f'{updated} tenant(s) activated.')
 
     @admin.action(description='🚫 Deactivate subscription (set expired + 30-day grace)')

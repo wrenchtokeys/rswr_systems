@@ -112,7 +112,7 @@ class InvoiceTrackingService:
                 due_days = terms_days.get(payment_terms, 0)
         
         due_days = due_days or 0
-        due_date = timezone.now().date() + timedelta(days=due_days) if due_days > 0 else timezone.now().date()
+        due_date = timezone.localdate() + timedelta(days=due_days) if due_days > 0 else timezone.localdate()
         
         with transaction.atomic():
             # Create invoice
@@ -120,7 +120,7 @@ class InvoiceTrackingService:
                 tenant=self.tenant or customer.tenant,
                 invoice_number=invoice_number,
                 customer=customer,
-                invoice_date=timezone.now().date(),
+                invoice_date=timezone.localdate(),
                 due_date=due_date,
                 payment_terms=payment_terms,
                 status='DRAFT',
@@ -260,7 +260,7 @@ class InvoiceTrackingService:
         payment = Payment.objects.create(
             invoice=invoice,
             amount=Decimal(str(amount)),
-            payment_date=payment_date or timezone.now().date(),
+            payment_date=payment_date or timezone.localdate(),
             payment_method=payment_method,
             reference_number=reference_number,
             notes=notes,
@@ -305,7 +305,7 @@ class InvoiceTrackingService:
         
         if include_overdue_only:
             invoices = invoices.filter(
-                due_date__lt=timezone.now().date()
+                due_date__lt=timezone.localdate()
             )
         
         return invoices.order_by('due_date')
@@ -318,7 +318,7 @@ class InvoiceTrackingService:
         Returns:
             int: Number of invoices marked overdue
         """
-        today = timezone.now().date()
+        today = timezone.localdate()
         
         if not self.tenant:
             logger.warning("update_overdue_statuses called without tenant — skipping")

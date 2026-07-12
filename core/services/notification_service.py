@@ -85,6 +85,21 @@ class NotificationService:
             if category is None:
                 category = template.category
 
+            # Inject tenant-scoped email branding so templates extending
+            # emails/base.html show the shop's identity, not the platform's.
+            # Context is persisted on the Notification and re-rendered by the
+            # email retry path, so this must happen before render.
+            if 'branding' not in context:
+                tenant = None
+                if repair is not None and getattr(repair, 'tenant_id', None):
+                    tenant = repair.tenant
+                elif customer is not None and getattr(customer, 'tenant_id', None):
+                    tenant = customer.tenant
+                else:
+                    tenant = getattr(recipient, 'tenant', None)
+                from core.models.email_branding import EmailBrandingConfig
+                context['branding'] = EmailBrandingConfig.get_tenant_context(tenant)
+
             # Render template content
             rendered = template.render(context)
 
@@ -275,11 +290,20 @@ class NotificationService:
         if not category_map.get(notification.category, True):
             return False
 
-        # Check quiet hours for non-urgent notifications
+        # Check quiet hours for non-urgent notifications.
+        # NOTE (D3): quiet hours SUPPRESSES the email/SMS — nothing ever
+        # re-sends it later. The in-app Notification record has already
+        # been created, so the user still sees it in their feed; they
+        # opted in to not being emailed/texted during these hours.
+        # A true deferred-delivery queue (send after quiet hours end)
+        # does not exist yet — if built, hook it here. Until then the log
+        # must not claim a "delay" that never resolves.
         if notification.priority != Notification.PRIORITY_URGENT:
             if NotificationService._is_quiet_hours(preferences):
                 logger.info(
-                    f"Notification {notification.id} delayed by quiet hours"
+                    f"Notification {notification.id}: email/SMS suppressed by "
+                    f"quiet hours (in-app notification remains; no deferred "
+                    f"re-send is scheduled)"
                 )
                 return False
 

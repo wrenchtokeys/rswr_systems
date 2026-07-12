@@ -93,3 +93,13 @@ study_plan.md
 # Test scripts with hardcoded credentials (SECURITY: DO NOT COMMIT)
 /scripts/test_database_persistence.py
 /scripts/configure_rds.sh
+
+# Coverage & test caches
+.coverage
+htmlcov/
+coverage.xml
+.pytest_cache/
+
+# Editor / tooling
+*.code-workspace
+.claude/

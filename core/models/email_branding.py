@@ -29,6 +29,26 @@ from rs_systems.model_mixins import AutoUpdateTimestampMixin
 logger = logging.getLogger(__name__)
 
 
+def _absolute_media_url(filefield):
+    """
+    Absolute URL for an uploaded media file, suitable for email embedding.
+    With S3 the storage URL is already absolute; locally it needs the site
+    domain prepended.
+    """
+    if not filefield:
+        return ''
+    if hasattr(settings, 'AWS_S3_CUSTOM_DOMAIN') and settings.AWS_S3_CUSTOM_DOMAIN:
+        return filefield.url
+    from django.contrib.sites.models import Site
+    try:
+        domain = Site.objects.get_current().domain
+        protocol = 'https' if settings.USE_HTTPS else 'http'
+        return f'{protocol}://{domain}{filefield.url}'
+    except Exception:
+        logger.warning("Failed to get current site domain for media URL; falling back to relative URL", exc_info=True)
+        return filefield.url
+
+
 class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
     """
     Singleton model for email template branding customization.
@@ -307,6 +327,61 @@ class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
         """
         instance, created = cls.objects.get_or_create(singleton_id=True)
         return instance
+
+    @classmethod
+    def get_tenant_context(cls, tenant=None):
+        """
+        Email branding context for templates extending emails/base.html.
+
+        The platform singleton supplies the visual identity (colors, fonts,
+        button styling). When a tenant is given, the tenant's identity
+        (name, contact info, logo) overrides the platform-owner values so
+        tenant-scoped customer email is branded as the shop, not the
+        platform. All values are JSON-serializable — NotificationService
+        persists this context and the email retry path re-renders it.
+        """
+        try:
+            context = cls.get_instance().to_template_context()
+        except Exception:
+            logger.warning("Failed to load EmailBrandingConfig; using static defaults", exc_info=True)
+            context = {
+                'logo_url': '',
+                'logo_width': 200,
+                'primary_color': '#2C5282',
+                'secondary_color': '#4299E1',
+                'success_color': '#38A169',
+                'danger_color': '#E53E3E',
+                'text_color': '#2D3748',
+                'background_color': '#F7FAFC',
+                'company_name': 'RS Systems',
+                'company_address': '',
+                'support_email': '',
+                'support_phone': '',
+                'website_url': '',
+                'facebook_url': '',
+                'twitter_url': '',
+                'linkedin_url': '',
+                'heading_font': 'Arial, Helvetica, sans-serif',
+                'body_font': 'Arial, Helvetica, sans-serif',
+                'button_border_radius': 4,
+                'footer_text': '',
+            }
+        if tenant is not None:
+            context['company_name'] = tenant.name or context.get('company_name') or 'RS Systems'
+            context['company_address'] = tenant.business_address or ''
+            context['support_email'] = tenant.business_email or ''
+            context['support_phone'] = tenant.business_phone or ''
+            # Platform-owner links/logo must never appear on another shop's email.
+            context['website_url'] = ''
+            context['facebook_url'] = ''
+            context['twitter_url'] = ''
+            context['linkedin_url'] = ''
+            context['footer_text'] = (
+                f"You are receiving this email because you are a customer of {tenant.name}."
+            )
+            context['logo_url'] = _absolute_media_url(tenant.logo) if tenant.logo else ''
+            context['logo_width'] = 200
+        return context
 
     def delete(self, *args, **kwargs):
         """Prevent deletion of singleton instance"""

@@ -448,14 +448,24 @@ class ReferralService:
             tenant=tenant,
         )
 
-        # Award points to the referred user
-        LoyaltyService.award_points(
+        # Award points to the referred user — AT MOST ONCE per user. The
+        # welcome bonus is one-time by design; without this check a user
+        # could redeem codes from several different coworkers and collect
+        # the bonus for each (the duplicate guard above is per (code, user)
+        # pair, not per user). The referrer-side award above stays per
+        # referral — a referrer legitimately earns for each signup. (B4)
+        already_received = PointTransaction.objects.filter(
             customer_user=customer_user,
-            amount=config.referral_bonus_referred,
             transaction_type='referral_received',
-            description='Welcome bonus — signed up with referral code',
-            tenant=tenant,
-        )
+        ).exists()
+        if not already_received:
+            LoyaltyService.award_points(
+                customer_user=customer_user,
+                amount=config.referral_bonus_referred,
+                transaction_type='referral_received',
+                description='Welcome bonus — signed up with referral code',
+                tenant=tenant,
+            )
 
         return True
 

@@ -44,9 +44,12 @@ node_modules/
 local_settings.py
 .env
 
-# Static files - allow deployment for now
-# staticfiles/  # Commented out to allow static file deployment
-# static/       # Commented out to allow static file deployment
+# Static files: staticfiles/ is BUILD OUTPUT — the server rebuilds it via
+# collectstatic in .platform/hooks + .platform/confighooks. Shipping a stale
+# local copy masks collectstatic ("N unmodified") and leaves production with
+# un-postprocessed files and no manifest (July 2026 broken-admin incident).
+# static/ (the sources) stays in the bundle.
+staticfiles/
 
 # Media files (should be handled separately)
 media/ 

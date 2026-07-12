@@ -151,10 +151,13 @@ class ConvertToBatchPlanLimitTests(TestCase):
     def setUp(self):
         self.tenant, self.owner, self.tech_user, self.tech, self.customer = _setup_tenant_at_limit()
         self.factory = RequestFactory()
-        # Mark last repair as APPROVED so it qualifies for conversion
+        # Mark last repair as APPROVED so it qualifies for conversion.
+        # Queryset update: COMPLETED -> APPROVED is not a legal runtime
+        # transition (D1 — COMPLETED is terminal); this is pure test
+        # scaffolding to get an APPROVED repair while staying at the limit.
         self.target_repair = Repair.objects.filter(tenant=self.tenant).last()
-        self.target_repair.queue_status = 'APPROVED'
-        self.target_repair.save()
+        Repair.objects.filter(pk=self.target_repair.pk).update(queue_status='APPROVED')
+        self.target_repair.refresh_from_db()
 
     def test_get_request_blocked_at_limit(self):
         """GET request to convert-to-batch should redirect when at limit."""

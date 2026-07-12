@@ -207,14 +207,14 @@ Ensure the `apply_available_rewards()` method is called in the repair save logic
 **Common Causes:**
 1. **Session Configuration Issue:**
 ```python
-# Check settings.py
+# Check rs_systems/settings/base.py
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_COOKIE_AGE = 1209600  # 2 weeks
 ```
 
 2. **Middleware Order:**
 ```python
-# Ensure correct middleware order in settings.py
+# Ensure correct middleware order in rs_systems/settings/base.py
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -367,7 +367,7 @@ python manage.py shell
 
 **Debugging:**
 ```python
-# Enable query logging in settings.py (development only)
+# Enable query logging in rs_systems/settings/development.py (development only)
 LOGGING = {
     'version': 1,
     'handlers': {
@@ -454,7 +454,7 @@ python manage.py shell
 
 **WhiteNoise Configuration:**
 ```python
-# settings.py
+# rs_systems/settings/base.py
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Add this
@@ -492,7 +492,7 @@ railway variables set SECRET_KEY=your-secret-key
 
 **Solutions:**
 ```python
-# settings_aws.py
+# rs_systems/settings/production.py
 if os.environ.get('USE_HTTPS') == 'true':
     SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -689,7 +689,7 @@ python manage.py findstatic css/style.css
 ### Enable Debug Mode
 
 ```python
-# settings.py (development only)
+# rs_systems/settings/development.py (development only)
 DEBUG = True
 ALLOWED_HOSTS = ['*']
 
@@ -703,7 +703,7 @@ INTERNAL_IPS = ['127.0.0.1']
 ### Comprehensive Logging Setup
 
 ```python
-# settings.py
+# rs_systems/settings/base.py
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

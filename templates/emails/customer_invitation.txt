@@ -2,13 +2,13 @@ You're Invited!
 
 Hi {{ recipient_name }},
 
-{{ inviter_name }} has invited you to manage {{ customer_name }}'s windshield repairs on {{ shop_name }}.
+{{ inviter_name }} has invited you to manage {{ customer_name }}'s vehicle glass service on {{ shop_name }}.
 
 With your portal access, you can:
-- View and approve repair requests
-- Track repair status in real-time
+- View and approve service requests
+- Track repair and replacement status in real-time
 - Access invoices and payment history
-- Submit new repair requests
+- Submit new service requests
 
 Accept your invitation here:
 {{ invite_url }}

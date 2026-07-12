@@ -354,7 +354,7 @@ The Manager Settings portal is actively being expanded. Upcoming features includ
 - Team performance reports
 - Export functionality
 
-See `docs/development/MANAGER_SETTINGS_ROADMAP.md` for detailed feature roadmap and implementation timeline.
+See `docs/proposals/MANAGER_SETTINGS_ROADMAP.md` for detailed feature roadmap and implementation timeline.
 
 #### Permissions
 

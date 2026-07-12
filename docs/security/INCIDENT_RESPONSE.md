@@ -130,7 +130,7 @@ cache.set(f'blocked_ip_{attacker_ip}', True, 86400)
 
 **Permanent IP Block:**
 ```python
-# settings_aws.py or environment variable
+# rs_systems/settings/production.py or environment variable
 # Add to configuration
 BLOCKED_IPS = [
     '1.2.3.4',
@@ -362,7 +362,7 @@ eb scale 3  # Increase instance count
 **Application-Level Protection:**
 ```python
 # Temporarily increase rate limits
-# In settings_aws.py
+# In rs_systems/settings/production.py
 RATELIMIT_ENABLE = False  # Temporarily disable for legitimate traffic
 
 # Or increase limits

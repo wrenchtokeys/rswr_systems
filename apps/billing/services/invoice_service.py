@@ -491,6 +491,120 @@ class InvoiceService:
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
         )
     
+    def build_invoice_data_from_record(self, invoice) -> InvoiceData:
+        """
+        Build InvoiceData from an existing Invoice model record — its OWN
+        line items and STORED totals — never by re-querying repairs.
+
+        This is the correct source when re-rendering a PDF for an invoice
+        that already exists (owner "Send Invoice", overdue reminders).
+        The repair-lookback path in build_invoice_data() is only for
+        GENERATING a new invoice. Rendering an existing invoice from a
+        repair query produced two failure modes (A4/A5): replacement-only
+        invoices could never send ("no completed repairs found"), or the
+        emailed PDF contained unrelated repairs at recomputed totals.
+        """
+        customer = invoice.customer
+
+        line_items = []
+        for li in invoice.line_items.select_related('repair').all():
+            repair = li.repair
+            if repair is not None:
+                damage_type = repair.get_damage_type_display() or 'Repair'
+            elif li.replacement_id:
+                damage_type = 'Replacement'
+            else:
+                damage_type = 'Service'
+
+            unit_price = li.unit_price if li.unit_price is not None else Decimal('0.00')
+            original_cost = unit_price * li.quantity
+            discount = li.discount or Decimal('0.00')
+
+            line_items.append(InvoiceLineItem(
+                repair_id=li.repair_id,
+                unit_number=li.unit_number or (repair.unit_number if repair else ''),
+                damage_type=damage_type,
+                # li.repair_date is nullable; the PDF renderer strftime()s it
+                repair_date=li.repair_date or invoice.invoice_date,
+                description=li.description or '',
+                original_cost=original_cost,
+                final_cost=li.amount if li.amount is not None else original_cost - discount,
+                discount_description=f'Discount ${discount}' if discount else '',
+                has_photos=bool(repair and repair.has_photos()),
+                before_photo_url=(
+                    repair.damage_photo_before.url
+                    if repair and repair.damage_photo_before else None
+                ),
+                after_photo_url=(
+                    repair.damage_photo_after.url
+                    if repair and repair.damage_photo_after else None
+                ),
+                repair_obj=repair,
+            ))
+
+        # Address block — same formatting as build_invoice_data()
+        address_parts = []
+        if customer.address:
+            address_parts.append(customer.address)
+        if customer.city:
+            city_state_zip = customer.city
+            if customer.state:
+                city_state_zip += f", {customer.state}"
+            if customer.zip_code:
+                city_state_zip += f" {customer.zip_code}"
+            address_parts.append(city_state_zip)
+
+        payment_terms = invoice.payment_terms or getattr(self, 'DEFAULT_PAYMENT_TERMS', 'COD')
+        terms_display_map = {
+            'COD': 'Cash on Delivery (COD)',
+            'DUE_ON_RECEIPT': 'Due on Receipt',
+            'NET15': 'Net 15',
+            'NET30': 'Net 30',
+            'NET45': 'Net 45',
+            'NET60': 'Net 60',
+        }
+
+        return InvoiceData(
+            invoice_number=invoice.invoice_number,
+            invoice_date=invoice.invoice_date,
+            customer_name=customer.name,
+            customer_email=customer.email,
+            customer_address='\n'.join(address_parts) if address_parts else None,
+            line_items=line_items,
+            subtotal=invoice.subtotal,
+            total_discount=invoice.discount,
+            total=invoice.total,
+            description=invoice.description or '',
+            notes=invoice.notes or '',
+            tax_rate=invoice.tax_rate,
+            state_tax_rate=invoice.state_tax_rate,
+            county_tax_rate=invoice.county_tax_rate,
+            city_tax_rate=invoice.city_tax_rate,
+            special_tax_rate=invoice.special_tax_rate,
+            tax_amount=invoice.tax_amount,
+            payment_terms=payment_terms,
+            payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
+        )
+
+    def generate_invoice_from_record(
+        self,
+        invoice,
+        include_photos: bool = False,
+    ) -> Tuple[bytes, InvoiceData]:
+        """
+        Render an existing Invoice record to PDF from its own line items.
+
+        Returns (pdf_bytes, invoice_data). The invoice's stored status drives
+        the watermark (PAID/OVERDUE/CANCELLED stamp; DRAFT/SENT get none).
+        """
+        invoice_data = self.build_invoice_data_from_record(invoice)
+        pdf_bytes = self.generate_pdf(
+            invoice_data,
+            include_photos=include_photos,
+            invoice_status=invoice.status,
+        )
+        return pdf_bytes, invoice_data
+
     def _apply_watermark(self, pdf_buffer, status_text, color_hex, diagonal=True):
         """Overlay a watermark ON TOP of an existing PDF."""
         from reportlab.lib import colors as rl_colors

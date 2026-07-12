@@ -116,6 +116,13 @@ def technician_batch_detail(request, batch_id):
 @transaction.atomic
 def technician_batch_start_work(request, batch_id):
     """Start work on all repairs in a batch at once."""
+    # State-changing action must not execute on GET — a GET here bypasses
+    # CSRF protection entirely (e.g. an <img src=...> on any page a
+    # logged-in technician visits). Same guard as batch_complete_all. (B3)
+    if request.method != 'POST':
+        messages.error(request, "Invalid request.")
+        return redirect('technician_dashboard')
+
     tenant = getattr(request, 'tenant', None)
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
@@ -738,8 +745,13 @@ def convert_to_batch(request, repair_id):
                 new_repair.save()
                 created_repairs.append(new_repair)
 
-                unit_count.repair_count += 1
-                unit_count.save()
+                # NOTE: do NOT increment unit_count here. Repair.save() owns the
+                # counter and increments it on each break's first transition into
+                # COMPLETED. A manual increment at creation double-counted every
+                # converted break (repair_count=5 after 1+2 breaks), permanently
+                # pushing future repairs on the unit into cheaper pricing tiers.
+                # create_multi_break_repair already relies on completion-time
+                # increments only; the two flows must agree. (A2)
 
                 logger.info(f"Created additional repair {new_repair.id} - Break {break_number}/{total_breaks_in_batch}")
 

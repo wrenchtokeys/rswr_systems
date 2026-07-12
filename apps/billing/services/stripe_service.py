@@ -420,19 +420,33 @@ class StripeService:
             logger.error(f"Invoice {invoice_id} not found for Stripe payment")
             return {'success': False, 'error': 'Invoice not found'}
         
-        # Don't double-record payments
+        # Don't double-record payments. The .exists() precheck is a fast
+        # path only — two concurrent webhook deliveries (Stripe sends
+        # checkout.session.completed AND payment_intent.succeeded for the
+        # same pi_..., plus retries) can both pass it. The DB-level partial
+        # unique index on stripe_payment_id is what actually closes the
+        # race; catch its IntegrityError as "duplicate". (C2)
         if invoice.payments.filter(stripe_payment_id=stripe_payment_id).exists():
             logger.info(f"Payment {stripe_payment_id} already recorded")
             return {'success': True, 'duplicate': True}
-        
+
+        from django.db import IntegrityError, transaction as db_transaction
         tracking = InvoiceTrackingService(tenant=invoice.tenant)
-        payment = tracking.record_payment(
-            invoice=invoice,
-            amount=amount,
-            payment_method='STRIPE',
-            stripe_payment_id=stripe_payment_id,
-            notes=notes,
-        )
+        try:
+            with db_transaction.atomic():
+                payment = tracking.record_payment(
+                    invoice=invoice,
+                    amount=amount,
+                    payment_method='STRIPE',
+                    stripe_payment_id=stripe_payment_id,
+                    notes=notes,
+                )
+        except IntegrityError:
+            logger.info(
+                f"Payment {stripe_payment_id} already recorded (unique "
+                f"constraint hit — concurrent webhook delivery)"
+            )
+            return {'success': True, 'duplicate': True}
         
         logger.info(f"Stripe payment ${amount} recorded for {invoice.invoice_number}")
         

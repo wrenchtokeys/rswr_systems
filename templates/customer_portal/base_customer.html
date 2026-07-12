@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Customer Portal | RS Systems{% endblock %}</title>
+    <title>{% block title %}Customer Portal{% if request.tenant %} | {{ request.tenant.name }}{% endif %}{% endblock %}</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -86,7 +86,7 @@
                     <a href="{% url 'customer_replacements' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'replacement' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         <i class="fas fa-exchange-alt mr-1.5 text-xs"></i>Replacements
                     </a>
-                    <a href="{% url 'customer_request_repair' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_request_repair' %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
+                    <a href="{% url 'customer_request_repair' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_request_repair' or request.resolver_match.url_name == 'customer_request_replacement' %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         <i class="fas fa-plus-circle mr-1.5 text-xs"></i>Request
                     </a>
                     <a href="{% url 'customer_invoices' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'invoice' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
@@ -112,14 +112,14 @@
                         <button class="flex items-center space-x-2 text-gray-500 hover:text-gray-900 rounded-full p-1 transition-colors"
                             onclick="document.getElementById('customer-dropdown').classList.toggle('hidden')">
                             <div class="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center">
-                                <span class="text-brand-600 text-sm font-semibold">{{ request.user.first_name|first|upper }}</span>
+                                <span class="text-brand-600 text-sm font-semibold">{{ request.user.first_name|default:request.user.username|first|upper }}</span>
                             </div>
                             <span class="text-sm font-medium hidden lg:inline">{{ request.user.first_name|default:request.user.username }}</span>
                             <i class="fas fa-chevron-down text-[10px] hidden lg:inline"></i>
                         </button>
                         <div id="customer-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-200 py-1.5 z-50">
                             <div class="px-4 py-2 border-b border-gray-100">
-                                <p class="text-sm font-semibold text-gray-900">{{ request.user.first_name }} {{ request.user.last_name }}</p>
+                                <p class="text-sm font-semibold text-gray-900">{{ request.user.get_full_name|default:request.user.username }}</p>
                                 <p class="text-xs text-gray-500 truncate">{{ request.user.email }}</p>
                             </div>
                             <a href="{% url 'customer_account_settings' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
@@ -230,12 +230,12 @@
                 <i class="fas fa-wrench text-lg"></i>
                 <span class="text-[10px] font-medium">Repairs</span>
             </a>
-            <a href="{% url 'customer_request_repair' %}" class="flex flex-col items-center justify-center -mt-4">
+            <button onclick="document.getElementById('requestTypeSheet').classList.remove('hidden')" class="flex flex-col items-center justify-center -mt-4">
                 <div class="w-12 h-12 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30">
                     <i class="fas fa-plus text-white text-lg"></i>
                 </div>
                 <span class="text-[10px] font-medium text-brand-500 mt-0.5">Request</span>
-            </a>
+            </button>
             <a href="{% url 'customer_invoices' %}" class="flex flex-col items-center justify-center space-y-0.5 {% if 'invoice' in request.resolver_match.url_name %}text-brand-500{% else %}text-gray-400{% endif %}">
                 <i class="fas fa-file-invoice-dollar text-lg"></i>
                 <span class="text-[10px] font-medium">Invoices</span>
@@ -247,6 +247,23 @@
         </div>
     </nav>
 
+    <!-- Mobile Request Type Sheet -->
+    <div id="requestTypeSheet" class="md:hidden hidden fixed inset-0 z-[60]">
+        <div class="absolute inset-0 bg-black/40" onclick="document.getElementById('requestTypeSheet').classList.add('hidden')"></div>
+        <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl p-5 pb-8 safe-area-bottom">
+            <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+            <h3 class="text-base font-semibold text-gray-900 mb-3">What do you need?</h3>
+            <div class="space-y-2">
+                <a href="{% url 'customer_request_repair' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors">
+                    <i class="fas fa-tools mr-3"></i> Chip or Crack Repair
+                </a>
+                <a href="{% url 'customer_request_replacement' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors">
+                    <i class="fas fa-car mr-3"></i> Full Glass Replacement
+                </a>
+            </div>
+        </div>
+    </div>
+
     <!-- Mobile "More" Drawer -->
     <div id="mobileDrawer" class="md:hidden fixed inset-0 z-[60] translate-x-full transition-transform duration-300 ease-in-out">
         <!-- Backdrop -->
@@ -255,7 +272,7 @@
         <div class="absolute right-0 top-0 bottom-0 w-72 bg-white shadow-2xl flex flex-col">
             <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                 <div>
-                    <p class="text-sm font-semibold text-gray-900">{{ request.user.first_name }} {{ request.user.last_name }}</p>
+                    <p class="text-sm font-semibold text-gray-900">{{ request.user.get_full_name|default:request.user.username }}</p>
                     <p class="text-xs text-gray-500">{{ request.user.email }}</p>
                 </div>
                 <button onclick="document.getElementById('mobileDrawer').classList.add('translate-x-full')" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">

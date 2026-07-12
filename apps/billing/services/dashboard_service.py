@@ -277,7 +277,7 @@ class DashboardService:
             })
         
         # Invoices due soon (next 7 days)
-        now = timezone.now().date()
+        now = timezone.localdate()
         due_soon = self._filter(Invoice.objects).filter(
             status__in=['SENT', 'PARTIAL'],
             due_date__gte=now,
