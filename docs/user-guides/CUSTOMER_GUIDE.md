@@ -46,15 +46,14 @@ Your dashboard shows:
 
 **Yellow Alert Banner**:
 ```
- 2 Repairs Awaiting Your Approval
+ 2 Services Awaiting Your Approval
 
-Technicians found damage during inspection.
-Review and approve/deny repairs below.
+Review and approve/deny below.
 ```
 
-**Shows For Each Repair**:
+Covers both repairs and glass replacements. **Shows for each item**:
 - Unit number
-- Damage type
+- Damage type (repairs) or which glass (replacements)
 - Technician name
 - Estimated cost
 - Technician notes
@@ -62,28 +61,29 @@ Review and approve/deny repairs below.
 - **Approve** button (green)
 - **Deny** button (red)
 
-### 2. Repair Summary
+### 2. Service Summary
 
-- Total repairs
-- Active repairs
-- Completed repairs
-- This month's repairs
+- Awaiting approval (repairs + replacements)
+- Active services
+- Completed services
+- Outstanding balance
 
-### 3. Recent Repairs
+### 3. Recent Services
 
-List of your company's recent repairs with:
+List of your company's recent repairs **and replacements**, each with a
+type badge (REPAIR / REPLACEMENT):
 - Unit number
 - Status
 - Date
-- Cost
-- Technician
+- Description (replacements show which glass)
 
 ### 4. Quick Actions
 
-- Submit Repair Request
-- View All Repairs
-- View Units
-- Account Settings
+- Request Chip Repair
+- Request Glass Replacement
+- View Repairs
+- View Replacements
+- View Invoices
 
 ---
 
@@ -119,6 +119,34 @@ estimated cost: $40.00
 
 (This is an estimate - final cost calculated upon completion)
 ```
+
+---
+
+## Requesting a Glass Replacement
+
+When a chip or crack is too large to repair, request a full glass replacement:
+
+```
+1. Click "Request Glass Replacement" (or use the toggle at the top of the
+   repair request page: "Chip or Crack Repair" <-> "Full Glass Replacement")
+2. Fill form:
+   - Vehicle or unit number: TRUCK-101 or "2019 Ford F-150"
+   - Which glass: Windshield / side windows / rear window / sunroof / other
+   - What happened: "Rock hit the windshield on the highway - crack spreading"
+3. Upload a photo of the damage (optional, but helps the shop identify
+   the right glass faster)
+4. Submit request
+```
+
+**What Happens Next**:
+1. Your request is created (Status: REQUESTED) — no payment is due
+2. The shop confirms the exact glass for your vehicle and sets the price
+3. The priced replacement comes back to you for approval (dashboard alert)
+4. After you approve, the technician schedules and completes the work
+5. You receive an invoice
+
+Unlike repair requests, replacements are **not** auto-approved — the shop
+always confirms glass and pricing first, then you approve the quoted price.
 
 ---
 

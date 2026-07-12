@@ -14,6 +14,65 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-07-12 — Shop-branded emails + replacement-aware customer portal
+
+Deployed to production 2026-07-12 via PR #108 (which also carried the full
+2026-07-09 audit remediation A–F to production — see
+`docs/development/REMEDIATION_PLAN_2026-07-09.md` for those dispositions).
+
+### Added
+- **Customer replacement requests** at `/app/replacements/request/` (URL name
+  `customer_request_replacement`). Customers pick the vehicle/unit, which glass
+  (windshield, side, rear, sunroof, …), describe what happened, and optionally
+  attach a photo. Creates a `Replacement` with `queue_status='REQUESTED'` and
+  **no pricing** — the shop confirms the exact glass and sets parts/labor before
+  the customer approves. Both request pages now share a "Chip or Crack Repair ↔
+  Full Glass Replacement" toggle (`templates/customer_portal/includes/service_type_toggle.html`).
+- **Shop notification for replacement requests** — the assigned technician gets
+  an in-app `TechnicianNotification` and the owner a tenant-branded email with a
+  review link (via `core.email_utils.send_branded_email`). Full replacement
+  lifecycle notification templates remain a follow-up.
+- Replacement-aware technician assignment: `get_available_technician(tenant,
+  service_type='replacement')` prefers `can_replace=True` technicians and falls
+  back to any active technician — new shops (whose auto-created owner technician
+  has `can_replace=False`) never dead-end.
+
+### Changed
+- **Customer dashboard is now service-type aware.** Recent Services merges
+  repairs and replacements (type badges, per-type detail links); the
+  pending-approval alert includes replacements with approve/deny actions;
+  stat cards show combined counts. All previous repair-only context keys are
+  preserved for backward compatibility.
+- Dashboard greeting is now "Welcome, {name}" (was "Welcome back,
+  {first_name}", which greeted brand-new invited users as returning ones and
+  rendered blank when `first_name` was empty). Name falls back
+  first name → full name → company name; navbar/drawer name displays fall back
+  to username.
+- Customer portal page titles and invite pages use the tenant's shop name;
+  invitation email copy is glass-service-neutral ("vehicle glass service"
+  instead of "windshield repairs"); the invalid-invitation page says "contact
+  your glass shop" instead of "fleet service provider".
+- Mobile bottom-nav Request button opens a repair/replacement chooser sheet.
+
+### Fixed
+- **Tenant branding leak in customer-facing email.** The email header, footer,
+  and title (`templates/emails/base.html`) rendered `branding.company_name`
+  from the platform-wide `EmailBrandingConfig` singleton, so every shop's
+  invitations showed the platform-owner tenant's name ("Rockstar Windshield
+  Repair"); payment-receipt subjects had the same bug, and the 10 repair
+  lifecycle notification emails received **no** branding context at all (blank
+  header). New `EmailBrandingConfig.get_tenant_context(tenant)` keeps the
+  platform visual identity (colors, fonts) but overrides identity fields
+  (name, contact info, logo, footer) with the tenant's. Wired into
+  `CustomerInvitationService.send_invitation_email`,
+  `NotificationService.create_notification` (auto-derives the tenant from
+  repair → customer → recipient), and `PaymentNotificationService.send_customer_receipt`.
+  Tests: `tests/test_tenant_email_branding.py`,
+  `tests/test_customer_request_replacement.py`,
+  `tests/test_customer_unified_dashboard.py`.
+
+---
+
 ## 2026-07-11 — Infra: removed unused Redis (ElastiCache)
 
 ### Technical
