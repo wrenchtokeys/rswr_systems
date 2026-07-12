@@ -82,15 +82,26 @@ class PaymentNotificationService:
             return False
 
         try:
+            # Brand the receipt as the invoice's tenant (the shop), not the
+            # platform singleton — customers of every shop receive these.
+            branding = self.branding
+            tenant = getattr(invoice, 'tenant', None)
+            if tenant:
+                try:
+                    from core.models.email_branding import EmailBrandingConfig
+                    branding = EmailBrandingConfig.get_tenant_context(tenant)
+                except Exception:
+                    pass
+
             context = {
                 'payment': payment,
                 'invoice': invoice,
                 'customer': customer,
-                'branding': self.branding,
+                'branding': branding,
             }
 
             subject = (
-                f"[{self.branding.get('company_name', 'RS Systems')}] "
+                f"[{branding.get('company_name', 'RS Systems')}] "
                 f"Payment Received — Invoice {invoice.invoice_number}"
             )
 

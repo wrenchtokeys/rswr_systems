@@ -173,7 +173,50 @@ def customer_dashboard(request):
         # Add a flag to each repair indicating if it was customer initiated
         for repair in recent_repairs:
             repair.customer_initiated = repair.id in customer_initiated_approvals
-        
+
+        # Replacement stats and lists — mirrors the repair aggregate above so
+        # the dashboard covers both service types (replacement shops would
+        # otherwise see an empty dashboard). All existing repair-only context
+        # keys are preserved; the combined keys below are additive.
+        repl_qs = Replacement.objects.filter(customer=customer, tenant=tenant)
+        repl_agg = repl_qs.aggregate(
+            _requested=Count('id', filter=Q(queue_status='REQUESTED')),
+            _pending=Count('id', filter=Q(queue_status='PENDING')),
+            _approved=Count('id', filter=Q(queue_status='APPROVED')),
+            _in_progress=Count('id', filter=Q(queue_status='IN_PROGRESS')),
+            _completed=Count('id', filter=Q(queue_status='COMPLETED')),
+            _total_spent=Coalesce(
+                Sum('cost', filter=Q(queue_status='COMPLETED')),
+                _Decimal('0'),
+                output_field=_DecimalField(),
+            ),
+        )
+        active_replacements = (
+            repl_agg['_requested'] + repl_agg['_pending']
+            + repl_agg['_approved'] + repl_agg['_in_progress']
+        )
+        pending_approval_replacements = list(
+            repl_qs.filter(queue_status='PENDING')
+                   .select_related('technician__user').order_by('-service_date')
+        )
+        recent_replacements = list(
+            repl_qs.select_related('technician__user').order_by('-service_date')[:5]
+        )
+
+        # Merge the two service types into one recency-ordered list for the
+        # "Recent Services" section (same item_type tagging pattern as the
+        # owner dashboard timeline).
+        from itertools import chain
+        for _r in recent_repairs:
+            _r.service_type = 'repair'
+        for _r in recent_replacements:
+            _r.service_type = 'replacement'
+        recent_services = sorted(
+            chain(recent_repairs, recent_replacements),
+            key=lambda s: s.service_date,
+            reverse=True,
+        )[:5]
+
         # Get repairs that are awaiting customer approval
         repairs_awaiting_approval = base_qs.filter(
             queue_status='PENDING'
@@ -285,6 +328,14 @@ def customer_dashboard(request):
             status='OVERDUE'
         ).count()
         
+        # Greeting name — first_name can be blank (e.g. invited users who
+        # skipped it), so fall back to the full name, then the company name.
+        display_name = (
+            request.user.first_name.strip()
+            or request.user.get_full_name().strip()
+            or customer.name
+        )
+
         context = {
             'customer': customer,
             'stats': stats,
@@ -293,6 +344,15 @@ def customer_dashboard(request):
             'pending_approval_count': pending_approval,
             'recent_repairs': recent_repairs,
             'pending_approval_repairs': repairs_awaiting_approval,
+            # Combined repair + replacement service data (additive — the
+            # repair-only keys above are still used by older templates/tests)
+            'display_name': display_name,
+            'recent_services': recent_services,
+            'pending_approval_replacements': pending_approval_replacements,
+            'pending_services_count': pending_approval + repl_agg['_pending'],
+            'active_services_count': active_repairs + active_replacements,
+            'completed_services_count': completed_repairs + repl_agg['_completed'],
+            'total_spent_services': total_spent + repl_agg['_total_spent'],
             'customer_user': customer_user,
             'customer_initiated_repair_ids': list(customer_initiated_approvals),
             # Batch repairs for grouped display
@@ -1624,6 +1684,150 @@ def request_repair(request):
         return redirect('profile_creation')
 
 
+@customer_required
+def request_replacement(request):
+    """
+    Handle customer glass replacement requests.
+
+    Replacements are one-vehicle jobs, so this is a simple single-form flow
+    (no multi-unit batching like repairs). The customer supplies the vehicle,
+    which glass, and what happened; the shop confirms the exact glass and
+    sets parts/labor pricing after reviewing the request.
+    """
+    try:
+        customer_user = _get_customer_user_for_tenant(request)
+        customer = customer_user.customer
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+    tenant = getattr(request, 'tenant', None)
+    ctx = {'glass_positions': Replacement.GLASS_POSITION_CHOICES}
+
+    if request.method != 'POST':
+        return render(request, 'customer_portal/request_replacement.html', ctx)
+
+    # Plan limit check — customer-submitted replacements count toward the
+    # tenant's monthly cap, same as the owner-side replacement_create flow.
+    if tenant:
+        from apps.tenants.services.usage_service import UsageService
+        can_create, _limit_msg = UsageService(tenant).can_create_repair()
+        if not can_create:
+            messages.warning(request, "This shop has reached its service limit for the month. Please contact the shop for assistance.")
+            return render(request, 'customer_portal/request_replacement.html', ctx)
+
+    unit_number = request.POST.get('unit_number', '').strip()
+    glass_position = request.POST.get('glass_position', 'WINDSHIELD')
+    description = request.POST.get('description', '').strip()
+    damage_photo = request.FILES.get('damage_photo')
+
+    if not unit_number:
+        messages.error(request, "Vehicle or unit number is required.")
+        return render(request, 'customer_portal/request_replacement.html', ctx)
+
+    if glass_position not in dict(Replacement.GLASS_POSITION_CHOICES):
+        glass_position = 'WINDSHIELD'
+
+    if damage_photo:
+        photo_valid, photo_error = validate_repair_photo(damage_photo)
+        if not photo_valid:
+            messages.error(request, photo_error)
+            return render(request, 'customer_portal/request_replacement.html', ctx)
+        damage_photo = convert_heic_to_jpeg(damage_photo)
+
+    technician = get_available_technician(tenant=tenant, service_type='replacement')
+    if not technician:
+        messages.error(request, "No technicians available. Please try again later.")
+        return render(request, 'customer_portal/request_replacement.html', ctx)
+
+    try:
+        # No parts/labor cost yet — Replacement.save() leaves cost at 0 and
+        # skips tax until the shop prices the job.
+        replacement = Replacement.objects.create(
+            tenant=tenant,
+            technician=technician,
+            customer=customer,
+            unit_number=unit_number,
+            glass_position=glass_position,
+            description=description or 'Customer replacement request - glass and pricing to be confirmed by the shop',
+            customer_notes=description,
+            customer_submitted_photo=damage_photo,
+            queue_status='REQUESTED',
+        )
+
+        # Auto-assign technician based on tenant strategy (may keep the
+        # round-robin pick if the strategy is manual)
+        from apps.tenants.services.assignment_service import auto_assign_replacement
+        assigned_tech = auto_assign_replacement(replacement)
+        if assigned_tech:
+            messages.info(request, f'Your request has been assigned to {assigned_tech.user.get_full_name()}.')
+
+        _notify_shop_replacement_requested(request, replacement)
+
+        messages.success(request, "Replacement request submitted! The shop will confirm the glass and price before any work begins.")
+        return redirect('customer_dashboard')
+    except Exception as e:
+        messages.error(request, f"Error creating replacement request: {str(e)}")
+        return render(request, 'customer_portal/request_replacement.html', ctx)
+
+
+def _notify_shop_replacement_requested(request, replacement):
+    """
+    Best-effort in-app + email notification to the shop about a new customer
+    replacement request. Replacements have no lifecycle NotificationTemplates
+    yet, so without this the request would sit invisible until someone
+    happened to browse the replacement list. Never raises — the customer's
+    request must succeed even if notification delivery fails.
+    """
+    customer = replacement.customer
+
+    try:
+        if replacement.technician:
+            TechnicianNotification.objects.create(
+                technician=replacement.technician,
+                message=f"🔔 New replacement request from {customer.name} - {replacement.get_glass_position_display()} on Unit {replacement.unit_number}",
+                read=False,
+            )
+    except Exception:
+        logger.warning("Failed to create technician notification for replacement request", exc_info=True)
+
+    try:
+        tenant = replacement.tenant
+        recipients = []
+        owner_email = getattr(getattr(tenant, 'owner', None), 'email', '') if tenant else ''
+        if owner_email:
+            recipients.append(owner_email)
+        tech_email = getattr(replacement.technician.user, 'email', '') if replacement.technician else ''
+        if tech_email and tech_email not in recipients:
+            recipients.append(tech_email)
+        if not recipients:
+            return
+
+        from core.email_utils import send_branded_email
+        detail_rows = [
+            ('Customer', customer.name),
+            ('Unit / Vehicle', replacement.unit_number),
+            ('Glass', replacement.get_glass_position_display()),
+        ]
+        if replacement.customer_notes:
+            detail_rows.append(('Notes', replacement.customer_notes))
+        send_branded_email(
+            subject=f"New replacement request — {customer.name}",
+            recipient_list=recipients,
+            headline="New Replacement Request",
+            body_paragraphs=[
+                f"{customer.name} requested a {replacement.get_glass_position_display()} replacement for Unit {replacement.unit_number}.",
+                "Review the request to confirm the glass and set pricing.",
+            ],
+            detail_rows=detail_rows,
+            button_text="Review Request",
+            button_url=request.build_absolute_uri(reverse('replacement_detail', args=[replacement.pk])),
+            tenant=tenant,
+        )
+    except Exception:
+        logger.warning("Failed to send replacement request email to shop", exc_info=True)
+
+
 def _get_available_monetary_rewards(customer_user):
     """
     Return APPROVED, unapplied monetary redemptions for this customer.
@@ -1986,16 +2190,21 @@ def validate_repair_photo(photo_file):
     return True, ""
 
 
-def get_available_technician(tenant=None):
+def get_available_technician(tenant=None, service_type='repair'):
     """
     Get an available technician using round-robin assignment.
     Scoped to tenant if provided.
 
-    Only returns technicians that are active and can perform repairs.
-    Without these filters, deactivated technicians or managers with
-    can_repair=False could be assigned to customer-requested repairs —
-    invisible to the correct technicians and alarming to the ones who
-    no longer work at the shop. (CODE-160)
+    Only returns technicians that are active and able to perform the
+    requested service type. Without these filters, deactivated technicians
+    or managers with can_repair=False could be assigned to customer-requested
+    repairs — invisible to the correct technicians and alarming to the ones
+    who no longer work at the shop. (CODE-160)
+
+    For replacements, technicians with can_replace=True are preferred, but
+    any active technician is an acceptable fallback: new shops only have the
+    auto-created owner technician, whose can_replace defaults to False, and
+    a customer replacement request must never dead-end unassignable.
 
     Returns:
         Technician object or None if no technicians available
@@ -2005,10 +2214,17 @@ def get_available_technician(tenant=None):
         technicians = technicians.filter(tenant=tenant)
     else:
         technicians = technicians.none()
-    # Only assign to technicians who are active and able to do repairs.
-    # Previously missing — could assign to deactivated staff or managers
-    # with can_repair=False.
-    technicians = technicians.filter(is_active=True, can_repair=True)
+    technicians = technicians.filter(is_active=True)
+
+    if service_type == 'replacement':
+        preferred = technicians.filter(can_replace=True)
+        pool = preferred if preferred.exists() else technicians
+        pool = pool.annotate(
+            active_jobs=Count('replacement', filter=Q(replacement__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
+        ).order_by('active_jobs', 'id')
+        return pool.first()
+
+    technicians = technicians.filter(can_repair=True)
     technicians = technicians.annotate(
         active_repairs=Count('repair', filter=Q(repair__queue_status__in=['REQUESTED', 'PENDING', 'APPROVED', 'IN_PROGRESS']))
     ).order_by('active_repairs', 'id')

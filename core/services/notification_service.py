@@ -85,6 +85,21 @@ class NotificationService:
             if category is None:
                 category = template.category
 
+            # Inject tenant-scoped email branding so templates extending
+            # emails/base.html show the shop's identity, not the platform's.
+            # Context is persisted on the Notification and re-rendered by the
+            # email retry path, so this must happen before render.
+            if 'branding' not in context:
+                tenant = None
+                if repair is not None and getattr(repair, 'tenant_id', None):
+                    tenant = repair.tenant
+                elif customer is not None and getattr(customer, 'tenant_id', None):
+                    tenant = customer.tenant
+                else:
+                    tenant = getattr(recipient, 'tenant', None)
+                from core.models.email_branding import EmailBrandingConfig
+                context['branding'] = EmailBrandingConfig.get_tenant_context(tenant)
+
             # Render template content
             rendered = template.render(context)
 

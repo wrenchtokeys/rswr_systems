@@ -27,6 +27,7 @@ urlpatterns = [
     path('replacements/<int:replacement_id>/', views.customer_replacement_detail, name='customer_replacement_detail'),
     path('replacements/<int:replacement_id>/approve/', views.customer_replacement_approve, name='customer_replacement_approve'),
     path('replacements/<int:replacement_id>/deny/', views.customer_replacement_deny, name='customer_replacement_deny'),
+    path('replacements/request/', views.request_replacement, name='customer_request_replacement'),
 
     # Multi-break batch management
     path('batch/<uuid:batch_id>/', views.customer_batch_detail, name='customer_batch_detail'),
