@@ -1,10 +1,14 @@
-{% load static %}
-
+{% comment %}
+Shared notification bell for customer + technician portals.
+Usage: {% include "includes/notification_bell.html" with bell_role="customer" %}
+       {% include "includes/notification_bell.html" with bell_role="tech" %}
+Expects `unread_count` and `recent_notifications` in context.
+{% endcomment %}
 <!-- Notification Bell Icon -->
 <div class="relative inline-block" id="notification-dropdown">
     <button type="button"
             id="notificationDropdown"
-            class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 rounded-full"
+            class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 {% if bell_role == 'customer' %}focus:ring-blue-500{% else %}focus:ring-green-500{% endif %} rounded-full"
             aria-expanded="false"
             aria-haspopup="true">
         <span class="sr-only">View notifications</span>
@@ -20,7 +24,7 @@
 
     <!-- Dropdown Menu -->
     <div id="notification-menu"
-         class="hidden origin-top-right absolute right-0 mt-2 w-96 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+         class="hidden origin-top-right absolute {% if bell_role == 'customer' %}right-0 left-0 sm:left-auto mt-2 w-full sm:w-96{% else %}right-0 mt-2 w-96{% endif %} rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
          role="menu"
          aria-orientation="vertical"
          aria-labelledby="notificationDropdown">
@@ -75,7 +79,7 @@
 
         <!-- Footer -->
         <div class="border-t border-gray-200">
-            <a href="{% url 'notification_history' %}"
+            <a href="{% if bell_role == 'customer' %}{% url 'customer_notification_history' %}{% else %}{% url 'notification_history' %}{% endif %}"
                class="block px-4 py-3 text-center text-sm text-blue-600 hover:text-blue-800 hover:bg-gray-50 font-medium"
                role="menuitem">
                 View All Notifications
@@ -99,6 +103,7 @@
 
 <script>
 (function() {
+    const NOTIFY_BASE = '{% if bell_role == "customer" %}/app/notifications{% else %}/tech/notifications{% endif %}';
     const dropdown = document.getElementById('notificationDropdown');
     const menu = document.getElementById('notification-menu');
     const markAllBtn = document.getElementById('mark-all-read');
@@ -140,7 +145,7 @@
         item.addEventListener('click', function(e) {
             const notificationId = this.dataset.notificationId;
             if (notificationId && this.classList.contains('bg-blue-50')) {
-                fetch(`/tech/notifications/${notificationId}/mark-read/`, {
+                fetch(`${NOTIFY_BASE}/${notificationId}/mark-read/`, {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': getCookie('csrftoken'),
@@ -165,7 +170,7 @@
             e.preventDefault();
             e.stopPropagation();
 
-            fetch('/tech/notifications/mark-all-read/', {
+            fetch(`${NOTIFY_BASE}/mark-all-read/`, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': getCookie('csrftoken'),
@@ -217,7 +222,7 @@
 
     // Poll for new notifications every 30 seconds
     setInterval(function() {
-        fetch('/tech/notifications/unread-count/')
+        fetch(`${NOTIFY_BASE}/unread-count/`)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {

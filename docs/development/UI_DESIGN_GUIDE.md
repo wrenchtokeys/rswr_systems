@@ -4,10 +4,56 @@
 
 This guide documents the design system, UI components, and patterns used across RS Systems. Following these guidelines ensures a consistent, professional user experience throughout the application.
 
-**Last Updated**: October 2025
-**Base Framework**: Tailwind CSS
+**Last Updated**: July 2026
+**Base Framework**: Tailwind CSS (compiled — see build section below)
 **Icon Library**: Font Awesome 6.4.0
 **Typography**: Inter font family
+
+---
+
+## CSS Build & Component System (July 2026)
+
+Tailwind is **compiled**, not CDN-loaded. Run `./scripts/build_css.sh` after any
+template or `static/js` class change and commit the output `static/css/app.css`.
+Theme lives in `tailwind.config.js`; component classes and tokens in
+`static/css/src/input.css`. Never add `cdn.tailwindcss.com` or inline
+`tailwind.config` blocks to templates.
+
+### Semantic Button Hierarchy
+
+Use these classes (defined in `input.css` `@layer components`) instead of ad-hoc
+color utilities. **The old 7-color button chaos is deprecated.**
+
+| Class | Role | Rule |
+|---|---|---|
+| `.btn-primary` | The main action | **Max ONE per view** (brand blue) |
+| `.btn-secondary` | Supporting actions | Outlined; at most 2 visible |
+| `.btn-danger` | Destructive actions only | Delete/deny/void — never for emphasis |
+| `.btn-ghost` | Tertiary/overflow/inline | Kebab menus, cancel links |
+
+Sizes: add `.btn-sm` or `.btn-lg`.
+
+### Cards, Badges, Modals
+
+- `.card` / `.card-header` / `.card-body` — standard container.
+- `{% load ui %}` then `{% status_badge repair.queue_status %}` or
+  `{% status_badge invoice.status kind='invoice' %}` — the single source of
+  truth for status colors (defined in `core/templatetags/ui.py`).
+- `{% service_type_chip 'REPAIR' %}` — repair/replacement type chip.
+- Modals/dropdowns/confirms use `static/js/ui.js` data attributes:
+  `data-modal-open="id"`, `data-modal-close`, `data-dropdown-toggle="id"` +
+  `data-dropdown-menu`, `<form data-confirm="...">`. Bootstrap `data-bs-*`
+  markup is dead — never add it.
+
+### Reusable Partials (`templates/components/`)
+
+- `page_header.html` — title/subtitle/back link (`title`, `subtitle`, `back_url`, `back_label`)
+- `empty_state.html` — icon/title/message/CTAs (`icon`, `title`, `message`, `cta_url`, `cta_label`, `cta2_*`)
+- `stat_card.html` — dashboard stat (`label`, `value`, `icon`, `tone`, `href`)
+- `pagination.html` — Django `page_obj` pager, preserves querystring via `{% querystring %}`
+
+Shared shells: `base_app.html` (tech+owner), `customer_portal/base_customer.html`,
+`saas/base_public.html`, `base_auth.html` — all include `includes/head_assets.html`.
 
 ---
 

@@ -103,3 +103,4 @@ coverage.xml
 # Editor / tooling
 *.code-workspace
 .claude/
+bin/tailwindcss

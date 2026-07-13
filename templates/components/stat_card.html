@@ -1,0 +1,25 @@
+{% comment %}
+Dashboard stat card.
+Params: label, value, icon (fa class), tone (blue|green|amber|red|gray, default blue),
+        href (optional — renders the card as a link).
+Usage:
+  {% include "components/stat_card.html" with label="Outstanding" value=outstanding_total icon="fa-file-invoice-dollar" tone="amber" href=invoices_url %}
+{% endcomment %}
+{% if href %}<a href="{{ href }}" class="block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">{% else %}<div class="bg-white rounded-xl border border-gray-200 p-4">{% endif %}
+    <div class="flex items-center justify-between">
+        <div>
+            <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">{{ label }}</p>
+            <p class="text-2xl font-bold text-gray-900 mt-1">{{ value }}</p>
+        </div>
+        {% if icon %}
+        <div class="w-10 h-10 rounded-lg flex items-center justify-center
+            {% if tone == 'green' %}bg-green-50 text-green-600
+            {% elif tone == 'amber' %}bg-amber-50 text-amber-600
+            {% elif tone == 'red' %}bg-red-50 text-red-600
+            {% elif tone == 'gray' %}bg-gray-50 text-gray-500
+            {% else %}bg-blue-50 text-blue-600{% endif %}">
+            <i class="fas {{ icon }}"></i>
+        </div>
+        {% endif %}
+    </div>
+{% if href %}</a>{% else %}</div>{% endif %}

@@ -29,7 +29,17 @@ python manage.py migrate
 
 # Static files (production)
 python manage.py collectstatic
+
+# Frontend CSS build — run after ANY template or static/js class change
+./scripts/build_css.sh   # compiles static/css/app.css (COMMIT this file)
 ```
+
+### Frontend CSS Rules
+- Tailwind is compiled via the standalone CLI (`scripts/build_css.sh` downloads `bin/tailwindcss`, gitignored). No node/npm anywhere.
+- `tailwind.config.js` is the single source of truth for the brand palette; `static/css/src/input.css` holds design tokens + `@layer components` (`.btn-*`, `.card*`, `.badge-*`, `.modal-*` — see `docs/development/UI_DESIGN_GUIDE.md`).
+- `static/css/app.css` is a build artifact but IS committed (EB deploys unchanged; manifest storage handles cache busting).
+- **Never reintroduce `cdn.tailwindcss.com`** or inline `tailwind.config` blocks in templates.
+- Classes composed dynamically (JS string concat, Django template vars like `grid-cols-{{ n }}`) must be safelisted in `tailwind.config.js` or the purge will drop them.
 
 ### Running Tests
 ```bash
