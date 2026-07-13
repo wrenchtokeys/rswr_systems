@@ -30,7 +30,6 @@ Documentation index for the RS Systems windshield repair management platform.
 - [ROADMAP.md](development/ROADMAP.md) -- Project roadmap (completed, next up, backlog)
 - [CHANGELOG.md](development/CHANGELOG.md) -- Version history (canonical changelog)
 - [UI_DESIGN_GUIDE.md](development/UI_DESIGN_GUIDE.md) -- Design system and UI components
-- [FRONTEND_GUIDE.md](development/FRONTEND_GUIDE.md) -- CSS architecture, D3.js visualizations, linting
 - [TESTING.md](development/TESTING.md) -- Testing procedures (canonical testing doc)
 - [SOFT_DELETE.md](development/SOFT_DELETE.md) -- Soft-delete/restore reference (repairs, invoices)
 - [SUBSCRIPTION_LIFECYCLE.md](development/SUBSCRIPTION_LIFECYCLE.md) -- Trial/subscription lifecycle plan

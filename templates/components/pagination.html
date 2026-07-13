@@ -1,0 +1,27 @@
+{% comment %}
+Pagination controls for a Django Page object.
+Params: page_obj (required). Preserves all other querystring params via {% querystring %}.
+Usage: {% include "components/pagination.html" with page_obj=page_obj %}
+{% endcomment %}
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="flex items-center justify-between mt-6" aria-label="Pagination">
+    <p class="text-sm text-gray-500">
+        Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+    </p>
+    <div class="flex items-center gap-1">
+        {% if page_obj.has_previous %}
+        <a href="{% querystring page=page_obj.previous_page_number %}" class="btn-secondary btn-sm">
+            <i class="fas fa-chevron-left text-[10px]"></i> Prev
+        </a>
+        {% endif %}
+        <span class="px-3 py-1.5 text-xs font-medium text-gray-600">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+        {% if page_obj.has_next %}
+        <a href="{% querystring page=page_obj.next_page_number %}" class="btn-secondary btn-sm">
+            Next <i class="fas fa-chevron-right text-[10px]"></i>
+        </a>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}

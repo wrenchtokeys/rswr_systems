@@ -2,38 +2,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Customer Portal{% if request.tenant %} | {{ request.tenant.name }}{% endif %}{% endblock %}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#4299E1',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    },
-                }
-            }
-        }
-    </script>
+    {% include "includes/head_assets.html" %}
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     {% block extra_head %}{% endblock %}
     {% block extra_css %}{% endblock %}
@@ -43,7 +14,7 @@
         .bottom-nav-scroll::-webkit-scrollbar { display: none; }
         .bottom-nav-scroll { -ms-overflow-style: none; scrollbar-width: none; }
         /* Active nav indicator */
-        .nav-item-active { color: #4299E1; }
+        .nav-item-active { color: #3b82f6; }
         .nav-item-active::after {
             content: '';
             position: absolute;
@@ -51,7 +22,7 @@
             left: 0;
             right: 0;
             height: 2px;
-            background: #4299E1;
+            background: #3b82f6;
             border-radius: 2px 2px 0 0;
         }
     </style>
@@ -104,7 +75,7 @@
                 <!-- Right: Notifications + User -->
                 <div class="flex items-center space-x-2">
                     {% if request.user.is_authenticated %}
-                    {% include 'customer_portal/includes/notification_bell.html' %}
+                    {% include 'includes/notification_bell.html' with bell_role='customer' %}
                     {% endif %}
 
                     <!-- User dropdown -->
@@ -351,6 +322,7 @@
         });
     </script>
 
+    <script src="{% static 'js/ui.js' %}"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

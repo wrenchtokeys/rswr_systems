@@ -1,0 +1,16 @@
+{% comment %}
+Standard page header.
+Params: title (required), subtitle, back_url, back_label.
+Action buttons belong in page markup next to this include (one .btn-primary max).
+Usage:
+  {% include "components/page_header.html" with title="Repairs" subtitle="Manage repair jobs" back_url=back back_label="Dashboard" %}
+{% endcomment %}
+<div class="mb-6">
+    {% if back_url %}
+    <a href="{{ back_url }}" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 transition-colors mb-2">
+        <i class="fas fa-arrow-left mr-1.5 text-xs"></i>{{ back_label|default:"Back" }}
+    </a>
+    {% endif %}
+    <h1 class="text-2xl font-bold text-gray-900">{{ title }}</h1>
+    {% if subtitle %}<p class="text-sm text-gray-500 mt-1">{{ subtitle }}</p>{% endif %}
+</div>

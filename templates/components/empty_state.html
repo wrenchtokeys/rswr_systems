@@ -1,0 +1,22 @@
+{% comment %}
+Empty-state placeholder for lists.
+Params: icon (fa class, e.g. "fa-car"), title, message, cta_url, cta_label,
+        cta2_url, cta2_label (optional secondary action).
+Usage:
+  {% include "components/empty_state.html" with icon="fa-car" title="No services yet" message="Request your first service to get started." cta_url=request_url cta_label="Request Service" %}
+{% endcomment %}
+<div class="p-10 text-center">
+    <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+        <i class="fas {{ icon|default:'fa-inbox' }} text-gray-400 text-xl"></i>
+    </div>
+    <h3 class="text-base font-semibold text-gray-900 mb-1">{{ title }}</h3>
+    {% if message %}<p class="text-sm text-gray-500 mb-4">{{ message }}</p>{% endif %}
+    {% if cta_url %}
+    <div class="flex flex-wrap items-center justify-center gap-2">
+        <a href="{{ cta_url }}" class="btn-primary">{{ cta_label|default:"Get Started" }}</a>
+        {% if cta2_url %}
+        <a href="{{ cta2_url }}" class="btn-secondary">{{ cta2_label }}</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
