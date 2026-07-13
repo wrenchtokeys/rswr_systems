@@ -1070,24 +1070,20 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
         self.assertEqual(len(individual_repairs), 0)
 
     def test_customer_repairs_list_groups_batches(self):
-        """Test that repairs list page groups batch repairs"""
+        """The services list groups a multi-break batch into a single row."""
         self.client.login(username='customeruser', password='testpass123')
 
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
 
         self.assertEqual(response.status_code, 200)
 
-        # Check that batch/individual counts exist in context
-        self.assertIn('batch_count', response.context)
-        self.assertIn('individual_count', response.context)
+        items = list(response.context['page_obj'].object_list)
+        batch_items = [i for i in items if i['kind'] == 'batch']
+        individual_items = [i for i in items if i['kind'] == 'repair']
 
-        # Should have 1 batch
-        batch_count = response.context['batch_count']
-        self.assertEqual(batch_count, 1)
-
-        # Should have 0 individual repairs
-        individual_count = response.context['individual_count']
-        self.assertEqual(individual_count, 0)
+        # Should have 1 batch row and 0 individual repair rows
+        self.assertEqual(len(batch_items), 1)
+        self.assertEqual(len(individual_items), 0)
 
     def test_mixed_batch_and_individual_repairs(self):
         """Test that dashboard correctly separates batch and individual repairs"""

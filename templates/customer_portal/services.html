@@ -1,0 +1,149 @@
+{% extends "customer_portal/base_customer.html" %}
+{% load static %}
+{% load ui %}
+
+{% block title %}Services{% if request.tenant %} | {{ request.tenant.name }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="flex items-start justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900">Services</h1>
+        <p class="text-sm text-gray-500 mt-1">{{ stats.total }} service{{ stats.total|pluralize }} · repairs and replacements</p>
+    </div>
+    <a href="{% url 'customer_request_repair' %}" class="btn-primary hidden md:inline-flex">
+        <i class="fas fa-plus"></i> Request Service
+    </a>
+</div>
+
+<!-- Stat chips (link to filtered views) -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+    {% include "components/stat_card.html" with label="Needs Approval" value=stats.needs_approval icon="fa-clock" tone="amber" href="?type=approval" %}
+    {% include "components/stat_card.html" with label="In Progress" value=stats.in_progress icon="fa-wrench" tone="blue" href="?status=APPROVED,IN_PROGRESS" %}
+    {% include "components/stat_card.html" with label="Completed" value=stats.completed icon="fa-check-circle" tone="green" href="?status=COMPLETED" %}
+    {% include "components/stat_card.html" with label="All Services" value=stats.total icon="fa-list" tone="gray" href="?type=all" %}
+</div>
+
+<!-- Type filter chips + search -->
+<div class="flex flex-wrap items-center gap-2 mb-5">
+    <a href="?type=all" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">All</a>
+    <a href="?type=repair" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'repair' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">Repairs ({{ stats.repairs_total }})</a>
+    <a href="?type=replacement" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'replacement' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">Replacements ({{ stats.replacements_total }})</a>
+    <a href="?type=approval" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'approval' %}bg-amber-500 text-white border-amber-500{% else %}bg-white text-amber-600 border-amber-300 hover:border-amber-400{% endif %}">Needs Approval{% if stats.needs_approval %} ({{ stats.needs_approval }}){% endif %}</a>
+
+    <form method="get" class="ml-auto flex items-center gap-2">
+        <input type="hidden" name="type" value="{{ type_filter }}">
+        <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+            <input type="text" name="unit_search" value="{{ unit_search }}" placeholder="Search unit #"
+                   class="pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 w-40">
+        </div>
+    </form>
+</div>
+
+{% if page_obj.object_list %}
+<div class="card overflow-hidden">
+    <!-- Desktop table -->
+    <div class="hidden sm:block overflow-x-auto">
+        <table class="w-full">
+            <thead>
+                <tr class="bg-gray-50 border-b border-gray-200">
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Type</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Unit</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+                {% for item in page_obj.object_list %}
+                <tr class="hover:bg-gray-50 transition-colors {% if item.kind == 'batch' and item.overall_status == 'PENDING' or item.kind == 'repair' and item.repair.queue_status == 'PENDING' or item.kind == 'replacement' and item.replacement.queue_status == 'PENDING' %}bg-amber-50/40{% endif %}">
+                    <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{{ item.service_date|date:"M j, Y" }}</td>
+                    <td class="px-4 py-3">
+                        {% if item.kind == 'replacement' %}{% service_type_chip 'REPLACEMENT' %}{% else %}{% service_type_chip 'REPAIR' %}{% endif %}
+                        {% if item.kind == 'batch' %}<span class="ml-1 text-xs text-gray-500">×{{ item.break_count }}</span>{% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-sm font-semibold text-gray-900">
+                        {% if item.kind == 'batch' %}{{ item.unit_number }}{% elif item.kind == 'repair' %}{{ item.repair.unit_number }}{% else %}{{ item.replacement.unit_number }}{% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if item.kind == 'batch' %}{% status_badge item.overall_status %}{% elif item.kind == 'repair' %}{% status_badge item.repair.queue_status %}{% else %}{% status_badge item.replacement.queue_status %}{% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 whitespace-nowrap">
+                        {% if item.kind == 'batch' %}${{ item.total_cost|floatformat:2 }}
+                        {% elif item.kind == 'repair' %}{% if item.repair.cost %}${{ item.repair.cost|floatformat:2 }}{% else %}<span class="text-gray-400 font-normal">TBD</span>{% endif %}
+                        {% else %}{% if item.replacement.cost %}${{ item.replacement.cost|floatformat:2 }}{% else %}<span class="text-gray-400 font-normal">TBD</span>{% endif %}{% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                        {% if item.kind == 'batch' %}
+                            {% if item.can_approve_all %}
+                            <form method="post" action="{% url 'customer_batch_approve' item.batch_id %}" data-confirm="Approve all {{ item.break_count }} repairs on unit {{ item.unit_number }}?" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-primary btn-sm">Approve All</button>
+                            </form>
+                            {% endif %}
+                            <a href="{% url 'customer_batch_detail' item.batch_id %}" class="btn-ghost btn-sm">View</a>
+                        {% elif item.kind == 'repair' %}
+                            {% if item.repair.queue_status == 'PENDING' %}
+                            <form method="post" action="{% url 'customer_repair_approve' item.repair.id %}" data-confirm="Approve this repair on unit {{ item.repair.unit_number }}?" class="inline">
+                                {% csrf_token %}
+                                <input type="hidden" name="notes" value="Approved from services list">
+                                <button type="submit" class="btn-primary btn-sm">Approve</button>
+                            </form>
+                            <a href="{% url 'customer_repair_deny' item.repair.id %}" class="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">Deny</a>
+                            {% endif %}
+                            <a href="{% url 'customer_repair_detail' item.repair.id %}" class="btn-ghost btn-sm">View</a>
+                        {% else %}
+                            {% if item.replacement.queue_status == 'PENDING' %}
+                            <form method="post" action="{% url 'customer_replacement_approve' item.replacement.id %}" data-confirm="Approve this replacement on unit {{ item.replacement.unit_number }}?" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-primary btn-sm">Approve</button>
+                            </form>
+                            <a href="{% url 'customer_replacement_deny' item.replacement.id %}" class="btn-secondary btn-sm text-red-600 border-red-200 hover:bg-red-50">Deny</a>
+                            {% endif %}
+                            <a href="{% url 'customer_replacement_detail' item.replacement.id %}" class="btn-ghost btn-sm">View</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Mobile cards -->
+    <div class="sm:hidden divide-y divide-gray-100">
+        {% for item in page_obj.object_list %}
+        <a href="{% if item.kind == 'batch' %}{% url 'customer_batch_detail' item.batch_id %}{% elif item.kind == 'repair' %}{% url 'customer_repair_detail' item.repair.id %}{% else %}{% url 'customer_replacement_detail' item.replacement.id %}{% endif %}"
+           class="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                    {% if item.kind == 'replacement' %}{% service_type_chip 'REPLACEMENT' %}{% else %}{% service_type_chip 'REPAIR' %}{% endif %}
+                    {% if item.kind == 'batch' %}<span class="text-xs text-gray-500">×{{ item.break_count }}</span>{% endif %}
+                </div>
+                <p class="text-sm font-semibold text-gray-900 truncate">
+                    Unit {% if item.kind == 'batch' %}{{ item.unit_number }}{% elif item.kind == 'repair' %}{{ item.repair.unit_number }}{% else %}{{ item.replacement.unit_number }}{% endif %}
+                </p>
+                <p class="text-xs text-gray-500 mt-0.5">{{ item.service_date|date:"M j, Y" }}</p>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+                {% if item.kind == 'batch' %}{% status_badge item.overall_status %}{% elif item.kind == 'repair' %}{% status_badge item.repair.queue_status %}{% else %}{% status_badge item.replacement.queue_status %}{% endif %}
+                <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+
+{% include "components/pagination.html" with page_obj=page_obj %}
+
+{% else %}
+<div class="card">
+    {% if unit_search or type_filter != 'all' or status_filter != 'all' %}
+    {% include "components/empty_state.html" with icon="fa-filter" title="No matching services" message="Try clearing your filters or search." cta_url="?type=all" cta_label="Clear Filters" %}
+    {% else %}
+    {% url 'customer_request_repair' as request_service_url %}
+    {% include "components/empty_state.html" with icon="fa-car" title="No services yet" message="Request your first service to get started." cta_url=request_service_url cta_label="Request Service" %}
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
