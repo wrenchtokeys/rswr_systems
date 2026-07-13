@@ -3,8 +3,9 @@
 <html lang="en">
 <head>
     <title>{% block title %}Customer Portal{% if request.tenant %} | {{ request.tenant.name }}{% endif %}{% endblock %}</title>
-    {% include "includes/head_assets.html" %}
+    {# Legacy stylesheet loads BEFORE app.css so design-system classes win conflicts (.btn-secondary etc.) #}
     <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {% include "includes/head_assets.html" %}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     {% block extra_head %}{% endblock %}
     {% block extra_css %}{% endblock %}
@@ -51,14 +52,8 @@
                     <a href="{% url 'customer_dashboard' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_dashboard' or request.resolver_match.url_name == 'customer_dashboard_alt' %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         <i class="fas fa-home mr-1.5 text-xs"></i>Dashboard
                     </a>
-                    <a href="{% url 'customer_repairs' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_repairs' %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-wrench mr-1.5 text-xs"></i>Repairs
-                    </a>
-                    <a href="{% url 'customer_replacements' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'replacement' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-exchange-alt mr-1.5 text-xs"></i>Replacements
-                    </a>
-                    <a href="{% url 'customer_request_repair' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_request_repair' or request.resolver_match.url_name == 'customer_request_replacement' %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-plus-circle mr-1.5 text-xs"></i>Request
+                    <a href="{% url 'customer_services' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if request.resolver_match.url_name == 'customer_services' or 'repair' in request.resolver_match.url_name and 'request' not in request.resolver_match.url_name or 'replacement' in request.resolver_match.url_name and 'request' not in request.resolver_match.url_name or 'batch' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
+                        <i class="fas fa-car-side mr-1.5 text-xs"></i>Services
                     </a>
                     <a href="{% url 'customer_invoices' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'invoice' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
                         <i class="fas fa-file-invoice-dollar mr-1.5 text-xs"></i>Invoices
@@ -67,13 +62,13 @@
                         <i class="fas fa-gift mr-1.5 text-xs"></i>Rewards
                         {% if loyalty_points %}<span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-brand-100 text-brand-700">{{ loyalty_points }}</span>{% endif %}
                     </a>
-                    <a href="{% url 'customer_team' %}" class="relative px-3 py-4 text-sm font-medium transition-colors {% if 'team' in request.resolver_match.url_name %}nav-item-active{% else %}text-gray-500 hover:text-gray-900{% endif %}">
-                        <i class="fas fa-users mr-1.5 text-xs"></i>Team
-                    </a>
                 </div>
 
-                <!-- Right: Notifications + User -->
+                <!-- Right: Request CTA + Notifications + User -->
                 <div class="flex items-center space-x-2">
+                    <a href="{% url 'customer_request_repair' %}" class="btn-primary btn-sm hidden md:inline-flex mr-1">
+                        <i class="fas fa-plus"></i> Request Service
+                    </a>
                     {% if request.user.is_authenticated %}
                     {% include 'includes/notification_bell.html' with bell_role='customer' %}
                     {% endif %}
@@ -93,6 +88,9 @@
                                 <p class="text-sm font-semibold text-gray-900">{{ request.user.get_full_name|default:request.user.username }}</p>
                                 <p class="text-xs text-gray-500 truncate">{{ request.user.email }}</p>
                             </div>
+                            <a href="{% url 'customer_team' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                                <i class="fas fa-users mr-3 w-4 text-gray-400"></i>Team
+                            </a>
                             <a href="{% url 'customer_account_settings' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                                 <i class="fas fa-cog mr-3 w-4 text-gray-400"></i>Account Settings
                             </a>
@@ -197,9 +195,9 @@
                 <i class="fas fa-home text-lg"></i>
                 <span class="text-[10px] font-medium">Home</span>
             </a>
-            <a href="{% url 'customer_repairs' %}" class="flex flex-col items-center justify-center space-y-0.5 {% if request.resolver_match.url_name == 'customer_repairs' or 'repair_detail' in request.resolver_match.url_name %}text-brand-500{% else %}text-gray-400{% endif %}">
-                <i class="fas fa-wrench text-lg"></i>
-                <span class="text-[10px] font-medium">Repairs</span>
+            <a href="{% url 'customer_services' %}" class="flex flex-col items-center justify-center space-y-0.5 {% if request.resolver_match.url_name == 'customer_services' or 'repair_detail' in request.resolver_match.url_name or 'replacement_detail' in request.resolver_match.url_name or 'batch_detail' in request.resolver_match.url_name %}text-brand-500{% else %}text-gray-400{% endif %}">
+                <i class="fas fa-car-side text-lg"></i>
+                <span class="text-[10px] font-medium">Services</span>
             </a>
             <button onclick="document.getElementById('requestTypeSheet').classList.remove('hidden')" class="flex flex-col items-center justify-center -mt-4">
                 <div class="w-12 h-12 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30">
@@ -251,10 +249,6 @@
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto py-2">
-                <a href="{% url 'customer_replacements' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    <i class="fas fa-exchange-alt w-6 text-gray-400"></i>
-                    <span class="ml-3">Replacements</span>
-                </a>
                 <a href="{% url 'customer_rewards' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i class="fas fa-gift w-6 text-gray-400"></i>
                     <span class="ml-3">Rewards</span>

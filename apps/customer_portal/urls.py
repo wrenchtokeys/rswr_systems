@@ -13,7 +13,10 @@ urlpatterns = [
     path('register/', views.customer_register, name='customer_register'),
     path('profile/create/', views.profile_creation, name='profile_creation'),
     
-    # Repairs management
+    # Unified services list (repairs + replacements)
+    path('services/', views.customer_services, name='customer_services'),
+
+    # Repairs management ('customer_repairs' redirects to services — name kept for old links)
     path('repairs/', views.customer_repairs, name='customer_repairs'),
     path('repairs/<int:repair_id>/', views.customer_repair_detail, name='customer_repair_detail'),
     path('repairs/<int:repair_id>/approve/', views.customer_repair_approve, name='customer_repair_approve'),

@@ -1,4 +1,5 @@
 {% extends "saas/base_owner.html" %}
+{% load ui %}
 
 {% block title %}Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
@@ -15,15 +16,7 @@
                     <a href="{% url 'replacement_edit' pk=replacement.pk %}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                         <i class="fas fa-edit mr-1.5"></i> Edit
                     </a>
-                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
-                        {% if replacement.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                        {% elif replacement.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
-                        {% elif replacement.queue_status == 'APPROVED' %}bg-blue-100 text-blue-800
-                        {% elif replacement.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                        {% elif replacement.queue_status == 'DENIED' %}bg-red-100 text-red-800
-                        {% else %}bg-gray-100 text-gray-800{% endif %}">
-                        {{ replacement.get_queue_status_display }}
-                    </span>
+                    {% status_badge replacement.queue_status label=replacement.get_queue_status_display %}
                 </div>
             </div>
         </div>
@@ -38,12 +31,7 @@
                     <form method="post" action="{% url 'replacement_update_status' pk=replacement.pk %}" class="inline">
                         {% csrf_token %}
                         <input type="hidden" name="status" value="{{ status_code }}">
-                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg transition-colors
-                            {% if status_code == 'COMPLETED' %}bg-green-600 text-white hover:bg-green-700
-                            {% elif status_code == 'DENIED' %}bg-red-100 text-red-700 hover:bg-red-200
-                            {% elif status_code == 'APPROVED' %}bg-blue-600 text-white hover:bg-blue-700
-                            {% elif status_code == 'IN_PROGRESS' %}bg-orange-600 text-white hover:bg-orange-700
-                            {% else %}bg-gray-600 text-white hover:bg-gray-700{% endif %}">
+                        <button type="submit" class="{% if status_code == 'DENIED' %}btn-danger btn-sm{% else %}btn-primary btn-sm{% endif %}">
                             {{ label }}
                         </button>
                     </form>

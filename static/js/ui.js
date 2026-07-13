@@ -34,6 +34,10 @@
         var opener = e.target.closest('[data-modal-open]');
         if (opener) {
             e.preventDefault();
+            // Close any open dropdown (e.g. when the opener lives in an overflow menu)
+            document.querySelectorAll('[data-dropdown-menu]:not(.hidden)').forEach(function (m) {
+                m.classList.add('hidden');
+            });
             openModal(opener.getAttribute('data-modal-open'));
             return;
         }
