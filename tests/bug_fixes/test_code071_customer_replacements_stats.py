@@ -1,7 +1,7 @@
 """
 Tests for CODE-071: customer_replacements() stats bug.
 
-Bug: stats['total'] used the filtered queryset (after status_filter applied) instead
+Bug: stats['replacements_total'] used the filtered queryset (after status_filter applied) instead
 of the unfiltered base queryset. When filtering by status (e.g., "Completed"), the
 "Total" stat card showed the count of filtered replacements, not all replacements.
 Also: 4 separate COUNT queries fired instead of 1 aggregated query.
@@ -9,6 +9,13 @@ Also: 4 separate COUNT queries fired instead of 1 aggregated query.
 Fix: Compute stats from base_replacements (unfiltered) using a single aggregated
 query with conditional COUNT expressions. Apply status_filter to the display
 queryset separately, after stats are computed.
+
+NOTE: the replacements list logic moved into the unified customer_services view
+(the old /app/replacements/ URL redirects there).  These tests exercise
+/app/services/?type=replacement and assert the same unfiltered-stats behavior
+on its context keys (replacements_total / needs_approval / in_progress /
+completed).  Only replacements exist in this fixture, so combined counts equal
+replacement counts.
 """
 
 from django.test import TestCase, Client
@@ -89,61 +96,61 @@ class CustomerReplacementsStatsTestCase(TestCase):
 
     def test_stats_without_filter_are_correct(self):
         """Total should be 8 (2+3+1+1+1), pending=2, in_progress=2, completed=3."""
-        response = self.client.get('/app/replacements/')
+        response = self.client.get('/app/services/?type=replacement')
         self.assertEqual(response.status_code, 200)
         stats = response.context['stats']
-        self.assertEqual(stats['total'], 8, f"Expected total=8, got {stats['total']}")
-        self.assertEqual(stats['pending'], 2, f"Expected pending=2, got {stats['pending']}")
+        self.assertEqual(stats['replacements_total'], 8, f"Expected replacements_total=8, got {stats['replacements_total']}")
+        self.assertEqual(stats['needs_approval'], 2, f"Expected needs_approval=2, got {stats['needs_approval']}")
         # in_progress = APPROVED + IN_PROGRESS = 1 + 1 = 2
         self.assertEqual(stats['in_progress'], 2, f"Expected in_progress=2, got {stats['in_progress']}")
         self.assertEqual(stats['completed'], 3, f"Expected completed=3, got {stats['completed']}")
 
     def test_stats_unchanged_when_filter_applied(self):
         """
-        BUG: Before the fix, stats['total'] showed the filtered count, not the global total.
+        BUG: Before the fix, stats['replacements_total'] showed the filtered count, not the global total.
         After the fix, stats remain global totals even when a status filter is active.
         """
         # Filter by COMPLETED (3 replacements)
-        response = self.client.get('/app/replacements/?status=COMPLETED')
+        response = self.client.get('/app/services/?type=replacement&status=COMPLETED')
         self.assertEqual(response.status_code, 200)
         stats = response.context['stats']
         # Total should still be 8, not 3
-        self.assertEqual(stats['total'], 8, f"BUG: total changed to {stats['total']} when filtering by COMPLETED (should be 8)")
-        self.assertEqual(stats['pending'], 2)
+        self.assertEqual(stats['replacements_total'], 8, f"BUG: total changed to {stats['replacements_total']} when filtering by COMPLETED (should be 8)")
+        self.assertEqual(stats['needs_approval'], 2)
         self.assertEqual(stats['in_progress'], 2)
         self.assertEqual(stats['completed'], 3)
 
     def test_filter_only_affects_page_obj(self):
         """The display list (page_obj) is filtered; stats are not."""
-        response = self.client.get('/app/replacements/?status=PENDING')
+        response = self.client.get('/app/services/?type=replacement&status=PENDING')
         self.assertEqual(response.status_code, 200)
         page_obj = response.context['page_obj']
         # page_obj should only contain PENDING replacements
-        for replacement in page_obj:
+        for item in page_obj:
             self.assertEqual(
-                replacement.queue_status, 'PENDING',
-                f"page_obj contained non-PENDING replacement: {replacement.queue_status}"
+                item['replacement'].queue_status, 'PENDING',
+                f"page_obj contained non-PENDING replacement: {item['replacement'].queue_status}"
             )
         # Stats should still be global
         stats = response.context['stats']
-        self.assertEqual(stats['total'], 8)
+        self.assertEqual(stats['replacements_total'], 8)
 
     def test_filter_by_in_progress_shows_only_in_progress(self):
         """Filter by IN_PROGRESS shows only IN_PROGRESS replacements in the list."""
-        response = self.client.get('/app/replacements/?status=IN_PROGRESS')
+        response = self.client.get('/app/services/?type=replacement&status=IN_PROGRESS')
         self.assertEqual(response.status_code, 200)
         page_obj = response.context['page_obj']
-        statuses = [r.queue_status for r in page_obj]
+        statuses = [item['replacement'].queue_status for item in page_obj]
         self.assertIn('IN_PROGRESS', statuses)
         for s in statuses:
             self.assertEqual(s, 'IN_PROGRESS')
         # Stats are global
         stats = response.context['stats']
-        self.assertEqual(stats['total'], 8)
+        self.assertEqual(stats['replacements_total'], 8)
 
     def test_empty_filter_returns_all(self):
         """Empty filter (no ?status) returns all replacements in page_obj."""
-        response = self.client.get('/app/replacements/')
+        response = self.client.get('/app/services/?type=replacement')
         self.assertEqual(response.status_code, 200)
         page_obj = response.context['page_obj']
         self.assertEqual(page_obj.paginator.count, 8)
@@ -154,7 +161,7 @@ class CustomerReplacementsStatsTestCase(TestCase):
         from django.db import connection
 
         with CaptureQueriesContext(connection) as ctx:
-            self.client.get('/app/replacements/')
+            self.client.get('/app/services/?type=replacement')
 
         # Find queries that are COUNTs against the replacement table
         count_queries = [
@@ -180,11 +187,11 @@ class CustomerReplacementsStatsTestCase(TestCase):
         client = Client()
         client.force_login(empty_portal_user)
 
-        response = client.get('/app/replacements/')
+        response = client.get('/app/services/?type=replacement')
         self.assertEqual(response.status_code, 200)
         stats = response.context['stats']
-        self.assertEqual(stats['total'], 0)
-        self.assertEqual(stats['pending'], 0)
+        self.assertEqual(stats['replacements_total'], 0)
+        self.assertEqual(stats['needs_approval'], 0)
         self.assertEqual(stats['in_progress'], 0)
         self.assertEqual(stats['completed'], 0)
 
@@ -204,7 +211,7 @@ class CustomerReplacementsStatsTestCase(TestCase):
         )
 
         # Our tenant still has 3 completed, not 4
-        response = self.client.get('/app/replacements/')
+        response = self.client.get('/app/services/?type=replacement')
         stats = response.context['stats']
         self.assertEqual(stats['completed'], 3, "Should not count other tenant's replacements")
-        self.assertEqual(stats['total'], 8)
+        self.assertEqual(stats['replacements_total'], 8)

@@ -382,11 +382,12 @@ class CustomerPortalAccessTests(TestCase):
         self.assertEqual(r.status_code, 200)
 
     def test_customer_user_can_access_repairs(self):
-        """Customer portal user can access /app/repairs/."""
+        """Customer portal user can access repairs (old URL redirects to services)."""
         c = Client()
         c.force_login(self.cust_user)
-        r = c.get('/app/repairs/')
+        r = c.get('/app/repairs/', follow=True)
         self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.request['PATH_INFO'], '/app/services/')
 
     def test_customer_user_cannot_access_owner_portal(self):
         """Customer portal user should not access /owner/."""

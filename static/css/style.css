@@ -128,8 +128,10 @@ nav ul li a.active::after {
   padding: 0.5rem;
 }
 
+/* Heading color is inherited (design-system pages set explicit text-* classes).
+   The old `color: var(--primary-color)` here painted every unstyled heading
+   brand-blue — invisible on blue gradient headers. */
 h1, h2, h3, h4, h5, h6 {
-  color: var(--primary-color);
   font-weight: 600;
   margin-top: 0;
 }

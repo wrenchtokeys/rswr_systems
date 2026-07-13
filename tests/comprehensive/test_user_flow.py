@@ -201,10 +201,11 @@ class CustomerPortalTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
     def test_customer_repairs_list(self):
-        """Customer should see their repairs."""
+        """Customer should see their repairs (old URL redirects to unified services)."""
         self.client.login(username='cust2', password='TestPass123!')
-        resp = self.client.get('/app/repairs/')
+        resp = self.client.get('/app/repairs/', follow=True)
         self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.request['PATH_INFO'], '/app/services/')
 
     def test_customer_repair_detail(self):
         """Customer should see repair detail."""
