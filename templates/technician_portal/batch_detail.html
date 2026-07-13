@@ -1,274 +1,189 @@
 {% extends "base_app.html" %}
+{% load ui %}
 
-{% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-{% load static %}<link rel="stylesheet" href="{% static 'css/app.css' %}?after=bootstrap"><!-- re-applied after Bootstrap (distinct URL — Chrome dedupes identical hrefs) to preserve the old cascade order; remove together with Bootstrap -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-{% endblock %}
+{% block title %}Batch Repair | RS Systems{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>Batch Repair Details - Technician View</h2>
+{% url 'technician_dashboard' as dashboard_url %}
+{% include "components/page_header.html" with title="Batch Repair Details" back_url=dashboard_url back_label="Back to Dashboard" %}
 
-    <div class="mb-4">
-        <a href="{% url 'technician_dashboard' %}" class="btn btn-outline-secondary">
-            <i class="fa fa-arrow-left"></i> Back to Dashboard
-        </a>
+<!-- Batch Summary -->
+<div class="card overflow-hidden mb-6">
+    <div class="px-5 py-4 bg-gradient-to-r from-brand-600 to-brand-700 text-white">
+        <h2 class="text-lg font-bold">
+            <i class="fas fa-layer-group mr-2"></i>Unit {{ batch_summary.unit_number }}: {{ batch_summary.break_count }} Break{{ batch_summary.break_count|pluralize }}
+        </h2>
     </div>
-
-    {% if messages %}
-    <div class="messages mb-4">
-        {% for message in messages %}
-        <div class="alert alert-{{ message.tags }}">
-            {{ message }}
+    <div class="card-body">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+            <p class="text-sm text-gray-700"><span class="font-semibold">Customer:</span> {{ batch_summary.customer.name }}</p>
+            <p class="text-sm text-gray-700"><span class="font-semibold">Total Breaks:</span> {{ batch_summary.break_count }}</p>
+            <p class="text-sm text-gray-700"><span class="font-semibold">Repair Date:</span> {{ batch_summary.repair_date|date:"M d, Y g:i A" }}</p>
+            <p class="text-sm text-gray-700"><span class="font-semibold">Total Cost:</span> <span class="font-bold text-gray-900">${{ batch_summary.total_cost|floatformat:2 }}</span></p>
+            <p class="text-sm text-gray-700 flex items-center gap-2"><span class="font-semibold">Status:</span> {% status_badge batch_summary.current_status %}</p>
         </div>
-        {% endfor %}
+
+        {% if batch_summary.current_status in 'IN_PROGRESS,MIXED' or batch_summary.completed_count > 0 %}
+        <div class="mt-4 pt-4 border-t border-gray-100">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-semibold text-gray-700">Progress</span>
+                <span class="badge-blue">{{ batch_summary.completed_count }} of {{ batch_summary.break_count }} complete</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div class="bg-green-500 h-3 rounded-full transition-all" style="width: {{ batch_summary.progress_percentage }}%;"></div>
+            </div>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
+</div>
 
-    <!-- Batch Summary Card -->
-    <div class="card mb-4 border-primary">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">
-                <i class="fas fa-layer-group"></i>
-                Unit {{ batch_summary.unit_number }}: {{ batch_summary.break_count }} Breaks
-            </h5>
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="mb-2"><strong>Customer:</strong> {{ batch_summary.customer.name }}</p>
-                    <p class="mb-2"><strong>Unit Number:</strong> {{ batch_summary.unit_number }}</p>
-                    <p class="mb-2"><strong>Repair Date:</strong> {{ batch_summary.repair_date|date:"M d, Y g:i A" }}</p>
-                </div>
-                <div class="col-md-6">
-                    <p class="mb-2"><strong>Total Breaks:</strong> {{ batch_summary.break_count }}</p>
-                    <p class="mb-2"><strong>Total Cost:</strong> ${{ batch_summary.total_cost|floatformat:2 }}</p>
-                    <p class="mb-2">
-                        <strong>Status:</strong>
-                        <span class="badge {% if batch_summary.current_status == 'COMPLETED' %}bg-success{% elif batch_summary.current_status == 'IN_PROGRESS' %}bg-warning text-dark{% elif batch_summary.current_status == 'DENIED' %}bg-danger{% elif batch_summary.current_status == 'APPROVED' %}bg-info{% elif batch_summary.current_status == 'PENDING' %}bg-secondary{% else %}bg-light text-dark{% endif %}">
-                            {{ batch_summary.current_status }}
-                        </span>
+<!-- Next Break to Work On -->
+{% if batch_summary.in_progress_count > 0 %}
+    {% for repair in repairs %}
+        {% if repair.queue_status == 'IN_PROGRESS' and forloop.first %}
+        <div class="card mb-6 border-amber-300 bg-amber-50/60">
+            <div class="card-body flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-base font-semibold text-amber-900"><i class="fas fa-arrow-right mr-2"></i>Next Break to Complete</h3>
+                    <p class="text-sm text-amber-800 mt-1">
+                        <span class="font-semibold">Break {{ repair.break_number }} of {{ batch_summary.break_count }}</span>
+                        &mdash; {{ repair.get_damage_type_display }} (${{ repair.cost|floatformat:2 }})
                     </p>
                 </div>
+                <a href="{% url 'update_repair' repair.id %}?batch_id={{ batch_summary.batch_id }}" class="btn-primary">
+                    <i class="fas fa-edit"></i> Complete This Break Now
+                </a>
             </div>
-
-            <!-- Progress Bar -->
-            {% if batch_summary.current_status in 'IN_PROGRESS,MIXED' or batch_summary.completed_count > 0 %}
-            <div class="mt-3 border-top pt-3">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <strong class="text-muted">Progress:</strong>
-                    <span class="badge bg-primary">{{ batch_summary.completed_count }} of {{ batch_summary.break_count }} complete</span>
-                </div>
-                <div class="progress" style="height: 25px;">
-                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ batch_summary.progress_percentage }}%;" aria-valuenow="{{ batch_summary.progress_percentage }}" aria-valuemin="0" aria-valuemax="100">
-                        {{ batch_summary.progress_percentage }}%
-                    </div>
-                </div>
-            </div>
-            {% endif %}
         </div>
-    </div>
+        {% endif %}
+    {% endfor %}
+{% endif %}
 
-    <!-- Next Break to Work On -->
-    {% if batch_summary.in_progress_count > 0 %}
-    {% with next_break=None %}
-        {% for repair in repairs %}
-            {% if repair.queue_status == 'IN_PROGRESS' and not next_break %}
-                {% with next_break=repair %}
-                <div class="alert alert-warning border-warning" style="border-width: 3px;">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h5 class="alert-heading mb-2">
-                                <i class="fas fa-arrow-right"></i> Next Break to Complete
-                            </h5>
-                            <p class="mb-0">
-                                <strong>Break {{ repair.break_number }} of {{ batch_summary.break_count }}</strong> - {{ repair.get_damage_type_display }} (${{ repair.cost|floatformat:2 }})
-                            </p>
-                        </div>
-                        <a href="{% url 'update_repair' repair.id %}?batch_id={{ batch_summary.batch_id }}" class="btn btn-warning">
-                            <i class="fas fa-edit"></i> Complete This Break Now
-                        </a>
-                    </div>
-                </div>
-                {% endwith %}
-            {% endif %}
-        {% endfor %}
-    {% endwith %}
-    {% endif %}
-
-    <!-- Batch Actions -->
-    {% if can_start_work or can_complete_all or can_generate_invoice %}
-    <div class="card mb-4 bg-light">
-        <div class="card-body">
-            <h5 class="card-title"><i class="fas fa-play-circle"></i> Batch Actions</h5>
-
+<!-- Batch Actions -->
+{% if can_start_work or can_complete_all or can_generate_invoice %}
+<div class="card mb-6 bg-gray-50/60">
+    <div class="card-body">
+        <h3 class="text-base font-semibold text-gray-900 mb-3"><i class="fas fa-play-circle mr-2 text-gray-400"></i>Batch Actions</h3>
+        <div class="flex flex-wrap gap-3">
             {% if can_start_work %}
-            <p class="text-muted mb-3">Start work on all {{ batch_summary.break_count }} breaks at once:</p>
-            <form method="post" action="{% url 'technician_batch_start_work' batch_summary.batch_id %}" class="d-inline">
+            <form method="post" action="{% url 'technician_batch_start_work' batch_summary.batch_id %}">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-primary btn-lg">
+                <button type="submit" class="btn-primary">
                     <i class="fas fa-play-circle"></i> Start Work on All {{ batch_summary.break_count }} Breaks
                 </button>
             </form>
             {% endif %}
-
             {% if can_complete_all %}
-            {% if can_start_work %}<hr class="my-3">{% endif %}
-            <p class="text-muted mb-3">Mark all incomplete repairs in this batch as completed:</p>
-            <form method="post" action="{% url 'batch_complete_all' batch_summary.batch_id %}" class="d-inline">
+            <form method="post" action="{% url 'batch_complete_all' batch_summary.batch_id %}" data-confirm="Mark all incomplete repairs in this batch as completed?">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-success btn-lg"
-                        onclick="return confirm('Mark all incomplete repairs in this batch as completed?');">
+                <button type="submit" class="{% if can_start_work %}btn-secondary{% else %}btn-primary{% endif %}">
                     <i class="fas fa-check-double"></i> Complete All Repairs
                 </button>
             </form>
             {% endif %}
-
             {% if can_generate_invoice %}
-            {% if can_start_work or can_complete_all %}<hr class="my-3">{% endif %}
-            <p class="text-muted mb-3">All repairs are completed. Generate an invoice for this batch:</p>
-            <form method="post" action="{% url 'owner_generate_invoice_from_repair' repairs.0.id %}" class="d-inline">
+            <form method="post" action="{% url 'owner_generate_invoice_from_repair' repairs.0.id %}">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-info btn-lg">
+                <button type="submit" class="btn-primary">
                     <i class="fas fa-file-invoice-dollar"></i> Generate Invoice for Batch
                 </button>
             </form>
             {% endif %}
-
-            {% if can_start_work %}
-            <hr class="my-4">
-            <p class="text-muted small">
-                <strong>Or manage individual breaks:</strong>
-                Use the action buttons on each break below.
-            </p>
-            {% endif %}
         </div>
+        {% if can_start_work %}
+        <p class="text-xs text-gray-500 mt-3">Or manage individual breaks with the action buttons on each break below.</p>
+        {% endif %}
     </div>
-    {% endif %}
+</div>
+{% endif %}
 
-    <!-- Individual Breaks -->
-    <h4 class="mb-3">Individual Breaks in This Batch</h4>
+<!-- Individual Breaks -->
+<h3 class="text-base font-semibold text-gray-900 mb-3">Individual Breaks in This Batch</h3>
 
+<div class="space-y-4">
     {% for repair in repairs %}
-    <div class="card mb-3 {% if repair.queue_status == 'COMPLETED' %}border-success{% elif repair.queue_status == 'IN_PROGRESS' %}border-warning{% elif repair.queue_status == 'APPROVED' %}border-info{% elif repair.queue_status == 'DENIED' %}border-danger{% else %}border-secondary{% endif %}" style="border-width: 3px;">
-        <div class="card-header d-flex justify-content-between align-items-center {% if repair.queue_status == 'COMPLETED' %}bg-success bg-opacity-10 border-success{% elif repair.queue_status == 'IN_PROGRESS' %}bg-warning bg-opacity-10 border-warning{% elif repair.queue_status == 'APPROVED' %}bg-info bg-opacity-10 border-info{% elif repair.queue_status == 'DENIED' %}bg-danger bg-opacity-10 border-danger{% else %}bg-light{% endif %}">
-            <h6 class="mb-0">
-                {% if repair.queue_status == 'COMPLETED' %}
-                <i class="fas fa-check-circle text-success"></i>
-                {% elif repair.queue_status == 'IN_PROGRESS' %}
-                <i class="fas fa-spinner text-warning"></i>
-                {% else %}
-                <i class="fas fa-tools"></i>
-                {% endif %}
+    <div class="card overflow-hidden">
+        <div class="card-header bg-gray-50">
+            <h4 class="text-sm font-semibold text-gray-900">
+                {% if repair.queue_status == 'COMPLETED' %}<i class="fas fa-check-circle text-green-500 mr-2"></i>
+                {% elif repair.queue_status == 'IN_PROGRESS' %}<i class="fas fa-spinner text-blue-500 mr-2"></i>
+                {% else %}<i class="fas fa-tools text-gray-400 mr-2"></i>{% endif %}
                 Break {{ repair.break_number }} of {{ batch_summary.break_count }}
-            </h6>
-            <span class="badge {% if repair.queue_status == 'COMPLETED' %}bg-success{% elif repair.queue_status == 'IN_PROGRESS' %}bg-warning text-dark{% elif repair.queue_status == 'DENIED' %}bg-danger{% elif repair.queue_status == 'APPROVED' %}bg-info{% elif repair.queue_status == 'PENDING' %}bg-secondary{% else %}bg-primary{% endif %}">
-                {{ repair.get_queue_status_display }}
-            </span>
+            </h4>
+            {% status_badge repair.queue_status label=repair.get_queue_status_display %}
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="mb-2"><strong>Damage Type:</strong> {{ repair.get_damage_type_display }}</p>
-                    <p class="mb-2"><strong>Cost:</strong> ${{ repair.cost|floatformat:2 }}</p>
-                    {% if repair.cost_override is not None %}
-                    <p class="mb-2 text-warning">
-                        <strong><i class="fas fa-dollar-sign"></i> Manager Price Override:</strong> Applied
-                    </p>
-                    {% endif %}
-                    {% if repair.override_reason %}
-                    <p class="mb-2 text-muted small">
-                        <strong>Override Reason:</strong> {{ repair.override_reason }}
-                    </p>
-                    {% endif %}
-                </div>
-                <div class="col-md-6">
-                    {% if repair.technician %}
-                    <p class="mb-2"><strong>Assigned to:</strong> {{ repair.technician.user.username }}</p>
-                    {% endif %}
-                    {% if repair.windshield_temperature %}
-                    <p class="mb-2"><strong><i class="fas fa-thermometer-half"></i> Temperature:</strong> {{ repair.windshield_temperature }}°F</p>
-                    {% endif %}
-                    {% if repair.resin_viscosity %}
-                    <p class="mb-2"><strong><i class="fas fa-droplet"></i> Resin Viscosity:</strong> {{ repair.resin_viscosity }}</p>
-                    {% endif %}
-                    {% if repair.drilled_before_repair %}
-                    <p class="mb-2"><strong><i class="fas fa-check-circle text-success"></i> Pre-drilled</strong></p>
-                    {% endif %}
-                </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                <p class="text-sm text-gray-700"><span class="font-semibold">Damage Type:</span> {{ repair.get_damage_type_display }}</p>
+                <p class="text-sm text-gray-700"><span class="font-semibold">Cost:</span> ${{ repair.cost|floatformat:2 }}</p>
+                {% if repair.technician %}
+                <p class="text-sm text-gray-700"><span class="font-semibold">Assigned to:</span> {{ repair.technician.user.username }}</p>
+                {% endif %}
+                {% if repair.windshield_temperature %}
+                <p class="text-sm text-gray-700"><span class="font-semibold"><i class="fas fa-thermometer-half mr-1"></i>Temperature:</span> {{ repair.windshield_temperature }}&deg;F</p>
+                {% endif %}
+                {% if repair.resin_viscosity %}
+                <p class="text-sm text-gray-700"><span class="font-semibold"><i class="fas fa-droplet mr-1"></i>Resin Viscosity:</span> {{ repair.resin_viscosity }}</p>
+                {% endif %}
+                {% if repair.drilled_before_repair %}
+                <p class="text-sm text-green-700 font-semibold"><i class="fas fa-check-circle mr-1"></i>Pre-drilled</p>
+                {% endif %}
+                {% if repair.cost_override is not None %}
+                <p class="text-sm text-amber-700"><span class="font-semibold"><i class="fas fa-dollar-sign mr-1"></i>Manager Price Override:</span> Applied</p>
+                {% endif %}
+                {% if repair.override_reason %}
+                <p class="text-sm text-gray-500"><span class="font-semibold">Override Reason:</span> {{ repair.override_reason }}</p>
+                {% endif %}
             </div>
 
             {% if repair.notes %}
-            <div class="mt-3">
-                <strong>Technician Notes:</strong>
-                <p class="text-muted">{{ repair.notes }}</p>
+            <div class="mt-4 pt-3 border-t border-gray-100">
+                <p class="text-sm font-semibold text-gray-900">Technician Notes:</p>
+                <p class="text-sm text-gray-500 mt-1">{{ repair.notes }}</p>
             </div>
             {% endif %}
 
-            <!-- Photos -->
             {% if repair.damage_photo_before or repair.damage_photo_after %}
-            <div class="mt-3">
-                <strong>Photos:</strong>
-                <div class="row mt-2">
+            <div class="mt-4 pt-3 border-t border-gray-100">
+                <p class="text-sm font-semibold text-gray-900 mb-2">Photos:</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {% if repair.damage_photo_before %}
-                    <div class="col-md-6 mb-2">
-                        <p class="small text-muted">Before:</p>
-                        <img src="{{ repair.damage_photo_before.url }}"
-                             alt="Before"
-                             class="img-fluid rounded"
-                             style="max-height: 300px;"
-                             loading="lazy"
-                             decoding="async">
+                    <div>
+                        <p class="text-xs text-gray-500 mb-1">Before:</p>
+                        <img src="{{ repair.damage_photo_before.url }}" alt="Before" class="max-w-full max-h-72 rounded-lg border border-gray-200" loading="lazy" decoding="async">
                     </div>
                     {% endif %}
                     {% if repair.damage_photo_after %}
-                    <div class="col-md-6 mb-2">
-                        <p class="small text-muted">After:</p>
-                        <img src="{{ repair.damage_photo_after.url }}"
-                             alt="After"
-                             class="img-fluid rounded"
-                             style="max-height: 300px;"
-                             loading="lazy"
-                             decoding="async">
+                    <div>
+                        <p class="text-xs text-gray-500 mb-1">After:</p>
+                        <img src="{{ repair.damage_photo_after.url }}" alt="After" class="max-w-full max-h-72 rounded-lg border border-gray-200" loading="lazy" decoding="async">
                     </div>
                     {% endif %}
                 </div>
             </div>
             {% endif %}
 
-            <!-- Individual Actions -->
-            <div class="mt-3 border-top pt-3">
-                <p class="text-muted small mb-2"><strong>Individual Break Actions:</strong></p>
-                <div class="btn-group btn-group-sm" role="group">
-                    <a href="{% url 'repair_detail' repair.id %}" class="btn btn-outline-primary">
-                        <i class="fas fa-eye"></i> View Details
-                    </a>
-                    {% if repair.queue_status == 'APPROVED' and repair.technician.id == technician.id %}
-                    <form method="post" action="{% url 'update_queue_status' repair.id %}" class="d-inline">
-                        {% csrf_token %}
-                        <input type="hidden" name="new_status" value="IN_PROGRESS">
-                        <button type="submit" class="btn btn-outline-success">
-                            <i class="fas fa-play"></i> Start This Break
-                        </button>
-                    </form>
-                    {% endif %}
-                    {% if repair.queue_status == 'IN_PROGRESS' and repair.technician.id == technician.id %}
-                    <a href="{% url 'update_repair' repair.id %}?batch_id={{ batch_summary.batch_id }}" class="btn btn-outline-warning">
-                        <i class="fas fa-edit"></i> Complete This Break
-                    </a>
-                    {% endif %}
-                </div>
+            <div class="mt-4 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
+                <a href="{% url 'repair_detail' repair.id %}" class="btn-secondary btn-sm">
+                    <i class="fas fa-eye"></i> View Details
+                </a>
+                {% if repair.queue_status == 'APPROVED' and repair.technician.id == technician.id %}
+                <form method="post" action="{% url 'update_queue_status' repair.id %}" class="inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="IN_PROGRESS">
+                    <button type="submit" class="btn-primary btn-sm">
+                        <i class="fas fa-play"></i> Start This Break
+                    </button>
+                </form>
+                {% endif %}
+                {% if repair.queue_status == 'IN_PROGRESS' and repair.technician.id == technician.id %}
+                <a href="{% url 'update_repair' repair.id %}?batch_id={{ batch_summary.batch_id }}" class="btn-primary btn-sm">
+                    <i class="fas fa-edit"></i> Complete This Break
+                </a>
+                {% endif %}
             </div>
         </div>
     </div>
     {% endfor %}
-
-    <!-- Back to Dashboard -->
-    <div class="mt-4 text-center">
-        <a href="{% url 'technician_dashboard' %}" class="btn btn-secondary">
-            <i class="fa fa-arrow-left"></i> Back to Dashboard
-        </a>
-    </div>
 </div>
 {% endblock %}
