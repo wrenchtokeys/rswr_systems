@@ -31,8 +31,8 @@ Tests verify:
    (not skipped).
 3. Mixed invoice: send_invoice_email called with the repair IDs only
    (same as before — replacement line items have no repair id to pass).
-4. Invoice is marked SENT regardless of email success.
-5. Failed email does NOT block the SENT status (owner made the choice).
+4. Invoice is marked SENT when the email succeeds.
+5. Failed email leaves the invoice DRAFT (CODE-112: only mark SENT on delivery).
 6. send_invoice_email not called when invoice has no recipient email.
 """
 
@@ -234,10 +234,12 @@ class SendInvoiceReplacementOnlyTests(TestCase):
         self.assertEqual(invoice.status, 'SENT')
 
     @patch('apps.billing.services.invoice_email_service.InvoiceEmailService.send_invoice_email')
-    def test_invoice_still_marked_sent_when_email_fails(self, mock_send):
+    def test_invoice_stays_draft_when_email_fails(self, mock_send):
         """
-        Even if send_invoice_email() returns (False, ...), the invoice stays
-        SENT — the owner made the choice to send it.
+        CODE-112 semantics: if send_invoice_email() returns (False, ...),
+        the invoice stays DRAFT so the owner knows it never went out and
+        can retry. (This test originally asserted the retired pre-CODE-112
+        behavior of marking SENT regardless.)
         """
         from apps.technician_portal.models import Replacement
         mock_send.return_value = (False, "smtp error")
@@ -258,8 +260,8 @@ class SendInvoiceReplacementOnlyTests(TestCase):
         self._post_send(invoice.id)
 
         invoice.refresh_from_db()
-        self.assertEqual(invoice.status, 'SENT',
-                         "Invoice should still be SENT even if email fails")
+        self.assertEqual(invoice.status, 'DRAFT',
+                         "Invoice must stay DRAFT when email delivery fails (CODE-112)")
 
     @patch('apps.billing.services.invoice_email_service.InvoiceEmailService.send_invoice_email')
     def test_mixed_invoice_calls_email_with_repair_ids_only(self, mock_send):
