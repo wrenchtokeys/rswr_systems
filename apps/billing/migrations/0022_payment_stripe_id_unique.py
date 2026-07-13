@@ -4,6 +4,34 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def _rename_duplicate_stripe_ids(apps, schema_editor):
+    """C2: the partial unique constraint below cannot be added while duplicate
+    stripe_payment_id values exist (rows created by double-processed Stripe
+    webhooks — the race this migration closes).
+
+    Rather than fail the deploy, keep the earliest Payment row untouched and
+    rename each later duplicate to '<stripe_id>-dup<pk>'. No row or amount is
+    deleted; the renamed rows stay findable (stripe_payment_id LIKE '%-dup%')
+    for the human-reviewed cleanup pass in scripts/remediation_data_cleanup.sql,
+    which is where the invoice.amount_paid double-count gets resolved.
+    """
+    Payment = apps.get_model('billing', 'Payment')
+    duplicated_ids = (
+        Payment.objects
+        .exclude(stripe_payment_id='')
+        .values('stripe_payment_id')
+        .annotate(n=models.Count('id'))
+        .filter(n__gt=1)
+        .values_list('stripe_payment_id', flat=True)
+    )
+    for sid in list(duplicated_ids):
+        rows = Payment.objects.filter(stripe_payment_id=sid).order_by('id')
+        for row in list(rows)[1:]:
+            # sid[:80] keeps the result inside max_length=100
+            row.stripe_payment_id = f'{sid[:80]}-dup{row.pk}'
+            row.save(update_fields=['stripe_payment_id'])
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -12,6 +40,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(
+            _rename_duplicate_stripe_ids, migrations.RunPython.noop
+        ),
         migrations.AddConstraint(
             model_name='payment',
             constraint=models.UniqueConstraint(condition=models.Q(('stripe_payment_id', ''), _negated=True), fields=('stripe_payment_id',), name='unique_stripe_payment_id_when_set'),
