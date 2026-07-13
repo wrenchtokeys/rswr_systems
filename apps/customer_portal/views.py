@@ -521,23 +521,29 @@ def customer_services(request):
         base_repairs = Repair.objects.filter(customer=customer, tenant=tenant)
         base_replacements = Replacement.objects.filter(customer=customer, tenant=tenant)
 
-        repair_agg = base_repairs.aggregate(
+        # One aggregate per service type — never per-stat COUNTs (CODE-143).
+        from decimal import Decimal as _Decimal
+        month_start = timezone.now().date().replace(day=1)
+        _stat_annotations = dict(
             total=Count('id'),
             pending=Count('id', filter=Q(queue_status='PENDING')),
             in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
             completed=Count('id', filter=Q(queue_status='COMPLETED')),
+            completed_this_month=Count(
+                'id', filter=Q(queue_status='COMPLETED', service_date__gte=month_start)
+            ),
+            total_cost=Sum('cost', filter=Q(queue_status='COMPLETED')),
         )
-        repl_agg = base_replacements.aggregate(
-            total=Count('id'),
-            pending=Count('id', filter=Q(queue_status='PENDING')),
-            in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
-            completed=Count('id', filter=Q(queue_status='COMPLETED')),
-        )
+        repair_agg = base_repairs.aggregate(**_stat_annotations)
+        repl_agg = base_replacements.aggregate(**_stat_annotations)
         stats = {
             'total': repair_agg['total'] + repl_agg['total'],
             'needs_approval': repair_agg['pending'] + repl_agg['pending'],
             'in_progress': repair_agg['in_progress'] + repl_agg['in_progress'],
             'completed': repair_agg['completed'] + repl_agg['completed'],
+            'completed_this_month': repair_agg['completed_this_month'] + repl_agg['completed_this_month'],
+            'total_cost': (repair_agg['total_cost'] or _Decimal('0.00'))
+                          + (repl_agg['total_cost'] or _Decimal('0.00')),
             # Per-type totals for the type filter chips
             'repairs_total': repair_agg['total'],
             'replacements_total': repl_agg['total'],

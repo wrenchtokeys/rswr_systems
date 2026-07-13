@@ -216,11 +216,15 @@ class MultiBreakFormUnscopedTechnicianTest(TestCase):
         )
 
     def test_base_template_uses_user_role_not_user_technician(self):
-        """base.html must reference user_role for Manager Settings link, not user.technician."""
+        """The app shell must reference user_role for Manager Settings, not user.technician.
+
+        (Originally guarded templates/base.html; that dead template was deleted in
+        the UI overhaul, so the guard now covers the live shell base_app.html.)
+        """
         import os
         template_path = os.path.join(
             os.path.dirname(__file__),
-            '../../templates/base.html'
+            '../../templates/base_app.html'
         )
         with open(template_path, 'r') as f:
             content = f.read()
@@ -229,11 +233,17 @@ class MultiBreakFormUnscopedTechnicianTest(TestCase):
         self.assertNotIn(
             'request.user.technician.is_manager',
             content,
-            "base.html must not use bare request.user.technician.is_manager (cross-tenant leak)"
+            "base_app.html must not use bare request.user.technician.is_manager (cross-tenant leak)"
         )
-        # New pattern uses user_role from context processor
+        # New pattern gates manager-only nav via the tenant-scoped context
+        # processor flags (common/context_processors.py::portal_access)
         self.assertIn(
-            "user_role == 'manager'",
+            'user_can_settings',
             content,
-            "base.html must use user_role context processor variable for manager check"
+            "base_app.html must gate Settings via the user_can_settings context flag"
+        )
+        self.assertIn(
+            'is_owner_or_manager',
+            content,
+            "base_app.html must gate owner/manager nav via the is_owner_or_manager context flag"
         )

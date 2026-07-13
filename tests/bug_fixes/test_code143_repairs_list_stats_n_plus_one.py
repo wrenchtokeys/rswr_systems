@@ -30,7 +30,7 @@ from apps.customer_portal.models import CustomerUser
 
 
 class CustomerRepairsListStatsAggregationTest(TestCase):
-    """Tests for the consolidated stats in customer_repairs()."""
+    """Tests for the consolidated stats aggregation (moved into customer_services)."""
 
     def setUp(self):
         self.owner_user = User.objects.create_user(
@@ -142,65 +142,65 @@ class CustomerRepairsListStatsAggregationTest(TestCase):
 
     def test_repairs_list_returns_200(self):
         """GET /customer/repairs/ returns 200 OK."""
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
         self.assertEqual(response.status_code, 200)
 
     def test_stats_pending_approval_count(self):
         """pending_approval matches PENDING repair count."""
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
         self.assertEqual(response.status_code, 200)
         stats = response.context['stats']
-        self.assertEqual(stats['pending_approval'], 1)
+        self.assertEqual(stats['needs_approval'], 1)
 
     def test_stats_in_progress_count(self):
         """in_progress matches APPROVED + IN_PROGRESS count."""
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
         stats = response.context['stats']
         self.assertEqual(stats['in_progress'], 2)  # APPROVED + IN_PROGRESS
 
     def test_stats_completed_this_month(self):
         """completed_this_month counts only COMPLETED repairs in the current month."""
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
         stats = response.context['stats']
         self.assertEqual(stats['completed_this_month'], 1)
 
     def test_stats_total_cost_only_completed(self):
         """total_cost sums only COMPLETED repair costs."""
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
         stats = response.context['stats']
         self.assertEqual(stats['total_cost'], Decimal('50.00'))
 
     def test_stats_total_repairs(self):
         """total_repairs counts all repairs for the customer."""
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
         stats = response.context['stats']
-        self.assertEqual(stats['total_repairs'], 5)
+        self.assertEqual(stats['repairs_total'], 5)
 
     def test_stats_with_status_filter(self):
-        """Stats reflect filtered queryset when status filter is applied."""
-        response = self.client.get('/app/repairs/?status=COMPLETED')
+        """Stats stay GLOBAL when a status filter is applied (CODE-249 behavior)."""
+        response = self.client.get('/app/services/?type=repair&status=COMPLETED')
         self.assertEqual(response.status_code, 200)
         stats = response.context['stats']
-        # Filtered to COMPLETED only — total_repairs should be 1
-        self.assertEqual(stats['total_repairs'], 1)
-        # pending_approval would be 0 (PENDING repairs not in filter)
-        self.assertEqual(stats['pending_approval'], 0)
-        # total_cost should still count the completed repair
+        # Stats come from the unfiltered base queryset (CODE-249),
+        # so filtering the display list must not change them.
+        self.assertEqual(stats['repairs_total'], 5)
+        self.assertEqual(stats['needs_approval'], 1)
         self.assertEqual(stats['total_cost'], Decimal('50.00'))
 
-    def test_no_completed_repairs_total_cost_is_zero(self):
-        """total_cost is zero (Decimal) when filtered to exclude COMPLETED repairs."""
-        response = self.client.get('/app/repairs/?status=PENDING')
+    def test_total_cost_global_when_filtered_to_pending(self):
+        """total_cost stays GLOBAL when the list is filtered (CODE-249 behavior)."""
+        response = self.client.get('/app/services/?type=repair&status=PENDING')
         self.assertEqual(response.status_code, 200)
         stats = response.context['stats']
-        self.assertEqual(stats['total_cost'], Decimal('0.00'))
+        # One COMPLETED $50 repair exists; the PENDING display filter must not hide it.
+        self.assertEqual(stats['total_cost'], Decimal('50.00'))
 
     def test_stats_keys_all_present(self):
         """All expected stats keys are present in context."""
-        response = self.client.get('/app/repairs/')
+        response = self.client.get('/app/services/?type=repair')
         self.assertEqual(response.status_code, 200)
         stats = response.context['stats']
-        expected_keys = ['total_repairs', 'pending_approval', 'in_progress',
+        expected_keys = ['repairs_total', 'needs_approval', 'in_progress',
                          'completed_this_month', 'total_cost']
         for key in expected_keys:
             self.assertIn(key, stats, f"Missing stats key: {key}")
