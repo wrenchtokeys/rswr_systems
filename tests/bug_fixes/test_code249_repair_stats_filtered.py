@@ -1,15 +1,18 @@
 """
-Regression tests for CODE-249: customer_repairs stats computed on filtered queryset.
+Regression tests for CODE-249: customer repairs stats computed on filtered queryset.
 
-Before this fix, the summary statistics (total_repairs, pending_approval, etc.)
-on the customer repairs list page were computed AFTER applying the user's
-status/unit/date filters.  This meant filtering to e.g. "COMPLETED" would show
-pending_approval=0, misleading the customer about how many repairs actually
-await their approval.
+Before this fix, the summary statistics on the customer repairs list page were
+computed AFTER applying the user's status/unit/date filters.  This meant
+filtering to e.g. "COMPLETED" would show zero pending approvals, misleading the
+customer about how many repairs actually await their approval.
 
-The fix mirrors the pattern already used in customer_replacements():
-stats are computed from the unfiltered base queryset, and filters only apply
+The fix computes stats from the unfiltered base queryset; filters only apply
 to the display list.
+
+NOTE: the repairs list logic moved into the unified customer_services view
+(the old customer_repairs URL now redirects there).  These tests exercise
+customer_services with type='repair', asserting the same unfiltered-stats
+behavior on its context keys (repairs_total / needs_approval / in_progress).
 
 Author: Amelia (Bug Hunter)
 """
@@ -86,14 +89,16 @@ class TestRepairStatsUnfilteredAfterFix(TestCase):
 
     def _get_stats(self, **query_params):
         """
-        Call customer_repairs view directly and capture context via render patch.
-        
+        Call customer_services (type='repair') directly and capture context via
+        render patch.
+
         We patch django.shortcuts.render to intercept the context dict before
         it's flattened into an HttpResponse.
         """
         from apps.customer_portal import views as cp_views
         factory = RequestFactory()
-        request = factory.get('/app/repairs/', query_params)
+        query_params.setdefault('type', 'repair')
+        request = factory.get('/app/services/', query_params)
         request.user = self.user
         request.tenant = self.tenant
         _add_middleware(request)
@@ -106,7 +111,7 @@ class TestRepairStatsUnfilteredAfterFix(TestCase):
             return _original_render(request, template, context, **kwargs)
 
         with patch.object(cp_views, 'render', side_effect=_capture_render):
-            response = cp_views.customer_repairs(request)
+            response = cp_views.customer_services(request)
 
         self.assertEqual(response.status_code, 200)
         return captured
@@ -116,10 +121,10 @@ class TestRepairStatsUnfilteredAfterFix(TestCase):
         ctx = self._get_stats(status='COMPLETED')
         stats = ctx['stats']
 
-        self.assertEqual(stats['total_repairs'], 7,
-                         "total_repairs should count ALL repairs, not just filtered")
-        self.assertEqual(stats['pending_approval'], 2,
-                         "pending_approval should count ALL pending, not just filtered")
+        self.assertEqual(stats['repairs_total'], 7,
+                         "repairs_total should count ALL repairs, not just filtered")
+        self.assertEqual(stats['needs_approval'], 2,
+                         "needs_approval should count ALL pending, not just filtered")
         # in_progress = APPROVED + IN_PROGRESS = 1 + 1 = 2
         self.assertEqual(stats['in_progress'], 2,
                          "in_progress should count ALL APPROVED+IN_PROGRESS, not just filtered")
@@ -129,16 +134,16 @@ class TestRepairStatsUnfilteredAfterFix(TestCase):
         ctx = self._get_stats(unit_search='UNIT-COM')
         stats = ctx['stats']
 
-        self.assertEqual(stats['total_repairs'], 7)
-        self.assertEqual(stats['pending_approval'], 2)
+        self.assertEqual(stats['repairs_total'], 7)
+        self.assertEqual(stats['needs_approval'], 2)
 
     def test_stats_show_global_totals_when_filtered_by_damage_type(self):
         """Filtering by nonexistent damage type should not alter stat counts."""
         ctx = self._get_stats(damage_type='Bullseye')
         stats = ctx['stats']
 
-        self.assertEqual(stats['total_repairs'], 7)
-        self.assertEqual(stats['pending_approval'], 2)
+        self.assertEqual(stats['repairs_total'], 7)
+        self.assertEqual(stats['needs_approval'], 2)
 
     def test_display_list_still_filtered(self):
         """The actual displayed items should still be filtered by status."""
@@ -147,5 +152,5 @@ class TestRepairStatsUnfilteredAfterFix(TestCase):
         # page_obj items should only contain COMPLETED repairs
         page_obj = ctx['page_obj']
         for item in page_obj:
-            if isinstance(item, dict) and item.get('type') == 'individual':
+            if item.get('kind') == 'repair':
                 self.assertEqual(item['repair'].queue_status, 'COMPLETED')

@@ -495,145 +495,93 @@ def profile_creation(request):
     return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
 
 @customer_required
-def customer_repairs(request):
+def customer_services(request):
+    """Unified repairs + replacements list — the customer portal's single
+    "Services" page. Replaces the separate repairs/replacements lists.
+
+    Carries forward the regression-tested behaviors of the views it replaces:
+    - Stats always come from UNFILTERED base querysets so badge counts show
+      global totals regardless of active filters (CODE-249 / CODE-071).
+    - The repair queryset is evaluated exactly once before the flag-setting
+      and batch-grouping loops (CODE-176).
+    - page_size is guarded against non-numeric input (CODE-205).
+    """
     try:
         customer_user = _get_customer_user_for_tenant(request)
         customer = customer_user.customer
+        tenant = customer.tenant
 
-        # Get filter parameters
+        type_filter = request.GET.get('type', 'all')
+        if type_filter not in ('all', 'repair', 'replacement', 'approval'):
+            type_filter = 'all'
         status_filter = request.GET.get('status', 'all')
-        sort_by = request.GET.get('sort', '-service_date')  # Default: newest first
         unit_search = request.GET.get('unit_search', '')
-        damage_type_filter = request.GET.get('damage_type', 'all')
-        date_from = request.GET.get('date_from', '')
-        date_to = request.GET.get('date_to', '')
 
-        # Get all repairs for this customer with optimization
-        # Also filter by tenant to prevent cross-tenant data leakage
-        # CODE-249: Use a separate base queryset for stats so they always reflect
-        # global totals, regardless of active filters. Previously stats were
-        # computed on the filtered queryset — filtering to e.g. "COMPLETED"
-        # made pending_approval=0, which is misleading. Mirrors the correct
-        # pattern already used in customer_replacements().
-        base_repairs = Repair.objects.filter(
-            customer=customer,
-            tenant=customer.tenant,
-        )
-        repairs = base_repairs.select_related('technician__user')
+        # --- Unfiltered bases (stats must ignore list filters — CODE-249/071) ---
+        base_repairs = Repair.objects.filter(customer=customer, tenant=tenant)
+        base_replacements = Replacement.objects.filter(customer=customer, tenant=tenant)
 
-        # Apply status filters
-        if status_filter != 'all':
-            # Support multiple status selection (comma-separated)
-            status_list = status_filter.split(',')
-            repairs = repairs.filter(queue_status__in=status_list)
-
-        # Apply unit number filter
-        if unit_search:
-            repairs = repairs.filter(unit_number__icontains=unit_search)
-
-        # Apply damage type filter
-        if damage_type_filter != 'all':
-            repairs = repairs.filter(damage_type=damage_type_filter)
-
-        # Apply date range filter
-        if date_from:
-            try:
-                from datetime import datetime
-                date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
-                repairs = repairs.filter(service_date__gte=date_from_obj)
-            except ValueError:
-                pass
-
-        if date_to:
-            try:
-                from datetime import datetime
-                date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
-                repairs = repairs.filter(service_date__lte=date_to_obj)
-            except ValueError:
-                pass
-
-        # Apply sorting — accept both repair_date (legacy) and service_date (new field)
-        if sort_by in ('repair_date', '-repair_date'):
-            sort_by = sort_by.replace('repair_date', 'service_date')
-        valid_sorts = ['service_date', '-service_date', 'unit_number', '-unit_number',
-                       'cost', '-cost', 'queue_status', '-queue_status']
-        if sort_by in valid_sorts:
-            repairs = repairs.order_by(sort_by)
-
-        # Calculate summary statistics from the UNFILTERED base queryset so
-        # stat badges always show global totals. (CODE-249)
-        from decimal import Decimal
-        month_start = timezone.now().date().replace(day=1)
-        stats_agg = base_repairs.aggregate(
-            total_repairs=Count('id'),
-            pending_approval=Count('id', filter=Q(queue_status='PENDING')),
+        repair_agg = base_repairs.aggregate(
+            total=Count('id'),
+            pending=Count('id', filter=Q(queue_status='PENDING')),
             in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
-            completed_this_month=Count(
-                'id',
-                filter=Q(queue_status='COMPLETED', service_date__gte=month_start),
-            ),
-            total_cost=Sum('cost', filter=Q(queue_status='COMPLETED')),
+            completed=Count('id', filter=Q(queue_status='COMPLETED')),
+        )
+        repl_agg = base_replacements.aggregate(
+            total=Count('id'),
+            pending=Count('id', filter=Q(queue_status='PENDING')),
+            in_progress=Count('id', filter=Q(queue_status__in=['APPROVED', 'IN_PROGRESS'])),
+            completed=Count('id', filter=Q(queue_status='COMPLETED')),
         )
         stats = {
-            'total_repairs': stats_agg['total_repairs'] or 0,
-            'pending_approval': stats_agg['pending_approval'] or 0,
-            'in_progress': stats_agg['in_progress'] or 0,
-            'completed_this_month': stats_agg['completed_this_month'] or 0,
-            'total_cost': stats_agg['total_cost'] or Decimal('0.00'),
+            'total': repair_agg['total'] + repl_agg['total'],
+            'needs_approval': repair_agg['pending'] + repl_agg['pending'],
+            'in_progress': repair_agg['in_progress'] + repl_agg['in_progress'],
+            'completed': repair_agg['completed'] + repl_agg['completed'],
+            # Per-type totals for the type filter chips
+            'repairs_total': repair_agg['total'],
+            'replacements_total': repl_agg['total'],
         }
-        total_repairs = stats['total_repairs']
 
-        # Evaluate the queryset once into a list.
-        # The queryset is used in two consecutive loops (flag-setting, then
-        # batch-grouping).  If we iterate the unevaluated queryset twice, Django
-        # fires two separate DB queries AND the Python objects produced by loop 1
-        # are discarded — loop 2 creates fresh objects that never received the
-        # `.customer_initiated` attribute, so templates either raise AttributeError
-        # or silently show the wrong value. (CODE-176)
-        repairs = list(repairs)
+        items = []
 
-        # Check which repairs were customer-initiated and mark them.
-        # IDs are extracted in Python (free — list already in memory) instead of
-        # firing a third DB round-trip via .values_list('id', flat=True).
-        repair_ids = [r.id for r in repairs]
-        customer_initiated_approvals = set(
-            RepairApproval.objects.filter(
-                repair_id__in=repair_ids,
-                notes="Auto-approved as customer initiated the request"
-            ).values_list('repair_id', flat=True)
-        )
+        # --- Repairs (skipped when filtering to replacements only) ---
+        if type_filter in ('all', 'repair', 'approval'):
+            repairs_qs = base_repairs.select_related('technician__user')
+            if type_filter == 'approval':
+                repairs_qs = repairs_qs.filter(queue_status='PENDING')
+            elif status_filter != 'all':
+                repairs_qs = repairs_qs.filter(queue_status__in=status_filter.split(','))
+            if unit_search:
+                repairs_qs = repairs_qs.filter(unit_number__icontains=unit_search)
 
-        # Add a flag to each repair indicating if it was customer initiated
-        for repair in repairs:
-            repair.customer_initiated = repair.id in customer_initiated_approvals
+            # Evaluate ONCE before the two loops below (CODE-176).
+            repairs = list(repairs_qs.order_by('-service_date', '-id'))
 
-        # Group batch repairs for better presentation
-        batch_groups = {}  # batch_id -> list of repairs
-        individual_repairs_list = []
+            customer_initiated_ids = set(
+                RepairApproval.objects.filter(
+                    repair_id__in=[r.id for r in repairs],
+                    notes="Auto-approved as customer initiated the request",
+                ).values_list('repair_id', flat=True)
+            )
+            for repair in repairs:
+                repair.customer_initiated = repair.id in customer_initiated_ids
 
-        for repair in repairs:
-            if repair.is_part_of_batch:
-                batch_id = str(repair.repair_batch_id)
-                if batch_id not in batch_groups:
-                    batch_groups[batch_id] = []
-                batch_groups[batch_id].append(repair)
-            else:
-                individual_repairs_list.append(repair)
-
-        # Create batch summaries for display
-        batch_summaries = []
-        for batch_id, batch_repairs in batch_groups.items():
-            if batch_repairs:
-                # Sort by break number
+            # Group multi-break batches: one row per batch, like the old list.
+            batch_groups = {}
+            for repair in repairs:
+                if repair.is_part_of_batch:
+                    batch_groups.setdefault(str(repair.repair_batch_id), []).append(repair)
+                else:
+                    items.append({
+                        'kind': 'repair',
+                        'service_date': repair.service_date,
+                        'repair': repair,
+                    })
+            for batch_id, batch_repairs in batch_groups.items():
                 batch_repairs.sort(key=lambda r: r.break_number)
-                first_repair = batch_repairs[0]
-
-                # Calculate totals
-                total_cost = sum(r.cost or 0 for r in batch_repairs)
+                first = batch_repairs[0]
                 pending_count = sum(1 for r in batch_repairs if r.queue_status == 'PENDING')
-                completed_count = sum(1 for r in batch_repairs if r.queue_status == 'COMPLETED')
-
-                # Determine overall status
                 if all(r.queue_status == 'COMPLETED' for r in batch_repairs):
                     overall_status = 'COMPLETED'
                 elif all(r.queue_status == 'DENIED' for r in batch_repairs):
@@ -645,67 +593,79 @@ def customer_repairs(request):
                 elif all(r.queue_status == 'APPROVED' for r in batch_repairs):
                     overall_status = 'APPROVED'
                 else:
-                    overall_status = batch_repairs[0].queue_status
-
-                batch_summaries.append({
+                    overall_status = first.queue_status
+                items.append({
+                    'kind': 'batch',
+                    'service_date': first.service_date,
                     'batch_id': batch_id,
-                    'unit_number': first_repair.unit_number,
-                    'service_date': first_repair.repair_date,
+                    'unit_number': first.unit_number,
                     'break_count': len(batch_repairs),
-                    'total_cost': total_cost,
+                    'total_cost': sum(r.cost or 0 for r in batch_repairs),
                     'overall_status': overall_status,
-                    'repairs': batch_repairs,
                     'pending_count': pending_count,
-                    'completed_count': completed_count,
                     'can_approve_all': pending_count == len(batch_repairs) and pending_count > 0,
-                    'repair_ids': ','.join(str(r.id) for r in batch_repairs),  # For bulk actions
                 })
 
-        # Sort batch summaries by date (newest first)
-        batch_summaries.sort(key=lambda b: b['service_date'], reverse=True)
+        # --- Replacements ---
+        if type_filter in ('all', 'replacement', 'approval'):
+            repl_qs = base_replacements.select_related('technician__user')
+            if type_filter == 'approval':
+                repl_qs = repl_qs.filter(queue_status='PENDING')
+            elif status_filter != 'all':
+                repl_qs = repl_qs.filter(queue_status__in=status_filter.split(','))
+            if unit_search:
+                repl_qs = repl_qs.filter(unit_number__icontains=unit_search)
+            for repl in repl_qs.order_by('-service_date', '-id'):
+                items.append({
+                    'kind': 'replacement',
+                    'service_date': repl.service_date,
+                    'replacement': repl,
+                })
 
-        # Pagination - combine batches and individual repairs for display
-        # Each batch counts as 1 item, each individual repair counts as 1 item
-        all_items = batch_summaries + [{'type': 'individual', 'repair': r} for r in individual_repairs_list]
+        items.sort(key=lambda i: (i['service_date'] is None, i['service_date']), reverse=True)
 
-        # Guard: int() raises ValueError on non-numeric input (e.g. ?page_size=abc).
-        # Without this guard, an invalid page_size causes a 500 error instead of
-        # silently falling back to the default.  (CODE-205)
+        # page_size guard (CODE-205)
         try:
-            page_size = int(request.GET.get('page_size', 50))
+            page_size = int(request.GET.get('page_size', 25))
         except (ValueError, TypeError):
-            page_size = 50
-        if page_size not in [20, 50, 100]:
-            page_size = 50
+            page_size = 25
+        if page_size not in [25, 50, 100]:
+            page_size = 25
+        paginator = Paginator(items, page_size)
+        page_obj = paginator.get_page(request.GET.get('page', 1))
 
-        paginator = Paginator(all_items, page_size)
-        page_number = request.GET.get('page', 1)
-        page_obj = paginator.get_page(page_number)
-
-        # Get unique damage types for filter dropdown
-        damage_types = Repair.DAMAGE_TYPE_CHOICES
-
-        return render(request, 'customer_portal/repairs.html', {
-            'items': page_obj,  # Mixed batch summaries and individual repairs
-            'page_obj': page_obj,
-            'total_repairs': total_repairs,
-            'stats': stats,
+        return render(request, 'customer_portal/services.html', {
             'customer': customer,
+            'customer_user': customer_user,
+            'page_obj': page_obj,
+            'stats': stats,
+            'type_filter': type_filter,
             'status_filter': status_filter,
-            'sort_by': sort_by,
             'unit_search': unit_search,
-            'damage_type_filter': damage_type_filter,
-            'date_from': date_from,
-            'date_to': date_to,
             'page_size': page_size,
-            'damage_types': damage_types,
-            'customer_initiated_repair_ids': list(customer_initiated_approvals),
-            'batch_count': len(batch_summaries),
-            'individual_count': len(individual_repairs_list),
+            'status_choices': Repair.STATUS_CHOICES,
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
         return redirect('profile_creation')
+
+
+def _redirect_to_services(request, service_type):
+    """Legacy list URLs → unified services page, preserving useful params."""
+    params = request.GET.copy()
+    params['type'] = service_type
+    return redirect(f"{reverse('customer_services')}?{params.urlencode()}")
+
+
+@customer_required
+def customer_repairs(request):
+    """Legacy repairs list — now redirects to the unified Services page.
+
+    The URL name is kept because emails, notifications, and older bookmarks
+    reverse it. The list/filter/stats logic moved to customer_services()
+    (including the CODE-176/205/249 regression behaviors).
+    """
+    return _redirect_to_services(request, 'repair')
 
 @customer_required
 def customer_repair_detail(request, repair_id):
@@ -1270,70 +1230,12 @@ def customer_batch_deny(request, batch_id):
 
 @customer_required
 def customer_replacements(request):
-    """List all glass replacements for this customer."""
-    try:
-        customer_user = _get_customer_user_for_tenant(request)
-        customer = customer_user.customer
+    """Legacy replacements list — redirects to the unified Services page.
 
-        # Get filter parameters
-        status_filter = request.GET.get('status', '')
-
-        # Get all replacements for this customer (tenant-scoped) — unfiltered base
-        # queryset used for stats so filter badge counts are always global totals.
-        base_replacements = Replacement.objects.filter(
-            customer=customer, tenant=customer.tenant
-        )
-
-        # One aggregated query for all stat counts (avoids 4 separate COUNTs).
-        # pending = PENDING; in_progress = APPROVED + IN_PROGRESS; completed = COMPLETED.
-        from django.db.models import Case, When, IntegerField, Value
-        status_counts = base_replacements.aggregate(
-            total=Count('id'),
-            pending=Count(Case(When(queue_status='PENDING', then=1), output_field=IntegerField())),
-            in_progress=Count(Case(When(queue_status__in=['APPROVED', 'IN_PROGRESS'], then=1), output_field=IntegerField())),
-            completed=Count(Case(When(queue_status='COMPLETED', then=1), output_field=IntegerField())),
-        )
-        stats = {
-            'total': status_counts['total'],
-            'pending': status_counts['pending'],
-            'in_progress': status_counts['in_progress'],
-            'completed': status_counts['completed'],
-        }
-
-        # Build the display queryset (may be further filtered by status_filter)
-        replacements = base_replacements.select_related('technician__user').order_by('-service_date', '-id')
-
-        # Apply status filter for the list only — does NOT affect stats above
-        if status_filter:
-            replacements = replacements.filter(queue_status=status_filter)
-
-        # Pagination
-        paginator = Paginator(replacements, 25)
-        page_number = request.GET.get('page', 1)
-        page_obj = paginator.get_page(page_number)
-
-        # Status choices for filter
-        status_choices = [
-            ('', 'All Statuses'),
-            ('REQUESTED', 'Customer Requested'),
-            ('PENDING', 'Approval Pending'),
-            ('APPROVED', 'Approved'),
-            ('IN_PROGRESS', 'In Progress'),
-            ('COMPLETED', 'Completed'),
-            ('DENIED', 'Denied'),
-        ]
-
-        return render(request, 'customer_portal/replacements.html', {
-            'page_obj': page_obj,
-            'customer': customer,
-            'stats': stats,
-            'status_filter': status_filter,
-            'status_choices': status_choices,
-        })
-    except (CustomerUser.DoesNotExist, AttributeError):
-        messages.warning(request, "Please complete your profile first.")
-        return redirect('profile_creation')
-
+    URL name kept for old links; logic (CODE-071 unfiltered stats) moved to
+    customer_services().
+    """
+    return _redirect_to_services(request, 'replacement')
 
 @customer_required
 def customer_replacement_detail(request, replacement_id):

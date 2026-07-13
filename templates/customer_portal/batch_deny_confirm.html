@@ -1,88 +1,57 @@
 {% extends 'customer_portal/base_customer.html' %}
 
-{% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-{% load static %}<link rel="stylesheet" href="{% static 'css/app.css' %}?after=bootstrap"><!-- re-applied after Bootstrap (distinct URL — Chrome dedupes identical hrefs) to preserve the old cascade order; remove together with Bootstrap -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-{% endblock %}
+{% block title %}Confirm Batch Denial | Customer Portal{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>Confirm Batch Denial</h2>
+{% url 'customer_batch_detail' batch_summary.batch_id as batch_url %}
+{% include "components/page_header.html" with title="Confirm Batch Denial" back_url=batch_url back_label="Back to Batch Details" %}
 
-    <div class="mb-4">
-        <a href="{% url 'customer_batch_detail' batch_summary.batch_id %}" class="btn btn-outline-secondary">
-            <i class="fa fa-arrow-left"></i> Back to Batch Details
-        </a>
-    </div>
-
-    <div class="alert alert-warning">
-        <i class="fas fa-exclamation-triangle"></i> You are about to deny all repairs in this batch.
-    </div>
-
-    <!-- Batch Summary Card -->
-    <div class="card mb-4 border-danger">
-        <div class="card-header bg-danger text-white">
-            <h5 class="mb-0">
-                <i class="fas fa-times-circle"></i>
-                Deny All Repairs for Unit {{ batch_summary.unit_number }}
-            </h5>
+<div class="max-w-2xl">
+    <div class="card overflow-hidden mb-6">
+        <div class="px-5 py-4 bg-red-600 text-white">
+            <h2 class="text-base font-bold">
+                <i class="fas fa-times-circle mr-2"></i>Deny All Repairs for Unit {{ batch_summary.unit_number }}
+            </h2>
         </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="mb-2"><strong>Customer:</strong> {{ batch_summary.customer.name }}</p>
-                    <p class="mb-2"><strong>Unit Number:</strong> {{ batch_summary.unit_number }}</p>
-                    <p class="mb-2"><strong>Total Breaks:</strong> {{ batch_summary.break_count }}</p>
-                </div>
-                <div class="col-md-6">
-                    <p class="mb-2"><strong>Total Cost:</strong> <span class="text-danger fs-4">${{ batch_summary.total_cost|floatformat:2 }}</span></p>
-                    <p class="mb-2"><strong>Repair Date:</strong> {{ batch_summary.repair_date|date:"M d, Y g:i A" }}</p>
-                </div>
-            </div>
+        <div class="card-body grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+            <p class="text-sm text-gray-700"><span class="font-semibold">Customer:</span> {{ batch_summary.customer.name }}</p>
+            <p class="text-sm text-gray-700"><span class="font-semibold">Total Cost:</span> <span class="text-red-600 font-bold text-lg">${{ batch_summary.total_cost|floatformat:2 }}</span></p>
+            <p class="text-sm text-gray-700"><span class="font-semibold">Total Breaks:</span> {{ batch_summary.break_count }}</p>
+            <p class="text-sm text-gray-700"><span class="font-semibold">Repair Date:</span> {{ batch_summary.repair_date|date:"M d, Y g:i A" }}</p>
         </div>
     </div>
 
-    <div class="card mb-4">
-        <div class="card-body">
-            <h5 class="card-title">Repairs to be Denied:</h5>
-            <ul class="list-group list-group-flush">
-                {% for repair in batch_summary.all_repairs %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <strong>Break {{ repair.break_number }} of {{ batch_summary.break_count }}:</strong>
-                        {{ repair.get_damage_type_display }}
-                    </div>
-                    <span class="badge bg-secondary">${{ repair.cost|floatformat:2 }}</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
+    <div class="card mb-6">
+        <div class="card-header"><h3 class="text-sm font-semibold text-gray-900">Repairs to be Denied</h3></div>
+        <ul class="divide-y divide-gray-100">
+            {% for repair in batch_summary.all_repairs %}
+            <li class="flex items-center justify-between px-5 py-3">
+                <p class="text-sm text-gray-700"><span class="font-semibold">Break {{ repair.break_number }} of {{ batch_summary.break_count }}:</span> {{ repair.get_damage_type_display }}</p>
+                <span class="badge-gray">${{ repair.cost|floatformat:2 }}</span>
+            </li>
+            {% endfor %}
+        </ul>
     </div>
 
-    <!-- Denial Form -->
-    <form method="post" class="mb-4">
+    <form method="post">
         {% csrf_token %}
-
-        <div class="mb-3">
-            <label for="reason" class="form-label"><strong>Reason for Denial</strong> (Optional)</label>
-            <textarea class="form-control" id="reason" name="reason" rows="3" placeholder="Explain why you're denying these repairs..."></textarea>
-            <div class="form-text">This reason will be shared with the technician.</div>
+        <div class="mb-4">
+            <label for="reason" class="block text-sm font-semibold text-gray-900 mb-1">Reason for Denial <span class="font-normal text-gray-500">(optional)</span></label>
+            <textarea id="reason" name="reason" rows="3" placeholder="Explain why you're denying these repairs..."
+                      class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+            <p class="text-xs text-gray-500 mt-1">This reason will be shared with the technician.</p>
         </div>
-
-        <div class="alert alert-danger">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>Confirm:</strong> By denying this batch, you are rejecting all {{ batch_summary.break_count }} repairs.
-            The technician will be notified.
+        <div class="flex items-start gap-3 p-4 rounded-lg bg-red-50 border border-red-200 mb-6">
+            <i class="fas fa-exclamation-triangle text-red-500 mt-0.5"></i>
+            <p class="text-sm text-red-800">
+                By denying this batch, you are rejecting all {{ batch_summary.break_count }} repairs. The technician will be notified.
+            </p>
         </div>
-
-        <div class="d-flex gap-3 justify-content-center">
-            <button type="submit" class="btn btn-danger btn-lg">
+        <div class="flex flex-wrap gap-3">
+            <button type="submit" class="btn-danger btn-lg">
                 <i class="fas fa-times-circle"></i> Yes, Deny All {{ batch_summary.break_count }} Breaks
             </button>
-            <a href="{% url 'customer_batch_detail' batch_summary.batch_id %}" class="btn btn-secondary btn-lg">
-                <i class="fas fa-arrow-left"></i> Cancel
-            </a>
+            <a href="{% url 'customer_batch_detail' batch_summary.batch_id %}" class="btn-secondary btn-lg">Cancel</a>
         </div>
     </form>
 </div>
