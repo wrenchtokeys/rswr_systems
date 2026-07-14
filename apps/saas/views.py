@@ -3441,52 +3441,14 @@ def _setup_completion(tenant):
 
 @owner_or_manager_required
 def owner_setup_view(request):
-    """GET /owner/setup/ — unified shop configuration accordion page."""
-    tenant, membership = _get_owner_tenant(request)
-    if not tenant:
-        messages.error(request, 'No shop found. Please complete signup first.')
-        return redirect('signup')
-    if not membership or membership.role not in ('owner', 'manager'):
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden('Access denied.')
+    """GET /owner/setup/ — retired "Configure Your Shop" accordion.
 
-    from apps.billing.models import TaxRate, BillingConfig
-    from apps.technician_portal.models import ViscosityRecommendation
-
-    try:
-        billing_config = BillingConfig.get_for_tenant(tenant)
-    except Exception:
-        billing_config = None
-
-    tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).order_by('state', 'city')
-    viscosity_rules = ViscosityRecommendation.objects.filter(tenant=tenant, is_active=True).order_by('display_order')
-
-    completion = _setup_completion(tenant)
-
-    # Overdue reminder day choices (checkboxes) and active selections
-    reminder_day_choices = [
-        ('3', '3 days'), ('7', '1 week'), ('14', '2 weeks'),
-        ('21', '3 weeks'), ('30', '1 month'), ('45', '45 days'),
-        ('60', '2 months'), ('90', '3 months'),
-    ]
-    active_reminder_days = []
-    if billing_config and billing_config.overdue_reminder_days:
-        active_reminder_days = [
-            d.strip() for d in billing_config.overdue_reminder_days.split(',') if d.strip()
-        ]
-
-    context = {
-        'tenant': tenant,
-        'membership': membership,
-        'billing_config': billing_config,
-        'tax_rates': tax_rates,
-        'viscosity_rules': viscosity_rules,
-        'completion': completion,
-        'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
-        'reminder_day_choices': reminder_day_choices,
-        'active_reminder_days': active_reminder_days,
-    }
-    return render(request, 'saas/owner_setup.html', context)
+    The setup sections merged into /owner/settings/ (checklist card + tabs),
+    so this URL now just redirects there. The /owner/setup/save/* endpoints
+    below stay: they are the save layer for the settings-page viscosity
+    toggle and are kept for API/test compatibility.
+    """
+    return redirect('owner_settings')
 
 
 @owner_or_manager_required

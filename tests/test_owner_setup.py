@@ -74,14 +74,19 @@ class OwnerSetupPageAccessTest(TestCase):
         session.save()
 
     def test_owner_can_access_setup_page(self):
+        # /owner/setup/ retired: redirects to the settings page, which now
+        # carries the "Configure Your Shop" checklist.
         self._login(self.owner_user)
         resp = self.client.get('/owner/setup/')
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Configure Your Shop')
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], '/owner/settings/')
+        followed = self.client.get('/owner/setup/', follow=True)
+        self.assertEqual(followed.status_code, 200)
+        self.assertContains(followed, 'Configure Your Shop')
 
     def test_manager_can_access_setup_page(self):
         self._login(self.manager_user)
-        resp = self.client.get('/owner/setup/')
+        resp = self.client.get('/owner/setup/', follow=True)
         self.assertEqual(resp.status_code, 200)
 
     def test_technician_forbidden(self):
@@ -446,7 +451,9 @@ class OwnerSetupCompletionTest(TestCase):
         )
 
     def test_setup_page_shows_completion_badges(self):
-        resp = self.client.get('/owner/setup/')
+        # The checklist (with the literal section titles) lives on
+        # /owner/settings/ now; /owner/setup/ redirects there.
+        resp = self.client.get('/owner/settings/')
         self.assertEqual(resp.status_code, 200)
         content = resp.content.decode()
         self.assertIn('Configure Your Shop', content)
