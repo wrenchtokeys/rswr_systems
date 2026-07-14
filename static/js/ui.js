@@ -9,6 +9,10 @@
  *   Dropdown: trigger [data-dropdown-toggle="menuId"]; menu starts `.hidden`;
  *             closes on outside click or Escape.
  *   Confirm:  <form data-confirm="Are you sure?"> shows a native confirm() before submit.
+ *   Tabs:     nav [data-tabs data-tabs-default="name"] with buttons [data-tab="name"]
+ *             (.tab-btn); panels [data-tab-panel="name"]. Active button gets
+ *             .tab-btn-active, other panels get `.hidden`; ?tab= is kept in the URL
+ *             so server-side active_tab deep links keep working.
  */
 (function () {
     'use strict';
@@ -82,6 +86,34 @@
         });
         var openOverlay = document.querySelector('.modal-overlay:not(.hidden), [data-modal]:not(.hidden)');
         if (openOverlay) closeModal(openOverlay);
+    });
+
+    // --- Tabs ----------------------------------------------------------------
+    function activateTab(name) {
+        document.querySelectorAll('[data-tab]').forEach(function (btn) {
+            btn.classList.toggle('tab-btn-active', btn.getAttribute('data-tab') === name);
+        });
+        document.querySelectorAll('[data-tab-panel]').forEach(function (panel) {
+            panel.classList.toggle('hidden', panel.getAttribute('data-tab-panel') !== name);
+        });
+        var url = new URL(window.location);
+        url.searchParams.set('tab', name);
+        history.replaceState(null, '', url);
+    }
+
+    document.addEventListener('click', function (e) {
+        var tabBtn = e.target.closest('[data-tab]');
+        if (tabBtn) {
+            e.preventDefault();
+            activateTab(tabBtn.getAttribute('data-tab'));
+        }
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var tabs = document.querySelector('[data-tabs]');
+        if (tabs && tabs.getAttribute('data-tabs-default')) {
+            activateTab(tabs.getAttribute('data-tabs-default'));
+        }
     });
 
     // --- Confirm-before-submit ----------------------------------------------

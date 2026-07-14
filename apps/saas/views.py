@@ -1666,6 +1666,7 @@ def owner_settings_view(request):
         'warranty_policies': warranty_policies,
         'warranty_applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
         'warranty_duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
+        'completion': _setup_completion(tenant),
     }
 
     return render(request, 'saas/owner_settings.html', context)
