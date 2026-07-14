@@ -3,146 +3,104 @@
 
 {% block title %}Manager Settings{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/components/manager-settings.css' %}">
-{% endblock %}
-
 {% block content %}
-<div class="settings-container">
+<div class="max-w-5xl mx-auto">
     <!-- Header -->
-    <div class="settings-header">
-        <div class="header-content">
-            <div class="header-icon">
-                <i class="fas fa-sliders-h"></i>
-            </div>
-            <div>
-                <h1 class="settings-title">Manager Settings</h1>
-                <p class="settings-subtitle">Configure system settings and manage your team</p>
-            </div>
-        </div>
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+        {% include "components/page_header.html" with title="Manager Settings" subtitle="Configure system settings and manage your team" %}
         {% if is_admin %}
-        <div class="admin-badge">
-            <i class="fas fa-shield-alt"></i> Administrator
-        </div>
+        <span class="badge-blue self-start sm:mt-1"><i class="fas fa-shield-alt text-[10px]"></i> Administrator</span>
         {% endif %}
     </div>
 
     <!-- Settings Grid -->
-    <div class="settings-grid">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <!-- Viscosity Rules Card -->
-        <a href="{% url 'manage_viscosity_rules' %}" class="settings-card">
-            <div class="card-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">
-                <i class="fas fa-tint"></i>
+        <a href="{% url 'manage_viscosity_rules' %}" class="card p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+            <div class="w-11 h-11 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-tint text-lg"></i>
             </div>
-            <div class="card-content">
-                <h3 class="card-title">Viscosity Rules</h3>
-                <p class="card-description">Configure temperature-based resin viscosity recommendations</p>
-                <div class="card-stats">
-                    <span class="stat-badge">
-                        <i class="fas fa-list-check"></i>
-                        {{ viscosity_rules_count }} active rule{{ viscosity_rules_count|pluralize }}
-                    </span>
-                </div>
+            <div class="min-w-0 flex-1">
+                <h3 class="text-base font-semibold text-gray-900">Viscosity Rules</h3>
+                <p class="text-sm text-gray-500 mt-0.5">Configure temperature-based resin viscosity recommendations</p>
+                <span class="badge-gray mt-2">
+                    <i class="fas fa-list-check text-[10px]"></i>
+                    {{ viscosity_rules_count }} active rule{{ viscosity_rules_count|pluralize }}
+                </span>
             </div>
-            <div class="card-arrow">
-                <i class="fas fa-chevron-right"></i>
-            </div>
+            <i class="fas fa-chevron-right text-gray-300"></i>
         </a>
 
         <!-- Warranty Policies Card -->
-        <a href="{% url 'manage_warranty_policies' %}" class="settings-card">
-            <div class="card-icon" style="background: linear-gradient(135deg, #06b6d4 0%, #22d3ee 100%);">
-                <i class="fas fa-shield-alt"></i>
+        <a href="{% url 'manage_warranty_policies' %}" class="card p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+            <div class="w-11 h-11 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-shield-alt text-lg"></i>
             </div>
-            <div class="card-content">
-                <h3 class="card-title">Warranty Policies</h3>
-                <p class="card-description">Define warranty terms for different repair types</p>
-                <div class="card-stats">
-                    <span class="stat-badge">
-                        <i class="fas fa-list-check"></i>
-                        {{ warranty_policies_count }} active polic{{ warranty_policies_count|pluralize:"y,ies" }}
-                    </span>
-                </div>
+            <div class="min-w-0 flex-1">
+                <h3 class="text-base font-semibold text-gray-900">Warranty Policies</h3>
+                <p class="text-sm text-gray-500 mt-0.5">Define warranty terms for different repair types</p>
+                <span class="badge-gray mt-2">
+                    <i class="fas fa-list-check text-[10px]"></i>
+                    {{ warranty_policies_count }} active polic{{ warranty_policies_count|pluralize:"y,ies" }}
+                </span>
             </div>
-            <div class="card-arrow">
-                <i class="fas fa-chevron-right"></i>
-            </div>
+            <i class="fas fa-chevron-right text-gray-300"></i>
         </a>
 
         <!-- Team Overview Card -->
-        <a href="{% url 'team_overview' %}" class="settings-card">
-            <div class="card-icon" style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%);">
-                <i class="fas fa-users"></i>
+        <a href="{% url 'team_overview' %}" class="card p-5 flex items-center gap-4 hover:shadow-md transition-shadow">
+            <div class="w-11 h-11 rounded-lg bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-users text-lg"></i>
             </div>
-            <div class="card-content">
-                <h3 class="card-title">Team Overview</h3>
-                <p class="card-description">View managed technicians and their performance stats</p>
-                <div class="card-stats">
-                    <span class="stat-badge">
-                        <i class="fas fa-user-group"></i>
-                        {{ team_count }} team member{{ team_count|pluralize }}
-                    </span>
-                </div>
+            <div class="min-w-0 flex-1">
+                <h3 class="text-base font-semibold text-gray-900">Team Overview</h3>
+                <p class="text-sm text-gray-500 mt-0.5">View managed technicians and their performance stats</p>
+                <span class="badge-gray mt-2">
+                    <i class="fas fa-user-group text-[10px]"></i>
+                    {{ team_count }} team member{{ team_count|pluralize }}
+                </span>
             </div>
-            <div class="card-arrow">
-                <i class="fas fa-chevron-right"></i>
-            </div>
+            <i class="fas fa-chevron-right text-gray-300"></i>
         </a>
 
         <!-- Pricing Configuration Card (Future) -->
-        <div class="settings-card disabled">
-            <div class="card-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);">
-                <i class="fas fa-dollar-sign"></i>
+        <div class="card p-5 flex items-center gap-4 opacity-60">
+            <div class="w-11 h-11 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-dollar-sign text-lg"></i>
             </div>
-            <div class="card-content">
-                <h3 class="card-title">Repair Pricing Rules</h3>
-                <p class="card-description">Manage custom repair pricing tiers and per-unit adjustments</p>
-                <div class="card-stats">
-                    <span class="stat-badge coming-soon">
-                        <i class="fas fa-clock"></i>
-                        Coming Soon
-                    </span>
-                </div>
+            <div class="min-w-0 flex-1">
+                <h3 class="text-base font-semibold text-gray-900">Repair Pricing Rules</h3>
+                <p class="text-sm text-gray-500 mt-0.5">Manage custom repair pricing tiers and per-unit adjustments</p>
+                <span class="badge-gray mt-2"><i class="fas fa-clock text-[10px]"></i> Coming Soon</span>
             </div>
-            <div class="card-arrow">
-                <i class="fas fa-lock"></i>
-            </div>
+            <i class="fas fa-lock text-gray-300"></i>
         </div>
 
         <!-- Audit Log Card (Future) -->
-        <div class="settings-card disabled">
-            <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);">
-                <i class="fas fa-history"></i>
+        <div class="card p-5 flex items-center gap-4 opacity-60">
+            <div class="w-11 h-11 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-history text-lg"></i>
             </div>
-            <div class="card-content">
-                <h3 class="card-title">Audit Log</h3>
-                <p class="card-description">Track pricing overrides and system changes</p>
-                <div class="card-stats">
-                    <span class="stat-badge coming-soon">
-                        <i class="fas fa-clock"></i>
-                        Coming Soon
-                    </span>
-                </div>
+            <div class="min-w-0 flex-1">
+                <h3 class="text-base font-semibold text-gray-900">Audit Log</h3>
+                <p class="text-sm text-gray-500 mt-0.5">Track pricing overrides and system changes</p>
+                <span class="badge-gray mt-2"><i class="fas fa-clock text-[10px]"></i> Coming Soon</span>
             </div>
-            <div class="card-arrow">
-                <i class="fas fa-lock"></i>
-            </div>
+            <i class="fas fa-lock text-gray-300"></i>
         </div>
     </div>
 
     <!-- Help Section -->
-    <div class="settings-help">
-        <div class="help-icon">
-            <i class="fas fa-info-circle"></i>
-        </div>
-        <div class="help-content">
-            <h4>Need Help?</h4>
-            <p>Manager settings allow you to configure system-wide parameters and manage your team. Changes take effect immediately for all technicians.</p>
+    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+        <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+        <div>
+            <h4 class="text-sm font-semibold text-blue-900">Need Help?</h4>
+            <p class="text-sm text-blue-800 mt-0.5">Manager settings allow you to configure system-wide parameters and manage your team. Changes take effect immediately for all technicians.</p>
         </div>
     </div>
 
     <!-- Back to Dashboard -->
-    <div class="settings-actions">
+    <div class="mt-6">
         <a href="{% url 'technician_dashboard' %}" class="btn-secondary">
             <i class="fas fa-arrow-left"></i>
             Back to Dashboard

@@ -59,14 +59,11 @@ function openModal(ruleId = null) {
         document.getElementById('isActive').checked = true;
     }
 
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+    window.UI.openModal('ruleModal');
 }
 
 function closeModal() {
-    const modal = document.getElementById('ruleModal');
-    modal.style.display = 'none';
-    document.body.style.overflow = 'auto';
+    window.UI.closeModal(document.getElementById('ruleModal'));
     currentRuleId = null;
     isEditMode = false;
 }
@@ -237,11 +234,7 @@ async function toggleRule(ruleId, isActive) {
             // Update card appearance
             const card = document.querySelector(`[data-rule-id="${ruleId}"]`);
             if (card) {
-                if (result.is_active) {
-                    card.classList.remove('inactive');
-                } else {
-                    card.classList.add('inactive');
-                }
+                card.classList.toggle('opacity-60', !result.is_active);
             }
         } else {
             showMessage(result.error || 'Failed to toggle rule', 'error');
@@ -278,20 +271,20 @@ function showMessage(message, type = 'success') {
     messageText.textContent = message;
 
     // Update icon and style based on type
-    toast.className = 'message-toast';
-    if (type === 'success') {
-        toast.classList.add('success');
-        icon.className = 'fas fa-check-circle';
-    } else if (type === 'error') {
-        toast.classList.add('error');
+    toast.classList.remove('bg-green-600', 'bg-red-600');
+    if (type === 'error') {
+        toast.classList.add('bg-red-600');
         icon.className = 'fas fa-exclamation-circle';
+    } else {
+        toast.classList.add('bg-green-600');
+        icon.className = 'fas fa-check-circle';
     }
 
-    toast.style.display = 'flex';
+    toast.classList.remove('hidden');
 
     // Auto-hide after 3 seconds
     setTimeout(() => {
-        toast.style.display = 'none';
+        toast.classList.add('hidden');
     }, 3000);
 }
 
