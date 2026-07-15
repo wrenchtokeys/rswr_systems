@@ -1,156 +1,98 @@
 {% extends "base_app.html" %}
 {% load static %}
+{% load ui %}
 
 {% block title %}Team Overview{% endblock %}
 
-{% block extra_css %}
-<link rel="stylesheet" href="{% static 'css/components/manager-settings.css' %}">
-{% endblock %}
-
 {% block content %}
-<div class="settings-container">
-    <!-- Header -->
-    <div class="settings-header">
-        <div class="header-content">
-            <div class="header-icon">
-                <i class="fas fa-users"></i>
-            </div>
-            <div>
-                <h1 class="settings-title">Team Overview</h1>
-                <p class="settings-subtitle">Performance and stats for managed technicians</p>
-            </div>
-        </div>
-    </div>
+<div class="max-w-5xl mx-auto">
+    {% include "components/page_header.html" with title="Team Overview" subtitle="Performance and stats for managed technicians" %}
 
     <!-- Team Summary Stats -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);">
-                <i class="fas fa-user-group"></i>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value">{{ team_members_count }}</div>
-                <div class="stat-label">Team Members</div>
-            </div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%);">
-                <i class="fas fa-wrench"></i>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value">{{ total_team_repairs }}</div>
-                <div class="stat-label">Total Repairs</div>
-            </div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);">
-                <i class="fas fa-clock"></i>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value">{{ total_team_pending }}</div>
-                <div class="stat-label">Pending</div>
-            </div>
-        </div>
-
-        <div class="stat-card">
-            <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%);">
-                <i class="fas fa-check-circle"></i>
-            </div>
-            <div class="stat-content">
-                <div class="stat-value">{{ total_team_completed }}</div>
-                <div class="stat-label">Completed</div>
-            </div>
-        </div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {% include "components/stat_card.html" with label="Team Members" value=team_members_count icon="fa-user-group" tone="blue" %}
+        {% include "components/stat_card.html" with label="Total Repairs" value=total_team_repairs icon="fa-wrench" tone="green" %}
+        {% include "components/stat_card.html" with label="Pending" value=total_team_pending icon="fa-clock" tone="amber" %}
+        {% include "components/stat_card.html" with label="Completed" value=total_team_completed icon="fa-check-circle" tone="green" %}
     </div>
 
     <!-- Team Members -->
-    <div class="team-members-section">
-        <h2 class="section-heading">
-            <i class="fas fa-users"></i>
-            Team Members
-        </h2>
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">
+        <i class="fas fa-users text-gray-400 mr-1.5"></i>Team Members
+    </h2>
 
-        {% if team_stats %}
-        <div class="team-members-grid">
-            {% for member in team_stats %}
-            <div class="team-member-card">
-                <div class="member-header">
-                    <div class="member-avatar">
+    {% if team_stats %}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {% for member in team_stats %}
+        <div class="card">
+            <div class="card-body">
+                <div class="flex items-start gap-3">
+                    <div class="w-10 h-10 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center flex-shrink-0">
                         <i class="fas fa-user"></i>
                     </div>
-                    <div class="member-info">
-                        <h3 class="member-name">{{ member.technician.user.get_full_name|default:member.technician.user.username }}</h3>
-                        <p class="member-email">{{ member.technician.user.email }}</p>
-                        <p class="member-phone">
-                            <i class="fas fa-phone"></i>
-                            {{ member.technician.phone_number|default:"N/A" }}
+                    <div class="min-w-0">
+                        <h3 class="text-base font-semibold text-gray-900 truncate">{{ member.technician.user.get_full_name|default:member.technician.user.username }}</h3>
+                        <p class="text-sm text-gray-500 truncate">{{ member.technician.user.email }}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">
+                            <i class="fas fa-phone mr-1"></i>{{ member.technician.phone_number|default:"N/A" }}
                         </p>
                     </div>
                 </div>
 
-                <div class="member-stats">
-                    <div class="member-stat">
-                        <span class="stat-number">{{ member.total_repairs }}</span>
-                        <span class="stat-description">Total Repairs</span>
+                <div class="grid grid-cols-4 gap-2 mt-4 text-center">
+                    <div>
+                        <div class="text-lg font-bold text-gray-900">{{ member.total_repairs }}</div>
+                        <div class="text-[11px] text-gray-500 uppercase tracking-wide">Total</div>
                     </div>
-                    <div class="member-stat">
-                        <span class="stat-number">{{ member.pending_repairs }}</span>
-                        <span class="stat-description">Pending</span>
+                    <div>
+                        <div class="text-lg font-bold text-gray-900">{{ member.pending_repairs }}</div>
+                        <div class="text-[11px] text-gray-500 uppercase tracking-wide">Pending</div>
                     </div>
-                    <div class="member-stat">
-                        <span class="stat-number">{{ member.completed_repairs }}</span>
-                        <span class="stat-description">Completed</span>
+                    <div>
+                        <div class="text-lg font-bold text-gray-900">{{ member.completed_repairs }}</div>
+                        <div class="text-[11px] text-gray-500 uppercase tracking-wide">Completed</div>
                     </div>
-                    <div class="member-stat">
-                        <span class="stat-number">{{ member.completion_rate }}%</span>
-                        <span class="stat-description">Rate</span>
+                    <div>
+                        <div class="text-lg font-bold text-gray-900">{{ member.completion_rate }}%</div>
+                        <div class="text-[11px] text-gray-500 uppercase tracking-wide">Rate</div>
                     </div>
                 </div>
 
-                <div class="member-progress">
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: {{ member.completion_rate }}%;"></div>
-                    </div>
+                <div class="w-full bg-gray-100 rounded-full h-1.5 mt-3">
+                    <div class="bg-brand-500 h-1.5 rounded-full transition-all" style="width: {{ member.completion_rate }}%;"></div>
                 </div>
 
                 <!-- Recent Repairs -->
                 {% if member.recent_repairs %}
-                <div class="member-recent-repairs">
-                    <h4 class="recent-title">
-                        <i class="fas fa-clock"></i>
-                        Recent Repairs
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                    <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        <i class="fas fa-clock mr-1"></i>Recent Repairs
                     </h4>
-                    <div class="recent-repairs-list">
+                    <div class="space-y-1">
                         {% for repair in member.recent_repairs %}
-                        <a href="{% url 'repair_detail' repair.id %}" class="recent-repair-item">
-                            <div class="repair-info">
-                                <span class="repair-unit">{{ repair.unit_number }}</span>
-                                <span class="repair-customer">{{ repair.customer.name }}</span>
+                        <a href="{% url 'repair_detail' repair.id %}" class="flex items-center justify-between gap-2 px-2 py-1.5 -mx-2 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div class="min-w-0 text-sm">
+                                <span class="font-medium text-gray-900">{{ repair.unit_number }}</span>
+                                <span class="text-gray-500 truncate ml-1">{{ repair.customer.name }}</span>
                             </div>
-                            <span class="repair-status status-{{ repair.queue_status|lower }}">
-                                {{ repair.get_queue_status_display }}
-                            </span>
+                            {% status_badge repair.queue_status label=repair.get_queue_status_display %}
                         </a>
                         {% endfor %}
                     </div>
                 </div>
                 {% endif %}
             </div>
-            {% endfor %}
         </div>
-        {% else %}
-        <div class="empty-state">
-            <i class="fas fa-user-slash"></i>
-            <h3>No Team Members</h3>
-            <p>You don't have any technicians assigned to your team yet.</p>
-        </div>
-        {% endif %}
+        {% endfor %}
     </div>
+    {% else %}
+    <div class="card">
+        {% include "components/empty_state.html" with icon="fa-user-slash" title="No Team Members" message="You don't have any technicians assigned to your team yet." %}
+    </div>
+    {% endif %}
 
     <!-- Back Button -->
-    <div class="settings-actions">
+    <div class="mt-6">
         <a href="{% url 'manager_settings_dashboard' %}" class="btn-secondary">
             <i class="fas fa-arrow-left"></i>
             Back to Settings

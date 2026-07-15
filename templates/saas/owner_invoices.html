@@ -1,4 +1,5 @@
 {% extends "saas/base_owner.html" %}
+{% load ui %}
 
 {% block title %}Invoices | {{ tenant.name }} | RS Systems{% endblock %}
 
@@ -15,8 +16,8 @@
 </div>
 
 <!-- Aging Report Widget -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6" id="aging-widget">
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between" style="background-color: #4299E1; border-radius: 0.75rem 0.75rem 0 0;">
+<div class="card mb-6" id="aging-widget">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-brand-600 rounded-t-xl">
         <div class="flex items-center gap-2">
             <i class="fas fa-chart-bar text-white text-sm"></i>
             <h3 class="text-sm font-semibold text-white uppercase tracking-wider">AR Aging Report</h3>
@@ -36,7 +37,7 @@
 
 <!-- Summary Cards -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <div class="card p-5">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</span>
             <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
@@ -45,7 +46,7 @@
         </div>
         <div class="text-xl sm:text-2xl font-bold text-gray-900">${{ outstanding_amount|floatformat:2 }}</div>
     </div>
-    <a href="?status=overdue" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md hover:border-red-300 transition-all cursor-pointer {% if status_filter == 'overdue' %}ring-2 ring-red-400{% endif %}">
+    <a href="?status=overdue" class="card p-5 hover:shadow-md hover:border-red-300 transition-all cursor-pointer {% if status_filter == 'overdue' %}ring-2 ring-red-400{% endif %}">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Overdue</span>
             <div class="w-8 h-8 {% if overdue_amount > 0 %}bg-red-100{% else %}bg-green-100{% endif %} rounded-lg flex items-center justify-center">
@@ -59,7 +60,7 @@
             {% endif %}
         </div>
     </a>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <div class="card p-5">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Payments This Mo.</span>
             <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
@@ -68,7 +69,7 @@
         </div>
         <div class="text-xl sm:text-2xl font-bold text-green-600">${{ payments_month_amount|floatformat:2 }}</div>
     </div>
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <div class="card p-5">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Invoices This Mo.</span>
             <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -80,7 +81,7 @@
 </div>
 
 <!-- Filters -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+<div class="card p-4 mb-6">
     <form method="get" class="flex flex-col sm:flex-row sm:items-center gap-3">
         <div class="flex items-center gap-2">
             <label class="text-sm font-medium text-gray-700">Status:</label>
@@ -181,7 +182,7 @@
 </div>
 
 <!-- Invoice Table -->
-<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+<div class="card">
     {% if invoices %}
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
@@ -227,31 +228,7 @@
                         ${{ inv.amount_due|floatformat:2 }}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center">
-                        {% if inv.status == 'PAID' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <i class="fas fa-check-circle mr-1"></i>Paid
-                        </span>
-                        {% elif inv.status == 'OVERDUE' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            <i class="fas fa-exclamation-circle mr-1"></i>Overdue
-                        </span>
-                        {% elif inv.status == 'SENT' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            <i class="fas fa-paper-plane mr-1"></i>Sent
-                        </span>
-                        {% elif inv.status == 'PARTIAL' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            <i class="fas fa-exclamation-triangle mr-1"></i>Partial
-                        </span>
-                        {% elif inv.status == 'DRAFT' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                            <i class="fas fa-pen mr-1"></i>Draft
-                        </span>
-                        {% elif inv.status == 'CANCELLED' %}
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                            <i class="fas fa-ban mr-1"></i>Cancelled
-                        </span>
-                        {% endif %}
+                        {% status_badge inv.status kind='invoice' %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center hidden sm:table-cell no-nav" onclick="event.stopPropagation()">
                         {% if inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}

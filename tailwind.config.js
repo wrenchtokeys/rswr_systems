@@ -11,6 +11,8 @@ module.exports = {
   safelist: [
     // saas/pricing.html composes lg:grid-cols-{{ plans|length }} (1–4 plans)
     { pattern: /^grid-cols-[1-4]$/, variants: ['sm', 'lg'] },
+    // viscosity_rules.html composes badge-{{ rule.badge_color }} (BADGE_COLOR_CHOICES)
+    { pattern: /^badge-(gray|blue|green|yellow|orange|red|purple)$/ },
   ],
   theme: {
     extend: {
