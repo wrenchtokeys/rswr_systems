@@ -105,12 +105,30 @@
                 <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     {{ form.tech_email }}
+                    {% if form.tech_email.errors %}
+                    <p class="mt-1 text-sm text-red-600">{{ form.tech_email.errors.0 }}</p>
+                    {% else %}
+                    <p class="mt-1 text-xs text-gray-500">We'll email them a link to set their password and log in.</p>
+                    {% endif %}
                 </div>
                 <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Phone</label>
                     {{ form.tech_phone }}
                 </div>
             </div>
+            {% if tenant.services_offered == 'both' %}
+            <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <p class="text-sm font-medium text-gray-700 mb-2">What will they work on?</p>
+                <div class="flex flex-wrap gap-6">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        {{ form.tech_can_repair }} Does repairs
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        {{ form.tech_can_replace }} Does replacements
+                    </label>
+                </div>
+            </div>
+            {% endif %}
             <div class="flex items-center justify-between pt-4">
                 <button type="submit" name="action" value="skip" formnovalidate class="text-gray-500 hover:text-gray-700 text-sm font-medium">
                     Skip for now →

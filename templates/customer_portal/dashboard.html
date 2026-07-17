@@ -300,12 +300,16 @@
                 <h3 class="text-base font-semibold text-gray-900 mb-1">No services yet</h3>
                 <p class="text-sm text-gray-500 mb-4">Request your first service to get started.</p>
                 <div class="flex flex-wrap items-center justify-center gap-2">
+                    {% if shop_offers_repairs %}
                     <a href="{% url 'customer_request_repair' %}" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
                         <i class="fas fa-tools mr-2"></i> Request a Repair
                     </a>
-                    <a href="{% url 'customer_request_replacement' %}" class="inline-flex items-center px-4 py-2 border border-brand-500 text-brand-600 text-sm font-semibold rounded-lg hover:bg-brand-50 transition-colors">
+                    {% endif %}
+                    {% if shop_offers_replacements %}
+                    <a href="{% url 'customer_request_replacement' %}" class="inline-flex items-center px-4 py-2 {% if shop_offers_repairs %}border border-brand-500 text-brand-600 hover:bg-brand-50{% else %}bg-brand-500 text-white hover:bg-brand-600{% endif %} text-sm font-semibold rounded-lg transition-colors">
                         <i class="fas fa-car mr-2"></i> Request a Replacement
                     </a>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -320,8 +324,14 @@
                 <i class="fas fa-plus text-white"></i>
             </div>
             <h2 class="text-base font-bold">Need glass work?</h2>
+            {% if shop_offers_repairs and shop_offers_replacements %}
             <p class="text-sm text-brand-100 mt-1 mb-4">Request a chip repair or full replacement — we'll take it from there.</p>
-            <a href="{% url 'customer_request_repair' %}" class="flex items-center justify-center w-full px-4 py-3 bg-white text-brand-700 text-sm font-bold rounded-lg hover:bg-brand-50 transition-colors">
+            {% elif shop_offers_repairs %}
+            <p class="text-sm text-brand-100 mt-1 mb-4">Request a chip or crack repair — we'll take it from there.</p>
+            {% else %}
+            <p class="text-sm text-brand-100 mt-1 mb-4">Request a glass replacement — we'll take it from there.</p>
+            {% endif %}
+            <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="flex items-center justify-center w-full px-4 py-3 bg-white text-brand-700 text-sm font-bold rounded-lg hover:bg-brand-50 transition-colors">
                 Request Service
             </a>
         </div>

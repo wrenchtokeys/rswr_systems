@@ -72,6 +72,18 @@ class SignupForm(forms.Form):
         label='Confirm password',
     )
 
+    services_offered = forms.ChoiceField(
+        required=False,
+        choices=[
+            ('both', 'Both repairs and replacements'),
+            ('repair', 'Repairs only'),
+            ('replacement', 'Replacements only'),
+        ],
+        initial='both',
+        widget=forms.RadioSelect,
+        label='What does your shop do?',
+    )
+
     plan = forms.ChoiceField(
         required=False,
         widget=forms.Select(attrs={
@@ -90,6 +102,10 @@ class SignupForm(forms.Form):
         plan_choices.append(('not_sure', "Not sure yet"))
 
         self.fields['plan'].choices = plan_choices
+
+    def clean_services_offered(self):
+        # Blank (e.g. API callers or old cached forms) means "both".
+        return self.cleaned_data.get('services_offered') or 'both'
 
     def clean_email(self):
         email = self.cleaned_data['email'].strip().lower()
@@ -205,6 +221,39 @@ class OnboardingTechnicianForm(forms.Form):
         }),
         label='Add myself as a technician',
     )
+    # Only shown when the shop does both services; single-service shops
+    # set these automatically from what the shop does.
+    tech_can_repair = forms.BooleanField(
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={
+            'class': 'h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500',
+        }),
+        label='Does repairs',
+    )
+    tech_can_replace = forms.BooleanField(
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(attrs={
+            'class': 'h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500',
+        }),
+        label='Does replacements',
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        # Adding someone else requires an email — without one there is no
+        # way to send them a login invite and the account is stranded.
+        if not cleaned.get('add_self'):
+            has_info = any(
+                cleaned.get(f) for f in ('tech_first_name', 'tech_last_name', 'tech_phone')
+            )
+            if has_info and not cleaned.get('tech_email'):
+                self.add_error(
+                    'tech_email',
+                    "Please add their email — that's how they get their login link.",
+                )
+        return cleaned
 
 
 class OnboardingCustomerForm(forms.Form):

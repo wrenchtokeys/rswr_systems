@@ -152,6 +152,20 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         help_text="How new repair requests are assigned to technicians"
     )
 
+    # Services this shop offers (drives nav, dashboards, customer portal,
+    # and default technician abilities)
+    SERVICES_CHOICES = [
+        ('repair', 'Repairs only'),
+        ('replacement', 'Replacements only'),
+        ('both', 'Both repairs and replacements'),
+    ]
+    services_offered = models.CharField(
+        max_length=20,
+        choices=SERVICES_CHOICES,
+        default='both',
+        help_text="Which services this shop performs"
+    )
+
     # Settings
     is_active = models.BooleanField(default=True)
     auto_invoice_enabled = models.BooleanField(
@@ -316,6 +330,16 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         """Return S3 path prefix for tenant-scoped uploads."""
         return f"tenants/{self.slug}"
     
+    @property
+    def offers_repairs(self):
+        """Whether this shop performs chip/crack repairs."""
+        return self.services_offered in ('repair', 'both')
+
+    @property
+    def offers_replacements(self):
+        """Whether this shop performs glass replacements."""
+        return self.services_offered in ('replacement', 'both')
+
     def _get_trial_days(self):
         """Return number of trial days for this tenant's plan."""
         if self.subscription_plan and self.subscription_plan.trial_days:
