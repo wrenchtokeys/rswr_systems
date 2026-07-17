@@ -331,6 +331,28 @@
 
 <!-- ======================= TEAM TAB ======================= -->
 <div id="panel-team" data-tab-panel="team" class="hidden">
+    {% if can_add_self_as_tech %}
+    <!-- Add myself as a technician -->
+    <div class="card mb-6 border-blue-200 bg-blue-50">
+        <div class="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-user-hard-hat text-blue-600"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-gray-900">Do you work on vehicles yourself?</p>
+                    <p class="text-sm text-gray-600">Add yourself as a technician so jobs can be assigned to you.</p>
+                </div>
+            </div>
+            <form method="post" action="{% url 'team_add_self' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-primary whitespace-nowrap">
+                    <i class="fas fa-plus mr-2"></i>Add myself as a technician
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
     <div class="card">
         <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>

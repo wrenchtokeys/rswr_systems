@@ -1708,10 +1708,24 @@ def owner_settings_view(request):
         .order_by('applies_to', 'name')
     )
 
+    # Whether the logged-in owner/manager is themselves an active technician
+    # for THIS tenant — drives the "Add myself as a technician" callout.
+    # Cross-tenant records don't count, but block creating a second one
+    # (Technician.user is a OneToOneField, CODE-217).
+    my_tech = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    my_foreign_tech = (
+        None if my_tech
+        else Technician.objects.filter(user=request.user).exclude(tenant=tenant).first()
+    )
+    i_am_technician = bool(my_tech and my_tech.is_active)
+    can_add_self_as_tech = not i_am_technician and not my_foreign_tech
+
     context = {
         'tenant': tenant,
         'membership': membership,
         'members': members,
+        'i_am_technician': i_am_technician,
+        'can_add_self_as_tech': can_add_self_as_tech,
         'shop_join_url': shop_join_url,
         'customers': customers,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
@@ -1776,8 +1790,8 @@ def invite_member(request):
 
     # Prevent inviting yourself (owner)
     if email == request.user.email.lower():
-        messages.warning(request, "That's your own email. To add yourself as a technician, go to Team settings and use the 'Add myself' option.")
-        return redirect('owner_settings')
+        messages.warning(request, "That's your own email. Use the 'Add myself as a technician' button on the Team tab instead.")
+        return redirect('/owner/settings/?tab=team')
 
     if role not in ('manager', 'technician', 'viewer'):
         messages.error(request, 'Invalid role selected.')
@@ -2259,6 +2273,69 @@ def update_team_member(request, membership_id):
     member_name = target.user.get_full_name() or target.user.email
     messages.success(request, f'Updated {member_name} to {target.get_role_display()}.')
     return redirect('owner_settings')
+
+
+@owner_or_manager_required
+@require_POST
+def team_add_self(request):
+    """POST /owner/team/add-self/ — make the logged-in owner/manager a working technician.
+
+    Owners of older shops (created before signup auto-added the owner as a
+    technician) or anyone whose technician record was deactivated need a way
+    to become assignable again. Abilities follow what the shop does.
+    """
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_settings')
+
+    from apps.tenants.services.team_service import resolve_ability_flags
+    can_repair, can_replace = resolve_ability_flags(tenant)
+
+    tech = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    if tech and tech.is_active:
+        messages.info(request, 'You are already set up as a technician.')
+        return redirect('/owner/settings/?tab=team')
+
+    # Same seat limit as inviting a technician
+    from apps.tenants.services.usage_service import UsageService
+    can_add, limit_msg = UsageService(tenant).can_add_technician()
+    if not can_add:
+        messages.warning(request, limit_msg)
+        return redirect('/owner/settings/?tab=team')
+
+    if tech:
+        # Reactivate the existing record
+        tech.is_active = True
+        tech.can_repair = can_repair
+        tech.can_replace = can_replace
+        tech.save(update_fields=['is_active', 'can_repair', 'can_replace'])
+    else:
+        # Technician.user is a OneToOneField across ALL tenants (CODE-217)
+        foreign_tech = Technician.objects.filter(user=request.user).exclude(tenant=tenant).first()
+        if foreign_tech:
+            messages.warning(
+                request,
+                'Your account is already linked to a technician profile at another shop, '
+                'so it cannot be added here. Invite yourself with a different email instead.'
+            )
+            return redirect('/owner/settings/?tab=team')
+        Technician.objects.create(
+            tenant=tenant,
+            user=request.user,
+            is_manager=(membership.role in ('owner', 'manager')),
+            is_active=True,
+            can_repair=can_repair,
+            can_replace=can_replace,
+            phone_number=tenant.business_phone or '',
+        )
+
+    from django.contrib.auth.models import Group
+    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+    request.user.groups.add(tech_group)
+
+    messages.success(request, 'You can now be assigned jobs like any other technician.')
+    return redirect('/owner/settings/?tab=team')
 
 
 @owner_or_manager_required

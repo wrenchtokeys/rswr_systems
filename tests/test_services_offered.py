@@ -327,6 +327,61 @@ class SelfAbilityEditTests(TestCase):
 
 
 @override_settings(**TEST_SETTINGS)
+class TeamAddSelfTests(TestCase):
+    """Owners can make themselves an assignable technician from the Team tab."""
+
+    def setUp(self):
+        self.user, self.tenant = make_shop('AddSelf Shop', 'addself@test.com', services='both')
+        self.client = Client()
+        login_owner(self.client, self.user, self.tenant)
+
+    def test_owner_without_tech_record_can_add_self(self):
+        # Simulate an older shop where signup didn't create the record
+        Technician.objects.filter(user=self.user, tenant=self.tenant).delete()
+
+        resp = self.client.get('/owner/settings/?tab=team')
+        self.assertContains(resp, 'Add myself as a technician')
+
+        resp = self.client.post('/owner/team/add-self/')
+        self.assertEqual(resp.status_code, 302)
+        tech = Technician.objects.get(user=self.user, tenant=self.tenant)
+        self.assertTrue(tech.is_active)
+        self.assertTrue(tech.is_manager)
+        self.assertTrue(tech.can_repair)
+        self.assertTrue(tech.can_replace)
+
+    def test_add_self_reactivates_deactivated_record(self):
+        tech = Technician.objects.get(user=self.user, tenant=self.tenant)
+        tech.is_active = False
+        tech.save(update_fields=['is_active'])
+
+        self.client.post('/owner/team/add-self/')
+        tech.refresh_from_db()
+        self.assertTrue(tech.is_active)
+
+    def test_add_self_follows_shop_services(self):
+        Technician.objects.filter(user=self.user, tenant=self.tenant).delete()
+        self.tenant.services_offered = 'replacement'
+        self.tenant.save(update_fields=['services_offered'])
+
+        self.client.post('/owner/team/add-self/')
+        tech = Technician.objects.get(user=self.user, tenant=self.tenant)
+        self.assertFalse(tech.can_repair)
+        self.assertTrue(tech.can_replace)
+
+    def test_callout_hidden_when_already_technician(self):
+        resp = self.client.get('/owner/settings/?tab=team')
+        self.assertNotContains(resp, 'Add myself as a technician')
+
+    def test_add_self_is_idempotent(self):
+        resp = self.client.post('/owner/team/add-self/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            Technician.objects.filter(user=self.user, tenant=self.tenant).count(), 1
+        )
+
+
+@override_settings(**TEST_SETTINGS)
 class NavGatingTests(TestCase):
 
     def test_repairs_only_hides_replacement_nav(self):
