@@ -48,6 +48,11 @@ class RewardRedemptionUXTestMixin:
         self.customer = Customer.objects.create(
             tenant=self.tenant, name=f'Fleet{suffix}', customer_type='FLEET',
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.cust_user = User.objects.create_user(
             f'cust{suffix}', f'cust{suffix}@test.com', 'TestPass123!',
         )
@@ -362,6 +367,11 @@ class TenantIsolationTest(RewardRedemptionUXTestMixin, TestCase):
 
         other_customer = Customer.objects.create(
             tenant=self.other_tenant, name='Other Fleet', customer_type='FLEET',
+        )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=other_customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
         )
         self.other_cust_user = User.objects.create_user(
             'other_cust', 'oc@test.com', 'TestPass123!',

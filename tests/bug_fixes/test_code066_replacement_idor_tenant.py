@@ -85,11 +85,18 @@ def make_user(prefix='user'):
 
 
 def make_customer(tenant):
-    return Customer.objects.create(
+    customer = Customer.objects.create(
         name=f'Customer {uuid.uuid4().hex[:6]}',
         tenant=tenant,
         email=f'cust_{uuid.uuid4().hex[:6]}@test.com',
     )
+    # Explicitly require approval — shop-created work auto-approves by default
+    from apps.customer_portal.models import CustomerRepairPreference
+    CustomerRepairPreference.objects.create(
+        customer=customer,
+        field_repair_approval_mode='REQUIRE_APPROVAL',
+    )
+    return customer
 
 
 def make_technician(user, tenant):

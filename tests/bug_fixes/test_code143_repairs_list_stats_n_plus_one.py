@@ -66,6 +66,11 @@ class CustomerRepairsListStatsAggregationTest(TestCase):
             email='fleet143@test.com',
             customer_type='FLEET',
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.cu = CustomerUser.objects.create(
             user=self.customer_user_account,
             customer=self.customer,

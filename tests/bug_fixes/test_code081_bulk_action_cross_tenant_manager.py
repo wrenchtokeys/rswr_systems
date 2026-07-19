@@ -84,11 +84,17 @@ def _make_technician(user, tenant, is_manager=False, is_active=True):
 
 
 def _make_customer(tenant):
-    return Customer.objects.create(
+    customer = Customer.objects.create(
         tenant=tenant,
         name=f'Customer-{tenant.slug}',
         email=f'customer@{tenant.slug}.com',
     )
+    from apps.customer_portal.models import CustomerRepairPreference as _CRP
+    _CRP.objects.get_or_create(
+        customer=customer,
+        defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+    )
+    return customer
 
 
 def _make_repair(tenant, customer, technician=None, status='PENDING'):

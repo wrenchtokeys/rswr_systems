@@ -108,6 +108,11 @@ class RepairSoftDeleteManagerTests(TestCase):
         self.customer = Customer.objects.create(
             name='Index Test Co', tenant=self.tenant
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
     def _make_repair(self, deleted=False, status='PENDING'):
         from django.utils import timezone
