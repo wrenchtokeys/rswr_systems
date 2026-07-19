@@ -64,6 +64,12 @@ class CustomerDashboardStatsAggregationTest(TestCase):
             name='Fleet Corp 141',
             tenant=self.tenant,
         )
+        # Explicitly require approval — shop-created work auto-approves by default
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=self.customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
 
         # CustomerUser
         self.customer_user_account = User.objects.create_user(

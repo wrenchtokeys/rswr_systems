@@ -970,10 +970,20 @@ def replacement_detail(request, pk):
         status_transitions = [('COMPLETED', 'Mark Complete')]
     # COMPLETED and DENIED are terminal states
 
+    # Invoiced state — drives the "Create Invoice" button on completed jobs
+    from apps.billing.models import InvoiceLineItem
+    invoice_line_item = InvoiceLineItem.objects.filter(
+        replacement=replacement,
+        invoice__tenant=tenant,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+    ).select_related('invoice').first()
+
     return render(request, 'saas/replacement_detail.html', {
         'replacement': replacement,
         'tenant': tenant,
         'status_transitions': status_transitions,
+        'is_invoiced': invoice_line_item is not None,
+        'existing_invoice': invoice_line_item.invoice if invoice_line_item else None,
     })
 
 
@@ -2557,9 +2567,28 @@ def owner_invoice_list(request):
         .values('customer_id', 'cost')
     )
 
-    # Group by customer_id
+    # Same bulk strategy for uninvoiced completed replacements
+    _invoiced_replacement_ids = set(
+        _ILI.objects.filter(
+            replacement__isnull=False,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        ).values_list('replacement_id', flat=True)
+    )
+
+    _uninvoiced_replacement_qs = (
+        Replacement.objects.filter(
+            tenant=tenant,
+            queue_status='COMPLETED',
+            skip_invoicing=False,
+        )
+        .exclude(id__in=_invoiced_replacement_ids)
+        .values('customer_id', 'cost')
+    )
+
+    # Group by customer_id (repairs + replacements combined)
     _by_customer: dict = {}
-    for row in _uninvoiced_qs:
+    for row in list(_uninvoiced_qs) + list(_uninvoiced_replacement_qs):
         cid = row['customer_id']
         cost = row['cost'] or 0
         if cid not in _by_customer:
@@ -4425,6 +4454,69 @@ def owner_generate_invoice_from_repair(request, repair_id):
         logger.error(f"Error generating invoice from repair {repair_id}: {e}", exc_info=True)
         messages.error(request, 'Could not generate invoice. Please try again.')
         return redirect('repair_detail', repair_id=repair.id)
+
+
+@owner_or_manager_required
+def owner_generate_invoice_from_replacement(request, replacement_id):
+    """
+    POST /owner/invoices/generate-from-replacement/<replacement_id>/
+
+    One-click invoice generation from the replacement detail page.
+    Creates a draft invoice for the replacement, then redirects to the invoice
+    detail page where the owner can review, edit, and send.
+    """
+    if request.method != 'POST':
+        messages.error(request, 'Invalid request.')
+        return redirect('technician_dashboard')
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('technician_dashboard')
+
+    replacement = get_object_or_404(Replacement, id=replacement_id, tenant=tenant)
+
+    # Validate: must be completed
+    if replacement.queue_status != 'COMPLETED':
+        messages.error(request, 'Only completed replacements can be invoiced.')
+        return redirect('replacement_detail', pk=replacement.id)
+
+    # Validate: not already invoiced
+    from apps.billing.models import InvoiceLineItem
+    line_item = InvoiceLineItem.objects.filter(
+        replacement=replacement,
+        invoice__tenant=tenant,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+    ).select_related('invoice').first()
+    if line_item:
+        messages.info(request, 'This replacement has already been invoiced.')
+        return redirect('owner_invoice_detail', invoice_id=line_item.invoice.id)
+
+    # Generate the invoice — accept optional payment_terms override (CODE-153)
+    req_payment_terms = request.POST.get('payment_terms') or None
+    if req_payment_terms:
+        from apps.billing.models import BillingConfig
+        valid_terms = {code for code, _label in BillingConfig.PAYMENT_TERMS_CHOICES}
+        if req_payment_terms not in valid_terms:
+            req_payment_terms = None  # fall back to default
+
+    try:
+        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+        tracking_svc = InvoiceTrackingService(tenant=tenant)
+        invoice = tracking_svc.create_invoice_from_services(
+            customer=replacement.customer,
+            services=[replacement],
+            payment_terms=req_payment_terms,
+        )
+        messages.success(request, f'Invoice {invoice.invoice_number} created as draft. Review and send below.')
+        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('replacement_detail', pk=replacement.id)
+    except Exception as e:
+        logger.error(f"Error generating invoice from replacement {replacement_id}: {e}", exc_info=True)
+        messages.error(request, 'Could not generate invoice. Please try again.')
+        return redirect('replacement_detail', pk=replacement.id)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

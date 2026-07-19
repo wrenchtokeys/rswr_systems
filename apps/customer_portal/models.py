@@ -69,11 +69,15 @@ class CustomerRepairPreference(AutoUpdateTimestampMixin, models.Model):
 
     customer = models.OneToOneField(Customer, on_delete=models.CASCADE, related_name='repair_preferences')
 
-    # Field repair approval workflow
+    # Field repair approval workflow.
+    # Default is AUTO_APPROVE: shop-created work is approved immediately.
+    # REQUIRE_APPROVAL / UNIT_THRESHOLD are the future customer-portal controls
+    # ("customer prefers to approve work in the portal") — set them explicitly
+    # per customer to bring back the PENDING → Approve/Deny flow.
     field_repair_approval_mode = models.CharField(
         max_length=20,
         choices=APPROVAL_MODE_CHOICES,
-        default='REQUIRE_APPROVAL',
+        default='AUTO_APPROVE',
         help_text="How should field-discovered repairs be handled?"
     )
 

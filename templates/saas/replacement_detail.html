@@ -41,6 +41,27 @@
         </div>
         {% endif %}
 
+        <!-- Invoice Action -->
+        {% if replacement.queue_status == 'COMPLETED' %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-700">Invoicing:</span>
+                {% if is_invoiced %}
+                <a href="{% url 'owner_invoice_detail' existing_invoice.id %}" class="btn-primary btn-sm">
+                    <i class="fas fa-file-invoice-dollar mr-1.5"></i>View Invoice
+                </a>
+                {% else %}
+                <form action="{% url 'owner_generate_invoice_from_replacement' replacement.id %}" method="post" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-primary btn-sm">
+                        <i class="fas fa-file-invoice-dollar mr-1.5"></i>Create Invoice
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <div class="space-y-6">
             <!-- Assignment -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

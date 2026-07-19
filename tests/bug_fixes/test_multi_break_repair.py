@@ -948,6 +948,14 @@ class CustomerPortalBatchApprovalTestCase(TestCase):
         # Create test customer
         self.customer = Customer.objects.create(name='Test Customer', tenant=self.tenant)
 
+        # This customer explicitly requires approval — shop-created work
+        # defaults to auto-approve otherwise, and these tests exercise the
+        # customer-portal PENDING approve/deny flow
+        CustomerRepairPreference.objects.create(
+            customer=self.customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
+
         # Create test technician user
         self.tech_user = User.objects.create_user(username='techuser', password='testpass123')
         self.technician = Technician.objects.create(user=self.tech_user, phone_number='555-1234', tenant=self.tenant)

@@ -163,6 +163,7 @@ def create_invoice(request, customer_id):
     POST body:
     {
         "repair_ids": [1, 2, 3],          // specific repairs (optional)
+        "replacement_ids": [4, 5],          // specific replacements (optional)
         "all_uninvoiced": true,             // or invoice everything pending
         "due_days": 30,                     // days until due (default: 30)
         "send_to_stripe": false,            // create in Stripe too
@@ -187,24 +188,34 @@ def create_invoice(request, customer_id):
 
     tracking = InvoiceTrackingService(tenant=tenant)
 
-    # Determine which repairs to invoice
-    if data.get('repair_ids'):
-        from apps.technician_portal.models import Repair
-        repairs = list(Repair.objects.filter(
-            id__in=data['repair_ids'],
-            customer=customer,
-            tenant=tenant,
-            queue_status='COMPLETED'
-        ))
-        if not repairs:
+    # Determine which repairs/replacements to invoice
+    services = []
+    if data.get('repair_ids') or data.get('replacement_ids'):
+        from apps.technician_portal.models import Repair, Replacement
+        if data.get('repair_ids'):
+            services.extend(Repair.objects.filter(
+                id__in=data['repair_ids'],
+                customer=customer,
+                tenant=tenant,
+                queue_status='COMPLETED'
+            ))
+        if data.get('replacement_ids'):
+            services.extend(Replacement.objects.filter(
+                id__in=data['replacement_ids'],
+                customer=customer,
+                tenant=tenant,
+                queue_status='COMPLETED'
+            ))
+        if not services:
             return JsonResponse({'error': 'No valid completed repairs found'}, status=400)
     elif data.get('all_uninvoiced', False):
-        repairs = list(tracking.get_uninvoiced_repairs(customer))
-        if not repairs:
+        services = list(tracking.get_uninvoiced_repairs(customer))
+        services.extend(tracking.get_uninvoiced_replacements(customer))
+        if not services:
             return JsonResponse({'error': 'No uninvoiced repairs for this customer'}, status=400)
     else:
         return JsonResponse({
-            'error': 'Provide repair_ids or set all_uninvoiced=true'
+            'error': 'Provide repair_ids/replacement_ids or set all_uninvoiced=true'
         }, status=400)
 
     # Create the tracked invoice
@@ -223,9 +234,9 @@ def create_invoice(request, customer_id):
                 status=400,
             )
 
-        invoice = tracking.create_invoice_from_repairs(
+        invoice = tracking.create_invoice_from_services(
             customer=customer,
-            repairs=repairs,
+            services=services,
             due_days=due_days if req_payment_terms is None else None,
             auto_send=send_email,
             payment_terms=req_payment_terms,
@@ -241,16 +252,12 @@ def create_invoice(request, customer_id):
         logging.getLogger(__name__).exception(f"Invoice creation failed for customer {customer_id}")
         return JsonResponse({'error': f'Invoice creation failed: {str(e)}'}, status=500)
 
-    # Generate PDF and save to S3
+    # Generate PDF from the tracked record and save to S3
     try:
         from apps.billing.services.invoice_service import InvoiceService
         # Pass tenant so InvoiceService loads correct BillingConfig. (CODE-092)
         invoice_service = InvoiceService(tenant=tenant)
-        repair_ids = [r.id for r in repairs]
-        pdf_bytes, invoice_data = invoice_service.generate_invoice(
-            customer_id=customer_id,
-            repair_ids=repair_ids
-        )
+        pdf_bytes, invoice_data = invoice_service.generate_invoice_from_record(invoice)
 
         from apps.billing.services.auto_invoice_service import AutoInvoiceService
         auto_service = AutoInvoiceService()
@@ -294,7 +301,7 @@ def create_invoice(request, customer_id):
             success, msg = email_svc.send_invoice_email(
                 customer_id=customer_id,
                 recipient_email=customer.email,
-                repair_ids=repair_ids
+                invoice=invoice
             )
             if success:
                 import django.utils.timezone as _tz
@@ -875,7 +882,9 @@ def get_uninvoiced_repairs(request, customer_id):
     except Customer.DoesNotExist:
         return JsonResponse({'error': 'Customer not found'}, status=404)
 
-    repairs = InvoiceTrackingService(tenant=tenant).get_uninvoiced_repairs(customer)
+    tracking = InvoiceTrackingService(tenant=tenant)
+    repairs = tracking.get_uninvoiced_repairs(customer)
+    replacements = tracking.get_uninvoiced_replacements(customer)
 
     total = 0
     repair_data = []
@@ -883,12 +892,28 @@ def get_uninvoiced_repairs(request, customer_id):
         disc = r.get_discounted_cost()
         repair_data.append({
             'id': r.id,
+            'service_type': 'repair',
             'unit_number': r.unit_number,
             'damage_type': r.get_damage_type_display() or 'Repair',
             'service_date': r.repair_date.isoformat(),
             'cost': float(disc['final_cost']),
         })
         total += float(disc['final_cost'])
+
+    for rp in replacements:
+        cost = float(rp.cost or 0)
+        position = rp.get_glass_position_display() if rp.glass_position else 'Glass'
+        repair_data.append({
+            'id': rp.id,
+            'service_type': 'replacement',
+            'unit_number': rp.unit_number,
+            'damage_type': f'{position} Replacement',
+            'service_date': rp.service_date.isoformat(),
+            'cost': cost,
+        })
+        total += cost
+
+    repair_data.sort(key=lambda row: row['service_date'], reverse=True)
 
     return JsonResponse({
         'customer': {'id': customer.id, 'name': customer.name},
@@ -902,19 +927,20 @@ def get_uninvoiced_repairs(request, customer_id):
 @require_POST
 def dismiss_uninvoiced_repairs(request, customer_id):
     """
-    Dismiss (skip invoicing) for repairs that were already paid outside the system.
-    
+    Dismiss (skip invoicing) for repairs/replacements that were already paid outside the system.
+
     POST body:
     {
-        "repair_ids": [1, 2, 3],    // specific repairs to dismiss
-        "all": true                  // or dismiss all uninvoiced for this customer
+        "repair_ids": [1, 2, 3],        // specific repairs to dismiss
+        "replacement_ids": [4, 5],       // specific replacements to dismiss
+        "all": true                      // or dismiss all uninvoiced for this customer
     }
     """
     tenant, err = _get_tenant_or_403(request)
     if err:
         return err
 
-    from apps.technician_portal.models import Repair
+    from apps.technician_portal.models import Repair, Replacement
 
     try:
         customer = Customer.objects.get(id=customer_id, tenant=tenant)
@@ -926,30 +952,41 @@ def dismiss_uninvoiced_repairs(request, customer_id):
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
-    # Get uninvoiced repairs for this customer
+    # Get uninvoiced work for this customer
     from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-    uninvoiced = InvoiceTrackingService(tenant=tenant).get_uninvoiced_repairs(customer)
-    uninvoiced_ids = list(uninvoiced.values_list('id', flat=True))
+    tracking = InvoiceTrackingService(tenant=tenant)
+    uninvoiced_ids = list(tracking.get_uninvoiced_repairs(customer).values_list('id', flat=True))
+    uninvoiced_replacement_ids = list(
+        tracking.get_uninvoiced_replacements(customer).values_list('id', flat=True)
+    )
 
     if data.get('all'):
-        # Dismiss all uninvoiced repairs for this customer
+        # Dismiss all uninvoiced work for this customer
         repair_ids = uninvoiced_ids
-    elif data.get('repair_ids'):
-        # Dismiss specific repairs (must be in uninvoiced list)
-        repair_ids = [rid for rid in data['repair_ids'] if rid in uninvoiced_ids]
+        replacement_ids = uninvoiced_replacement_ids
+    elif data.get('repair_ids') or data.get('replacement_ids'):
+        # Dismiss specific work (must be in uninvoiced list)
+        repair_ids = [rid for rid in data.get('repair_ids', []) if rid in uninvoiced_ids]
+        replacement_ids = [
+            rid for rid in data.get('replacement_ids', []) if rid in uninvoiced_replacement_ids
+        ]
     else:
-        return JsonResponse({'error': 'Provide repair_ids or set all=true'}, status=400)
+        return JsonResponse({'error': 'Provide repair_ids/replacement_ids or set all=true'}, status=400)
 
-    if not repair_ids:
+    if not repair_ids and not replacement_ids:
         return JsonResponse({'error': 'No valid repairs to dismiss'}, status=400)
 
-    # Mark repairs as skip_invoicing
-    updated = Repair.objects.filter(id__in=repair_ids, customer=customer).update(skip_invoicing=True)
+    # Mark as skip_invoicing
+    updated = 0
+    if repair_ids:
+        updated += Repair.objects.filter(id__in=repair_ids, customer=customer).update(skip_invoicing=True)
+    if replacement_ids:
+        updated += Replacement.objects.filter(id__in=replacement_ids, customer=customer).update(skip_invoicing=True)
 
     return JsonResponse({
         'success': True,
         'dismissed_count': updated,
-        'message': f'Dismissed {updated} repair(s) from invoicing',
+        'message': f'Dismissed {updated} item(s) from invoicing',
     })
 
 

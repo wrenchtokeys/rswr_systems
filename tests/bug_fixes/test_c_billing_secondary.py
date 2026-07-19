@@ -237,7 +237,7 @@ class C6AutoInvoiceNoRecordNoEmailTests(BillingSecondaryTestBase):
             AutoInvoiceService, '_save_to_s3',
             return_value=f'invoices/{self.customer.id}/2026/fake.pdf',
         ), patch(
-            'apps.billing.services.invoice_tracking_service.InvoiceTrackingService.create_invoice_from_repairs',
+            'apps.billing.services.invoice_tracking_service.InvoiceTrackingService.create_invoice_from_services',
             side_effect=RuntimeError('db hiccup'),
         ):
             result = svc.generate_and_save(repair)
@@ -248,7 +248,7 @@ class C6AutoInvoiceNoRecordNoEmailTests(BillingSecondaryTestBase):
             "again on the next batch run after the customer already paid",
         )
         self.assertEqual(len(mail.outbox), 0)
-        self.assertIn('Invoice record creation failed', str(result.get('error', '')))
+        self.assertIn('db hiccup', str(result.get('error', '')))
 
 
 class C7LocaldateTests(BillingSecondaryTestBase):

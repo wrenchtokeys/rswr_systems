@@ -159,14 +159,15 @@ class Command(BaseCommand):
             
             for pref in batch_prefs:
                 uninvoiced = list(tracking.get_uninvoiced_repairs(pref.customer))
-                
-                if len(uninvoiced) >= 10:  # Auto-batch at 10+ repairs
+                uninvoiced.extend(tracking.get_uninvoiced_replacements(pref.customer))
+
+                if len(uninvoiced) >= 10:  # Auto-batch at 10+ jobs
                     try:
                         # CODE-096: Always create as DRAFT; attempt email and only
                         # mark SENT on confirmed delivery (AGENTS.md gotcha).
-                        invoice = tracking.create_invoice_from_repairs(
+                        invoice = tracking.create_invoice_from_services(
                             customer=pref.customer,
-                            repairs=uninvoiced,
+                            services=uninvoiced,
                         )
                         invoiced_count += 1
 
@@ -177,11 +178,10 @@ class Command(BaseCommand):
                             try:
                                 from apps.billing.services.invoice_email_service import InvoiceEmailService
                                 email_svc = InvoiceEmailService(tenant=tenant)
-                                repair_ids = [r.id for r in uninvoiced]
                                 success, msg = email_svc.send_invoice_email(
                                     customer_id=pref.customer.id,
                                     recipient_email=pref.customer.email,
-                                    repair_ids=repair_ids,
+                                    invoice=invoice,
                                 )
                                 if success:
                                     from django.utils import timezone as _tz
@@ -199,7 +199,7 @@ class Command(BaseCommand):
 
                         self.stdout.write(
                             f"   [{tenant.name}] 📄 {pref.customer.name}: "
-                            f"{len(uninvoiced)} repairs → {invoice.invoice_number} (${invoice.total}){email_note}"
+                            f"{len(uninvoiced)} jobs → {invoice.invoice_number} (${invoice.total}){email_note}"
                         )
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(
@@ -207,7 +207,7 @@ class Command(BaseCommand):
                         ))
                 elif len(uninvoiced) > 0:
                     self.stdout.write(
-                        f"   [{tenant.name}] ⏳ {pref.customer.name}: {len(uninvoiced)} repairs waiting "
+                        f"   [{tenant.name}] ⏳ {pref.customer.name}: {len(uninvoiced)} jobs waiting "
                         f"(threshold: 10)"
                     )
         

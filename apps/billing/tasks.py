@@ -375,6 +375,7 @@ def _create_batch_invoice(tenant, customer, config):
         tenant=tenant,
         customer=customer,
         queue_status='COMPLETED',
+        skip_invoicing=False,
     ).exclude(id__in=invoiced_replacement_ids)
     
     repairs_list = list(uninvoiced_repairs)
@@ -472,7 +473,7 @@ def _create_batch_invoice(tenant, customer, config):
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     replacement=replacement,
-                    description=f"Windshield Replacement - Unit {replacement.unit_number or 'N/A'}",
+                    description=replacement.get_invoice_description(),
                     quantity=1,
                     unit_price=amount,
                     amount=amount,

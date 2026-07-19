@@ -127,6 +127,10 @@ Old `settings.py` and `settings_aws.py` are deleted — do not recreate.
 **Repair Workflow**: `Repair` model with queue-based status progression:
 `REQUESTED → PENDING → APPROVED → IN_PROGRESS → COMPLETED`
 
+Shop-created repairs/replacements auto-approve on create via `resolve_initial_shop_status` (`apps/technician_portal/models.py`), called from both `save()` hooks. `CustomerRepairPreference.field_repair_approval_mode` defaults to `AUTO_APPROVE`; setting it to `REQUIRE_APPROVAL`/`UNIT_THRESHOLD` explicitly brings back the PENDING → Approve/Deny flow — this is the future customer-portal "customer approves work in the portal" setting. Customer-portal requests enter as `REQUESTED` and are unaffected.
+
+**Replacement Invoicing**: `InvoiceLineItem` has both `repair` and `replacement` FKs. `InvoiceTrackingService.create_invoice_from_services` accepts a mixed list (`create_invoice_from_repairs` is a back-compat delegator). Uninvoiced queries: `get_uninvoiced_repairs` + `get_uninvoiced_replacements` (both honor `skip_invoicing`). Auto-invoice (`AutoInvoiceService.generate_and_save`) is record-first: Invoice row created before PDF/S3/email, and PDFs render from the record (`generate_invoice_from_record`) — never from the repairs-only live-query path.
+
 Tax is calculated automatically on every `Repair.save()` via `TaxService(tenant=self.tenant).calculate_tax()`. If no `TaxRate` exists for the tenant, tax is 0. Tests that check tax behavior must create a `TaxRate` in setUp.
 
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.

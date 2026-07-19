@@ -35,6 +35,11 @@ class BatchApproveSelectForUpdateTest(TestCase):
         self.tenant = Tenant.objects.create(name='Test Shop', slug='test-shop', owner=self.owner)
         self.user = User.objects.create_user('custuser', 'cust@test.com', 'testpass123')
         self.customer = Customer.objects.create(name='Test Fleet', tenant=self.tenant)
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=self.customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
         self.customer_user = CustomerUser.objects.create(
             user=self.user, customer=self.customer, is_primary_contact=True
         )
@@ -132,6 +137,11 @@ class BatchDenySelectForUpdateTest(TestCase):
         self.tenant = Tenant.objects.create(name='Test Shop 2', slug='test-shop-2', owner=self.owner)
         self.user = User.objects.create_user('custuser2', 'cust2@test.com', 'testpass123')
         self.customer = Customer.objects.create(name='Test Fleet 2', tenant=self.tenant)
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=self.customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
         self.customer_user = CustomerUser.objects.create(
             user=self.user, customer=self.customer, is_primary_contact=True
         )

@@ -68,6 +68,12 @@ class BulkActionAtomicityTestBase(TestCase):
         cls.customer = Customer.objects.create(
             name='Bulk Test Fleet', tenant=cls.tenant
         )
+        # Explicitly require approval — shop-created work auto-approves by default
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=cls.customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
         cls.cust_user = User.objects.create_user(
             username='custbulk236', email='custbulk236@test.com', password='testpass123'
         )
@@ -88,6 +94,10 @@ class BulkActionAtomicityTestBase(TestCase):
         )
         cls.customer_b = Customer.objects.create(
             name='Other Fleet', tenant=cls.tenant_b
+        )
+        CustomerRepairPreference.objects.create(
+            customer=cls.customer_b,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
         )
 
     def _create_repair(self, status='PENDING', customer=None, tenant=None, **kwargs):

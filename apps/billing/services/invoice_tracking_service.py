@@ -46,15 +46,29 @@ class InvoiceTrackingService:
                 self._billing_config = None
         return self._billing_config
     
-    def create_invoice_from_repairs(self, customer, repairs, invoice_number=None, 
+    def create_invoice_from_repairs(self, customer, repairs, invoice_number=None,
+                                     due_days=None, s3_key=None, auto_send=False,
+                                     payment_terms=None):
+        """Create a tracked Invoice from a list of repairs.
+
+        Thin delegator kept for backward compatibility — see
+        create_invoice_from_services for the real implementation.
+        """
+        return self.create_invoice_from_services(
+            customer, repairs, invoice_number=invoice_number,
+            due_days=due_days, s3_key=s3_key, auto_send=auto_send,
+            payment_terms=payment_terms,
+        )
+
+    def create_invoice_from_services(self, customer, services, invoice_number=None,
                                      due_days=None, s3_key=None, auto_send=False,
                                      payment_terms=None):
         """
-        Create a tracked Invoice from a list of repairs.
-        
+        Create a tracked Invoice from a list of repairs and/or replacements.
+
         Args:
             customer: Customer instance
-            repairs: List of Repair instances to invoice
+            services: List of Repair and/or Replacement instances to invoice
             invoice_number: Optional invoice number (auto-generated if not provided)
             due_days: Days until due (default: 30)
             s3_key: S3 key where PDF is stored
@@ -64,21 +78,22 @@ class InvoiceTrackingService:
                        confirming email delivery")
             payment_terms: Override payment terms for this invoice (e.g. 'NET30').
                           If None, uses BillingConfig.default_payment_terms.
-            
+
         Returns:
             Invoice instance
         """
-        if not repairs:
+        if not services:
             raise ValueError("No repairs provided for invoice")
-        
-        # Check for already-invoiced repairs
+
+        # Check for already-invoiced work (both FKs share the
+        # invoice_line_items related_name, so this check is type-agnostic)
         already_invoiced = []
-        for repair in repairs:
-            if repair.invoice_line_items.filter(
+        for service in services:
+            if service.invoice_line_items.filter(
                 invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
             ).exists():
-                already_invoiced.append(repair.id)
-        
+                already_invoiced.append(service.id)
+
         if already_invoiced:
             raise ValueError(
                 f"Repairs already invoiced: {already_invoiced}. "
@@ -128,44 +143,56 @@ class InvoiceTrackingService:
                 s3_key=s3_key or '',
             )
             
-            # Create line items for each repair
+            # Create line items for each repair/replacement
+            from apps.technician_portal.models import Replacement
+
             subtotal = Decimal('0.00')
             total_discount = Decimal('0.00')
-            
-            for repair in repairs:
-                discounted = repair.get_discounted_cost()
-                pricing_info = repair.get_progressive_pricing_info()
-                
-                # unit_price = base rate (1st-break price) so customer sees the
-                # "standard" rate.  discount = progressive discount + reward discount
-                # so the math is transparent: base - discount = amount charged.
-                if pricing_info['is_discounted']:
-                    progressive_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
-                    unit_price = pricing_info['base_rate']
-                    total_line_discount = progressive_savings + discounted['savings']
-                    amount = unit_price - total_line_discount
-                else:
-                    unit_price = discounted['original_cost']
-                    total_line_discount = discounted['savings']
-                    amount = discounted['final_cost']
 
-                # Build description with discount note
-                description = repair.get_invoice_description()
-                if pricing_info['is_discounted']:
-                    description += f" [multi-break rate]"
-                
+            for service in services:
+                if isinstance(service, Replacement):
+                    # Replacements are parts + labor priced — no progressive
+                    # pricing or reward discounts.
+                    unit_price = service.cost or Decimal('0.00')
+                    total_line_discount = Decimal('0.00')
+                    amount = unit_price
+                    description = service.get_invoice_description()
+                    line_kwargs = {'replacement': service}
+                else:
+                    discounted = service.get_discounted_cost()
+                    pricing_info = service.get_progressive_pricing_info()
+
+                    # unit_price = base rate (1st-break price) so customer sees the
+                    # "standard" rate.  discount = progressive discount + reward discount
+                    # so the math is transparent: base - discount = amount charged.
+                    if pricing_info['is_discounted']:
+                        progressive_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
+                        unit_price = pricing_info['base_rate']
+                        total_line_discount = progressive_savings + discounted['savings']
+                        amount = unit_price - total_line_discount
+                    else:
+                        unit_price = discounted['original_cost']
+                        total_line_discount = discounted['savings']
+                        amount = discounted['final_cost']
+
+                    # Build description with discount note
+                    description = service.get_invoice_description()
+                    if pricing_info['is_discounted']:
+                        description += f" [multi-break rate]"
+                    line_kwargs = {'repair': service}
+
                 line_item = InvoiceLineItem.objects.create(
                     invoice=invoice,
-                    repair=repair,
                     description=description,
                     quantity=1,
                     unit_price=unit_price,
                     discount=total_line_discount,
                     amount=amount,
-                    repair_date=repair.repair_date.date() if repair.repair_date else None,
-                    unit_number=repair.unit_number,
+                    repair_date=service.repair_date.date() if service.repair_date else None,
+                    unit_number=service.unit_number,
+                    **line_kwargs,
                 )
-                
+
                 subtotal += unit_price
                 total_discount += total_line_discount
             
@@ -193,9 +220,9 @@ class InvoiceTrackingService:
             
             logger.info(
                 f"Created invoice {invoice_number} for {customer.name}: "
-                f"{len(repairs)} repairs, ${invoice.total}"
+                f"{len(services)} line items, ${invoice.total}"
             )
-            
+
             return invoice
     
     def get_uninvoiced_repairs(self, customer, completed_only=True):
@@ -232,9 +259,45 @@ class InvoiceTrackingService:
         ).values_list('repair_id', flat=True)
         
         repairs = repairs.exclude(id__in=invoiced_repair_ids)
-        
+
         return repairs.order_by('-service_date')
-    
+
+    def get_uninvoiced_replacements(self, customer, completed_only=True):
+        """
+        Get replacements that haven't been invoiced yet.
+
+        Args:
+            customer: Customer instance
+            completed_only: Only return COMPLETED replacements (default: True)
+
+        Returns:
+            QuerySet of Replacement instances
+        """
+        from apps.technician_portal.models import Replacement
+
+        replacements = Replacement.objects.filter(customer=customer)
+        if self.tenant:
+            replacements = replacements.filter(tenant=self.tenant)
+
+        if completed_only:
+            replacements = replacements.filter(queue_status='COMPLETED')
+
+        # Exclude replacements marked as "skip invoicing" (paid outside system)
+        replacements = replacements.filter(skip_invoicing=False)
+
+        # Exclude replacements that are on active invoices
+        # (DRAFT, SENT, PARTIAL, PAID - but not CANCELLED)
+        tenant = self.tenant or customer.tenant
+        invoiced_replacement_ids = InvoiceLineItem.objects.filter(
+            replacement__isnull=False,
+            invoice__tenant=tenant,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
+        ).values_list('replacement_id', flat=True)
+
+        replacements = replacements.exclude(id__in=invoiced_replacement_ids)
+
+        return replacements.order_by('-service_date')
+
     def record_payment(self, invoice, amount, payment_method='OTHER',
                        reference_number='', notes='', recorded_by=None,
                        stripe_payment_id='', payment_date=None):
