@@ -405,10 +405,56 @@ def team_overview(request):
 
 # ─── Warranty Policy Views ────────────────────────────────────────────────────
 
+WARRANTY_SEED_DEFAULTS = {
+    'repairs': {
+        'name': 'Standard Warranty',
+        'coverage_description': (
+            'One year warranty on all repairs against defects in workmanship.'
+        ),
+    },
+    'replacements': {
+        'name': 'Replacement Warranty',
+        'coverage_description': (
+            'One year warranty on all glass replacements against leaks and '
+            'defects in workmanship.'
+        ),
+    },
+}
+
+
+def _get_or_create_tenant_policy(tenant, applies_to):
+    """Return the tenant-wide policy for a service type, creating a sensible
+    default (365 days) if the tenant doesn't have one yet."""
+    policy = (
+        WarrantyPolicy.objects
+        .filter(tenant=tenant, customer__isnull=True, applies_to=applies_to)
+        .order_by('-is_active', 'pk')
+        .first()
+    )
+    if policy:
+        return policy
+
+    seed = WARRANTY_SEED_DEFAULTS[applies_to]
+    name = seed['name']
+    counter = 2
+    while WarrantyPolicy.objects.filter(tenant=tenant, name=name).exists():
+        name = f"{seed['name']} {counter}"
+        counter += 1
+
+    return WarrantyPolicy.objects.create(
+        tenant=tenant,
+        name=name,
+        applies_to=applies_to,
+        duration_type='custom_days',
+        duration_days=365,
+        coverage_description=seed['coverage_description'],
+    )
+
+
 @manager_required
 @ensure_csrf_cookie
 def manage_warranty_policies(request):
-    """Manage warranty policies with card-based interface."""
+    """Warranty settings: one policy for repairs, one for replacements."""
     tenant = getattr(request, 'tenant', None)
     try:
         manager = (
@@ -418,19 +464,15 @@ def manage_warranty_policies(request):
     except Exception:
         manager = None
 
-    policies = WarrantyPolicy.objects.all()
-    if tenant:
-        policies = policies.filter(tenant=tenant)
-    else:
-        policies = policies.none()
-    policies = policies.order_by('applies_to', 'name')
+    repair_policy = _get_or_create_tenant_policy(tenant, 'repairs') if tenant else None
+    replacement_policy = _get_or_create_tenant_policy(tenant, 'replacements') if tenant else None
 
     context = {
         'is_admin': is_tenant_admin(request.user, tenant=getattr(request, 'tenant', None)),
         'technician': manager,
-        'policies': policies,
-        'applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
-        'duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
+        'repair_policy': repair_policy,
+        'replacement_policy': replacement_policy,
+        'policy_cards': [p for p in (repair_policy, replacement_policy) if p],
     }
     return render(request, 'technician_portal/settings/warranty_policies.html', context)
 
@@ -482,7 +524,7 @@ def create_warranty_policy(request):
         if not data.get('name'):
             return JsonResponse({'success': False, 'error': 'Policy name is required'}, status=400)
 
-        applies_to = data.get('applies_to', 'all_repairs')
+        applies_to = data.get('applies_to', 'repairs')
         valid_applies = [c[0] for c in WarrantyPolicy.APPLIES_TO_CHOICES]
         if applies_to not in valid_applies:
             return JsonResponse({'success': False, 'error': 'Invalid "Applies To" value.'}, status=400)

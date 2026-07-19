@@ -44,7 +44,7 @@ class OwnerWarrantyCreateDurationTypeValidationTest(TestCase):
         """POST with duration_type='bogus' should redirect back with error, not save."""
         response = self.client.post('/owner/settings/warranty/create/', {
             'name': 'Malicious Policy',
-            'applies_to': 'all_repairs',
+            'applies_to': 'repairs',
             'duration_type': 'bogus_value',
             'duration_days': '365',
             'coverage_description': '',
@@ -59,7 +59,7 @@ class OwnerWarrantyCreateDurationTypeValidationTest(TestCase):
     def test_valid_duration_type_lifetime_accepted(self):
         response = self.client.post('/owner/settings/warranty/create/', {
             'name': 'Lifetime Policy',
-            'applies_to': 'all_repairs',
+            'applies_to': 'repairs',
             'duration_type': 'lifetime',
             'duration_days': '0',
             'coverage_description': 'covers everything',
@@ -73,7 +73,7 @@ class OwnerWarrantyCreateDurationTypeValidationTest(TestCase):
     def test_valid_duration_type_custom_days_accepted(self):
         response = self.client.post('/owner/settings/warranty/create/', {
             'name': 'Custom Days Policy',
-            'applies_to': 'all_repairs',
+            'applies_to': 'repairs',
             'duration_type': 'custom_days',
             'duration_days': '180',
             'coverage_description': '',
@@ -86,7 +86,7 @@ class OwnerWarrantyCreateDurationTypeValidationTest(TestCase):
     def test_valid_duration_type_none_accepted(self):
         response = self.client.post('/owner/settings/warranty/create/', {
             'name': 'No Warranty Policy',
-            'applies_to': 'all_repairs',
+            'applies_to': 'repairs',
             'duration_type': 'none',
             'duration_days': '0',
             'coverage_description': '',
@@ -117,7 +117,7 @@ class OwnerWarrantyEditDurationTypeValidationTest(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Original Policy',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_active=True,
@@ -128,7 +128,7 @@ class OwnerWarrantyEditDurationTypeValidationTest(TestCase):
         response = self.client.post(
             f'/owner/settings/warranty/{self.policy.pk}/edit/', {
                 'name': 'Original Policy',
-                'applies_to': 'all_repairs',
+                'applies_to': 'repairs',
                 'duration_type': 'INVALID',
                 'duration_days': '365',
             }, follow=True
@@ -143,7 +143,7 @@ class OwnerWarrantyEditDurationTypeValidationTest(TestCase):
         response = self.client.post(
             f'/owner/settings/warranty/{self.policy.pk}/edit/', {
                 'name': 'Updated Policy',
-                'applies_to': 'all_repairs',
+                'applies_to': 'repairs',
                 'duration_type': 'lifetime',
                 'duration_days': '0',
             }, follow=True
@@ -176,7 +176,7 @@ class TechPortalWarrantyCreateDurationTypeValidationTest(TestCase):
     def test_invalid_duration_type_rejected(self):
         resp = self._post_create({
             'name': 'Bad Tech Policy',
-            'applies_to': 'all_repairs',
+            'applies_to': 'repairs',
             'duration_type': 'bogus',
         })
         self.assertEqual(resp.status_code, 400)
@@ -201,7 +201,7 @@ class TechPortalWarrantyCreateDurationTypeValidationTest(TestCase):
     def test_valid_payload_accepted(self):
         resp = self._post_create({
             'name': 'Good Policy',
-            'applies_to': 'all_repairs',
+            'applies_to': 'repairs',
             'duration_type': 'custom_days',
             'duration_days': 180,
         })
@@ -224,7 +224,7 @@ class TechPortalWarrantyUpdateDurationTypeValidationTest(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Existing Policy',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
         )

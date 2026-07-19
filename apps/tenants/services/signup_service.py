@@ -172,6 +172,32 @@ def create_tenant_with_owner(
             tech_group, _ = Group.objects.get_or_create(name='Technicians')
             user.groups.add(tech_group)
 
+            # Seed default warranty policies so completed work is warrantied
+            # automatically from day one (owner can adjust at /tech/settings/warranty/).
+            from apps.technician_portal.models import WarrantyPolicy
+            WarrantyPolicy.objects.create(
+                tenant=tenant,
+                name='Standard Warranty',
+                applies_to='repairs',
+                duration_type='custom_days',
+                duration_days=365,
+                coverage_description=(
+                    'One year warranty on all repairs against defects '
+                    'in workmanship.'
+                ),
+            )
+            WarrantyPolicy.objects.create(
+                tenant=tenant,
+                name='Replacement Warranty',
+                applies_to='replacements',
+                duration_type='custom_days',
+                duration_days=365,
+                coverage_description=(
+                    'One year warranty on all glass replacements against '
+                    'leaks and defects in workmanship.'
+                ),
+            )
+
             logger.info(
                 f"New signup: {email} — tenant '{business_name}' (slug={slug})"
             )
