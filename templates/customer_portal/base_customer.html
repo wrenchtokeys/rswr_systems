@@ -1,4 +1,4 @@
-{% load static %}
+{% load static branding_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,7 +15,7 @@
         .bottom-nav-scroll::-webkit-scrollbar { display: none; }
         .bottom-nav-scroll { -ms-overflow-style: none; scrollbar-width: none; }
         /* Active nav indicator */
-        .nav-item-active { color: #3b82f6; }
+        .nav-item-active { color: rgb(var(--brand-500)); }
         .nav-item-active::after {
             content: '';
             position: absolute;
@@ -23,10 +23,12 @@
             left: 0;
             right: 0;
             height: 2px;
-            background: #3b82f6;
+            background: rgb(var(--brand-500));
             border-radius: 2px 2px 0 0;
         }
     </style>
+    {# Shop's brand color reskins the brand-* palette; empty for shops without one #}
+    {% tenant_brand_css %}
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
     <!-- Top Navbar -->

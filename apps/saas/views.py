@@ -1614,6 +1614,22 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not save review settings.')
             return redirect('/owner/settings/?tab=reviews')
 
+        if form_type == 'branding':
+            import re
+            if request.POST.get('reset_brand'):
+                tenant.brand_color = ''
+                tenant.save(update_fields=['brand_color'])
+                messages.success(request, 'Brand color reset to the default blue.')
+            else:
+                brand_color = request.POST.get('brand_color', '').strip()
+                if re.fullmatch(r'#[0-9a-fA-F]{6}', brand_color):
+                    tenant.brand_color = brand_color
+                    tenant.save(update_fields=['brand_color'])
+                    messages.success(request, 'Brand color saved. It now shows on your invoices, emails, and customer portal.')
+                else:
+                    messages.error(request, 'Please pick a valid color.')
+            return redirect('owner_settings')
+
         # Default: business info update
         tenant.name = request.POST.get('business_name', tenant.name).strip()
         tenant.business_phone = request.POST.get('business_phone', '').strip()

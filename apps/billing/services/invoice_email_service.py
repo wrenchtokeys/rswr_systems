@@ -424,12 +424,18 @@ class InvoiceEmailService:
             html_body = self._build_html_email(invoice_data, payment_link=payment_link,
                                                 include_photos=len(photos) > 0)
 
+            from core.email_utils import shop_sender
+            from_email, reply_to = shop_sender(
+                shop_name=self.tenant.name if self.tenant else None,
+                reply_to_email=self.tenant.business_email if self.tenant else '',
+            )
             email = EmailMultiAlternatives(
                 subject=subject,
                 body=body,  # plain text fallback
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=from_email,
                 to=[recipient_email],
                 cc=cc_emails or [],
+                reply_to=reply_to,
             )
             email.attach_alternative(html_body, 'text/html')
             

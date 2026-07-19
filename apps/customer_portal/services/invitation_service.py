@@ -3,7 +3,6 @@ Customer Invitation Service
 Handles sending and managing customer portal invitations.
 """
 import logging
-from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.utils import timezone
@@ -110,14 +109,21 @@ class CustomerInvitationService:
         text_message = render_to_string('emails/customer_invitation.txt', context)
 
         try:
-            send_mail(
-                subject=subject,
-                message=text_message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[invitation.email],
-                html_message=html_message,
-                fail_silently=False,
+            from django.core.mail import EmailMultiAlternatives
+            from core.email_utils import shop_sender
+            from_email, reply_to = shop_sender(
+                shop_name=tenant.name if tenant else None,
+                reply_to_email=tenant.business_email if tenant else '',
             )
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_message,
+                from_email=from_email,
+                to=[invitation.email],
+                reply_to=reply_to,
+            )
+            email.attach_alternative(html_message, 'text/html')
+            email.send(fail_silently=False)
             
             # Update sent timestamp
             invitation.sent_at = timezone.now()
