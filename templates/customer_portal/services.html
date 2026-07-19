@@ -8,9 +8,9 @@
 <div class="flex items-start justify-between mb-6">
     <div>
         <h1 class="text-2xl font-bold text-gray-900">Services</h1>
-        <p class="text-sm text-gray-500 mt-1">{{ stats.total }} service{{ stats.total|pluralize }} · repairs and replacements</p>
+        <p class="text-sm text-gray-500 mt-1">{{ stats.total }} service{{ stats.total|pluralize }}{% if shop_offers_repairs and shop_offers_replacements %} · repairs and replacements{% endif %}</p>
     </div>
-    <a href="{% url 'customer_request_repair' %}" class="btn-primary hidden md:inline-flex">
+    <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="btn-primary hidden md:inline-flex">
         <i class="fas fa-plus"></i> Request Service
     </a>
 </div>
@@ -26,8 +26,12 @@
 <!-- Type filter chips + search -->
 <div class="flex flex-wrap items-center gap-2 mb-5">
     <a href="?type=all" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">All</a>
+    {% if shop_offers_repairs or stats.repairs_total %}
     <a href="?type=repair" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'repair' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">Repairs ({{ stats.repairs_total }})</a>
+    {% endif %}
+    {% if shop_offers_replacements or stats.replacements_total %}
     <a href="?type=replacement" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'replacement' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">Replacements ({{ stats.replacements_total }})</a>
+    {% endif %}
     <a href="?type=approval" class="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors {% if type_filter == 'approval' %}bg-amber-500 text-white border-amber-500{% else %}bg-white text-amber-600 border-amber-300 hover:border-amber-400{% endif %}">Needs Approval{% if stats.needs_approval %} ({{ stats.needs_approval }}){% endif %}</a>
 
     <form method="get" class="ml-auto flex items-center gap-2">
@@ -141,7 +145,7 @@
     {% if unit_search or type_filter != 'all' or status_filter != 'all' %}
     {% include "components/empty_state.html" with icon="fa-filter" title="No matching services" message="Try clearing your filters or search." cta_url="?type=all" cta_label="Clear Filters" %}
     {% else %}
-    {% url 'customer_request_repair' as request_service_url %}
+    {% if shop_offers_repairs %}{% url 'customer_request_repair' as request_service_url %}{% else %}{% url 'customer_request_replacement' as request_service_url %}{% endif %}
     {% include "components/empty_state.html" with icon="fa-car" title="No services yet" message="Request your first service to get started." cta_url=request_service_url cta_label="Request Service" %}
     {% endif %}
 </div>

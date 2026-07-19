@@ -24,6 +24,8 @@ def portal_access(request):
         user_can_reports      – True if user can access reports area
         user_can_team         – True if user can access team management area
         user_can_settings     – True if user can access settings area
+        shop_offers_repairs   – True if the tenant performs repairs (True when no tenant)
+        shop_offers_replacements – True if the tenant performs replacements (True when no tenant)
         subscription_grace_period – True if tenant is in read-only grace period
         grace_days_remaining  – Days remaining in grace period (0 if not in grace period)
     """
@@ -60,6 +62,10 @@ def portal_access(request):
         'user_can_reports': reports,
         'user_can_team': team,
         'user_can_settings': settings,
+
+        # Shop service flags (default True with no tenant, e.g. superusers)
+        'shop_offers_repairs': tenant.offers_repairs if tenant else True,
+        'shop_offers_replacements': tenant.offers_replacements if tenant else True,
 
         # Subscription grace period info
         'subscription_grace_period': in_grace_period,

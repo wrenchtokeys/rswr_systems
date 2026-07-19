@@ -16,9 +16,9 @@
             <h3 class="text-base font-semibold text-gray-900">Configure Your Shop</h3>
         </div>
         {% if completion.all_complete %}
-        <span class="badge-green"><i class="fas fa-check text-[10px]"></i> {{ completion.configured_count }}/6 configured</span>
+        <span class="badge-green"><i class="fas fa-check text-[10px]"></i> {{ completion.configured_count }}/{{ completion.total_count }} configured</span>
         {% else %}
-        <span class="badge-blue">{{ completion.configured_count }}/6 configured</span>
+        <span class="badge-blue">{{ completion.configured_count }}/{{ completion.total_count }} configured</span>
         {% endif %}
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 divide-gray-100">
@@ -26,24 +26,30 @@
             <span class="text-sm text-gray-700">Business Info</span>
             {% if completion.business_info %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
+        <a href="?tab=team&amp;invite=1" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
+            <span class="text-sm text-gray-700">Your Team</span>
+            {% if completion.team %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Just you so far</span>{% endif %}
+        </a>
         <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Pricing Structure</span>
+            <span class="text-sm text-gray-700">Job Prices</span>
             {% if completion.pricing %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
         <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Tax Rates</span>
+            <span class="text-sm text-gray-700">Sales Tax</span>
             {% if completion.tax %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
         <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
             <span class="text-sm text-gray-700">Billing &amp; Invoicing</span>
             {% if completion.billing %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
+        {% if tenant.offers_repairs %}
         <a href="{% url 'manage_viscosity_rules' %}" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Viscosity Recommendations</span>
+            <span class="text-sm text-gray-700">Repair Resin Rules</span>
             {% if completion.viscosity %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
+        {% endif %}
         <a href="?tab=general" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Repair Assignment</span>
+            <span class="text-sm text-gray-700">Job Assignment</span>
             {% if completion.assignment %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
     </div>
@@ -131,6 +137,63 @@
         </form>
     </div>
 
+    <!-- What does your shop do? -->
+    <div class="card mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-car-side text-indigo-600 text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">What does your shop do?</h3>
+                    <p class="text-sm text-gray-500">This decides which screens you, your technicians, and your customers see.</p>
+                </div>
+            </div>
+        </div>
+        <form method="post" action="{% url 'owner_settings' %}" class="p-6">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="services_offered">
+            <div class="space-y-3">
+                <label class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors
+                    {% if tenant.services_offered == 'both' %}border-blue-500 bg-blue-50{% else %}border-gray-200{% endif %}">
+                    <input type="radio" name="services_offered" value="both"
+                        {% if tenant.services_offered == 'both' %}checked{% endif %}
+                        class="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">Both repairs and replacements</span>
+                        <p class="text-xs text-gray-500 mt-0.5">Chip &amp; crack repairs plus full glass replacements.</p>
+                    </div>
+                </label>
+                <label class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors
+                    {% if tenant.services_offered == 'repair' %}border-blue-500 bg-blue-50{% else %}border-gray-200{% endif %}">
+                    <input type="radio" name="services_offered" value="repair"
+                        {% if tenant.services_offered == 'repair' %}checked{% endif %}
+                        class="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">Repairs only</span>
+                        <p class="text-xs text-gray-500 mt-0.5">Chip &amp; crack repairs. Replacement screens are hidden everywhere.</p>
+                    </div>
+                </label>
+                <label class="flex items-start gap-3 p-4 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors
+                    {% if tenant.services_offered == 'replacement' %}border-blue-500 bg-blue-50{% else %}border-gray-200{% endif %}">
+                    <input type="radio" name="services_offered" value="replacement"
+                        {% if tenant.services_offered == 'replacement' %}checked{% endif %}
+                        class="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                    <div>
+                        <span class="text-sm font-medium text-gray-900">Replacements only</span>
+                        <p class="text-xs text-gray-500 mt-0.5">Full glass replacements. Repair screens are hidden everywhere.</p>
+                    </div>
+                </label>
+            </div>
+            <p class="text-xs text-gray-500 mt-4"><i class="fas fa-info-circle mr-1"></i>You can change this anytime. Past jobs always stay visible, no matter what you pick.</p>
+            <div class="mt-4 flex justify-end">
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-save mr-2"></i>Save
+                </button>
+            </div>
+        </form>
+    </div>
+
     <!-- Customer Portal -->
     <div class="card mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
@@ -178,8 +241,8 @@
                     <i class="fas fa-random text-blue-600 text-sm"></i>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold text-gray-900">Repair Assignment</h3>
-                    <p class="text-sm text-gray-500">Choose how new repair requests are assigned to technicians</p>
+                    <h3 class="text-lg font-semibold text-gray-900">Job Assignment</h3>
+                    <p class="text-sm text-gray-500">Who gets each new job — assign them yourself, or let the system pick a technician</p>
                 </div>
             </div>
         </div>
@@ -224,7 +287,8 @@
         </form>
     </div>
 
-    <!-- Resin Viscosity Rules -->
+    {% if tenant.offers_repairs %}
+    <!-- Repair Resin Rules -->
     <div class="card mt-6">
         <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center justify-between">
@@ -233,8 +297,8 @@
                         <i class="fas fa-droplet text-cyan-600 text-sm"></i>
                     </div>
                     <div>
-                        <h3 class="text-lg font-semibold text-gray-900">Resin Viscosity Rules</h3>
-                        <p class="text-sm text-gray-500">Temperature-based resin recommendations for technicians</p>
+                        <h3 class="text-lg font-semibold text-gray-900">Repair Resin Rules</h3>
+                        <p class="text-sm text-gray-500">Suggests which repair resin to use based on the windshield's temperature</p>
                     </div>
                 </div>
                 <a href="{% url 'manage_viscosity_rules' %}" class="btn-secondary">
@@ -262,10 +326,33 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <!-- ======================= TEAM TAB ======================= -->
 <div id="panel-team" data-tab-panel="team" class="hidden">
+    {% if can_add_self_as_tech %}
+    <!-- Add myself as a technician -->
+    <div class="card mb-6 border-blue-200 bg-blue-50">
+        <div class="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-user-hard-hat text-blue-600"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-gray-900">Do you work on vehicles yourself?</p>
+                    <p class="text-sm text-gray-600">Add yourself as a technician so jobs can be assigned to you.</p>
+                </div>
+            </div>
+            <form method="post" action="{% url 'team_add_self' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-primary whitespace-nowrap">
+                    <i class="fas fa-plus mr-2"></i>Add myself as a technician
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
     <div class="card">
         <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -299,8 +386,9 @@
                         <div>
                             <div class="text-sm font-medium text-gray-900">
                                 {{ member.user.get_full_name|default:member.user.username }}
+                                {% if member.user == request.user %}<span class="text-xs text-gray-400 font-normal ml-1">(You)</span>{% endif %}
                                 {% if member.has_unusable_password %}
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 ml-1">Pending</span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 ml-1">Invite pending</span>
                                 {% endif %}
                             </div>
                             <div class="text-xs text-gray-500">{{ member.user.email }}</div>
@@ -314,15 +402,15 @@
                             {% else %}bg-gray-100 text-gray-800{% endif %}">
                             {{ member.get_role_display }}
                         </span>
-                        {% if member.technician_record and member.role != 'owner' %}
+                        {% if member.technician_record and shop_offers_repairs and shop_offers_replacements %}
                             {% if member.technician_record.can_repair %}
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                                <i class="fas fa-wrench mr-1 text-[10px]"></i>Repairs
+                                <i class="fas fa-wrench mr-1 text-[10px]"></i>Does repairs
                             </span>
                             {% endif %}
                             {% if member.technician_record.can_replace %}
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
-                                <i class="fas fa-exchange-alt mr-1 text-[10px]"></i>Replacements
+                                <i class="fas fa-exchange-alt mr-1 text-[10px]"></i>Does replacements
                             </span>
                             {% endif %}
                         {% endif %}
@@ -367,23 +455,25 @@
                                     <option value="viewer" {% if member.role == 'viewer' %}selected{% endif %}>Viewer</option>
                                 </select>
                             </div>
+                            {% if shop_offers_repairs and shop_offers_replacements %}
                             <div id="abilities-{{ member.id }}" class="{% if member.role != 'technician' and member.role != 'manager' %}hidden{% endif %}">
-                                <label class="block text-xs font-medium text-gray-600 mb-1">Abilities</label>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Works on</label>
                                 <div class="flex gap-3">
                                     <label class="flex items-center gap-1.5 cursor-pointer">
                                         <input type="checkbox" name="can_repair"
                                             {% if member.technician_record and member.technician_record.can_repair %}checked{% endif %}
                                             class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                        <span class="text-xs text-gray-700">Repairs</span>
+                                        <span class="text-xs text-gray-700">Does repairs</span>
                                     </label>
                                     <label class="flex items-center gap-1.5 cursor-pointer">
                                         <input type="checkbox" name="can_replace"
                                             {% if member.technician_record and member.technician_record.can_replace %}checked{% endif %}
                                             class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                        <span class="text-xs text-gray-700">Replacements</span>
+                                        <span class="text-xs text-gray-700">Does replacements</span>
                                     </label>
                                 </div>
                             </div>
+                            {% endif %}
                             <button type="submit" class="btn-primary btn-sm">
                                 <i class="fas fa-save mr-1.5"></i>Save
                             </button>
@@ -393,6 +483,41 @@
                             </button>
                         </div>
                     </form>
+                </div>
+                {% elif member.user == request.user and member.technician_record and shop_offers_repairs and shop_offers_replacements %}
+                {# Your own row: edit what you work on (role stays locked) #}
+                <div class="mt-3 pt-3 border-t border-gray-100">
+                    <button onclick="toggleEditForm('edit-self-{{ member.id }}')" class="btn-secondary btn-sm">
+                        <i class="fas fa-edit mr-1.5"></i>Edit what I work on
+                    </button>
+                    <div id="edit-self-{{ member.id }}" class="hidden mt-3">
+                        <form method="post" action="{% url 'update_team_member' member.id %}" class="flex flex-wrap gap-4 items-end">
+                            {% csrf_token %}
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">I work on</label>
+                                <div class="flex gap-3">
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" name="can_repair"
+                                            {% if member.technician_record.can_repair %}checked{% endif %}
+                                            class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                        <span class="text-xs text-gray-700">Repairs</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer">
+                                        <input type="checkbox" name="can_replace"
+                                            {% if member.technician_record.can_replace %}checked{% endif %}
+                                            class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                        <span class="text-xs text-gray-700">Replacements</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn-primary btn-sm">
+                                <i class="fas fa-save mr-1.5"></i>Save
+                            </button>
+                            <button type="button" onclick="toggleEditForm('edit-self-{{ member.id }}')" class="btn-secondary btn-sm">
+                                Cancel
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 {% elif member.user != request.user and membership.role == 'manager' and member.role in 'technician,viewer' %}
                 <div class="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-2">
@@ -442,7 +567,7 @@
                     </div>
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900">Auto Invoice Generation</h3>
-                        <p class="text-sm text-gray-500">Automatically generate invoices when repairs are completed</p>
+                        <p class="text-sm text-gray-500">Creates the invoice for you automatically when a job is marked complete</p>
                     </div>
                 </div>
                 <form method="post" action="{% url 'owner_settings' %}">
@@ -473,6 +598,7 @@
         </div>
     </div>
 
+    {% if tenant.offers_repairs %}
     <!-- Progressive Pricing -->
     <div class="card mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
@@ -482,8 +608,8 @@
                         <i class="fas fa-tags text-purple-600 text-sm"></i>
                     </div>
                     <div>
-                        <h3 class="text-lg font-semibold text-gray-900">Progressive Pricing</h3>
-                        <p class="text-sm text-gray-500">Automatically lower the price for each additional repair on the same unit (e.g., 1st=$50, 2nd=$40, etc.). Disable this if you charge a flat rate for all repairs.</p>
+                        <h3 class="text-lg font-semibold text-gray-900">Repair Pricing</h3>
+                        <p class="text-sm text-gray-500">What you charge for repairs. Progressive pricing lowers the price for each additional repair on the same vehicle (e.g., 1st=$50, 2nd=$40). Turn it off to charge one flat rate.</p>
                     </div>
                 </div>
                 <form method="post" action="{% url 'owner_settings' %}">
@@ -567,6 +693,7 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 
     <!-- Sales Tax Setup -->
     <div class="card mb-6">
@@ -578,7 +705,7 @@
                     </div>
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900">Sales Tax</h3>
-                        <p class="text-sm text-gray-500">Set your shop location and tax rate</p>
+                        <p class="text-sm text-gray-500">The tax added to each invoice, based on your shop's location</p>
                     </div>
                 </div>
                 <form method="post" action="{% url 'owner_toggle_tax' %}">
@@ -779,7 +906,7 @@
                 </div>
                 <div>
                     <h3 class="text-lg font-semibold text-gray-900">Batch Invoicing</h3>
-                    <p class="text-sm text-gray-500">Group multiple repairs into one invoice on a schedule</p>
+                    <p class="text-sm text-gray-500">Send one combined invoice for multiple jobs instead of many separate ones</p>
                 </div>
             </div>
         </div>
@@ -960,19 +1087,21 @@ Thank you,
                             <option value="viewer">Viewer</option>
                         </select>
                     </div>
+                    {% if shop_offers_repairs and shop_offers_replacements %}
                     <div id="abilityFields" class="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <p class="text-sm font-medium text-gray-700 mb-3">Technician Abilities</p>
+                        <p class="text-sm font-medium text-gray-700 mb-3">What will they work on?</p>
                         <div class="space-y-2">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input type="checkbox" name="can_repair" checked class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-                                <span class="text-sm text-gray-700"><i class="fas fa-wrench text-amber-500 mr-1"></i>Can do repairs</span>
+                                <span class="text-sm text-gray-700"><i class="fas fa-wrench text-amber-500 mr-1"></i>Does repairs</span>
                             </label>
                             <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="can_replace" class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-                                <span class="text-sm text-gray-700"><i class="fas fa-exchange-alt text-teal-500 mr-1"></i>Can do replacements</span>
+                                <input type="checkbox" name="can_replace" checked class="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                                <span class="text-sm text-gray-700"><i class="fas fa-exchange-alt text-teal-500 mr-1"></i>Does replacements</span>
                             </label>
                         </div>
                     </div>
+                    {% endif %}
                 </div>
                 <div class="flex gap-3 mt-6">
                     <button type="button" data-modal-close class="btn-secondary flex-1">Cancel</button>
@@ -1088,7 +1217,7 @@ Thank you,
     <div class="card mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
             <h3 class="text-lg font-semibold text-gray-900">Review Request Settings</h3>
-            <p class="text-sm text-gray-500 mt-1">Automatically request Google reviews from customers after completed repairs.</p>
+            <p class="text-sm text-gray-500 mt-1">Automatically request Google reviews from customers after completed jobs.</p>
         </div>
         <form method="post" class="p-6 space-y-6">
             {% csrf_token %}
@@ -1277,6 +1406,7 @@ function toggleEditForm(formId) {
 
 function toggleMemberAbilities(selectEl, abilitiesId) {
     const abilities = document.getElementById(abilitiesId);
+    if (!abilities) return;
     const val = selectEl.value;
     if (val === 'technician' || val === 'manager') {
         abilities.classList.remove('hidden');
@@ -1287,9 +1417,20 @@ function toggleMemberAbilities(selectEl, abilitiesId) {
 
 function toggleAbilities() {
     const role = document.getElementById('invite_role').value;
-    document.getElementById('abilityFields').style.display =
-        (role === 'technician' || role === 'manager') ? '' : 'none';
+    const fields = document.getElementById('abilityFields');
+    if (fields) {
+        fields.style.display = (role === 'technician' || role === 'manager') ? '' : 'none';
+    }
 }
+
+// Open the invite modal automatically when linked with ?invite=1
+// (e.g. from the "Your Team" row in the Configure Your Shop checklist).
+document.addEventListener('DOMContentLoaded', function() {
+    if (new URLSearchParams(window.location.search).get('invite') === '1') {
+        const opener = document.querySelector('[data-modal-open="inviteModal"]');
+        if (opener) opener.click();
+    }
+});
 
 function copyJoinLink() {
     const text = document.getElementById('joinLinkText').textContent.trim();

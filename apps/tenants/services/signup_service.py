@@ -68,6 +68,7 @@ def create_tenant_with_owner(
     last_name='',
     phone='',
     username='',
+    services_offered='both',
 ):
     """
     Create a new tenant with an owner account.
@@ -83,6 +84,7 @@ def create_tenant_with_owner(
         last_name: Owner's last name
         phone: Business phone (optional)
         username: Preferred username (optional, auto-generated if blank)
+        services_offered: 'repair', 'replacement', or 'both' (default)
 
     Returns:
         dict with 'user', 'tenant', 'membership' keys
@@ -109,6 +111,10 @@ def create_tenant_with_owner(
         raise SignupError('Business name must be at least 2 characters.')
 
     business_name = business_name.strip()
+
+    valid_services = {choice[0] for choice in Tenant.SERVICES_CHOICES}
+    if services_offered not in valid_services:
+        services_offered = 'both'
 
     try:
         with transaction.atomic():
@@ -138,6 +144,7 @@ def create_tenant_with_owner(
                 subscription_plan=trial_plan,
                 subscription_status='trialing',
                 trial_started_at=timezone.now(),
+                services_offered=services_offered,
             )
 
             # Create owner membership
@@ -157,6 +164,10 @@ def create_tenant_with_owner(
                 user=user,
                 is_manager=True,
                 is_active=True,
+                # Abilities follow what the shop actually does, so the owner
+                # is immediately assignable to their own shop's work.
+                can_repair=tenant.offers_repairs,
+                can_replace=tenant.offers_replacements,
             )
             tech_group, _ = Group.objects.get_or_create(name='Technicians')
             user.groups.add(tech_group)

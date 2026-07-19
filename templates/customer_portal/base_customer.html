@@ -66,7 +66,7 @@
 
                 <!-- Right: Request CTA + Notifications + User -->
                 <div class="flex items-center space-x-2">
-                    <a href="{% url 'customer_request_repair' %}" class="btn-primary btn-sm hidden md:inline-flex mr-1">
+                    <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="btn-primary btn-sm hidden md:inline-flex mr-1">
                         <i class="fas fa-plus"></i> Request Service
                     </a>
                     {% if request.user.is_authenticated %}
@@ -199,12 +199,21 @@
                 <i class="fas fa-car-side text-lg"></i>
                 <span class="text-[10px] font-medium">Services</span>
             </a>
+            {% if shop_offers_repairs and shop_offers_replacements %}
             <button onclick="document.getElementById('requestTypeSheet').classList.remove('hidden')" class="flex flex-col items-center justify-center -mt-4">
                 <div class="w-12 h-12 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30">
                     <i class="fas fa-plus text-white text-lg"></i>
                 </div>
                 <span class="text-[10px] font-medium text-brand-500 mt-0.5">Request</span>
             </button>
+            {% else %}
+            <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="flex flex-col items-center justify-center -mt-4">
+                <div class="w-12 h-12 bg-brand-500 rounded-full flex items-center justify-center shadow-lg shadow-brand-500/30">
+                    <i class="fas fa-plus text-white text-lg"></i>
+                </div>
+                <span class="text-[10px] font-medium text-brand-500 mt-0.5">Request</span>
+            </a>
+            {% endif %}
             <a href="{% url 'customer_invoices' %}" class="flex flex-col items-center justify-center space-y-0.5 {% if 'invoice' in request.resolver_match.url_name %}text-brand-500{% else %}text-gray-400{% endif %}">
                 <i class="fas fa-file-invoice-dollar text-lg"></i>
                 <span class="text-[10px] font-medium">Invoices</span>
@@ -223,12 +232,16 @@
             <div class="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
             <h3 class="text-base font-semibold text-gray-900 mb-3">What do you need?</h3>
             <div class="space-y-2">
+                {% if shop_offers_repairs %}
                 <a href="{% url 'customer_request_repair' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors">
                     <i class="fas fa-tools mr-3"></i> Chip or Crack Repair
                 </a>
+                {% endif %}
+                {% if shop_offers_replacements %}
                 <a href="{% url 'customer_request_replacement' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors">
                     <i class="fas fa-car mr-3"></i> Full Glass Replacement
                 </a>
+                {% endif %}
             </div>
         </div>
     </div>

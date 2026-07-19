@@ -13,6 +13,12 @@ from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from apps.tenants.services.signup_service import create_tenant_with_owner
 from apps.technician_portal.models import Technician
 
+# Local cache for the signup view's IP rate limit — with the dev Redis cache,
+# counters persist across test runs and 403 the 6th POST from 127.0.0.1.
+LOCMEM_CACHE = {
+    'CACHES': {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}},
+}
+
 
 class SignupAutoTechnicianTests(TestCase):
     """After signup, the owner should have a Technician profile and be in Technicians group."""
@@ -175,12 +181,13 @@ class OnboardingDuplicateEmailTests(TestCase):
             "New tech user should have a Technician profile for this tenant"
         )
 
-    def test_step2_no_email_only_first_name_still_creates_user(self):
+    def test_step2_no_email_is_rejected_with_form_error(self):
         """
-        Providing only a first name (no email) should still create a user — the
-        duplicate-email guard must not accidentally block email-less technicians.
+        Adding another person without an email must be rejected — an
+        email-less account can never receive its invite link and is
+        permanently stranded (it used to get a random password and no way
+        to log in). The form now requires the email and stays on step 2.
         """
-        from apps.technician_portal.models import Technician
         initial_user_count = User.objects.count()
         response = self.client.post('/onboarding/?step=2', {
             'add_self': '',
@@ -191,9 +198,10 @@ class OnboardingDuplicateEmailTests(TestCase):
         }, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            User.objects.count(), initial_user_count + 1,
-            "Tech without email should still be created"
+            User.objects.count(), initial_user_count,
+            "Tech without email must NOT be created (stranded account)"
         )
+        self.assertContains(response, 'their email')
 
 
 class OnboardingStepProgressionTests(TestCase):
@@ -235,6 +243,7 @@ class OnboardingStepProgressionTests(TestCase):
         self.assertIn('step', response.context)
 
 
+@override_settings(**LOCMEM_CACHE)
 class SignupCaptchaAndPlanTests(TestCase):
     """CODE-105: Signup view passes turnstile_site_key and saves intended_plan."""
 

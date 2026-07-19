@@ -338,6 +338,11 @@ def create_repair(request):
     """Create a new single repair."""
     # Usage limit check
     tenant = getattr(request, 'tenant', None)
+    if tenant and not tenant.offers_repairs:
+        # New repairs only for shops that offer them (existing ones stay
+        # viewable via repair_list/detail for history).
+        messages.info(request, 'Your shop is set to replacements only. You can change this under Settings → What does your shop do?')
+        return redirect('technician_dashboard')
     if tenant:
         from apps.tenants.services.usage_service import UsageService
         can_create, limit_msg = UsageService(tenant).can_create_repair()

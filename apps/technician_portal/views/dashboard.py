@@ -9,7 +9,7 @@ from django.contrib.contenttypes.models import ContentType
 from datetime import timedelta
 import logging
 
-from apps.technician_portal.models import Technician, Repair, TechnicianNotification
+from apps.technician_portal.models import Technician, Repair, Replacement, TechnicianNotification
 from apps.customer_portal.models import RepairApproval
 from apps.rewards_referrals.models import RewardRedemption
 from core.models import Customer, Notification
@@ -311,6 +311,29 @@ def technician_dashboard(request):
             'pending_redemptions': redemption_qs.count()
         }
 
+    # --- Replacements (only when the shop offers them) ---
+    # Same shape as the repair queues: the tech's own active replacements,
+    # plus customer-requested ones for managers/admins to assign.
+    shop_offers_replacements = bool(tenant and tenant.offers_replacements)
+    replacements_active = []
+    customer_requested_replacements = []
+    if shop_offers_replacements:
+        if technician:
+            replacements_active = list(
+                Replacement.objects.filter(
+                    tenant=tenant,
+                    technician=technician,
+                    queue_status__in=['PENDING', 'APPROVED', 'IN_PROGRESS'],
+                ).select_related('customer').order_by('-service_date')[:10]
+            )
+        if is_admin or (technician and technician.is_manager):
+            customer_requested_replacements = list(
+                Replacement.objects.filter(
+                    tenant=tenant,
+                    queue_status='REQUESTED',
+                ).select_related('customer', 'technician').order_by('-service_date')[:10]
+            )
+
     # Get notification bell data
     if technician:
         technician_ct = ContentType.objects.get_for_model(Technician)
@@ -345,4 +368,6 @@ def technician_dashboard(request):
         'admin_data': admin_data,
         'summary_stats': summary_stats,
         'todays_queue': todays_queue,
+        'replacements_active': replacements_active,
+        'customer_requested_replacements': customer_requested_replacements,
     })

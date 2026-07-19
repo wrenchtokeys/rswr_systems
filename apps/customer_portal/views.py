@@ -1565,6 +1565,13 @@ def request_repair(request):
         - GET: Render repair request form
         - POST: Process form submission and create repair request(s)
     """
+    # Shops that don't do repairs never accept repair requests (the UI hides
+    # this page, but the URL must be guarded too).
+    _tenant = getattr(request, 'tenant', None)
+    if _tenant and not _tenant.offers_repairs:
+        messages.info(request, f"{_tenant.name} doesn't offer chip repairs. You can request a glass replacement instead.")
+        return redirect('customer_dashboard')
+
     # Get the customer user record
     try:
         customer_user = _get_customer_user_for_tenant(request)
@@ -1610,6 +1617,13 @@ def request_replacement(request):
         return redirect('profile_creation')
 
     tenant = getattr(request, 'tenant', None)
+
+    # Shops that don't do replacements never accept replacement requests
+    # (the UI hides this page, but the URL must be guarded too).
+    if tenant and not tenant.offers_replacements:
+        messages.info(request, f"{tenant.name} doesn't offer glass replacements. You can request a chip repair instead.")
+        return redirect('customer_dashboard')
+
     ctx = {'glass_positions': Replacement.GLASS_POSITION_CHOICES}
 
     if request.method != 'POST':

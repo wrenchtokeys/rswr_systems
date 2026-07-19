@@ -49,6 +49,7 @@ urlpatterns = [
     path('owner/settings/invite/', views.invite_member, name='owner_invite_member'),
 
     # Team management (Phase 6)
+    path('owner/team/add-self/', views.team_add_self, name='team_add_self'),
     path('owner/team/<int:membership_id>/update/', views.update_team_member, name='update_team_member'),
     path('owner/team/<int:membership_id>/deactivate/', views.deactivate_team_member, name='deactivate_team_member'),
     path('owner/team/<int:membership_id>/resend-invite/', views.resend_invite, name='resend_invite'),

@@ -10,7 +10,6 @@ Author: Amelia (Clawdbot AI)
 
 import logging
 import os
-import secrets
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -267,6 +266,7 @@ def signup_view(request):
                     password=cd['password'],
                     first_name=cd['first_name'],
                     last_name=cd['last_name'],
+                    services_offered=cd.get('services_offered', 'both'),
                 )
                 user = result['user']
                 tenant = result['tenant']
@@ -403,11 +403,19 @@ def onboarding_view(request):
                                         'account from Settings → Team if needed.'
                                     )
                                 else:
+                                    from apps.tenants.services.team_service import resolve_ability_flags
+                                    self_can_repair, self_can_replace = resolve_ability_flags(
+                                        tenant,
+                                        cd.get('tech_can_repair', True),
+                                        cd.get('tech_can_replace', True),
+                                    )
                                     Technician.objects.create(
                                         tenant=tenant,
                                         user=request.user,
                                         phone_number=cd.get('tech_phone', '') or tenant.business_phone,
                                         is_active=True,
+                                        can_repair=self_can_repair,
+                                        can_replace=self_can_replace,
                                     )
                                     from django.contrib.auth.models import Group
                                     tech_group, _ = Group.objects.get_or_create(name='Technicians')
@@ -421,49 +429,41 @@ def onboarding_view(request):
                             tech_first = cd.get('tech_first_name', '')
                             tech_last = cd.get('tech_last_name', '')
 
-                            if tech_email or tech_first:
-                                from apps.tenants.services.signup_service import generate_unique_username
-                                # Check email uniqueness BEFORE generating username.
-                                # generate_unique_username() always returns a unique username, so the
-                                # old guard `if not User.objects.filter(username=...).exists()` was
-                                # always True — dead code that never caught duplicate emails.
-                                # Fix: check email first (the actual duplicate risk).
-                                if tech_email and User.objects.filter(email__iexact=tech_email).exists():
+                            if tech_email:
+                                if User.objects.filter(email__iexact=tech_email).exists():
                                     messages.info(request, 'A user with that email already exists. You can add them to your team from Settings → Team.')
                                 else:
-                                    tech_username = generate_unique_username(tech_email or '', tech_first)
-                                    tech_user = User.objects.create_user(
-                                        username=tech_username,
-                                        email=tech_email or '',
-                                        first_name=tech_first,
-                                        last_name=tech_last,
-                                        password=secrets.token_urlsafe(16),
+                                    from apps.tenants.services.team_service import (
+                                        add_team_member, TeamServiceError,
                                     )
-                                    Technician.objects.create(
-                                        tenant=tenant,
-                                        user=tech_user,
-                                        phone_number=cd.get('tech_phone', ''),
-                                        is_active=True,
-                                    )
-                                    TenantMembership.objects.create(
-                                        tenant=tenant, user=tech_user, role='technician',
-                                    )
-                                    from django.contrib.auth.models import Group
-                                    tech_group, _ = Group.objects.get_or_create(name='Technicians')
-                                    tech_user.groups.add(tech_group)
-                                    tech_display = f"{tech_first} {tech_last}".strip() or tech_email or 'Technician'
-                                    if tech_email:
-                                        messages.success(
-                                            request,
-                                            f'{tech_display} has been added to your team. '
-                                            f'Go to Settings → Team to send them an invite so they can log in.'
+                                    tech_display = f"{tech_first} {tech_last}".strip() or tech_email
+                                    try:
+                                        result = add_team_member(
+                                            tenant,
+                                            request.user,
+                                            email=tech_email,
+                                            first_name=tech_first,
+                                            last_name=tech_last,
+                                            role='technician',
+                                            phone=cd.get('tech_phone', ''),
+                                            can_repair=cd.get('tech_can_repair', True),
+                                            can_replace=cd.get('tech_can_replace', True),
+                                            base_url=request.build_absolute_uri('/'),
                                         )
-                                    else:
-                                        messages.success(
-                                            request,
-                                            f'{tech_display} has been added to your team. '
-                                            f'Add their email in Settings → Team to send a login invite.'
-                                        )
+                                        if result['email_sent']:
+                                            messages.success(
+                                                request,
+                                                f'{tech_display} has been added to your team. '
+                                                f'We emailed them a link to set their password and log in.'
+                                            )
+                                        else:
+                                            messages.success(
+                                                request,
+                                                f'{tech_display} has been added to your team. '
+                                                f"The invite email could not be sent — share this link with them: {result['invite_url']}"
+                                            )
+                                    except TeamServiceError as e:
+                                        messages.error(request, str(e))
                             else:
                                 messages.info(request, 'No technician info provided — you can add team members later in Settings → Team.')
 
@@ -520,22 +520,31 @@ def onboarding_view(request):
         'tenant': tenant,
     }
 
+    # An invalid POST falls through to here — keep the bound form so its
+    # validation errors actually show (e.g. "add their email" on step 2).
+    bound_form = None
+    if request.method == 'POST':
+        try:
+            bound_form = form
+        except NameError:
+            pass
+
     if step == '1':
-        context['form'] = OnboardingBusinessForm(initial={
+        context['form'] = bound_form or OnboardingBusinessForm(initial={
             'business_phone': tenant.business_phone,
             'business_email': tenant.business_email,
             'business_address': tenant.business_address,
         })
     elif step == '2':
         # Owner already has tech profile from signup — step 2 is for adding ANOTHER tech
-        context['form'] = OnboardingTechnicianForm(initial={
+        context['form'] = bound_form or OnboardingTechnicianForm(initial={
             'tech_first_name': '',
             'tech_last_name': '',
             'tech_email': '',
             'add_self': False,
         })
     elif step == '3':
-        context['form'] = OnboardingCustomerForm()
+        context['form'] = bound_form or OnboardingCustomerForm()
 
     return render(request, 'saas/onboarding.html', context)
 
@@ -896,6 +905,12 @@ def replacement_create(request):
         messages.error(request, 'No shop context. Please log in.')
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
+
+    # New replacements only for shops that offer them (existing ones stay
+    # viewable via replacement_list/detail for history).
+    if not tenant.offers_replacements:
+        messages.info(request, 'Your shop is set to repairs only. You can change this under Settings → What does your shop do?')
+        return redirect('owner_dashboard')
 
     # Check limits
     usage_svc = UsageService(tenant)
@@ -1292,9 +1307,55 @@ def owner_settings_view(request):
             if strategy in valid_strategies:
                 tenant.assignment_strategy = strategy
                 tenant.save(update_fields=['assignment_strategy'])
-                messages.success(request, 'Repair assignment strategy updated successfully.')
+                messages.success(request, 'Job assignment strategy updated successfully.')
             else:
                 messages.error(request, 'Invalid assignment strategy selected.')
+            return redirect('owner_settings')
+
+        if form_type == 'services_offered':
+            new_services = request.POST.get('services_offered', '')
+            valid_services = [c[0] for c in tenant.SERVICES_CHOICES]
+            if new_services not in valid_services:
+                messages.error(request, 'Invalid selection.')
+                return redirect('owner_settings')
+            if new_services == tenant.services_offered:
+                return redirect('owner_settings')
+
+            old_services = tenant.services_offered
+            tenant.services_offered = new_services
+            tenant.save(update_fields=['services_offered'])
+
+            # Keep technician abilities in sync so work stays assignable.
+            active_techs = Technician.objects.filter(tenant=tenant, is_active=True)
+            notes = []
+            if new_services in ('repair', 'replacement'):
+                # Single-service shop: everyone does the one service.
+                updated = active_techs.update(
+                    can_repair=tenant.offers_repairs,
+                    can_replace=tenant.offers_replacements,
+                )
+                if updated:
+                    service_word = 'repairs' if new_services == 'repair' else 'replacements'
+                    notes.append(f'All your technicians are now set to do {service_word}.')
+            else:
+                # Now offering both: make sure each service has someone who
+                # can do it, otherwise customer requests dead-end.
+                if not active_techs.filter(can_repair=True).exists():
+                    active_techs.update(can_repair=True)
+                    notes.append('All your technicians can now be assigned repairs — adjust individuals under Team.')
+                if not active_techs.filter(can_replace=True).exists():
+                    active_techs.update(can_replace=True)
+                    notes.append('All your technicians can now be assigned replacements — adjust individuals under Team.')
+
+            label = dict(tenant.SERVICES_CHOICES)[new_services]
+            msg = f'Got it — your shop now does: {label.lower()}.'
+            if notes:
+                msg += ' ' + ' '.join(notes)
+            messages.success(request, msg)
+            logger.info(
+                "services_offered changed for tenant %s: %s -> %s",
+                tenant.id, old_services, new_services,
+            )
             return redirect('owner_settings')
 
         if form_type == 'toggle_auto_invoice':
@@ -1647,10 +1708,24 @@ def owner_settings_view(request):
         .order_by('applies_to', 'name')
     )
 
+    # Whether the logged-in owner/manager is themselves an active technician
+    # for THIS tenant — drives the "Add myself as a technician" callout.
+    # Cross-tenant records don't count, but block creating a second one
+    # (Technician.user is a OneToOneField, CODE-217).
+    my_tech = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    my_foreign_tech = (
+        None if my_tech
+        else Technician.objects.filter(user=request.user).exclude(tenant=tenant).first()
+    )
+    i_am_technician = bool(my_tech and my_tech.is_active)
+    can_add_self_as_tech = not i_am_technician and not my_foreign_tech
+
     context = {
         'tenant': tenant,
         'membership': membership,
         'members': members,
+        'i_am_technician': i_am_technician,
+        'can_add_self_as_tech': can_add_self_as_tech,
         'shop_join_url': shop_join_url,
         'customers': customers,
         'assignment_strategy_choices': tenant.ASSIGNMENT_STRATEGY_CHOICES,
@@ -1700,9 +1775,14 @@ def invite_member(request):
             messages.warning(request, limit_msg)
             return redirect('owner_settings')
 
-    # Ability checkboxes for technicians/managers
-    can_repair = request.POST.get('can_repair') == 'on'
-    can_replace = request.POST.get('can_replace') == 'on'
+    # Ability checkboxes for technicians/managers. Single-service shops
+    # ignore the checkboxes — everyone does what the shop does.
+    from apps.tenants.services.team_service import resolve_ability_flags
+    can_repair, can_replace = resolve_ability_flags(
+        tenant,
+        request.POST.get('can_repair') == 'on',
+        request.POST.get('can_replace') == 'on',
+    )
 
     if not email:
         messages.error(request, 'Email is required.')
@@ -1710,8 +1790,8 @@ def invite_member(request):
 
     # Prevent inviting yourself (owner)
     if email == request.user.email.lower():
-        messages.warning(request, "That's your own email. To add yourself as a technician, go to Team settings and use the 'Add myself' option.")
-        return redirect('owner_settings')
+        messages.warning(request, "That's your own email. Use the 'Add myself as a technician' button on the Team tab instead.")
+        return redirect('/owner/settings/?tab=team')
 
     if role not in ('manager', 'technician', 'viewer'):
         messages.error(request, 'Invalid role selected.')
@@ -1726,23 +1806,10 @@ def invite_member(request):
         messages.error(request, 'Only the shop owner can invite managers.')
         return redirect('owner_settings')
 
-    # Check if user already exists
+    # Check existing membership (reactivation branch stays inline; the
+    # fresh-member path below goes through team_service.add_team_member).
     user = User.objects.filter(email=email).first()
-    if not user:
-        from apps.tenants.services.signup_service import generate_unique_username
-        username = generate_unique_username(email, first_name)
-
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-        )
-        user.set_unusable_password()
-        user.save()
-
-    # Check existing membership
-    existing = TenantMembership.objects.filter(tenant=tenant, user=user).first()
+    existing = TenantMembership.objects.filter(tenant=tenant, user=user).first() if user else None
     if existing:
         if existing.is_active:
             messages.warning(request, f'{email} is already a team member.')
@@ -1832,69 +1899,24 @@ def invite_member(request):
                 )
             return redirect('owner_settings')
 
-    with transaction.atomic():
-        TenantMembership.objects.create(
-            tenant=tenant,
-            user=user,
-            role=role,
-        )
-
-        # Create Technician record for technician/manager roles
-        if role in ('technician', 'manager'):
-            from django.contrib.auth.models import Group
-            tech_group, _ = Group.objects.get_or_create(name='Technicians')
-            user.groups.add(tech_group)
-
-            if not Technician.objects.filter(user=user, tenant=tenant).exists():
-                Technician.objects.create(
-                    tenant=tenant,
-                    user=user,
-                    is_manager=(role == 'manager'),
-                    is_active=True,
-                    can_repair=can_repair,
-                    can_replace=can_replace,
-                )
-
-        # Create InviteToken
-        from apps.tenants.models import InviteToken
-        invite_token = InviteToken(
-            tenant=tenant,
-            user=user,
-            role=role,
-            invited_by=request.user,
-        )
-        invite_token.save()
-
-        invite_url = request.build_absolute_uri(f"/invite/{invite_token.token}/")
-
-    # Try to send invite email
-    email_sent = False
+    from apps.tenants.services.team_service import add_team_member, TeamServiceError
     try:
-        from django.core.mail import send_mail
-        from django.conf import settings
-
-        inviter_name = request.user.get_full_name() or request.user.email
-        subject = f"You're invited to join {tenant.name} on RS Systems"
-
-        from core.email_utils import send_branded_email
-        send_branded_email(
-            subject=subject,
-            recipient_list=[email],
-            headline=f"You're Invited to {tenant.name}!",
-            body_paragraphs=[
-                f"Hi {first_name},",
-                f"{inviter_name} has invited you to join {tenant.name} as a {role}.",
-                "Click the button below to set your password and get started. This link expires in 7 days.",
-            ],
-            button_text='🚀 Accept Invitation',
-            button_url=invite_url,
-            tenant=tenant,
+        result = add_team_member(
+            tenant,
+            request.user,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            role=role,
+            can_repair=can_repair,
+            can_replace=can_replace,
+            base_url=request.build_absolute_uri('/'),
         )
-        email_sent = True
-    except Exception as e:
-        logger.warning(f"Failed to send invite email to {email}: {e}")
+    except TeamServiceError as e:
+        messages.error(request, str(e))
+        return redirect('owner_settings')
 
-    if email_sent:
+    if result['email_sent']:
         messages.success(
             request,
             f'{first_name} {last_name} ({email}) has been invited as {role}. '
@@ -1904,7 +1926,7 @@ def invite_member(request):
         messages.success(
             request,
             f'{first_name} {last_name} ({email}) has been invited as {role}. '
-            f'Email could not be sent. Share this invite link manually: {invite_url}'
+            f"Email could not be sent. Share this invite link manually: {result['invite_url']}"
         )
 
     return redirect('owner_settings')
@@ -2135,14 +2157,22 @@ def update_team_member(request, membership_id):
 
     target = get_object_or_404(TenantMembership, id=membership_id, tenant=tenant, is_active=True)
 
-    # Can't change own role
-    if target.user == request.user:
+    new_role = request.POST.get('role', target.role)
+
+    # You can edit your own abilities (e.g. the owner turning on "Does
+    # replacements" for themselves) but never your own role.
+    if target.user == request.user and new_role != target.role:
         messages.error(request, 'You cannot change your own role.')
         return redirect('owner_settings')
 
-    new_role = request.POST.get('role', target.role)
-    can_repair = request.POST.get('can_repair') == 'on'
-    can_replace = request.POST.get('can_replace') == 'on'
+    # Single-service shops ignore the checkboxes — everyone does what the
+    # shop does.
+    from apps.tenants.services.team_service import resolve_ability_flags
+    can_repair, can_replace = resolve_ability_flags(
+        tenant,
+        request.POST.get('can_repair') == 'on',
+        request.POST.get('can_replace') == 'on',
+    )
 
     # Only owners can change roles
     if new_role != target.role and my_membership.role != 'owner':
@@ -2154,8 +2184,13 @@ def update_team_member(request, membership_id):
     # target's current role so the role-change guard above doesn't fire) and
     # silently modify a peer manager's can_repair/can_replace abilities.
     # Only the shop owner should be able to edit manager or owner records.
+    # Editing yourself is exempt — the role-change guard above already fired.
     # (CODE-212)
-    if my_membership.role == 'manager' and target.role in ('manager', 'owner'):
+    if (
+        my_membership.role == 'manager'
+        and target.role in ('manager', 'owner')
+        and target.user != request.user
+    ):
         messages.error(request, 'Managers can only update technician team members.')
         return redirect('owner_settings')
 
@@ -2216,6 +2251,15 @@ def update_team_member(request, membership_id):
                         can_repair=can_repair,
                         can_replace=can_replace,
                     )
+        elif new_role == 'owner':
+            # Owners are usually working technicians too (signup creates the
+            # record) — keep their ability flags editable, e.g. the owner
+            # turning on "Does replacements" for themselves.
+            tech = Technician.objects.filter(user=target.user, tenant=tenant).first()
+            if tech:
+                tech.can_repair = can_repair
+                tech.can_replace = can_replace
+                tech.save(update_fields=['can_repair', 'can_replace'])
         elif old_role in ('technician', 'manager') and new_role not in ('technician', 'manager'):
             # Deactivate technician record if moving away from tech/manager.
             # Scope to THIS tenant so we don't touch another shop's record.
@@ -2229,6 +2273,69 @@ def update_team_member(request, membership_id):
     member_name = target.user.get_full_name() or target.user.email
     messages.success(request, f'Updated {member_name} to {target.get_role_display()}.')
     return redirect('owner_settings')
+
+
+@owner_or_manager_required
+@require_POST
+def team_add_self(request):
+    """POST /owner/team/add-self/ — make the logged-in owner/manager a working technician.
+
+    Owners of older shops (created before signup auto-added the owner as a
+    technician) or anyone whose technician record was deactivated need a way
+    to become assignable again. Abilities follow what the shop does.
+    """
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership:
+        messages.error(request, 'Access denied.')
+        return redirect('owner_settings')
+
+    from apps.tenants.services.team_service import resolve_ability_flags
+    can_repair, can_replace = resolve_ability_flags(tenant)
+
+    tech = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    if tech and tech.is_active:
+        messages.info(request, 'You are already set up as a technician.')
+        return redirect('/owner/settings/?tab=team')
+
+    # Same seat limit as inviting a technician
+    from apps.tenants.services.usage_service import UsageService
+    can_add, limit_msg = UsageService(tenant).can_add_technician()
+    if not can_add:
+        messages.warning(request, limit_msg)
+        return redirect('/owner/settings/?tab=team')
+
+    if tech:
+        # Reactivate the existing record
+        tech.is_active = True
+        tech.can_repair = can_repair
+        tech.can_replace = can_replace
+        tech.save(update_fields=['is_active', 'can_repair', 'can_replace'])
+    else:
+        # Technician.user is a OneToOneField across ALL tenants (CODE-217)
+        foreign_tech = Technician.objects.filter(user=request.user).exclude(tenant=tenant).first()
+        if foreign_tech:
+            messages.warning(
+                request,
+                'Your account is already linked to a technician profile at another shop, '
+                'so it cannot be added here. Invite yourself with a different email instead.'
+            )
+            return redirect('/owner/settings/?tab=team')
+        Technician.objects.create(
+            tenant=tenant,
+            user=request.user,
+            is_manager=(membership.role in ('owner', 'manager')),
+            is_active=True,
+            can_repair=can_repair,
+            can_replace=can_replace,
+            phone_number=tenant.business_phone or '',
+        )
+
+    from django.contrib.auth.models import Group
+    tech_group, _ = Group.objects.get_or_create(name='Technicians')
+    request.user.groups.add(tech_group)
+
+    messages.success(request, 'You can now be assigned jobs like any other technician.')
+    return redirect('/owner/settings/?tab=team')
 
 
 @owner_or_manager_required
@@ -3409,10 +3516,11 @@ DEFAULT_VISCOSITY_RULES = [
 
 
 def _setup_completion(tenant):
-    """Return completion info for each of the 6 setup sections."""
+    """Return completion info for each of the setup sections."""
     from apps.billing.models import TaxRate, BillingConfig
-    from apps.technician_portal.models import ViscosityRecommendation
-    from decimal import Decimal
+    from apps.technician_portal.models import ViscosityRecommendation, Technician
+    from apps.tenants.models import InviteToken
+    from django.utils import timezone as tz
 
     try:
         billing_config = BillingConfig.get_for_tenant(tenant)
@@ -3421,8 +3529,25 @@ def _setup_completion(tenant):
 
     has_business_info = bool(tenant.business_phone and tenant.business_email)
     has_tax = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
-    has_viscosity = ViscosityRecommendation.objects.filter(tenant=tenant, is_active=True).exists()
+    # Resin rules only matter for shops that do repairs.
+    has_viscosity = (
+        not tenant.offers_repairs
+        or ViscosityRecommendation.objects.filter(tenant=tenant, is_active=True).exists()
+    )
     has_billing = bool(billing_config and billing_config.default_payment_terms)
+    # Team is "set up" once anyone beyond the owner exists or has a pending invite.
+    has_team = (
+        Technician.objects.filter(tenant=tenant, is_active=True).count() > 1
+        or InviteToken.objects.filter(
+            tenant=tenant, used_at__isnull=True, expires_at__gt=tz.now()
+        ).exists()
+    )
+
+    # Items shown in the checklist card; resin rules hidden for shops
+    # that don't do repairs.
+    items = [has_business_info, True, has_tax, has_billing, True, has_team]
+    if tenant.offers_repairs:
+        items.append(has_viscosity)
 
     return {
         'business_info': has_business_info,
@@ -3431,11 +3556,11 @@ def _setup_completion(tenant):
         'billing': has_billing,
         'viscosity': has_viscosity,
         'assignment': True,  # always has default
+        'team': has_team,
         'critical_complete': has_business_info and has_billing,
-        'all_complete': has_business_info and has_tax and has_billing and has_viscosity,
-        'configured_count': sum([
-            has_business_info, True, has_tax, has_billing, has_viscosity, True
-        ]),
+        'all_complete': all(items),
+        'configured_count': sum(items),
+        'total_count': len(items),
     }
 
 

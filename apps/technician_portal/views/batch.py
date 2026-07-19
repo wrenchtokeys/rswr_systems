@@ -221,6 +221,9 @@ def batch_complete_all(request, batch_id):
 def create_multi_break_repair(request):
     """Create multiple repairs (breaks) on the same unit in one session."""
     tenant = getattr(request, 'tenant', None)
+    if tenant and not tenant.offers_repairs:
+        messages.info(request, 'Your shop is set to replacements only. You can change this under Settings → What does your shop do?')
+        return redirect('technician_dashboard')
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
     # Plan limit check — batch creation must respect the same monthly

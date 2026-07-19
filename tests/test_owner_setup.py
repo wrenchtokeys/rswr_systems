@@ -458,12 +458,13 @@ class OwnerSetupCompletionTest(TestCase):
         content = resp.content.decode()
         self.assertIn('Configure Your Shop', content)
         self.assertIn('Business Info', content)
-        self.assertIn('Pricing Structure', content)
-        self.assertIn('Tax Rates', content)
+        self.assertIn('Job Prices', content)
+        self.assertIn('Sales Tax', content)
         self.assertIn('Billing', content)
         self.assertIn('Invoicing', content)
-        self.assertIn('Viscosity Recommendations', content)
-        self.assertIn('Repair Assignment', content)
+        self.assertIn('Repair Resin Rules', content)
+        self.assertIn('Job Assignment', content)
+        self.assertIn('Your Team', content)
 
     def test_tenant_isolation_business_save(self):
         """Business info save only affects logged-in user's tenant."""
