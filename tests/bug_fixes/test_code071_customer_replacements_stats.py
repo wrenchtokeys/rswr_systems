@@ -46,6 +46,11 @@ class CustomerReplacementsStatsTestCase(TestCase):
 
         # Customer
         self.customer = Customer.objects.create(tenant=self.tenant, name='Stats Fleet', email='fleet@stats.com')
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
         # Customer user (portal user)
         self.portal_user = User.objects.create_user('stats_portal', 'portal@stats.com', 'pw123456')
@@ -180,6 +185,11 @@ class CustomerReplacementsStatsTestCase(TestCase):
         other_customer = Customer.objects.create(
             tenant=self.tenant, name='Empty Fleet', email='empty@test.com',
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=other_customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         empty_portal_user = User.objects.create_user('empty_portal', 'empty@portal.com', 'pw123456')
         TenantMembership.objects.create(tenant=self.tenant, user=empty_portal_user, role='viewer', is_active=True)
         CustomerUser.objects.create(user=empty_portal_user, customer=other_customer, is_primary_contact=True)
@@ -200,6 +210,11 @@ class CustomerReplacementsStatsTestCase(TestCase):
         other_owner = User.objects.create_user('other_owner2', 'other_owner2@shop.com', 'pw123456')
         other_tenant = Tenant.objects.create(name='Other Shop', slug='other-shop', is_active=True, owner=other_owner)
         other_customer = Customer.objects.create(tenant=other_tenant, name='Other Fleet')
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=other_customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         other_tech_user = User.objects.create_user('other_tech2', 'other_t2@shop.com', 'pw123456')
         other_tech = Technician.objects.create(tenant=other_tenant, user=other_tech_user, is_active=True)
 

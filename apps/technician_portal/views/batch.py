@@ -14,7 +14,6 @@ import logging
 import uuid
 
 from apps.technician_portal.models import Technician, Repair, UnitRepairCount, TechnicianNotification
-from apps.customer_portal.models import CustomerRepairPreference
 from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from common.auth import get_user_role
@@ -452,13 +451,8 @@ def create_multi_break_repair(request):
                         damage_location_y=float(damage_loc_y) if damage_loc_y else None,
                     )
 
-                    # Check customer preferences for auto-approval
-                    try:
-                        preferences = customer.repair_preferences
-                        if preferences.should_auto_approve(technician, repair_date.date() if repair_date else None):
-                            repair.queue_status = 'APPROVED'
-                    except CustomerRepairPreference.DoesNotExist:
-                        pass
+                    # Repair.save() auto-approves shop-created work unless the
+                    # customer explicitly requires approval
 
                     try:
                         repair.save()
@@ -482,7 +476,7 @@ def create_multi_break_repair(request):
                 messages.success(
                     request,
                     f"Successfully created {len(created_repairs)} repairs for Unit {unit_number} "
-                    f"(${total_cost:.2f} total). Auto-approved based on customer preferences."
+                    f"(${total_cost:.2f} total). Approved and ready to start."
                 )
             else:
                 messages.success(

@@ -159,6 +159,10 @@ class AutoInvoiceEmailSentStatusTests(TestCase):
         self.user = _make_user('email_tech2')
         self.technician = _make_technician(self.tenant, self.user)
         self.customer = _make_customer(self.tenant, 'Email Fleet')
+        # Create the repair BEFORE the per_ticket preference so the
+        # completion signal doesn't auto-invoice it during setUp — each test
+        # calls generate_and_save explicitly.
+        self.repair = _make_repair(self.tenant, self.customer, self.technician)
         # per_ticket + auto_email_invoices
         CustomerRepairPreference.objects.create(
             customer=self.customer,
@@ -166,7 +170,6 @@ class AutoInvoiceEmailSentStatusTests(TestCase):
             invoice_preference='per_ticket',
             auto_email_invoices=True,
         )
-        self.repair = _make_repair(self.tenant, self.customer, self.technician)
 
     def _make_mock_invoice_data(self, num='TRK-X'):
         """Create a mock InvoiceData-like object."""
@@ -179,47 +182,23 @@ class AutoInvoiceEmailSentStatusTests(TestCase):
     @patch('apps.billing.services.auto_invoice_service.AutoInvoiceService._save_to_s3', return_value='invoices/1/t1.pdf')
     @patch('apps.billing.services.auto_invoice_service.AutoInvoiceService._create_payment_link', return_value=None)
     def test_invoice_stays_draft_when_email_fails(self, _mock_stripe, _mock_s3, _mock_email):
-        """When email fails, invoice must remain DRAFT."""
+        """When email fails, invoice must remain DRAFT.
+
+        Record-first flow: generate_and_save creates the tracked Invoice
+        itself, so we assert on the real record it produced.
+        """
         from apps.billing.services.auto_invoice_service import AutoInvoiceService
-        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
 
-        mock_inv_data = self._make_mock_invoice_data('FAIL-001')
+        svc = AutoInvoiceService()
+        result = svc.generate_and_save(self.repair)
 
-        with patch.object(InvoiceTrackingService, 'create_invoice_from_repairs') as mock_create:
-            # Simulate InvoiceTrackingService creating a real DRAFT Invoice
-            tenant = self.tenant
-            customer = self.customer
-            repair = self.repair
-
-            created_invoice = Invoice.objects.create(
-                tenant=tenant,
-                customer=customer,
-                invoice_number='FAIL-001',
-                status='DRAFT',
-                invoice_date='2026-03-19',
-                payment_terms='COD',
-                subtotal=Decimal('50.00'),
-                total=Decimal('50.00'),
-                amount_paid=Decimal('0.00'),
-                discount=Decimal('0.00'),
-                tax_rate=Decimal('0.00'),
-                tax_amount=Decimal('0.00'),
-            )
-            mock_create.return_value = created_invoice
-
-            # Also patch generate_invoice on the imported class
-            from apps.billing.services import invoice_service as _inv_svc
-            with patch.object(_inv_svc.InvoiceService, 'generate_invoice', return_value=(b'%PDF', mock_inv_data)):
-                svc = AutoInvoiceService()
-                result = svc.generate_and_save(repair)
-
-            # Invoice must stay DRAFT when email failed
-            created_invoice.refresh_from_db()
-            self.assertEqual(
-                created_invoice.status, 'DRAFT',
-                "Invoice must remain DRAFT when email delivery failed"
-            )
-            self.assertIsNone(created_invoice.sent_at)
+        self.assertTrue(result['success'], result.get('error'))
+        created_invoice = Invoice.objects.get(id=result['invoice_id'])
+        self.assertEqual(
+            created_invoice.status, 'DRAFT',
+            "Invoice must remain DRAFT when email delivery failed"
+        )
+        self.assertIsNone(created_invoice.sent_at)
 
     @patch('apps.billing.services.auto_invoice_service.AutoInvoiceService._send_invoice_email', return_value=True)
     @patch('apps.billing.services.auto_invoice_service.AutoInvoiceService._save_to_s3', return_value='invoices/1/t2.pdf')
@@ -227,35 +206,14 @@ class AutoInvoiceEmailSentStatusTests(TestCase):
     def test_invoice_marked_sent_after_email_success(self, _mock_stripe, _mock_s3, _mock_email):
         """When email succeeds, invoice must be updated to SENT."""
         from apps.billing.services.auto_invoice_service import AutoInvoiceService
-        from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-        from apps.billing.services import invoice_service as _inv_svc
 
-        mock_inv_data = self._make_mock_invoice_data('OK-001')
+        svc = AutoInvoiceService()
+        result = svc.generate_and_save(self.repair)
 
-        with patch.object(InvoiceTrackingService, 'create_invoice_from_repairs') as mock_create:
-            created_invoice = Invoice.objects.create(
-                tenant=self.tenant,
-                customer=self.customer,
-                invoice_number='OK-001',
-                status='DRAFT',
-                invoice_date='2026-03-19',
-                payment_terms='COD',
-                subtotal=Decimal('50.00'),
-                total=Decimal('50.00'),
-                amount_paid=Decimal('0.00'),
-                discount=Decimal('0.00'),
-                tax_rate=Decimal('0.00'),
-                tax_amount=Decimal('0.00'),
-            )
-            mock_create.return_value = created_invoice
-
-            with patch.object(_inv_svc.InvoiceService, 'generate_invoice', return_value=(b'%PDF', mock_inv_data)):
-                svc = AutoInvoiceService()
-                svc.generate_and_save(self.repair)
-
-            created_invoice.refresh_from_db()
-            self.assertEqual(
-                created_invoice.status, 'SENT',
-                "Invoice must be marked SENT after confirmed email delivery"
-            )
-            self.assertIsNotNone(created_invoice.sent_at)
+        self.assertTrue(result['success'], result.get('error'))
+        created_invoice = Invoice.objects.get(id=result['invoice_id'])
+        self.assertEqual(
+            created_invoice.status, 'SENT',
+            "Invoice must be marked SENT after confirmed email delivery"
+        )
+        self.assertIsNotNone(created_invoice.sent_at)

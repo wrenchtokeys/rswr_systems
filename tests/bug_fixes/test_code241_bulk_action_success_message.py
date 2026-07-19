@@ -64,6 +64,11 @@ class BulkActionSuccessMessageBase(TestCase):
         cls.customer = Customer.objects.create(
             name='MSG Test Fleet', tenant=cls.tenant
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=cls.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         cls.cust_user = User.objects.create_user(
             username='cust241', email='cust241@test.com', password='testpass123'
         )

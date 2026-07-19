@@ -68,6 +68,12 @@ class RepairApproveAtomicityTests(TestCase):
             name='Test Fleet',
             customer_type='FLEET',
         )
+        # Explicitly require approval — shop-created work auto-approves by default
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=self.customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
 
         # Customer portal user
         self.customer_user_django = User.objects.create_user(
@@ -279,6 +285,11 @@ class RepairApproveAtomicityTests(TestCase):
         other_customer = Customer.objects.create(
             tenant=other_tenant,
             name='Other Fleet',
+        )
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=other_customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
         )
         other_tech_user = User.objects.create_user(
             username='othertech223',

@@ -15,7 +15,7 @@ import logging
 import uuid
 
 from apps.technician_portal.models import Technician, Repair, TechnicianNotification
-from apps.customer_portal.models import RepairApproval, CustomerUser, CustomerRepairPreference
+from apps.customer_portal.models import RepairApproval, CustomerUser
 from core.models import Customer
 from apps.technician_portal.forms import RepairForm
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
@@ -398,14 +398,13 @@ def create_repair(request):
                     repair = form.save(commit=False)
                     repair.technician = form.cleaned_data.get('technician')
                     repair.tenant = getattr(request, 'tenant', None)
-                    
-                    # Auto-approve for retail/walk-in customers
-                    if repair.customer and repair.customer.customer_type in ('RETAIL', 'WALK_IN'):
-                        repair.queue_status = 'APPROVED'
-                        messages.info(request, "Repair auto-approved (retail customer).")
-                    
+
+                    # Repair.save() auto-approves shop-created work unless the
+                    # customer explicitly requires approval
                     repair.save()
                     form.save_m2m()
+                    if repair.queue_status == 'PENDING':
+                        messages.warning(request, "This customer requires approval for repairs. Repair submitted for customer approval.")
                     messages.success(request, f"Repair has been created and assigned to {repair.technician.user.get_full_name()}")
                 else:
                     messages.error(request, "As an admin, you must select a technician to assign the repair to.")
@@ -425,27 +424,12 @@ def create_repair(request):
                     repair.technician = _scoped_tech
                     repair.tenant = getattr(request, 'tenant', None)
 
-                    # Check customer type and preferences for approval
-                    # Retail/Walk-in customers auto-approve (no fleet manager to approve)
-                    if repair.customer and repair.customer.customer_type in ('RETAIL', 'WALK_IN'):
-                        repair.queue_status = 'APPROVED'
-                        messages.info(request, "Repair auto-approved (retail customer).")
-                    else:
-                        # Fleet customers - check preferences
-                        try:
-                            preferences = repair.customer.repair_preferences
-                            if preferences.should_auto_approve(repair.technician, repair.repair_date.date() if repair.repair_date else None):
-                                repair.queue_status = 'APPROVED'
-                                messages.info(request, "Repair auto-approved based on customer preferences.")
-                            else:
-                                repair.queue_status = 'PENDING'
-                                messages.warning(request, "This customer requires approval for field repairs. Repair submitted for customer approval.")
-                        except CustomerRepairPreference.DoesNotExist:
-                            repair.queue_status = 'PENDING'
-                            messages.warning(request, "Repair submitted for customer approval (customer preferences not configured).")
-
+                    # Repair.save() auto-approves shop-created work unless the
+                    # customer explicitly requires approval
                     repair.save()
                     form.save_m2m()
+                    if repair.queue_status == 'PENDING':
+                        messages.warning(request, "This customer requires approval for field repairs. Repair submitted for customer approval.")
 
                     # If no technician was explicitly set (shouldn't happen here
                     # since we default to request.user.technician, but safety net)

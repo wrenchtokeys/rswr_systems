@@ -58,7 +58,14 @@ def _make_tenant(name="Bulk Test Shop"):
 
 
 def _make_customer(tenant, name="Fleet Co"):
-    return Customer.objects.create(name=name, tenant=tenant)
+    customer = Customer.objects.create(name=name, tenant=tenant)
+    # Explicitly require approval — shop-created work auto-approves by default
+    from apps.customer_portal.models import CustomerRepairPreference
+    CustomerRepairPreference.objects.create(
+        customer=customer,
+        field_repair_approval_mode='REQUIRE_APPROVAL',
+    )
+    return customer
 
 
 def _make_customer_user(user, customer):

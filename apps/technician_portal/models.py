@@ -541,6 +541,36 @@ class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
         return " — ".join(parts)
 
 
+def resolve_initial_shop_status(service):
+    """Decide the initial queue_status for shop-created work (entered PENDING).
+
+    Shop-created repairs/replacements auto-approve — the shop is entering its
+    own work, so there's nobody else to ask. The exception is a customer whose
+    CustomerRepairPreference is explicitly set to REQUIRE_APPROVAL (or an
+    over-threshold UNIT_THRESHOLD): their work stays PENDING for the
+    Approve/Deny flow. That preference is the customer-portal "I want to
+    approve work before it starts" control — today the shop approves on the
+    customer's behalf; once customers are invited to the portal they approve
+    there themselves. Customer-portal requests enter as REQUESTED and never
+    pass through this gate.
+    """
+    import datetime as _dt
+    from apps.customer_portal.models import CustomerRepairPreference
+
+    visit_date = service.service_date
+    if isinstance(visit_date, _dt.datetime):
+        visit_date = visit_date.date()
+
+    try:
+        preferences = service.customer.repair_preferences
+        if preferences.should_auto_approve(service.technician, visit_date):
+            return 'APPROVED'
+        return 'PENDING'
+    except CustomerRepairPreference.DoesNotExist:
+        # No preferences set — auto-approve by default
+        return 'APPROVED'
+
+
 # =============================================================================
 # REPAIR MODEL
 # =============================================================================
@@ -788,17 +818,10 @@ class Repair(GlassService):
             # Check if this is a new repair (not an update)
             is_new_repair = self.pk is None
 
-            # Auto-approval logic for field-discovered repairs
+            # Shop-created work auto-approves unless the customer explicitly
+            # requires approval (see resolve_initial_shop_status)
             if is_new_repair and self.queue_status == 'PENDING':
-                # Check customer preferences for auto-approval
-                from apps.customer_portal.models import CustomerRepairPreference
-                try:
-                    preferences = self.customer.repair_preferences
-                    if preferences.should_auto_approve(self.technician, self.service_date.date() if self.service_date else None):
-                        self.queue_status = 'APPROVED'
-                except CustomerRepairPreference.DoesNotExist:
-                    # No preferences set - default to requiring approval
-                    pass
+                self.queue_status = resolve_initial_shop_status(self)
 
             # Get or create the unit repair count.
             # IMPORTANT: include tenant in the lookup so the created row is
@@ -1559,7 +1582,13 @@ class Replacement(GlassService):
         max_digits=10, decimal_places=2, default=Decimal('0.00'),
         help_text="Tax amount in dollars"
     )
-    
+
+    # Invoice skip flag — for replacements that were paid outside the system
+    skip_invoicing = models.BooleanField(
+        default=False,
+        help_text="Skip this replacement when listing uninvoiced work (e.g., already paid outside system)"
+    )
+
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
     # =========================================================================
@@ -1586,15 +1615,10 @@ class Replacement(GlassService):
         if self.customer:
             is_new = self.pk is None
             
-            # Auto-approval logic
+            # Shop-created work auto-approves unless the customer explicitly
+            # requires approval (see resolve_initial_shop_status)
             if is_new and self.queue_status == 'PENDING':
-                from apps.customer_portal.models import CustomerRepairPreference
-                try:
-                    preferences = self.customer.repair_preferences
-                    if preferences.should_auto_approve(self.technician, self.service_date.date() if self.service_date else None):
-                        self.queue_status = 'APPROVED'
-                except CustomerRepairPreference.DoesNotExist:
-                    pass
+                self.queue_status = resolve_initial_shop_status(self)
             
             # --- REPLACEMENT PRICING ---
             # Replacements use parts + labor + ADAS, not progressive repair pricing
@@ -1662,6 +1686,16 @@ class Replacement(GlassService):
             'discount_description': '',
             'savings': Decimal('0.00'),
         }
+
+    def get_invoice_description(self):
+        """Generate a descriptive line item string for invoices.
+
+        Examples:
+            'Windshield Replacement - Unit #100'
+            'Rear Window Replacement - Unit #N/A'
+        """
+        position = self.get_glass_position_display() if self.glass_position else 'Glass'
+        return f"{position} Replacement - Unit #{self.unit_number or 'N/A'}"
 
     class Meta:
         ordering = ['-service_date']

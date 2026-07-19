@@ -60,6 +60,11 @@ class TestRepairStatsUnfilteredAfterFix(TestCase):
         cls.customer = Customer.objects.create(
             name='Stats Customer', tenant=cls.tenant,
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=cls.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         cls.customer_user = CustomerUser.objects.create(
             user=cls.user, customer=cls.customer,
         )

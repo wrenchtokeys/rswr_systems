@@ -67,16 +67,25 @@ class AutoInvoiceService:
     
     def generate_and_save(self, repair):
         """
-        Generate an invoice for a single repair and save to S3.
-        
+        Generate an invoice for a single completed service (Repair or
+        Replacement), render its PDF, and save to S3.
+
+        Record-first: the tracked Invoice row is created before the PDF, so a
+        PDF/S3 failure leaves a DRAFT invoice (renderable on demand from the
+        record) instead of an untracked PDF. This also fixes the old
+        Replacement bug where a Replacement PK was passed as a repair_id and
+        could match an unrelated Repair with the same integer PK.
+
         Args:
-            repair: The Repair instance to invoice
-            
+            repair: The Repair or Replacement instance to invoice
+
         Returns:
             dict: Result with success status, s3_key, and any errors
         """
         from apps.billing.services.invoice_service import InvoiceService
-        
+
+        service = repair
+
         result = {
             'success': False,
             's3_key': None,
@@ -84,130 +93,108 @@ class AutoInvoiceService:
             'error': None,
             'emailed': False,
         }
-        
+
         try:
-            # Generate PDF — pass tenant so InvoiceService loads the correct
-            # BillingConfig (company name, address, payment terms).  Without
-            # tenant, InvoiceService() generates PDFs with blank company info.
-            # (CODE-092: mirrors reminder_service and clawdbot fixes)
-            repair_tenant = getattr(repair, 'tenant', None) or getattr(
-                getattr(repair, 'customer', None), 'tenant', None
+            service_tenant = getattr(service, 'tenant', None) or getattr(
+                getattr(service, 'customer', None), 'tenant', None
             )
-            invoice_service = InvoiceService(tenant=repair_tenant)
-            pdf_bytes, invoice_data = invoice_service.generate_invoice(
-                customer_id=repair.customer.id,
-                repair_ids=[repair.id]
-            )
-            
-            if not invoice_data.line_items:
-                result['error'] = "No line items generated"
-                return result
-            
-            result['invoice_number'] = invoice_data.invoice_number
-            
-            # Save to S3
-            s3_key = self._save_to_s3(
-                pdf_bytes=pdf_bytes,
-                customer_id=repair.customer.id,
-                invoice_number=invoice_data.invoice_number
-            )
-            
-            if s3_key:
-                result['success'] = True
-                result['s3_key'] = s3_key
-                
-                # Create tracked Invoice record (prevents double-billing).
-                # CODE-094 fixes:
-                #   1. Pass tenant= so InvoiceTrackingService loads the correct
-                #      BillingConfig (payment terms).  Without tenant, all
-                #      auto-invoices defaulted to COD regardless of shop settings.
-                #   2. Create as DRAFT first; only mark SENT after confirming email
-                #      delivery.  Previously auto_send=True marked SENT before the
-                #      email was even attempted — violating the invariant in AGENTS.md
-                #      ("Don't mark invoices SENT before confirming email delivery").
-                invoice_record = None
-                try:
-                    from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-                    tracking_service = InvoiceTrackingService(tenant=repair_tenant)
 
-                    # Resolve customer-specific payment terms override.
-                    # CustomerRepairPreference.payment_terms was added (migration 0013)
-                    # but auto_invoice_service was not updated to read it — customer
-                    # overrides were silently ignored.  (CODE-219)
-                    _cust_payment_terms = None
-                    try:
-                        _cprefs = repair.customer.repair_preferences
-                        if _cprefs.payment_terms:
-                            _cust_payment_terms = _cprefs.payment_terms
-                    except Exception:
-                        pass  # No preferences — use shop default via tracking_service
+            # Create tracked Invoice record FIRST (prevents double-billing).
+            # CODE-094: pass tenant= so InvoiceTrackingService loads the correct
+            # BillingConfig (payment terms); create as DRAFT and only mark SENT
+            # after confirmed email delivery.
+            from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
+            tracking_service = InvoiceTrackingService(tenant=service_tenant)
 
-                    invoice_record = tracking_service.create_invoice_from_repairs(
-                        customer=repair.customer,
-                        repairs=[repair],
-                        invoice_number=invoice_data.invoice_number,
-                        s3_key=s3_key,
-                        auto_send=False,  # Start as DRAFT; mark SENT after email confirms
-                        payment_terms=_cust_payment_terms,
+            # Resolve customer-specific payment terms override (CODE-219).
+            _cust_payment_terms = None
+            try:
+                _cprefs = service.customer.repair_preferences
+                if _cprefs.payment_terms:
+                    _cust_payment_terms = _cprefs.payment_terms
+            except Exception:
+                pass  # No preferences — use shop default via tracking_service
+
+            invoice_record = tracking_service.create_invoice_from_services(
+                customer=service.customer,
+                services=[service],
+                auto_send=False,  # Start as DRAFT; mark SENT after email confirms
+                payment_terms=_cust_payment_terms,
+            )
+            result['invoice_id'] = invoice_record.id
+            result['invoice_number'] = invoice_record.invoice_number
+            result['success'] = True
+            logger.info(f"Created invoice record #{invoice_record.id}")
+
+            # Render PDF from the record — pass tenant so InvoiceService loads
+            # the correct BillingConfig (company name, address). (CODE-092)
+            pdf_saved = False
+            try:
+                invoice_service = InvoiceService(tenant=service_tenant)
+                pdf_bytes, invoice_data = invoice_service.generate_invoice_from_record(invoice_record)
+
+                s3_key = self._save_to_s3(
+                    pdf_bytes=pdf_bytes,
+                    customer_id=service.customer.id,
+                    invoice_number=invoice_record.invoice_number
+                )
+                if s3_key:
+                    invoice_record.s3_key = s3_key
+                    invoice_record.save(update_fields=['s3_key'])
+                    result['s3_key'] = s3_key
+                    pdf_saved = True
+                    logger.info(
+                        f"Auto-generated invoice {invoice_record.invoice_number} "
+                        f"for {type(service).__name__.lower()} #{service.id} -> s3://{self.s3_bucket}/{s3_key}"
                     )
-                    result['invoice_id'] = invoice_record.id
-                    logger.info(f"Created invoice record #{invoice_record.id}")
-                except Exception as e:
-                    # A missing Invoice row means the repair still counts as
-                    # "uninvoiced": if we email the customer anyway, they pay
-                    # an invoice the system has no record of, and the next
-                    # batch run bills the repair AGAIN. Surface it loudly and
-                    # (below) do NOT email. (C6)
+                else:
                     logger.error(
-                        f"Could not create invoice record for repair #{repair.id} "
-                        f"(invoice {invoice_data.invoice_number}): {e} — "
-                        f"invoice email suppressed to avoid double-billing"
+                        f"Failed to save PDF to S3 for invoice #{invoice_record.id} — "
+                        f"DRAFT record kept; PDF renders on demand from the record"
                     )
-                    result['error'] = f"Invoice record creation failed: {e}"
-                
-                # Generate Stripe payment link if Stripe is configured
-                if invoice_record:
-                    try:
-                        stripe_result = self._create_payment_link(invoice_record)
-                        if stripe_result and stripe_result.get('success'):
-                            result['payment_link'] = stripe_result['payment_link']
-                            logger.info(f"Stripe payment link created for {invoice_data.invoice_number}")
-                    except Exception as e:
-                        logger.warning(f"Could not create Stripe payment link: {e}")
-                
-                logger.info(f"Auto-generated invoice {invoice_data.invoice_number} for repair #{repair.id} -> s3://{self.s3_bucket}/{s3_key}")
-                
-                # Check if we should email; mark invoice SENT only on success.
-                # NEVER email when the Invoice record failed to create (C6):
-                # the customer would pay an invoice the system can't track,
-                # and the repair would be billed again on the next batch run.
-                try:
-                    prefs = repair.customer.repair_preferences
-                    if prefs.auto_email_invoices and invoice_record:
-                        email_result = self._send_invoice_email(
-                            repair=repair,
-                            pdf_bytes=pdf_bytes,
-                            invoice_data=invoice_data,
-                            prefs=prefs
-                        )
-                        result['emailed'] = email_result
+            except Exception as e:
+                logger.error(
+                    f"PDF generation failed for invoice #{invoice_record.id}: {e} — "
+                    f"DRAFT record kept; PDF renders on demand from the record"
+                )
 
-                        # Mark SENT only after confirmed delivery (AGENTS.md gotcha)
-                        if email_result and invoice_record:
-                            from django.utils import timezone as _tz
-                            invoice_record.status = 'SENT'
-                            invoice_record.sent_at = _tz.now()
-                            invoice_record.save(update_fields=['status', 'sent_at'])
-                            logger.info(f"Invoice #{invoice_record.id} marked SENT after email delivery confirmed")
-                except Exception as e:
-                    logger.warning(f"Could not check/send email for invoice: {e}")
-            else:
-                result['error'] = "Failed to save to S3"
-                
+            # Generate Stripe payment link if Stripe is configured
+            try:
+                stripe_result = self._create_payment_link(invoice_record)
+                if stripe_result and stripe_result.get('success'):
+                    result['payment_link'] = stripe_result['payment_link']
+                    logger.info(f"Stripe payment link created for {invoice_record.invoice_number}")
+            except Exception as e:
+                logger.warning(f"Could not create Stripe payment link: {e}")
+
+            # Check if we should email; mark invoice SENT only on success.
+            # Skip emailing when the PDF failed — the email service would
+            # re-render from the record anyway, but a hard PDF failure above
+            # means it would fail here too.
+            try:
+                prefs = service.customer.repair_preferences
+                if prefs.auto_email_invoices and pdf_saved:
+                    email_result = self._send_invoice_email(
+                        service=service,
+                        invoice_record=invoice_record,
+                        prefs=prefs,
+                    )
+                    result['emailed'] = email_result
+
+                    # Mark SENT only after confirmed delivery (AGENTS.md gotcha)
+                    if email_result:
+                        from django.utils import timezone as _tz
+                        invoice_record.status = 'SENT'
+                        invoice_record.sent_at = _tz.now()
+                        invoice_record.save(update_fields=['status', 'sent_at'])
+                        logger.info(f"Invoice #{invoice_record.id} marked SENT after email delivery confirmed")
+            except Exception as e:
+                logger.warning(f"Could not check/send email for invoice: {e}")
+
         except Exception as e:
             result['error'] = str(e)
-            logger.error(f"Error generating auto-invoice for repair #{repair.id}: {e}")
-        
+            logger.error(f"Error generating auto-invoice for {type(service).__name__.lower()} #{service.id}: {e}")
+
         return result
     
     def _create_payment_link(self, invoice):
@@ -300,44 +287,43 @@ class AutoInvoiceService:
             logger.error(f"Local save error: {e}")
             return None
     
-    def _send_invoice_email(self, repair, pdf_bytes, invoice_data, prefs):
+    def _send_invoice_email(self, service, invoice_record, prefs):
         """
-        Send invoice email to customer.
-        
+        Send invoice email to customer, rendered from the tracked record.
+
         Args:
-            repair: The Repair instance
-            pdf_bytes: The PDF content
-            invoice_data: InvoiceData dataclass
+            service: The Repair or Replacement instance
+            invoice_record: The tracked Invoice model instance
             prefs: CustomerRepairPreference instance
-            
+
         Returns:
             bool: True if email sent successfully
         """
         from apps.billing.services.invoice_email_service import InvoiceEmailService
-        
+
         # Use billing_email if set, otherwise fall back to customer email
-        recipient = prefs.billing_email or repair.customer.email
-        
+        recipient = prefs.billing_email or service.customer.email
+
         if not recipient:
-            logger.warning(f"No email address for customer {repair.customer.id}")
+            logger.warning(f"No email address for customer {service.customer.id}")
             return False
-        
+
         try:
-            email_service = InvoiceEmailService(tenant=getattr(repair, 'tenant', None))
+            email_service = InvoiceEmailService(tenant=getattr(service, 'tenant', None))
             success, message = email_service.send_invoice_email(
-                customer_id=repair.customer.id,
+                customer_id=service.customer.id,
                 recipient_email=recipient,
-                repair_ids=[repair.id],
+                invoice=invoice_record,
                 include_photos=prefs.include_photos_in_invoice
             )
-            
+
             if success:
-                logger.info(f"Invoice emailed to {recipient} for repair #{repair.id}")
+                logger.info(f"Invoice emailed to {recipient} for invoice #{invoice_record.id}")
             else:
                 logger.warning(f"Failed to email invoice: {message}")
-            
+
             return success
-            
+
         except Exception as e:
             logger.error(f"Error emailing invoice: {e}")
             return False

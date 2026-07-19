@@ -121,7 +121,7 @@
             </div>
             <div>
                 <h3 class="text-sm font-semibold text-amber-900">Uninvoiced Completed Work</h3>
-                <p class="text-xs text-amber-700">{{ uninvoiced_customers|length }} customer{{ uninvoiced_customers|length|pluralize }} with completed repairs ready to invoice</p>
+                <p class="text-xs text-amber-700">{{ uninvoiced_customers|length }} customer{{ uninvoiced_customers|length|pluralize }} with completed work ready to invoice</p>
             </div>
         </div>
     </div>
@@ -135,7 +135,7 @@
                     </div>
                     <div class="min-w-0">
                         <span class="text-sm font-medium text-gray-900 capitalize truncate block">{{ item.customer.name }}</span>
-                        <span class="text-xs text-gray-500">{{ item.count }} repair{{ item.count|pluralize }} · ${{ item.total|floatformat:2 }}</span>
+                        <span class="text-xs text-gray-500">{{ item.count }} job{{ item.count|pluralize }} · ${{ item.total|floatformat:2 }}</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -397,7 +397,7 @@
             <!-- Empty state -->
             <div id="modal-empty" class="hidden px-6 py-8 text-center">
                 <i class="fas fa-check-circle text-3xl text-green-400"></i>
-                <p class="text-sm text-gray-600 mt-2">No uninvoiced repairs for this customer.</p>
+                <p class="text-sm text-gray-600 mt-2">No uninvoiced work for this customer.</p>
             </div>
 
             <!-- Footer -->
@@ -538,7 +538,7 @@ function renderModalRepairs() {
     list.innerHTML = modalRepairs.map(r => `
         <label class="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 cursor-pointer">
             <input type="checkbox" class="modal-repair-cb rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                data-id="${r.id}" data-cost="${r.cost}" checked onchange="updateModalSelection()">
+                data-id="${r.id}" data-type="${r.service_type || 'repair'}" data-cost="${r.cost}" checked onchange="updateModalSelection()">
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium text-gray-900">${r.unit_number}</div>
                 <div class="text-xs text-gray-500">${r.damage_type} — ${new Date(r.service_date).toLocaleDateString()}</div>
@@ -568,24 +568,28 @@ function updateModalSelection() {
     selectAll.indeterminate = checked.length > 0 && checked.length < cbs.length;
 }
 
-function getSelectedRepairIds() {
-    return Array.from(document.querySelectorAll('.modal-repair-cb:checked')).map(cb => parseInt(cb.dataset.id));
+function getSelectedServiceIds() {
+    const checked = Array.from(document.querySelectorAll('.modal-repair-cb:checked'));
+    return {
+        repair_ids: checked.filter(cb => cb.dataset.type !== 'replacement').map(cb => parseInt(cb.dataset.id)),
+        replacement_ids: checked.filter(cb => cb.dataset.type === 'replacement').map(cb => parseInt(cb.dataset.id)),
+    };
 }
 
 function createInvoiceDraft() {
-    const ids = getSelectedRepairIds();
-    if (!ids.length) { alert('Select at least one repair'); return; }
+    const ids = getSelectedServiceIds();
+    if (!ids.repair_ids.length && !ids.replacement_ids.length) { alert('Select at least one item'); return; }
     submitInvoice(ids, false);
 }
 
 function createInvoiceAndSend() {
-    const ids = getSelectedRepairIds();
-    if (!ids.length) { alert('Select at least one repair'); return; }
+    const ids = getSelectedServiceIds();
+    if (!ids.repair_ids.length && !ids.replacement_ids.length) { alert('Select at least one item'); return; }
     // First create as draft, then show send confirmation modal
     submitInvoiceForSend(ids);
 }
 
-function submitInvoice(repairIds, sendEmail) {
+function submitInvoice(serviceIds, sendEmail) {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
     const paymentTerms = document.getElementById('modal-payment-terms')?.value || null;
@@ -593,7 +597,7 @@ function submitInvoice(repairIds, sendEmail) {
     fetch(`/api/billing/invoices/create/${modalCustomerId}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({ repair_ids: repairIds, auto_email: sendEmail, payment_terms: paymentTerms }),
+        body: JSON.stringify({ repair_ids: serviceIds.repair_ids, replacement_ids: serviceIds.replacement_ids, auto_email: sendEmail, payment_terms: paymentTerms }),
     })
     .then(r => r.json())
     .then(data => {
@@ -748,7 +752,7 @@ function deleteSelectedInvoices() {
 
 // === Dismiss Uninvoiced ===
 function dismissUninvoiced(customerId, customerName) {
-    if (!confirm(`Dismiss all uninvoiced repairs for ${customerName}?\n\nUse this if they were already paid outside the system. This won't delete the repairs, just hide them from invoicing.`)) {
+    if (!confirm(`Dismiss all uninvoiced work for ${customerName}?\n\nUse this if they were already paid outside the system. This won't delete anything, just hide it from invoicing.`)) {
         return;
     }
     
@@ -869,10 +873,10 @@ function confirmSendEmail() {
 }
 
 // Modified: Create invoice then open send modal
-function submitInvoiceForSend(repairIds) {
+function submitInvoiceForSend(serviceIds) {
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
-    
+
     // Show loading on button
     const btnSend = document.querySelector('#modal-footer button:last-child');
     const originalText = btnSend.innerHTML;
@@ -884,7 +888,7 @@ function submitInvoiceForSend(repairIds) {
     fetch(`/api/billing/invoices/create/${modalCustomerId}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-        body: JSON.stringify({ repair_ids: repairIds, auto_email: false, payment_terms: paymentTerms }),
+        body: JSON.stringify({ repair_ids: serviceIds.repair_ids, replacement_ids: serviceIds.replacement_ids, auto_email: false, payment_terms: paymentTerms }),
     })
     .then(r => r.json())
     .then(data => {

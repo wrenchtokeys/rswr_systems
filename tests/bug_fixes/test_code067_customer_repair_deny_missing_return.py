@@ -86,6 +86,12 @@ def _make_customer_user(tenant, username="cust_deny_user"):
         tenant=tenant,
         defaults={"email": "fleet@denytest.com"},
     )
+    # Explicitly require approval — shop-created work auto-approves by default
+    from apps.customer_portal.models import CustomerRepairPreference
+    CustomerRepairPreference.objects.get_or_create(
+        customer=customer,
+        defaults={"field_repair_approval_mode": "REQUIRE_APPROVAL"},
+    )
     cu, _ = CustomerUser.objects.get_or_create(
         user=user,
         customer=customer,

@@ -101,9 +101,16 @@ def _make_tech(tenant, suffix):
 
 
 def _make_customer(tenant, name='Fleet Inc'):
-    return Customer.objects.create(
+    customer = Customer.objects.create(
         name=name, tenant=tenant, email=f'{name.lower().replace(" ", "")}@test.com'
     )
+    # Explicitly require approval — shop-created work auto-approves by default
+    from apps.customer_portal.models import CustomerRepairPreference
+    CustomerRepairPreference.objects.create(
+        customer=customer,
+        field_repair_approval_mode='REQUIRE_APPROVAL',
+    )
+    return customer
 
 
 def _make_batch(tenant, customer, technician, count=2, status='APPROVED'):

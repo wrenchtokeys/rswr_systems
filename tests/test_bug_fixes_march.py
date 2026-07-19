@@ -57,8 +57,23 @@ class RepairFormTenantIsolationTests(TestCase):
         self.user_b, self.tenant_b = _make_tenant('Shop B', 'owner_b')
 
         self.cust_a = Customer.objects.create(tenant=self.tenant_a, name='Customer A')
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.cust_a,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.cust_b = Customer.objects.create(tenant=self.tenant_b, name='Customer B')
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.cust_b,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.cust_a2 = Customer.objects.create(tenant=self.tenant_a, name='Customer A2')
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.cust_a2,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
         self.tech_a = Technician.objects.create(
             tenant=self.tenant_a, user=self.user_a,
@@ -234,6 +249,11 @@ class TaxServiceTenantIsolationTests(TestCase):
         customer = Customer.objects.create(
             tenant=self.tenant_a, name='Exempt Co', tax_exempt=True,
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         result = svc.calculate_tax(subtotal=Decimal('100.00'), customer=customer)
         self.assertTrue(result['exempt'])
         self.assertEqual(result['amount'], Decimal('0.00'))
@@ -400,6 +420,11 @@ class RewardRedemptionTenantIsolationTests(TestCase):
         self.customer_b = Customer.objects.create(
             name='B Corp', tenant=self.tenant_b, email='corp@b.com',
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer_b,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.customer_user_b = CustomerUser.objects.create(
             user=cust_user_b, customer=self.customer_b,
         )
@@ -442,6 +467,11 @@ class RewardRedemptionTenantIsolationTests(TestCase):
         cust_user_a = User.objects.create_user('cust_a2', 'cust_a2@a.com', 'pass')
         customer_a = Customer.objects.create(
             name='A Corp', tenant=self.tenant_a, email='corp@a.com',
+        )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=customer_a,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
         )
         cu_a = CustomerUser.objects.create(user=cust_user_a, customer=customer_a)
         reward_a = Reward.objects.create(customer_user=cu_a, points=200)
@@ -527,6 +557,11 @@ class UnitRepairCountTenantScopeTests(TestCase):
             tenant=self.tenant_a, name='Fleet A', email='fleet@a.com',
             customer_type='FLEET',
         )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer_a,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
     def test_repair_save_creates_unit_repair_count_with_tenant(self):
         """Saving a COMPLETED repair should create UnitRepairCount with correct tenant, not NULL."""
@@ -582,6 +617,11 @@ class UnitRepairCountTenantScopeTests(TestCase):
         customer_b = Customer.objects.create(
             tenant=self.tenant_b, name='Fleet B', email='fleet@b.com',
             customer_type='FLEET',
+        )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=customer_b,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
         )
         tech_user_b = User.objects.create_user('tech_beta2', 'tb2@test.com', 'pass')
         technician_b = Technician.objects.create(
@@ -642,7 +682,17 @@ class ProfileCreationRedirectLoopTests(TestCase):
         _, self.tenant_b = _make_tenant('Loop Shop B', 'loop_owner_b')
 
         self.cust_a = Customer.objects.create(tenant=self.tenant_a, name='Fleet A')
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.cust_a,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.cust_b = Customer.objects.create(tenant=self.tenant_b, name='Fleet B')
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.cust_b,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
         # User already linked to Shop A
         self.user_cross = User.objects.create_user('cross_shop_user', 'cross@test.com', 'pass')
@@ -780,6 +830,11 @@ class BatchRepairDenyNotificationTests(TestCase):
         )
 
         self.customer = Customer.objects.create(name='Batch Deny Co', tenant=self.tenant)
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
         self.cu_user = User.objects.create_user('batchdenycu', 'cu@test.com', 'testpass123')
         self.customer_user = CustomerUser.objects.create(
@@ -889,6 +944,11 @@ class EmailNormalizationTests(TestCase):
         from core.models import Customer
         self.customer = Customer.objects.create(
             tenant=self.tenant, name='Email Test Customer',
+        )
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
         )
         from apps.customer_portal.models import CustomerUser
         self.customer_user = CustomerUser.objects.create(

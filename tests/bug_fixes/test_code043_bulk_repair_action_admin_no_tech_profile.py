@@ -122,6 +122,11 @@ class BulkRepairActionAdminNoTechProfileTests(TestCase):
         plan = _make_plan()
         self.tenant, self.owner_user = _make_tenant('BulkShop', plan)
         self.customer = Customer.objects.create(name='BulkCo', tenant=self.tenant)
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
     def _call_view(self, user, post_data):
         from apps.technician_portal.views.repairs import bulk_repair_action
@@ -201,6 +206,11 @@ class BulkRepairActionTechnicianPermissionTests(TestCase):
         self.tenant, _ = _make_tenant('BulkShopB', plan)
         self.plain_user, self.plain_tech = _make_technician('plain_tech', self.tenant, is_manager=False)
         self.customer = Customer.objects.create(name='BulkCoB', tenant=self.tenant)
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
     def test_plain_technician_blocked(self):
         """Non-manager technician should be blocked from bulk actions."""
@@ -246,7 +256,17 @@ class BulkRepairActionCrossTenantTests(TestCase):
         self.tenant_a, self.owner_a = _make_tenant('ShopA_bulk', plan)
         self.tenant_b, _ = _make_tenant('ShopB_bulk', plan)
         self.customer_a = Customer.objects.create(name='CustA', tenant=self.tenant_a)
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer_a,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.customer_b = Customer.objects.create(name='CustB', tenant=self.tenant_b)
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer_b,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
 
     def test_cannot_approve_other_tenants_repairs(self):
         """Bulk approve for tenant A must not change tenant B's repairs."""

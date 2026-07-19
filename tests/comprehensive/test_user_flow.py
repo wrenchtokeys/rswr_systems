@@ -57,6 +57,13 @@ class TestDataFactory:
             tenant=tenant, name=name, email=email,
             customer_type='FLEET'
         )
+        # Explicitly require approval — shop-created work auto-approves by
+        # default, and these flows exercise the PENDING approve/deny path
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
         user = User.objects.create_user(username=username, email=email, password='TestPass123!')
         cu = CustomerUser.objects.create(user=user, customer=customer, is_primary_contact=True)
         return user, customer, cu

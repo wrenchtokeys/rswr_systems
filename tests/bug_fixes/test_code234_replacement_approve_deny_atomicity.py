@@ -52,6 +52,13 @@ class ReplacementApproveAtomicityTests(TestCase):
         self.customer = Customer.objects.create(
             name='Test Customer 234', tenant=self.tenant,
         )
+        # Explicitly require approval — shop-created work auto-approves by
+        # default, and these tests exercise the PENDING approve/deny flow
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=self.customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
         self.customer_user = CustomerUser.objects.create(
             user=self.cust_user, customer=self.customer, is_primary_contact=True,
         )
@@ -214,6 +221,11 @@ class ReplacementApproveAtomicityTests(TestCase):
             name='Other Shop', slug='other-shop-234', is_active=True, owner=other_owner,
         )
         other_customer = Customer.objects.create(name='Other Cust', tenant=other_tenant)
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=other_customer,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
         other_tech_user = User.objects.create_user(
             username='other_tech234', email='othertech234@example.com', password='pass',
         )

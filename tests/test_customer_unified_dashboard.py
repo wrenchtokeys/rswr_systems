@@ -63,6 +63,11 @@ class UnifiedDashboardTestCase(TestCase):
             user=self.owner, tenant=self.tenant, is_active=True, is_manager=True,
         )
         self.customer = Customer.objects.create(name='Fleet Co', tenant=self.tenant)
+        from apps.customer_portal.models import CustomerRepairPreference as _CRP
+        _CRP.objects.get_or_create(
+            customer=self.customer,
+            defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
+        )
         self.cust_user = User.objects.create_user(
             'dash_contact', 'dash@fleetco.com', 'testpass123',
             first_name='Pat', last_name='Contact',

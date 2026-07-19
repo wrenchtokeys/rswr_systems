@@ -63,6 +63,12 @@ class CustomerDashboardBatchPendingN1Test(TestCase):
             tenant=self.tenant_a,
             name='Fleet Alpha Code168',
         )
+        # Explicitly require approval — shop-created work auto-approves by default
+        from apps.customer_portal.models import CustomerRepairPreference
+        CustomerRepairPreference.objects.create(
+            customer=self.customer_a,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
+        )
         # Customer portal user
         self.cu_user_a = User.objects.create_user(
             username='cu_code168a', email='cu168a@test.com', password='pass'
@@ -97,6 +103,10 @@ class CustomerDashboardBatchPendingN1Test(TestCase):
         self.customer_b = Customer.objects.create(
             tenant=self.tenant_b,
             name='Fleet Beta Code168',
+        )
+        CustomerRepairPreference.objects.create(
+            customer=self.customer_b,
+            field_repair_approval_mode='REQUIRE_APPROVAL',
         )
 
         self.client = Client()

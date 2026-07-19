@@ -466,13 +466,18 @@ Calculation:
 
 **Three Options**:
 
-1. **AUTO_APPROVE**: All field repairs auto-approved
+1. **AUTO_APPROVE** (default): All field repairs auto-approved
    - Use for: Trusted customers, emergency services
    - Result: Tech can fix what they find immediately
+   - This is the default for all customers — work your shop enters is
+     approved automatically. No preference record needed.
 
 2. **REQUIRE_APPROVAL**: Customer must approve every field repair
    - Use for: Cost-conscious customers, strict budget control
    - Result: Customer sees PENDING repairs on dashboard
+   - This is the setting to use when a customer wants to approve work
+     themselves (today the shop approves on their behalf from the repair
+     page; once customers are invited to the portal they approve there)
 
 3. **UNIT_THRESHOLD**: Auto-approve up to X units per visit
    - Use for: Flexible control, predictable costs
@@ -691,15 +696,17 @@ python manage.py setup_groups
 5. Verify manager can see override section in repair forms
 ```
 
-### Task 3: Give Customer Auto-Approval
+### Task 3: Make a Customer Require Approval
 
 ```
+Auto-approval is the default — no setup needed. To make a customer
+approve work before it starts:
 1. Customer Portal  Customer Repair Preferences
 2. Add or edit preference
 3. Select customer
-4. Mode: AUTO_APPROVE
+4. Mode: REQUIRE_APPROVAL
 5. Save
-6. Test: Tech creates field repair  should be APPROVED immediately
+6. Test: Tech creates field repair  should land PENDING with Approve/Deny
 ```
 
 ### Task 4: Audit Manager Overrides

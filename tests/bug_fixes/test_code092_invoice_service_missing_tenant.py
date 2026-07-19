@@ -131,18 +131,30 @@ class AutoInvoiceServiceTenantTest(TestCase):
             def __init__(self_inner, tenant=None):
                 used_tenants.append(tenant)
 
-            def generate_invoice(self_inner, **kwargs):
+            def generate_invoice_from_record(self_inner, invoice, **kwargs):
                 invoice_data = MagicMock()
                 invoice_data.line_items = ['item']
                 invoice_data.invoice_number = 'INV-001'
                 return (b'pdf', invoice_data)
 
+        # Record-first flow: the tracked Invoice is created before the PDF,
+        # so stub the tracking service to avoid real DB writes for a
+        # MagicMock repair.
+        fake_invoice = MagicMock()
+        fake_invoice.id = 1
+        fake_invoice.invoice_number = 'INV-001'
+
         with patch('apps.billing.services.invoice_service.InvoiceService', SpyInvoiceService):
-            with patch.object(AutoInvoiceService, '_save_to_s3', return_value='s3/path.pdf'):
-                # Suppress downstream email which also creates InvoiceService
-                with patch.object(AutoInvoiceService, '_send_invoice_email', return_value=True):
-                    svc = AutoInvoiceService()
-                    result = svc.generate_and_save(repair)
+            with patch(
+                'apps.billing.services.invoice_tracking_service.InvoiceTrackingService.create_invoice_from_services',
+                return_value=fake_invoice,
+            ):
+                with patch.object(AutoInvoiceService, '_save_to_s3', return_value='s3/path.pdf'):
+                    with patch.object(AutoInvoiceService, '_create_payment_link', return_value=None):
+                        # Suppress downstream email which also creates InvoiceService
+                        with patch.object(AutoInvoiceService, '_send_invoice_email', return_value=True):
+                            svc = AutoInvoiceService()
+                            result = svc.generate_and_save(repair)
 
         return result, used_tenants
 
