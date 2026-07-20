@@ -85,7 +85,7 @@ class RepairDetailWarrantyPolicySelectRelatedTest(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard 1-Year',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             coverage_description='Labor and materials for one year.',

@@ -1710,11 +1710,10 @@ def owner_settings_view(request):
         .order_by('-created_at')[:10]
     )
 
-    # Warranty policies for the Warranty tab
+    # Warranty policies for the Warranty tab — the two tenant-wide policies
     warranty_policies = (
         WarrantyPolicy.objects
-        .filter(tenant=tenant)
-        .select_related('customer')
+        .filter(tenant=tenant, customer__isnull=True, is_active=True)
         .order_by('applies_to', 'name')
     )
 
@@ -4742,7 +4741,7 @@ def owner_warranty_create(request):
         return redirect('signup')
 
     name = request.POST.get('name', '').strip()
-    applies_to = request.POST.get('applies_to', 'all_repairs')
+    applies_to = request.POST.get('applies_to', 'repairs')
     duration_type = request.POST.get('duration_type', 'custom_days')
     coverage_description = request.POST.get('coverage_description', '').strip()
     is_active = request.POST.get('is_active') == 'on'

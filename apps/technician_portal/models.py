@@ -399,9 +399,51 @@ class GlassService(models.Model):
         max_length=50, blank=True,
         help_text="Insurance authorization/approval number"
     )
-    
+
+    # --- Warranty tracking (shared by repairs and replacements) ---
+    warranty_policy = models.ForeignKey(
+        'WarrantyPolicy', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='%(class)ss',
+        help_text="Warranty policy applied to this service on completion",
+    )
+    warranty_expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Warranty expiration. Null with a policy = lifetime warranty.",
+    )
+    warranty_void = models.BooleanField(default=False)
+    warranty_void_reason = models.CharField(
+        max_length=255, null=True, blank=True,
+        help_text="Reason warranty was voided (e.g. new impact damage)",
+    )
+    is_warranty_claim = models.BooleanField(
+        default=False,
+        help_text="This service is a warranty claim against an original service",
+    )
+
     class Meta:
         abstract = True
+
+    @property
+    def has_warranty(self):
+        """True if this service has an active, non-expired, non-voided warranty."""
+        if not self.warranty_policy_id:
+            return False
+        if self.warranty_void:
+            return False
+        # Lifetime warranty: expires_at is None but policy exists
+        if self.warranty_expires_at is None:
+            return True
+        return self.warranty_expires_at > timezone.now()
+
+    @property
+    def warranty_expiring_soon(self):
+        """True if warranty expires within 30 days (for badge display)."""
+        if not self.has_warranty:
+            return False
+        if self.warranty_expires_at is None:
+            return False  # Lifetime — never expiring
+        days_left = (self.warranty_expires_at - timezone.now()).days
+        return 0 < days_left <= 30
     
     def has_photos(self):
         """Check if this service has any associated photos."""
@@ -427,11 +469,11 @@ class GlassService(models.Model):
 
 class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
     """
-    Per-tenant warranty terms. Shops define their own policies per damage type.
+    Per-tenant warranty terms — one policy for repairs, one for replacements.
 
-    Each tenant can have one policy per damage_type (or an 'all_repairs' default).
-    Only one policy per tenant may be marked is_default=True — the custom save()
-    enforces this by deactivating other defaults.
+    A shop normally has exactly two tenant-wide policies (applies_to='repairs'
+    and applies_to='replacements'). Per-customer overrides are supported via
+    the customer FK but have no UI yet.
     """
     tenant = models.ForeignKey(
         'tenants.Tenant',
@@ -439,20 +481,11 @@ class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
         related_name='warranty_policies',
     )
 
-    # IMPORTANT: These values MUST match Repair.DAMAGE_TYPE_CHOICES exactly
-    # (see DAMAGE_TYPE_CHOICES below) so that WarrantyService can match
-    # repair.damage_type to the correct policy.
     APPLIES_TO_CHOICES = [
-        ('Chip', 'Chip Repair'),
-        ('Crack', 'Crack Repair'),
-        ('Star Break', 'Star Break'),
-        ("Bull's Eye", "Bull's Eye"),
-        ('Combination Break', 'Combination Break'),
-        ('Half-Moon', 'Half-Moon'),
-        ('Other', 'Other'),
-        ('all_repairs', 'All Repairs (default)'),
+        ('repairs', 'Repairs'),
+        ('replacements', 'Replacements'),
     ]
-    applies_to = models.CharField(max_length=30, choices=APPLIES_TO_CHOICES, default='all_repairs')
+    applies_to = models.CharField(max_length=30, choices=APPLIES_TO_CHOICES, default='repairs')
 
     name = models.CharField(max_length=200, help_text="e.g. 'Standard Glass Warranty'")
 
@@ -700,27 +733,9 @@ class Repair(GlassService):
 
     # =========================================================================
     # WARRANTY TRACKING FIELDS
+    # (warranty_policy, warranty_expires_at, warranty_void, warranty_void_reason,
+    #  is_warranty_claim live on GlassService — shared with Replacement)
     # =========================================================================
-    warranty_policy = models.ForeignKey(
-        WarrantyPolicy, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='repairs',
-        help_text="Warranty policy applied to this repair on completion",
-    )
-    warranty_expires_at = models.DateTimeField(
-        null=True, blank=True,
-        help_text="Warranty expiration. Null with a policy = lifetime warranty.",
-    )
-    warranty_void = models.BooleanField(default=False)
-    warranty_void_reason = models.CharField(
-        max_length=255, null=True, blank=True,
-        help_text="Reason warranty was voided (e.g. new impact damage)",
-    )
-
-    # Warranty claim fields
-    is_warranty_claim = models.BooleanField(
-        default=False,
-        help_text="This repair is a warranty claim against an original repair",
-    )
     warranty_original_repair = models.ForeignKey(
         'self', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='warranty_claims',
@@ -732,28 +747,6 @@ class Repair(GlassService):
         default=False,
         help_text="Courtesy repair outside warranty — excluded from loyalty points",
     )
-
-    @property
-    def has_warranty(self):
-        """True if this repair has an active, non-expired, non-voided warranty."""
-        if not self.warranty_policy_id:
-            return False
-        if self.warranty_void:
-            return False
-        # Lifetime warranty: expires_at is None but policy exists
-        if self.warranty_expires_at is None:
-            return True
-        return self.warranty_expires_at > timezone.now()
-
-    @property
-    def warranty_expiring_soon(self):
-        """True if warranty expires within 30 days (for badge display)."""
-        if not self.has_warranty:
-            return False
-        if self.warranty_expires_at is None:
-            return False  # Lifetime — never expiring
-        days_left = (self.warranty_expires_at - timezone.now()).days
-        return 0 < days_left <= 30
 
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
@@ -1671,6 +1664,26 @@ class Replacement(GlassService):
                     pass  # Don't fail replacement save if reset fails
         
         super().save(*args, **kwargs)
+
+        # Auto-assign warranty on first-time COMPLETED transition (mirrors the
+        # Repair post-completion warranty_hook). Silent no-op if the shop has
+        # no active replacement warranty policy.
+        if (
+            self.queue_status == 'COMPLETED'
+            and self.original_status != 'COMPLETED'
+            and not self.warranty_policy_id
+        ):
+            try:
+                from apps.technician_portal.warranty_service import WarrantyService
+                WarrantyService.assign_warranty(self)
+            except ValueError:
+                pass  # No policy configured — warranty is optional
+            except Exception:
+                logger.error(
+                    "Warranty assignment failed for replacement pk=%s",
+                    self.pk, exc_info=True,
+                )
+
         self.original_status = self.queue_status
 
     def has_price_override(self):

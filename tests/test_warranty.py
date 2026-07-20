@@ -81,7 +81,7 @@ class WarrantyPolicyModelTests(TestCase):
         policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard Warranty',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -95,14 +95,14 @@ class WarrantyPolicyModelTests(TestCase):
         p1 = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Policy A',
-            applies_to='all_repairs',
+            applies_to='repairs',
             is_default=True,
             is_active=True,
         )
         p2 = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Policy B',
-            applies_to='Chip',
+            applies_to='replacements',
             is_default=True,
             is_active=True,
         )
@@ -112,11 +112,11 @@ class WarrantyPolicyModelTests(TestCase):
 
     def test_unique_together_tenant_name(self):
         WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='Unique Policy', applies_to='all_repairs',
+            tenant=self.tenant, name='Unique Policy', applies_to='repairs',
         )
         with self.assertRaises(Exception):
             WarrantyPolicy.objects.create(
-                tenant=self.tenant, name='Unique Policy', applies_to='Chip',
+                tenant=self.tenant, name='Unique Policy', applies_to='replacements',
             )
 
     def test_get_expiry_date_custom_days(self):
@@ -147,7 +147,7 @@ class WarrantyServiceAssignTests(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard Warranty',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -181,7 +181,7 @@ class WarrantyServiceAssignTests(TestCase):
         custom_policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Custom Policy',
-            applies_to='Chip',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=180,
             is_active=True,
@@ -211,20 +211,44 @@ class WarrantyServiceAssignTests(TestCase):
         with self.assertRaises(ValueError):
             WarrantyService.assign_warranty(repair)
 
-    def test_assign_warranty_damage_type_specific_preferred(self):
-        """Damage-type-specific policy is preferred over the default."""
-        chip_policy = WarrantyPolicy.objects.create(
+    def test_assign_warranty_replacement_gets_replacement_policy(self):
+        """A completed replacement gets the 'replacements' policy, not the repair one."""
+        from apps.technician_portal.models import GlassService, Replacement
+
+        replacement_policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
-            name='Chip Lifetime',
-            applies_to='Chip',
+            name='Replacement Lifetime',
+            applies_to='replacements',
             duration_type='lifetime',
             is_active=True,
         )
-        repair = self._make_completed_repair(damage_type='Chip')
-        result = WarrantyService.assign_warranty(repair)
-        self.assertEqual(result.warranty_policy.pk, chip_policy.pk)
+        replacement = Replacement(
+            tenant=self.tenant,
+            customer=self.customer,
+            technician=self.tech,
+            unit_number='UNIT-R01',
+            queue_status='COMPLETED',
+        )
+        GlassService.save(replacement)
+        result = WarrantyService.assign_warranty(replacement)
+        self.assertEqual(result.warranty_policy.pk, replacement_policy.pk)
         # Lifetime = no expiry
         self.assertIsNone(result.warranty_expires_at)
+
+    def test_assign_warranty_replacement_no_replacement_policy_raises(self):
+        """Repairs-only policy does NOT cover replacements."""
+        from apps.technician_portal.models import GlassService, Replacement
+
+        replacement = Replacement(
+            tenant=self.tenant,
+            customer=self.customer,
+            technician=self.tech,
+            unit_number='UNIT-R02',
+            queue_status='COMPLETED',
+        )
+        GlassService.save(replacement)
+        with self.assertRaises(ValueError):
+            WarrantyService.assign_warranty(replacement)
 
     def test_assign_warranty_none_duration_skips(self):
         """A 'none' duration policy means no warranty is assigned."""
@@ -247,7 +271,7 @@ class WarrantyServiceVoidTests(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -311,7 +335,7 @@ class WarrantyServiceCheckTests(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -375,7 +399,7 @@ class RepairHasWarrantyPropertyTests(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -445,8 +469,8 @@ class RepairHasWarrantyPropertyTests(TestCase):
     def test_has_warranty_true_lifetime(self):
         lifetime_policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
-            name='Lifetime Chip',
-            applies_to='Chip',
+            name='Lifetime Repairs',
+            applies_to='repairs',
             duration_type='lifetime',
             is_active=True,
         )
@@ -482,7 +506,7 @@ class OrchestratorWarrantyHookTests(TestCase):
         policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -531,7 +555,7 @@ class OrchestratorWarrantyHookTests(TestCase):
         policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -556,7 +580,7 @@ class OrchestratorWarrantyHookTests(TestCase):
         WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='New Policy',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=30,
             is_default=True,
@@ -566,6 +590,110 @@ class OrchestratorWarrantyHookTests(TestCase):
         repair.refresh_from_db()
         self.assertEqual(repair.warranty_expires_at, original_expires)
         self.assertEqual(repair.warranty_policy_id, policy.pk)
+
+
+@override_settings(**TEST_SETTINGS)
+class ReplacementWarrantyAutoAssignTests(TestCase):
+    """Completing a Replacement auto-assigns the shop's replacement warranty."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Repl Shop', 'repl_owner')
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Repl Fleet',
+        )
+
+    def _make_replacement(self, **kwargs):
+        from apps.technician_portal.models import Replacement
+        defaults = dict(
+            tenant=self.tenant,
+            customer=self.customer,
+            technician=self.tech,
+            unit_number='REPL-001',
+            queue_status='PENDING',
+        )
+        defaults.update(kwargs)
+        replacement = Replacement(**defaults)
+        replacement.save()
+        return replacement
+
+    def test_completing_replacement_assigns_warranty(self):
+        policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant,
+            name='Replacement Warranty',
+            applies_to='replacements',
+            duration_type='custom_days',
+            duration_days=365,
+            is_active=True,
+        )
+        replacement = self._make_replacement()
+        replacement.queue_status = 'COMPLETED'
+        replacement.save()
+
+        replacement.refresh_from_db()
+        self.assertEqual(replacement.warranty_policy_id, policy.pk)
+        self.assertIsNotNone(replacement.warranty_expires_at)
+        self.assertTrue(replacement.has_warranty)
+
+    def test_completing_replacement_without_policy_no_crash(self):
+        replacement = self._make_replacement()
+        replacement.queue_status = 'COMPLETED'
+        replacement.save()  # Should not raise
+
+        replacement.refresh_from_db()
+        self.assertIsNone(replacement.warranty_policy_id)
+        self.assertFalse(replacement.has_warranty)
+
+    def test_replacement_does_not_use_repair_policy(self):
+        WarrantyPolicy.objects.create(
+            tenant=self.tenant,
+            name='Repairs Only',
+            applies_to='repairs',
+            duration_type='lifetime',
+            is_active=True,
+        )
+        replacement = self._make_replacement()
+        replacement.queue_status = 'COMPLETED'
+        replacement.save()
+
+        replacement.refresh_from_db()
+        self.assertIsNone(replacement.warranty_policy_id)
+
+    def test_resave_does_not_reassign(self):
+        policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant,
+            name='Replacement Warranty',
+            applies_to='replacements',
+            duration_type='custom_days',
+            duration_days=365,
+            is_active=True,
+        )
+        replacement = self._make_replacement()
+        replacement.queue_status = 'COMPLETED'
+        replacement.save()
+        replacement.refresh_from_db()
+        original_expires = replacement.warranty_expires_at
+
+        WarrantyPolicy.objects.filter(pk=policy.pk).update(duration_days=30)
+        replacement.save()
+        replacement.refresh_from_db()
+        self.assertEqual(replacement.warranty_expires_at, original_expires)
+
+    def test_lifetime_replacement_warranty(self):
+        WarrantyPolicy.objects.create(
+            tenant=self.tenant,
+            name='Lifetime Replacements',
+            applies_to='replacements',
+            duration_type='lifetime',
+            is_active=True,
+        )
+        replacement = self._make_replacement()
+        replacement.queue_status = 'COMPLETED'
+        replacement.save()
+
+        replacement.refresh_from_db()
+        self.assertIsNotNone(replacement.warranty_policy_id)
+        self.assertIsNone(replacement.warranty_expires_at)
+        self.assertTrue(replacement.has_warranty)
 
 
 @override_settings(**TEST_SETTINGS)
@@ -580,7 +708,7 @@ class WarrantyServiceQueryTests(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Standard',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -676,7 +804,7 @@ class WarrantyUITests(TestCase):
         self.policy = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='UI Warranty',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,
@@ -812,7 +940,7 @@ class WarrantyUITests(TestCase):
         WarrantyPolicy.objects.create(
             tenant=self.tenant2,
             name='Other Shop Policy',
-            applies_to='all_repairs',
+            applies_to='repairs',
             is_active=True,
         )
         client = self._get_authed_client_for_tenant(self.user, self.tenant)
@@ -821,10 +949,29 @@ class WarrantyUITests(TestCase):
             HTTP_HOST=f'{self.tenant.subdomain}.testserver',
         )
         self.assertEqual(response.status_code, 200)
-        policies_in_context = list(response.context['policies'])
-        names = [p.name for p in policies_in_context]
+        cards = response.context['policy_cards']
+        names = [p.name for p in cards]
         self.assertIn('UI Warranty', names)
         self.assertNotIn('Other Shop Policy', names)
+        for policy in cards:
+            self.assertEqual(policy.tenant, self.tenant)
+
+    def test_warranty_page_auto_creates_both_policies(self):
+        """Visiting the page guarantees a repairs card AND a replacements card."""
+        client = self._get_authed_client_for_tenant(self.user, self.tenant)
+        response = client.get(
+            '/tech/settings/warranty/',
+            HTTP_HOST=f'{self.tenant.subdomain}.testserver',
+        )
+        self.assertEqual(response.status_code, 200)
+        applies = sorted(p.applies_to for p in response.context['policy_cards'])
+        self.assertEqual(applies, ['repairs', 'replacements'])
+        # The replacements policy didn't exist before — it was created on load
+        self.assertTrue(
+            WarrantyPolicy.objects.filter(
+                tenant=self.tenant, applies_to='replacements', customer__isnull=True,
+            ).exists()
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # 6. Warranty policy create — AJAX endpoint works
@@ -836,7 +983,7 @@ class WarrantyUITests(TestCase):
             '/tech/settings/api/warranty/create/',
             data=json.dumps({
                 'name': 'AJAX Policy',
-                'applies_to': 'Chip',
+                'applies_to': 'repairs',
                 'duration_type': 'custom_days',
                 'duration_days': 180,
                 'coverage_description': 'Test',
@@ -864,7 +1011,7 @@ class WarrantyUITests(TestCase):
             '/tech/settings/api/warranty/create/',
             data=json.dumps({
                 'name': 'Isolation Test Policy',
-                'applies_to': 'Crack',
+                'applies_to': 'replacements',
                 'duration_type': 'lifetime',
                 'duration_days': 365,
                 'is_active': True,
@@ -903,7 +1050,7 @@ class WarrantyUITests(TestCase):
         policy_to_delete = WarrantyPolicy.objects.create(
             tenant=self.tenant,
             name='Delete Me',
-            applies_to='Star Break',
+            applies_to='repairs',
             is_active=True,
         )
         client = self._get_authed_client_for_tenant(self.user, self.tenant)
@@ -992,13 +1139,13 @@ class PerCustomerWarrantyOverrideTests(TestCase):
         )
         # Tenant-wide default: 365 days
         self.default_policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='Standard', applies_to='all_repairs',
+            tenant=self.tenant, name='Standard', applies_to='repairs',
             duration_type='custom_days', duration_days=365,
             is_default=True, is_active=True,
         )
         # Per-customer override for Fleet Alpha: lifetime
         self.customer_policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='Alpha Lifetime', applies_to='all_repairs',
+            tenant=self.tenant, name='Alpha Lifetime', applies_to='repairs',
             duration_type='lifetime',
             customer=self.customer,
             is_active=True,
@@ -1027,17 +1174,36 @@ class PerCustomerWarrantyOverrideTests(TestCase):
         self.assertEqual(repair.warranty_policy, self.default_policy)
         self.assertIsNotNone(repair.warranty_expires_at)
 
-    def test_per_customer_damage_type_specific(self):
-        # Customer-specific chip policy
-        chip_policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='Alpha Chip 30d', applies_to='Chip',
+    def test_per_customer_replacement_override(self):
+        """A customer-specific replacements policy wins for that customer's replacements."""
+        from apps.technician_portal.models import GlassService, Replacement
+
+        tenant_replacement_policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Shop Replacements', applies_to='replacements',
+            duration_type='custom_days', duration_days=365, is_active=True,
+        )
+        alpha_replacement_policy = WarrantyPolicy.objects.create(
+            tenant=self.tenant, name='Alpha Replacements 30d', applies_to='replacements',
             duration_type='custom_days', duration_days=30,
             customer=self.customer, is_active=True,
         )
-        repair = self._make_repair(self.customer)
-        WarrantyService.assign_warranty(repair)
-        repair.refresh_from_db()
-        self.assertEqual(repair.warranty_policy, chip_policy)
+        replacement = Replacement(
+            tenant=self.tenant, customer=self.customer, technician=self.tech,
+            unit_number='OVR-R01', queue_status='COMPLETED',
+        )
+        GlassService.save(replacement)
+        WarrantyService.assign_warranty(replacement)
+        replacement.refresh_from_db()
+        self.assertEqual(replacement.warranty_policy, alpha_replacement_policy)
+
+        other = Replacement(
+            tenant=self.tenant, customer=self.other_customer, technician=self.tech,
+            unit_number='OVR-R02', queue_status='COMPLETED',
+        )
+        GlassService.save(other)
+        WarrantyService.assign_warranty(other)
+        other.refresh_from_db()
+        self.assertEqual(other.warranty_policy, tenant_replacement_policy)
 
     def test_customer_fk_on_warranty_policy_model(self):
         self.assertEqual(self.customer_policy.customer, self.customer)
@@ -1106,7 +1272,7 @@ class WarrantyExpiringBadgeTests(TestCase):
             tenant=self.tenant, name='Badge Co', email='badge@test.com',
         )
         self.policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='Badge Policy', applies_to='all_repairs',
+            tenant=self.tenant, name='Badge Policy', applies_to='repairs',
             duration_type='custom_days', duration_days=365,
             is_default=True, is_active=True,
         )
@@ -1167,7 +1333,7 @@ class WarrantyClaimFieldsTests(TestCase):
             tenant=self.tenant, name='Claim Fleet', email='claim@test.com',
         )
         self.policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='Claim Policy', applies_to='all_repairs',
+            tenant=self.tenant, name='Claim Policy', applies_to='repairs',
             duration_type='custom_days', duration_days=365,
             is_default=True, is_active=True,
         )
@@ -1241,7 +1407,7 @@ class TermsSummaryPropertyTests(TestCase):
 
     def test_lifetime_terms_summary(self):
         policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='Lifetime Chip', applies_to='Chip',
+            tenant=self.tenant, name='Lifetime Repairs', applies_to='repairs',
             duration_type='lifetime', covers_labor=True, covers_materials=True,
             is_active=True,
         )
@@ -1251,7 +1417,7 @@ class TermsSummaryPropertyTests(TestCase):
 
     def test_custom_days_terms_summary(self):
         policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='90-Day', applies_to='Crack',
+            tenant=self.tenant, name='90-Day', applies_to='replacements',
             duration_type='custom_days', duration_days=90,
             covers_labor=True, covers_materials=False,
             is_active=True,
@@ -1262,7 +1428,7 @@ class TermsSummaryPropertyTests(TestCase):
 
     def test_none_duration_returns_empty(self):
         policy = WarrantyPolicy.objects.create(
-            tenant=self.tenant, name='No Warranty', applies_to='Other',
+            tenant=self.tenant, name='No Warranty', applies_to='repairs',
             duration_type='none', is_active=True,
         )
         self.assertEqual(policy.terms_summary, '')

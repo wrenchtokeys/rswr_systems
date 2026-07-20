@@ -60,7 +60,7 @@ class AdminFKTenantFilteringTest(TestCase):
             name='Customer A', tenant=cls.tenant_a
         )
         cls.warranty_a = WarrantyPolicy.objects.create(
-            tenant=cls.tenant_a, name='Warranty A', applies_to='repair'
+            tenant=cls.tenant_a, name='Warranty A', applies_to='repairs'
         )
 
         # --- Tenant B ---
@@ -80,7 +80,7 @@ class AdminFKTenantFilteringTest(TestCase):
             name='Customer B', tenant=cls.tenant_b
         )
         cls.warranty_b = WarrantyPolicy.objects.create(
-            tenant=cls.tenant_b, name='Warranty B', applies_to='repair'
+            tenant=cls.tenant_b, name='Warranty B', applies_to='repairs'
         )
 
         # Create a repair in Tenant A

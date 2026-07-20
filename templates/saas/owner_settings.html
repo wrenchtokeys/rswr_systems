@@ -1340,28 +1340,33 @@ Thank you,
                     <i class="fas fa-shield-alt text-cyan-600 text-sm"></i>
                 </div>
                 <div>
-                    <h3 class="text-lg font-semibold text-gray-900">Warranty Policies</h3>
-                    <p class="text-sm text-gray-500">Define what warranty coverage your shop offers per repair type</p>
+                    <h3 class="text-lg font-semibold text-gray-900">Warranty</h3>
+                    <p class="text-sm text-gray-500">What you promise customers on repairs and replacements</p>
                 </div>
             </div>
             <a href="{% url 'manage_warranty_policies' %}" class="btn-primary">
-                <i class="fas fa-cog"></i> Manage Policies
+                <i class="fas fa-cog"></i> Edit Warranty
             </a>
         </div>
         <div class="card-body">
-            <div class="flex flex-wrap items-center gap-4 mb-4">
-                <span class="badge-blue">{{ warranty_policies|length }} polic{{ warranty_policies|length|pluralize:"y,ies" }}</span>
-                {% if warranty_policies %}
-                <span class="text-sm text-gray-600">
-                    {% for policy in warranty_policies %}{% if policy.is_active %}{{ policy.name }}{% if not forloop.last %}, {% endif %}{% endif %}{% endfor %}
-                </span>
-                {% endif %}
+            <div class="space-y-2 mb-4">
+                {% for policy in warranty_policies %}
+                <div class="flex items-center justify-between gap-3 p-3 bg-gray-50 rounded-lg">
+                    <span class="text-sm font-medium text-gray-900">{{ policy.get_applies_to_display }}</span>
+                    <span class="text-sm text-gray-600">
+                        {% if policy.duration_type == 'lifetime' %}Lifetime warranty
+                        {% elif policy.duration_type == 'custom_days' %}{{ policy.duration_days }}-day warranty
+                        {% else %}No warranty{% endif %}
+                    </span>
+                </div>
+                {% empty %}
+                <p class="text-sm text-gray-500">No warranty set up yet — click "Edit Warranty" to get started.</p>
+                {% endfor %}
             </div>
             <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p class="text-sm text-blue-800">
                     <i class="fas fa-info-circle mr-1"></i>
-                    <strong>How policies apply:</strong> RS Systems matches repairs to the most specific active policy — customer override &gt; damage-type policy &gt; "All Repairs" default.
-                    Create, edit, and toggle policies on the warranty settings page.
+                    <strong>Warranties are automatic.</strong> When a repair or replacement is marked complete, its warranty starts that day and your warranty wording prints on the customer's invoice.
                 </p>
             </div>
         </div>
