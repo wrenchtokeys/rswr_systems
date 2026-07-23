@@ -157,8 +157,8 @@ class StaffCreateGuardTests(TestCase):
         login_owner(client, user, tenant)
         resp = client.get('/tech/replacement/new/')
         self.assertEqual(resp.status_code, 302)
-        # Historical list stays reachable
-        resp = client.get('/tech/replacements/')
+        # Historical data stays reachable via the unified job list
+        resp = client.get('/tech/replacements/', follow=True)
         self.assertEqual(resp.status_code, 200)
 
     def test_replacement_only_shop_blocks_repair_create(self):

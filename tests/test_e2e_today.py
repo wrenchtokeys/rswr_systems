@@ -178,7 +178,7 @@ class TenantIsolationViewTests(TestCase):
         """Shop A owner should only see Shop A repairs."""
         c = Client()
         c.force_login(self.user_a)
-        r = c.get('/tech/repairs/')
+        r = c.get('/tech/repairs/', follow=True)
         self.assertEqual(r.status_code, 200)
         content = r.content.decode()
         self.assertIn('Customer A', content)
@@ -188,7 +188,7 @@ class TenantIsolationViewTests(TestCase):
         """Shop B owner should only see Shop B repairs."""
         c = Client()
         c.force_login(self.user_b)
-        r = c.get('/tech/repairs/')
+        r = c.get('/tech/repairs/', follow=True)
         self.assertEqual(r.status_code, 200)
         content = r.content.decode()
         # Check table body specifically — page has "Customer A-Z" in sort dropdown

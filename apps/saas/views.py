@@ -26,6 +26,7 @@ from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from common.decorators import owner_or_manager_required
+from apps.technician_portal.decorators import technician_required
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
@@ -853,51 +854,41 @@ def billing_view(request):
 # 7. Replacement management
 # ------------------------------------------------------------------
 
-@owner_or_manager_required
+@technician_required
 def replacement_list(request):
-    """List all glass replacements for the tenant."""
-    from django.core.paginator import Paginator
-    
-    tenant = getattr(request, 'tenant', None)
-    if not tenant:
-        messages.error(request, 'No shop context. Please log in.')
-        from common.auth import redirect_to_portal
-        return redirect_to_portal(request.user)
-
-    # Filter by status if specified
-    status_filter = request.GET.get('status', '')
-    replacements = Replacement.objects.filter(tenant=tenant).select_related(
-        'customer', 'technician__user'
-    ).order_by('-service_date', '-id')
-
-    if status_filter:
-        replacements = replacements.filter(queue_status=status_filter)
-
-    # Pagination
-    paginator = Paginator(replacements, 25)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-
-    # Status choices for filter dropdown
-    status_choices = [
-        ('', 'All Statuses'),
-        ('REQUESTED', 'Customer Requested'),
-        ('PENDING', 'Approval Pending'),
-        ('APPROVED', 'Approved'),
-        ('IN_PROGRESS', 'In Progress'),
-        ('COMPLETED', 'Completed'),
-        ('DENIED', 'Denied'),
-    ]
-
-    return render(request, 'saas/replacement_list.html', {
-        'page_obj': page_obj,
-        'tenant': tenant,
-        'status_filter': status_filter,
-        'status_choices': status_choices,
-    })
+    """Legacy /tech/replacements/ — redirects to the unified job list."""
+    params = request.GET.copy()
+    if not params.get('status'):
+        params.pop('status', None)  # old list used status='' for "all"
+    params['type'] = 'replacement'
+    return redirect(f"{reverse('job_list')}?{params.urlencode()}")
 
 
-@owner_or_manager_required
+def _replacement_technician_access(request, tenant, replacement=None,
+                                   require_can_replace=False):
+    """Access check for technician-facing replacement views.
+
+    Tenant admins (owner/manager/staff) and working managers always pass.
+    Otherwise the user needs a tenant-scoped Technician profile; when a
+    replacement is given it must be assigned to them, and require_can_replace
+    additionally demands the can_replace ability.
+    """
+    from apps.technician_portal.decorators import is_tenant_admin
+    if is_tenant_admin(request.user, tenant=tenant):
+        return True
+    technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    if technician is None:
+        return False
+    if technician.is_manager:
+        return True
+    if require_can_replace and not technician.can_replace:
+        return False
+    if replacement is not None and replacement.technician_id != technician.id:
+        return False
+    return True
+
+
+@technician_required
 def replacement_create(request):
     """Create a new glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -911,6 +902,11 @@ def replacement_create(request):
     if not tenant.offers_replacements:
         messages.info(request, 'Your shop is set to repairs only. You can change this under Settings → What does your shop do?')
         return redirect('owner_dashboard')
+
+    if not _replacement_technician_access(request, tenant, require_can_replace=True):
+        messages.warning(request, "Your technician profile isn't set up for replacements. Ask a manager to enable it under Team settings.")
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
 
     # Check limits
     usage_svc = UsageService(tenant)
@@ -939,7 +935,14 @@ def replacement_create(request):
             messages.success(request, 'Replacement created successfully!')
             return redirect('replacement_detail', pk=replacement.pk)
     else:
-        form = ReplacementForm(tenant=tenant)
+        # ?customer=<id>&unit=<n> prefill — same params the New Repair
+        # buttons on customer/unit detail pages use.
+        initial = {}
+        if request.GET.get('customer'):
+            initial['customer'] = request.GET.get('customer')
+        if request.GET.get('unit'):
+            initial['unit_number'] = request.GET.get('unit')
+        form = ReplacementForm(tenant=tenant, initial=initial)
 
     return render(request, 'saas/replacement_form.html', {
         'form': form,
@@ -947,7 +950,7 @@ def replacement_create(request):
     })
 
 
-@owner_or_manager_required
+@technician_required
 def replacement_detail(request, pk):
     """View a glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -956,6 +959,10 @@ def replacement_detail(request, pk):
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
     replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement):
+        messages.warning(request, "You don't have access to this replacement.")
+        return redirect('job_list')
 
     # Build allowed status transitions for the UI
     status_transitions = []
@@ -987,7 +994,7 @@ def replacement_detail(request, pk):
     })
 
 
-@owner_or_manager_required
+@technician_required
 def replacement_edit(request, pk):
     """Edit an existing glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -996,6 +1003,11 @@ def replacement_edit(request, pk):
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
     replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement,
+                                          require_can_replace=True):
+        messages.warning(request, "You don't have access to edit this replacement.")
+        return redirect('job_list')
 
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
@@ -1014,7 +1026,7 @@ def replacement_edit(request, pk):
 
 
 @require_POST
-@owner_or_manager_required
+@technician_required
 def replacement_update_status(request, pk):
     """Update the status of a glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -1023,6 +1035,11 @@ def replacement_update_status(request, pk):
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
     replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement,
+                                          require_can_replace=True):
+        messages.warning(request, "You don't have access to update this replacement.")
+        return redirect('job_list')
 
     new_status = request.POST.get('status')
 

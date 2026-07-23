@@ -16,10 +16,18 @@
             <span class="text-gray-600">Unit {{ unit_number }}</span>
         </div>
         <div class="flex items-center gap-2">
-            <a href="{% url 'create_repair' %}?customer={{ customer.id }}&unit={{ unit_number }}" 
+            {% if shop_offers_repairs %}
+            <a href="{% url 'create_repair' %}?customer={{ customer.id }}&unit={{ unit_number }}"
                class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
                 <i class="fas fa-plus mr-2"></i>New Repair
             </a>
+            {% endif %}
+            {% if shop_offers_replacements %}
+            <a href="{% url 'replacement_create' %}?customer={{ customer.id }}&unit={{ unit_number }}"
+               class="inline-flex items-center px-4 py-2 text-sm font-semibold {% if shop_offers_repairs %}text-purple-700 bg-purple-100 hover:bg-purple-200{% else %}text-white bg-green-600 hover:bg-green-700{% endif %} rounded-lg transition-colors">
+                <i class="fas fa-plus mr-2"></i>New Replacement
+            </a>
+            {% endif %}
         </div>
     </div>
 

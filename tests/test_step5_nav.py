@@ -34,12 +34,12 @@ class OwnerNavTests(TestCase):
         session.save()
 
     def test_owner_dashboard_has_correct_nav_items(self):
-        """Owner dashboard should show Dashboard, Repairs, Customers, Invoices, Settings."""
+        """Owner dashboard should show Dashboard, Jobs, Customers, Invoices, Settings."""
         response = self.client.get('/owner/')
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn('Dashboard', content)
-        self.assertIn('Repairs', content)
+        self.assertIn('Jobs', content)
         self.assertIn('Customers', content)
         self.assertIn('Invoices', content)
         self.assertIn('Settings', content)
@@ -52,9 +52,10 @@ class OwnerNavTests(TestCase):
         self.assertNotIn('Tech Portal', content)
 
     def test_owner_can_navigate_to_repairs(self):
-        """Owner should be able to access /tech/repairs/ (repair list)."""
-        response = self.client.get('/tech/repairs/')
+        """/tech/repairs/ redirects to the unified job list, which renders."""
+        response = self.client.get('/tech/repairs/', follow=True)
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.request['PATH_INFO'], '/tech/jobs/')
 
     def test_owner_can_navigate_to_customers(self):
         """Owner should be able to access /tech/customers/ (customer list)."""
@@ -63,7 +64,7 @@ class OwnerNavTests(TestCase):
 
     def test_tech_portal_pages_use_base_app_template(self):
         """Tech portal pages should render with the base_app.html nav."""
-        response = self.client.get('/tech/repairs/')
+        response = self.client.get('/tech/repairs/', follow=True)
         content = response.content.decode()
         # base_app.html has the unified nav with these items
         self.assertIn('RS Systems', content)

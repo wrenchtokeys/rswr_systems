@@ -7,9 +7,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Q, Count
+from django.db.models import Q
 from django.http import JsonResponse
-from django.core.paginator import Paginator
 from decimal import Decimal, InvalidOperation
 import logging
 import uuid
@@ -23,176 +22,6 @@ from common.auth import get_user_role
 from common.utils import convert_heic_to_jpeg
 
 logger = logging.getLogger(__name__)
-
-
-@technician_required
-def repair_list(request):
-    """List repairs with filtering, sorting, and pagination."""
-    tenant = getattr(request, 'tenant', None)
-    # Cache the admin check — _get_membership hits TenantMembership table every call.
-    # Without this, the same DB query fires 3× per page load (permission check,
-    # assignment-filter branch, context dict).
-    user_is_admin = is_tenant_admin(request.user, tenant=tenant)
-
-    if not user_is_admin:
-        if not hasattr(request.user, 'technician'):
-            messages.error(request, "You don't have a technician profile to view repairs.")
-            return redirect('technician_dashboard')
-
-        # Use tenant-scoped Technician lookup so that a user who is a manager at
-        # Shop A (OneToOne Technician.tenant=Shop A) but a plain technician at
-        # Shop B cannot inherit is_manager=True on Shop B's repair list.
-        # This mirrors the CODE-076 fix applied to update_repair. (CODE-077)
-        technician = Technician.objects.filter(
-            user=request.user, tenant=tenant
-        ).first() if tenant else request.user.technician
-
-        if not technician:
-            messages.error(request, "You don't have a technician profile for this shop.")
-            return redirect('technician_dashboard')
-
-        if technician.is_manager:
-            managed_tech_ids = list(technician.managed_technicians.values_list('id', flat=True))
-            managed_tech_ids.append(technician.id)
-            repairs = Repair.objects.filter(
-                Q(technician_id__in=managed_tech_ids) | Q(queue_status='REQUESTED')
-            )
-        else:
-            repairs = Repair.objects.filter(
-                technician=technician
-            ).exclude(queue_status='REQUESTED')
-    else:
-        repairs = Repair.objects.all()
-        technician = None
-
-    # Tenant scoping
-    if tenant:
-        repairs = repairs.filter(tenant=tenant)
-    else:
-        repairs = repairs.none()
-
-    # Optimize query with select_related
-    repairs = repairs.select_related('customer', 'technician__user', 'warranty_policy').order_by('-service_date')
-
-    # Get filter parameters
-    customer_search = request.GET.get('customer_search', '')
-    status_filter = request.GET.get('status', 'all')
-    unit_search = request.GET.get('unit_search', '')
-    damage_type_filter = request.GET.get('damage_type', 'all')
-    date_from = request.GET.get('date_from', '')
-    date_to = request.GET.get('date_to', '')
-    assignment_filter = request.GET.get('assignment', 'all')
-
-    if customer_search:
-        repairs = repairs.filter(customer__name__icontains=customer_search)
-
-    if status_filter != 'all':
-        status_list = status_filter.split(',')
-        repairs = repairs.filter(queue_status__in=status_list)
-
-    if unit_search:
-        repairs = repairs.filter(unit_number__icontains=unit_search)
-
-    if damage_type_filter != 'all':
-        repairs = repairs.filter(damage_type=damage_type_filter)
-
-    if date_from:
-        try:
-            from datetime import datetime
-            date_from_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
-            repairs = repairs.filter(service_date__gte=date_from_obj)
-        except ValueError:
-            pass
-
-    if date_to:
-        try:
-            from datetime import datetime
-            date_to_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
-            repairs = repairs.filter(service_date__lte=date_to_obj)
-        except ValueError:
-            pass
-
-    if technician and (user_is_admin or technician.is_manager):
-        if assignment_filter == 'mine':
-            repairs = repairs.filter(technician=technician)
-        elif assignment_filter == 'unassigned':
-            repairs = repairs.filter(technician__isnull=True)
-        elif assignment_filter == 'team' and technician.is_manager:
-            managed_tech_ids = list(technician.managed_technicians.values_list('id', flat=True))
-            repairs = repairs.filter(technician_id__in=managed_tech_ids)
-
-    # Summary statistics — computed in one aggregate query instead of 5 separate
-    # COUNT queries.  This is the same N+1 fix applied to customer_dashboard (CODE-141)
-    # and customer_repairs (CODE-143), now applied to the technician repair list.
-    # Each conditional Count(filter=Q(...)) becomes a CASE WHEN in a single SQL
-    # SELECT, eliminating 4 extra DB round-trips per page load.  (CODE-151)
-    _week_start = timezone.now().date() - timezone.timedelta(days=7)
-    _stats_agg = repairs.aggregate(
-        total_count=Count('id'),
-        total_active=Count('id', filter=~Q(queue_status='COMPLETED')),
-        pending_approval=Count('id', filter=Q(queue_status='REQUESTED')),
-        in_progress=Count('id', filter=Q(queue_status='IN_PROGRESS')),
-        completed_this_week=Count(
-            'id',
-            filter=Q(queue_status='COMPLETED', service_date__gte=_week_start),
-        ),
-    )
-    total_repairs = _stats_agg['total_count']
-    stats = {
-        'total_active': _stats_agg['total_active'],
-        'pending_approval': _stats_agg['pending_approval'],
-        'in_progress': _stats_agg['in_progress'],
-        'completed_this_week': _stats_agg['completed_this_week'],
-    }
-
-    # Sorting
-    sort_by = request.GET.get('sort', '-service_date')
-    # Accept both repair_date (legacy templates) and service_date (new field name)
-    if sort_by in ('repair_date', '-repair_date'):
-        sort_by = sort_by.replace('repair_date', 'service_date')
-    valid_sorts = ['service_date', '-service_date', 'customer__name', '-customer__name',
-                   'unit_number', '-unit_number', 'cost', '-cost', 'queue_status', '-queue_status']
-    if sort_by in valid_sorts:
-        repairs = repairs.order_by(sort_by)
-
-    # Pagination
-    # Guard: int() raises ValueError on non-numeric input (e.g. ?page_size=abc).
-    # Without this guard, an invalid page_size causes a 500 error instead of
-    # silently falling back to the default.  (CODE-205)
-    try:
-        page_size = int(request.GET.get('page_size', 50))
-    except (ValueError, TypeError):
-        page_size = 50
-    if page_size not in [20, 50, 100]:
-        page_size = 50
-
-    paginator = Paginator(repairs, page_size)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-
-    damage_types = Repair.DAMAGE_TYPE_CHOICES
-
-    context = {
-        'repairs': page_obj,
-        'page_obj': page_obj,
-        'total_repairs': total_repairs,
-        'stats': stats,
-        'customer_search': customer_search,
-        'status_filter': status_filter,
-        'unit_search': unit_search,
-        'damage_type_filter': damage_type_filter,
-        'date_from': date_from,
-        'date_to': date_to,
-        'assignment_filter': assignment_filter,
-        'sort_by': sort_by,
-        'page_size': page_size,
-        'queue_choices': Repair.QUEUE_CHOICES,
-        'damage_types': damage_types,
-        'is_admin': user_is_admin,
-        'technician': technician,
-    }
-
-    return render(request, 'technician_portal/repair_list.html', context)
 
 
 @technician_required
@@ -1073,7 +902,7 @@ def bulk_repair_action(request):
     """Handle bulk approve or deny actions for multiple repairs (technician/manager)."""
     if request.method != 'POST':
         messages.error(request, "Invalid request method.")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     tenant = getattr(request, 'tenant', None)
     is_admin = is_tenant_admin(request.user, tenant=tenant)
@@ -1097,17 +926,17 @@ def bulk_repair_action(request):
             return redirect('technician_dashboard')
         if not technician.is_manager:
             messages.error(request, "Only managers can perform bulk actions on repairs.")
-            return redirect('repair_list')
+            return redirect('job_list')
 
     action = request.POST.get('action')
     if action not in ['approve', 'deny', 'reset_to_pending']:
         messages.error(request, "Invalid action specified.")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     repair_ids = request.POST.getlist('repair_ids')
     if not repair_ids:
         messages.error(request, "No repairs selected.")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     with transaction.atomic():
         # Get repairs that are PENDING or REQUESTED (or any non-COMPLETED for reset)
@@ -1128,7 +957,7 @@ def bulk_repair_action(request):
 
         if not repairs.exists():
             messages.error(request, "No valid repairs found to process.")
-            return redirect('repair_list')
+            return redirect('job_list')
 
         processed_count = 0
 
@@ -1224,7 +1053,7 @@ def bulk_repair_action(request):
             f"Successfully {action_word} {processed_count} repair{'' if processed_count == 1 else 's'}."
         )
 
-    return redirect('repair_list')
+    return redirect('job_list')
 
 
 @technician_required
@@ -1479,7 +1308,7 @@ def archived_repairs(request):
 
     if not is_tenant_admin(request.user, tenant=tenant):
         messages.error(request, "Only owners and managers can view archived repairs.")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     cutoff = timezone.now() - timezone.timedelta(days=30)
 
@@ -1677,7 +1506,7 @@ def portal_bulk_reassign(request):
 
     if not user_is_admin:
         messages.error(request, "Only admins can bulk reassign repairs.")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     if request.method == 'POST':
         repair_ids = request.POST.getlist('repair_ids')
@@ -1685,7 +1514,7 @@ def portal_bulk_reassign(request):
 
         if not repair_ids or not technician_id:
             messages.error(request, "Please select repairs and a technician.")
-            return redirect('repair_list')
+            return redirect('job_list')
 
         try:
             tech_qs = Technician.objects.filter(id=technician_id, is_active=True)
@@ -1696,7 +1525,7 @@ def portal_bulk_reassign(request):
             new_tech = tech_qs.get()
         except Technician.DoesNotExist:
             messages.error(request, "Selected technician not found.")
-            return redirect('repair_list')
+            return redirect('job_list')
 
         qs = Repair.objects.filter(id__in=repair_ids).exclude(queue_status='COMPLETED')
         if tenant:
@@ -1728,13 +1557,13 @@ def portal_bulk_reassign(request):
                 )
 
         messages.success(request, f"Reassigned {count} repair(s) to {new_tech.user.get_full_name()}")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     # GET — collect repair IDs from query params
     repair_ids = request.GET.getlist('repair_ids')
     if not repair_ids:
         messages.error(request, "No repairs selected.")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     qs = Repair.objects.filter(id__in=repair_ids).exclude(queue_status='COMPLETED').select_related('customer', 'technician__user')
     if tenant:
@@ -1745,7 +1574,7 @@ def portal_bulk_reassign(request):
 
     if not repairs:
         messages.error(request, "No valid repairs found to reassign.")
-        return redirect('repair_list')
+        return redirect('job_list')
 
     tech_qs = Technician.objects.filter(is_active=True)
     if tenant:

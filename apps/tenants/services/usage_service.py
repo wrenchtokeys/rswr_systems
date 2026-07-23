@@ -127,8 +127,8 @@ class UsageService:
         used = self.count_repairs_this_month()
         if used >= limit:
             return False, (
-                f"Your {self.plan.name} plan allows {limit} repairs/month. "
-                f"You've used {used}. Upgrade to Pro for unlimited repairs."
+                f"Your {self.plan.name} plan allows {limit} jobs/month. "
+                f"You've used {used}. Upgrade to Pro for unlimited jobs."
             )
         
         return True, ""
