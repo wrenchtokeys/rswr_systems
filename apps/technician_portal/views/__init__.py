@@ -19,7 +19,9 @@ from .dashboard import register_technician, technician_dashboard
 # redirect shim so existing url reversals keep working.
 from .jobs import (
     job_list,
+    job_create,
     repair_list,
+    repair_complete_and_invoice,
 )
 
 # Repair management

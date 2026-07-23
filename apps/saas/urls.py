@@ -107,4 +107,5 @@ urlpatterns = [
     path('tech/replacement/<int:pk>/', views.replacement_detail, name='replacement_detail'),
     path('tech/replacement/<int:pk>/edit/', views.replacement_edit, name='replacement_edit'),
     path('tech/replacement/<int:pk>/update-status/', views.replacement_update_status, name='replacement_update_status'),
+    path('tech/replacement/<int:pk>/complete-and-invoice/', views.replacement_complete_and_invoice, name='replacement_complete_and_invoice'),
 ]

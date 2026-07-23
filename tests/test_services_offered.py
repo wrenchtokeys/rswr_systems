@@ -443,4 +443,4 @@ class NavGatingTests(TestCase):
         login_owner(client, user, tenant)
         resp = client.get('/tech/')
         self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, 'Create New Replacement')
+        self.assertNotContains(resp, 'New Replacement')
