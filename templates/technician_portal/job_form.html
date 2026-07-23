@@ -56,6 +56,62 @@
                 {{ form.work_done }}
             </div>
 
+            {% if shop_offers_repairs %}
+            <!-- Repair details -->
+            <div class="repair-details space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Damage type <span class="text-gray-400 font-normal">(optional)</span></label>
+                    {{ form.damage_type }}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Damage location <span class="text-gray-400 font-normal">(tap to mark)</span></label>
+                    <div class="windshield-diagram-container">
+                        <div id="windshieldDiagram"
+                             style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 3px solid #0284c7; border-radius: 12px; cursor: crosshair; overflow: hidden; touch-action: none;">
+                            <div style="position: absolute; top: 8px; left: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">DRIVER</div>
+                            <div style="position: absolute; top: 8px; right: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">PASSENGER</div>
+                            <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #0369a1;">↑ HOOD</div>
+                            <div style="position: absolute; top: 20%; bottom: 20%; left: 50%; width: 1px; background: rgba(2,132,199,0.3);"></div>
+                            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 30px; height: 10px; background: #0284c7; border-radius: 0 0 6px 6px;"></div>
+                            <div id="damageMarker" style="display: none; position: absolute; width: 20px; height: 20px; background: #dc2626; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none; z-index: 10;">
+                                <div style="position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%);"></div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="damage_location_x" id="id_damage_location_x" value="{{ form.damage_location_x.value|default:'' }}">
+                        <input type="hidden" name="damage_location_y" id="id_damage_location_y" value="{{ form.damage_location_y.value|default:'' }}">
+                        <div class="flex justify-between items-center mt-2">
+                            <p class="text-xs text-gray-400 mb-0">
+                                <i class="fas fa-info-circle mr-1"></i><span id="locationText">Tap on the windshield to mark damage location</span>
+                            </p>
+                            <button type="button" id="clearLocationBtn" class="text-sm text-red-600 hover:text-red-800" style="display: none;">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if shop_offers_replacements %}
+            <!-- Replacement details -->
+            <div class="replacement-details space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Glass position <span class="text-gray-400 font-normal">(optional)</span></label>
+                        {{ form.glass_position }}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Glass type <span class="text-gray-400 font-normal">(optional)</span></label>
+                        {{ form.glass_type }}
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">NAGS part # <span class="text-gray-400 font-normal">(optional)</span></label>
+                    {{ form.nags_number }}
+                </div>
+            </div>
+            {% endif %}
+
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
                 {{ form.price }}
@@ -108,6 +164,86 @@ document.addEventListener('DOMContentLoaded', function() {
     if (radios.length && ![...radios].some(r => r.checked)) {
         radios[0].checked = true;
     }
+
+    // Show only the selected type's detail section (both-shops).
+    // Single-service shops render exactly one section and no toggle.
+    function currentType() {
+        const checked = document.querySelector('#type-toggle input[type="radio"]:checked')
+            || document.querySelector('input[name="service_type"]');
+        return checked ? checked.value : null;
+    }
+    function syncDetailSections() {
+        const type = currentType();
+        document.querySelectorAll('.repair-details').forEach(function(el) {
+            el.style.display = (type === 'replacement') ? 'none' : '';
+        });
+        document.querySelectorAll('.replacement-details').forEach(function(el) {
+            el.style.display = (type === 'repair') ? 'none' : '';
+        });
+    }
+    radios.forEach(r => r.addEventListener('change', syncDetailSections));
+    syncDetailSections();
 });
 </script>
+
+{% if shop_offers_repairs %}
+<!-- Windshield damage location diagram (same behavior as the full repair form) -->
+<script>
+(function() {
+    const diagram = document.getElementById('windshieldDiagram');
+    const marker = document.getElementById('damageMarker');
+    const xInput = document.getElementById('id_damage_location_x');
+    const yInput = document.getElementById('id_damage_location_y');
+    const locationText = document.getElementById('locationText');
+    const clearBtn = document.getElementById('clearLocationBtn');
+
+    if (!diagram || !marker) return;
+
+    function placeMarker(xPercent, yPercent) {
+        marker.style.left = xPercent + '%';
+        marker.style.top = yPercent + '%';
+        marker.style.display = 'block';
+        xInput.value = xPercent.toFixed(1);
+        yInput.value = yPercent.toFixed(1);
+
+        const side = xPercent < 50 ? 'driver' : 'passenger';
+        const vertical = yPercent < 33 ? 'upper' : (yPercent > 66 ? 'lower' : 'middle');
+        locationText.textContent = 'Marked: ' + vertical + ' ' + side + ' side';
+        clearBtn.style.display = 'inline';
+    }
+
+    function clearMarker() {
+        marker.style.display = 'none';
+        xInput.value = '';
+        yInput.value = '';
+        locationText.textContent = 'Tap on the windshield to mark damage location';
+        clearBtn.style.display = 'none';
+    }
+
+    function handleInteraction(e) {
+        e.preventDefault();
+        const rect = diagram.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = ((clientX - rect.left) / rect.width) * 100;
+        const y = ((clientY - rect.top) / rect.height) * 100;
+        placeMarker(
+            Math.max(2, Math.min(98, x)),
+            Math.max(2, Math.min(98, y))
+        );
+    }
+
+    diagram.addEventListener('click', handleInteraction);
+    diagram.addEventListener('touchstart', handleInteraction, { passive: false });
+    clearBtn.addEventListener('click', clearMarker);
+
+    // Restore saved location on validation re-render
+    const savedX = xInput.value;
+    const savedY = yInput.value;
+    if (savedX && savedY) {
+        placeMarker(parseFloat(savedX), parseFloat(savedY));
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}

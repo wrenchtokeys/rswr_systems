@@ -764,6 +764,32 @@ class QuickJobForm(forms.Form):
     )
     already_completed = forms.BooleanField(required=False, initial=True)
 
+    # Repair details
+    damage_type = forms.ChoiceField(
+        choices=Repair.DAMAGE_TYPE_CHOICES, required=False,
+        widget=forms.Select(attrs={'class': _INPUT + ' bg-white'}),
+    )
+    damage_location_x = forms.FloatField(required=False, widget=forms.HiddenInput())
+    damage_location_y = forms.FloatField(required=False, widget=forms.HiddenInput())
+
+    # Replacement details
+    glass_position = forms.ChoiceField(
+        choices=[('', '— Select —')] + Replacement.GLASS_POSITION_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={'class': _INPUT + ' bg-white'}),
+    )
+    glass_type = forms.ChoiceField(
+        choices=[('', '— Select —')] + Replacement.GLASS_TYPE_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={'class': _INPUT + ' bg-white'}),
+    )
+    nags_number = forms.CharField(
+        required=False, max_length=50,
+        widget=forms.TextInput(attrs={
+            'class': _INPUT, 'placeholder': 'e.g. FW04567',
+        }),
+    )
+
     def __init__(self, *args, tenant=None, allowed_types=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.allowed_types = allowed_types or ['repair', 'replacement']

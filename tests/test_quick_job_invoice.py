@@ -143,6 +143,18 @@ class QuickJobCreateTests(TestCase):
         self.assertEqual(Repair.objects.count(), 0)
         self.assertEqual(Replacement.objects.count(), 0)
 
+    def test_replacement_details_persist(self):
+        self._post(glass_position='WINDSHIELD', glass_type='OEM', nags_number='FW04567')
+        repl = Replacement.objects.get(tenant=self.tenant)
+        self.assertEqual(repl.glass_position, 'WINDSHIELD')
+        self.assertEqual(repl.glass_type, 'OEM')
+        self.assertEqual(repl.nags_number, 'FW04567')
+
+    def test_form_page_shows_replacement_details_only(self):
+        resp = self.client.get(reverse('job_create'))
+        self.assertContains(resp, 'Glass position')
+        self.assertNotContains(resp, 'windshieldDiagram')
+
 
 @override_settings(**TEST_SETTINGS)
 class QuickJobRepairPricingTests(TestCase):
@@ -179,6 +191,26 @@ class QuickJobRepairPricingTests(TestCase):
         })
         repair = Repair.objects.get(tenant=self.tenant)
         self.assertEqual(repair.cost, Decimal('99.00'))
+
+    def test_repair_details_persist(self):
+        self.client.post(reverse('job_create'), {
+            'service_type': 'repair',
+            'customer': self.customer.id,
+            'unit_number': 'U-3',
+            'price': '',
+            'damage_type': 'Chip',
+            'damage_location_x': '25.5',
+            'damage_location_y': '60.0',
+        })
+        repair = Repair.objects.get(tenant=self.tenant)
+        self.assertEqual(repair.damage_type, 'Chip')
+        self.assertEqual(repair.damage_location_x, 25.5)
+        self.assertEqual(repair.damage_location_y, 60.0)
+
+    def test_form_page_shows_windshield_diagram(self):
+        resp = self.client.get(reverse('job_create'))
+        self.assertContains(resp, 'windshieldDiagram')
+        self.assertContains(resp, 'Damage type')
 
 
 @override_settings(**TEST_SETTINGS)

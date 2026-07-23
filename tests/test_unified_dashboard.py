@@ -122,6 +122,15 @@ class UnifiedDashboardTests(TestCase):
         self.assertEqual(admin_data['total_jobs'], 2)
         self.assertEqual(admin_data['total_repairs'], 1)  # legacy key intact
 
+    def test_usage_percent_clamped_at_100(self):
+        # Over-limit tenants (e.g. "7 of 2 technicians") previously fed raw
+        # >100% widths into the dashboard bars, overflowing the card.
+        from apps.tenants.services.usage_service import UsageService
+        svc = UsageService(self.tenant)
+        self.assertEqual(svc._usage_percentage(7, 2), 100.0)
+        self.assertEqual(svc._usage_percentage(1, 2), 50.0)
+        self.assertIsNone(svc._usage_percentage(5, None))
+
     def test_replacement_only_shop_queue_has_no_repair_wording(self):
         user, tenant = make_shop('Repl Dash', 'repldash@test.com', 'replacement')
         customer = Customer.objects.create(name='Fleet RD', tenant=tenant)

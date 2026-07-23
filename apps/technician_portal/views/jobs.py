@@ -325,9 +325,21 @@ def job_create(request):
                 cost_override=data['price'],
             )
             if data['service_type'] == 'repair':
-                service = Repair(technician_notes=data['work_done'] or '', **common)
+                service = Repair(
+                    technician_notes=data['work_done'] or '',
+                    damage_type=data['damage_type'] or '',
+                    damage_location_x=data['damage_location_x'],
+                    damage_location_y=data['damage_location_y'],
+                    **common,
+                )
             else:
-                service = Replacement(description=data['work_done'] or '', **common)
+                service = Replacement(
+                    description=data['work_done'] or '',
+                    glass_position=data['glass_position'] or '',
+                    glass_type=data['glass_type'] or '',
+                    nags_number=data['nags_number'] or '',
+                    **common,
+                )
             service.save()
 
             send_requested = 'save_and_send' in request.POST and user_can_invoices
