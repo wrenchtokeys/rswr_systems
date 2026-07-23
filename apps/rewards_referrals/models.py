@@ -192,6 +192,8 @@ class RewardRedemption(models.Model):
     fulfilled_at = models.DateTimeField(null=True, blank=True)
     applied_to_repair = models.ForeignKey('technician_portal.Repair', on_delete=models.SET_NULL,
                                        null=True, blank=True, related_name='applied_rewards')
+    applied_to_replacement = models.ForeignKey('technician_portal.Replacement', on_delete=models.SET_NULL,
+                                       null=True, blank=True, related_name='applied_rewards')
     preferred_date = models.DateField(
         null=True, blank=True,
         help_text="Customer's preferred delivery/fulfillment date"
@@ -222,6 +224,7 @@ class PointTransaction(models.Model):
     """
     TRANSACTION_TYPE_CHOICES = [
         ('repair_complete', 'Repair Complete'),
+        ('replacement_complete', 'Replacement Complete'),
         ('referral_made', 'Referral Made'),
         ('referral_received', 'Referral Received'),
         ('milestone_bonus', 'Milestone Bonus'),
@@ -247,6 +250,10 @@ class PointTransaction(models.Model):
 
     related_repair = models.ForeignKey(
         'technician_portal.Repair', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='point_transactions',
+    )
+    related_replacement = models.ForeignKey(
+        'technician_portal.Replacement', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='point_transactions',
     )
     related_redemption = models.ForeignKey(

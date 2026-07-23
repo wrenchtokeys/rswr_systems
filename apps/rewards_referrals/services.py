@@ -34,8 +34,8 @@ class LoyaltyService:
     @staticmethod
     @transaction.atomic
     def award_points(customer_user, amount, transaction_type, description,
-                     tenant=None, related_repair=None, related_payment=None,
-                     related_redemption=None, created_by=None):
+                     tenant=None, related_repair=None, related_replacement=None,
+                     related_payment=None, related_redemption=None, created_by=None):
         """
         Award (or deduct) points and create an immutable PointTransaction.
 
@@ -83,6 +83,7 @@ class LoyaltyService:
             transaction_type=transaction_type,
             description=description,
             related_repair=related_repair,
+            related_replacement=related_replacement,
             related_redemption=related_redemption,
             related_payment=related_payment,
             expires_at=expires_at,

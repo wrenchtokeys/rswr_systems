@@ -1684,6 +1684,15 @@ class Replacement(GlassService):
                     self.pk, exc_info=True,
                 )
 
+        # Loyalty points on first-time COMPLETED (mirrors the Repair
+        # loyalty_hook; the hook's own guard reads original_status, so this
+        # must run BEFORE original_status is refreshed below). We deliberately
+        # do not run the full post_completion_hooks orchestrator: warranty is
+        # handled inline above and review requests stay repair-only for now.
+        if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
+            from apps.technician_portal.hooks import loyalty_hook
+            loyalty_hook(self)
+
         self.original_status = self.queue_status
 
     def has_price_override(self):
@@ -1691,13 +1700,44 @@ class Replacement(GlassService):
         return self.cost_override is not None
     
     def get_discounted_cost(self):
-        """Calculate the final cost (no reward discounts for replacements yet)."""
+        """Final cost with any applied reward redemption (mirrors Repair's)."""
+        base_cost = self.cost or Decimal('0.00')
+        final_cost = base_cost
+        discount_applied = False
+        discount_description = ""
+
+        applied_rewards = self.applied_rewards.filter(status__in=['FULFILLED', 'PENDING'])
+        for redemption in applied_rewards:
+            reward_type = redemption.reward_option.reward_type
+            if not reward_type:
+                continue
+            if reward_type.category not in ['REPLACEMENT_DISCOUNT', 'FREE_SERVICE']:
+                continue
+
+            if reward_type.discount_type == 'PERCENTAGE':
+                discount_amount = (base_cost * Decimal(reward_type.discount_value)) / Decimal(100)
+                final_cost = base_cost - discount_amount
+                discount_description = f"{int(reward_type.discount_value)}% off"
+                discount_applied = True
+            elif reward_type.discount_type == 'FIXED_AMOUNT':
+                discount_amount = Decimal(reward_type.discount_value)
+                final_cost = max(base_cost - discount_amount, Decimal(0))
+                discount_description = f"${reward_type.discount_value} off"
+                discount_applied = True
+            elif reward_type.discount_type == 'FREE':
+                final_cost = Decimal(0)
+                discount_description = "Free replacement"
+                discount_applied = True
+
+            # Only apply one discount (the first one found)
+            break
+
         return {
-            'original_cost': self.cost,
-            'final_cost': self.cost,
-            'discount_applied': False,
-            'discount_description': '',
-            'savings': Decimal('0.00'),
+            'original_cost': base_cost,
+            'final_cost': final_cost,
+            'discount_applied': discount_applied,
+            'discount_description': discount_description,
+            'savings': base_cost - final_cost,
         }
 
     def get_invoice_description(self):

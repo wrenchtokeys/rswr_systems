@@ -152,11 +152,14 @@ class InvoiceTrackingService:
             for service in services:
                 if isinstance(service, Replacement):
                     # Replacements are parts + labor priced — no progressive
-                    # pricing or reward discounts.
-                    unit_price = service.cost or Decimal('0.00')
-                    total_line_discount = Decimal('0.00')
-                    amount = unit_price
+                    # pricing, but applied reward discounts do count.
+                    discounted = service.get_discounted_cost()
+                    unit_price = discounted['original_cost']
+                    total_line_discount = discounted['savings']
+                    amount = discounted['final_cost']
                     description = service.get_invoice_description()
+                    if discounted['discount_applied']:
+                        description += f" [{discounted['discount_description']}]"
                     line_kwargs = {'replacement': service}
                 else:
                     discounted = service.get_discounted_cost()
