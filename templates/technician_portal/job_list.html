@@ -53,16 +53,9 @@
             </div>
             <!-- Desktop new job + export -->
             <div class="hidden sm:flex items-center gap-2">
-                {% if shop_offers_repairs %}
-                <a href="{% url 'create_repair' %}" class="btn-primary btn-sm">
-                    <i class="fas fa-plus mr-2 text-xs"></i>New Repair
+                <a href="{% url 'job_create' %}" class="btn-primary btn-sm">
+                    <i class="fas fa-plus mr-2 text-xs"></i>New {{ service_noun }}
                 </a>
-                {% endif %}
-                {% if shop_offers_replacements %}
-                <a href="{% url 'replacement_create' %}" class="{% if shop_offers_repairs %}btn-secondary{% else %}btn-primary{% endif %} btn-sm">
-                    <i class="fas fa-plus mr-2 text-xs"></i>New Replacement
-                </a>
-                {% endif %}
                 <button onclick="exportToCSV()" class="inline-flex items-center px-3 py-2.5 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors" title="Export CSV">
                     <i class="fas fa-download"></i>
                 </button>
@@ -480,16 +473,9 @@
             </div>
             <h3 class="text-lg font-semibold text-gray-900 mb-1">No jobs found</h3>
             <p class="text-sm text-gray-500 mb-6">Try adjusting your filters or create a new job.</p>
-            {% if shop_offers_repairs %}
-            <a href="{% url 'create_repair' %}" class="btn-primary btn-sm">
-                <i class="fas fa-plus mr-2"></i>New Repair
+            <a href="{% url 'job_create' %}" class="btn-primary btn-sm">
+                <i class="fas fa-plus mr-2"></i>New {{ service_noun }}
             </a>
-            {% endif %}
-            {% if shop_offers_replacements %}
-            <a href="{% url 'replacement_create' %}" class="{% if shop_offers_repairs %}btn-secondary{% else %}btn-primary{% endif %} btn-sm">
-                <i class="fas fa-plus mr-2"></i>New Replacement
-            </a>
-            {% endif %}
         </div>
         {% endif %}
 

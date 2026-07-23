@@ -136,6 +136,6 @@ class UnifiedDashboardTests(TestCase):
         resp = client.get('/tech/')
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Fleet RD')
-        self.assertNotContains(resp, 'Create New Repair')
+        self.assertNotContains(resp, 'New Repair')
         self.assertNotContains(resp, 'Multi-Break Entry')
-        self.assertContains(resp, 'Create New Replacement')
+        self.assertContains(resp, 'New Replacement')

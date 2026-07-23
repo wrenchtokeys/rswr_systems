@@ -1,0 +1,113 @@
+{% extends "base_app.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 pb-24 md:pb-8">
+    <div class="max-w-xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+
+        <div class="mb-6">
+            <h1 class="text-xl sm:text-2xl font-bold text-gray-900">
+                New {{ service_noun }}
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">Log a job and send the invoice — done in under a minute.</p>
+        </div>
+
+        <form method="post" class="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-5">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+            <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                {{ form.non_field_errors }}
+            </div>
+            {% endif %}
+
+            {% if allowed_types|length > 1 %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">What kind of job?</label>
+                <div class="flex gap-2" id="type-toggle">
+                    {% for radio in form.service_type %}
+                    <label class="flex-1 cursor-pointer">
+                        {{ radio.tag }}
+                        <span class="type-pill block text-center px-4 py-2.5 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                            {{ radio.choice_label }}
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% if form.service_type.errors %}<p class="text-sm text-red-600 mt-1">{{ form.service_type.errors.0 }}</p>{% endif %}
+            </div>
+            {% else %}
+            {{ form.service_type }}
+            {% endif %}
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                {{ form.customer }}
+                {% if form.customer.errors %}<p class="text-sm text-red-600 mt-1">{{ form.customer.errors.0 }}</p>{% endif %}
+                <p class="text-xs text-gray-400 mt-1">Not in the list? <a href="{% url 'create_customer' %}" class="text-green-600 hover:text-green-700">Add a customer</a> first.</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Vehicle / unit <span class="text-gray-400 font-normal">(optional)</span></label>
+                {{ form.unit_number }}
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Work done <span class="text-gray-400 font-normal">(optional)</span></label>
+                {{ form.work_done }}
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                {{ form.price }}
+                {% if form.price.errors %}<p class="text-sm text-red-600 mt-1">{{ form.price.errors.0 }}</p>{% endif %}
+                {% if shop_offers_repairs %}
+                <p class="text-xs text-gray-400 mt-1" id="price-hint-repair">Leave blank on a repair to auto-price from your price book.</p>
+                {% endif %}
+            </div>
+
+            <label class="flex items-center gap-3 py-1 cursor-pointer">
+                <input type="checkbox" name="already_completed" {% if form.already_completed.value %}checked{% endif %}
+                       class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                <span class="text-sm font-medium text-gray-700">Job is already done</span>
+            </label>
+
+            <div class="flex items-center gap-3 pt-2">
+                <button type="submit" class="btn-secondary flex-1">Save</button>
+                {% if user_can_invoices %}
+                <button type="submit" name="save_and_send" value="1" class="btn-primary flex-1">
+                    <i class="fas fa-paper-plane mr-2 text-xs"></i>Save &amp; Send Invoice
+                </button>
+                {% endif %}
+            </div>
+
+            <p class="text-xs text-gray-400 text-center pt-1">
+                Need photos, insurance, ADAS, or glass details?
+                {% if shop_offers_repairs %}<a href="{% url 'create_repair' %}" class="text-green-600 hover:text-green-700">Full repair form</a>{% endif %}{% if shop_offers_repairs and shop_offers_replacements %} · {% endif %}{% if shop_offers_replacements %}<a href="{% url 'replacement_create' %}" class="text-green-600 hover:text-green-700">Full replacement form</a>{% endif %}
+            </p>
+        </form>
+
+        <div class="flex justify-center mt-6">
+            <a href="{% url 'job_list' %}" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                <i class="fas fa-arrow-left mr-1"></i> Back to Jobs
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Radio pill toggle: hide the input, style the sibling span */
+    #type-toggle input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    #type-toggle input[type="radio"]:checked + .type-pill {
+        background-color: #059669; border-color: #059669; color: #fff;
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Default the type toggle to the first option if nothing selected
+    const radios = document.querySelectorAll('#type-toggle input[type="radio"]');
+    if (radios.length && ![...radios].some(r => r.checked)) {
+        radios[0].checked = true;
+    }
+});
+</script>
+{% endblock %}

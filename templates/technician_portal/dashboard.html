@@ -148,21 +148,12 @@
             <div class="px-6 py-12 text-center">
                 <div class="text-4xl mb-3">☕</div>
                 <p class="text-gray-500 font-medium">No jobs queued — time for coffee</p>
-                {% if shop_offers_repairs %}
-                <a href="{% url 'create_repair' %}" class="inline-flex items-center mt-4 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                <a href="{% url 'job_create' %}" class="inline-flex items-center mt-4 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                     </svg>
-                    Create a Repair
+                    New {{ service_noun }}
                 </a>
-                {% else %}
-                <a href="{% url 'replacement_create' %}" class="inline-flex items-center mt-4 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                    Create a Replacement
-                </a>
-                {% endif %}
             </div>
             {% endif %}
         </div>
@@ -177,26 +168,18 @@
                     </div>
                     <div class="p-6">
                         <div class="space-y-3">
-                            {% if shop_offers_repairs %}
-                            <a href="{% url 'create_repair' %}" class="w-full inline-flex items-center justify-center px-4 py-3 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors shadow-sm">
+                            <a href="{% url 'job_create' %}" class="w-full inline-flex items-center justify-center px-4 py-3 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors shadow-sm">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                                 </svg>
-                                Create New Repair
+                                New {{ service_noun }}
                             </a>
+                            {% if shop_offers_repairs %}
                             <a href="{% url 'create_multi_break_repair' %}" class="w-full inline-flex items-center justify-center px-4 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
                                 </svg>
                                 Multi-Break Entry
-                            </a>
-                            {% endif %}
-                            {% if shop_offers_replacements %}
-                            <a href="{% url 'replacement_create' %}" class="w-full inline-flex items-center justify-center px-4 py-3 {% if shop_offers_repairs %}bg-purple-600 hover:bg-purple-700 focus:ring-purple-500{% else %}bg-green-600 hover:bg-green-700 focus:ring-green-500{% endif %} text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors shadow-sm">
-                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                                </svg>
-                                Create New Replacement
                             </a>
                             {% endif %}
                             <a href="{% url 'job_list' %}" class="w-full inline-flex items-center justify-center px-4 py-3 border-2 border-green-600 text-green-600 text-sm font-medium rounded-lg hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">

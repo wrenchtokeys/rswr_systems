@@ -721,3 +721,71 @@ class TechnicianNotificationPreferenceForm(forms.ModelForm):
             )
 
         return cleaned_data
+
+
+class QuickJobForm(forms.Form):
+    """Slim create form for the quick job + invoice flow (/tech/jobs/new/).
+
+    Deliberately minimal — customer, what was done, price. Everything else
+    (photos, insurance, ADAS, glass specifics) lives on the full per-type
+    forms, one click away.
+    """
+
+    _INPUT = ('w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 '
+              'focus:ring-green-500 focus:border-green-500 outline-none transition')
+
+    service_type = forms.ChoiceField(
+        choices=[('repair', 'Repair'), ('replacement', 'Replacement')],
+        widget=forms.RadioSelect,
+    )
+    customer = forms.ModelChoiceField(
+        queryset=Customer.objects.none(),
+        widget=forms.Select(attrs={'class': _INPUT + ' bg-white'}),
+    )
+    unit_number = forms.CharField(
+        required=False, max_length=100,
+        widget=forms.TextInput(attrs={
+            'class': _INPUT,
+            'placeholder': 'e.g. T-1045 or 2023 Toyota Camry',
+        }),
+    )
+    work_done = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': _INPUT, 'rows': 2,
+            'placeholder': 'e.g. Windshield replacement',
+        }),
+    )
+    price = forms.DecimalField(
+        required=False, min_value=0, max_digits=10, decimal_places=2,
+        widget=forms.NumberInput(attrs={
+            'class': _INPUT, 'placeholder': '0.00', 'step': '0.01', 'min': '0',
+        }),
+    )
+    already_completed = forms.BooleanField(required=False, initial=True)
+
+    def __init__(self, *args, tenant=None, allowed_types=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allowed_types = allowed_types or ['repair', 'replacement']
+        self.fields['service_type'].choices = [
+            (t, t.title()) for t in self.allowed_types
+        ]
+        if len(self.allowed_types) == 1:
+            self.fields['service_type'].initial = self.allowed_types[0]
+            self.fields['service_type'].widget = forms.HiddenInput()
+        if tenant:
+            self.fields['customer'].queryset = Customer.objects.filter(tenant=tenant)
+
+    def clean_service_type(self):
+        value = self.cleaned_data['service_type']
+        if value not in self.allowed_types:
+            raise forms.ValidationError('Your shop does not offer that service.')
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        # Repairs auto-price from the price book when blank; replacements have
+        # no price book, so a blank price would make a $0 invoice.
+        if cleaned.get('service_type') == 'replacement' and cleaned.get('price') in (None, ''):
+            self.add_error('price', 'Enter a price for the replacement.')
+        return cleaned

@@ -1081,6 +1081,48 @@ def replacement_update_status(request, pk):
     return redirect('replacement_detail', pk=pk)
 
 
+@require_POST
+@technician_required
+def replacement_complete_and_invoice(request, pk):
+    """One click: complete the replacement (if needed), invoice it, and email
+    the invoice. Mirrors repair_complete_and_invoice."""
+    from common.auth import can_access
+    from apps.technician_portal.services.job_flow import (
+        JobFlowError, complete_job, invoice_and_send,
+    )
+    from apps.technician_portal.views.jobs import notify_invoice_outcome
+
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not can_access(request.user, 'invoices', tenant):
+        messages.warning(request, "You don't have access to invoicing.")
+        return redirect('replacement_detail', pk=pk)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement,
+                                          require_can_replace=True):
+        messages.warning(request, "You don't have access to this replacement.")
+        return redirect('job_list')
+
+    try:
+        complete_job(replacement)
+    except JobFlowError as e:
+        messages.warning(request, str(e))
+        return redirect('replacement_detail', pk=pk)
+
+    try:
+        invoice, created, result, excluded = invoice_and_send(replacement, tenant)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('replacement_detail', pk=pk)
+    notify_invoice_outcome(request, invoice, created, result, excluded)
+    return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+
 # ------------------------------------------------------------------
 # 8. Billing — plan update, cancel, portal redirect
 # ------------------------------------------------------------------
@@ -2993,108 +3035,18 @@ def owner_send_invoice(request, invoice_id):
         return redirect('signup')
 
     invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
-    
-    if invoice.status not in ('DRAFT',):
-        messages.error(request, 'Only draft invoices can be sent.')
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
-    try:
-        # Resolve recipient email
-        recipient = None
-        try:
-            prefs = invoice.customer.repair_preferences
-            recipient = prefs.billing_email or invoice.customer.email
-        except Exception:
-            recipient = invoice.customer.email
-
-        # Inline email capture — the send modal shows an email field when the
-        # customer has no address on file, so the owner can add one and send
-        # in a single step instead of hunting for the customer edit page.
-        submitted_email = request.POST.get('email', '').strip()
-        if submitted_email and not recipient:
-            from django.core.validators import validate_email
-            from django.core.exceptions import ValidationError as _EmailValidationError
-            from django.db import IntegrityError as _IntegrityError
-            try:
-                validate_email(submitted_email)
-            except _EmailValidationError:
-                messages.error(request, f'"{submitted_email}" is not a valid email address.')
-                return redirect('owner_invoice_detail', invoice_id=invoice.id)
-            duplicate = Customer.objects.filter(
-                tenant=tenant, email__iexact=submitted_email
-            ).exclude(pk=invoice.customer.pk).exists()
-            if duplicate:
-                messages.error(
-                    request,
-                    'Another customer already uses that email address. '
-                    'Please use a different one.'
-                )
-                return redirect('owner_invoice_detail', invoice_id=invoice.id)
-            try:
-                # Savepoint so a duplicate slipping past the check above (race)
-                # doesn't poison the surrounding transaction.
-                with transaction.atomic():
-                    invoice.customer.email = submitted_email
-                    invoice.customer.save(update_fields=['email'])
-            except _IntegrityError:
-                messages.error(
-                    request,
-                    'Another customer already uses that email address. '
-                    'Please use a different one.'
-                )
-                return redirect('owner_invoice_detail', invoice_id=invoice.id)
-            recipient = submitted_email
-
-        # CODE-112: Block send entirely if no email on file
-        if not recipient:
-            messages.error(
-                request,
-                f'Cannot send invoice — no email address on file for {invoice.customer.name}. '
-                f'Add an email in the customer\'s settings first.'
-            )
-            return redirect('owner_invoice_detail', invoice_id=invoice.id)
-
-        # Attempt email delivery
-        email_sent = False
-        try:
-            from apps.billing.services.invoice_email_service import InvoiceEmailService
-            email_service = InvoiceEmailService(tenant=tenant)
-
-            # A4: pass the Invoice record so the PDF renders from the
-            # invoice's OWN line items and stored totals. The old
-            # repair_ids/invoice_number plumbing made replacement-only
-            # invoices unsendable (no repair line items -> 30-day repair
-            # lookback -> "no completed repairs" or a PDF full of
-            # unrelated repairs).
-            success, msg = email_service.send_invoice_email(
-                customer_id=invoice.customer.id,
-                recipient_email=recipient,
-                invoice=invoice,
-            )
-            email_sent = success
-            if not success:
-                logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
-        except Exception as e:
-            logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
-
-        # CODE-112: Only mark SENT if email actually delivered.
-        # If email fails, leave as DRAFT so the owner knows it didn't go out.
-        if email_sent:
-            invoice.status = 'SENT'
-            invoice.sent_at = timezone.now()
-            invoice.save(update_fields=['status', 'sent_at'])
-            messages.success(request, f'Invoice {invoice.invoice_number} sent to {recipient}.')
-        else:
-            messages.error(
-                request,
-                f'Invoice {invoice.invoice_number} could NOT be sent — email delivery to {recipient} failed. '
-                f'The invoice remains as a draft. Please check the email address and try again.'
-            )
-
-    except Exception as e:
-        logger.error(f"Error sending invoice {invoice.invoice_number}: {e}")
-        messages.error(request, 'An error occurred while sending the invoice.')
-
+    # The whole pipeline (recipient resolution, inline email capture,
+    # delivery, mark-SENT-only-on-success) lives in InvoiceSendService so the
+    # job-level quick-invoice actions share it.
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+    result = InvoiceSendService.send(
+        invoice, tenant, submitted_email=request.POST.get('email', ''),
+    )
+    if result.sent:
+        messages.success(request, result.message)
+    else:
+        messages.error(request, result.message)
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
 

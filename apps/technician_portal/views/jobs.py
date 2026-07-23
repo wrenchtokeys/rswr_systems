@@ -9,12 +9,17 @@ view layer using the same merge pattern as the customer portal's services page
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Q, Count
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
+from common.auth import can_access
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from apps.technician_portal.models import Technician, Repair, Replacement
+from apps.technician_portal.services.job_flow import (
+    JobFlowError, complete_job, invoice_and_send,
+)
 
 
 def _visible_jobs(model, tenant, technician, user_is_admin):
@@ -231,3 +236,170 @@ def repair_list(request):
     if request.GET.get('damage_type', 'all') != 'all':
         extra['type'] = 'repair'
     return _redirect_to_job_list(request, extra)
+
+
+def _job_detail_redirect(service):
+    if isinstance(service, Repair):
+        return redirect('repair_detail', repair_id=service.id)
+    return redirect('replacement_detail', pk=service.id)
+
+
+def _resolve_technician_for_create(request, tenant, service_type):
+    """The tech to assign a quick-created job to: the user's own profile, or
+    (for admins without one) any active tech with the matching ability."""
+    tech = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    if tech:
+        return tech
+    qs = Technician.objects.filter(tenant=tenant, is_active=True)
+    ability_qs = qs.filter(
+        can_replace=True) if service_type == 'replacement' else qs.filter(can_repair=True)
+    return ability_qs.first() or qs.first()
+
+
+def notify_invoice_outcome(request, invoice, created, result, excluded):
+    """Consistent messages for the quick-invoice actions."""
+    if excluded:
+        messages.warning(
+            request,
+            f'{excluded} batch repair(s) are not yet completed and were '
+            f'excluded from this invoice.'
+        )
+    if result.sent:
+        messages.success(request, result.message)
+    elif result.reason == 'no_email':
+        messages.warning(
+            request,
+            f'Invoice {invoice.invoice_number} saved as a draft — add an '
+            f'email address below to send it.'
+        )
+    elif result.reason == 'not_draft' and not created:
+        messages.info(
+            request,
+            f'This job is already on invoice {invoice.invoice_number}.'
+        )
+    else:
+        messages.error(request, result.message)
+
+
+@technician_required
+def job_create(request):
+    """Quick job + invoice: one short form, optionally straight to a sent
+    invoice ("Save & Send Invoice")."""
+    from apps.technician_portal.forms import QuickJobForm
+    from apps.tenants.services.usage_service import UsageService
+
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        return redirect('technician_dashboard')
+
+    allowed_types = []
+    if tenant.offers_repairs:
+        allowed_types.append('repair')
+    if tenant.offers_replacements:
+        allowed_types.append('replacement')
+
+    can_create, limit_msg = UsageService(tenant).can_create_repair()
+    if not can_create:
+        messages.warning(request, limit_msg)
+        return redirect('job_list')
+
+    user_can_invoices = can_access(request.user, 'invoices', tenant)
+
+    if request.method == 'POST':
+        form = QuickJobForm(request.POST, tenant=tenant, allowed_types=allowed_types)
+        if form.is_valid():
+            data = form.cleaned_data
+            technician = _resolve_technician_for_create(
+                request, tenant, data['service_type'])
+            if technician is None:
+                messages.error(request, 'No active technician found for this shop. '
+                                        'Add one under Team settings first.')
+                return redirect('job_list')
+
+            common = dict(
+                tenant=tenant,
+                customer=data['customer'],
+                technician=technician,
+                unit_number=data['unit_number'] or '',
+                cost_override=data['price'],
+            )
+            if data['service_type'] == 'repair':
+                service = Repair(technician_notes=data['work_done'] or '', **common)
+            else:
+                service = Replacement(description=data['work_done'] or '', **common)
+            service.save()
+
+            send_requested = 'save_and_send' in request.POST and user_can_invoices
+            if data['already_completed'] or send_requested:
+                try:
+                    # Legal forward jump APPROVED → COMPLETED; fires the
+                    # completion side effects exactly once.
+                    complete_job(service)
+                except JobFlowError as e:
+                    messages.warning(request, str(e))
+                    return _job_detail_redirect(service)
+
+            if send_requested and service.queue_status == 'COMPLETED':
+                invoice, created, result, excluded = invoice_and_send(service, tenant)
+                notify_invoice_outcome(request, invoice, created, result, excluded)
+                return redirect('owner_invoice_detail', invoice_id=invoice.id)
+
+            messages.success(
+                request,
+                f"{'Job' if len(allowed_types) > 1 else data['service_type'].title()} "
+                f"saved{' and marked complete' if service.queue_status == 'COMPLETED' else ''}."
+            )
+            return _job_detail_redirect(service)
+    else:
+        initial = {}
+        if request.GET.get('customer'):
+            initial['customer'] = request.GET.get('customer')
+        if request.GET.get('unit'):
+            initial['unit_number'] = request.GET.get('unit')
+        if request.GET.get('type') in allowed_types:
+            initial['service_type'] = request.GET.get('type')
+        form = QuickJobForm(initial=initial, tenant=tenant, allowed_types=allowed_types)
+
+    return render(request, 'technician_portal/job_form.html', {
+        'form': form,
+        'allowed_types': allowed_types,
+        'user_can_invoices': user_can_invoices,
+    })
+
+
+@technician_required
+@require_POST
+def repair_complete_and_invoice(request, repair_id):
+    """One click: complete the repair (if needed), invoice it (whole batch),
+    and email the invoice."""
+    tenant = getattr(request, 'tenant', None)
+    repair = get_object_or_404(
+        Repair.objects.filter(tenant=tenant) if tenant else Repair.objects.none(),
+        id=repair_id,
+    )
+
+    if not can_access(request.user, 'invoices', tenant):
+        messages.warning(request, "You don't have access to invoicing.")
+        return redirect('repair_detail', repair_id=repair.id)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+        if not technician or (not technician.is_manager
+                              and repair.technician_id != technician.id):
+            messages.warning(request, "You don't have access to this repair.")
+            return redirect('job_list')
+
+    try:
+        complete_job(repair)
+    except JobFlowError as e:
+        messages.warning(request, str(e))
+        return redirect('repair_detail', repair_id=repair.id)
+
+    try:
+        invoice, created, result, excluded = invoice_and_send(repair, tenant)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('repair_detail', repair_id=repair.id)
+    notify_invoice_outcome(request, invoice, created, result, excluded)
+    return redirect('owner_invoice_detail', invoice_id=invoice.id)
