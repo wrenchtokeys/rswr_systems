@@ -137,6 +137,18 @@ class UnifiedJobListTests(TestCase):
         resp = self.client.get(reverse('job_list'))
         self.assertContains(resp, '>Replacement</span>')
 
+    def test_all_jobs_chip_clears_type_filter(self):
+        # {% querystring %} alone renders an empty href once all params are
+        # cleared, which made the "All Jobs" chip a no-op after filtering.
+        resp = self.client.get(reverse('job_list'), {'type': 'repair'})
+        self.assertContains(resp, 'href="/tech/jobs/"')
+        self.assertNotContains(resp, 'href=""')
+
+    def test_all_status_pill_clears_status_filter(self):
+        resp = self.client.get(reverse('job_list'), {'status': 'COMPLETED'})
+        self.assertContains(resp, 'href="/tech/jobs/"')
+        self.assertNotContains(resp, 'href=""')
+
     def test_stats_count_both_types(self):
         resp = self.client.get(reverse('job_list'))
         self.assertEqual(resp.context['stats']['total_active'], 2)
