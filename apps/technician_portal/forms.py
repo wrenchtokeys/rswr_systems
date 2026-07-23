@@ -160,6 +160,30 @@ def _clean_customer_email(form):
     return email
 
 
+def _configure_account_discount_fields(form, tenant):
+    """Wire up the fleet-linked discount fields on a customer form.
+
+    ``parent_account`` is scoped to this tenant's FLEET accounts (an individual
+    links to one to inherit its discount) and excludes the customer being
+    edited. ``account_discount_percentage`` is the flat % a fleet account grants.
+    Both are optional; the template shows the relevant one per customer type.
+    """
+    if 'parent_account' in form.fields:
+        qs = Customer.objects.filter(customer_type='FLEET')
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        instance = getattr(form, 'instance', None)
+        if instance is not None and instance.pk:
+            qs = qs.exclude(pk=instance.pk)
+        form.fields['parent_account'].queryset = qs.order_by('name')
+        form.fields['parent_account'].required = False
+        form.fields['parent_account'].label = 'Linked fleet account'
+        form.fields['parent_account'].empty_label = '— None (standalone) —'
+    if 'account_discount_percentage' in form.fields:
+        form.fields['account_discount_percentage'].required = False
+        form.fields['account_discount_percentage'].label = 'Account discount %'
+
+
 class CustomerForm(forms.ModelForm):
     """Form for creating customers with optional portal invitation."""
     
@@ -227,7 +251,8 @@ class CustomerForm(forms.ModelForm):
 
     class Meta:
         model = Customer
-        fields = ['name', 'customer_type', 'email', 'phone', 'primary_technician']
+        fields = ['name', 'customer_type', 'email', 'phone', 'primary_technician',
+                  'parent_account', 'account_discount_percentage']
         widgets = {
             'customer_type': forms.Select(attrs={'class': 'form-select'}),
         }
@@ -245,6 +270,7 @@ class CustomerForm(forms.ModelForm):
         self.fields['email'].required = False
         self.fields['phone'].required = False
         self.fields['customer_type'].required = False
+        _configure_account_discount_fields(self, self.tenant)
 
         # Build payment_terms choices with actual shop default label
         from apps.billing.models import BillingConfig
@@ -292,7 +318,8 @@ class CustomerEditForm(forms.ModelForm):
         fields = [
             'name', 'customer_type', 'email', 'phone',
             'address', 'city', 'state', 'zip_code',
-            'primary_technician', 'tax_exempt', 'tax_exempt_certificate'
+            'primary_technician', 'tax_exempt', 'tax_exempt_certificate',
+            'parent_account', 'account_discount_percentage',
         ]
         widgets = {
             'address': forms.Textarea(attrs={'rows': 2}),
@@ -319,7 +346,8 @@ class CustomerEditForm(forms.ModelForm):
         self.fields['state'].required = False
         self.fields['zip_code'].required = False
         self.fields['tax_exempt_certificate'].required = False
-        
+        _configure_account_discount_fields(self, self.tenant)
+
         # Add placeholders
         self.fields['email'].widget.attrs['placeholder'] = 'billing@company.com'
         self.fields['phone'].widget.attrs['placeholder'] = '+1 (555) 123-4567'
@@ -740,8 +768,25 @@ class QuickJobForm(forms.Form):
     )
     customer = forms.ModelChoiceField(
         queryset=Customer.objects.none(),
+        required=False,
         widget=forms.Select(attrs={'class': _INPUT + ' bg-white'}),
     )
+    # Add an individual customer on the fly — no "create the customer first" detour.
+    new_customer_name = forms.CharField(
+        required=False, max_length=100,
+        widget=forms.TextInput(attrs={
+            'class': _INPUT,
+            'placeholder': 'e.g. John Smith',
+        }),
+    )
+    new_customer_phone = forms.CharField(
+        required=False, max_length=20,
+        widget=forms.TextInput(attrs={
+            'class': _INPUT,
+            'placeholder': 'Phone (optional)',
+        }),
+    )
+    new_customer_is_walkin = forms.BooleanField(required=False)
     unit_number = forms.CharField(
         required=False, max_length=100,
         widget=forms.TextInput(attrs={
@@ -810,6 +855,16 @@ class QuickJobForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
+        # Exactly one of: pick an existing customer, OR add a new individual.
+        existing = cleaned.get('customer')
+        new_name = (cleaned.get('new_customer_name') or '').strip()
+        if not existing and not new_name:
+            self.add_error('customer', 'Pick a customer or add a new individual.')
+        elif existing and new_name:
+            self.add_error(
+                'new_customer_name',
+                'Choose an existing customer or add a new one — not both.',
+            )
         # Repairs auto-price from the price book when blank; replacements have
         # no price book, so a blank price would make a $0 invoice.
         if cleaned.get('service_type') == 'replacement' and cleaned.get('price') in (None, ''):

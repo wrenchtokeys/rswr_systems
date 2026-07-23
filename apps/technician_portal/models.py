@@ -870,7 +870,11 @@ class Repair(GlassService):
 
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
-                    self.cost = self.cost_override
+                    from .services.pricing_service import apply_account_discount
+                    # A linked account's discount is automatic and total — it
+                    # applies even to a manually entered price. Idempotent: cost
+                    # is re-derived from cost_override on every save.
+                    self.cost = apply_account_discount(self.cost_override, self.customer)
                 elif not is_first_completion:
                     # Already priced when it first completed — never re-price.
                     pass
@@ -895,7 +899,8 @@ class Repair(GlassService):
             else:
                 # For non-completed repairs, show expected cost for preview
                 if self.cost_override is not None:
-                    self.cost = self.cost_override
+                    from .services.pricing_service import apply_account_discount
+                    self.cost = apply_account_discount(self.cost_override, self.customer)
                 # BATCH REPAIR FIX: Preserve pre-calculated batch pricing
                 elif is_multi_break:
                     pass
@@ -1614,9 +1619,13 @@ class Replacement(GlassService):
                 self.queue_status = resolve_initial_shop_status(self)
             
             # --- REPLACEMENT PRICING ---
-            # Replacements use parts + labor + ADAS, not progressive repair pricing
+            # Replacements use parts + labor + ADAS, not progressive repair pricing.
+            # A linked account's flat discount (0% default = no-op) is applied to
+            # the freshly resolved cost — but NOT to the "keep existing cost"
+            # branch, so a re-save never discounts twice.
+            from .services.pricing_service import apply_account_discount
             if self.cost_override is not None:
-                self.cost = self.cost_override
+                self.cost = apply_account_discount(self.cost_override, self.customer)
             else:
                 total = Decimal('0.00')
                 if self.parts_cost:
@@ -1626,7 +1635,7 @@ class Replacement(GlassService):
                 if self.requires_adas_calibration and self.adas_calibration_cost:
                     total += self.adas_calibration_cost
                 if total > 0:
-                    self.cost = total
+                    self.cost = apply_account_discount(total, self.customer)
                 # else: keep existing cost (may have been set manually)
 
             # Calculate tax from BillingConfig rates

@@ -64,6 +64,23 @@ def get_tenant_repair_price(tenant, repair_count: int) -> Decimal:
     return DEFAULT_PRICING.get(repair_count, DEFAULT_PRICE_5_PLUS)
 
 
+def apply_account_discount(cost: Decimal, customer: Customer) -> Decimal:
+    """Apply a customer's flat account discount to a resolved cost.
+
+    Returns ``cost * (1 - pct/100)`` rounded to cents. A 0% discount (the
+    default) is a no-op, so callers can apply this unconditionally. The
+    percentage is resolved via ``Customer.get_effective_discount_percentage``
+    (own discount, else inherited from a linked fleet ``parent_account``).
+    """
+    if cost is None or not customer:
+        return cost
+    pct = customer.get_effective_discount_percentage()
+    if not pct or pct <= 0:
+        return cost
+    discounted = Decimal(str(cost)) * (Decimal('100') - pct) / Decimal('100')
+    return discounted.quantize(Decimal('0.01'))
+
+
 def get_default_repair_price(repair_count: int) -> Decimal:
     """
     Get the default repair price for a given repair count tier.
@@ -94,21 +111,28 @@ def calculate_repair_cost(customer: Customer, repair_count: int, tenant=None) ->
         Decimal: The calculated repair cost
     """
     # First check customer-specific pricing
+    base_price = None
     try:
         pricing = CustomerPricing.objects.get(customer=customer, use_custom_pricing=True)
         custom_price = pricing.get_repair_price(repair_count)
 
         if custom_price is not None:
-            return Decimal(str(custom_price))
+            base_price = Decimal(str(custom_price))
 
     except CustomerPricing.DoesNotExist:
         pass
 
     # Fall back to tenant pricing, then system defaults
-    if tenant is None and customer:
-        tenant = getattr(customer, 'tenant', None)
-    
-    return get_tenant_repair_price(tenant, repair_count)
+    if base_price is None:
+        if tenant is None and customer:
+            tenant = getattr(customer, 'tenant', None)
+        base_price = get_tenant_repair_price(tenant, repair_count)
+
+    # Apply the customer's flat account discount (0% default = no-op). This is
+    # the single chokepoint for tier pricing, so batch pricing and cost
+    # previews inherit the discount automatically. cost_override paths (which
+    # bypass this) apply the discount explicitly in the save() methods.
+    return apply_account_discount(base_price, customer)
 
 
 def calculate_repair_cost_with_volume_discount(customer: Customer, repair_count: int, total_customer_repairs: int) -> Tuple[Decimal, bool, Decimal]:
