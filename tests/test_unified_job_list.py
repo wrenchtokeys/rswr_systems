@@ -144,6 +144,24 @@ class UnifiedJobListTests(TestCase):
         self.assertContains(resp, 'href="/tech/jobs/"')
         self.assertNotContains(resp, 'href=""')
 
+    def test_no_template_syntax_leaks_into_pages(self):
+        # A multi-line {# #} comment isn't valid Django syntax — its text (and
+        # any tags inside it) renders straight into the page. Guard every
+        # surface this overhaul added or reworked.
+        for url in [
+            reverse('job_list'),
+            reverse('job_list') + '?type=repair&status=COMPLETED',
+            reverse('job_create'),
+            '/tech/',
+        ]:
+            resp = self.client.get(url, follow=True)
+            content = resp.content.decode()
+            for token in ('{#', '#}', '{%', '%}'):
+                self.assertNotIn(
+                    token, content,
+                    f'Template syntax "{token}" leaked into {url}',
+                )
+
     def test_all_status_pill_clears_status_filter(self):
         resp = self.client.get(reverse('job_list'), {'status': 'COMPLETED'})
         self.assertContains(resp, 'href="/tech/jobs/"')
