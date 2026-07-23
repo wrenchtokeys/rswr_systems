@@ -204,12 +204,17 @@ class UsageService:
     # ------------------------------------------------------------------
     
     def _usage_percentage(self, used, limit):
-        """Calculate usage percentage. Returns None if unlimited."""
+        """Calculate usage percentage. Returns None if unlimited.
+
+        Clamped to 100 — over-limit tenants (e.g. 7 techs on a 2-tech plan,
+        grandfathered before a downgrade) fed raw >100% widths straight into
+        the dashboard progress bars, which overflowed the card.
+        """
         if limit is None:
             return None
         if limit == 0:
             return 100.0
-        return round((used / limit) * 100, 1)
+        return min(100.0, round((used / limit) * 100, 1))
     
     def get_summary(self):
         """

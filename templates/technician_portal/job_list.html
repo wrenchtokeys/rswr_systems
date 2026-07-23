@@ -85,7 +85,8 @@
         {% if shop_service_mix == 'both' %}
         <!-- Type Filter Chips (only meaningful when the shop does both) -->
         <div class="flex gap-2 mb-3">
-            <a href="{% querystring type=None page=None damage_type=None %}"
+            {# url-prefix guards against the querystring tag emitting an empty href once all params clear #}
+            <a href="{% url 'job_list' %}{% querystring type=None page=None damage_type=None %}"
                class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
                       {% if type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
                 All Jobs
@@ -105,7 +106,8 @@
 
         <!-- Status Pill Filters -->
         <div class="flex gap-2 mb-4 overflow-x-auto pill-scroll pb-1">
-            <a href="{% querystring status=None page=None %}"
+            {# Same empty-href guard as the All Jobs chip above. #}
+            <a href="{% url 'job_list' %}{% querystring status=None page=None %}"
                class="status-pill flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
                       {% if status_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
                 All
