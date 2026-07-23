@@ -90,10 +90,10 @@
 
 <!-- Stats + Billing — Combined compact grid -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-    <!-- Repairs -->
+    <!-- Jobs (usage counts repairs + replacements) -->
     <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-gray-500">Repairs</span>
+            <span class="text-xs font-medium text-gray-500">Jobs</span>
             <i class="fas fa-tools text-green-500 text-xs"></i>
         </div>
         <div class="text-2xl font-bold text-gray-900">{{ usage.repairs.used }}</div>
@@ -214,7 +214,7 @@
 <div class="bg-white rounded-xl border border-gray-200">
     <div class="px-4 sm:px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
         <h2 class="text-sm font-semibold text-gray-900">Recent Activity</h2>
-        <a href="{% url 'repair_list' %}" class="text-xs font-medium text-blue-600 hover:text-blue-800">View all →</a>
+        <a href="{% url 'job_list' %}" class="text-xs font-medium text-blue-600 hover:text-blue-800">View all →</a>
     </div>
     {% if recent_activity %}
     <div class="divide-y divide-gray-50">
@@ -326,17 +326,10 @@
         <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><i class="fas fa-user-plus text-purple-600 text-xs"></i></div>
         New Customer
     </a>
-    {% if shop_offers_repairs %}
-    <a href="{% url 'repair_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-amber-300 hover:shadow-md transition-all">
+    <a href="{% url 'job_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-amber-300 hover:shadow-md transition-all">
         <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-list text-amber-600 text-xs"></i></div>
-        View Repairs
+        View Jobs
     </a>
-    {% else %}
-    <a href="{% url 'replacement_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-amber-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-list text-amber-600 text-xs"></i></div>
-        View Replacements
-    </a>
-    {% endif %}
 </div>
 
 </div>

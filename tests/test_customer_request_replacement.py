@@ -154,7 +154,7 @@ class CustomerRequestReplacementTests(TestCase):
         session = owner_client.session
         session['tenant_id'] = self.tenant.id
         session.save()
-        response = owner_client.get('/tech/replacements/?status=REQUESTED')
+        response = owner_client.get('/tech/replacements/?status=REQUESTED', follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Truck 12')
 

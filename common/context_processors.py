@@ -26,6 +26,9 @@ def portal_access(request):
         user_can_settings     – True if user can access settings area
         shop_offers_repairs   – True if the tenant performs repairs (True when no tenant)
         shop_offers_replacements – True if the tenant performs replacements (True when no tenant)
+        shop_service_mix      – 'repairs' | 'replacements' | 'both'
+        service_noun          – 'Repair' | 'Replacement' | 'Job' (matches the mix)
+        service_noun_plural   – 'Repairs' | 'Replacements' | 'Jobs'
         subscription_grace_period – True if tenant is in read-only grace period
         grace_days_remaining  – Days remaining in grace period (0 if not in grace period)
     """
@@ -49,6 +52,19 @@ def portal_access(request):
     in_grace_period = getattr(request, 'subscription_grace_period', False)
     grace_days = getattr(request, 'grace_days_remaining', 0)
 
+    # Adaptive service terminology: single-service shops see their own word
+    # ("Repair"/"Replacement"); both-shops (and no-tenant superusers) see the
+    # neutral "Job". Unified surfaces (nav, job list, usage meter) always say
+    # "Jobs" regardless of mix.
+    offers_repairs = tenant.offers_repairs if tenant else True
+    offers_replacements = tenant.offers_replacements if tenant else True
+    if offers_repairs and not offers_replacements:
+        service_mix, noun, noun_plural = 'repairs', 'Repair', 'Repairs'
+    elif offers_replacements and not offers_repairs:
+        service_mix, noun, noun_plural = 'replacements', 'Replacement', 'Replacements'
+    else:
+        service_mix, noun, noun_plural = 'both', 'Job', 'Jobs'
+
     return {
         # Legacy flags (still used by some templates)
         'has_tech_access': repairs or customers,
@@ -64,8 +80,11 @@ def portal_access(request):
         'user_can_settings': settings,
 
         # Shop service flags (default True with no tenant, e.g. superusers)
-        'shop_offers_repairs': tenant.offers_repairs if tenant else True,
-        'shop_offers_replacements': tenant.offers_replacements if tenant else True,
+        'shop_offers_repairs': offers_repairs,
+        'shop_offers_replacements': offers_replacements,
+        'shop_service_mix': service_mix,
+        'service_noun': noun,
+        'service_noun_plural': noun_plural,
 
         # Subscription grace period info
         'subscription_grace_period': in_grace_period,
