@@ -88,6 +88,9 @@ def job_list(request):
     if type_filter not in ('all', 'repair', 'replacement'):
         type_filter = 'all'
     customer_search = request.GET.get('customer_search', '')
+    customer_type_filter = request.GET.get('customer_type', 'all')
+    if customer_type_filter not in ('all', 'fleet', 'individual'):
+        customer_type_filter = 'all'
     status_filter = request.GET.get('status', 'all')
     unit_search = request.GET.get('unit_search', '')
     damage_type_filter = request.GET.get('damage_type', 'all')
@@ -102,6 +105,10 @@ def job_list(request):
     def apply_filters(qs):
         if customer_search:
             qs = qs.filter(customer__name__icontains=customer_search)
+        if customer_type_filter == 'fleet':
+            qs = qs.filter(customer__customer_type='FLEET')
+        elif customer_type_filter == 'individual':
+            qs = qs.filter(customer__customer_type__in=['RETAIL', 'WALK_IN'])
         if status_filter != 'all':
             qs = qs.filter(queue_status__in=status_filter.split(','))
         if unit_search:
@@ -204,6 +211,7 @@ def job_list(request):
         'stats': stats,
         'type_filter': type_filter,
         'customer_search': customer_search,
+        'customer_type_filter': customer_type_filter,
         'status_filter': status_filter,
         'unit_search': unit_search,
         'damage_type_filter': damage_type_filter,
@@ -310,6 +318,40 @@ def job_create(request):
         form = QuickJobForm(request.POST, tenant=tenant, allowed_types=allowed_types)
         if form.is_valid():
             data = form.cleaned_data
+
+            # Resolve the customer — either an existing pick or a new individual
+            # added inline (no "create the customer first" detour).
+            customer = data.get('customer')
+            if customer is None:
+                from core.models import Customer
+                from django.db import IntegrityError, transaction
+                can_add, add_msg = UsageService(tenant).can_add_customer()
+                if not can_add:
+                    messages.warning(request, add_msg)
+                    return redirect('job_list')
+                ctype = 'WALK_IN' if data.get('new_customer_is_walkin') else 'RETAIL'
+                try:
+                    # Savepoint so a duplicate-name IntegrityError doesn't poison
+                    # the surrounding request transaction (we re-render below).
+                    with transaction.atomic():
+                        customer = Customer.objects.create(
+                            tenant=tenant,
+                            name=data['new_customer_name'].strip(),
+                            phone=(data.get('new_customer_phone') or '').strip() or None,
+                            customer_type=ctype,
+                        )
+                except IntegrityError:
+                    form.add_error(
+                        'new_customer_name',
+                        'A customer with that name already exists — pick them from '
+                        'the list, or add a distinguishing detail (e.g. a middle initial).',
+                    )
+                    return render(request, 'technician_portal/job_form.html', {
+                        'form': form,
+                        'allowed_types': allowed_types,
+                        'user_can_invoices': user_can_invoices,
+                    })
+
             technician = _resolve_technician_for_create(
                 request, tenant, data['service_type'])
             if technician is None:
@@ -319,7 +361,7 @@ def job_create(request):
 
             common = dict(
                 tenant=tenant,
-                customer=data['customer'],
+                customer=customer,
                 technician=technician,
                 unit_number=data['unit_number'] or '',
                 cost_override=data['price'],

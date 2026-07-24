@@ -104,6 +104,25 @@
         </div>
         {% endif %}
 
+        <!-- Fleet vs Individual (general public) -->
+        <div class="flex gap-2 mb-3">
+            <a href="{% url 'job_list' %}{% querystring customer_type=None page=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if customer_type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                All
+            </a>
+            <a href="{% querystring customer_type='fleet' page=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if customer_type_filter == 'fleet' %}bg-sky-700 text-white border-sky-700{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                <i class="fas fa-truck text-[10px] mr-1"></i>Fleet
+            </a>
+            <a href="{% querystring customer_type='individual' page=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if customer_type_filter == 'individual' %}bg-teal-600 text-white border-teal-600{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                <i class="fas fa-user text-[10px] mr-1"></i>Individual
+            </a>
+        </div>
+
         <!-- Status Pill Filters -->
         <div class="flex gap-2 mb-4 overflow-x-auto pill-scroll pb-1">
             {# Same empty-href guard as the All Jobs chip above. #}

@@ -39,11 +39,40 @@
             {{ form.service_type }}
             {% endif %}
 
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                {{ form.customer }}
-                {% if form.customer.errors %}<p class="text-sm text-red-600 mt-1">{{ form.customer.errors.0 }}</p>{% endif %}
-                <p class="text-xs text-gray-400 mt-1">Not in the list? <a href="{% url 'create_customer' %}" class="text-green-600 hover:text-green-700">Add a customer</a> first.</p>
+            <div id="customer-block"
+                 data-initial-mode="{% if form.new_customer_name.value or form.new_customer_name.errors %}new{% else %}existing{% endif %}">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Customer</label>
+                <div class="flex gap-2 mb-3" id="cust-mode-toggle">
+                    <button type="button" data-mode="existing"
+                            class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                        Pick existing
+                    </button>
+                    <button type="button" data-mode="new"
+                            class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                        + New individual
+                    </button>
+                </div>
+
+                <div id="cust-existing">
+                    {{ form.customer }}
+                    {% if form.customer.errors %}<p class="text-sm text-red-600 mt-1">{{ form.customer.errors.0 }}</p>{% endif %}
+                </div>
+
+                <div id="cust-new" class="space-y-3">
+                    <div>
+                        {{ form.new_customer_name }}
+                        {% if form.new_customer_name.errors %}<p class="text-sm text-red-600 mt-1">{{ form.new_customer_name.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>{{ form.new_customer_phone }}</div>
+                    <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                        <input type="checkbox" name="new_customer_is_walkin" {% if form.new_customer_is_walkin.value %}checked{% endif %}
+                               class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                        One-time walk-in
+                    </label>
+                    <p class="text-xs text-gray-400">Adds an individual customer to your shop — no separate step.</p>
+                    <p class="text-xs text-gray-400">Adding a fleet business (billing, portal invite)?
+                        <a href="{% url 'create_customer' %}" class="text-green-600 hover:text-green-700">Use the full customer page</a>.</p>
+                </div>
             </div>
 
             <div>
@@ -156,6 +185,8 @@
     #type-toggle input[type="radio"]:checked + .type-pill {
         background-color: #059669; border-color: #059669; color: #fff;
     }
+    /* Customer mode toggle (existing vs new individual) */
+    .cust-mode-btn.active { background-color: #059669; border-color: #059669; color: #fff; }
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -183,6 +214,30 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     radios.forEach(r => r.addEventListener('change', syncDetailSections));
     syncDetailSections();
+
+    // Customer mode toggle: "Pick existing" select vs "+ New individual" fields.
+    const custBlock = document.getElementById('customer-block');
+    if (custBlock) {
+        const existingBox = document.getElementById('cust-existing');
+        const newBox = document.getElementById('cust-new');
+        const select = existingBox.querySelector('select');
+        const newInputs = newBox.querySelectorAll('input');
+        const btns = custBlock.querySelectorAll('.cust-mode-btn');
+
+        function setMode(mode) {
+            existingBox.style.display = (mode === 'existing') ? '' : 'none';
+            newBox.style.display = (mode === 'new') ? '' : 'none';
+            btns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+            // Clear the inactive side so only one customer source is submitted.
+            if (mode === 'existing') {
+                newInputs.forEach(i => { i.type === 'checkbox' ? i.checked = false : i.value = ''; });
+            } else if (select) {
+                select.value = '';
+            }
+        }
+        btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+        setMode(custBlock.dataset.initialMode || 'existing');
+    }
 });
 </script>
 
