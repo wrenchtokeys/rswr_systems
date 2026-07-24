@@ -81,12 +81,24 @@ class EmailService:
         )
 
         try:
+            # Shop-branded sender: From shows the shop name (mail still goes
+            # out through the platform's SES-verified address) and replies
+            # route to the shop's own email. Branding was resolved per-tenant
+            # by NotificationService and persisted on the notification.
+            from core.email_utils import shop_sender
+            branding = (notification.template_context or {}).get('branding', {}) if notification else {}
+            from_email, reply_to = shop_sender(
+                shop_name=branding.get('company_name'),
+                reply_to_email=branding.get('support_email'),
+            )
+
             # Create multipart email (HTML + plain text)
             email = EmailMultiAlternatives(
                 subject=subject,
                 body=text_content,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=[recipient_email]
+                from_email=from_email,
+                to=[recipient_email],
+                reply_to=reply_to,
             )
 
             # Attach HTML version

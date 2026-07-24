@@ -33,11 +33,9 @@ class ReminderService:
     
     def __init__(self, tenant=None):
         self.tenant = tenant
-        # Use noreply email - replies won't be received
-        self.from_email = getattr(
-            settings, 'REMINDER_FROM_EMAIL',
-            getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@rssystems.io')
-        )
+        # None = let send_branded_email build the shop-branded sender
+        # (shop name as display name, Reply-To to the shop's email).
+        self.from_email = getattr(settings, 'REMINDER_FROM_EMAIL', None)
     
     def _filter(self, qs):
         """Apply tenant filter to any queryset."""

@@ -335,7 +335,8 @@ class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
 
         The platform singleton supplies the visual identity (colors, fonts,
         button styling). When a tenant is given, the tenant's identity
-        (name, contact info, logo) overrides the platform-owner values so
+        (name, contact info, logo — and brand color, when the shop has set
+        one) overrides the platform-owner values so
         tenant-scoped customer email is branded as the shop, not the
         platform. All values are JSON-serializable — NotificationService
         persists this context and the email retry path re-renders it.
@@ -381,6 +382,11 @@ class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
             )
             context['logo_url'] = _absolute_media_url(tenant.logo) if tenant.logo else ''
             context['logo_width'] = 200
+            # Shop's own brand color drives headers/buttons when set.
+            brand_color = getattr(tenant, 'brand_color', '')
+            if brand_color:
+                context['primary_color'] = brand_color
+                context['secondary_color'] = brand_color
         return context
 
     def delete(self, *args, **kwargs):

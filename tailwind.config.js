@@ -17,20 +17,23 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Canonical brand palette (Tailwind default blue). Previously inlined
-        // in 14 templates; base_customer.html used #4299E1 for brand-500,
-        // now unified to #3b82f6.
+        // Canonical brand palette. Reads CSS variables so a shop's own
+        // brand color (Tenant.brand_color) can retheme the customer portal
+        // at runtime — defaults in static/css/src/input.css are Tailwind
+        // blue (#3b82f6 at 500), so nothing changes for shops without one.
+        // Channels are space-separated RGB ("59 130 246") to keep Tailwind's
+        // opacity modifiers (e.g. bg-brand-500/50) working.
         brand: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
+          50: 'rgb(var(--brand-50) / <alpha-value>)',
+          100: 'rgb(var(--brand-100) / <alpha-value>)',
+          200: 'rgb(var(--brand-200) / <alpha-value>)',
+          300: 'rgb(var(--brand-300) / <alpha-value>)',
+          400: 'rgb(var(--brand-400) / <alpha-value>)',
+          500: 'rgb(var(--brand-500) / <alpha-value>)',
+          600: 'rgb(var(--brand-600) / <alpha-value>)',
+          700: 'rgb(var(--brand-700) / <alpha-value>)',
+          800: 'rgb(var(--brand-800) / <alpha-value>)',
+          900: 'rgb(var(--brand-900) / <alpha-value>)',
         },
       },
       fontFamily: {
