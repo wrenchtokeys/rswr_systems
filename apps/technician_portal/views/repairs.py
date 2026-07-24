@@ -24,6 +24,46 @@ from common.utils import convert_heic_to_jpeg
 logger = logging.getLogger(__name__)
 
 
+def can_view_repair(repair, technician, user_is_admin=False):
+    """Whether this user may open the repair's detail page.
+
+    Mirrors the access gate in repair_detail() below, minus its HTTP_REFERER
+    escape hatch — so this is deliberately the more conservative of the two.
+    Erring towards False only costs a redirect to the dashboard, whereas
+    erring towards True would bounce the user twice and stack two error
+    messages on top of each other.
+    """
+    if user_is_admin:
+        return True
+    if not technician:
+        return False
+    if repair.queue_status == 'PENDING':
+        return repair.technician == technician or technician.is_manager
+    if repair.queue_status == 'REQUESTED':
+        return technician.is_manager
+    if repair.technician == technician:
+        return True
+    return bool(
+        technician.is_manager
+        and repair.technician
+        and technician.manages_technician(repair.technician)
+    )
+
+
+def deny(request, message, repair=None, technician=None, user_is_admin=False):
+    """Refuse an action without throwing the user out of context.
+
+    Being told "only managers can do that" and landing on the dashboard means
+    losing your place and navigating back to the job by hand — on a phone, in
+    a parking lot. When the user can still see the repair, keep them on it so
+    the message lands next to the thing it is about.
+    """
+    messages.error(request, message)
+    if repair is not None and can_view_repair(repair, technician, user_is_admin):
+        return redirect('repair_detail', repair_id=repair.id)
+    return redirect('technician_dashboard')
+
+
 @technician_required
 def repair_detail(request, repair_id):
     """Display repair details with permission checks and batch context."""
@@ -512,24 +552,38 @@ def update_queue_status(request, repair_id):
             return redirect('technician_dashboard')
 
         if repair.queue_status == 'PENDING':
-            messages.error(request, "This repair is pending customer approval. Technicians cannot modify it.")
-            return redirect('technician_dashboard')
+            return deny(
+                request,
+                "This repair is pending customer approval, so it can't be changed yet.",
+                repair, technician,
+            )
 
         if repair.queue_status == 'REQUESTED':
             if not technician.is_manager:
-                messages.error(request, "Only managers can assign customer-requested repairs.")
-                return redirect('technician_dashboard')
+                return deny(
+                    request,
+                    "Only managers can assign customer-requested repairs.",
+                    repair, technician,
+                )
         else:
             can_update = False
             if repair.technician == technician:
                 can_update = True
             elif technician.is_manager and repair.technician and technician.manages_technician(repair.technician):
-                messages.error(request, "You cannot modify repairs assigned to other technicians. Use the reassign feature to take over this repair.")
-                return redirect('repair_detail', repair_id=repair.id)
+                # repair_detail sets can_reassign_to_self for exactly this case,
+                # so the "Reassign to me" action is waiting where we land.
+                return deny(
+                    request,
+                    "This job is assigned to another technician. Use \"Reassign to me\" to take it over.",
+                    repair, technician,
+                )
 
             if not can_update:
-                messages.error(request, "You don't have permission to update this repair.")
-                return redirect('technician_dashboard')
+                return deny(
+                    request,
+                    "You don't have permission to update this repair.",
+                    repair, technician,
+                )
 
     old_status = repair.queue_status
 
@@ -680,23 +734,25 @@ def assign_repair(request, repair_id):
     # Cache admin check — called twice in this view.
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
-    if not user_is_admin:
-        # Scope to current tenant — prevents a manager from Shop A from acting
-        # as manager in Shop B's portal context. (CODE-079)
-        tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
-        if not tech or not tech.is_manager:
-            messages.error(request, "Only managers can assign repairs.")
-            return redirect('technician_dashboard')
-        if not tech.can_assign_work:
-            messages.error(request, "You do not have permission to assign repairs.")
-            return redirect('technician_dashboard')
-
+    # Load the repair before the permission gate so a refusal can send the user
+    # back to it instead of to the dashboard. Still tenant-scoped, so this
+    # leaks nothing a later check would have caught.
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     else:
         qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
+
+    tech = None
+    if not user_is_admin:
+        # Scope to current tenant — prevents a manager from Shop A from acting
+        # as manager in Shop B's portal context. (CODE-079)
+        tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+        if not tech or not tech.is_manager:
+            return deny(request, "Only managers can assign repairs.", repair, tech)
+        if not tech.can_assign_work:
+            return deny(request, "You do not have permission to assign repairs.", repair, tech)
 
     if repair.queue_status != 'REQUESTED':
         messages.error(request, "Only REQUESTED repairs can be assigned. This repair is already assigned.")
@@ -767,10 +823,8 @@ def assign_repair(request, repair_id):
             tech_qs = tech_qs.none()
         available_technicians = tech_qs.order_by('user__first_name')
     else:
-        manager = Technician.objects.filter(user=request.user, tenant=tenant).first()
-        if not manager:
-            messages.error(request, "Only managers can assign repairs.")
-            return redirect('technician_dashboard')
+        # `tech` is already resolved and gated as a manager above.
+        manager = tech
         managed_techs = manager.managed_technicians.filter(is_active=True)
         # Always apply tenant filter as defense-in-depth so that even if a
         # cross-tenant tech somehow ended up in managed_technicians (e.g. via
@@ -798,16 +852,9 @@ def reassign_to_self(request, repair_id):
     # Cache admin check — called 3× in this view.
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
-    if not user_is_admin:
-        # Scope to current tenant — prevents cross-tenant is_manager bypass. (CODE-079)
-        tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
-        if not tech or not tech.is_manager:
-            messages.error(request, "Only managers can reassign repairs.")
-            return redirect('technician_dashboard')
-        if not tech.can_assign_work:
-            messages.error(request, "You do not have permission to reassign repairs.")
-            return redirect('technician_dashboard')
-
+    # Load the repair first so a refusal can return the user to it, and resolve
+    # the manager once — this view previously re-queried the same Technician row
+    # three separate times.
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
@@ -815,28 +862,29 @@ def reassign_to_self(request, repair_id):
         qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
 
+    manager = None
     if not user_is_admin:
-        manager = Technician.objects.filter(user=request.user, tenant=tenant).first()
-        if not manager:
-            messages.error(request, "Only managers can reassign repairs.")
-            return redirect('technician_dashboard')
+        # Scope to current tenant — prevents cross-tenant is_manager bypass. (CODE-079)
+        manager = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+        if not manager or not manager.is_manager:
+            return deny(request, "Only managers can reassign repairs.", repair, manager)
+        if not manager.can_assign_work:
+            return deny(request, "You do not have permission to reassign repairs.", repair, manager)
 
         if not repair.technician or not manager.manages_technician(repair.technician):
-            messages.error(request, "You can only reassign repairs from your managed technicians.")
-            return redirect('repair_detail', repair_id=repair.id)
+            return deny(
+                request,
+                "You can only reassign repairs from your managed technicians.",
+                repair, manager,
+            )
 
         if repair.technician.id == manager.id:
-            messages.error(request, "This repair is already assigned to you.")
-            return redirect('repair_detail', repair_id=repair.id)
+            return deny(request, "This repair is already assigned to you.", repair, manager)
 
     if request.method == 'POST':
         old_technician = repair.technician
 
         if not user_is_admin:
-            manager = Technician.objects.filter(user=request.user, tenant=tenant).first()
-            if not manager:
-                messages.error(request, "Only managers can reassign repairs.")
-                return redirect('technician_dashboard')
             repair.technician = manager
             repair.save()
 
@@ -1427,16 +1475,18 @@ def admin_reassign_repair(request, repair_id):
     tenant = getattr(request, 'tenant', None)
     user_is_admin = is_tenant_admin(request.user, tenant=tenant)
 
-    if not user_is_admin:
-        messages.error(request, "Only admins can reassign repairs.")
-        return redirect('technician_dashboard')
-
     qs = Repair.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
     else:
         qs = qs.none()
     repair = get_object_or_404(qs, id=repair_id)
+
+    if not user_is_admin:
+        # A manager who lands here can usually still see the job — send them
+        # back to it rather than to the dashboard.
+        technician = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+        return deny(request, "Only admins can reassign repairs.", repair, technician)
 
     if repair.queue_status == 'COMPLETED':
         messages.error(request, "Cannot reassign completed repairs.")
