@@ -140,7 +140,7 @@ class WarrantyPolicyTimestampTest(SetUpMixin, AutoUpdateTimestampMixinTestMixin,
         from apps.technician_portal.models import WarrantyPolicy
         return WarrantyPolicy.objects.create(
             tenant=self.tenant, name='Code254 Warranty',
-            applies_to='repair', duration_type='days', duration_days=365,
+            applies_to='repairs', duration_type='days', duration_days=365,
         )
 
     def get_updatable_field(self):

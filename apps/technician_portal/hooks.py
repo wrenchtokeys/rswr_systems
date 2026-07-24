@@ -36,33 +36,35 @@ logger = logging.getLogger(__name__)
 # Individual hooks
 # ---------------------------------------------------------------------------
 
-def loyalty_hook(repair) -> None:
+def loyalty_hook(service) -> None:
     """
-    Award completion points to the primary contact for this repair.
+    Award completion points to the primary contact for this job.
 
-    Delegates to LoyaltyService after loading per-tenant LoyaltyConfig.
-    Skips re-awards if the repair was already COMPLETED (idempotency guard
-    via repair.original_status).
+    Accepts either a Repair or a Replacement. Delegates to LoyaltyService
+    after loading per-tenant LoyaltyConfig. Skips re-awards if the job was
+    already COMPLETED (idempotency guard via original_status).
     """
     try:
         from apps.rewards_referrals.models import LoyaltyConfig
         from apps.rewards_referrals.services import LoyaltyService
         from apps.customer_portal.models import CustomerUser
-        from apps.technician_portal.models import Repair
+        from apps.technician_portal.models import Repair, Replacement
+
+        is_repair = isinstance(service, Repair)
 
         # Idempotency: only award on first-time COMPLETED transition.
-        # original_status is set BEFORE post_completion_hooks() is called (see
-        # Repair.save()), so on a re-save of an already-COMPLETED repair it
-        # will equal 'COMPLETED' and we skip.
-        if hasattr(repair, 'original_status') and repair.original_status == 'COMPLETED':
+        # original_status is set BEFORE the hooks are called (see the save()
+        # methods), so on a re-save of an already-COMPLETED job it will equal
+        # 'COMPLETED' and we skip.
+        if hasattr(service, 'original_status') and service.original_status == 'COMPLETED':
             return
 
         # Goodwill repairs are courtesy work — no loyalty points awarded.
-        if getattr(repair, 'is_goodwill_repair', False):
+        if getattr(service, 'is_goodwill_repair', False):
             return
 
         # Prefer primary contact; fall back to any contact.
-        customer_users = CustomerUser.objects.filter(customer=repair.customer)
+        customer_users = CustomerUser.objects.filter(customer=service.customer)
         if not customer_users.exists():
             return
 
@@ -71,23 +73,31 @@ def loyalty_hook(repair) -> None:
             or customer_users.first()
         )
 
-        tenant = repair.customer.tenant
+        tenant = service.customer.tenant
         config = LoyaltyConfig.get_for_tenant(tenant)
 
         base_points = config.points_per_repair
+        related = {'related_repair': service} if is_repair else {'related_replacement': service}
 
         LoyaltyService.award_points(
             customer_user=customer_user,
             amount=base_points,
-            transaction_type='repair_complete',
-            description=f'Repair completed — Unit #{repair.unit_number}',
+            transaction_type='repair_complete' if is_repair else 'replacement_complete',
+            description=(
+                f"{'Repair' if is_repair else 'Replacement'} completed — "
+                f"Unit #{service.unit_number}"
+            ),
             tenant=tenant,
-            related_repair=repair,
+            **related,
         )
 
-        # Milestone bonus based on lifetime completed repairs for this customer.
+        # Milestone bonus based on lifetime completed jobs (repairs +
+        # replacements) for this customer.
         completed_count = Repair.objects.filter(
-            customer=repair.customer,
+            customer=service.customer,
+            queue_status='COMPLETED',
+        ).count() + Replacement.objects.filter(
+            customer=service.customer,
             queue_status='COMPLETED',
         ).count()
 
@@ -104,32 +114,32 @@ def loyalty_hook(repair) -> None:
                 customer_user=customer_user,
                 amount=milestone_bonus,
                 transaction_type='milestone_bonus',
-                description=f'Milestone bonus — {completed_count} repairs completed',
+                description=f'Milestone bonus — {completed_count} jobs completed',
                 tenant=tenant,
-                related_repair=repair,
+                **related,
             )
             logger.info(
                 "Loyalty milestone bonus of %s points awarded to %s "
-                "(%d repairs completed, repair pk=%s)",
+                "(%d jobs completed, job pk=%s)",
                 milestone_bonus,
                 customer_user.user.email,
                 completed_count,
-                repair.pk,
+                service.pk,
             )
 
         logger.info(
-            "Loyalty: awarded %s base + %s milestone = %s points to %s for repair pk=%s",
+            "Loyalty: awarded %s base + %s milestone = %s points to %s for job pk=%s",
             base_points,
             milestone_bonus,
             base_points + milestone_bonus,
             customer_user.user.email,
-            repair.pk,
+            service.pk,
         )
 
     except Exception as exc:
         logger.error(
-            "Post-completion hook 'loyalty_hook' failed for repair pk=%s: %s",
-            repair.pk,
+            "Post-completion hook 'loyalty_hook' failed for job pk=%s: %s",
+            service.pk,
             exc,
             exc_info=True,
         )

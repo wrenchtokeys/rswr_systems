@@ -706,6 +706,7 @@ def customer_repair_detail(request, repair_id):
                 reward__customer_user=customer_user,
                 status='APPROVED',
                 applied_to_repair__isnull=True,
+                applied_to_replacement__isnull=True,
                 reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
             ).select_related('reward_option', 'reward_option__reward_type')
 
@@ -758,6 +759,7 @@ def customer_apply_reward(request, repair_id):
             reward__customer_user=customer_user,
             status='APPROVED',
             applied_to_repair__isnull=True,
+            applied_to_replacement__isnull=True,
             reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
         )
 
@@ -772,6 +774,59 @@ def customer_apply_reward(request, repair_id):
 
         messages.success(request, f'Reward "{redemption.reward_option.name}" applied to Repair #{repair.id}.')
         return redirect('customer_repair_detail', repair_id=repair_id)
+
+    except (CustomerUser.DoesNotExist, AttributeError):
+        messages.warning(request, "Please complete your profile first.")
+        return redirect('profile_creation')
+
+
+@customer_required
+def customer_apply_reward_replacement(request, replacement_id):
+    """POST-only: customer applies a monetary reward to a replacement before
+    invoicing. Mirrors customer_apply_reward."""
+    if request.method != 'POST':
+        return redirect('customer_replacement_detail', replacement_id=replacement_id)
+
+    try:
+        customer_user = _get_customer_user_for_tenant(request)
+        customer = customer_user.customer
+        replacement = get_object_or_404(
+            Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
+
+        if replacement.invoice_line_items.exists():
+            messages.error(request, "This replacement has already been invoiced. Rewards cannot be applied.")
+            return redirect('customer_replacement_detail', replacement_id=replacement_id)
+
+        if replacement.queue_status in ('COMPLETED', 'DENIED'):
+            messages.error(request, "Rewards cannot be applied to completed or denied replacements.")
+            return redirect('customer_replacement_detail', replacement_id=replacement_id)
+
+        redemption_id = request.POST.get('redemption_id')
+        if not redemption_id:
+            messages.error(request, "No reward selected.")
+            return redirect('customer_replacement_detail', replacement_id=replacement_id)
+
+        # Same guards as the repair variant (CODE-251): must be APPROVED and
+        # not already attached to any job.
+        redemption = get_object_or_404(
+            RewardRedemption,
+            id=redemption_id,
+            reward__customer_user=customer_user,
+            status='APPROVED',
+            applied_to_repair__isnull=True,
+            applied_to_replacement__isnull=True,
+            reward_option__reward_type__category__in=['REPLACEMENT_DISCOUNT', 'FREE_SERVICE'],
+        )
+
+        if replacement.applied_rewards.exists():
+            messages.error(request, "This replacement already has a reward applied. Only one reward per job.")
+            return redirect('customer_replacement_detail', replacement_id=replacement_id)
+
+        redemption.applied_to_replacement = replacement
+        redemption.save()
+
+        messages.success(request, f'Reward "{redemption.reward_option.name}" applied to Replacement #{replacement.id}.')
+        return redirect('customer_replacement_detail', replacement_id=replacement_id)
 
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
@@ -1252,9 +1307,23 @@ def customer_replacement_detail(request, replacement_id):
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
 
+        # Available monetary rewards the customer can apply (before invoicing)
+        available_rewards = []
+        is_invoiced = replacement.invoice_line_items.exists()
+        if not is_invoiced and replacement.queue_status not in ('COMPLETED', 'DENIED'):
+            available_rewards = RewardRedemption.objects.filter(
+                reward__customer_user=customer_user,
+                status='APPROVED',
+                applied_to_repair__isnull=True,
+                applied_to_replacement__isnull=True,
+                reward_option__reward_type__category__in=['REPLACEMENT_DISCOUNT', 'FREE_SERVICE'],
+            ).select_related('reward_option', 'reward_option__reward_type')
+
         return render(request, 'customer_portal/replacement_detail.html', {
             'replacement': replacement,
             'customer': customer,
+            'available_rewards': available_rewards,
+            'is_invoiced': is_invoiced,
         })
     except (CustomerUser.DoesNotExist, AttributeError):
         messages.warning(request, "Please complete your profile first.")
@@ -1760,6 +1829,7 @@ def _get_available_monetary_rewards(customer_user):
         reward__customer_user=customer_user,
         status='APPROVED',
         applied_to_repair__isnull=True,
+        applied_to_replacement__isnull=True,
         reward_option__reward_type__category__in=monetary_categories,
     ).select_related('reward_option', 'reward_option__reward_type')
 
@@ -1855,6 +1925,7 @@ def handle_single_repair_request(request, customer, customer_user=None):
                     reward__customer_user=customer_user,
                     status='APPROVED',
                     applied_to_repair__isnull=True,
+                    applied_to_replacement__isnull=True,
                 )
                 redemption.applied_to_repair = repair
                 redemption.save()

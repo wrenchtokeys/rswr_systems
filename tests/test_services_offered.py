@@ -157,8 +157,8 @@ class StaffCreateGuardTests(TestCase):
         login_owner(client, user, tenant)
         resp = client.get('/tech/replacement/new/')
         self.assertEqual(resp.status_code, 302)
-        # Historical list stays reachable
-        resp = client.get('/tech/replacements/')
+        # Historical data stays reachable via the unified job list
+        resp = client.get('/tech/replacements/', follow=True)
         self.assertEqual(resp.status_code, 200)
 
     def test_replacement_only_shop_blocks_repair_create(self):
@@ -420,6 +420,8 @@ class NavGatingTests(TestCase):
         self.assertNotContains(resp, 'Repair Pricing')
 
     def test_tech_dashboard_shows_replacements_when_offered(self):
+        # Replacements now appear in the unified Today's Queue (the separate
+        # "My Replacements" card was folded into it).
         user, tenant = make_shop('Nav Shop E', 'nave@test.com', services='replacement')
         customer = Customer.objects.create(name='Fleet E', tenant=tenant)
         tech = Technician.objects.get(user=user, tenant=tenant)
@@ -431,7 +433,9 @@ class NavGatingTests(TestCase):
         login_owner(client, user, tenant)
         resp = client.get('/tech/')
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'My Replacements')
+        self.assertContains(resp, 'Fleet E')
+        queue = resp.context['todays_queue']
+        self.assertEqual([j.service_type for j in queue], ['replacement'])
 
     def test_tech_dashboard_hides_replacements_for_repair_shop(self):
         user, tenant = make_shop('Nav Shop F', 'navf@test.com', services='repair')
@@ -439,4 +443,4 @@ class NavGatingTests(TestCase):
         login_owner(client, user, tenant)
         resp = client.get('/tech/')
         self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, 'My Replacements')
+        self.assertNotContains(resp, 'New Replacement')

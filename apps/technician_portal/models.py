@@ -399,9 +399,51 @@ class GlassService(models.Model):
         max_length=50, blank=True,
         help_text="Insurance authorization/approval number"
     )
-    
+
+    # --- Warranty tracking (shared by repairs and replacements) ---
+    warranty_policy = models.ForeignKey(
+        'WarrantyPolicy', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='%(class)ss',
+        help_text="Warranty policy applied to this service on completion",
+    )
+    warranty_expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Warranty expiration. Null with a policy = lifetime warranty.",
+    )
+    warranty_void = models.BooleanField(default=False)
+    warranty_void_reason = models.CharField(
+        max_length=255, null=True, blank=True,
+        help_text="Reason warranty was voided (e.g. new impact damage)",
+    )
+    is_warranty_claim = models.BooleanField(
+        default=False,
+        help_text="This service is a warranty claim against an original service",
+    )
+
     class Meta:
         abstract = True
+
+    @property
+    def has_warranty(self):
+        """True if this service has an active, non-expired, non-voided warranty."""
+        if not self.warranty_policy_id:
+            return False
+        if self.warranty_void:
+            return False
+        # Lifetime warranty: expires_at is None but policy exists
+        if self.warranty_expires_at is None:
+            return True
+        return self.warranty_expires_at > timezone.now()
+
+    @property
+    def warranty_expiring_soon(self):
+        """True if warranty expires within 30 days (for badge display)."""
+        if not self.has_warranty:
+            return False
+        if self.warranty_expires_at is None:
+            return False  # Lifetime — never expiring
+        days_left = (self.warranty_expires_at - timezone.now()).days
+        return 0 < days_left <= 30
     
     def has_photos(self):
         """Check if this service has any associated photos."""
@@ -427,11 +469,11 @@ class GlassService(models.Model):
 
 class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
     """
-    Per-tenant warranty terms. Shops define their own policies per damage type.
+    Per-tenant warranty terms — one policy for repairs, one for replacements.
 
-    Each tenant can have one policy per damage_type (or an 'all_repairs' default).
-    Only one policy per tenant may be marked is_default=True — the custom save()
-    enforces this by deactivating other defaults.
+    A shop normally has exactly two tenant-wide policies (applies_to='repairs'
+    and applies_to='replacements'). Per-customer overrides are supported via
+    the customer FK but have no UI yet.
     """
     tenant = models.ForeignKey(
         'tenants.Tenant',
@@ -439,20 +481,11 @@ class WarrantyPolicy(AutoUpdateTimestampMixin, models.Model):
         related_name='warranty_policies',
     )
 
-    # IMPORTANT: These values MUST match Repair.DAMAGE_TYPE_CHOICES exactly
-    # (see DAMAGE_TYPE_CHOICES below) so that WarrantyService can match
-    # repair.damage_type to the correct policy.
     APPLIES_TO_CHOICES = [
-        ('Chip', 'Chip Repair'),
-        ('Crack', 'Crack Repair'),
-        ('Star Break', 'Star Break'),
-        ("Bull's Eye", "Bull's Eye"),
-        ('Combination Break', 'Combination Break'),
-        ('Half-Moon', 'Half-Moon'),
-        ('Other', 'Other'),
-        ('all_repairs', 'All Repairs (default)'),
+        ('repairs', 'Repairs'),
+        ('replacements', 'Replacements'),
     ]
-    applies_to = models.CharField(max_length=30, choices=APPLIES_TO_CHOICES, default='all_repairs')
+    applies_to = models.CharField(max_length=30, choices=APPLIES_TO_CHOICES, default='repairs')
 
     name = models.CharField(max_length=200, help_text="e.g. 'Standard Glass Warranty'")
 
@@ -700,27 +733,9 @@ class Repair(GlassService):
 
     # =========================================================================
     # WARRANTY TRACKING FIELDS
+    # (warranty_policy, warranty_expires_at, warranty_void, warranty_void_reason,
+    #  is_warranty_claim live on GlassService — shared with Replacement)
     # =========================================================================
-    warranty_policy = models.ForeignKey(
-        WarrantyPolicy, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='repairs',
-        help_text="Warranty policy applied to this repair on completion",
-    )
-    warranty_expires_at = models.DateTimeField(
-        null=True, blank=True,
-        help_text="Warranty expiration. Null with a policy = lifetime warranty.",
-    )
-    warranty_void = models.BooleanField(default=False)
-    warranty_void_reason = models.CharField(
-        max_length=255, null=True, blank=True,
-        help_text="Reason warranty was voided (e.g. new impact damage)",
-    )
-
-    # Warranty claim fields
-    is_warranty_claim = models.BooleanField(
-        default=False,
-        help_text="This repair is a warranty claim against an original repair",
-    )
     warranty_original_repair = models.ForeignKey(
         'self', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='warranty_claims',
@@ -732,28 +747,6 @@ class Repair(GlassService):
         default=False,
         help_text="Courtesy repair outside warranty — excluded from loyalty points",
     )
-
-    @property
-    def has_warranty(self):
-        """True if this repair has an active, non-expired, non-voided warranty."""
-        if not self.warranty_policy_id:
-            return False
-        if self.warranty_void:
-            return False
-        # Lifetime warranty: expires_at is None but policy exists
-        if self.warranty_expires_at is None:
-            return True
-        return self.warranty_expires_at > timezone.now()
-
-    @property
-    def warranty_expiring_soon(self):
-        """True if warranty expires within 30 days (for badge display)."""
-        if not self.has_warranty:
-            return False
-        if self.warranty_expires_at is None:
-            return False  # Lifetime — never expiring
-        days_left = (self.warranty_expires_at - timezone.now()).days
-        return 0 < days_left <= 30
 
     # =========================================================================
     # BACKWARD COMPATIBILITY: repair_date property
@@ -877,7 +870,11 @@ class Repair(GlassService):
 
                 # Use override price if provided, otherwise use pricing service
                 if self.cost_override is not None:
-                    self.cost = self.cost_override
+                    from .services.pricing_service import apply_account_discount
+                    # A linked account's discount is automatic and total — it
+                    # applies even to a manually entered price. Idempotent: cost
+                    # is re-derived from cost_override on every save.
+                    self.cost = apply_account_discount(self.cost_override, self.customer)
                 elif not is_first_completion:
                     # Already priced when it first completed — never re-price.
                     pass
@@ -902,7 +899,8 @@ class Repair(GlassService):
             else:
                 # For non-completed repairs, show expected cost for preview
                 if self.cost_override is not None:
-                    self.cost = self.cost_override
+                    from .services.pricing_service import apply_account_discount
+                    self.cost = apply_account_discount(self.cost_override, self.customer)
                 # BATCH REPAIR FIX: Preserve pre-calculated batch pricing
                 elif is_multi_break:
                     pass
@@ -1621,9 +1619,13 @@ class Replacement(GlassService):
                 self.queue_status = resolve_initial_shop_status(self)
             
             # --- REPLACEMENT PRICING ---
-            # Replacements use parts + labor + ADAS, not progressive repair pricing
+            # Replacements use parts + labor + ADAS, not progressive repair pricing.
+            # A linked account's flat discount (0% default = no-op) is applied to
+            # the freshly resolved cost — but NOT to the "keep existing cost"
+            # branch, so a re-save never discounts twice.
+            from .services.pricing_service import apply_account_discount
             if self.cost_override is not None:
-                self.cost = self.cost_override
+                self.cost = apply_account_discount(self.cost_override, self.customer)
             else:
                 total = Decimal('0.00')
                 if self.parts_cost:
@@ -1633,7 +1635,7 @@ class Replacement(GlassService):
                 if self.requires_adas_calibration and self.adas_calibration_cost:
                     total += self.adas_calibration_cost
                 if total > 0:
-                    self.cost = total
+                    self.cost = apply_account_discount(total, self.customer)
                 # else: keep existing cost (may have been set manually)
 
             # Calculate tax from BillingConfig rates
@@ -1671,6 +1673,35 @@ class Replacement(GlassService):
                     pass  # Don't fail replacement save if reset fails
         
         super().save(*args, **kwargs)
+
+        # Auto-assign warranty on first-time COMPLETED transition (mirrors the
+        # Repair post-completion warranty_hook). Silent no-op if the shop has
+        # no active replacement warranty policy.
+        if (
+            self.queue_status == 'COMPLETED'
+            and self.original_status != 'COMPLETED'
+            and not self.warranty_policy_id
+        ):
+            try:
+                from apps.technician_portal.warranty_service import WarrantyService
+                WarrantyService.assign_warranty(self)
+            except ValueError:
+                pass  # No policy configured — warranty is optional
+            except Exception:
+                logger.error(
+                    "Warranty assignment failed for replacement pk=%s",
+                    self.pk, exc_info=True,
+                )
+
+        # Loyalty points on first-time COMPLETED (mirrors the Repair
+        # loyalty_hook; the hook's own guard reads original_status, so this
+        # must run BEFORE original_status is refreshed below). We deliberately
+        # do not run the full post_completion_hooks orchestrator: warranty is
+        # handled inline above and review requests stay repair-only for now.
+        if self.queue_status == 'COMPLETED' and self.original_status != 'COMPLETED':
+            from apps.technician_portal.hooks import loyalty_hook
+            loyalty_hook(self)
+
         self.original_status = self.queue_status
 
     def has_price_override(self):
@@ -1678,13 +1709,44 @@ class Replacement(GlassService):
         return self.cost_override is not None
     
     def get_discounted_cost(self):
-        """Calculate the final cost (no reward discounts for replacements yet)."""
+        """Final cost with any applied reward redemption (mirrors Repair's)."""
+        base_cost = self.cost or Decimal('0.00')
+        final_cost = base_cost
+        discount_applied = False
+        discount_description = ""
+
+        applied_rewards = self.applied_rewards.filter(status__in=['FULFILLED', 'PENDING'])
+        for redemption in applied_rewards:
+            reward_type = redemption.reward_option.reward_type
+            if not reward_type:
+                continue
+            if reward_type.category not in ['REPLACEMENT_DISCOUNT', 'FREE_SERVICE']:
+                continue
+
+            if reward_type.discount_type == 'PERCENTAGE':
+                discount_amount = (base_cost * Decimal(reward_type.discount_value)) / Decimal(100)
+                final_cost = base_cost - discount_amount
+                discount_description = f"{int(reward_type.discount_value)}% off"
+                discount_applied = True
+            elif reward_type.discount_type == 'FIXED_AMOUNT':
+                discount_amount = Decimal(reward_type.discount_value)
+                final_cost = max(base_cost - discount_amount, Decimal(0))
+                discount_description = f"${reward_type.discount_value} off"
+                discount_applied = True
+            elif reward_type.discount_type == 'FREE':
+                final_cost = Decimal(0)
+                discount_description = "Free replacement"
+                discount_applied = True
+
+            # Only apply one discount (the first one found)
+            break
+
         return {
-            'original_cost': self.cost,
-            'final_cost': self.cost,
-            'discount_applied': False,
-            'discount_description': '',
-            'savings': Decimal('0.00'),
+            'original_cost': base_cost,
+            'final_cost': final_cost,
+            'discount_applied': discount_applied,
+            'discount_description': discount_description,
+            'savings': base_cost - final_cost,
         }
 
     def get_invoice_description(self):

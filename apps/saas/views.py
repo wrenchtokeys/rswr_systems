@@ -26,6 +26,7 @@ from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from common.decorators import owner_or_manager_required
+from apps.technician_portal.decorators import technician_required
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
@@ -853,51 +854,41 @@ def billing_view(request):
 # 7. Replacement management
 # ------------------------------------------------------------------
 
-@owner_or_manager_required
+@technician_required
 def replacement_list(request):
-    """List all glass replacements for the tenant."""
-    from django.core.paginator import Paginator
-    
-    tenant = getattr(request, 'tenant', None)
-    if not tenant:
-        messages.error(request, 'No shop context. Please log in.')
-        from common.auth import redirect_to_portal
-        return redirect_to_portal(request.user)
-
-    # Filter by status if specified
-    status_filter = request.GET.get('status', '')
-    replacements = Replacement.objects.filter(tenant=tenant).select_related(
-        'customer', 'technician__user'
-    ).order_by('-service_date', '-id')
-
-    if status_filter:
-        replacements = replacements.filter(queue_status=status_filter)
-
-    # Pagination
-    paginator = Paginator(replacements, 25)
-    page_number = request.GET.get('page', 1)
-    page_obj = paginator.get_page(page_number)
-
-    # Status choices for filter dropdown
-    status_choices = [
-        ('', 'All Statuses'),
-        ('REQUESTED', 'Customer Requested'),
-        ('PENDING', 'Approval Pending'),
-        ('APPROVED', 'Approved'),
-        ('IN_PROGRESS', 'In Progress'),
-        ('COMPLETED', 'Completed'),
-        ('DENIED', 'Denied'),
-    ]
-
-    return render(request, 'saas/replacement_list.html', {
-        'page_obj': page_obj,
-        'tenant': tenant,
-        'status_filter': status_filter,
-        'status_choices': status_choices,
-    })
+    """Legacy /tech/replacements/ — redirects to the unified job list."""
+    params = request.GET.copy()
+    if not params.get('status'):
+        params.pop('status', None)  # old list used status='' for "all"
+    params['type'] = 'replacement'
+    return redirect(f"{reverse('job_list')}?{params.urlencode()}")
 
 
-@owner_or_manager_required
+def _replacement_technician_access(request, tenant, replacement=None,
+                                   require_can_replace=False):
+    """Access check for technician-facing replacement views.
+
+    Tenant admins (owner/manager/staff) and working managers always pass.
+    Otherwise the user needs a tenant-scoped Technician profile; when a
+    replacement is given it must be assigned to them, and require_can_replace
+    additionally demands the can_replace ability.
+    """
+    from apps.technician_portal.decorators import is_tenant_admin
+    if is_tenant_admin(request.user, tenant=tenant):
+        return True
+    technician = Technician.objects.filter(user=request.user, tenant=tenant).first()
+    if technician is None:
+        return False
+    if technician.is_manager:
+        return True
+    if require_can_replace and not technician.can_replace:
+        return False
+    if replacement is not None and replacement.technician_id != technician.id:
+        return False
+    return True
+
+
+@technician_required
 def replacement_create(request):
     """Create a new glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -911,6 +902,11 @@ def replacement_create(request):
     if not tenant.offers_replacements:
         messages.info(request, 'Your shop is set to repairs only. You can change this under Settings → What does your shop do?')
         return redirect('owner_dashboard')
+
+    if not _replacement_technician_access(request, tenant, require_can_replace=True):
+        messages.warning(request, "Your technician profile isn't set up for replacements. Ask a manager to enable it under Team settings.")
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
 
     # Check limits
     usage_svc = UsageService(tenant)
@@ -939,7 +935,14 @@ def replacement_create(request):
             messages.success(request, 'Replacement created successfully!')
             return redirect('replacement_detail', pk=replacement.pk)
     else:
-        form = ReplacementForm(tenant=tenant)
+        # ?customer=<id>&unit=<n> prefill — same params the New Repair
+        # buttons on customer/unit detail pages use.
+        initial = {}
+        if request.GET.get('customer'):
+            initial['customer'] = request.GET.get('customer')
+        if request.GET.get('unit'):
+            initial['unit_number'] = request.GET.get('unit')
+        form = ReplacementForm(tenant=tenant, initial=initial)
 
     return render(request, 'saas/replacement_form.html', {
         'form': form,
@@ -947,7 +950,7 @@ def replacement_create(request):
     })
 
 
-@owner_or_manager_required
+@technician_required
 def replacement_detail(request, pk):
     """View a glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -956,6 +959,10 @@ def replacement_detail(request, pk):
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
     replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement):
+        messages.warning(request, "You don't have access to this replacement.")
+        return redirect('job_list')
 
     # Build allowed status transitions for the UI
     status_transitions = []
@@ -987,7 +994,7 @@ def replacement_detail(request, pk):
     })
 
 
-@owner_or_manager_required
+@technician_required
 def replacement_edit(request, pk):
     """Edit an existing glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -996,6 +1003,11 @@ def replacement_edit(request, pk):
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
     replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement,
+                                          require_can_replace=True):
+        messages.warning(request, "You don't have access to edit this replacement.")
+        return redirect('job_list')
 
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
@@ -1014,7 +1026,7 @@ def replacement_edit(request, pk):
 
 
 @require_POST
-@owner_or_manager_required
+@technician_required
 def replacement_update_status(request, pk):
     """Update the status of a glass replacement."""
     tenant = getattr(request, 'tenant', None)
@@ -1023,6 +1035,11 @@ def replacement_update_status(request, pk):
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
     replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement,
+                                          require_can_replace=True):
+        messages.warning(request, "You don't have access to update this replacement.")
+        return redirect('job_list')
 
     new_status = request.POST.get('status')
 
@@ -1062,6 +1079,48 @@ def replacement_update_status(request, pk):
     messages.success(request, f'Status updated to {status_display}.')
 
     return redirect('replacement_detail', pk=pk)
+
+
+@require_POST
+@technician_required
+def replacement_complete_and_invoice(request, pk):
+    """One click: complete the replacement (if needed), invoice it, and email
+    the invoice. Mirrors repair_complete_and_invoice."""
+    from common.auth import can_access
+    from apps.technician_portal.services.job_flow import (
+        JobFlowError, complete_job, invoice_and_send,
+    )
+    from apps.technician_portal.views.jobs import notify_invoice_outcome
+
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not can_access(request.user, 'invoices', tenant):
+        messages.warning(request, "You don't have access to invoicing.")
+        return redirect('replacement_detail', pk=pk)
+
+    if not _replacement_technician_access(request, tenant, replacement=replacement,
+                                          require_can_replace=True):
+        messages.warning(request, "You don't have access to this replacement.")
+        return redirect('job_list')
+
+    try:
+        complete_job(replacement)
+    except JobFlowError as e:
+        messages.warning(request, str(e))
+        return redirect('replacement_detail', pk=pk)
+
+    try:
+        invoice, created, result, excluded = invoice_and_send(replacement, tenant)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('replacement_detail', pk=pk)
+    notify_invoice_outcome(request, invoice, created, result, excluded)
+    return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
 
 # ------------------------------------------------------------------
@@ -1726,11 +1785,10 @@ def owner_settings_view(request):
         .order_by('-created_at')[:10]
     )
 
-    # Warranty policies for the Warranty tab
+    # Warranty policies for the Warranty tab — the two tenant-wide policies
     warranty_policies = (
         WarrantyPolicy.objects
-        .filter(tenant=tenant)
-        .select_related('customer')
+        .filter(tenant=tenant, customer__isnull=True, is_active=True)
         .order_by('applies_to', 'name')
     )
 
@@ -2993,108 +3051,18 @@ def owner_send_invoice(request, invoice_id):
         return redirect('signup')
 
     invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
-    
-    if invoice.status not in ('DRAFT',):
-        messages.error(request, 'Only draft invoices can be sent.')
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
-    try:
-        # Resolve recipient email
-        recipient = None
-        try:
-            prefs = invoice.customer.repair_preferences
-            recipient = prefs.billing_email or invoice.customer.email
-        except Exception:
-            recipient = invoice.customer.email
-
-        # Inline email capture — the send modal shows an email field when the
-        # customer has no address on file, so the owner can add one and send
-        # in a single step instead of hunting for the customer edit page.
-        submitted_email = request.POST.get('email', '').strip()
-        if submitted_email and not recipient:
-            from django.core.validators import validate_email
-            from django.core.exceptions import ValidationError as _EmailValidationError
-            from django.db import IntegrityError as _IntegrityError
-            try:
-                validate_email(submitted_email)
-            except _EmailValidationError:
-                messages.error(request, f'"{submitted_email}" is not a valid email address.')
-                return redirect('owner_invoice_detail', invoice_id=invoice.id)
-            duplicate = Customer.objects.filter(
-                tenant=tenant, email__iexact=submitted_email
-            ).exclude(pk=invoice.customer.pk).exists()
-            if duplicate:
-                messages.error(
-                    request,
-                    'Another customer already uses that email address. '
-                    'Please use a different one.'
-                )
-                return redirect('owner_invoice_detail', invoice_id=invoice.id)
-            try:
-                # Savepoint so a duplicate slipping past the check above (race)
-                # doesn't poison the surrounding transaction.
-                with transaction.atomic():
-                    invoice.customer.email = submitted_email
-                    invoice.customer.save(update_fields=['email'])
-            except _IntegrityError:
-                messages.error(
-                    request,
-                    'Another customer already uses that email address. '
-                    'Please use a different one.'
-                )
-                return redirect('owner_invoice_detail', invoice_id=invoice.id)
-            recipient = submitted_email
-
-        # CODE-112: Block send entirely if no email on file
-        if not recipient:
-            messages.error(
-                request,
-                f'Cannot send invoice — no email address on file for {invoice.customer.name}. '
-                f'Add an email in the customer\'s settings first.'
-            )
-            return redirect('owner_invoice_detail', invoice_id=invoice.id)
-
-        # Attempt email delivery
-        email_sent = False
-        try:
-            from apps.billing.services.invoice_email_service import InvoiceEmailService
-            email_service = InvoiceEmailService(tenant=tenant)
-
-            # A4: pass the Invoice record so the PDF renders from the
-            # invoice's OWN line items and stored totals. The old
-            # repair_ids/invoice_number plumbing made replacement-only
-            # invoices unsendable (no repair line items -> 30-day repair
-            # lookback -> "no completed repairs" or a PDF full of
-            # unrelated repairs).
-            success, msg = email_service.send_invoice_email(
-                customer_id=invoice.customer.id,
-                recipient_email=recipient,
-                invoice=invoice,
-            )
-            email_sent = success
-            if not success:
-                logger.warning(f"Invoice email failed for {invoice.invoice_number}: {msg}")
-        except Exception as e:
-            logger.warning(f"Could not email invoice {invoice.invoice_number}: {e}")
-
-        # CODE-112: Only mark SENT if email actually delivered.
-        # If email fails, leave as DRAFT so the owner knows it didn't go out.
-        if email_sent:
-            invoice.status = 'SENT'
-            invoice.sent_at = timezone.now()
-            invoice.save(update_fields=['status', 'sent_at'])
-            messages.success(request, f'Invoice {invoice.invoice_number} sent to {recipient}.')
-        else:
-            messages.error(
-                request,
-                f'Invoice {invoice.invoice_number} could NOT be sent — email delivery to {recipient} failed. '
-                f'The invoice remains as a draft. Please check the email address and try again.'
-            )
-
-    except Exception as e:
-        logger.error(f"Error sending invoice {invoice.invoice_number}: {e}")
-        messages.error(request, 'An error occurred while sending the invoice.')
-
+    # The whole pipeline (recipient resolution, inline email capture,
+    # delivery, mark-SENT-only-on-success) lives in InvoiceSendService so the
+    # job-level quick-invoice actions share it.
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+    result = InvoiceSendService.send(
+        invoice, tenant, submitted_email=request.POST.get('email', ''),
+    )
+    if result.sent:
+        messages.success(request, result.message)
+    else:
+        messages.error(request, result.message)
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
 
@@ -4758,7 +4726,7 @@ def owner_warranty_create(request):
         return redirect('signup')
 
     name = request.POST.get('name', '').strip()
-    applies_to = request.POST.get('applies_to', 'all_repairs')
+    applies_to = request.POST.get('applies_to', 'repairs')
     duration_type = request.POST.get('duration_type', 'custom_days')
     coverage_description = request.POST.get('coverage_description', '').strip()
     is_active = request.POST.get('is_active') == 'on'

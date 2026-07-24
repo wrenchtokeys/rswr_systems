@@ -1,0 +1,304 @@
+{% extends "base_app.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 pb-24 md:pb-8">
+    <div class="max-w-xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+
+        <div class="mb-6">
+            <h1 class="text-xl sm:text-2xl font-bold text-gray-900">
+                New {{ service_noun }}
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">Log a job and send the invoice — done in under a minute.</p>
+        </div>
+
+        <form method="post" class="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-5">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+            <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                {{ form.non_field_errors }}
+            </div>
+            {% endif %}
+
+            {% if allowed_types|length > 1 %}
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">What kind of job?</label>
+                <div class="flex gap-2" id="type-toggle">
+                    {% for radio in form.service_type %}
+                    <label class="flex-1 cursor-pointer">
+                        {{ radio.tag }}
+                        <span class="type-pill block text-center px-4 py-2.5 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                            {{ radio.choice_label }}
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% if form.service_type.errors %}<p class="text-sm text-red-600 mt-1">{{ form.service_type.errors.0 }}</p>{% endif %}
+            </div>
+            {% else %}
+            {{ form.service_type }}
+            {% endif %}
+
+            <div id="customer-block"
+                 data-initial-mode="{% if form.new_customer_name.value or form.new_customer_name.errors %}new{% else %}existing{% endif %}">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Customer</label>
+                <div class="flex gap-2 mb-3" id="cust-mode-toggle">
+                    <button type="button" data-mode="existing"
+                            class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                        Pick existing
+                    </button>
+                    <button type="button" data-mode="new"
+                            class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                        + New individual
+                    </button>
+                </div>
+
+                <div id="cust-existing">
+                    {{ form.customer }}
+                    {% if form.customer.errors %}<p class="text-sm text-red-600 mt-1">{{ form.customer.errors.0 }}</p>{% endif %}
+                </div>
+
+                <div id="cust-new" class="space-y-3">
+                    <div>
+                        {{ form.new_customer_name }}
+                        {% if form.new_customer_name.errors %}<p class="text-sm text-red-600 mt-1">{{ form.new_customer_name.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>{{ form.new_customer_phone }}</div>
+                    <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                        <input type="checkbox" name="new_customer_is_walkin" {% if form.new_customer_is_walkin.value %}checked{% endif %}
+                               class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                        One-time walk-in
+                    </label>
+                    <p class="text-xs text-gray-400">Adds an individual customer to your shop — no separate step.</p>
+                    <p class="text-xs text-gray-400">Adding a fleet business (billing, portal invite)?
+                        <a href="{% url 'create_customer' %}" class="text-green-600 hover:text-green-700">Use the full customer page</a>.</p>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Vehicle / unit <span class="text-gray-400 font-normal">(optional)</span></label>
+                {{ form.unit_number }}
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Work done <span class="text-gray-400 font-normal">(optional)</span></label>
+                {{ form.work_done }}
+            </div>
+
+            {% if shop_offers_repairs %}
+            <!-- Repair details -->
+            <div class="repair-details space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Damage type <span class="text-gray-400 font-normal">(optional)</span></label>
+                    {{ form.damage_type }}
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Damage location <span class="text-gray-400 font-normal">(tap to mark)</span></label>
+                    <div class="windshield-diagram-container">
+                        <div id="windshieldDiagram"
+                             style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 3px solid #0284c7; border-radius: 12px; cursor: crosshair; overflow: hidden; touch-action: none;">
+                            <div style="position: absolute; top: 8px; left: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">DRIVER</div>
+                            <div style="position: absolute; top: 8px; right: 12px; font-size: 10px; color: #0369a1; font-weight: 600;">PASSENGER</div>
+                            <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #0369a1;">↑ HOOD</div>
+                            <div style="position: absolute; top: 20%; bottom: 20%; left: 50%; width: 1px; background: rgba(2,132,199,0.3);"></div>
+                            <div style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 30px; height: 10px; background: #0284c7; border-radius: 0 0 6px 6px;"></div>
+                            <div id="damageMarker" style="display: none; position: absolute; width: 20px; height: 20px; background: #dc2626; border: 3px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 2px 8px rgba(0,0,0,0.3); pointer-events: none; z-index: 10;">
+                                <div style="position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; background: #fff; border-radius: 50%; transform: translate(-50%, -50%);"></div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="damage_location_x" id="id_damage_location_x" value="{{ form.damage_location_x.value|default:'' }}">
+                        <input type="hidden" name="damage_location_y" id="id_damage_location_y" value="{{ form.damage_location_y.value|default:'' }}">
+                        <div class="flex justify-between items-center mt-2">
+                            <p class="text-xs text-gray-400 mb-0">
+                                <i class="fas fa-info-circle mr-1"></i><span id="locationText">Tap on the windshield to mark damage location</span>
+                            </p>
+                            <button type="button" id="clearLocationBtn" class="text-sm text-red-600 hover:text-red-800" style="display: none;">
+                                <i class="fas fa-times"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if shop_offers_replacements %}
+            <!-- Replacement details -->
+            <div class="replacement-details space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Glass position <span class="text-gray-400 font-normal">(optional)</span></label>
+                        {{ form.glass_position }}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Glass type <span class="text-gray-400 font-normal">(optional)</span></label>
+                        {{ form.glass_type }}
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">NAGS part # <span class="text-gray-400 font-normal">(optional)</span></label>
+                    {{ form.nags_number }}
+                </div>
+            </div>
+            {% endif %}
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                {{ form.price }}
+                {% if form.price.errors %}<p class="text-sm text-red-600 mt-1">{{ form.price.errors.0 }}</p>{% endif %}
+                {% if shop_offers_repairs %}
+                <p class="text-xs text-gray-400 mt-1" id="price-hint-repair">Leave blank on a repair to auto-price from your price book.</p>
+                {% endif %}
+            </div>
+
+            <label class="flex items-center gap-3 py-1 cursor-pointer">
+                <input type="checkbox" name="already_completed" {% if form.already_completed.value %}checked{% endif %}
+                       class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                <span class="text-sm font-medium text-gray-700">Job is already done</span>
+            </label>
+
+            <div class="flex items-center gap-3 pt-2">
+                <button type="submit" class="btn-secondary flex-1">Save</button>
+                {% if user_can_invoices %}
+                <button type="submit" name="save_and_send" value="1" class="btn-primary flex-1">
+                    <i class="fas fa-paper-plane mr-2 text-xs"></i>Save &amp; Send Invoice
+                </button>
+                {% endif %}
+            </div>
+
+            <p class="text-xs text-gray-400 text-center pt-1">
+                Need photos, insurance, ADAS, or glass details?
+                {% if shop_offers_repairs %}<a href="{% url 'create_repair' %}" class="text-green-600 hover:text-green-700">Full repair form</a>{% endif %}{% if shop_offers_repairs and shop_offers_replacements %} · {% endif %}{% if shop_offers_replacements %}<a href="{% url 'replacement_create' %}" class="text-green-600 hover:text-green-700">Full replacement form</a>{% endif %}
+            </p>
+        </form>
+
+        <div class="flex justify-center mt-6">
+            <a href="{% url 'job_list' %}" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                <i class="fas fa-arrow-left mr-1"></i> Back to Jobs
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Radio pill toggle: hide the input, style the sibling span */
+    #type-toggle input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    #type-toggle input[type="radio"]:checked + .type-pill {
+        background-color: #059669; border-color: #059669; color: #fff;
+    }
+    /* Customer mode toggle (existing vs new individual) */
+    .cust-mode-btn.active { background-color: #059669; border-color: #059669; color: #fff; }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Default the type toggle to the first option if nothing selected
+    const radios = document.querySelectorAll('#type-toggle input[type="radio"]');
+    if (radios.length && ![...radios].some(r => r.checked)) {
+        radios[0].checked = true;
+    }
+
+    // Show only the selected type's detail section (both-shops).
+    // Single-service shops render exactly one section and no toggle.
+    function currentType() {
+        const checked = document.querySelector('#type-toggle input[type="radio"]:checked')
+            || document.querySelector('input[name="service_type"]');
+        return checked ? checked.value : null;
+    }
+    function syncDetailSections() {
+        const type = currentType();
+        document.querySelectorAll('.repair-details').forEach(function(el) {
+            el.style.display = (type === 'replacement') ? 'none' : '';
+        });
+        document.querySelectorAll('.replacement-details').forEach(function(el) {
+            el.style.display = (type === 'repair') ? 'none' : '';
+        });
+    }
+    radios.forEach(r => r.addEventListener('change', syncDetailSections));
+    syncDetailSections();
+
+    // Customer mode toggle: "Pick existing" select vs "+ New individual" fields.
+    const custBlock = document.getElementById('customer-block');
+    if (custBlock) {
+        const existingBox = document.getElementById('cust-existing');
+        const newBox = document.getElementById('cust-new');
+        const select = existingBox.querySelector('select');
+        const newInputs = newBox.querySelectorAll('input');
+        const btns = custBlock.querySelectorAll('.cust-mode-btn');
+
+        function setMode(mode) {
+            existingBox.style.display = (mode === 'existing') ? '' : 'none';
+            newBox.style.display = (mode === 'new') ? '' : 'none';
+            btns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+            // Clear the inactive side so only one customer source is submitted.
+            if (mode === 'existing') {
+                newInputs.forEach(i => { i.type === 'checkbox' ? i.checked = false : i.value = ''; });
+            } else if (select) {
+                select.value = '';
+            }
+        }
+        btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+        setMode(custBlock.dataset.initialMode || 'existing');
+    }
+});
+</script>
+
+{% if shop_offers_repairs %}
+<!-- Windshield damage location diagram (same behavior as the full repair form) -->
+<script>
+(function() {
+    const diagram = document.getElementById('windshieldDiagram');
+    const marker = document.getElementById('damageMarker');
+    const xInput = document.getElementById('id_damage_location_x');
+    const yInput = document.getElementById('id_damage_location_y');
+    const locationText = document.getElementById('locationText');
+    const clearBtn = document.getElementById('clearLocationBtn');
+
+    if (!diagram || !marker) return;
+
+    function placeMarker(xPercent, yPercent) {
+        marker.style.left = xPercent + '%';
+        marker.style.top = yPercent + '%';
+        marker.style.display = 'block';
+        xInput.value = xPercent.toFixed(1);
+        yInput.value = yPercent.toFixed(1);
+
+        const side = xPercent < 50 ? 'driver' : 'passenger';
+        const vertical = yPercent < 33 ? 'upper' : (yPercent > 66 ? 'lower' : 'middle');
+        locationText.textContent = 'Marked: ' + vertical + ' ' + side + ' side';
+        clearBtn.style.display = 'inline';
+    }
+
+    function clearMarker() {
+        marker.style.display = 'none';
+        xInput.value = '';
+        yInput.value = '';
+        locationText.textContent = 'Tap on the windshield to mark damage location';
+        clearBtn.style.display = 'none';
+    }
+
+    function handleInteraction(e) {
+        e.preventDefault();
+        const rect = diagram.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = ((clientX - rect.left) / rect.width) * 100;
+        const y = ((clientY - rect.top) / rect.height) * 100;
+        placeMarker(
+            Math.max(2, Math.min(98, x)),
+            Math.max(2, Math.min(98, y))
+        );
+    }
+
+    diagram.addEventListener('click', handleInteraction);
+    diagram.addEventListener('touchstart', handleInteraction, { passive: false });
+    clearBtn.addEventListener('click', clearMarker);
+
+    // Restore saved location on validation re-render
+    const savedX = xInput.value;
+    const savedY = yInput.value;
+    if (savedX && savedY) {
+        placeMarker(parseFloat(savedX), parseFloat(savedY));
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

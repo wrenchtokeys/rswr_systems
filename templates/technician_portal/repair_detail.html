@@ -22,8 +22,8 @@
                             </span>
                         </div>
                     </div>
-                    <a href="{% url 'repair_list' %}" class="inline-flex items-center px-3 py-1 border border-white border-opacity-20 text-white text-sm font-medium rounded hover:bg-white hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-colors">
-                        <i class="fas fa-arrow-left mr-2"></i>Back to Repairs
+                    <a href="{% url 'job_list' %}" class="inline-flex items-center px-3 py-1 border border-white border-opacity-20 text-white text-sm font-medium rounded hover:bg-white hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-colors">
+                        <i class="fas fa-arrow-left mr-2"></i>Back to Jobs
                     </a>
                 </div>
             </div>
@@ -176,10 +176,18 @@
                                         <option value="NET45"{% if default_payment_terms == 'NET45' %} selected{% endif %}>Net 45</option>
                                         <option value="NET60"{% if default_payment_terms == 'NET60' %} selected{% endif %}>Net 60</option>
                                     </select>
-                                    <button type="submit" class="btn-primary btn-sm">
-                                        <i class="fas fa-file-invoice-dollar mr-1.5"></i>Invoice
+                                    <button type="submit" class="btn-secondary btn-sm">
+                                        <i class="fas fa-file-invoice-dollar mr-1.5"></i>Draft
                                     </button>
                                 </form>
+                                {% if user_can_invoices %}
+                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-primary btn-sm">
+                                        <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
+                                    </button>
+                                </form>
+                                {% endif %}
                                 {% endif %}
 
                             {% elif repair.queue_status == 'REQUESTED' %}
@@ -210,8 +218,16 @@
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="IN_PROGRESS">
-                                    <button type="submit" class="btn-primary btn-sm">
+                                    <button type="submit" class="btn-secondary btn-sm">
                                         <i class="fas fa-play mr-1.5"></i>Start Work
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% if user_can_invoices %}
+                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-primary btn-sm">
+                                        <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
                                     </button>
                                 </form>
                                 {% endif %}
@@ -221,8 +237,16 @@
                                 <form action="{% url 'update_queue_status' repair.id %}" method="post" class="inline">
                                     {% csrf_token %}
                                     <input type="hidden" name="status" value="COMPLETED">
-                                    <button type="submit" class="btn-primary btn-sm">
+                                    <button type="submit" class="btn-secondary btn-sm">
                                         <i class="fas fa-check-circle mr-1.5"></i>Complete
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% if user_can_invoices %}
+                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-primary btn-sm">
+                                        <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
                                     </button>
                                 </form>
                                 {% endif %}

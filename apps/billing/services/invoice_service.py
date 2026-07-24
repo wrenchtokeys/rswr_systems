@@ -63,6 +63,7 @@ class InvoiceLineItem:
     before_photo_url: Optional[str] = None
     after_photo_url: Optional[str] = None
     repair_obj: object = None
+    replacement_obj: object = None
 
 
 @dataclass
@@ -498,7 +499,10 @@ class InvoiceService:
         customer = invoice.customer
 
         line_items = []
-        for li in invoice.line_items.select_related('repair').all():
+        for li in invoice.line_items.select_related(
+            'repair', 'replacement',
+            'repair__warranty_policy', 'replacement__warranty_policy',
+        ).all():
             repair = li.repair
             if repair is not None:
                 damage_type = repair.get_damage_type_display() or 'Repair'
@@ -531,6 +535,7 @@ class InvoiceService:
                     if repair and repair.damage_photo_after else None
                 ),
                 repair_obj=repair,
+                replacement_obj=li.replacement,
             ))
 
         # Address block — same formatting as build_invoice_data()
@@ -987,23 +992,32 @@ class InvoiceService:
         
         story.append(totals_table)
         
-        # Warranty Terms Section
+        # Warranty Terms Section \u2014 repairs and replacements both carry warranties
         warranty_terms = []
+        seen_terms = set()
         for item in invoice_data.line_items:
-            if hasattr(item, 'repair_obj') and item.repair_obj and item.repair_obj.warranty_policy:
-                policy = item.repair_obj.warranty_policy
-                summary = getattr(policy, 'terms_summary', '')
-                if summary:
-                    warranty_terms.append(f"WARRANTY: {summary}")
-                else:
-                    term = f"Unit {item.unit_number}: {policy.name}"
-                    if policy.duration_type == 'lifetime':
-                        term += " \u2014 Lifetime Warranty"
-                    elif policy.duration_type == 'custom_days':
-                        term += f" \u2014 {policy.duration_days}-day Warranty"
-                    if policy.coverage_description:
-                        term += f" ({policy.coverage_description})"
-                    warranty_terms.append(term)
+            service = (
+                getattr(item, 'repair_obj', None)
+                or getattr(item, 'replacement_obj', None)
+            )
+            if not (service and service.warranty_policy):
+                continue
+            policy = service.warranty_policy
+            summary = getattr(policy, 'terms_summary', '')
+            if summary:
+                term = f"WARRANTY: {summary}"
+            else:
+                term = f"Unit {item.unit_number}: {policy.name}"
+                if policy.duration_type == 'lifetime':
+                    term += " \u2014 Lifetime Warranty"
+                elif policy.duration_type == 'custom_days':
+                    term += f" \u2014 {policy.duration_days}-day Warranty"
+                if policy.coverage_description:
+                    term += f" ({policy.coverage_description})"
+            # Every repair on an invoice usually shares one policy \u2014 print once
+            if term not in seen_terms:
+                seen_terms.add(term)
+                warranty_terms.append(term)
 
         if warranty_terms:
             story.append(Spacer(1, 20))

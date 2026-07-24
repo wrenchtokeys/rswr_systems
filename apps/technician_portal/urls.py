@@ -9,7 +9,12 @@ urlpatterns = [
     # Technician profile management
     path('profile/', views.update_technician_profile, name='technician_profile'),
     
-    # Repair management
+    # Unified jobs surface (repairs + replacements)
+    path('jobs/', views.job_list, name='job_list'),
+    path('jobs/new/', views.job_create, name='job_create'),
+    path('repairs/<int:repair_id>/complete-and-invoice/', views.repair_complete_and_invoice, name='repair_complete_and_invoice'),
+
+    # Repair management (repair_list is a redirect shim to job_list)
     path('repairs/', views.repair_list, name='repair_list'),
     path('repairs/assigned/', views.repair_list, name='assigned_repairs'),
     path('repairs/<int:repair_id>/', views.repair_detail, name='repair_detail'),

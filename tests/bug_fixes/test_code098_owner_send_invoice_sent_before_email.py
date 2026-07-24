@@ -106,10 +106,11 @@ class OwnerSendInvoiceEmailOrderTest(TestCase):
             follow=True,
         )
 
-    def test_invoice_marked_sent_even_when_email_fails(self):
+    def test_invoice_stays_draft_when_email_fails(self):
         """
-        When email delivery fails, the invoice must still be marked SENT
-        (owner manually triggered the action), but a warning message is shown.
+        CODE-112 (supersedes the original CODE-098 assertion): when email
+        delivery fails the invoice must stay DRAFT so the owner knows it never
+        went out, with an error message explaining the failure.
         """
         invoice = _make_draft_invoice(self.tenant, self.customer)
 
@@ -120,17 +121,15 @@ class OwnerSendInvoiceEmailOrderTest(TestCase):
             response = self._post_send(invoice.id)
 
         invoice.refresh_from_db()
-        self.assertEqual(invoice.status, 'SENT', "Invoice should be SENT even when email fails (manual trigger)")
-        self.assertIsNotNone(invoice.sent_at)
+        self.assertEqual(invoice.status, 'DRAFT', "Invoice must stay DRAFT when email delivery fails (CODE-112)")
 
-        # Should show a warning, not a success, so owner knows email failed
+        # Should tell the owner the email failed
         messages = list(response.context['messages'])
         has_warning = any(
-            'warning' in m.tags or 'email delivery failed' in m.message.lower()
-            or 'email' in m.message.lower()
+            'could not be sent' in m.message.lower() or 'failed' in m.message.lower()
             for m in messages
         )
-        self.assertTrue(has_warning, f"Expected warning about email failure, got: {[m.message for m in messages]}")
+        self.assertTrue(has_warning, f"Expected message about email failure, got: {[m.message for m in messages]}")
 
     def test_invoice_marked_sent_with_success_when_email_succeeds(self):
         """

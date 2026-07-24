@@ -19,106 +19,85 @@ class WarrantyService:
     """Service layer for warranty operations on Repair objects."""
 
     @staticmethod
-    def assign_warranty(repair, policy=None):
+    def get_service_type(service):
+        """'repairs' or 'replacements' — the applies_to bucket for a service."""
+        return 'replacements' if type(service).__name__ == 'Replacement' else 'repairs'
+
+    @staticmethod
+    def assign_warranty(service, policy=None):
         """
-        Assign a warranty to a completed repair.
+        Assign a warranty to a completed repair or replacement.
 
         Args:
-            repair: Repair instance (must be COMPLETED).
-            policy: Optional WarrantyPolicy. If None, uses the default for
-                    the repair's tenant (matched by damage_type first, then
-                    the 'all_repairs' default).
+            service: Repair or Replacement instance (must be COMPLETED).
+            policy: Optional WarrantyPolicy. If None, uses the tenant's policy
+                    for the service type (per-customer override wins).
 
         Returns:
-            The updated Repair instance.
+            The updated service instance.
 
         Raises:
-            ValueError: If repair is not COMPLETED or no policy can be found.
+            ValueError: If service is not COMPLETED or no policy can be found.
         """
-        from apps.technician_portal.models import Repair, WarrantyPolicy
+        from apps.technician_portal.models import WarrantyPolicy
 
-        if repair.queue_status != 'COMPLETED':
+        service_type = WarrantyService.get_service_type(service)
+
+        if service.queue_status != 'COMPLETED':
             raise ValueError(
-                f"Cannot assign warranty to repair pk={repair.pk} — "
-                f"status is '{repair.queue_status}', must be COMPLETED."
+                f"Cannot assign warranty to {service_type[:-1]} pk={service.pk} — "
+                f"status is '{service.queue_status}', must be COMPLETED."
             )
 
         if policy is None:
-            # Priority: per-customer policy > tenant-wide policy
-            # 1. Per-customer, damage-type-specific
-            if repair.customer_id:
+            # Per-customer override wins over the tenant-wide policy
+            if service.customer_id:
                 policy = WarrantyPolicy.objects.filter(
-                    tenant=repair.tenant,
-                    customer=repair.customer,
+                    tenant=service.tenant,
+                    customer=service.customer,
                     is_active=True,
-                    applies_to=repair.damage_type,
+                    applies_to=service_type,
                 ).first()
-                # 2. Per-customer, all_repairs
-                if not policy:
-                    policy = WarrantyPolicy.objects.filter(
-                        tenant=repair.tenant,
-                        customer=repair.customer,
-                        is_active=True,
-                        applies_to='all_repairs',
-                    ).first()
 
-            # 3. Tenant-wide, damage-type-specific
             if not policy:
                 policy = WarrantyPolicy.objects.filter(
-                    tenant=repair.tenant,
+                    tenant=service.tenant,
                     customer__isnull=True,
                     is_active=True,
-                    applies_to=repair.damage_type,
-                ).first()
-
-            # 4. Tenant-wide, 'all_repairs' default
-            if not policy:
-                policy = WarrantyPolicy.objects.filter(
-                    tenant=repair.tenant,
-                    customer__isnull=True,
-                    is_active=True,
-                    applies_to='all_repairs',
-                ).first()
-
-            # 5. Any default policy for this tenant
-            if not policy:
-                policy = WarrantyPolicy.objects.filter(
-                    tenant=repair.tenant,
-                    is_active=True,
-                    is_default=True,
+                    applies_to=service_type,
                 ).first()
 
         if not policy:
             raise ValueError(
                 f"No active warranty policy found for tenant "
-                f"'{repair.tenant}' and damage type '{repair.damage_type}'."
+                f"'{service.tenant}' and service type '{service_type}'."
             )
 
         if policy.duration_type == 'none':
             # Policy explicitly says no warranty
-            return repair
+            return service
 
         with transaction.atomic():
-            locked_repair = (
-                Repair.objects.select_for_update()
-                .get(pk=repair.pk)
+            locked_service = (
+                type(service).objects.select_for_update()
+                .get(pk=service.pk)
             )
 
-            locked_repair.warranty_policy = policy
-            completion_date = locked_repair.service_date or timezone.now()
-            locked_repair.warranty_expires_at = policy.get_expiry_date(completion_date)
-            locked_repair.save(update_fields=[
+            locked_service.warranty_policy = policy
+            completion_date = locked_service.service_date or timezone.now()
+            locked_service.warranty_expires_at = policy.get_expiry_date(completion_date)
+            locked_service.save(update_fields=[
                 'warranty_policy', 'warranty_expires_at',
             ])
 
         # Refresh the caller's instance
-        repair.refresh_from_db()
+        service.refresh_from_db()
 
         logger.info(
-            "Warranty assigned: repair pk=%s, policy='%s', expires=%s",
-            repair.pk, policy.name, repair.warranty_expires_at,
+            "Warranty assigned: %s pk=%s, policy='%s', expires=%s",
+            service_type[:-1], service.pk, policy.name, service.warranty_expires_at,
         )
-        return repair
+        return service
 
     @staticmethod
     def get_active_warranty(repair):

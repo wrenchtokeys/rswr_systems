@@ -94,11 +94,12 @@ class TechnicianRepairListStatsAggregationTest(TestCase):
         self.client.force_login(self.user)
 
     def _get(self):
-        """Make GET to repair_list and return response."""
+        """GET the legacy repair_list URL, following its redirect to job_list."""
         return self.client.get(
             '/tech/repairs/',
             HTTP_HOST='testserver',
             SERVER_NAME='testserver',
+            follow=True,
         )
 
     def _get_stats(self):
@@ -188,10 +189,10 @@ class TechnicianRepairListStatsAggregationTest(TestCase):
         self.assertEqual(stats.get('in_progress'), 1)
         self.assertEqual(stats.get('completed_this_week'), 1)
 
-    def test_total_repairs_in_context(self):
-        """total_repairs in context matches the actual number of repairs."""
+    def test_total_jobs_in_context(self):
+        """total_jobs in context matches the actual number of repairs."""
         self._make_repair('APPROVED')
         self._make_repair('COMPLETED')
         self._make_repair('REQUESTED')
         response = self._get()
-        self.assertEqual(response.context.get('total_repairs'), 3)
+        self.assertEqual(response.context.get('total_jobs'), 3)

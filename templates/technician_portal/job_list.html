@@ -45,16 +45,16 @@
         <div class="flex items-center justify-between mb-4 sm:mb-6">
             <div>
                 <h1 class="text-xl sm:text-2xl font-bold text-gray-900">
-                    {% if is_admin %}Repairs{% else %}My Repairs{% endif %}
+                    {% if is_admin %}Jobs{% else %}My Jobs{% endif %}
                 </h1>
                 <p class="text-sm text-gray-500 mt-0.5">
-                    {{ total_repairs }} total
+                    {{ total_jobs }} total
                 </p>
             </div>
-            <!-- Desktop new repair + export -->
+            <!-- Desktop new job + export -->
             <div class="hidden sm:flex items-center gap-2">
-                <a href="{% url 'create_repair' %}" class="btn-primary btn-sm">
-                    <i class="fas fa-plus mr-2 text-xs"></i>New Repair
+                <a href="{% url 'job_create' %}" class="btn-primary btn-sm">
+                    <i class="fas fa-plus mr-2 text-xs"></i>New {{ service_noun }}
                 </a>
                 <button onclick="exportToCSV()" class="inline-flex items-center px-3 py-2.5 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors" title="Export CSV">
                     <i class="fas fa-download"></i>
@@ -82,9 +82,51 @@
             </button>
         </div>
 
+        {% if shop_service_mix == 'both' %}
+        <!-- Type Filter Chips (only meaningful when the shop does both) -->
+        <div class="flex gap-2 mb-3">
+            {# url-prefix guards against the querystring tag emitting an empty href once all params clear #}
+            <a href="{% url 'job_list' %}{% querystring type=None page=None damage_type=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                All Jobs
+            </a>
+            <a href="{% querystring type='repair' page=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if type_filter == 'repair' %}bg-emerald-600 text-white border-emerald-600{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                Repairs
+            </a>
+            <a href="{% querystring type='replacement' page=None damage_type=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if type_filter == 'replacement' %}bg-purple-600 text-white border-purple-600{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                Replacements
+            </a>
+        </div>
+        {% endif %}
+
+        <!-- Fleet vs Individual (general public) -->
+        <div class="flex gap-2 mb-3">
+            <a href="{% url 'job_list' %}{% querystring customer_type=None page=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if customer_type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                All
+            </a>
+            <a href="{% querystring customer_type='fleet' page=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if customer_type_filter == 'fleet' %}bg-sky-700 text-white border-sky-700{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                <i class="fas fa-truck text-[10px] mr-1"></i>Fleet
+            </a>
+            <a href="{% querystring customer_type='individual' page=None %}"
+               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
+                      {% if customer_type_filter == 'individual' %}bg-teal-600 text-white border-teal-600{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
+                <i class="fas fa-user text-[10px] mr-1"></i>Individual
+            </a>
+        </div>
+
         <!-- Status Pill Filters -->
         <div class="flex gap-2 mb-4 overflow-x-auto pill-scroll pb-1">
-            <a href="{% querystring status=None page=None %}"
+            {# Same empty-href guard as the All Jobs chip above. #}
+            <a href="{% url 'job_list' %}{% querystring status=None page=None %}"
                class="status-pill flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
                       {% if status_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
                 All
@@ -153,7 +195,7 @@
                     <a href="javascript:removeFilter('assignment')" class="ml-1 hover:text-orange-600">&times;</a>
                 </span>
                 {% endif %}
-                <a href="{% url 'repair_list' %}" class="text-xs text-gray-400 hover:text-gray-600 ml-1">Clear all</a>
+                <a href="{% url 'job_list' %}" class="text-xs text-gray-400 hover:text-gray-600 ml-1">Clear all</a>
             </div>
             {% endif %}
 
@@ -172,6 +214,7 @@
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                    placeholder="Search unit...">
                         </div>
+                        {% if shop_offers_repairs %}
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">Damage Type</label>
                             <select name="damage_type" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
@@ -181,6 +224,7 @@
                                 {% endfor %}
                             </select>
                         </div>
+                        {% endif %}
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">From Date</label>
                             <input type="date" name="date_from" value="{{ date_from }}"
@@ -195,8 +239,8 @@
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">Assignment</label>
                             <select name="assignment" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                                <option value="all" {% if assignment_filter == 'all' %}selected{% endif %}>All Repairs</option>
-                                <option value="mine" {% if assignment_filter == 'mine' %}selected{% endif %}>My Repairs</option>
+                                <option value="all" {% if assignment_filter == 'all' %}selected{% endif %}>All Jobs</option>
+                                <option value="mine" {% if assignment_filter == 'mine' %}selected{% endif %}>My Jobs</option>
                                 <option value="unassigned" {% if assignment_filter == 'unassigned' %}selected{% endif %}>Unassigned</option>
                                 {% if technician.is_manager %}
                                 <option value="team" {% if assignment_filter == 'team' %}selected{% endif %}>My Team</option>
@@ -205,14 +249,17 @@
                         </div>
                         {% endif %}
                     </div>
-                    <!-- Preserve current status filter & sort -->
+                    <!-- Preserve current status/type filter & sort -->
                     {% if status_filter and status_filter != 'all' %}
                     <input type="hidden" name="status" value="{{ status_filter }}">
+                    {% endif %}
+                    {% if type_filter and type_filter != 'all' %}
+                    <input type="hidden" name="type" value="{{ type_filter }}">
                     {% endif %}
                     <input type="hidden" name="sort" value="{{ sort_by }}">
                     <input type="hidden" name="page_size" value="{{ page_size }}">
                     <div class="mt-3 flex items-center justify-between">
-                        <a href="{% url 'repair_list' %}" class="text-sm text-gray-500 hover:text-gray-700">Clear all</a>
+                        <a href="{% url 'job_list' %}" class="text-sm text-gray-500 hover:text-gray-700">Clear all</a>
                         <button type="submit" class="btn-primary">
                             Apply Filters
                         </button>
@@ -224,7 +271,7 @@
         <!-- Sort & Page Size (desktop) -->
         <div class="hidden sm:flex items-center justify-between mb-3">
             <div class="flex items-center gap-3 text-sm text-gray-500">
-                <span>{{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ total_repairs }}</span>
+                <span>{{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ total_jobs }}</span>
                 <select onchange="changePageSize(this.value)" class="px-2 py-1 border border-gray-300 rounded-md text-sm focus:ring-green-500 focus:border-green-500">
                     <option value="20" {% if page_size == 20 %}selected{% endif %}>20/page</option>
                     <option value="50" {% if page_size == 50 %}selected{% endif %}>50/page</option>
@@ -232,8 +279,8 @@
                 </select>
             </div>
             <select onchange="changeSort(this.value)" class="px-2 py-1 border border-gray-300 rounded-md text-sm text-gray-600 focus:ring-green-500 focus:border-green-500">
-                <option value="-repair_date" {% if sort_by == '-repair_date' %}selected{% endif %}>Newest First</option>
-                <option value="repair_date" {% if sort_by == 'repair_date' %}selected{% endif %}>Oldest First</option>
+                <option value="-service_date" {% if sort_by == '-service_date' %}selected{% endif %}>Newest First</option>
+                <option value="service_date" {% if sort_by == 'service_date' %}selected{% endif %}>Oldest First</option>
                 <option value="customer__name" {% if sort_by == 'customer__name' %}selected{% endif %}>Customer A–Z</option>
                 <option value="-customer__name" {% if sort_by == '-customer__name' %}selected{% endif %}>Customer Z–A</option>
                 <option value="-cost" {% if sort_by == '-cost' %}selected{% endif %}>Cost High–Low</option>
@@ -241,30 +288,37 @@
             </select>
         </div>
 
-        {% if repairs %}
+        {% if jobs %}
         <!-- ===== MOBILE: Card Layout ===== -->
         <div class="sm:hidden space-y-3">
-            {% for repair in repairs %}
-            <a href="{% url 'repair_detail' repair.id %}" class="repair-card block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md">
+            {% for job in jobs %}
+            <a href="{% if job.service_type == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}" class="repair-card block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md">
                 <div class="flex items-start justify-between mb-2">
                     <div class="flex-1 min-w-0">
-                        <div class="font-semibold text-gray-900 truncate">{{ repair.customer.name }}</div>
+                        <div class="font-semibold text-gray-900 truncate">{{ job.customer.name }}</div>
                         <div class="text-sm text-gray-500 mt-0.5">
-                            Unit {{ repair.unit_number }}
-                            {% if repair.repair_batch_id %}
-                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">B{{ repair.break_number }}</span>
+                            Unit {{ job.unit_number }}
+                            {% if shop_service_mix == 'both' %}
+                            {% if job.service_type == 'replacement' %}
+                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">Replacement</span>
+                            {% else %}
+                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">Repair</span>
+                            {% endif %}
+                            {% endif %}
+                            {% if job.service_type == 'repair' and job.repair_batch_id %}
+                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">B{{ job.break_number }}</span>
                             {% endif %}
                         </div>
                     </div>
                     <!-- BIG Status Badge -->
                     <div class="flex items-center gap-1">
-                    {% status_badge repair.queue_status label=repair.get_queue_status_display %}
-                    {% if repair.has_warranty %}
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {% if repair.warranty_expiring_soon %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
-                        {% if repair.warranty_expiring_soon %}⌛{% else %}✅{% endif %} W
+                    {% status_badge job.queue_status label=job.get_queue_status_display %}
+                    {% if job.has_warranty %}
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {% if job.warranty_expiring_soon %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
+                        {% if job.warranty_expiring_soon %}⌛{% else %}✅{% endif %} W
                     </span>
                     {% endif %}
-                    {% if repair.is_goodwill_repair %}
+                    {% if job.is_goodwill_repair %}
                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-700">
                         <i class="fas fa-heart mr-0.5"></i>Goodwill
                     </span>
@@ -273,19 +327,23 @@
                 </div>
                 <div class="flex items-center justify-between text-sm">
                     <div class="flex items-center gap-3 text-gray-500">
-                        <span>{{ repair.get_damage_type_display|default:"—" }}</span>
-                        <span>{{ repair.repair_date|date:"M d" }}</span>
+                        {% if job.service_type == 'repair' %}
+                        <span>{{ job.get_damage_type_display|default:"—" }}</span>
+                        {% else %}
+                        <span>{% if job.glass_position %}{{ job.get_glass_position_display }}{% else %}Glass{% endif %}</span>
+                        {% endif %}
+                        <span>{{ job.service_date|date:"M d" }}</span>
                     </div>
-                    <div class="font-semibold {% if repair.queue_status == 'COMPLETED' %}text-gray-900{% else %}text-gray-400{% endif %}">
-                        ${{ repair.cost|floatformat:2 }}
+                    <div class="font-semibold {% if job.queue_status == 'COMPLETED' %}text-gray-900{% else %}text-gray-400{% endif %}">
+                        ${{ job.cost|floatformat:2 }}
                     </div>
                 </div>
-                {% if is_admin and repair.technician %}
+                {% if is_admin and job.technician %}
                 <div class="text-xs text-gray-400 mt-1.5">
-                    <i class="fas fa-user-cog mr-1"></i>{{ repair.technician.user.get_full_name }}
+                    <i class="fas fa-user-cog mr-1"></i>{{ job.technician.user.get_full_name }}
                 </div>
                 {% endif %}
-                {% if repair.damage_photo_before or repair.damage_photo_after or repair.additional_photos %}
+                {% if job.damage_photo_before or job.damage_photo_after or job.additional_photos %}
                 <div class="flex items-center gap-1 text-xs text-green-600 mt-1.5">
                     <i class="fas fa-camera"></i> Photos attached
                 </div>
@@ -299,13 +357,18 @@
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
+                        {% if shop_offers_repairs %}
                         <th class="px-4 py-3 text-left w-10">
                             <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)" class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" title="Select all pending repairs">
                         </th>
+                        {% endif %}
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
+                        {% if shop_service_mix == 'both' %}
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        {% endif %}
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Damage</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                         <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
                         {% if is_admin %}
@@ -315,54 +378,77 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
-                    {% for repair in repairs %}
-                    <tr class="hover:bg-gray-50 transition-colors {% if repair.queue_status == 'REQUESTED' %}bg-yellow-50/50{% endif %}">
+                    {% for job in jobs %}
+                    <tr class="hover:bg-gray-50 transition-colors {% if job.queue_status == 'REQUESTED' %}bg-yellow-50/50{% endif %}">
+                        {% if shop_offers_repairs %}
                         <td class="px-4 py-3">
-                            {% if repair.queue_status == 'PENDING' or repair.queue_status == 'REQUESTED' or is_admin and repair.queue_status != 'COMPLETED' %}
-                            <input type="checkbox" class="repair-checkbox w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" data-repair-id="{{ repair.id }}" data-status="{{ repair.queue_status }}" onchange="updateBulkToolbar()">
+                            {% if job.service_type == 'repair' %}
+                                {% if job.queue_status == 'PENDING' or job.queue_status == 'REQUESTED' or is_admin and job.queue_status != 'COMPLETED' %}
+                                <input type="checkbox" class="repair-checkbox w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" data-repair-id="{{ job.id }}" data-status="{{ job.queue_status }}" onchange="updateBulkToolbar()">
+                                {% else %}
+                                <span class="text-gray-200">—</span>
+                                {% endif %}
                             {% else %}
                             <span class="text-gray-200">—</span>
                             {% endif %}
                         </td>
+                        {% endif %}
                         <td class="px-4 py-3">
-                            <div class="font-medium text-gray-900 text-sm">{{ repair.customer.name }}</div>
-                            {% if repair.repair_batch_id %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 mt-0.5">Batch #{{ repair.break_number }}</span>
+                            <div class="font-medium text-gray-900 text-sm">{{ job.customer.name }}</div>
+                            {% if job.service_type == 'repair' and job.repair_batch_id %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 mt-0.5">Batch #{{ job.break_number }}</span>
                             {% endif %}
                         </td>
-                        <td class="px-4 py-3 text-sm font-mono font-medium text-gray-900">{{ repair.unit_number }}</td>
+                        <td class="px-4 py-3 text-sm font-mono font-medium text-gray-900">{{ job.unit_number }}</td>
+                        {% if shop_service_mix == 'both' %}
                         <td class="px-4 py-3">
-                            {% status_badge repair.queue_status label=repair.get_queue_status_display %}
-                            {% if repair.has_warranty %}
-                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {% if repair.warranty_expiring_soon %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %} ml-1" title="{% if repair.warranty_expiring_soon %}Warranty expiring soon{% elif repair.warranty_expires_at %}Under Warranty until {{ repair.warranty_expires_at|date:'M d, Y' }}{% else %}Lifetime Warranty{% endif %}">
-                                {% if repair.warranty_expiring_soon %}⌛{% else %}✅{% endif %} W
+                            {% if job.service_type == 'replacement' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-100 text-purple-700">Replacement</span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">Repair</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                        <td class="px-4 py-3">
+                            {% status_badge job.queue_status label=job.get_queue_status_display %}
+                            {% if job.has_warranty %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold {% if job.warranty_expiring_soon %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %} ml-1" title="{% if job.warranty_expiring_soon %}Warranty expiring soon{% elif job.warranty_expires_at %}Under Warranty until {{ job.warranty_expires_at|date:'M d, Y' }}{% else %}Lifetime Warranty{% endif %}">
+                                {% if job.warranty_expiring_soon %}⌛{% else %}✅{% endif %} W
                             </span>
                             {% endif %}
-                            {% if repair.is_goodwill_repair %}
+                            {% if job.is_goodwill_repair %}
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-700 ml-1" title="Goodwill repair (courtesy)">
                                 <i class="fas fa-heart mr-0.5"></i>Goodwill
                             </span>
                             {% endif %}
                         </td>
-                        <td class="px-4 py-3 text-sm text-gray-600">{{ repair.get_damage_type_display|default:"—" }}</td>
-                        <td class="px-4 py-3 text-sm text-gray-600">{{ repair.repair_date|date:"M d, Y" }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">
+                            {% if job.service_type == 'repair' %}
+                            {{ job.get_damage_type_display|default:"—" }}
+                            {% else %}
+                            {% if job.glass_position %}{{ job.get_glass_position_display }}{% else %}Glass{% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ job.service_date|date:"M d, Y" }}</td>
                         <td class="px-4 py-3 text-sm text-right">
-                            {% if repair.queue_status == 'COMPLETED' %}
-                                {% if repair.has_price_override %}
-                                <span class="text-red-600 font-semibold" title="Override: {{ repair.override_reason|default:'Manual' }}">
-                                    ${{ repair.cost|floatformat:2 }} <i class="fas fa-exclamation-triangle text-[10px]"></i>
+                            {% if job.queue_status == 'COMPLETED' %}
+                                {% if job.has_price_override %}
+                                <span class="text-red-600 font-semibold" title="Override: {{ job.override_reason|default:'Manual' }}">
+                                    ${{ job.cost|floatformat:2 }} <i class="fas fa-exclamation-triangle text-[10px]"></i>
                                 </span>
                                 {% else %}
-                                <span class="text-gray-900 font-semibold">${{ repair.cost|floatformat:2 }}</span>
+                                <span class="text-gray-900 font-semibold">${{ job.cost|floatformat:2 }}</span>
                                 {% endif %}
+                            {% elif job.service_type == 'repair' %}
+                                <span class="text-gray-400">${{ job.get_expected_price|floatformat:2 }}</span>
                             {% else %}
-                                <span class="text-gray-400">${{ repair.get_expected_price|floatformat:2 }}</span>
+                                <span class="text-gray-400">${{ job.cost|floatformat:2 }}</span>
                             {% endif %}
                         </td>
                         {% if is_admin %}
                         <td class="px-4 py-3 text-sm text-gray-600">
-                            {% if repair.technician %}
-                                {{ repair.technician.user.get_full_name }}
+                            {% if job.technician %}
+                                {{ job.technician.user.get_full_name }}
                             {% else %}
                                 <span class="text-gray-300 italic">Unassigned</span>
                             {% endif %}
@@ -370,16 +456,27 @@
                         {% endif %}
                         <td class="px-4 py-3 text-right">
                             <div class="flex justify-end items-center gap-1">
-                                {% if repair.damage_photo_before or repair.damage_photo_after or repair.additional_photos %}
+                                {% if job.damage_photo_before or job.damage_photo_after or job.additional_photos %}
                                 <i class="fas fa-camera text-green-500 text-xs mr-1" title="Has photos"></i>
                                 {% endif %}
-                                <a href="{% url 'repair_detail' repair.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
+                                {% if job.service_type == 'repair' %}
+                                <a href="{% url 'repair_detail' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
                                     View
                                 </a>
                                 {% if is_admin %}
-                                <a href="{% url 'update_repair' repair.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors">
+                                <a href="{% url 'update_repair' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors">
                                     Edit
                                 </a>
+                                {% endif %}
+                                {% else %}
+                                <a href="{% url 'replacement_detail' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
+                                    View
+                                </a>
+                                {% if is_admin %}
+                                <a href="{% url 'replacement_edit' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors">
+                                    Edit
+                                </a>
+                                {% endif %}
                                 {% endif %}
                             </div>
                         </td>
@@ -395,10 +492,10 @@
             <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i class="fas fa-tools text-gray-400 text-2xl"></i>
             </div>
-            <h3 class="text-lg font-semibold text-gray-900 mb-1">No repairs found</h3>
-            <p class="text-sm text-gray-500 mb-6">Try adjusting your filters or create a new repair.</p>
-            <a href="{% url 'create_repair' %}" class="btn-primary btn-sm">
-                <i class="fas fa-plus mr-2"></i>Create Repair
+            <h3 class="text-lg font-semibold text-gray-900 mb-1">No jobs found</h3>
+            <p class="text-sm text-gray-500 mb-6">Try adjusting your filters or create a new job.</p>
+            <a href="{% url 'job_create' %}" class="btn-primary btn-sm">
+                <i class="fas fa-plus mr-2"></i>New {{ service_noun }}
             </a>
         </div>
         {% endif %}
@@ -441,7 +538,8 @@
 
     <!-- Mobile FAB replaced by fab_quick_actions.html include -->
 
-    <!-- Bulk Action Toolbar -->
+    {% if shop_offers_repairs %}
+    <!-- Bulk Action Toolbar (repair rows only — replacements have no bulk endpoints) -->
     <div id="bulk-toolbar" class="bulk-toolbar fixed bottom-0 left-0 right-0 bg-gray-900 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div class="flex items-center justify-between">
@@ -470,6 +568,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 
 <script>
@@ -530,7 +629,7 @@ function changeSort(sortBy) {
     window.location.href = url.toString();
 }
 
-// Bulk selection
+// Bulk selection (repair rows only)
 function toggleSelectAll(checkbox) {
     document.querySelectorAll('.repair-checkbox').forEach(cb => cb.checked = checkbox.checked);
     updateBulkToolbar();
@@ -539,6 +638,7 @@ function toggleSelectAll(checkbox) {
 function updateBulkToolbar() {
     const checked = document.querySelectorAll('.repair-checkbox:checked');
     const toolbar = document.getElementById('bulk-toolbar');
+    if (!toolbar) return;
     const count = checked.length;
     if (count > 0) {
         toolbar.classList.add('visible');
@@ -561,7 +661,8 @@ function updateBulkToolbar() {
 
 function deselectAll() {
     document.querySelectorAll('.repair-checkbox').forEach(cb => cb.checked = false);
-    document.getElementById('select-all').checked = false;
+    const selectAll = document.getElementById('select-all');
+    if (selectAll) selectAll.checked = false;
     updateBulkToolbar();
 }
 
@@ -639,7 +740,7 @@ function exportToCSV() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'repairs_' + new Date().toISOString().split('T')[0] + '.csv';
+    a.download = 'jobs_' + new Date().toISOString().split('T')[0] + '.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

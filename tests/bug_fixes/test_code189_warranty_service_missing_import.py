@@ -65,7 +65,7 @@ class WarrantyServiceGetAllTest(TestCase):
         self.policy_a = WarrantyPolicy.objects.create(
             tenant=self.tenant_a,
             name='Standard Warranty A',
-            applies_to='all_repairs',
+            applies_to='repairs',
             duration_type='custom_days',
             duration_days=365,
             is_default=True,

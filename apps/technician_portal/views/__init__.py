@@ -15,9 +15,17 @@ Split from a single 2700-line views.py into logical modules:
 # Dashboard & registration
 from .dashboard import register_technician, technician_dashboard
 
+# Unified jobs surface (repairs + replacements); repair_list is the legacy
+# redirect shim so existing url reversals keep working.
+from .jobs import (
+    job_list,
+    job_create,
+    repair_list,
+    repair_complete_and_invoice,
+)
+
 # Repair management
 from .repairs import (
-    repair_list,
     repair_detail,
     create_repair,
     update_repair,

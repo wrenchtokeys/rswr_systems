@@ -51,6 +51,45 @@
     </div>
     {% endif %}
 
+    <!-- Apply Reward -->
+    {% if available_rewards and not is_invoiced %}
+    <div class="bg-gradient-to-r from-brand-50 to-brand-100/50 rounded-xl p-4 mb-6 border border-brand-200">
+        <div class="flex items-center mb-3">
+            <div class="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
+                <i class="fas fa-gift text-white text-sm"></i>
+            </div>
+            <div>
+                <p class="text-sm font-bold text-gray-900">Apply a Reward</p>
+                <p class="text-xs text-gray-500">You have {{ available_rewards|length }} reward{{ available_rewards|length|pluralize }} available</p>
+            </div>
+        </div>
+        <div class="space-y-2">
+            {% for redemption in available_rewards %}
+            <form action="{% url 'customer_apply_reward_replacement' replacement.id %}" method="post" class="flex items-center justify-between bg-white rounded-lg p-3 border border-gray-200">
+                {% csrf_token %}
+                <input type="hidden" name="redemption_id" value="{{ redemption.id }}">
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-gray-900">{{ redemption.reward_option.name }}</p>
+                    <p class="text-xs text-gray-500">
+                        {% if redemption.reward_option.reward_type.discount_type == 'PERCENTAGE' %}
+                            {{ redemption.reward_option.reward_type.discount_value }}% off
+                        {% elif redemption.reward_option.reward_type.discount_type == 'FIXED_AMOUNT' %}
+                            ${{ redemption.reward_option.reward_type.discount_value }} off
+                        {% elif redemption.reward_option.reward_type.discount_type == 'FREE' %}
+                            Free replacement
+                        {% endif %}
+                    </p>
+                </div>
+                <button type="submit" class="ml-3 px-4 py-2 bg-brand-500 text-white text-xs font-bold rounded-lg hover:bg-brand-600 transition-colors flex-shrink-0" onclick="return confirm('Apply this reward to this replacement?')">
+                    <i class="fas fa-check mr-1"></i> Apply
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+        <p class="text-[10px] text-gray-400 italic mt-2"><i class="fas fa-info-circle mr-1"></i>One reward per job. Must apply before invoicing.</p>
+    </div>
+    {% endif %}
+
     <div class="space-y-6">
         <!-- Vehicle & Glass Info -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

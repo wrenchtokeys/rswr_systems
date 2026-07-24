@@ -4,6 +4,7 @@ Dashboard and registration views for the technician portal.
 
 from django.shortcuts import render, redirect
 from django.contrib import messages
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from datetime import timedelta
@@ -334,6 +335,56 @@ def technician_dashboard(request):
                 ).select_related('customer', 'technician').order_by('-service_date')[:10]
             )
 
+    # --- Unified queues: replacements join repairs in Today's Queue and the
+    # customer-requests card. Legacy per-type context keys stay populated.
+    _QUEUE_PRIORITY = {'IN_PROGRESS': 0, 'APPROVED': 1, 'PENDING': 2}
+    for job in todays_queue:
+        job.service_type = 'repair'
+    if replacements_active:
+        for repl in replacements_active:
+            repl.service_type = 'replacement'
+            repl.priority = _QUEUE_PRIORITY.get(repl.queue_status, 3)
+        todays_queue = sorted(
+            todays_queue + replacements_active,
+            key=lambda j: (j.priority, (j.service_date is None, j.service_date)),
+        )[:20]
+
+    customer_requests = list(customer_requested_repairs)
+    for req in customer_requests:
+        req.service_type = 'repair'
+    for repl in customer_requested_replacements:
+        repl.service_type = 'replacement'
+        customer_requests.append(repl)
+    customer_requests.sort(
+        key=lambda j: (j.service_date is not None, j.service_date), reverse=True
+    )
+
+    # Fold the tech's replacement workload into the summary tiles so a
+    # replacement-only shop's dashboard isn't all zeros.
+    if technician and shop_offers_replacements:
+        _week_ago = timezone.now() - timedelta(days=7)
+        _repl_agg = Replacement.objects.filter(
+            tenant=tenant, technician=technician,
+        ).aggregate(
+            in_prog=Count('id', filter=Q(queue_status='IN_PROGRESS')),
+            ready=Count('id', filter=Q(queue_status='APPROVED')),
+            week=Count('id', filter=Q(
+                queue_status='COMPLETED', service_date__gte=_week_ago,
+            )),
+        )
+        summary_stats['individual_in_progress'] += _repl_agg['in_prog']
+        summary_stats['pending_approval'] += _repl_agg['ready']
+        summary_stats['completed_this_week'] += _repl_agg['week']
+        summary_stats['total_active_work'] += _repl_agg['in_prog'] + _repl_agg['ready']
+
+    if admin_data is not None:
+        _admin_repl_qs = Replacement.objects.filter(tenant=tenant) if tenant else Replacement.objects.none()
+        admin_data['total_jobs'] = admin_data['total_repairs'] + _admin_repl_qs.count()
+        admin_data['pending_jobs'] = (
+            admin_data['pending_repairs']
+            + _admin_repl_qs.filter(queue_status='PENDING').count()
+        )
+
     # Get notification bell data
     if technician:
         technician_ct = ContentType.objects.get_for_model(Technician)
@@ -368,6 +419,7 @@ def technician_dashboard(request):
         'admin_data': admin_data,
         'summary_stats': summary_stats,
         'todays_queue': todays_queue,
+        'customer_requests': customer_requests,
         'replacements_active': replacements_active,
         'customer_requested_replacements': customer_requested_replacements,
     })

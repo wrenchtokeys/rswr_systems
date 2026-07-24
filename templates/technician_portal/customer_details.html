@@ -18,8 +18,8 @@
             <a href="{% url 'edit_customer' customer.id %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                 <i class="fas fa-edit mr-2"></i>Edit Customer
             </a>
-            <a href="{% url 'create_repair' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
-                <i class="fas fa-plus mr-2"></i>New Repair
+            <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
+                <i class="fas fa-plus mr-2"></i>New {{ service_noun }}
             </a>
         </div>
         {% endif %}
