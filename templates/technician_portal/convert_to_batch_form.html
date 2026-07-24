@@ -174,12 +174,18 @@
 </div>
 
 <script>
+// Per-break marker redraw callbacks, keyed by break index. Populated by
+// initDiagram() as cards are built; used to repaint markers after a draft restore.
+const markerSyncers = {};
+
 document.getElementById('additional_breaks').addEventListener('change', function() {
     const count = parseInt(this.value) || 0;
     const container = document.getElementById('breaksContainer');
 
     // Clear existing
     container.innerHTML = '';
+    // Drop syncers for the cards we just destroyed — they close over detached nodes.
+    Object.keys(markerSyncers).forEach(function(k) { delete markerSyncers[k]; });
 
     if (count < 1 || count > 10) {
         return;
@@ -290,6 +296,7 @@ document.getElementById('additional_breaks').addEventListener('change', function
                             type="file"
                             name="photo_before_${i}"
                             accept="image/*"
+                            capture="environment"
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
                         >
                     </div>
@@ -301,6 +308,7 @@ document.getElementById('additional_breaks').addEventListener('change', function
                             type="file"
                             name="photo_after_${i}"
                             accept="image/*"
+                            capture="environment"
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
                         >
                     </div>
@@ -414,9 +422,53 @@ function initDiagram(breakIndex) {
         locationText.textContent = 'Tap to mark where this break is';
         clearBtn.style.display = 'none';
     });
+
+    // Draw the marker from whatever is already in the hidden inputs, so a
+    // restored draft shows its damage locations instead of a blank windshield.
+    markerSyncers[breakIndex] = function() {
+        if (xInput.value && yInput.value) {
+            placeDamageMarker(parseFloat(xInput.value), parseFloat(yInput.value));
+        }
+    };
 }
 
 // Initially disable submit
 document.getElementById('submitBtn').disabled = true;
+</script>
+
+<!-- Draft autosave. Photos are excluded (file inputs can't be serialized), and
+     the per-break fields only exist after `additional_breaks` fires its change
+     handler — which the restore below triggers before filling them in. -->
+<script src="{% static 'js/form_autosave.js' %}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof FormAutosave === 'undefined') return;
+
+    const countInput = document.getElementById('additional_breaks');
+
+    const autosave = new FormAutosave('convertBatchForm', {
+        saveDelay: 2000,
+        excludeFields: ['csrfmiddlewaretoken'],
+        showIndicator: true,
+        confirmRestore: true,
+        beforeRestore: function(data) {
+            // Build the break cards first — restoreFormData can only write into
+            // fields that already exist in the DOM.
+            if (data.additional_breaks) {
+                countInput.value = data.additional_breaks;
+                countInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        },
+        onRestore: function() {
+            Object.keys(markerSyncers).forEach(function(i) { markerSyncers[i](); });
+        }
+    });
+
+    // Dynamically-created break fields aren't wired at construction time, so
+    // changes inside the container wouldn't schedule a save on their own.
+    document.getElementById('breaksContainer').addEventListener('input', function() {
+        autosave.save();
+    });
+});
 </script>
 {% endblock %}

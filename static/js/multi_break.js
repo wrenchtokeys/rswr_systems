@@ -97,19 +97,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set the initial value
     repairDateInput.value = dateTimeString;
 
+    // Set up pricing preview listeners
+    setupPricingPreview();
+
+    // Restore from localStorage if available. Must run before the Flatpickr
+    // sync below — otherwise setDate(now) stomps the restored repair date.
+    const restored = restoreFromLocalStorage();
+
     // If Flatpickr is available, set the default date through its API
     // This ensures Flatpickr shows the correct date in its UI
     setTimeout(() => {
         if (repairDateInput._flatpickr) {
-            repairDateInput._flatpickr.setDate(now, false);
+            repairDateInput._flatpickr.setDate(restored ? repairDateInput.value : now, false);
         }
     }, 100);
-
-    // Set up pricing preview listeners
-    setupPricingPreview();
-
-    // Restore from localStorage if available
-    restoreFromLocalStorage();
 });
 
 // Helper function to generate UUID
@@ -782,23 +783,35 @@ if (submitBtn) {
 }
 
 // LocalStorage Autosave Functions
+const DRAFT_KEY = 'multiBreakDraft';
+const DRAFT_MAX_AGE_HOURS = 24;
+
 function saveToLocalStorage() {
     const formState = {
+        _timestamp: new Date().toISOString(),
         customer: document.getElementById('customer').value,
         unit_number: document.getElementById('unit_number').value,
         repair_date: document.getElementById('repair_date').value,
+        // Persist every field the break modal collects. File objects can't be
+        // serialized, so photos are dropped and the tech is told to re-shoot —
+        // everything else survives.
         breaks: breaks.map(b => ({
             id: b.id,
             damage_type: b.damage_type,
+            drilled_before_repair: b.drilled_before_repair,
+            windshield_temperature: b.windshield_temperature,
+            resin_viscosity: b.resin_viscosity,
             notes: b.notes,
-            // Can't store File objects, only metadata
-            photo_before_name: b.photo_before?.name,
-            photo_after_name: b.photo_after?.name
+            cost_override: b.cost_override,
+            override_reason: b.override_reason,
+            damage_location_x: b.damage_location_x,
+            damage_location_y: b.damage_location_y,
+            had_photos: Boolean(b.photo_before || b.photo_after)
         }))
     };
 
     try {
-        localStorage.setItem('multiBreakDraft', JSON.stringify(formState));
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(formState));
     } catch (e) {
         console.warn('Could not save to localStorage:', e);
     }
@@ -806,24 +819,65 @@ function saveToLocalStorage() {
 
 function restoreFromLocalStorage() {
     try {
-        const saved = localStorage.getItem('multiBreakDraft');
-        if (saved) {
-            const formState = JSON.parse(saved);
+        const saved = localStorage.getItem(DRAFT_KEY);
+        if (!saved) return false;
 
-            // Ask user if they want to restore
-            if (confirm('Found unsaved work. Would you like to restore it?')) {
-                document.getElementById('customer').value = formState.customer || '';
-                document.getElementById('unit_number').value = formState.unit_number || '';
-                document.getElementById('repair_date').value = formState.repair_date || '';
+        const formState = JSON.parse(saved);
 
-                // Note: Can't restore actual files, user will need to re-upload photos
-                // This is a limitation of browser security
-            } else {
-                localStorage.removeItem('multiBreakDraft');
+        // A days-old draft is almost certainly a different vehicle. Drop it
+        // rather than prompting for work the tech has long since finished.
+        if (formState._timestamp) {
+            const hoursSince = (new Date() - new Date(formState._timestamp)) / 3600000;
+            if (hoursSince > DRAFT_MAX_AGE_HOURS) {
+                localStorage.removeItem(DRAFT_KEY);
+                return false;
             }
         }
+
+        const savedBreaks = Array.isArray(formState.breaks) ? formState.breaks : [];
+        const photoCount = savedBreaks.filter(b => b.had_photos).length;
+
+        let message = 'Found unsaved work';
+        if (savedBreaks.length) {
+            message += ` with ${savedBreaks.length} break${savedBreaks.length > 1 ? 's' : ''}`;
+        }
+        message += '. Restore it?';
+        if (photoCount) {
+            message += `\n\nPhotos can't be saved by the browser — you'll need to re-take them on ${photoCount} break${photoCount > 1 ? 's' : ''}.`;
+        }
+
+        if (!confirm(message)) {
+            localStorage.removeItem(DRAFT_KEY);
+            return false;
+        }
+
+        document.getElementById('customer').value = formState.customer || '';
+        document.getElementById('unit_number').value = formState.unit_number || '';
+        document.getElementById('repair_date').value = formState.repair_date || '';
+
+        // Rebuild the breaks array itself — previously this was saved but never
+        // restored, so a tech recovering a draft silently lost every break.
+        breaks = savedBreaks.map(b => ({
+            id: b.id || generateUUID(),
+            damage_type: b.damage_type,
+            drilled_before_repair: b.drilled_before_repair,
+            windshield_temperature: b.windshield_temperature,
+            resin_viscosity: b.resin_viscosity,
+            photo_before: null,
+            photo_after: null,
+            notes: b.notes,
+            cost_override: b.cost_override,
+            override_reason: b.override_reason,
+            damage_location_x: b.damage_location_x || null,
+            damage_location_y: b.damage_location_y || null
+        }));
+
+        renderBreaksList();
+        updatePricingPreview();
+        return true;
     } catch (e) {
         console.warn('Could not restore from localStorage:', e);
+        return false;
     }
 }
 
