@@ -81,6 +81,6 @@ class SettingsHasOneHomeTests(TestCase):
     def test_tabs_use_plain_language(self):
         response = self.client.get(reverse('owner_settings'))
         content = response.content.decode()
-        for label in ('My Shop', 'My Team', 'Pricing &amp; Tax', 'Card Payments'):
+        for label in ('My Shop', 'My Team', 'Pricing &amp; Invoicing', 'Card Payments'):
             self.assertIn(label, content)
         self.assertNotIn('Payment Processing', content)
