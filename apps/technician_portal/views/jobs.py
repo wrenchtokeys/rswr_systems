@@ -47,6 +47,22 @@ def _visible_jobs(model, tenant, technician, user_is_admin):
     return model.objects.none()
 
 
+# Fields that live behind the job form's "More details" disclosure. If one of
+# them fails validation the panel must be opened on re-render, or the user sees
+# "please correct the errors" with every visible field looking fine.
+_ADVANCED_JOB_FIELDS = frozenset({
+    'technician', 'vehicle_year', 'vehicle_make', 'vehicle_model',
+    'damage_photo_before', 'damage_photo_after', 'customer_notes',
+    'windshield_temperature', 'resin_viscosity', 'drilled_before_repair',
+    'requires_adas_calibration', 'adas_calibration_cost',
+    'insurance_claim', 'insurance_company', 'claim_number', 'deductible',
+})
+
+
+def _advanced_has_errors(form):
+    return any(name in _ADVANCED_JOB_FIELDS for name in getattr(form, 'errors', {}))
+
+
 _STATS_AGG = dict(
     total_count=Count('id'),
     total_active=Count('id', filter=~Q(queue_status__in=['COMPLETED', 'DENIED'])),
@@ -315,7 +331,11 @@ def job_create(request):
     user_can_invoices = can_access(request.user, 'invoices', tenant)
 
     if request.method == 'POST':
-        form = QuickJobForm(request.POST, tenant=tenant, allowed_types=allowed_types)
+        # request.FILES: the "More details" panel takes damage photos, so this
+        # form is multipart now.
+        form = QuickJobForm(
+            request.POST, request.FILES, tenant=tenant, allowed_types=allowed_types,
+        )
         if form.is_valid():
             data = form.cleaned_data
 
@@ -350,9 +370,12 @@ def job_create(request):
                         'form': form,
                         'allowed_types': allowed_types,
                         'user_can_invoices': user_can_invoices,
+                        'advanced_has_errors': _advanced_has_errors(form),
                     })
 
-            technician = _resolve_technician_for_create(
+            # An explicit pick from "More details" wins; otherwise fall back to
+            # the shop's assignment strategy as before.
+            technician = data.get('technician') or _resolve_technician_for_create(
                 request, tenant, data['service_type'])
             if technician is None:
                 messages.error(request, 'No active technician found for this shop. '
@@ -365,6 +388,16 @@ def job_create(request):
                 technician=technician,
                 unit_number=data['unit_number'] or '',
                 cost_override=data['price'],
+                vehicle_year=data.get('vehicle_year'),
+                vehicle_make=data.get('vehicle_make') or '',
+                vehicle_model=data.get('vehicle_model') or '',
+                customer_notes=data.get('customer_notes') or '',
+                damage_photo_before=data.get('damage_photo_before'),
+                damage_photo_after=data.get('damage_photo_after'),
+                insurance_claim=data.get('insurance_claim') or False,
+                insurance_company=data.get('insurance_company') or '',
+                claim_number=data.get('claim_number') or '',
+                deductible=data.get('deductible'),
             )
             if data['service_type'] == 'repair':
                 service = Repair(
@@ -372,6 +405,9 @@ def job_create(request):
                     damage_type=data['damage_type'] or '',
                     damage_location_x=data['damage_location_x'],
                     damage_location_y=data['damage_location_y'],
+                    windshield_temperature=data.get('windshield_temperature'),
+                    resin_viscosity=data.get('resin_viscosity') or '',
+                    drilled_before_repair=data.get('drilled_before_repair') or False,
                     **common,
                 )
             else:
@@ -380,6 +416,8 @@ def job_create(request):
                     glass_position=data['glass_position'] or '',
                     glass_type=data['glass_type'] or '',
                     nags_number=data['nags_number'] or '',
+                    requires_adas_calibration=data.get('requires_adas_calibration') or False,
+                    adas_calibration_cost=data.get('adas_calibration_cost'),
                     **common,
                 )
             service.save()
@@ -419,6 +457,7 @@ def job_create(request):
         'form': form,
         'allowed_types': allowed_types,
         'user_can_invoices': user_can_invoices,
+        'advanced_has_errors': _advanced_has_errors(form),
     })
 
 

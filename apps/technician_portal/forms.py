@@ -752,11 +752,17 @@ class TechnicianNotificationPreferenceForm(forms.ModelForm):
 
 
 class QuickJobForm(forms.Form):
-    """Slim create form for the quick job + invoice flow (/tech/jobs/new/).
+    """The job creation form (/tech/jobs/new/).
 
-    Deliberately minimal — customer, what was done, price. Everything else
-    (photos, insurance, ADAS, glass specifics) lives on the full per-type
-    forms, one click away.
+    The common path stays short — customer, what was done, price. Everything
+    else is optional and lives behind a "More details" disclosure in the
+    template rather than on a separate page: a tech does not know whether a
+    job needs photos or insurance details until they are looking at it, so
+    making them choose a form up front was always a guess.
+
+    The per-type forms (RepairForm, ReplacementForm) still exist and still
+    back /tech/repairs/create/ and the edit flows; they are simply no longer
+    something the UI asks anyone to pick.
     """
 
     _INPUT = ('w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 '
@@ -835,6 +841,87 @@ class QuickJobForm(forms.Form):
         }),
     )
 
+    # ---- "More details" ---------------------------------------------------
+    # All optional. Previously the only way to reach any of these was to
+    # abandon this form and start again on a per-type one.
+
+    technician = forms.ModelChoiceField(
+        queryset=Technician.objects.none(),
+        required=False,
+        widget=forms.Select(attrs={'class': _INPUT + ' bg-white'}),
+        help_text='Leave blank to assign yourself.',
+    )
+    vehicle_year = forms.IntegerField(
+        required=False, min_value=1990, max_value=2030,
+        widget=forms.NumberInput(attrs={'class': _INPUT, 'placeholder': '2019'}),
+    )
+    vehicle_make = forms.CharField(
+        required=False, max_length=50,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'Toyota'}),
+    )
+    vehicle_model = forms.CharField(
+        required=False, max_length=50,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'Camry'}),
+    )
+    damage_photo_before = forms.ImageField(
+        required=False,
+        widget=forms.ClearableFileInput(attrs={
+            'accept': 'image/*', 'capture': 'environment',
+        }),
+    )
+    damage_photo_after = forms.ImageField(
+        required=False,
+        widget=forms.ClearableFileInput(attrs={
+            'accept': 'image/*', 'capture': 'environment',
+        }),
+    )
+    customer_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': _INPUT, 'rows': 2,
+            'placeholder': 'Anything the customer asked for or should see',
+        }),
+    )
+
+    # Repair-only extras
+    windshield_temperature = forms.DecimalField(
+        required=False, max_digits=5, decimal_places=1,
+        widget=forms.NumberInput(attrs={
+            'class': _INPUT, 'placeholder': '°F', 'step': '0.1',
+        }),
+    )
+    resin_viscosity = forms.CharField(
+        required=False, max_length=50,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'e.g. Medium'}),
+    )
+    drilled_before_repair = forms.BooleanField(required=False)
+
+    # Replacement-only extras
+    requires_adas_calibration = forms.BooleanField(required=False)
+    adas_calibration_cost = forms.DecimalField(
+        required=False, min_value=0, max_digits=10, decimal_places=2,
+        widget=forms.NumberInput(attrs={
+            'class': _INPUT, 'placeholder': '0.00', 'step': '0.01', 'min': '0',
+        }),
+    )
+
+    # Insurance (both types)
+    insurance_claim = forms.BooleanField(required=False)
+    insurance_company = forms.CharField(
+        required=False, max_length=100,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'Insurer'}),
+    )
+    claim_number = forms.CharField(
+        required=False, max_length=100,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'Claim #'}),
+    )
+    deductible = forms.DecimalField(
+        required=False, min_value=0, max_digits=10, decimal_places=2,
+        widget=forms.NumberInput(attrs={
+            'class': _INPUT, 'placeholder': '0.00', 'step': '0.01', 'min': '0',
+        }),
+    )
+
     def __init__(self, *args, tenant=None, allowed_types=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.allowed_types = allowed_types or ['repair', 'replacement']
@@ -846,6 +933,11 @@ class QuickJobForm(forms.Form):
             self.fields['service_type'].widget = forms.HiddenInput()
         if tenant:
             self.fields['customer'].queryset = Customer.objects.filter(tenant=tenant)
+            # Tenant-scoped, same as RepairForm — never offer a technician from
+            # another shop in the assignment dropdown.
+            self.fields['technician'].queryset = Technician.objects.filter(
+                tenant=tenant, is_active=True,
+            ).select_related('user').order_by('user__first_name')
 
     def clean_service_type(self):
         value = self.cleaned_data['service_type']

@@ -12,7 +12,8 @@
             <p class="text-sm text-gray-500 mt-1">Log a job and send the invoice — done in under a minute.</p>
         </div>
 
-        <form method="post" id="quickJobForm" class="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-5">
+        <form method="post" id="quickJobForm" enctype="multipart/form-data"
+              class="bg-white rounded-xl border border-gray-200 p-5 sm:p-6 space-y-5">
             {% csrf_token %}
 
             {% if form.non_field_errors %}
@@ -157,6 +158,108 @@
                 <span class="text-sm font-medium text-gray-700">Job is already done</span>
             </label>
 
+            <!-- Everything optional. Open by default when the server bounced the
+                 form back with an error in here, so the message isn't hidden. -->
+            <details class="border-t border-gray-200 pt-4" {% if advanced_has_errors %}open{% endif %}>
+                <summary class="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 select-none">
+                    <i class="fas fa-chevron-right text-xs mr-1.5 transition-transform"></i>More details
+                    <span class="text-gray-400 font-normal">— photos, vehicle, insurance</span>
+                </summary>
+
+                <div class="mt-4 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Assign to</label>
+                        {{ form.technician }}
+                        <p class="text-xs text-gray-400 mt-1">Leave blank to use your shop's normal assignment.</p>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                            {{ form.vehicle_year }}
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Make</label>
+                            {{ form.vehicle_make }}
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                            {{ form.vehicle_model }}
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Photo — before</label>
+                            {{ form.damage_photo_before }}
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Photo — after</label>
+                            {{ form.damage_photo_after }}
+                        </div>
+                    </div>
+
+                    {% if shop_offers_repairs %}
+                    <div class="repair-details grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Windshield temp (°F)</label>
+                            {{ form.windshield_temperature }}
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Resin viscosity</label>
+                            {{ form.resin_viscosity }}
+                        </div>
+                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer sm:col-span-2">
+                            <input type="checkbox" name="drilled_before_repair" {% if form.drilled_before_repair.value %}checked{% endif %}
+                                   class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                            Drilled before repair
+                        </label>
+                    </div>
+                    {% endif %}
+
+                    {% if shop_offers_replacements %}
+                    <div class="replacement-details space-y-3">
+                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input type="checkbox" name="requires_adas_calibration" {% if form.requires_adas_calibration.value %}checked{% endif %}
+                                   class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                            Requires ADAS calibration
+                        </label>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ADAS calibration cost</label>
+                            {{ form.adas_calibration_cost }}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="space-y-3 border-t border-gray-100 pt-4">
+                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                            <input type="checkbox" name="insurance_claim" {% if form.insurance_claim.value %}checked{% endif %}
+                                   class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                            Insurance claim
+                        </label>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Insurer</label>
+                                {{ form.insurance_company }}
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Claim #</label>
+                                {{ form.claim_number }}
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Deductible</label>
+                                {{ form.deductible }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Notes for the customer</label>
+                        {{ form.customer_notes }}
+                    </div>
+                </div>
+            </details>
+
             <div class="flex items-center gap-3 pt-2">
                 <button type="submit" class="btn-secondary flex-1">Save</button>
                 {% if user_can_invoices %}
@@ -166,10 +269,14 @@
                 {% endif %}
             </div>
 
-            <p class="text-xs text-gray-400 text-center pt-1">
-                Need photos, insurance, ADAS, or glass details?
-                {% if shop_offers_repairs %}<a href="{% url 'create_repair' %}" class="text-green-600 hover:text-green-700">Full repair form</a>{% endif %}{% if shop_offers_repairs and shop_offers_replacements %} · {% endif %}{% if shop_offers_replacements %}<a href="{% url 'replacement_create' %}" class="text-green-600 hover:text-green-700">Full replacement form</a>{% endif %}
+            {% if shop_offers_repairs %}
+            <p class="text-xs text-gray-400 text-center pt-1 repair-details">
+                More than one break on this windshield?
+                <a href="{% url 'create_multi_break_repair' %}" id="multi-break-link"
+                   class="text-green-600 hover:text-green-700">Log them as a batch</a>
+                — they price progressively.
             </p>
+            {% endif %}
         </form>
 
         <div class="flex justify-center mt-6">
@@ -244,6 +351,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
         setMode(custBlock.dataset.initialMode || 'existing');
+
+        // Carry customer + unit into the batch flow. Switching forms should
+        // never mean re-typing what you already entered.
+        const multiBreakLink = document.getElementById('multi-break-link');
+        if (multiBreakLink) {
+            const base = multiBreakLink.getAttribute('href');
+            multiBreakLink.addEventListener('click', function() {
+                const params = new URLSearchParams();
+                if (select && select.value) params.set('customer', select.value);
+                const unit = document.querySelector('[name="unit_number"]');
+                if (unit && unit.value.trim()) params.set('unit', unit.value.trim());
+                const qs = params.toString();
+                multiBreakLink.setAttribute('href', qs ? base + '?' + qs : base);
+            });
+        }
 
         // After a draft restore, pick the mode that actually holds data. setMode
         // clears the opposite side, so this also guarantees only one customer

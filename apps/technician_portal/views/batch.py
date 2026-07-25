@@ -555,6 +555,11 @@ def create_multi_break_repair(request):
             'damage_types': Repair.DAMAGE_TYPE_CHOICES,
             'technicians': technicians,
             'current_technician': current_technician,
+            # Carried over when a tech starts on the unified job form and only
+            # then realises the windshield has several breaks. Without these
+            # they'd re-type the customer and unit they just entered.
+            'initial_customer_id': request.GET.get('customer', ''),
+            'initial_unit_number': request.GET.get('unit', ''),
         })
 
 
