@@ -267,12 +267,12 @@
         <h3 class="text-sm font-semibold text-gray-900 mb-1">No activity yet</h3>
         {% if shop_offers_repairs %}
         <p class="text-sm text-gray-500 mb-4">Create your first repair to get started.</p>
-        <a href="{% url 'create_repair' %}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+        <a href="{% url 'job_create' %}?type=repair" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
             <i class="fas fa-plus mr-2"></i>Create Repair
         </a>
         {% else %}
         <p class="text-sm text-gray-500 mb-4">Create your first replacement to get started.</p>
-        <a href="{% url 'replacement_create' %}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+        <a href="{% url 'job_create' %}?type=replacement" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
             <i class="fas fa-plus mr-2"></i>Create Replacement
         </a>
         {% endif %}
@@ -311,13 +311,13 @@
 <!-- Desktop Quick Actions — compact row -->
 <div class="hidden sm:flex items-center justify-center gap-3 mt-6">
     {% if shop_offers_repairs %}
-    <a href="{% url 'create_repair' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-green-300 hover:shadow-md transition-all">
+    <a href="{% url 'job_create' %}?type=repair" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-green-300 hover:shadow-md transition-all">
         <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-green-600 text-xs"></i></div>
         New Repair
     </a>
     {% endif %}
     {% if shop_offers_replacements %}
-    <a href="{% url 'replacement_create' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-blue-300 hover:shadow-md transition-all">
+    <a href="{% url 'job_create' %}?type=replacement" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-blue-300 hover:shadow-md transition-all">
         <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-car-crash text-blue-600 text-xs"></i></div>
         New Replacement
     </a>

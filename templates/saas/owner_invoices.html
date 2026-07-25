@@ -184,7 +184,63 @@
 <!-- Invoice Table -->
 <div class="card">
     {% if invoices %}
-    <div class="overflow-x-auto">
+    <!-- ===== MOBILE: Card Layout =====
+         The table below drops Date, Due Date, Paid and the whole Actions column
+         under sm:, which left an owner checking invoices on a phone with no way
+         to see when something was due or to chase it. Cards carry all of it. -->
+    <div class="sm:hidden divide-y divide-gray-100">
+        {% for inv in invoices %}
+        <div class="p-4">
+            <div class="flex items-start gap-3">
+                <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
+                    onchange="updateBatchBar()"
+                    class="invoice-checkbox mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
+                <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="flex-1 min-w-0 block">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <div class="text-sm font-semibold text-blue-600">{{ inv.invoice_number }}</div>
+                            <div class="text-sm text-gray-700 truncate">{{ inv.customer.name }}</div>
+                        </div>
+                        <div class="shrink-0">{% status_badge inv.status kind='invoice' %}</div>
+                    </div>
+
+                    <div class="mt-2 flex items-baseline justify-between gap-2">
+                        <span class="text-xs text-gray-500">
+                            {{ inv.invoice_date|date:"M d, Y" }}
+                            {% if inv.due_date %}
+                            · Due {{ inv.due_date|date:"M d, Y" }}
+                            {% endif %}
+                        </span>
+                        <span class="text-base font-semibold
+                            {% if inv.status == 'OVERDUE' %}text-red-600
+                            {% elif inv.amount_due > 0 %}text-gray-900
+                            {% else %}text-green-600{% endif %}">
+                            ${{ inv.amount_due|floatformat:2 }}
+                        </span>
+                    </div>
+
+                    <div class="mt-0.5 text-xs text-gray-400 text-right">
+                        ${{ inv.total|floatformat:2 }} total
+                        {% if inv.amount_paid > 0 %}· ${{ inv.amount_paid|floatformat:2 }} paid{% endif %}
+                    </div>
+                </a>
+            </div>
+
+            {% if inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}
+            <div class="mt-3 pl-7">
+                <button onclick="sendReminderAjax({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}')"
+                    class="inline-flex items-center justify-center w-full min-h-[36px] px-3 py-2 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors"
+                    title="Send payment reminder to {{ inv.customer.email }}">
+                    <i class="fas fa-bell mr-1.5"></i>Send reminder
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- ===== DESKTOP: Table Layout ===== -->
+    <div class="hidden sm:block overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
@@ -612,13 +668,22 @@ function submitInvoice(serviceIds, sendEmail) {
 }
 
 // === Batch Actions (existing invoices table) ===
+// Each invoice renders twice — once as a mobile card, once as a desktop table
+// row — and both live in the DOM at all times. Counting raw .invoice-checkbox
+// nodes would double every selection and send duplicate IDs, so always work
+// from the layout that is actually on screen.
+function invoiceCheckboxes(selector) {
+    return Array.from(document.querySelectorAll(selector || '.invoice-checkbox'))
+        .filter(cb => cb.offsetParent !== null);
+}
+
 function toggleSelectAll(el) {
-    document.querySelectorAll('.invoice-checkbox').forEach(cb => { cb.checked = el.checked; });
+    invoiceCheckboxes().forEach(cb => { cb.checked = el.checked; });
     updateBatchBar();
 }
 
 function updateBatchBar() {
-    const checked = document.querySelectorAll('.invoice-checkbox:checked');
+    const checked = invoiceCheckboxes('.invoice-checkbox:checked');
     const bar = document.getElementById('batch-bar');
     const count = document.getElementById('selected-count');
     if (checked.length > 0) {
@@ -628,7 +693,7 @@ function updateBatchBar() {
         bar.classList.add('hidden');
     }
     // Update select-all state
-    const all = document.querySelectorAll('.invoice-checkbox');
+    const all = invoiceCheckboxes();
     const selectAll = document.getElementById('select-all');
     if (selectAll) {
         selectAll.checked = all.length > 0 && checked.length === all.length;
@@ -637,6 +702,8 @@ function updateBatchBar() {
 }
 
 function clearSelection() {
+    // Not visibility-filtered: clearing must also reset the off-screen layout so
+    // a viewport resize can't resurrect a stale selection.
     document.querySelectorAll('.invoice-checkbox').forEach(cb => { cb.checked = false; });
     const selectAll = document.getElementById('select-all');
     if (selectAll) selectAll.checked = false;
@@ -644,7 +711,7 @@ function clearSelection() {
 }
 
 function sendSelectedEmails() {
-    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
     if (!confirm(`Send invoice emails for ${ids.length} invoice(s)?`)) return;
 
@@ -671,7 +738,7 @@ function sendSelectedEmails() {
 }
 
 function markSelectedPaid() {
-    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
     if (!confirm(`Mark ${ids.length} invoice(s) as fully paid?`)) return;
 
@@ -697,7 +764,7 @@ function markSelectedPaid() {
 }
 
 function voidSelectedInvoices() {
-    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
     if (!confirm(`Void ${ids.length} selected invoice(s)?\n\nPaid and already-voided invoices will be skipped.`)) return;
 
@@ -723,7 +790,7 @@ function voidSelectedInvoices() {
 }
 
 function deleteSelectedInvoices() {
-    const ids = Array.from(document.querySelectorAll('.invoice-checkbox:checked')).map(cb => parseInt(cb.value));
+    const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
     if (!confirm(`Delete ${ids.length} selected invoice(s)?\n\nOnly draft and voided invoices can be deleted. Active invoices will be skipped — void them first.`)) return;
 

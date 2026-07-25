@@ -460,7 +460,10 @@ class OwnerSetupCompletionTest(TestCase):
         self.assertIn('Business Info', content)
         self.assertIn('Job Prices', content)
         self.assertIn('Sales Tax', content)
-        self.assertIn('Billing', content)
+        # Was 'Billing' + 'Invoicing', both satisfied by the row "Billing &
+        # Invoicing". That row is now just "Invoicing": the nav's "Billing" was
+        # the shop's own subscription (now "My Plan") while this is what they
+        # charge customers, and having both on screen was the confusion.
         self.assertIn('Invoicing', content)
         self.assertIn('Repair Resin Rules', content)
         self.assertIn('Job Assignment', content)

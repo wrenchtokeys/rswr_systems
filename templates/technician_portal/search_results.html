@@ -1,0 +1,127 @@
+{% extends "base_app.html" %}
+{% load ui %}
+
+{% block title %}Search: {{ query }} | RS Systems{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">
+            {% if total %}Results for “{{ query }}”{% else %}Nothing found for “{{ query }}”{% endif %}
+        </h1>
+        {% if total %}
+        <p class="text-sm text-gray-500 mt-1">{{ total }} match{{ total|pluralize:"es" }}</p>
+        {% endif %}
+    </div>
+
+    {% if not total %}
+    <div class="card px-6 py-14 text-center">
+        <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-search text-gray-400 text-2xl"></i>
+        </div>
+        <h3 class="text-sm font-medium text-gray-900 mb-1">No jobs, customers or invoices matched</h3>
+        <p class="text-sm text-gray-500 max-w-md mx-auto">
+            Try a unit number, a customer name, or an invoice number. Search only
+            covers work you have access to.
+        </p>
+        <div class="mt-5 flex items-center justify-center gap-3">
+            <a href="{% url 'job_list' %}" class="btn-secondary btn-sm">Browse jobs</a>
+            <a href="{% url 'technician_customers' %}" class="btn-secondary btn-sm">Browse customers</a>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if jobs %}
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Jobs</h2>
+            <a href="{% url 'job_list' %}?unit_search={{ query|urlencode }}" class="text-sm text-blue-600 hover:text-blue-800">
+                See all in Jobs →
+            </a>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for job, kind in jobs %}
+            <a href="{% if kind == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}"
+               class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 hover:bg-gray-50 transition-colors">
+                <div class="min-w-0">
+                    <div class="text-sm font-medium text-gray-900 truncate">
+                        {{ job.customer.name }}
+                        {% if job.unit_number %}<span class="text-gray-500">· Unit {{ job.unit_number }}</span>{% endif %}
+                    </div>
+                    <div class="text-xs text-gray-500 mt-0.5">
+                        {{ kind|capfirst }} #{{ job.id }} · {{ job.service_date|date:"M d, Y" }}
+                        {% if job.technician %} · {{ job.technician.user.get_full_name|default:job.technician.user.username }}{% endif %}
+                    </div>
+                </div>
+                <div class="shrink-0">{% status_badge job.queue_status label=job.get_queue_status_display %}</div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if customers %}
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Customers</h2>
+            <a href="{% url 'technician_customers' %}?search={{ query|urlencode }}" class="text-sm text-blue-600 hover:text-blue-800">
+                See all in Customers →
+            </a>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for customer in customers %}
+            <a href="{% url 'customer_detail' customer_id=customer.id %}"
+               class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 hover:bg-gray-50 transition-colors">
+                <div class="min-w-0">
+                    <div class="text-sm font-medium text-gray-900 truncate">{{ customer.name }}</div>
+                    <div class="text-xs text-gray-500 mt-0.5">
+                        {% if customer.phone %}{{ customer.phone }}{% endif %}
+                        {% if customer.phone and customer.email %} · {% endif %}
+                        {% if customer.email %}{{ customer.email }}{% endif %}
+                        {% if not customer.phone and not customer.email %}No contact details{% endif %}
+                    </div>
+                </div>
+                <i class="fas fa-chevron-right text-gray-300 text-xs shrink-0"></i>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if invoices %}
+    <div class="card mb-6">
+        <div class="card-header">
+            <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Invoices</h2>
+            <a href="{% url 'owner_invoice_list' %}" class="text-sm text-blue-600 hover:text-blue-800">
+                See all in Invoices →
+            </a>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for invoice in invoices %}
+            <a href="{% url 'owner_invoice_detail' invoice_id=invoice.id %}"
+               class="flex items-center justify-between gap-3 px-4 sm:px-6 py-3 hover:bg-gray-50 transition-colors">
+                <div class="min-w-0">
+                    <div class="text-sm font-medium text-gray-900 truncate">
+                        {{ invoice.invoice_number }}
+                        <span class="text-gray-500">· {{ invoice.customer.name }}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-0.5">
+                        {{ invoice.invoice_date|date:"M d, Y" }} · ${{ invoice.total|floatformat:2 }}
+                    </div>
+                </div>
+                <div class="shrink-0">{% status_badge invoice.status kind='invoice' %}</div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if total >= per_section_limit %}
+    <p class="text-xs text-gray-400 text-center">
+        Showing the {{ per_section_limit }} most recent per section — use the section links for the full list.
+    </p>
+    {% endif %}
+
+</div>
+{% endblock %}

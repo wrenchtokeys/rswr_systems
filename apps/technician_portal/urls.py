@@ -8,6 +8,9 @@ urlpatterns = [
     
     # Technician profile management
     path('profile/', views.update_technician_profile, name='technician_profile'),
+
+    # Global search (navbar box on every portal page)
+    path('search/', views.global_search, name='global_search'),
     
     # Unified jobs surface (repairs + replacements)
     path('jobs/', views.job_list, name='job_list'),

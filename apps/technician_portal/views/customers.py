@@ -638,15 +638,17 @@ def resend_customer_invitation(request, invitation_id):
     _scoped_tech_rci = Technician.objects.filter(user=request.user, tenant=tenant).first()
     is_mgr = bool(_scoped_tech_rci and _scoped_tech_rci.is_manager)
 
-    if not (is_admin or is_mgr):
-        messages.error(request, "Only managers can resend invitations.")
-        return redirect('technician_dashboard')
-
     # Scope the lookup to this tenant directly — never fetch the record first and
     # check the tenant afterwards, because a missing/None tenant would skip the check.
+    # Resolved before the permission gate so a refusal can return the user to the
+    # customer they were looking at, which is where success already lands.
     invitation = get_object_or_404(
         CustomerInvitation, id=invitation_id, customer__tenant=tenant
     )
+
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can resend invitations.")
+        return redirect('customer_detail', customer_id=invitation.customer_id)
 
     if CustomerInvitationService.resend_invitation(invitation, request):
         messages.success(request, f"Invitation resent to {invitation.email}")
@@ -675,17 +677,18 @@ def cancel_customer_invitation(request, invitation_id):
     _scoped_tech_cci = Technician.objects.filter(user=request.user, tenant=tenant).first()
     is_mgr = bool(_scoped_tech_cci and _scoped_tech_cci.is_manager)
 
-    if not (is_admin or is_mgr):
-        messages.error(request, "Only managers can cancel invitations.")
-        return redirect('technician_dashboard')
-
     # Scope the lookup to this tenant directly — same defence-in-depth reasoning
-    # as resend: never rely on a post-fetch `if tenant and ...` guard.
+    # as resend: never rely on a post-fetch `if tenant and ...` guard. Resolved
+    # before the permission gate so a refusal returns to the customer page.
     invitation = get_object_or_404(
         CustomerInvitation, id=invitation_id, customer__tenant=tenant
     )
 
     customer_id = invitation.customer_id
+
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can cancel invitations.")
+        return redirect('customer_detail', customer_id=customer_id)
 
     if CustomerInvitationService.cancel_invitation(invitation):
         messages.success(request, f"Invitation to {invitation.email} cancelled.")

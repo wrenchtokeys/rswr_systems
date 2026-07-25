@@ -20,9 +20,12 @@ class FormAutosave {
             storageKey: options.storageKey || `autosave_${formId}`,
             excludeFields: options.excludeFields || ['csrfmiddlewaretoken'], // Fields to skip
             onSave: options.onSave || null, // Callback when save occurs
+            beforeRestore: options.beforeRestore || null, // Runs before fields are written — use to
+                                                          // build dynamic fields that must exist first
             onRestore: options.onRestore || null, // Callback when data is restored
             showIndicator: options.showIndicator !== false, // Show save indicator
             confirmRestore: options.confirmRestore !== false, // Ask before restoring
+            maxAgeHours: options.maxAgeHours || 24, // Drafts older than this are discarded, not offered
         };
 
         this.saveTimeout = null;
@@ -189,6 +192,14 @@ class FormAutosave {
             const timestamp = new Date(data._timestamp);
             const hoursSince = (new Date() - timestamp) / (1000 * 60 * 60);
 
+            // A stale draft is more likely to be wrong than useful — a tech who
+            // starts a job days later is on a different vehicle. Drop it silently
+            // rather than prompting to restore data they'd have to clear by hand.
+            if (hoursSince > this.options.maxAgeHours) {
+                this.clearSavedData();
+                return;
+            }
+
             // Show restore prompt
             if (this.options.confirmRestore) {
                 const timeAgo = this.formatTimeAgo(timestamp);
@@ -213,6 +224,12 @@ class FormAutosave {
      */
     restoreFormData(data) {
         try {
+            // Give the form a chance to create any fields that only exist after
+            // user interaction — otherwise the lookup below silently skips them.
+            if (this.options.beforeRestore) {
+                this.options.beforeRestore(data);
+            }
+
             Object.keys(data).forEach(name => {
                 if (name === '_timestamp') return;
 

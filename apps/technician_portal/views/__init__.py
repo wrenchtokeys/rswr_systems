@@ -9,11 +9,15 @@ Split from a single 2700-line views.py into logical modules:
 - rewards: Reward fulfillment and application
 - settings: Manager settings (viscosity rules, team overview)
 - notifications: Notification preferences, history, verification
+- search: Global search across jobs, customers and invoices
 - api: JSON API endpoints (pricing, viscosity, profile)
 """
 
 # Dashboard & registration
 from .dashboard import register_technician, technician_dashboard
+
+# Global search
+from .search import global_search
 
 # Unified jobs surface (repairs + replacements); repair_list is the legacy
 # redirect shim so existing url reversals keep working.

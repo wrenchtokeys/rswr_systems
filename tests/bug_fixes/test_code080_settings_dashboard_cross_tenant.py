@@ -97,8 +97,18 @@ def _make_technician(user, tenant, is_manager=False, is_active=True):
 
 class ManagerSettingsDashboardCrossTenantTest(TestCase):
     """
-    A user with a Technician record at Shop A visiting Shop B's
-    manager_settings_dashboard should NOT leak Shop A's team_count.
+    manager_settings_dashboard no longer renders anything.
+
+    It used to be a second settings home showing team/viscosity/warranty
+    counts, and CODE-080 was about it leaking Shop A's team_count to a user
+    visiting Shop B. It is now a redirect into /owner/settings/ (the settings
+    consolidation), so it performs no queries and builds no context — the leak
+    surface is gone rather than fixed.
+
+    The cross-tenant property itself still matters for the views that *do*
+    still render this data, and those are covered by
+    ManageViscosityRulesCrossTenantTest and TeamOverviewCrossTenantTest below.
+    What remains here is a guard that this view stays inert.
     """
 
     def setUp(self):
@@ -121,49 +131,35 @@ class ManagerSettingsDashboardCrossTenantTest(TestCase):
         self.managed_a2 = _make_technician(ta2, self.shop_a)
         self.tech_a.managed_technicians.add(self.managed_a1, self.managed_a2)
 
-    def test_dashboard_does_not_leak_shop_a_team_count(self):
+    def test_dashboard_cannot_leak_because_it_renders_nothing(self):
         """
-        manager_settings_dashboard at Shop B with cross-tenant owner should
-        show team_count=0 (no Technician at Shop B), not 2 (Shop A's team).
+        The cross-tenant owner gets a redirect, not a page with a team count.
+
+        Asserting on the response body is what the original test tried to do;
+        there is no longer a body to assert on, which is a stronger guarantee
+        than the one CODE-080 shipped.
         """
         from apps.technician_portal.views.settings import manager_settings_dashboard
 
         req = _make_request("GET", "/tech/settings/", self.cross_user, self.shop_b)
         response = manager_settings_dashboard(req)
 
-        self.assertEqual(response.status_code, 200)
-        # Verify context has technician=None (no Technician record at Shop B)
-        self.assertIsNone(response.context_data['technician'] if hasattr(response, 'context_data') else
-                          response.context_data if hasattr(response, 'context_data') else None)
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(hasattr(response, 'context_data'))
 
-    def test_dashboard_template_rendered_with_zero_team_count(self):
-        """Use test client to check rendered response has no Shop A manager data."""
-        from django.test import RequestFactory
+    def test_dashboard_redirects_into_the_single_settings_home(self):
+        from django.urls import reverse
         from apps.technician_portal.views.settings import manager_settings_dashboard
 
-        req = _make_request("GET", "/tech/settings/", self.cross_user, self.shop_b)
-        response = manager_settings_dashboard(req)
-        self.assertEqual(response.status_code, 200)
-        # The technician should be None (no tech record at Shop B)
-        # team_count should be 0
-        # We check this by inspecting that the view didn't crash and returned 200
-
-    def test_dashboard_shop_b_manager_sees_correct_team(self):
-        """A proper Shop B manager sees their own team count, not Shop A's."""
         shop_b_manager = _make_user("shopB_mgr")
         _make_membership(shop_b_manager, self.shop_b, role="manager")
-        tech_b_mgr = _make_technician(shop_b_manager, self.shop_b, is_manager=True)
+        _make_technician(shop_b_manager, self.shop_b, is_manager=True)
 
-        # Add 1 managed tech at Shop B
-        shopb_tech = _make_user("shopB_tech")
-        managed_b = _make_technician(shopb_tech, self.shop_b)
-        tech_b_mgr.managed_technicians.add(managed_b)
-
-        from apps.technician_portal.views.settings import manager_settings_dashboard
         req = _make_request("GET", "/tech/settings/", shop_b_manager, self.shop_b)
         response = manager_settings_dashboard(req)
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('owner_settings'))
 
 
 # ---------------------------------------------------------------------------

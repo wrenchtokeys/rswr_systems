@@ -313,7 +313,7 @@
                     <p class="text-sm text-gray-500 mb-4">
                         {% if unit_search %}No units match "{{ unit_search }}"{% else %}No repairs recorded for this customer yet{% endif %}
                     </p>
-                    <a href="{% url 'create_repair' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                    <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
                         <i class="fas fa-plus mr-2"></i>Create Repair
                     </a>
                 </div>

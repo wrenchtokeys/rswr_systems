@@ -38,6 +38,13 @@
   --transition: all 0.3s ease;
 }
 
+/* Declared explicitly rather than relying on Tailwind's built-in spin keyframe,
+   which is only emitted when an `animate-spin` class survives the purge. */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 @layer components {
   /* Semantic button hierarchy — see docs/development/UI_DESIGN_GUIDE.md.
      primary: the ONE main action per view. secondary: outlined supporting
@@ -117,5 +124,39 @@
   }
   .modal-panel {
     @apply bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto;
+  }
+
+  /* Draft-save toast for static/js/form_autosave.js. Global because every
+     long field form uses autosave, not just the one that loads
+     components/form-fields.css. */
+  .autosave-indicator {
+    @apply fixed bottom-6 right-6 px-4 py-3 bg-white border border-gray-200 rounded-lg
+      shadow-md text-sm flex items-center opacity-0 translate-y-4 transition-all
+      duration-300 pointer-events-none z-50;
+  }
+  .autosave-indicator.show {
+    @apply opacity-100 translate-y-0;
+  }
+  .autosave-indicator i {
+    @apply mr-2;
+  }
+  .autosave-indicator.saving {
+    @apply text-blue-500 border-blue-300 bg-blue-50;
+  }
+  .autosave-indicator.saved {
+    @apply text-emerald-500 border-emerald-300 bg-emerald-50;
+  }
+  .autosave-indicator.error {
+    @apply text-red-600 border-red-300 bg-red-100;
+  }
+  @media (max-width: 640px) {
+    .autosave-indicator {
+      @apply bottom-4 right-4 left-4 justify-center;
+    }
+  }
+
+  /* Spinner rotation used by the autosave toast's <i class="fas fa-spinner spin">. */
+  .spin {
+    animation: spin 1s linear infinite;
   }
 }

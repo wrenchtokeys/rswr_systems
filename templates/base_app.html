@@ -53,7 +53,7 @@
                         {% endif %}
 
                         {% if is_owner_or_manager %}
-                        <a href="{% url 'billing_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'billing_settings' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Billing</a>
+                        <a href="{% url 'billing_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'billing_settings' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">My Plan</a>
                         {% endif %}
 
                         {% if user_can_settings %}
@@ -62,12 +62,27 @@
                     </div>
                 </div>
 
-                <!-- Right: Tenant info + User dropdown -->
+                <!-- Right: Search + Tenant info + User dropdown -->
                 <div class="flex items-center space-x-4">
+                    <!-- Global search. Page-level search only ever existed inside
+                         the job and customer lists, so finding a unit meant first
+                         knowing which page to be on. -->
+                    <form method="get" action="{% url 'global_search' %}" class="hidden md:block" role="search">
+                        <label for="global-search" class="sr-only">Search jobs, customers and invoices</label>
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                            <input type="search" name="q" id="global-search"
+                                   value="{{ request.GET.q|default:'' }}"
+                                   placeholder="Search jobs, customers, invoices"
+                                   class="w-44 lg:w-64 pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                    </form>
+
                     {% if tenant %}
-                    <span class="text-sm text-gray-500 hidden sm:inline truncate max-w-[200px]" title="{{ tenant.name }}">{{ tenant.name }}</span>
+                    <!-- lg, not sm: the search box needs the room at md. -->
+                    <span class="text-sm text-gray-500 hidden lg:inline truncate max-w-[200px]" title="{{ tenant.name }}">{{ tenant.name }}</span>
                     {% if is_owner_or_manager %}
-                    <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
+                    <span class="hidden lg:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
                         {% if tenant.plan == 'trial' %}border border-blue-300 text-blue-600 bg-white
                         {% elif tenant.plan == 'starter' %}bg-blue-100 text-blue-800
                         {% elif tenant.plan == 'pro' %}bg-green-100 text-green-800
@@ -118,6 +133,16 @@
 
             <!-- Mobile Nav (hidden by default) -->
             <div id="mobile-nav" class="hidden md:hidden pb-4 border-t border-gray-100 pt-2">
+                <form method="get" action="{% url 'global_search' %}" class="pb-3" role="search">
+                    <label for="global-search-mobile" class="sr-only">Search jobs, customers and invoices</label>
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                        <input type="search" name="q" id="global-search-mobile"
+                               value="{{ request.GET.q|default:'' }}"
+                               placeholder="Search jobs, customers, invoices"
+                               class="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </form>
                 {% if is_owner_or_manager %}
                 <a href="{% url 'owner_dashboard' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Dashboard</a>
                 {% else %}
@@ -136,7 +161,7 @@
                 <a href="{% url 'owner_loyalty_dashboard' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Loyalty</a>
                 {% endif %}
                 {% if is_owner_or_manager %}
-                <a href="{% url 'billing_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Billing</a>
+                <a href="{% url 'billing_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">My Plan</a>
                 {% endif %}
                 {% if user_can_settings %}
                 <a href="{% url 'owner_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Settings</a>
