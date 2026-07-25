@@ -47,42 +47,19 @@ def get_ordinal_suffix(n):
 
 @manager_required
 def manager_settings_dashboard(request):
-    """Main manager settings dashboard with navigation tiles."""
-    tenant = getattr(request, 'tenant', None)
-    # Use tenant-scoped lookup so an owner/admin at Shop B who also has a
-    # Technician record at Shop A does not leak Shop A's team data here.
-    # (CODE-080 cross-tenant settings dashboard fix)
-    manager = (
-        Technician.objects.filter(user=request.user, tenant=tenant).first()
-        if tenant else None
-    )
-    viscosity_qs = ViscosityRecommendation.objects.filter(is_active=True)
-    if tenant:
-        viscosity_qs = viscosity_qs.filter(tenant=tenant)
-    else:
-        viscosity_qs = viscosity_qs.none()
-    viscosity_rules_count = viscosity_qs.count()
+    """Legacy settings hub — now redirects into /owner/settings/.
 
-    warranty_qs = WarrantyPolicy.objects.filter(is_active=True)
-    if tenant:
-        warranty_qs = warranty_qs.filter(tenant=tenant)
-    else:
-        warranty_qs = warranty_qs.none()
-    warranty_policies_count = warranty_qs.count()
+    This was a second, parallel settings home with its own navigation tiles for
+    team, viscosity and warranty, all of which /owner/settings/ also covers.
+    Nothing in the main nav ever linked here; the only way in was from its own
+    sub-pages, so it functioned as an island an owner could get stranded on.
 
-    team_count = 0
-    if manager:
-        team_count = manager.managed_technicians.filter(is_active=True).count()
-
-    context = {
-        'is_admin': is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)),
-        'technician': manager,
-        'viscosity_rules_count': viscosity_rules_count,
-        'warranty_policies_count': warranty_policies_count,
-        'team_count': team_count,
-    }
-
-    return render(request, 'technician_portal/settings/settings_dashboard.html', context)
+    Kept as a redirect rather than deleted so existing bookmarks still land
+    somewhere sensible. 302 rather than 301 deliberately — a permanent redirect
+    is cached by the browser indefinitely, which is a bad trade for an internal
+    URL we may yet want to reuse.
+    """
+    return redirect('owner_settings')
 
 
 @manager_required

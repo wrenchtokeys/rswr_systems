@@ -6,21 +6,27 @@
 
 {% include "components/page_header.html" with title="Settings" subtitle="Manage your shop configuration" %}
 
-<!-- Configure Your Shop checklist -->
-<div class="card mb-6">
-    <div class="card-header">
+<!-- Configure Your Shop checklist. Collapsed once complete: after setup this
+     page is where you change things, and a permanent all-green list is noise. -->
+<details class="card mb-6" {% if not completion.all_complete %}open{% endif %}>
+    <summary class="card-header cursor-pointer select-none">
         <div class="flex items-center gap-2.5">
             <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
                 <i class="fas fa-sliders-h text-blue-600 text-sm"></i>
             </div>
             <h3 class="text-base font-semibold text-gray-900">Configure Your Shop</h3>
         </div>
-        {% if completion.all_complete %}
-        <span class="badge-green"><i class="fas fa-check text-[10px]"></i> {{ completion.configured_count }}/{{ completion.total_count }} configured</span>
-        {% else %}
-        <span class="badge-blue">{{ completion.configured_count }}/{{ completion.total_count }} configured</span>
-        {% endif %}
-    </div>
+        <span class="flex items-center gap-2">
+            {% if completion.all_complete %}
+            <span class="badge-green"><i class="fas fa-check text-[10px]"></i> {{ completion.configured_count }}/{{ completion.total_count }} configured</span>
+            {% else %}
+            <span class="badge-blue">{{ completion.configured_count }}/{{ completion.total_count }} configured</span>
+            {% endif %}
+            <!-- card-header sets display:flex, which suppresses the native
+                 disclosure marker — so supply our own affordance. -->
+            <i class="fas fa-chevron-down text-xs text-gray-400"></i>
+        </span>
+    </summary>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 divide-gray-100">
         <a href="?tab=general" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
             <span class="text-sm text-gray-700">Business Info</span>
@@ -39,7 +45,7 @@
             {% if completion.tax %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
         <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Billing &amp; Invoicing</span>
+            <span class="text-sm text-gray-700">Invoicing</span>
             {% if completion.billing %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
         {% if tenant.offers_repairs %}
@@ -53,22 +59,22 @@
             {% if completion.assignment %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
         </a>
     </div>
-</div>
+</details>
 
 <!-- Tabs -->
 <div class="border-b border-gray-200 mb-6 overflow-x-auto">
     <nav class="flex space-x-6 -mb-px" aria-label="Settings tabs" data-tabs data-tabs-default="{{ active_tab|default:'general' }}">
         <button data-tab="general" id="tab-general" class="tab-btn">
-            <i class="fas fa-store mr-1.5"></i>General
+            <i class="fas fa-store mr-1.5"></i>My Shop
         </button>
         <button data-tab="team" id="tab-team" class="tab-btn">
-            <i class="fas fa-users mr-1.5"></i>Team
+            <i class="fas fa-users mr-1.5"></i>My Team
         </button>
         <button data-tab="billing" id="tab-billing" class="tab-btn">
-            <i class="fas fa-file-invoice-dollar mr-1.5"></i>Billing & Tax
+            <i class="fas fa-file-invoice-dollar mr-1.5"></i>Pricing &amp; Tax
         </button>
         <button data-tab="payments" id="tab-payments" class="tab-btn">
-            <i class="fas fa-credit-card mr-1.5"></i>Payment Processing
+            <i class="fas fa-credit-card mr-1.5"></i>Card Payments
         </button>
         <button data-tab="reviews" id="tab-reviews" class="tab-btn">
             <i class="fas fa-star mr-1.5"></i>Reviews
@@ -1121,7 +1127,7 @@ Thank you,
     {% with status=tenant.stripe_onboarding_status %}
     <div class="card mb-6">
         <div class="px-6 py-4 border-b border-gray-200">
-            <h3 class="text-lg font-semibold text-gray-900">Payment Processing</h3>
+            <h3 class="text-lg font-semibold text-gray-900">Card Payments</h3>
             <p class="text-sm text-gray-500 mt-1">Accept online payments from your customers. Funds go directly to your bank account.</p>
         </div>
         <div class="p-6">
