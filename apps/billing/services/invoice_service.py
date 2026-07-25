@@ -120,9 +120,9 @@ class InvoiceService:
     
     def _load_branding_config(self):
         """
-        Load company info from BillingConfig first, then EmailBrandingConfig
-        for colors/logo. BillingConfig is the source of truth for address
-        and payment terms on invoices.
+        Load company info from BillingConfig, colors + logo from the tenant.
+        BillingConfig is the source of truth for address and payment terms
+        on invoices.
         """
         self.logo_path = None
         self.DEFAULT_PAYMENT_TERMS = 'COD'
@@ -153,26 +153,17 @@ class InvoiceService:
             self.DEFAULT_DUE_DAYS = 0
             self.INVOICE_PREFIX = 'INV'
         
-        # --- EmailBrandingConfig (colors + logo) ---
-        try:
-            from core.models.email_branding import EmailBrandingConfig
-            config = EmailBrandingConfig.get_instance()
-            
-            # Colors - use secondary color for headers (more readable)
-            self.HEADER_COLOR = config.secondary_color or ROYAL_BLUE
-            self.PRIMARY_COLOR = config.primary_color or "#2C5282"
-            
-            # Logo - get URL (works for both local and S3 storage)
-            if config.logo:
-                try:
-                    self.logo_url = config.logo.url
-                except Exception as e:
-                    print(f"Could not load logo URL: {e}")
-                    
-        except Exception as e:
-            print(f"Could not load email branding config: {e}")
-            self.HEADER_COLOR = ROYAL_BLUE
-            self.PRIMARY_COLOR = "#2C5282"
+        # --- Colors + logo come from the tenant (shop), never the platform
+        # EmailBrandingConfig singleton — the singleton put the platform
+        # owner's logo/colors on every shop's invoices.
+        brand_color = getattr(self.tenant, 'brand_color', '') if self.tenant else ''
+        self.HEADER_COLOR = brand_color or "#4299E1"
+        self.PRIMARY_COLOR = brand_color or "#2C5282"
+        if self.tenant and self.tenant.logo:
+            try:
+                self.logo_url = self.tenant.logo.url
+            except Exception as e:
+                print(f"Could not load logo URL: {e}")
     
     def _get_logo_for_pdf(self, max_width=3*inch, max_height=1.2*inch):
         """

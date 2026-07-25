@@ -138,9 +138,31 @@
                                 <p class="form-section-subtitle">Identify the customer and vehicle unit for this repair</p>
                             </div>
                         </div>
+
+                        <!-- Walk-in / Individual toggle -->
+                        {% if not repair %}
+                        <div class="field-group" id="walkin-toggle-group" style="margin-bottom: 1rem;">
+                            <label class="icon-field-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox"
+                                       name="is_walkin"
+                                       id="id_is_walkin"
+                                       {% if form.is_walkin.value %}checked{% endif %}
+                                       style="width: 18px; height: 18px; cursor: pointer;">
+                                <span>
+                                    <i class="fas fa-user"></i>
+                                    Walk-in / Individual (no account)
+                                </span>
+                            </label>
+                            <p class="icon-field-helper">
+                                <i class="fas fa-info-circle"></i>
+                                Toggle on to create a repair for an individual car without a fleet customer account.
+                            </p>
+                        </div>
+                        {% endif %}
+
                         <div class="field-grid field-grid-2">
                             <!-- Customer -->
-                            <div class="field-group">
+                            <div class="field-group" id="customer-select-group">
                                 <label class="icon-field-label">
                                     <i class="fas fa-user-tie"></i>
                                     Customer
@@ -151,6 +173,38 @@
                                     <div class="field-error">
                                         <i class="fas fa-exclamation-circle"></i>
                                         {{ form.customer.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+
+                            <!-- Walk-in customer name / phone -->
+                            <div class="field-group" id="walkin-info-group" style="display: none;">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-user"></i>
+                                    Customer Name
+                                    <span class="field-required">*</span>
+                                </label>
+                                <input type="text"
+                                       name="walkin_name"
+                                       id="id_walkin_name"
+                                       value="{{ form.walkin_name.value|default:'' }}"
+                                       class="icon-field-input"
+                                       placeholder="Customer name">
+                                <input type="text"
+                                       name="walkin_phone"
+                                       id="id_walkin_phone"
+                                       value="{{ form.walkin_phone.value|default:'' }}"
+                                       class="icon-field-input"
+                                       style="margin-top: 8px;"
+                                       placeholder="Phone (optional)">
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Name and optional phone for this walk-in customer
+                                </p>
+                                {% if form.walkin_name.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.walkin_name.errors.0 }}
                                     </div>
                                 {% endif %}
                             </div>
@@ -674,13 +728,30 @@
     const customerSelect = document.getElementById('id_customer');
     const unitNumberGroup = document.getElementById('unit-number-group');
     const vehicleInfoGroup = document.getElementById('vehicle-info-group');
-    
+    const walkinToggle = document.getElementById('id_is_walkin');
+    const customerSelectGroup = document.getElementById('customer-select-group');
+    const walkinInfoGroup = document.getElementById('walkin-info-group');
+
     function updateFieldsForCustomerType() {
+        // Walk-in mode: hide the fleet customer dropdown, show name/phone +
+        // vehicle fields, hide unit number.
+        if (walkinToggle && walkinToggle.checked) {
+            if (customerSelectGroup) customerSelectGroup.style.display = 'none';
+            if (walkinInfoGroup) walkinInfoGroup.style.display = '';
+            if (unitNumberGroup) unitNumberGroup.style.display = 'none';
+            if (vehicleInfoGroup) vehicleInfoGroup.style.display = '';
+            return;
+        }
+
+        // Normal mode: show the customer dropdown, hide walk-in fields.
+        if (customerSelectGroup) customerSelectGroup.style.display = '';
+        if (walkinInfoGroup) walkinInfoGroup.style.display = 'none';
+
         if (!customerSelect || !unitNumberGroup || !vehicleInfoGroup) return;
-        
+
         const customerId = customerSelect.value;
         const customerType = customerTypes[customerId] || 'FLEET';
-        
+
         if (customerType === 'FLEET') {
             // Show unit number, hide vehicle info
             unitNumberGroup.style.display = '';
@@ -691,12 +762,15 @@
             vehicleInfoGroup.style.display = '';
         }
     }
-    
-    // Run on page load and when customer changes
+
+    // Run on page load and when customer / toggle changes
     if (customerSelect) {
-        updateFieldsForCustomerType();
         customerSelect.addEventListener('change', updateFieldsForCustomerType);
     }
+    if (walkinToggle) {
+        walkinToggle.addEventListener('change', updateFieldsForCustomerType);
+    }
+    updateFieldsForCustomerType();
 })();
 
 // Auto-select primary technician when customer changes

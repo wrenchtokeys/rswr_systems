@@ -112,11 +112,17 @@ class PaymentNotificationService:
                 'emails/notifications/payment_received.txt', context
             )
 
+            from core.email_utils import shop_sender
+            from_email, reply_to = shop_sender(
+                shop_name=tenant.name if tenant else None,
+                reply_to_email=branding.get('support_email', ''),
+            )
             email = EmailMultiAlternatives(
                 subject=subject,
                 body=text_body,
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=from_email,
                 to=[recipient],
+                reply_to=reply_to,
             )
             email.attach_alternative(html_body, 'text/html')
             email.send()

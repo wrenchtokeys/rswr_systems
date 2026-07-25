@@ -362,7 +362,29 @@ class CustomDateTimeInput(DateTimeInput):
         super().__init__(attrs={'step': '60', **(attrs or {})}, format='%Y-%m-%dT%H:%M')
 
 class RepairForm(forms.ModelForm):
-    customer = forms.ModelChoiceField(queryset=Customer.objects.none())  # Filtered by tenant in __init__
+    customer = forms.ModelChoiceField(
+        queryset=Customer.objects.none(),  # Filtered by tenant in __init__
+        required=False,  # Not required for walk-in / individual repairs
+    )
+
+    # Walk-in / individual toggle: create a ticket without a pre-existing fleet account.
+    is_walkin = forms.BooleanField(
+        required=False,
+        label="Walk-in / Individual (no account)",
+        help_text="Create a repair for an individual car without a fleet customer account.",
+    )
+    walkin_name = forms.CharField(
+        required=False,
+        max_length=100,
+        widget=forms.TextInput(attrs={'placeholder': 'Customer name'}),
+        label="Customer Name",
+    )
+    walkin_phone = forms.CharField(
+        required=False,
+        max_length=20,
+        widget=forms.TextInput(attrs={'placeholder': '(555) 123-4567'}),
+        label="Phone (optional)",
+    )
     technician = forms.ModelChoiceField(
         queryset=Technician.objects.none(),  # Filtered by tenant in __init__
         required=False,  # Not required because it might be set automatically for non-admin users
@@ -528,6 +550,23 @@ class RepairForm(forms.ModelForm):
         technician = cleaned_data.get('technician')
         cost_override = cleaned_data.get('cost_override')
         override_reason = cleaned_data.get('override_reason')
+        is_walkin = cleaned_data.get('is_walkin')
+
+        # Walk-in / individual repairs don't need a fleet customer account.
+        # They require a name and vehicle info instead. A WALK_IN Customer
+        # record is auto-created in the view.
+        if is_walkin:
+            if not cleaned_data.get('walkin_name'):
+                self.add_error('walkin_name', 'Customer name is required for a walk-in repair.')
+            vehicle_make = cleaned_data.get('vehicle_make')
+            vehicle_model = cleaned_data.get('vehicle_model')
+            if not vehicle_make:
+                self.add_error('vehicle_make', 'Vehicle make is required for a walk-in repair.')
+            if not vehicle_model:
+                self.add_error('vehicle_model', 'Vehicle model is required for a walk-in repair.')
+        elif not customer:
+            # Standard (non-walk-in) repairs require a customer selection.
+            self.add_error('customer', 'Please select a customer, or toggle "Walk-in / Individual".')
 
         # Admin users must select a technician
         if hasattr(self, 'user') and self.user.is_staff and not technician:

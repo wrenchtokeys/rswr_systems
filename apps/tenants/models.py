@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import RegexValidator
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -137,6 +138,13 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
     business_email = models.EmailField(blank=True)
     business_address = models.TextField(blank=True)
     logo = models.ImageField(upload_to='tenants/logos/', blank=True)
+    brand_color = models.CharField(
+        max_length=7,
+        blank=True,
+        default='',
+        validators=[RegexValidator(r'^#[0-9a-fA-F]{6}$', 'Enter a hex color like #3b82f6.')],
+        help_text="Shop's brand color, used on invoices, emails, and the customer portal. Blank = platform default.",
+    )
     
     # Assignment strategy
     ASSIGNMENT_STRATEGY_CHOICES = [

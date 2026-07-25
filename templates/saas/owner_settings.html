@@ -143,6 +143,41 @@
         </form>
     </div>
 
+    <!-- Branding -->
+    <div class="card mb-6">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-900">Branding</h3>
+            <p class="text-sm text-gray-500 mt-1">Pick your brand color. Together with your logo above, it's used on your invoices, your emails, and the customer portal.</p>
+        </div>
+        <form method="post" class="p-6">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="branding">
+            <div class="flex flex-wrap items-center gap-4">
+                <label for="brand_color" class="block text-sm font-medium text-gray-700">Brand Color</label>
+                <input type="color" id="brand_color" name="brand_color"
+                    value="{{ tenant.brand_color|default:'#3b82f6' }}"
+                    class="h-10 w-16 rounded-lg border border-gray-300 cursor-pointer p-1 bg-white">
+                {% if not tenant.brand_color %}
+                <span class="text-sm text-gray-500">Currently using the default blue.</span>
+                {% endif %}
+                <div class="ml-auto flex items-center gap-3">
+                    {% if tenant.brand_color %}
+                    <button type="submit" name="reset_brand" value="1" class="btn-secondary">
+                        Reset to default
+                    </button>
+                    {% endif %}
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-save mr-2"></i>Save Color
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-gray-500 mt-4">
+                <i class="fas fa-envelope mr-1.5 text-gray-400"></i>
+                Emails to your customers are sent as <strong>{{ tenant.name }}</strong>, and replies go to your Business Email{% if tenant.business_email %} ({{ tenant.business_email }}){% endif %} — set it in Business Information above.
+            </p>
+        </form>
+    </div>
+
     <!-- What does your shop do? -->
     <div class="card mb-6">
         <div class="px-6 py-4 border-b border-gray-200">

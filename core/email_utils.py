@@ -5,11 +5,30 @@ All outgoing emails should use `send_branded_email()` to get consistent
 branding with the nice invoice-style HTML template.
 """
 import logging
+from email.utils import formataddr, parseaddr
+
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.utils.html import escape
 
 logger = logging.getLogger(__name__)
+
+
+def shop_sender(shop_name=None, reply_to_email=None):
+    """
+    Build (from_email, reply_to) for shop-branded email.
+
+    Mail is always sent through the platform's SES-verified address —
+    sending from a shop's own domain would fail SPF/DKIM — but the From
+    header shows the shop's name and replies route to the shop's email.
+
+    Returns:
+        tuple: (from_email str, reply_to list)
+    """
+    bare_address = parseaddr(settings.DEFAULT_FROM_EMAIL)[1]
+    from_email = formataddr((shop_name, bare_address)) if shop_name else settings.DEFAULT_FROM_EMAIL
+    reply_to = [reply_to_email] if reply_to_email else []
+    return from_email, reply_to
 
 
 def send_branded_email(
@@ -58,10 +77,16 @@ def send_branded_email(
     company_phone = ''
     company_address = ''
     primary_color = '#1e40af'
+    button_color = '#2563eb'
+    reply_to_email = ''
     if tenant:
         company_name = tenant.name or company_name
         company_phone = tenant.business_phone or ''
         company_address = tenant.business_address or ''
+        reply_to_email = tenant.business_email or ''
+        if getattr(tenant, 'brand_color', ''):
+            primary_color = tenant.brand_color
+            button_color = tenant.brand_color
 
     # Build plain text fallback
     if not plain_text:
@@ -98,7 +123,7 @@ def send_branded_email(
     if button_text and button_url:
         button_html = f'''
         <div style="text-align:center;margin:24px 0;">
-            <a href="{escape(button_url)}" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
+            <a href="{escape(button_url)}" style="display:inline-block;padding:14px 32px;background-color:{button_color};color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
                 {escape(button_text)}
             </a>
         </div>'''
@@ -108,7 +133,7 @@ def send_branded_email(
     if secondary_button_text and secondary_button_url:
         secondary_html = f'''
         <div style="text-align:center;margin:16px 0;">
-            <a href="{escape(secondary_button_url)}" style="display:inline-block;padding:10px 24px;background-color:#ffffff;color:#2563eb;text-decoration:none;font-size:14px;font-weight:500;border:2px solid #2563eb;border-radius:8px;">
+            <a href="{escape(secondary_button_url)}" style="display:inline-block;padding:10px 24px;background-color:#ffffff;color:{button_color};text-decoration:none;font-size:14px;font-weight:500;border:2px solid {button_color};border-radius:8px;">
                 {escape(secondary_button_text)}
             </a>
         </div>'''
@@ -150,12 +175,17 @@ def send_branded_email(
 </body>
 </html>'''
 
+    default_from, reply_to = shop_sender(
+        shop_name=tenant.name if tenant else None,
+        reply_to_email=reply_to_email,
+    )
     email = EmailMultiAlternatives(
         subject=subject,
         body=plain_text,
-        from_email=from_email or settings.DEFAULT_FROM_EMAIL,
+        from_email=from_email or default_from,
         to=recipient_list,
         cc=cc or [],
+        reply_to=reply_to,
     )
     email.attach_alternative(html, 'text/html')
 
