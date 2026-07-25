@@ -24,6 +24,36 @@ from common.utils import convert_heic_to_jpeg
 logger = logging.getLogger(__name__)
 
 
+def _create_walkin_customer(tenant, name, phone=''):
+    """
+    Create a WALK_IN Customer record for an individual/walk-in repair.
+
+    Customer.name is unique per tenant, so append a numeric suffix if the
+    plain name already exists (two "John Smith" walk-ins are different people).
+    """
+    from django.db import IntegrityError
+
+    base_name = (name or 'Walk-in Customer').strip()
+    phone_value = (phone or '').strip() or None
+    for suffix in range(0, 50):
+        candidate = base_name if suffix == 0 else f"{base_name} ({suffix + 1})"
+        try:
+            with transaction.atomic():
+                return Customer.objects.create(
+                    tenant=tenant,
+                    name=candidate,
+                    customer_type='WALK_IN',
+                    phone=phone_value,
+                )
+        except IntegrityError:
+            continue
+    # Extremely unlikely fallback — guarantee a unique name with a timestamp.
+    candidate = f"{base_name} ({timezone.now().strftime('%Y%m%d%H%M%S')})"
+    return Customer.objects.create(
+        tenant=tenant, name=candidate, customer_type='WALK_IN', phone=phone_value,
+    )
+
+
 @technician_required
 def repair_detail(request, repair_id):
     """Display repair details with permission checks and batch context."""
@@ -222,11 +252,23 @@ def create_repair(request):
 
         form = RepairForm(request.POST, request.FILES, user=request.user, tenant=getattr(request, 'tenant', None))
         if form.is_valid():
+            # Walk-in / individual repair: auto-create a WALK_IN Customer record
+            # from the provided name/phone so downstream pricing, approval, and
+            # invoicing behave exactly like any other retail/walk-in customer.
+            walkin_customer = None
+            if form.cleaned_data.get('is_walkin'):
+                walkin_customer = _create_walkin_customer(
+                    getattr(request, 'tenant', None),
+                    form.cleaned_data.get('walkin_name'),
+                    form.cleaned_data.get('walkin_phone'),
+                )
             if user_is_admin:
                 if form.cleaned_data.get('technician'):
                     repair = form.save(commit=False)
                     repair.technician = form.cleaned_data.get('technician')
                     repair.tenant = getattr(request, 'tenant', None)
+                    if walkin_customer:
+                        repair.customer = walkin_customer
 
                     # Repair.save() auto-approves shop-created work unless the
                     # customer explicitly requires approval
@@ -252,6 +294,8 @@ def create_repair(request):
                     # a cross-tenant Technician (Shop A) to a Shop B repair. (CODE-082)
                     repair.technician = _scoped_tech
                     repair.tenant = getattr(request, 'tenant', None)
+                    if walkin_customer:
+                        repair.customer = walkin_customer
 
                     # Repair.save() auto-approves shop-created work unless the
                     # customer explicitly requires approval
