@@ -171,6 +171,14 @@ class C3ReminderIdempotencyTests(BillingSecondaryTestBase):
 
 
 class C4TaxLocationLookupTests(BillingSecondaryTestBase):
+    def setUp(self):
+        super().setUp()
+        # Tax overhaul: BillingConfig.tax_enabled decides IF tax applies;
+        # TaxRate rows only supply the rate for the location cascade.
+        config = BillingConfig.get_for_tenant(self.tenant)
+        config.tax_enabled = True
+        config.save()
+
     def test_city_state_match_wins_over_newest(self):
         TaxRate.objects.create(
             tenant=self.tenant, city='Little Rock', state='AR',

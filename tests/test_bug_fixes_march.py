@@ -222,13 +222,18 @@ class TaxServiceTenantIsolationTests(TestCase):
         self.user_a, self.tenant_a = _make_tenant('Tax Shop A', 'tax_a')
         self.user_b, self.tenant_b = _make_tenant('Tax Shop B', 'tax_b')
 
-        # Shop A has a tax rate configured
+        # Shop A charges tax (tax overhaul: the config flag decides IF tax
+        # applies; the TaxRate row supplies the rate)
+        from apps.billing.models import BillingConfig
+        config_a = BillingConfig.get_for_tenant(self.tenant_a)
+        config_a.tax_enabled = True
+        config_a.save()
         TaxRate.objects.create(
             tenant=self.tenant_a, city='Little Rock', state='AR',
             state_rate=Decimal('6.500'), county_rate=Decimal('1.000'),
             city_rate=Decimal('2.000'),
         )
-        # Shop B has NO tax rates configured
+        # Shop B does not charge tax (tax_enabled stays False)
 
     def test_tenant_with_rates_gets_tax(self):
         svc = TaxService(tenant=self.tenant_a)

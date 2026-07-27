@@ -45,11 +45,14 @@ class SettingsHasOneHomeTests(TestCase):
         response = self.client.get(reverse('owner_setup'))
         self.assertRedirects(response, reverse('owner_settings'))
 
-    def test_tax_rates_page_redirects_into_the_pricing_tab(self):
-        response = self.client.get(reverse('owner_tax_rates'))
-        self.assertRedirects(
-            response, '/owner/settings/?tab=billing', fetch_redirect_response=False,
-        )
+    def test_tax_rates_page_is_gone(self):
+        """The per-city tax-rate CRUD was removed in the tax overhaul —
+        tax lives in Settings → Billing (tax_settings form) now."""
+        from django.urls import NoReverseMatch
+        with self.assertRaises(NoReverseMatch):
+            reverse('owner_tax_rates')
+        response = self.client.get('/owner/tax-rates/')
+        self.assertEqual(response.status_code, 404)
 
     def test_settings_opens_on_the_requested_tab(self):
         response = self.client.get(reverse('owner_settings'), {'tab': 'warranty'})

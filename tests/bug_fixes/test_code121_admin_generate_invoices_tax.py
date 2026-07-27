@@ -59,7 +59,11 @@ class AdminGenerateInvoicesTaxTests(TestCase):
             tenant=self.tenant,
             email='tax@test.com',
         )
-        # Enable tax: 10% rate
+        # Enable tax: 10% rate. Tax overhaul: the config flag decides IF tax
+        # applies; the TaxRate row supplies the rate.
+        config = BillingConfig.get_for_tenant(self.tenant)
+        config.tax_enabled = True
+        config.save()
         TaxRate.objects.create(
             tenant=self.tenant,
             city='TestCity',

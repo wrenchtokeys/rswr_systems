@@ -196,6 +196,9 @@ class BatchInvoiceRewardDiscountTests(TestCase):
     def test_tax_computed_on_discounted_net(self):
         """Tax base = subtotal - discount (not raw subtotal)."""
         from apps.billing.models import TaxRate
+        # Tax overhaul: the config flag decides IF tax applies
+        self.config.tax_enabled = True
+        self.config.save()
         TaxRate.objects.create(
             tenant=self.tenant,
             city='TestCity',

@@ -121,26 +121,24 @@ class TaxService:
         """
         Check whether tax calculation is enabled for the given tenant.
 
-        Tenant-aware: if a tenant has NO TaxRate entries, tax is disabled
-        for that tenant regardless of the global BillingConfig setting.
+        BillingConfig.tax_enabled is the single source of truth. TaxRate rows
+        only hold rates; their existence/is_active no longer decides anything.
+        (Previously this checked TaxRate.exists(), which forced every settings
+        write path to hand-sync rows with the config flag — the root cause of
+        CODE-099/103/104/121/131.)
         """
-        tenant = tenant or self.tenant
-        if tenant:
-            from apps.billing.models import TaxRate
-            return TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
-
-        # Legacy fallback: global BillingConfig
-        config = self._get_billing_config()
+        config = self._get_billing_config(tenant)
         if config is None:
             return False
         return config.tax_enabled
 
-    def calculate_tax(self, subtotal, customer=None, tenant=None, **kwargs):
+    def calculate_tax(self, subtotal, customer=None, tenant=None, no_tax=False, **kwargs):
         """
         Calculate tax for an amount.
 
-        Tenant-aware: uses tenant's TaxRate entries.
-        If no tenant or no rates configured, returns zero tax.
+        Gate order: per-job no_tax → customer.tax_exempt → config.tax_enabled.
+        Rate comes from the tenant's TaxRate rows (location cascade), falling
+        back to the BillingConfig component rates when no row exists.
 
         Returns dict:
             {
@@ -150,7 +148,7 @@ class TaxService:
                 'city_rate': Decimal,     # City portion
                 'special_rate': Decimal,  # Special district portion
                 'amount': Decimal,        # Tax amount in dollars
-                'exempt': bool,           # Whether customer is tax exempt
+                'exempt': bool,           # Customer is tax exempt / job is no_tax
                 'enabled': bool,          # Whether tax is enabled
             }
         """
@@ -167,23 +165,37 @@ class TaxService:
             'enabled': False,
         }
 
+        # Per-job "don't charge tax" (cash deals) — same short-circuit as exemption
+        if no_tax:
+            result['exempt'] = True
+            return result
+
         # Check customer exemption early
         if customer is not None and getattr(customer, 'tax_exempt', False):
             result['exempt'] = True
             return result
 
-        # Tenant-aware path: resolve by customer location, then tenant default (C4)
+        # Tenant-aware path: config flag decides IF tax applies; TaxRate rows
+        # (location cascade) decide the rate, falling back to config components.
         if tenant:
-            tax_rate = self._resolve_tax_rate(tenant, customer)
-            if tax_rate is None:
-                # No tax rates configured for this tenant = tax disabled
+            config = self._get_billing_config(tenant)
+            if config is None or not config.tax_enabled:
                 return result
+            tax_rate = self._resolve_tax_rate(tenant, customer)
             result['enabled'] = True
-            result['rate'] = tax_rate.total_rate
-            result['state_rate'] = tax_rate.state_rate
-            result['county_rate'] = tax_rate.county_rate
-            result['city_rate'] = tax_rate.city_rate
-            result['special_rate'] = tax_rate.special_rate
+            if tax_rate is not None:
+                result['rate'] = tax_rate.total_rate
+                result['state_rate'] = tax_rate.state_rate
+                result['county_rate'] = tax_rate.county_rate
+                result['city_rate'] = tax_rate.city_rate
+                result['special_rate'] = tax_rate.special_rate
+            else:
+                # Tax enabled but no TaxRate row — use config rates directly
+                result['rate'] = config.default_tax_rate or Decimal('0.000')
+                result['state_rate'] = config.state_tax_rate or Decimal('0.000')
+                result['county_rate'] = config.county_tax_rate or Decimal('0.000')
+                result['city_rate'] = config.city_tax_rate or Decimal('0.000')
+                result['special_rate'] = config.special_tax_rate or Decimal('0.000')
         else:
             # Legacy fallback: global BillingConfig
             config = self._get_billing_config()
@@ -205,14 +217,19 @@ class TaxService:
 
         return result
 
-    def apply_tax_to_invoice(self, invoice):
+    def apply_tax_to_invoice(self, invoice, taxable_base=None):
         """
         Calculate and apply tax to an existing invoice.
         Uses the invoice's tenant for rate lookup.
         Updates tax fields on invoice. Does NOT call invoice.save().
+
+        taxable_base: subtotal of only the taxable line items (for invoices
+        mixing taxed and untaxed jobs). Defaults to subtotal - discount.
+        The invoice TOTAL always includes every line, taxed or not.
         """
         customer = invoice.customer
-        taxable = invoice.subtotal - invoice.discount
+        after_discount = invoice.subtotal - invoice.discount
+        taxable = after_discount if taxable_base is None else taxable_base
         tenant = getattr(invoice, 'tenant', None) or self.tenant
 
         tax_result = self.calculate_tax(subtotal=taxable, customer=customer, tenant=tenant)
@@ -224,7 +241,7 @@ class TaxService:
         invoice.city_tax_rate = tax_result['city_rate']
         invoice.special_tax_rate = tax_result['special_rate']
         invoice.tax_amount = tax_result['amount']
-        invoice.total = taxable + tax_result['amount']
+        invoice.total = after_discount + tax_result['amount']
 
         logger.debug(
             f"Tax applied to invoice {getattr(invoice, 'invoice_number', '?')}: "

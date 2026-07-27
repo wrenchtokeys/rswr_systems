@@ -686,10 +686,7 @@ def owner_dashboard(request):
     billing_context = _get_billing_context(tenant)
 
     # Setup checklist for new users
-    from apps.billing.models import TaxRate
-
     setup_steps = []
-    has_tax_rates = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
     has_customers = Customer.objects.filter(tenant=tenant).exists()
     has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
     has_business_info = bool(tenant.business_phone and tenant.business_email)
@@ -725,6 +722,13 @@ def owner_dashboard(request):
 
     setup_completion = _setup_completion(tenant)
 
+    # Tax setup banner: shown until the owner explicitly answers the
+    # sales-tax question (billing_config.tax_configured).
+    try:
+        billing_config = BillingConfig.get_for_tenant(tenant)
+    except Exception:
+        billing_config = None
+
     # Resolve intended plan name for trial banner
     intended_plan_name = ''
     if tenant.intended_plan:
@@ -745,6 +749,7 @@ def owner_dashboard(request):
         'setup_completion': setup_completion,
         'intended_plan': tenant.intended_plan,
         'intended_plan_name': intended_plan_name,
+        'billing_config': billing_config,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
@@ -1476,88 +1481,94 @@ def owner_settings_view(request):
             return redirect('/owner/settings/?tab=billing')
 
         if form_type == 'billing_location':
-            # Update shop location + tax rate breakdown
+            # Update shop address ONLY. Tax setup is its own explicit form
+            # (form_type='tax_settings') — saving your address must never
+            # silently enable tax or touch rates.
             try:
-                from decimal import Decimal, InvalidOperation
-                from apps.billing.models import TaxRate as _TaxRate
                 config = BillingConfig.get_for_tenant(tenant)
                 config.company_address = request.POST.get('company_address', '').strip()
                 config.company_city = request.POST.get('company_city', '').strip()
                 config.company_state = request.POST.get('company_state', '').strip().upper()
                 config.company_zip = request.POST.get('company_zip', '').strip()
-
-                # Parse component rates
-                def _dec(field, default='0'):
-                    try:
-                        return Decimal(request.POST.get(field, default))
-                    except (InvalidOperation, ValueError):
-                        return Decimal(default)
-
-                config.state_tax_rate = _dec('state_tax_rate', '0')
-                config.county_tax_rate = _dec('county_tax_rate', '0')
-                config.city_tax_rate = _dec('city_tax_rate', '0')
-                config.special_tax_rate = _dec('special_tax_rate', '0')
-
-                # Total auto-calculates from components
-                config.default_tax_rate = (
-                    config.state_tax_rate + config.county_tax_rate +
-                    config.city_tax_rate + config.special_tax_rate
-                )
-
-                # Auto-enable tax when rates are set
-                if config.default_tax_rate > 0:
-                    config.tax_enabled = True
-
                 config.save()
-                from django.core.cache import cache
-                cache.delete(f'billing_config_tax_{tenant.pk}')
-
-                # CODE-103: sync TaxRate records so TaxService.is_tax_enabled() works.
-                # TaxService checks TaxRate.objects.filter(tenant=tenant, is_active=True)
-                # NOT BillingConfig.tax_enabled — so we MUST create/update a TaxRate row
-                # or tax will never actually be applied to invoices even when the rate is set.
-                if config.default_tax_rate > 0:
-                    # CODE-131: Create TaxRate even without city/state.
-                    # TaxService checks TaxRate rows, not BillingConfig — without
-                    # a row, tax is silently never applied.
-                    _city = config.company_city or ''
-                    _state = config.company_state or ''
-
-                    # Try to find existing row for this tenant
-                    existing = _TaxRate.objects.filter(tenant=tenant).first()
-                    if not existing and _city and _state:
-                        existing = _TaxRate.objects.filter(
-                            tenant=tenant, city__iexact=_city, state__iexact=_state
-                        ).first()
-                    if existing:
-                        existing.state_rate = config.state_tax_rate
-                        existing.county_rate = config.county_tax_rate
-                        existing.city_rate = config.city_tax_rate
-                        existing.special_rate = config.special_tax_rate
-                        existing.is_active = True
-                        if _city:
-                            existing.city = _city
-                        if _state:
-                            existing.state = _state
-                        existing.save()
-                    else:
-                        _TaxRate.objects.create(
-                            tenant=tenant,
-                            city=_city,
-                            state=_state,
-                            state_rate=config.state_tax_rate,
-                            county_rate=config.county_tax_rate,
-                            city_rate=config.city_tax_rate,
-                            special_rate=config.special_tax_rate,
-                            is_active=True,
-                        )
-                elif config.default_tax_rate <= 0:
-                    # No rate → deactivate all TaxRate rows for this tenant
-                    _TaxRate.objects.filter(tenant=tenant).update(is_active=False)
-
-                messages.success(request, f'Tax settings saved: {config.default_tax_rate}% in {config.company_city}, {config.company_state}')
+                messages.success(request, 'Shop address saved.')
             except Exception as e:
-                logger.error(f"Error updating billing config: {e}")
+                logger.error(f"Error updating shop address: {e}")
+                messages.error(request, 'Could not save the shop address.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'tax_settings':
+            # The ONLY place tax gets configured. Explicit yes/no answer +
+            # a single combined rate (advanced: component breakdown).
+            try:
+                from decimal import Decimal, InvalidOperation
+                from apps.billing.models import TaxRate as _TaxRate
+                config = BillingConfig.get_for_tenant(tenant)
+                charges_tax = request.POST.get('charges_tax', '').strip().lower()
+                if charges_tax not in ('yes', 'no'):
+                    messages.error(request, 'Choose "Yes, we charge sales tax" or "No, we don\'t".')
+                    return redirect('/owner/settings/?tab=billing')
+
+                if charges_tax == 'no':
+                    config.tax_enabled = False
+                    config.tax_configured = True
+                    config.save()
+                    messages.success(request, "Got it — this shop doesn't charge sales tax. Invoices will have no tax.")
+                    return redirect('/owner/settings/?tab=billing')
+
+                def _dec(field):
+                    raw = (request.POST.get(field, '') or '').strip()
+                    if raw == '':
+                        return Decimal('0')
+                    return Decimal(raw)
+
+                try:
+                    # Advanced breakdown wins when any component is filled in;
+                    # otherwise the single combined field goes in the state slot.
+                    components = {
+                        'state_tax_rate': _dec('state_tax_rate'),
+                        'county_tax_rate': _dec('county_tax_rate'),
+                        'city_tax_rate': _dec('city_tax_rate'),
+                        'special_tax_rate': _dec('special_tax_rate'),
+                    }
+                    if not any(components.values()):
+                        components['state_tax_rate'] = _dec('tax_rate_percent')
+                except (InvalidOperation, ValueError):
+                    messages.error(request, 'Enter your sales tax rate as a percent, like 8.25')
+                    return redirect('/owner/settings/?tab=billing')
+
+                total_rate = sum(components.values())
+                if total_rate <= 0 or total_rate > 30:
+                    messages.error(request, 'Enter your sales tax rate as a percent between 0 and 30, like 8.25')
+                    return redirect('/owner/settings/?tab=billing')
+
+                config.state_tax_rate = components['state_tax_rate']
+                config.county_tax_rate = components['county_tax_rate']
+                config.city_tax_rate = components['city_tax_rate']
+                config.special_tax_rate = components['special_tax_rate']
+                config.default_tax_rate = total_rate
+                config.tax_enabled = True
+                config.tax_configured = True
+                config.save()
+
+                # Keep the tenant's single TaxRate row in sync so the
+                # location-based rate cascade keeps working. Rates only —
+                # this row no longer controls whether tax applies.
+                row = _TaxRate.objects.filter(tenant=tenant).order_by('-effective_date', '-id').first()
+                if row is None:
+                    row = _TaxRate(tenant=tenant)
+                row.city = config.company_city or ''
+                row.state = config.company_state or ''
+                row.state_rate = config.state_tax_rate
+                row.county_rate = config.county_tax_rate
+                row.city_rate = config.city_tax_rate
+                row.special_rate = config.special_tax_rate
+                row.is_active = True
+                row.save()
+
+                messages.success(request, f'Sales tax set to {total_rate}%. Invoices will include it from now on.')
+            except Exception as e:
+                logger.error(f"Error updating tax settings: {e}")
                 messages.error(request, 'Could not update tax settings.')
             return redirect('/owner/settings/?tab=billing')
 
@@ -2883,126 +2894,13 @@ def owner_record_payment(request, invoice_id):
 
 # ─── Tax Rate Management ─────────────────────────────────────────────
 @owner_or_manager_required
-def owner_tax_rates(request):
-    """GET /owner/tax-rates/ — redirect to settings billing tab."""
-    return redirect('/owner/settings/?tab=billing')
-
-
-@owner_or_manager_required
-def owner_add_tax_rate(request):
-    """POST /owner/tax-rates/add/ — add a new tax rate."""
-    if request.method != 'POST':
-        return redirect('/owner/settings/?tab=billing')
-
-    tenant, membership = _get_owner_tenant(request)
-    if not tenant:
-        messages.error(request, 'No shop found.')
-        return redirect('signup')
-
-    from decimal import Decimal, InvalidOperation
-
-    city = request.POST.get('city', '').strip()
-    county = request.POST.get('county', '').strip()
-    state = request.POST.get('state', 'AR').strip().upper()
-    zip_code = request.POST.get('zip_code', '').strip()
-
-    if not city:
-        messages.error(request, 'City is required.')
-        return redirect('/owner/settings/?tab=billing')
-
-    if not state or len(state) != 2:
-        messages.error(request, 'Please enter a valid 2-letter state code.')
-        return redirect('/owner/settings/?tab=billing')
-
-    try:
-        state_rate = Decimal(request.POST.get('state_rate', '0'))
-        county_rate = Decimal(request.POST.get('county_rate', '0'))
-        city_rate = Decimal(request.POST.get('city_rate', '0'))
-        special_rate = Decimal(request.POST.get('special_rate', '0'))
-    except (InvalidOperation, ValueError):
-        messages.error(request, 'Invalid rate value. Enter numbers only.')
-        return redirect('/owner/settings/?tab=billing')
-
-    # Check for duplicates
-    if TaxRate.objects.filter(tenant=tenant, city__iexact=city, state__iexact=state).exists():
-        messages.error(request, f'A tax rate for {city}, {state} already exists.')
-        return redirect('/owner/settings/?tab=billing')
-
-    TaxRate.objects.create(
-        tenant=tenant,
-        city=city,
-        county=county,
-        state=state,
-        zip_code=zip_code,
-        state_rate=state_rate,
-        county_rate=county_rate,
-        city_rate=city_rate,
-        special_rate=special_rate,
-    )
-
-    total = state_rate + county_rate + city_rate + special_rate
-    messages.success(request, f'Tax rate added: {city}, {state} — {total}%')
-    return redirect('/owner/settings/?tab=billing')
-
-
-@owner_or_manager_required
-def owner_edit_tax_rate(request, rate_id):
-    """POST /owner/tax-rates/<id>/edit/ — update a tax rate."""
-    if request.method != 'POST':
-        return redirect('/owner/settings/?tab=billing')
-
-    tenant, membership = _get_owner_tenant(request)
-    if not tenant:
-        return redirect('signup')
-
-    rate = get_object_or_404(TaxRate, id=rate_id, tenant=tenant)
-
-    from decimal import Decimal, InvalidOperation
-
-    city = request.POST.get('city', '').strip()
-    state = request.POST.get('state', '').strip().upper()
-
-    if city:
-        rate.city = city
-    if state and len(state) == 2:
-        rate.state = state
-    rate.county = request.POST.get('county', rate.county).strip()
-    rate.zip_code = request.POST.get('zip_code', rate.zip_code).strip()
-
-    try:
-        rate.state_rate = Decimal(request.POST.get('state_rate', rate.state_rate))
-        rate.county_rate = Decimal(request.POST.get('county_rate', rate.county_rate))
-        rate.city_rate = Decimal(request.POST.get('city_rate', rate.city_rate))
-        rate.special_rate = Decimal(request.POST.get('special_rate', rate.special_rate))
-    except (InvalidOperation, ValueError):
-        messages.error(request, 'Invalid rate value.')
-        return redirect('/owner/settings/?tab=billing')
-
-    rate.save()  # total auto-calculates
-    messages.success(request, f'Tax rate updated: {rate.city}, {rate.state} — {rate.total_rate}%')
-    return redirect('/owner/settings/?tab=billing')
-
-
-@owner_or_manager_required
-def owner_delete_tax_rate(request, rate_id):
-    """POST /owner/tax-rates/<id>/delete/ — remove a tax rate."""
-    if request.method != 'POST':
-        return redirect('/owner/settings/?tab=billing')
-
-    tenant, membership = _get_owner_tenant(request)
-    if not tenant:
-        return redirect('signup')
-
-    rate = get_object_or_404(TaxRate, id=rate_id, tenant=tenant)
-    city_state = f'{rate.city}, {rate.state}'
-    rate.delete()
-    messages.success(request, f'Tax rate removed: {city_state}')
-    return redirect('/owner/settings/?tab=billing')
-
-
-@owner_or_manager_required
 def owner_toggle_tax(request):
-    """POST /owner/tax-rates/toggle/ — enable/disable tax for this tenant."""
+    """POST /owner/tax-rates/toggle/ — enable/disable tax for this tenant.
+
+    BillingConfig.tax_enabled is the single source of truth; TaxRate rows
+    only hold rates, so there is nothing to sync anymore. Answering the
+    toggle counts as configuring tax (dismisses the setup banner).
+    """
     if request.method != 'POST':
         return redirect('/owner/settings/?tab=billing')
 
@@ -3012,28 +2910,10 @@ def owner_toggle_tax(request):
         return redirect('/owner/settings/?tab=billing')
 
     try:
-        from django.core.cache import cache
-        from apps.billing.models import TaxRate
-
         config = BillingConfig.get_for_tenant(tenant)
         config.tax_enabled = not config.tax_enabled
-        config.save()
-        cache.delete(f'billing_config_tax_{tenant.pk}')
-
-        # CODE-099: Sync TaxRate.is_active with the new tax_enabled state.
-        # TaxService.is_tax_enabled() for tenant-aware paths checks
-        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() —
-        # it does NOT read BillingConfig.tax_enabled.  Without this sync,
-        # toggling tax off via this button leaves active TaxRate records so
-        # tax still gets charged on every invoice.  Toggling back on would
-        # then show no rates active (all still deactivated from the first
-        # disable), so it also needs to reactivate existing rates.
-        if not config.tax_enabled:
-            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
-        else:
-            # Re-enable all rates for this tenant when tax is turned back on.
-            # The owner can fine-tune individual rates on the tax rates page.
-            TaxRate.objects.filter(tenant=tenant).update(is_active=True)
+        config.tax_configured = True
+        config.save()  # BillingConfig.save() invalidates the TaxService cache
 
         status = 'enabled' if config.tax_enabled else 'disabled'
         messages.success(request, f'Sales tax calculation {status}.')
@@ -3543,7 +3423,9 @@ def _setup_completion(tenant):
         billing_config = None
 
     has_business_info = bool(tenant.business_phone and tenant.business_email)
-    has_tax = TaxRate.objects.filter(tenant=tenant, is_active=True).exists()
+    # "Set up" means the owner explicitly answered the sales-tax question —
+    # charging nothing is a perfectly valid answer.
+    has_tax = bool(billing_config and billing_config.tax_configured)
     # Resin rules only matter for shops that do repairs.
     has_viscosity = (
         not tenant.offers_repairs
@@ -3678,70 +3560,37 @@ def owner_setup_save_tax(request):
         total = state_rate + county_rate + city_rate + special_rate
 
         city = request.POST.get('city', '').strip()
-        state = request.POST.get('state', 'AR').strip().upper()
+        state = request.POST.get('state', '').strip().upper()
 
-        # Update tenant's BillingConfig tax enabled flag
+        # BillingConfig.tax_enabled is the single source of truth; saving
+        # here counts as answering the tax question (tax_configured).
         config = BillingConfig.get_for_tenant(tenant)
         config.tax_enabled = tax_enabled
+        config.tax_configured = True
         if tax_enabled and total > 0:
             config.state_tax_rate = state_rate
             config.county_tax_rate = county_rate
             config.city_tax_rate = city_rate
             config.special_tax_rate = special_rate
             config.default_tax_rate = total
-            config.save()
-        else:
-            config.save(update_fields=['tax_enabled'])
+        config.save()
 
-        # Deactivate all TaxRates when tax is disabled.
-        # TaxService.calculate_tax() determines "tax enabled" by checking
-        # TaxRate.objects.filter(tenant=tenant, is_active=True).exists() — it
-        # does NOT consult BillingConfig.tax_enabled for tenant-aware paths.
-        # Without this, disabling tax via setup leaves active TaxRate records
-        # so tax keeps being charged on every invoice even when the owner
-        # toggled it off. (CODE-099)
-        if not tax_enabled:
-            TaxRate.objects.filter(tenant=tenant).update(is_active=False)
-
-        # Create or update tenant TaxRate if enabled and we have location
+        # Keep the tenant's single TaxRate row in sync (rates only — the row
+        # no longer controls whether tax applies).
         if tax_enabled and total > 0:
-            # CODE-131: Create TaxRate even without city/state.
-            # TaxService checks TaxRate.objects.filter(tenant, is_active=True) —
-            # without a row, tax is silently never applied despite UI showing "Enabled".
-            # Use empty strings for city/state if not provided; owner can update later.
-            lookup_city = city or ''
-            lookup_state = state or ''
-
-            # Include is_active=False rows in the lookup: if the owner is
-            # re-enabling a previously deactivated rate we reactivate it
-            # rather than creating a duplicate entry.
-            existing = TaxRate.objects.filter(tenant=tenant).first()
-            if not existing and lookup_city and lookup_state:
-                existing = TaxRate.objects.filter(
-                    tenant=tenant, city__iexact=lookup_city, state__iexact=lookup_state
-                ).first()
-            if existing:
-                existing.state_rate = state_rate
-                existing.county_rate = county_rate
-                existing.city_rate = city_rate
-                existing.special_rate = special_rate
-                existing.is_active = True  # re-activate if it was deactivated
-                if lookup_city:
-                    existing.city = lookup_city
-                if lookup_state:
-                    existing.state = lookup_state
-                existing.save()
-            else:
-                TaxRate.objects.create(
-                    tenant=tenant,
-                    city=lookup_city,
-                    state=lookup_state,
-                    state_rate=state_rate,
-                    county_rate=county_rate,
-                    city_rate=city_rate,
-                    special_rate=special_rate,
-                    is_active=True,
-                )
+            row = TaxRate.objects.filter(tenant=tenant).order_by('-effective_date', '-id').first()
+            if row is None:
+                row = TaxRate(tenant=tenant)
+            row.state_rate = state_rate
+            row.county_rate = county_rate
+            row.city_rate = city_rate
+            row.special_rate = special_rate
+            row.is_active = True
+            if city:
+                row.city = city
+            if state:
+                row.state = state
+            row.save()
 
         return JsonResponse({'success': True, 'message': 'Tax settings saved!'})
     except Exception as e:
@@ -4369,6 +4218,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
                         amount=amount,
                         repair_date=mr.repair_date.date() if mr.repair_date else None,
                         unit_number=mr.unit_number,
+                        taxable=not mr.no_tax and not mr.customer.tax_exempt,
                     )
 
                 # Recalculate invoice totals
@@ -4377,11 +4227,13 @@ def owner_generate_invoice_from_repair(request, repair_id):
                 existing_invoice.discount = sum(li.discount for li in all_line_items)
                 existing_invoice.total = existing_invoice.subtotal - existing_invoice.discount
 
-                # Re-apply tax
+                # Re-apply tax — on the taxable lines only
                 try:
                     from apps.billing.services.tax_service import TaxService
                     tax_svc = TaxService(tenant=existing_invoice.tenant)
-                    tax_svc.apply_tax_to_invoice(existing_invoice)
+                    taxable_base = sum(
+                        (li.amount for li in all_line_items if li.taxable), D('0.00'))
+                    tax_svc.apply_tax_to_invoice(existing_invoice, taxable_base=taxable_base)
                 except Exception:
                     pass
 

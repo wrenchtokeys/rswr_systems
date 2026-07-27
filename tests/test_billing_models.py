@@ -112,9 +112,12 @@ class BillingConfigTests(TestCase):
         self.assertEqual(config.due_days_for_terms, 60)
 
     def test_tax_defaults(self):
+        """Tax overhaul: no more silent Arkansas 6.5% default — a new shop
+        starts with 0% and tax unconfigured until the owner answers."""
         config = BillingConfig.get_for_tenant(self.tenant)
         self.assertFalse(config.tax_enabled)
-        self.assertEqual(config.state_tax_rate, Decimal('6.500'))
+        self.assertFalse(config.tax_configured)
+        self.assertEqual(config.state_tax_rate, Decimal('0.000'))
 
 
 @override_settings(**TEST_OVERRIDES)

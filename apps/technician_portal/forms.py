@@ -429,7 +429,16 @@ class RepairForm(forms.ModelForm):
                   'queue_status', 'damage_type', 'damage_location_x', 'damage_location_y',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
-                  'cost_override', 'override_reason', 'repair_batch_id', 'break_number', 'total_breaks_in_batch']
+                  'cost_override', 'override_reason', 'no_tax',
+                  'repair_batch_id', 'break_number', 'total_breaks_in_batch']
+        labels = {
+            'no_tax': "Don't charge sales tax on this job",
+        }
+        widgets = {
+            'no_tax': forms.CheckboxInput(attrs={
+                'class': 'w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500',
+            }),
+        }
 
     def __init__(self, *args, **kwargs):
         self.user = kwargs.pop('user', None)
@@ -802,6 +811,10 @@ class CustomerEmailSelect(forms.Select):
         if instance is not None:
             from apps.billing.services.invoice_send_service import InvoiceSendService
             option['attrs']['data-email'] = InvoiceSendService.resolve_recipient(instance)
+            # Tax-exempt customers never get tax — the job form's "charge
+            # sales tax" checkbox unchecks + locks itself off this attribute.
+            if instance.tax_exempt:
+                option['attrs']['data-tax-exempt'] = '1'
         return option
 
 
@@ -868,6 +881,9 @@ class QuickJobForm(forms.Form):
         }),
     )
     already_completed = forms.BooleanField(required=False, initial=True)
+    # Rendered only when the shop has tax enabled. Unchecking makes this a
+    # no-tax job (cash deal); the view maps it onto Repair/Replacement.no_tax.
+    charge_tax = forms.BooleanField(required=False, initial=True)
 
     # Repair details
     damage_type = forms.ChoiceField(

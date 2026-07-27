@@ -226,7 +226,9 @@ class TaxCacheInvalidationSettingsTests(TestCase):
 
     # --- Test 8: TaxService reflects updated rate after settings save ---
     def test_tax_service_reflects_settings_save(self):
-        """After saving new rates, TaxService returns updated rate (not stale)."""
+        """After saving new rates via the tax_settings form, TaxService
+        returns the updated rate (not stale cache). The billing_location form
+        is address-only now, so rate changes go through tax_settings."""
         # Warm cache with old rate
         self.config.default_tax_rate = 5.0
         self.config.state_tax_rate = 5.0
@@ -234,8 +236,11 @@ class TaxCacheInvalidationSettingsTests(TestCase):
         svc = TaxService(tenant=self.tenant)
         svc._get_billing_config()  # warm cache
 
-        # Save new rates via settings view
-        self._post_billing_form({
+        # Save new rates via the tax settings form
+        self.client.post("/owner/settings/", {
+            "form_type": "tax_settings",
+            "charges_tax": "yes",
+            "tax_rate_percent": "",
             "state_tax_rate": "6.500",
             "county_tax_rate": "1.500",
             "city_tax_rate": "0.500",

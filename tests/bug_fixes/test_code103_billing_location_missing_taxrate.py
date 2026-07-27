@@ -1,23 +1,16 @@
 """
-CODE-103: billing_location form in owner_settings_view updated BillingConfig
-component rates but never created/updated a TaxRate record.
+CODE-103 (rewritten for the tax overhaul): the billing_location form used to
+parse rates, auto-enable tax, and sync TaxRate rows — which silently enabled a
+prefilled 6.5% Arkansas rate when an owner merely saved their shop address.
 
-TaxService.is_tax_enabled() checks TaxRate.objects.filter(tenant=tenant,
-is_active=True).exists() — NOT BillingConfig.tax_enabled. So tax was never
-actually applied to invoices even after the owner set their rate breakdown in
-Settings → Billing tab (form_type='billing_location').
-
-Root cause is the same as CODE-099 (owner_toggle_tax), but in a different
-code path.
-
-Regression tests:
-1. Saving billing_location with rates creates a TaxRate row for the tenant.
-2. TaxService.is_tax_enabled() returns True after saving.
-3. Saving billing_location with a previously deactivated TaxRate row reactivates it.
-4. Saving billing_location with zero rates deactivates all TaxRate rows.
-5. Saving without city/state (location not set) skips TaxRate creation but
-   does NOT deactivate existing rows (partial save).
-6. BillingConfig.company_city/state/zip are updated correctly.
+New contract:
+- form_type='billing_location' saves the ADDRESS ONLY. It never touches
+  tax_enabled, tax_configured, BillingConfig rates, or TaxRate rows.
+- form_type='tax_settings' is the only path that configures tax: it sets
+  tax_configured=True, tax_enabled per the yes/no answer, stores the rate,
+  and upserts the tenant's single TaxRate row.
+- BillingConfig.tax_enabled is the single source of truth for
+  TaxService.is_tax_enabled(); TaxRate rows only hold rates.
 """
 
 from decimal import Decimal
@@ -30,11 +23,8 @@ from apps.billing.models import TaxRate, BillingConfig
 from apps.billing.services.tax_service import TaxService
 
 
-class BillingLocationTaxRateSyncTest(TestCase):
-    """
-    Verify that the billing_location form properly syncs TaxRate records
-    so that TaxService.is_tax_enabled() reflects the owner's intent.
-    """
+class TaxSettingsFormTest(TestCase):
+    """Address saves never touch tax; the tax_settings form owns tax setup."""
 
     def setUp(self):
         self.client = Client()
@@ -61,113 +51,137 @@ class BillingLocationTaxRateSyncTest(TestCase):
         )
 
         self.client.login(username='owner_103', password='testpass123')
-        # Attach tenant via middleware session var
         session = self.client.session
         session['tenant_id'] = self.tenant.id
         session.save()
 
-    def _post_billing_location(self, city='Hensley', state='AR', zip_code='72103',
-                                state_rate='6.500', county_rate='0', city_rate='0',
-                                special_rate='0'):
+    def _post_address(self, city='Hensley', state='AR', zip_code='72103'):
         return self.client.post('/owner/settings/', {
             'form_type': 'billing_location',
+            'company_address': '123 Main St',
             'company_city': city,
             'company_state': state,
             'company_zip': zip_code,
-            'state_tax_rate': state_rate,
-            'county_tax_rate': county_rate,
-            'city_tax_rate': city_rate,
-            'special_tax_rate': special_rate,
         }, follow=True)
 
-    def test_saves_tax_rate_row_for_tenant(self):
-        """Submitting billing_location with rates creates a TaxRate for the tenant."""
-        self.assertFalse(
-            TaxRate.objects.filter(tenant=self.tenant, is_active=True).exists(),
-            "Precondition: no active TaxRate before saving",
-        )
+    def _post_tax(self, charges_tax='yes', rate='8.25', **components):
+        data = {
+            'form_type': 'tax_settings',
+            'charges_tax': charges_tax,
+            'tax_rate_percent': rate,
+        }
+        data.update(components)
+        return self.client.post('/owner/settings/', data, follow=True)
 
-        response = self._post_billing_location(
-            state_rate='6.500', county_rate='1.000', city_rate='0.500',
-        )
+    # ── Address form is tax-inert ────────────────────────────────────────
+
+    def test_address_save_never_enables_tax(self):
+        response = self._post_address()
         self.assertEqual(response.status_code, 200)
 
-        rate = TaxRate.objects.filter(tenant=self.tenant, is_active=True).first()
-        self.assertIsNotNone(rate, "TaxRate must be created after billing_location save")
-        self.assertEqual(rate.city.lower(), 'hensley')
-        self.assertEqual(rate.state.upper(), 'AR')
-        self.assertEqual(rate.state_rate, Decimal('6.500'))
-        self.assertEqual(rate.county_rate, Decimal('1.000'))
-        self.assertEqual(rate.city_rate, Decimal('0.500'))
-
-    def test_tax_service_is_enabled_after_save(self):
-        """TaxService.is_tax_enabled() returns True after billing_location save."""
-        self._post_billing_location(state_rate='6.500')
-        svc = TaxService(tenant=self.tenant)
-        self.assertTrue(
-            svc.is_tax_enabled(),
-            "TaxService.is_tax_enabled() must return True after billing_location saves a rate",
+        config = BillingConfig.get_for_tenant(self.tenant)
+        self.assertFalse(config.tax_enabled)
+        self.assertFalse(config.tax_configured)
+        self.assertFalse(
+            TaxRate.objects.filter(tenant=self.tenant).exists(),
+            "Saving the shop address must not create a TaxRate row",
         )
+        self.assertFalse(TaxService(tenant=self.tenant).is_tax_enabled())
 
-    def test_reactivates_previously_deactivated_taxrate(self):
-        """If tenant had a deactivated TaxRate for the same city/state, it is reactivated."""
-        TaxRate.objects.create(
-            tenant=self.tenant,
-            city='Hensley',
-            state='AR',
-            state_rate=Decimal('6.500'),
-            is_active=False,  # previously deactivated
-        )
-
-        self._post_billing_location(state_rate='6.500', county_rate='1.000')
-
-        active = TaxRate.objects.filter(tenant=self.tenant, is_active=True, city__iexact='Hensley')
-        self.assertEqual(active.count(), 1, "Should have exactly one active TaxRate")
-        self.assertEqual(active.first().county_rate, Decimal('1.000'))
-
-    def test_zero_rates_deactivates_all_taxrates(self):
-        """Submitting billing_location with all-zero rates deactivates existing TaxRates."""
-        TaxRate.objects.create(
-            tenant=self.tenant,
-            city='Hensley',
-            state='AR',
-            state_rate=Decimal('6.500'),
-            is_active=True,
-        )
-
-        self._post_billing_location(
-            state_rate='0', county_rate='0', city_rate='0', special_rate='0',
-        )
-
-        active_count = TaxRate.objects.filter(tenant=self.tenant, is_active=True).count()
-        self.assertEqual(active_count, 0, "All TaxRates must be deactivated when rate is zero")
-
-        svc = TaxService(tenant=self.tenant)
-        self.assertFalse(svc.is_tax_enabled(), "TaxService must report disabled when all rates deactivated")
-
-    def test_billing_config_company_location_updated(self):
-        """BillingConfig.company_city/state/zip are stored correctly."""
-        self._post_billing_location(city='Conway', state='AR', zip_code='72032', state_rate='6.500')
-
+    def test_address_save_stores_location(self):
+        self._post_address(city='Conway', state='AR', zip_code='72032')
         config = BillingConfig.get_for_tenant(self.tenant)
         self.assertEqual(config.company_city, 'Conway')
         self.assertEqual(config.company_state, 'AR')
         self.assertEqual(config.company_zip, '72032')
 
-    def test_billing_config_tax_rates_updated(self):
-        """BillingConfig component rates are saved and default_tax_rate totals correctly."""
-        self._post_billing_location(
-            state_rate='6.500', county_rate='1.000', city_rate='0.500', special_rate='0.250',
-        )
-        config = BillingConfig.get_for_tenant(self.tenant)
-        self.assertEqual(config.state_tax_rate, Decimal('6.500'))
-        self.assertEqual(config.county_tax_rate, Decimal('1.000'))
-        self.assertEqual(config.city_tax_rate, Decimal('0.500'))
-        self.assertEqual(config.special_tax_rate, Decimal('0.250'))
-        self.assertEqual(config.default_tax_rate, Decimal('8.250'))
+    def test_address_save_does_not_disturb_configured_tax(self):
+        """Re-saving the address leaves an already-configured tax setup alone."""
+        self._post_tax(charges_tax='yes', rate='8.25')
+        self._post_address(city='Conway')
 
-    def test_tax_enabled_set_on_billing_config(self):
-        """BillingConfig.tax_enabled is set to True when rate > 0."""
-        self._post_billing_location(state_rate='6.500')
         config = BillingConfig.get_for_tenant(self.tenant)
         self.assertTrue(config.tax_enabled)
+        self.assertTrue(config.tax_configured)
+        self.assertEqual(config.default_tax_rate, Decimal('8.25'))
+
+    # ── tax_settings: the explicit yes/no answer ─────────────────────────
+
+    def test_answer_yes_enables_tax_and_stores_rate(self):
+        self._post_tax(charges_tax='yes', rate='8.25')
+
+        config = BillingConfig.get_for_tenant(self.tenant)
+        self.assertTrue(config.tax_enabled)
+        self.assertTrue(config.tax_configured)
+        self.assertEqual(config.default_tax_rate, Decimal('8.25'))
+        self.assertTrue(TaxService(tenant=self.tenant).is_tax_enabled())
+
+    def test_answer_yes_upserts_single_taxrate_row(self):
+        self._post_address()  # store city/state first
+        self._post_tax(charges_tax='yes', rate='8.25')
+
+        rows = TaxRate.objects.filter(tenant=self.tenant)
+        self.assertEqual(rows.count(), 1)
+        row = rows.first()
+        self.assertTrue(row.is_active)
+        self.assertEqual(row.total_rate, Decimal('8.250'))
+        self.assertEqual(row.city, 'Hensley')
+
+        # Saving again updates in place — no duplicate rows
+        self._post_tax(charges_tax='yes', rate='9.00')
+        self.assertEqual(TaxRate.objects.filter(tenant=self.tenant).count(), 1)
+        self.assertEqual(
+            TaxRate.objects.get(tenant=self.tenant).total_rate, Decimal('9.000'))
+
+    def test_answer_no_disables_tax_and_marks_configured(self):
+        self._post_tax(charges_tax='no', rate='')
+
+        config = BillingConfig.get_for_tenant(self.tenant)
+        self.assertFalse(config.tax_enabled)
+        self.assertTrue(config.tax_configured)
+        self.assertFalse(TaxService(tenant=self.tenant).is_tax_enabled())
+
+    def test_answer_no_wins_even_with_active_taxrate_rows(self):
+        """TaxRate rows no longer control whether tax applies."""
+        TaxRate.objects.create(
+            tenant=self.tenant, city='Hensley', state='AR',
+            state_rate=Decimal('6.500'), is_active=True,
+        )
+        self._post_tax(charges_tax='no', rate='')
+
+        self.assertFalse(TaxService(tenant=self.tenant).is_tax_enabled())
+        result = TaxService(tenant=self.tenant).calculate_tax(subtotal=Decimal('100'))
+        self.assertEqual(result['amount'], Decimal('0.00'))
+
+    def test_component_breakdown_wins_over_single_rate(self):
+        self._post_tax(
+            charges_tax='yes', rate='5.00',
+            state_tax_rate='6.500', county_tax_rate='1.000',
+            city_tax_rate='0.500', special_tax_rate='0.250',
+        )
+        config = BillingConfig.get_for_tenant(self.tenant)
+        self.assertEqual(config.default_tax_rate, Decimal('8.250'))
+        self.assertEqual(config.state_tax_rate, Decimal('6.500'))
+        self.assertEqual(config.county_tax_rate, Decimal('1.000'))
+
+    def test_rate_validation_rejects_out_of_bounds(self):
+        for bad_rate in ('0', '-1', '31', 'abc'):
+            self._post_tax(charges_tax='yes', rate=bad_rate)
+            config = BillingConfig.get_for_tenant(self.tenant)
+            self.assertFalse(
+                config.tax_configured,
+                f"Rate {bad_rate!r} must be rejected without configuring tax",
+            )
+
+    def test_calculate_tax_falls_back_to_config_rates_without_row(self):
+        """tax_enabled + no TaxRate row → config component rates apply."""
+        config = BillingConfig.get_for_tenant(self.tenant)
+        config.tax_enabled = True
+        config.tax_configured = True
+        config.state_tax_rate = Decimal('7.000')
+        config.default_tax_rate = Decimal('7.000')
+        config.save()
+
+        result = TaxService(tenant=self.tenant).calculate_tax(subtotal=Decimal('100.00'))
+        self.assertEqual(result['rate'], Decimal('7.000'))
+        self.assertEqual(result['amount'], Decimal('7.00'))
