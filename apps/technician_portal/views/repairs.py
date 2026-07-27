@@ -94,6 +94,12 @@ def _create_walkin_customer(tenant, name, phone=''):
     )
 
 
+def _invoice_recipient_email(customer):
+    """Recipient the send-invoice confirmation dialog should display."""
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+    return InvoiceSendService.resolve_recipient(customer)
+
+
 @technician_required
 def repair_detail(request, repair_id):
     """Display repair details with permission checks and batch context."""
@@ -229,6 +235,7 @@ def repair_detail(request, repair_id):
         'invoice_id': invoice_id,
         'default_payment_terms': default_payment_terms,
         'available_technicians': available_technicians,
+        'invoice_recipient_email': _invoice_recipient_email(repair.customer),
     })
 
 

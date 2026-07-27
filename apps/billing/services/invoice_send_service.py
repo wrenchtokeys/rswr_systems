@@ -29,12 +29,29 @@ class SendResult:
 class InvoiceSendService:
 
     @staticmethod
-    def send(invoice, tenant, submitted_email=None):
+    def resolve_recipient(customer):
+        """Where an invoice email for this customer goes: the dedicated
+        billing email when set, else the customer's main email ('' if none).
+        Single source of truth — the send pipeline and the confirmation
+        dialogs must show/use the same address."""
+        if customer is None:
+            return ''
+        try:
+            prefs = customer.repair_preferences
+            return prefs.billing_email or customer.email or ''
+        except Exception:
+            return customer.email or ''
+
+    @staticmethod
+    def send(invoice, tenant, submitted_email=None, copy_to_email=None):
         """Attempt to send a DRAFT invoice; returns a SendResult.
 
         submitted_email, when the customer has no address on file, is
         validated, checked for cross-customer duplicates, and saved onto the
         customer before sending (inline email capture).
+
+        copy_to_email, when set, receives a BCC copy of the invoice email
+        ("Send me a copy" — the acting shop user's address).
         """
         from core.models import Customer
 
@@ -44,12 +61,7 @@ class InvoiceSendService:
 
         try:
             # Resolve recipient email
-            recipient = None
-            try:
-                prefs = invoice.customer.repair_preferences
-                recipient = prefs.billing_email or invoice.customer.email
-            except Exception:
-                recipient = invoice.customer.email
+            recipient = InvoiceSendService.resolve_recipient(invoice.customer)
 
             submitted_email = (submitted_email or '').strip()
             if submitted_email and not recipient:
@@ -104,6 +116,7 @@ class InvoiceSendService:
                     customer_id=invoice.customer.id,
                     recipient_email=recipient,
                     invoice=invoice,
+                    bcc_emails=[copy_to_email] if copy_to_email else None,
                 )
                 email_sent = success
                 if not success:
@@ -115,7 +128,8 @@ class InvoiceSendService:
             if email_sent:
                 invoice.status = 'SENT'
                 invoice.sent_at = timezone.now()
-                invoice.save(update_fields=['status', 'sent_at'])
+                invoice.last_sent_to = recipient
+                invoice.save(update_fields=['status', 'sent_at', 'last_sent_to'])
                 return SendResult(
                     True, 'sent', recipient=recipient,
                     message=f'Invoice {invoice.invoice_number} sent to {recipient}.',

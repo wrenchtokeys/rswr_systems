@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Invoice {{ invoice.invoice_number }} — {{ company_name }}</title>
+    <style>
+        body { margin: 0; padding: 0; background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .container { max-width: 640px; margin: 40px auto; padding: 0 16px 40px; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: #1e40af; color: white; padding: 24px; text-align: center; }
+        .header h1 { margin: 0; font-size: 20px; }
+        .header p { margin: 4px 0 0; color: #93c5fd; font-size: 14px; }
+        .body { padding: 24px; }
+        .status { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+        .status.paid { background: #d1fae5; color: #065f46; }
+        .status.due { background: #dbeafe; color: #1e40af; }
+        .status.overdue { background: #fee2e2; color: #991b1b; }
+        .meta { width: 100%; font-size: 14px; color: #6b7280; margin: 16px 0; border-collapse: collapse; }
+        .meta td { padding: 4px 0; }
+        .meta td:last-child { text-align: right; color: #111827; font-weight: 500; }
+        table.items { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
+        table.items th { text-align: left; font-size: 12px; text-transform: uppercase; color: #6b7280; padding: 8px 10px; background: #f3f4f6; }
+        table.items th:last-child, table.items td:last-child { text-align: right; }
+        table.items td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151; }
+        .totals { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .totals td { padding: 4px 10px; text-align: right; color: #6b7280; }
+        .totals td:last-child { color: #111827; width: 120px; }
+        .totals .grand td { font-size: 17px; font-weight: 700; color: #1e40af; padding-top: 10px; }
+        .actions { text-align: center; margin: 24px 0 4px; }
+        .btn-pay { display: inline-block; padding: 14px 32px; background: #2563eb; color: white; text-decoration: none; font-size: 16px; font-weight: 600; border-radius: 8px; margin: 4px; }
+        .btn-pdf { display: inline-block; padding: 12px 24px; background: white; color: #2563eb; border: 2px solid #2563eb; text-decoration: none; font-size: 14px; font-weight: 500; border-radius: 8px; margin: 4px; }
+        .contact { margin-top: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; text-align: center; font-size: 14px; color: #374151; }
+        .contact a { color: #2563eb; text-decoration: none; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>{{ company_name }}</h1>
+                <p>Invoice #{{ invoice.invoice_number }}</p>
+            </div>
+            <div class="body">
+                {% if invoice.status == 'PAID' %}
+                <span class="status paid">Paid — thank you!</span>
+                {% elif invoice.status == 'OVERDUE' %}
+                <span class="status overdue">Overdue</span>
+                {% else %}
+                <span class="status due">Amount due: ${{ invoice.amount_due|floatformat:2 }}</span>
+                {% endif %}
+
+                <table class="meta">
+                    <tr><td>Billed to</td><td>{{ invoice.customer.name }}</td></tr>
+                    <tr><td>Invoice date</td><td>{{ invoice.invoice_date|date:"F d, Y" }}</td></tr>
+                    {% if invoice.due_date %}
+                    <tr><td>Due date</td><td>{{ invoice.due_date|date:"F d, Y" }}</td></tr>
+                    {% endif %}
+                    <tr><td>Payment terms</td><td>{{ invoice.get_payment_terms_display }}</td></tr>
+                </table>
+
+                <table class="items">
+                    <tr><th>Service</th><th>Unit</th><th>Amount</th></tr>
+                    {% for item in line_items %}
+                    <tr>
+                        <td>{{ item.description|default:"Service" }}</td>
+                        <td>{{ item.unit_number|default:"—" }}</td>
+                        <td>${{ item.amount|floatformat:2 }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+
+                <table class="totals">
+                    {% if invoice.discount > 0 %}
+                    <tr><td>Subtotal</td><td>${{ invoice.subtotal|floatformat:2 }}</td></tr>
+                    <tr><td>Discount</td><td>-${{ invoice.discount|floatformat:2 }}</td></tr>
+                    {% endif %}
+                    {% if invoice.tax_amount > 0 %}
+                    <tr><td>Tax</td><td>${{ invoice.tax_amount|floatformat:2 }}</td></tr>
+                    {% endif %}
+                    {% if invoice.amount_paid > 0 %}
+                    <tr><td>Paid</td><td>-${{ invoice.amount_paid|floatformat:2 }}</td></tr>
+                    {% endif %}
+                    <tr class="grand"><td>{% if invoice.status == 'PAID' %}Total{% else %}Total due{% endif %}</td>
+                        <td>{% if invoice.status == 'PAID' %}${{ invoice.total|floatformat:2 }}{% else %}${{ invoice.amount_due|floatformat:2 }}{% endif %}</td></tr>
+                </table>
+
+                <div class="actions">
+                    {% if can_pay %}
+                    <a class="btn-pay" href="{{ pay_url }}">💳 Pay Invoice</a>
+                    {% endif %}
+                    <a class="btn-pdf" href="{{ pdf_url }}" target="_blank">📄 Download PDF</a>
+                </div>
+
+                {% if company_phone or company_email %}
+                <div class="contact">
+                    <strong>Questions about this invoice?</strong><br>
+                    {% if company_phone %}<a href="tel:{{ company_phone }}">{{ company_phone }}</a>{% endif %}
+                    {% if company_phone and company_email %} · {% endif %}
+                    {% if company_email %}<a href="mailto:{{ company_email }}">{{ company_email }}</a>{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

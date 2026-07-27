@@ -263,7 +263,7 @@
             <div class="flex items-center gap-3 pt-2">
                 <button type="submit" class="btn-secondary flex-1">Save</button>
                 {% if user_can_invoices %}
-                <button type="submit" name="save_and_send" value="1" class="btn-primary flex-1">
+                <button type="submit" name="save_and_send" value="1" id="save-send-btn" class="btn-primary flex-1">
                     <i class="fas fa-paper-plane mr-2 text-xs"></i>Save &amp; Send Invoice
                 </button>
                 {% endif %}
@@ -470,4 +470,36 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+{% if user_can_invoices %}
+{% include "includes/invoice_send_confirm_modal.html" %}
+<script>
+// "Save & Send Invoice" confirms before sending: show who the invoice email
+// goes to (from the selected customer) instead of firing it blind.
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('quickJobForm');
+    const btn = document.getElementById('save-send-btn');
+    if (!form || !btn || !window.RSSendConfirm) return;
+
+    // The confirm dialog injects save_and_send=1 itself (a programmatic
+    // requestSubmit doesn't carry the clicked button's name/value).
+    btn.addEventListener('click', function(e) {
+        if (form.dataset.simConfirmed === '1') return;
+        e.preventDefault();
+        if (!form.reportValidity()) return;
+
+        const select = document.querySelector('#cust-existing select');
+        const selectedOpt = select && select.selectedIndex >= 0
+            ? select.options[select.selectedIndex] : null;
+        const usingExisting = select && select.value;
+        form.dataset.customerName = usingExisting
+            ? selectedOpt.text
+            : (document.querySelector('input[name="new_customer_name"]')?.value || 'New customer');
+        form.dataset.recipientEmail = usingExisting
+            ? (selectedOpt.dataset.email || '') : '';
+        window.RSSendConfirm.open(form, { submitName: 'save_and_send' });
+    });
+});
+</script>
+{% endif %}
 {% endblock %}

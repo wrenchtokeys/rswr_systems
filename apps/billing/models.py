@@ -422,6 +422,13 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         help_text="Highest overdue-reminder tier (in days) already sent for this invoice",
     )
 
+    # Delivery tracking — who the invoice email last went to, so SES bounce
+    # notifications can be matched back to the invoice and the shop alerted.
+    last_sent_to = models.EmailField(
+        blank=True, default='',
+        help_text="Recipient email of the most recent invoice send",
+    )
+
     # Timestamps
     sent_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)

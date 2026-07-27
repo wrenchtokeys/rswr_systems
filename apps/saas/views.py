@@ -985,12 +985,15 @@ def replacement_detail(request, pk):
         invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
     ).select_related('invoice').first()
 
+    from apps.billing.services.invoice_send_service import InvoiceSendService
     return render(request, 'saas/replacement_detail.html', {
         'replacement': replacement,
         'tenant': tenant,
         'status_transitions': status_transitions,
         'is_invoiced': invoice_line_item is not None,
         'existing_invoice': invoice_line_item.invoice if invoice_line_item else None,
+        'invoice_recipient_email': InvoiceSendService.resolve_recipient(replacement.customer)
+                                   if replacement.customer else '',
     })
 
 
@@ -1090,7 +1093,7 @@ def replacement_complete_and_invoice(request, pk):
     from apps.technician_portal.services.job_flow import (
         JobFlowError, complete_job, invoice_and_send,
     )
-    from apps.technician_portal.views.jobs import notify_invoice_outcome
+    from apps.technician_portal.views.jobs import _copy_to_email, notify_invoice_outcome
 
     tenant = getattr(request, 'tenant', None)
     if not tenant:
@@ -1115,7 +1118,8 @@ def replacement_complete_and_invoice(request, pk):
         return redirect('replacement_detail', pk=pk)
 
     try:
-        invoice, created, result, excluded = invoice_and_send(replacement, tenant)
+        invoice, created, result, excluded = invoice_and_send(
+            replacement, tenant, copy_to_email=_copy_to_email(request))
     except ValueError as e:
         messages.error(request, str(e))
         return redirect('replacement_detail', pk=pk)
@@ -3056,8 +3060,11 @@ def owner_send_invoice(request, invoice_id):
     # delivery, mark-SENT-only-on-success) lives in InvoiceSendService so the
     # job-level quick-invoice actions share it.
     from apps.billing.services.invoice_send_service import InvoiceSendService
+    copy_to = request.user.email if (
+        request.POST.get('send_me_copy') and request.user.email) else None
     result = InvoiceSendService.send(
         invoice, tenant, submitted_email=request.POST.get('email', ''),
+        copy_to_email=copy_to,
     )
     if result.sent:
         messages.success(request, result.message)
@@ -3102,27 +3109,22 @@ def owner_email_invoice(request, invoice_id):
             messages.error(request, 'No email address found for this customer.')
             return redirect('owner_invoice_detail', invoice_id=invoice.id)
         
-        repair_ids = list(invoice.line_items.exclude(repair_id__isnull=True).values_list('repair_id', flat=True))
-
-        # Pass stored invoice metadata so the PDF attached to the email shows the
-        # same invoice number and date that the owner sees in the portal (CODE-120).
-        from datetime import datetime as _dt
-        _stored_date = invoice.invoice_date
-        if _stored_date and not isinstance(_stored_date, _dt):
-            from django.utils import timezone as _tz
-            _stored_dt = _tz.make_aware(_dt.combine(_stored_date, _dt.min.time()))
-        else:
-            _stored_dt = _stored_date
-
+        copy_to = request.user.email if (
+            request.POST.get('send_me_copy') and request.user.email) else None
+        # Pass the Invoice record (A4): the PDF renders from the invoice's
+        # own line items and stored totals. The old repair-lookback call here
+        # couldn't re-send replacement-only invoices at all ("no completed
+        # repairs found") and is exactly what invoice= exists to replace.
         success, msg = email_service.send_invoice_email(
             customer_id=invoice.customer.id,
             recipient_email=recipient,
-            repair_ids=repair_ids if repair_ids else None,
-            invoice_number=invoice.invoice_number,
-            invoice_date=_stored_dt,
+            invoice=invoice,
+            bcc_emails=[copy_to] if copy_to else None,
         )
-        
+
         if success:
+            invoice.last_sent_to = recipient
+            invoice.save(update_fields=['last_sent_to'])
             messages.success(request, f'Invoice emailed to {recipient}.')
         else:
             messages.error(request, f'Failed to email invoice: {msg}')

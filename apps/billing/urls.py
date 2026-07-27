@@ -11,11 +11,15 @@ Author: Amelia (Clawdbot AI)
 """
 
 from django.urls import path
-from . import views
+from . import views, webhooks
 
 app_name = 'billing'
 
 urlpatterns = [
+    # AWS SES delivery events (bounces/complaints) via SNS — secret-gated,
+    # unauthenticated (SNS is the caller).
+    path('webhooks/ses/<str:secret>/', webhooks.ses_event_webhook, name='ses_event_webhook'),
+
     # Dashboard & Reports
     path('dashboard/', views.dashboard, name='dashboard'),
     path('reports/daily/', views.daily_report, name='daily_report'),
