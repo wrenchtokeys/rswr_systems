@@ -304,10 +304,7 @@ def create_invoice(request, customer_id):
                 invoice=invoice
             )
             if success:
-                import django.utils.timezone as _tz
-                invoice.status = 'SENT'
-                invoice.sent_at = _tz.now()
-                invoice.save(update_fields=['status', 'sent_at'])
+                invoice.record_email_sent(customer.email)
             else:
                 import logging as _logging
                 _logging.getLogger(__name__).warning(
@@ -402,11 +399,8 @@ def send_invoice_email(request, invoice_id):
             )
             return JsonResponse({'error': f'Email failed: {msg}'}, status=500)
 
-        # Update invoice status to SENT if it was DRAFT (only on confirmed delivery)
-        if invoice.status == 'DRAFT':
-            invoice.status = 'SENT'
-            invoice.sent_at = timezone.now()
-            invoice.save(update_fields=['status', 'sent_at'])
+        # Promote DRAFT → SENT and stamp delivery tracking (only on confirmed delivery)
+        invoice.record_email_sent(recipient_email)
 
         all_recipients = [recipient_email] + (cc_emails or [])
         return JsonResponse({'success': True, 'sent_to': ', '.join(all_recipients)})
@@ -473,10 +467,7 @@ def send_invoice_email_batch(request):
                 # Without this, batch-sent invoices stay DRAFT: they appear in
                 # "unsent" filters, automated reminders don't trigger, and the
                 # sent_at timestamp is never recorded. (CODE-182)
-                if invoice.status == 'DRAFT':
-                    invoice.status = 'SENT'
-                    invoice.sent_at = timezone.now()
-                    invoice.save(update_fields=['status', 'sent_at'])
+                invoice.record_email_sent(invoice.customer.email)
                 results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
             else:
                 results.append({'id': inv_id, 'success': False, 'error': sent_msg})
@@ -835,14 +826,16 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
 
     line_item.save()
 
-    # Recalculate invoice totals from all line items
+    # Recalculate invoice totals from all line items. Tax applies to taxable
+    # lines only (no_tax jobs, exempt sales); the TOTAL includes every line.
     all_items = invoice.line_items.all()
     invoice.subtotal = sum(item.unit_price * item.quantity for item in all_items)
     invoice.discount = sum(item.discount for item in all_items)
-    taxable = invoice.subtotal - invoice.discount
+    after_discount = invoice.subtotal - invoice.discount
     if invoice.tax_rate and invoice.tax_rate > 0:
+        taxable = sum(item.amount for item in all_items if item.taxable)
         invoice.tax_amount = (taxable * invoice.tax_rate / Decimal('100')).quantize(Decimal('0.01'))
-    invoice.total = taxable + invoice.tax_amount
+    invoice.total = after_discount + invoice.tax_amount
     invoice.save(update_fields=['subtotal', 'discount', 'tax_amount', 'total'])
 
     return JsonResponse({

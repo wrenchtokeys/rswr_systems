@@ -199,6 +199,16 @@
                 {% endif %}
             </div>
 
+            {% if shop_tax_enabled %}
+            <label class="flex items-center gap-3 py-1 cursor-pointer" id="charge-tax-row">
+                <input type="checkbox" name="charge_tax" id="id_charge_tax"
+                       {% if form.charge_tax.value or form.charge_tax.value is None %}checked{% endif %}
+                       class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                <span class="text-sm font-medium text-gray-700">Charge sales tax{% if shop_tax_rate %} ({{ shop_tax_rate }}%){% endif %}</span>
+                <span class="text-xs text-gray-400 font-normal hidden" id="tax-exempt-note">— this customer is tax-exempt</span>
+            </label>
+            {% endif %}
+
             <label class="flex items-center gap-3 py-1 cursor-pointer">
                 <input type="checkbox" name="already_completed" {% if form.already_completed.value %}checked{% endif %}
                        class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
@@ -420,6 +430,7 @@ document.addEventListener('DOMContentLoaded', function() {
             searchWrap.classList.add('hidden');
             newBox.classList.add('hidden');
             clearNewInputs();
+            syncTaxExempt();
         }
 
         function clearIndividual() {
@@ -429,6 +440,7 @@ document.addEventListener('DOMContentLoaded', function() {
             searchWrap.classList.remove('hidden');
             searchInput.value = '';
             resultsBox.classList.add('hidden');
+            syncTaxExempt();
         }
 
         function setMode(mode) {
@@ -445,10 +457,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 fleetSelect.value = '';
                 if (pickedBox.classList.contains('hidden')) realSelect.value = '';
             }
+            syncTaxExempt();
         }
         btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 
-        fleetSelect.addEventListener('change', () => { realSelect.value = fleetSelect.value; });
+        fleetSelect.addEventListener('change', () => {
+            realSelect.value = fleetSelect.value;
+            syncTaxExempt();
+        });
 
         // Individual search (debounced)
         let searchTimer = null;
@@ -487,6 +503,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('show-new-individual').addEventListener('click', () => {
             newBox.classList.remove('hidden');
             realSelect.value = '';
+            syncTaxExempt();
             resultsBox.classList.add('hidden');
             const nameInput = newBox.querySelector('input[name="new_customer_name"]');
             if (nameInput && !nameInput.value) nameInput.value = searchInput.value.trim();
@@ -545,7 +562,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (opt) fleetSelect.value = opt.value;
                 realSelect.value = opt ? opt.value : '';
             }
+            syncTaxExempt();
         }
+
+        // Tax-exempt customers never get tax: uncheck + lock the "Charge
+        // sales tax" box when the picked customer carries data-tax-exempt.
+        // The picker sets realSelect.value programmatically (no change event),
+        // so every mutation path below calls syncTaxExempt() explicitly.
+        const chargeTax = document.getElementById('id_charge_tax');
+        const exemptNote = document.getElementById('tax-exempt-note');
+        let preExemptChecked = chargeTax ? chargeTax.checked : true;
+        function syncTaxExempt() {
+            if (!chargeTax) return;
+            const opt = realSelect.value
+                ? realSelect.options[realSelect.selectedIndex] : null;
+            const exempt = !!(opt && opt.dataset.taxExempt);
+            if (exempt && !chargeTax.disabled) preExemptChecked = chargeTax.checked;
+            chargeTax.disabled = exempt;
+            chargeTax.checked = exempt ? false : preExemptChecked;
+            if (exemptNote) exemptNote.classList.toggle('hidden', !exempt);
+        }
+        if (chargeTax) {
+            chargeTax.addEventListener('change', () => {
+                if (!chargeTax.disabled) preExemptChecked = chargeTax.checked;
+            });
+        }
+
         // setMode('fleet') clears the new-customer inputs — preserve a
         // server-re-rendered duplicate-suggestion state by syncing first.
         syncFromState();

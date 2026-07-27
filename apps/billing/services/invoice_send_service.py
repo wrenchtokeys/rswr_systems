@@ -126,10 +126,7 @@ class InvoiceSendService:
 
             # CODE-112: Only mark SENT if email actually delivered.
             if email_sent:
-                invoice.status = 'SENT'
-                invoice.sent_at = timezone.now()
-                invoice.last_sent_to = recipient
-                invoice.save(update_fields=['status', 'sent_at', 'last_sent_to'])
+                invoice.record_email_sent(recipient)
                 return SendResult(
                     True, 'sent', recipient=recipient,
                     message=f'Invoice {invoice.invoice_number} sent to {recipient}.',

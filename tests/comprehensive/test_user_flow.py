@@ -320,7 +320,12 @@ class RepairLifecycleTests(TestCase):
             self.tenant, name='Lifecycle Fleet', username='cust4', email='cust4@test.com')
 
         # Create a 6.5% tax rate so Repair.save() TaxService picks it up correctly.
-        # Without this, TaxService finds no TaxRate for the tenant and zeroes out tax_rate.
+        # Tax overhaul: BillingConfig.tax_enabled decides IF tax applies; the
+        # TaxRate row supplies the rate.
+        from apps.billing.models import BillingConfig
+        config = BillingConfig.get_for_tenant(self.tenant)
+        config.tax_enabled = True
+        config.save()
         TaxRate.objects.create(
             tenant=self.tenant,
             city='Little Rock',

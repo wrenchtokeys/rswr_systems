@@ -107,21 +107,46 @@ class BatchInvoiceTaxServiceTest(TestCase):
             config=self.config,
         )
 
-    def test_no_taxrate_row_means_no_tax_even_if_config_tax_enabled(self):
+    def test_no_taxrate_row_falls_back_to_config_rate(self):
         """
-        When TaxRate table has no active rows for this tenant,
-        TaxService.is_tax_enabled() returns False — batch invoice should
-        have $0 tax even though BillingConfig.tax_enabled=True.
+        Tax overhaul: BillingConfig.tax_enabled is the single source of truth.
+        tax_enabled=True with no TaxRate row means tax IS charged, using the
+        config's rates (default_tax_rate=8.5%) as the fallback.
 
-        Previously: code checked config.tax_enabled (True) and applied
-        config.default_tax_rate (8.5%), charging tax incorrectly.
+        (Pre-overhaul this asserted $0 tax because TaxRate rows decided
+        whether tax applied — that dual-source-of-truth is gone.)
         """
-        # BillingConfig has tax_enabled=True + default_tax_rate=8.5%
-        # But no TaxRate row → TaxService says disabled
+        self.assertTrue(self.config.tax_enabled)
         self.assertFalse(TaxRate.objects.filter(tenant=self.tenant, is_active=True).exists())
+        self.assertTrue(TaxService(tenant=self.tenant).is_tax_enabled())
 
         # Use unique unit number per test to avoid UnitRepairCount cross-test contamination
         _make_completed_repair(self.tenant, self.customer, self.tech, '100.00', unit='UNIT-T1')
+        invoice = self._invoke()
+
+        self.assertIsNotNone(invoice)
+        self.assertEqual(invoice.tax_rate, Decimal('8.500'))
+        self.assertEqual(invoice.tax_amount, Decimal('8.50'))
+        self.assertEqual(invoice.total, Decimal('108.50'))
+
+    def test_config_tax_disabled_means_no_tax_despite_active_rows(self):
+        """
+        tax_enabled=False means no tax — even with active TaxRate rows.
+        This replaces the old TaxRate-deactivation semantics.
+        """
+        self.config.tax_enabled = False
+        self.config.save()
+        TaxRate.objects.create(
+            tenant=self.tenant,
+            city='Little Rock',
+            state='AR',
+            state_rate=Decimal('6.500'),
+            is_active=True,
+        )
+
+        self.assertFalse(TaxService(tenant=self.tenant).is_tax_enabled())
+
+        _make_completed_repair(self.tenant, self.customer, self.tech, '100.00', unit='UNIT-T6')
         invoice = self._invoke()
 
         self.assertIsNotNone(invoice)
@@ -214,14 +239,12 @@ class BatchInvoiceTaxServiceTest(TestCase):
         self.assertEqual(invoice.city_tax_rate, Decimal('0.750'))
         self.assertEqual(invoice.special_tax_rate, Decimal('0.250'))
 
-    def test_deactivated_taxrate_no_tax(self):
+    def test_deactivated_taxrate_falls_back_to_config_rate(self):
         """
-        When owner deactivates tax (CODE-099 sets is_active=False),
-        batch invoices should NOT charge tax even if config.tax_enabled=True.
-
-        This is the core regression for CODE-104.
+        Tax overhaul: a deactivated TaxRate row no longer disables tax.
+        With tax_enabled=True and no ACTIVE row, the config's rates apply.
+        Turning tax off is done via tax_enabled=False (see the test above).
         """
-        # Create a TaxRate but deactivate it (simulates owner turning tax off via toggle)
         TaxRate.objects.create(
             tenant=self.tenant,
             city='Little Rock',
@@ -230,19 +253,17 @@ class BatchInvoiceTaxServiceTest(TestCase):
             county_rate=Decimal('1.000'),
             city_rate=Decimal('1.000'),
             special_rate=Decimal('0.000'),
-            is_active=False,  # Owner disabled tax
+            is_active=False,
         )
-        # BillingConfig.tax_enabled is still True (CODE-099 only flips TaxRate, not BillingConfig)
         self.assertTrue(self.config.tax_enabled)
-
-        # TaxService should report disabled
-        self.assertFalse(TaxService(tenant=self.tenant).is_tax_enabled())
+        self.assertTrue(TaxService(tenant=self.tenant).is_tax_enabled())
 
         # Use unique unit number per test to avoid UnitRepairCount cross-test contamination
         _make_completed_repair(self.tenant, self.customer, self.tech, '150.00', unit='UNIT-T5')
         invoice = self._invoke()
 
         self.assertIsNotNone(invoice)
-        # Should NOT charge tax — the owner disabled it via TaxRate deactivation
-        self.assertEqual(invoice.tax_amount, Decimal('0.00'))
-        self.assertEqual(invoice.total, Decimal('150.00'))
+        # Falls back to config.default_tax_rate (8.5%) — inactive rows are ignored
+        self.assertEqual(invoice.tax_rate, Decimal('8.500'))
+        self.assertEqual(invoice.tax_amount, Decimal('12.75'))
+        self.assertEqual(invoice.total, Decimal('162.75'))

@@ -48,6 +48,7 @@ def send_branded_email(
     cc=None,
     attachments=None,
     fail_silently=False,
+    tracking_pixel_url=None,
 ):
     """
     Send a branded HTML email with consistent styling.
@@ -146,6 +147,15 @@ def send_branded_email(
         footer_parts.append(f'<p style="margin:4px 0 0;font-size:12px;color:#9ca3af;">{escape(company_phone)}</p>')
     footer_html = '\n'.join(footer_parts)
 
+    # Open-tracking pixel (e.g. invoice emails — loading it marks the
+    # invoice viewed). Not escaped: callers pass a URL we built ourselves.
+    pixel_html = ''
+    if tracking_pixel_url:
+        pixel_html = (
+            f'<img src="{tracking_pixel_url}" width="1" height="1" alt="" '
+            f'style="display:block;width:1px;height:1px;border:0;overflow:hidden;">'
+        )
+
     html = f'''<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -171,6 +181,7 @@ def send_branded_email(
     {footer_html}
 </div>
 
+{pixel_html}
 </div>
 </body>
 </html>'''

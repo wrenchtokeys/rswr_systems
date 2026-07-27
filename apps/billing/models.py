@@ -142,6 +142,11 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
         default=False,
         help_text='Enable sales tax calculation on invoices. When disabled, all invoices have zero tax.',
     )
+    tax_configured = models.BooleanField(
+        default=False,
+        help_text='Owner has explicitly answered "Do you charge sales tax?" '
+                  'Until then the shop sees the tax setup banner.',
+    )
     default_tax_rate = models.DecimalField(
         max_digits=5,
         decimal_places=3,
@@ -149,7 +154,7 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
         help_text='Combined tax rate (auto-calculated from components). Percentage, e.g. 9.500 = 9.5%.',
     )
     state_tax_rate = models.DecimalField(
-        max_digits=5, decimal_places=3, default=Decimal('6.500'),
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
         help_text='State sales tax rate (percentage)',
     )
     county_tax_rate = models.DecimalField(
@@ -218,6 +223,11 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
     def save(self, *args, **kwargs):
         # OneToOneField on tenant handles uniqueness — no manual enforcement needed
         super().save(*args, **kwargs)
+        # TaxService caches this config for 5 minutes; invalidate here so every
+        # write path (settings forms, toggles, admin) takes effect immediately.
+        if self.tenant_id:
+            from django.core.cache import cache
+            cache.delete(f'billing_config_tax_{self.tenant_id}')
 
     def delete(self, *args, **kwargs):
         raise ValidationError('Billing configuration cannot be deleted.')
@@ -428,6 +438,17 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         blank=True, default='',
         help_text="Recipient email of the most recent invoice send",
     )
+    last_sent_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the most recent invoice email went out (sent_at keeps the first send)",
+    )
+
+    # View tracking — set when anyone opens the invoice's public link
+    # (view page, PDF, or pay page) from the email. Not an email-open pixel:
+    # a view means the link was actually clicked.
+    first_viewed_at = models.DateTimeField(null=True, blank=True)
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    view_count = models.PositiveIntegerField(default=0)
 
     # Timestamps
     sent_at = models.DateTimeField(null=True, blank=True)
@@ -569,6 +590,37 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
             self.status = 'SENT'
             self.sent_at = timezone.now()
             self.save()
+
+    def record_email_sent(self, recipient=''):
+        """Stamp delivery tracking after a confirmed email send.
+
+        Promotes DRAFT → SENT, keeps sent_at as the first send, and updates
+        last_sent_at / last_sent_to on every send (including resends).
+        """
+        now = timezone.now()
+        if self.status == 'DRAFT':
+            self.status = 'SENT'
+        if not self.sent_at:
+            self.sent_at = now
+        self.last_sent_at = now
+        if recipient:
+            self.last_sent_to = recipient
+        self.save(update_fields=['status', 'sent_at', 'last_sent_at', 'last_sent_to'])
+
+    def mark_viewed(self):
+        """Record that the customer opened this invoice's public link.
+
+        Queryset update (not save()) so concurrent opens can't clobber each
+        other and updated_at / other in-memory edits stay untouched.
+        """
+        from django.db.models import F
+        from django.db.models.functions import Coalesce
+        now = timezone.now()
+        type(self).all_objects.filter(pk=self.pk).update(
+            first_viewed_at=Coalesce(F('first_viewed_at'), models.Value(now)),
+            last_viewed_at=now,
+            view_count=F('view_count') + 1,
+        )
     
     def cancel(self, reason=None):
         """Cancel this invoice."""
@@ -658,7 +710,14 @@ class InvoiceLineItem(models.Model):
     # Metadata
     repair_date = models.DateField(null=True, blank=True)
     unit_number = models.CharField(max_length=50, blank=True)
-    
+
+    # Whether this line counts toward the invoice's tax. Lets one invoice mix
+    # taxed and untaxed jobs (no_tax cash deals, tax-exempt customers).
+    taxable = models.BooleanField(
+        default=True,
+        help_text='Include this line in the tax calculation',
+    )
+
     class Meta:
         ordering = ['id']
     
@@ -860,11 +919,11 @@ class TaxRate(models.Model):
     
     city = models.CharField(max_length=100, db_index=True)
     county = models.CharField(max_length=100, blank=True, db_index=True)
-    state = models.CharField(max_length=2, default='AR', db_index=True)
+    state = models.CharField(max_length=2, default='', blank=True, db_index=True)
     zip_code = models.CharField(max_length=10, blank=True, db_index=True)
 
     # Rates stored as percentages (e.g., 9.500 means 9.5%)
-    state_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('6.500'))
+    state_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
     county_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
     city_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
     special_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))

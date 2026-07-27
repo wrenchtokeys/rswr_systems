@@ -428,8 +428,15 @@ class InvoiceService:
         try:
             from apps.billing.services.tax_service import TaxService
             tax_svc = TaxService(tenant=getattr(customer, 'tenant', None))
+            # Tax on the post-discount amount of taxable repairs only — jobs
+            # flagged no_tax (cash deals) still count toward the total but
+            # contribute nothing to the taxable base.
+            taxable_total = sum(
+                (item.final_cost for item, r in zip(line_items, repairs) if not r.no_tax),
+                Decimal('0.00'),
+            )
             tax_result = tax_svc.calculate_tax(
-                subtotal=total,  # tax on post-discount amount
+                subtotal=taxable_total,
                 customer=customer,
             )
             tax_rate = tax_result['rate']

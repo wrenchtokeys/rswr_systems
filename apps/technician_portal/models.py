@@ -718,6 +718,10 @@ class Repair(GlassService):
         max_digits=10, decimal_places=2, default=Decimal('0.00'),
         help_text="Tax amount in dollars"
     )
+    no_tax = models.BooleanField(
+        default=False,
+        help_text="Don't charge sales tax on this job (e.g. cash deal, exempt sale)"
+    )
 
     # Invoice skip flag — for legacy repairs that were paid outside the system
     skip_invoicing = models.BooleanField(
@@ -913,8 +917,13 @@ class Repair(GlassService):
                         next_repair_count = unit_repair_count.repair_count + 1
                         self.cost = calculate_repair_cost(self.customer, next_repair_count)
 
-            # Calculate tax from BillingConfig rates
-            if self.cost and self.cost > 0:
+            # Calculate tax from BillingConfig rates.
+            # no_tax zeroes the fields unconditionally (outside the try) so a
+            # job flipped to no_tax can never keep stale tax via the except.
+            if self.no_tax:
+                self.tax_rate = Decimal('0.000')
+                self.tax_amount = Decimal('0.00')
+            elif self.cost and self.cost > 0:
                 try:
                     from apps.billing.services.tax_service import TaxService
                     tax_result = TaxService(tenant=self.tenant).calculate_tax(
@@ -1580,6 +1589,10 @@ class Replacement(GlassService):
         max_digits=10, decimal_places=2, default=Decimal('0.00'),
         help_text="Tax amount in dollars"
     )
+    no_tax = models.BooleanField(
+        default=False,
+        help_text="Don't charge sales tax on this job (e.g. cash deal, exempt sale)"
+    )
 
     # Invoice skip flag — for replacements that were paid outside the system
     skip_invoicing = models.BooleanField(
@@ -1638,8 +1651,13 @@ class Replacement(GlassService):
                     self.cost = apply_account_discount(total, self.customer)
                 # else: keep existing cost (may have been set manually)
 
-            # Calculate tax from BillingConfig rates
-            if self.cost and self.cost > 0:
+            # Calculate tax from BillingConfig rates.
+            # no_tax zeroes the fields unconditionally (outside the try) so a
+            # job flipped to no_tax can never keep stale tax via the except.
+            if self.no_tax:
+                self.tax_rate = Decimal('0.000')
+                self.tax_amount = Decimal('0.00')
+            elif self.cost and self.cost > 0:
                 try:
                     from apps.billing.services.tax_service import TaxService
                     tax_result = TaxService(tenant=self.tenant).calculate_tax(

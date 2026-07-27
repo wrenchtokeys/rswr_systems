@@ -175,12 +175,14 @@ def _send_overdue_reminder(invoice, config, days_overdue):
     # raise NameError, silently aborting the reminder. (CODE-179)
     pay_url = None
     pay_link_text = ''
+    open_pixel_url = None
     try:
         from rs_systems.views import generate_payment_token
         base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         token = generate_payment_token(invoice.id)
         pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
         pay_link_text = f"\nPay online: {pay_url}\n"
+        open_pixel_url = f"{base_url}/invoice/{invoice.id}/{token}/open.gif"
     except Exception:
         pass
 
@@ -228,6 +230,7 @@ Thank you,
             button_url=pay_url if pay_url else None,
             tenant=invoice.tenant,
             plain_text=body,
+            tracking_pixel_url=open_pixel_url,
         )
         
         # Log that we sent a reminder
@@ -429,12 +432,13 @@ def _create_batch_invoice(tenant, customer, config):
             # Previously repair.cost was used directly, causing customers with
             # earned rewards to be overbilled on all batch invoices.
             total_discount = Decimal('0.00')
+            taxable_base = Decimal('0.00')
             for repair in repairs_list:
                 discounted = repair.get_discounted_cost()
                 original = discounted['original_cost'] or Decimal('0.00')
                 final_amt = discounted['final_cost'] or Decimal('0.00')
                 savings = discounted['savings'] or Decimal('0.00')
-                
+
                 pricing_info = repair.get_progressive_pricing_info()
                 if pricing_info['is_discounted']:
                     prog_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
@@ -445,9 +449,11 @@ def _create_batch_invoice(tenant, customer, config):
                     unit_price = original
                     total_disc = savings
                     amount = final_amt
-                
+
                 subtotal += unit_price
                 total_discount += total_disc
+                if not repair.no_tax:
+                    taxable_base += amount
 
                 description = repair.get_invoice_description()
                 if pricing_info['is_discounted']:
@@ -463,13 +469,16 @@ def _create_batch_invoice(tenant, customer, config):
                     amount=amount,
                     repair_date=repair.service_date,
                     unit_number=repair.unit_number or '',
+                    taxable=not repair.no_tax,
                 )
-            
+
             # Add replacement line items
             for replacement in replacements_list:
                 amount = replacement.cost or Decimal('0.00')
                 subtotal += amount
-                
+                if not replacement.no_tax:
+                    taxable_base += amount
+
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     replacement=replacement,
@@ -479,22 +488,20 @@ def _create_batch_invoice(tenant, customer, config):
                     amount=amount,
                     repair_date=replacement.service_date,
                     unit_number=replacement.unit_number or '',
+                    taxable=not replacement.no_tax,
                 )
-            
-            # Calculate tax via TaxService — this is the single source of truth
-            # for whether tax is enabled (checks TaxRate rows, not BillingConfig.tax_enabled)
-            # and applies the correct per-tenant rate with component breakdown.
-            # Previously this used `config.tax_enabled + config.default_tax_rate` which
-            # bypassed TaxService entirely, causing batch invoices to charge tax when it
-            # was disabled (or vice-versa) and to miss per-customer city/state rate
-            # lookups. (CODE-104)
+
+            # Calculate tax via TaxService (single source of truth for whether
+            # tax applies + per-tenant rate with component breakdown, CODE-104).
             #
-            # CODE-122: Tax is calculated on the discounted net (subtotal − discounts)
-            # so customers are not charged tax on reward savings they have already earned.
+            # CODE-122: Tax is calculated on the discounted net so customers are
+            # not charged tax on reward savings they have already earned. Jobs
+            # flagged no_tax (cash deals) are excluded from the taxable base but
+            # still count toward the invoice total.
             from apps.billing.services.tax_service import TaxService
             tax_svc = TaxService(tenant=tenant)
             discounted_subtotal = subtotal - total_discount
-            tax_result = tax_svc.calculate_tax(subtotal=discounted_subtotal, customer=customer)
+            tax_result = tax_svc.calculate_tax(subtotal=taxable_base, customer=customer)
             invoice.subtotal = subtotal
             invoice.discount = total_discount
             invoice.tax_rate = tax_result['rate']
@@ -512,9 +519,8 @@ def _create_batch_invoice(tenant, customer, config):
             if config.batch_invoice_auto_send:
                 email_sent = _send_batch_invoice_email(invoice, config)
                 if email_sent:
-                    invoice.status = 'SENT'
-                    invoice.sent_at = timezone.now()
-                    invoice.save(update_fields=['status', 'sent_at'])
+                    from apps.billing.services.invoice_send_service import InvoiceSendService
+                    invoice.record_email_sent(InvoiceSendService.resolve_recipient(invoice.customer))
                 else:
                     # Email failed — leave as DRAFT so the shop owner can see it
                     # and retry manually. Log at WARNING level for visibility.

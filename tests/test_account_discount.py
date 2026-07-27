@@ -133,6 +133,12 @@ class AccountDiscountTests(TestCase):
     def setUp(self):
         self.user, self.tenant = make_shop('Dad Glass', 'dad@test.com', 'both')
         self.tech = Technician.objects.filter(tenant=self.tenant).first()
+        # Tax overhaul: BillingConfig.tax_enabled decides IF tax applies;
+        # the TaxRate row supplies the rate.
+        from apps.billing.models import BillingConfig
+        config = BillingConfig.get_for_tenant(self.tenant)
+        config.tax_enabled = True
+        config.save()
         TaxRate.objects.create(
             tenant=self.tenant, city='Little Rock', state='AR',
             state_rate=Decimal('6.500'), is_active=True,

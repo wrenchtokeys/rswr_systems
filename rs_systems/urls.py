@@ -45,6 +45,7 @@ urlpatterns = [
     path('payment-cancelled', views.payment_cancelled, name='payment_cancelled'),
     path('pay/<int:invoice_id>/<str:token>/', views.public_pay_invoice, name='public_pay_invoice'),
     path('invoice/<int:invoice_id>/<str:token>/pdf/', views.public_invoice_pdf, name='public_invoice_pdf'),
+    path('invoice/<int:invoice_id>/<str:token>/open.gif', views.public_invoice_open_pixel, name='public_invoice_open_pixel'),
     path('invoice/<int:invoice_id>/<str:token>/', views.public_view_invoice, name='public_view_invoice'),
     # setup-database/ removed — security risk (unauthenticated DB setup with hardcoded creds)
 

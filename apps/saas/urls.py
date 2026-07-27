@@ -89,11 +89,8 @@ urlpatterns = [
     path('owner/loyalty/customers/<int:customer_user_id>/adjust/', views.owner_loyalty_adjust_points, name='owner_loyalty_adjust_points'),
     path('owner/loyalty/liability/', views.owner_loyalty_liability_report, name='owner_loyalty_liability_report'),
 
-    # Tax rate management
-    path('owner/tax-rates/', views.owner_tax_rates, name='owner_tax_rates'),
-    path('owner/tax-rates/add/', views.owner_add_tax_rate, name='owner_add_tax_rate'),
-    path('owner/tax-rates/<int:rate_id>/edit/', views.owner_edit_tax_rate, name='owner_edit_tax_rate'),
-    path('owner/tax-rates/<int:rate_id>/delete/', views.owner_delete_tax_rate, name='owner_delete_tax_rate'),
+    # Tax management (single-rate UI; per-city CRUD removed — BillingConfig
+    # is the source of truth and the settings page has the tax_settings form)
     path('owner/tax-rates/toggle/', views.owner_toggle_tax, name='owner_toggle_tax'),
 
     # Warranty policy management (owner/manager)
