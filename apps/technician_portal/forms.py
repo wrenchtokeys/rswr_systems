@@ -367,11 +367,13 @@ class RepairForm(forms.ModelForm):
         required=False,  # Not required for walk-in / individual repairs
     )
 
-    # Walk-in / individual toggle: create a ticket without a pre-existing fleet account.
+    # Individual toggle: create a ticket for a new individual (non-fleet)
+    # customer without leaving the form. Field names keep the legacy
+    # "walkin_" prefix for template/test compatibility.
     is_walkin = forms.BooleanField(
         required=False,
-        label="Walk-in / Individual (no account)",
-        help_text="Create a repair for an individual car without a fleet customer account.",
+        label="New individual (not in the list)",
+        help_text="Create a repair for an individual and add them as a customer in one step.",
     )
     walkin_name = forms.CharField(
         required=False,
@@ -384,6 +386,18 @@ class RepairForm(forms.ModelForm):
         max_length=20,
         widget=forms.TextInput(attrs={'placeholder': '(555) 123-4567'}),
         label="Phone (optional)",
+    )
+    walkin_email = forms.CharField(
+        required=False,
+        max_length=254,
+        widget=forms.EmailInput(attrs={'placeholder': 'Email (optional — for invoices)'}),
+        label="Email (optional)",
+    )
+    # Duplicate-suggest flow: tech confirmed this is a different person than
+    # an existing individual with the same name/phone.
+    confirmed_new_customer = forms.BooleanField(
+        required=False,
+        label="This is a different person",
     )
     technician = forms.ModelChoiceField(
         queryset=Technician.objects.none(),  # Filtered by tenant in __init__
@@ -800,9 +814,10 @@ class TechnicianNotificationPreferenceForm(forms.ModelForm):
 
 
 class CustomerEmailSelect(forms.Select):
-    """Customer dropdown whose options carry data-email — the address an
-    invoice for that customer would go to — so the "Save & Send Invoice"
-    confirmation dialog can show the recipient before anything sends."""
+    """Customer dropdown whose options carry data attributes for the picker:
+    data-email (invoice recipient, for the "Save & Send Invoice" confirm
+    dialog), data-type (fleet/individual, so the picker can split the one
+    validated field into two tabs) and data-phone (shown in search results)."""
 
     def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
         option = super().create_option(
@@ -811,6 +826,10 @@ class CustomerEmailSelect(forms.Select):
         if instance is not None:
             from apps.billing.services.invoice_send_service import InvoiceSendService
             option['attrs']['data-email'] = InvoiceSendService.resolve_recipient(instance)
+            option['attrs']['data-type'] = (
+                'fleet' if instance.customer_type == 'FLEET' else 'individual')
+            if instance.phone:
+                option['attrs']['data-phone'] = instance.phone
             # Tax-exempt customers never get tax — the job form's "charge
             # sales tax" checkbox unchecks + locks itself off this attribute.
             if instance.tax_exempt:
@@ -859,7 +878,17 @@ class QuickJobForm(forms.Form):
             'placeholder': 'Phone (optional)',
         }),
     )
-    new_customer_is_walkin = forms.BooleanField(required=False)
+    new_customer_email = forms.CharField(
+        required=False, max_length=254,
+        widget=forms.EmailInput(attrs={
+            'class': _INPUT,
+            'placeholder': 'Email (optional — for emailing invoices)',
+        }),
+    )
+    # Set by the duplicate-suggestion flow: the tech confirmed this really is
+    # a different person than the existing individual with the same name.
+    confirmed_new_customer = forms.BooleanField(
+        required=False, widget=forms.HiddenInput)
     unit_number = forms.CharField(
         required=False, max_length=100,
         widget=forms.TextInput(attrs={

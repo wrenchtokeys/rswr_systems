@@ -179,6 +179,14 @@ def customer_list(request):
             Q(phone__icontains=search_query)
         )
 
+    # Fleet vs Individual filter chips (mirrors the job list's mapping:
+    # "individual" covers both RETAIL and WALK_IN)
+    type_filter = request.GET.get('type', '')
+    if type_filter == 'fleet':
+        customers = customers.filter(customer_type='FLEET')
+    elif type_filter == 'individual':
+        customers = customers.filter(customer_type__in=['RETAIL', 'WALK_IN'])
+
     # Annotate with active repair counts in a single query (avoids N+1)
     customers = customers.annotate(
         active_repairs_count=Count(
@@ -190,6 +198,7 @@ def customer_list(request):
     return render(request, 'technician_portal/customer_list.html', {
         'customers': customers,
         'search_query': search_query,
+        'type_filter': type_filter,
         'is_admin': is_admin or is_mgr,
     })
 
@@ -267,10 +276,37 @@ def customer_details(request, customer_id):
             status='pending'
         ).order_by('-created_at')
 
+    # Individuals rarely have unit numbers, so the fleet units view renders
+    # empty for them even with plenty of history. Show a job list instead:
+    # repairs + replacements, newest first, same visibility rules as above.
+    jobs = []
+    if customer.customer_type != 'FLEET':
+        from apps.technician_portal.models import Replacement
+        replacements = Replacement.objects.filter(customer=customer)
+        if not (is_admin or is_mgr):
+            replacements = (
+                replacements.filter(technician=technician)
+                if technician else Replacement.objects.none()
+            )
+        replacements = replacements.exclude(queue_status__in=['REQUESTED', 'PENDING'])
+        if tenant:
+            replacements = replacements.filter(tenant=tenant)
+        else:
+            replacements = replacements.none()
+
+        from django.utils import timezone as tz
+        jobs = sorted(
+            [{'kind': 'repair', 'obj': r} for r in repairs] +
+            [{'kind': 'replacement', 'obj': r} for r in replacements],
+            key=lambda j: j['obj'].service_date or tz.now(),
+            reverse=True,
+        )
+
     return render(request, 'technician_portal/customer_details.html', {
         'customer': customer,
         'units': units,
         'unit_search': unit_search,
+        'jobs': jobs,
         'can_edit_customer': can_edit_customer,
         'available_technicians': available_technicians,
         'portal_users': portal_users,
@@ -735,3 +771,59 @@ def set_primary_contact(request, customer_id, cu_id):
 
     messages.success(request, f"{cu.user.get_full_name() or cu.user.username} is now the primary contact.")
     return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+def customer_search_api(request):
+    """GET /tech/api/customers/search/?type=individual|fleet&q=<name-or-phone>
+
+    Tenant-scoped JSON search backing the customer picker on the job forms.
+    Individual results carry a history line ("3 previous jobs · last visit
+    May 12, 2026") so a returning person is picked, not re-created.
+    """
+    from django.http import JsonResponse
+    from apps.technician_portal.services.customer_service import (
+        INDIVIDUAL_TYPES, individuals_queryset, normalize_phone, service_summary,
+    )
+
+    tenant = getattr(request, 'tenant', None)
+    if tenant is None:
+        return JsonResponse({'results': []})
+
+    kind = (request.GET.get('type') or 'individual').strip().lower()
+    query = (request.GET.get('q') or '').strip()
+
+    if kind == 'fleet':
+        qs = Customer.objects.filter(tenant=tenant, customer_type='FLEET')
+    else:
+        qs = individuals_queryset(tenant)
+
+    if query:
+        digits = normalize_phone(query)
+        name_q = Q(name__icontains=query)
+        if digits and len(digits) >= 4:
+            # Phones are stored formatted ("(555) 123-4567") — compare on a
+            # digits-only basis, which means a Python-side pass.
+            candidates = qs.filter(
+                name_q | (Q(phone__isnull=False) & ~Q(phone=''))
+            ).order_by('name')[:200]
+            rows = [
+                c for c in candidates
+                if query.lower() in c.name.lower()
+                or digits in normalize_phone(c.phone)
+            ][:20]
+        else:
+            rows = qs.filter(name_q).order_by('name')[:20]
+    else:
+        rows = qs.order_by('name')[:20]
+
+    results = []
+    for c in rows:
+        results.append({
+            'id': c.id,
+            'name': c.name,
+            'phone': c.phone or '',
+            'type': 'fleet' if c.customer_type == 'FLEET' else 'individual',
+            'summary': service_summary(c) if c.customer_type in INDIVIDUAL_TYPES else '',
+        })
+    return JsonResponse({'results': results})

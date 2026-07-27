@@ -42,38 +42,85 @@
             {% endif %}
 
             <div id="customer-block"
-                 data-initial-mode="{% if form.new_customer_name.value or form.new_customer_name.errors %}new{% else %}existing{% endif %}">
+                 data-search-url="{% url 'customer_search_api' %}"
+                 data-initial-mode="{% if form.new_customer_name.value or form.new_customer_name.errors or duplicate_suggestions %}individual{% else %}fleet{% endif %}">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Customer</label>
+
+                {# The real, validated field. Hidden — the picker below drives it. #}
+                <div class="hidden">{{ form.customer }}</div>
+                {% if form.customer.errors %}<p class="text-sm text-red-600 mb-2">{{ form.customer.errors.0 }}</p>{% endif %}
+
                 <div class="flex gap-2 mb-3" id="cust-mode-toggle">
-                    <button type="button" data-mode="existing"
+                    <button type="button" data-mode="fleet"
                             class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
-                        Pick existing
+                        <i class="fas fa-truck mr-1.5"></i>Fleet
                     </button>
-                    <button type="button" data-mode="new"
+                    <button type="button" data-mode="individual"
                             class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
-                        + New individual
+                        <i class="fas fa-user mr-1.5"></i>Individual
                     </button>
                 </div>
 
-                <div id="cust-existing">
-                    {{ form.customer }}
-                    {% if form.customer.errors %}<p class="text-sm text-red-600 mt-1">{{ form.customer.errors.0 }}</p>{% endif %}
-                </div>
-
-                <div id="cust-new" class="space-y-3">
-                    <div>
-                        {{ form.new_customer_name }}
-                        {% if form.new_customer_name.errors %}<p class="text-sm text-red-600 mt-1">{{ form.new_customer_name.errors.0 }}</p>{% endif %}
-                    </div>
-                    <div>{{ form.new_customer_phone }}</div>
-                    <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-                        <input type="checkbox" name="new_customer_is_walkin" {% if form.new_customer_is_walkin.value %}checked{% endif %}
-                               class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
-                        One-time walk-in
-                    </label>
-                    <p class="text-xs text-gray-400">Adds an individual customer to your shop — no separate step.</p>
-                    <p class="text-xs text-gray-400">Adding a fleet business (billing, portal invite)?
+                <!-- Fleet tab: plain dropdown of fleet accounts only -->
+                <div id="cust-fleet">
+                    <select id="fleet-select"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition bg-white"></select>
+                    <p class="text-xs text-gray-400 mt-2">Adding a fleet business (billing, portal invite)?
                         <a href="{% url 'create_customer' %}" class="text-green-600 hover:text-green-700">Use the full customer page</a>.</p>
+                </div>
+
+                <!-- Individual tab: search previous individuals, or add a new one -->
+                <div id="cust-individual" class="space-y-3">
+                    <div id="individual-picked" class="hidden items-center justify-between gap-2 px-4 py-3 bg-teal-50 border border-teal-200 rounded-lg">
+                        <div class="min-w-0">
+                            <span class="text-sm font-medium text-teal-900" id="individual-picked-name"></span>
+                            <span class="text-xs text-teal-700 block" id="individual-picked-summary"></span>
+                        </div>
+                        <button type="button" id="individual-clear" class="text-sm text-teal-700 hover:text-teal-900 flex-shrink-0">
+                            <i class="fas fa-times"></i> Change
+                        </button>
+                    </div>
+
+                    <div id="individual-search-wrap">
+                        <input type="text" id="individual-search" autocomplete="off"
+                               placeholder="Search by name or phone…"
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition">
+                        <div id="individual-results" class="mt-2 border border-gray-200 rounded-lg divide-y divide-gray-100 hidden"></div>
+                        <button type="button" id="show-new-individual"
+                                class="mt-2 w-full px-4 py-2.5 rounded-lg border border-dashed border-gray-300 text-sm font-medium text-gray-600 hover:border-green-400 hover:text-green-700 transition-colors">
+                            <i class="fas fa-plus mr-1.5"></i>Add new individual
+                        </button>
+                    </div>
+
+                    <div id="cust-new" class="space-y-3 hidden">
+                        {% if duplicate_suggestions %}
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2" id="duplicate-suggestion-card">
+                            <p class="text-sm font-medium text-amber-800">
+                                Looks like {{ form.new_customer_name.value }} is already a customer:
+                            </p>
+                            {% for s in duplicate_suggestions %}
+                            <button type="button" data-id="{{ s.id }}" data-name="{{ s.name }}" data-summary="{{ s.summary }}"
+                                    class="use-existing-individual w-full text-left px-3 py-2 bg-white border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
+                                <span class="text-sm font-medium text-gray-900">{{ s.name }}</span>
+                                {% if s.phone %}<span class="text-xs text-gray-500 ml-1">{{ s.phone }}</span>{% endif %}
+                                {% if s.summary %}<span class="text-xs text-gray-500 block">{{ s.summary }}</span>{% endif %}
+                            </button>
+                            {% endfor %}
+                            <button type="button" id="confirm-different-person"
+                                    class="w-full px-3 py-2 text-sm font-medium text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
+                                No, this is a different {{ form.new_customer_name.value|default:"person" }}
+                            </button>
+                        </div>
+                        {% endif %}
+                        {{ form.confirmed_new_customer }}
+                        <div>
+                            {{ form.new_customer_name }}
+                            {% if form.new_customer_name.errors %}<p class="text-sm text-red-600 mt-1">{{ form.new_customer_name.errors.0 }}</p>{% endif %}
+                        </div>
+                        <div>{{ form.new_customer_phone }}</div>
+                        <div>{{ form.new_customer_email }}</div>
+                        <p class="text-xs text-gray-400">Adds an individual customer to your shop — no separate step. Email lets you send them invoices.</p>
+                    </div>
                 </div>
             </div>
 
@@ -339,28 +386,146 @@ document.addEventListener('DOMContentLoaded', function() {
     syncDetailSections();
     window.QuickJobForm.syncDetailSections = syncDetailSections;
 
-    // Customer mode toggle: "Pick existing" select vs "+ New individual" fields.
+    // Customer picker: [Fleet] [Individual] tabs driving ONE hidden validated
+    // select. Fleet = filtered dropdown; Individual = search previous people
+    // (with job history) or add a new one.
     const custBlock = document.getElementById('customer-block');
     if (custBlock) {
-        const existingBox = document.getElementById('cust-existing');
+        const realSelect = custBlock.querySelector('.hidden select');
+        const fleetBox = document.getElementById('cust-fleet');
+        const fleetSelect = document.getElementById('fleet-select');
+        const indBox = document.getElementById('cust-individual');
         const newBox = document.getElementById('cust-new');
-        const select = existingBox.querySelector('select');
-        const newInputs = newBox.querySelectorAll('input');
+        const searchWrap = document.getElementById('individual-search-wrap');
+        const searchInput = document.getElementById('individual-search');
+        const resultsBox = document.getElementById('individual-results');
+        const pickedBox = document.getElementById('individual-picked');
+        const pickedName = document.getElementById('individual-picked-name');
+        const pickedSummary = document.getElementById('individual-picked-summary');
         const btns = custBlock.querySelectorAll('.cust-mode-btn');
+        const searchUrl = custBlock.dataset.searchUrl;
+
+        // Build the fleet dropdown from the real select's fleet options
+        fleetSelect.appendChild(new Option('— Select fleet account —', ''));
+        Array.from(realSelect.options).forEach(opt => {
+            if (opt.dataset.type === 'fleet') {
+                fleetSelect.appendChild(new Option(opt.text, opt.value));
+            }
+        });
+
+        function clearNewInputs() {
+            newBox.querySelectorAll('input').forEach(i => {
+                if (i.name !== 'confirmed_new_customer') i.value = '';
+            });
+            const card = document.getElementById('duplicate-suggestion-card');
+            if (card) card.remove();
+        }
+
+        function pickIndividual(id, name, summary) {
+            realSelect.value = id;
+            pickedName.textContent = name;
+            pickedSummary.textContent = summary || '';
+            pickedBox.classList.remove('hidden');
+            pickedBox.classList.add('flex');
+            searchWrap.classList.add('hidden');
+            newBox.classList.add('hidden');
+            clearNewInputs();
+            syncTaxExempt();
+        }
+
+        function clearIndividual() {
+            realSelect.value = '';
+            pickedBox.classList.add('hidden');
+            pickedBox.classList.remove('flex');
+            searchWrap.classList.remove('hidden');
+            searchInput.value = '';
+            resultsBox.classList.add('hidden');
+            syncTaxExempt();
+        }
 
         function setMode(mode) {
-            existingBox.style.display = (mode === 'existing') ? '' : 'none';
-            newBox.style.display = (mode === 'new') ? '' : 'none';
+            fleetBox.style.display = (mode === 'fleet') ? '' : 'none';
+            indBox.style.display = (mode === 'individual') ? '' : 'none';
             btns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-            // Clear the inactive side so only one customer source is submitted.
-            if (mode === 'existing') {
-                newInputs.forEach(i => { i.type === 'checkbox' ? i.checked = false : i.value = ''; });
-            } else if (select) {
-                select.value = '';
+            if (mode === 'fleet') {
+                // Leaving individual mode: clear its state
+                clearNewInputs();
+                newBox.classList.add('hidden');
+                clearIndividual();
+                realSelect.value = fleetSelect.value || '';
+            } else {
+                fleetSelect.value = '';
+                if (pickedBox.classList.contains('hidden')) realSelect.value = '';
             }
+            syncTaxExempt();
         }
         btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
-        setMode(custBlock.dataset.initialMode || 'existing');
+
+        fleetSelect.addEventListener('change', () => {
+            realSelect.value = fleetSelect.value;
+            syncTaxExempt();
+        });
+
+        // Individual search (debounced)
+        let searchTimer = null;
+        function renderResults(items) {
+            resultsBox.innerHTML = '';
+            if (!items.length) {
+                resultsBox.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400">No matching individuals yet — add them below.</div>';
+            }
+            items.forEach(item => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'w-full text-left px-4 py-2.5 hover:bg-teal-50 transition-colors';
+                const phone = item.phone ? ' <span class="text-xs text-gray-400">' + item.phone + '</span>' : '';
+                const summary = item.summary ? '<span class="block text-xs text-gray-500">' + item.summary + '</span>' : '';
+                row.innerHTML = '<span class="text-sm font-medium text-gray-900">' + item.name + '</span>' + phone + summary;
+                row.addEventListener('click', () => pickIndividual(item.id, item.name, item.summary));
+                resultsBox.appendChild(row);
+            });
+            resultsBox.classList.remove('hidden');
+        }
+        function runSearch() {
+            fetch(searchUrl + '?type=individual&q=' + encodeURIComponent(searchInput.value.trim()),
+                  {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+                .then(r => r.json())
+                .then(data => renderResults(data.results || []))
+                .catch(() => {});
+        }
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(runSearch, 250);
+        });
+        searchInput.addEventListener('focus', () => {
+            if (resultsBox.classList.contains('hidden')) runSearch();
+        });
+
+        document.getElementById('show-new-individual').addEventListener('click', () => {
+            newBox.classList.remove('hidden');
+            realSelect.value = '';
+            syncTaxExempt();
+            resultsBox.classList.add('hidden');
+            const nameInput = newBox.querySelector('input[name="new_customer_name"]');
+            if (nameInput && !nameInput.value) nameInput.value = searchInput.value.trim();
+            if (nameInput) nameInput.focus();
+        });
+        document.getElementById('individual-clear').addEventListener('click', clearIndividual);
+
+        // Duplicate-suggestion card (server re-render): pick the existing
+        // person, or confirm this really is a different one and resubmit.
+        document.querySelectorAll('.use-existing-individual').forEach(btn => {
+            btn.addEventListener('click', () => {
+                pickIndividual(btn.dataset.id, btn.dataset.name, btn.dataset.summary);
+            });
+        });
+        const confirmBtn = document.getElementById('confirm-different-person');
+        if (confirmBtn) {
+            confirmBtn.addEventListener('click', () => {
+                const hidden = document.querySelector('input[name="confirmed_new_customer"]');
+                if (hidden) hidden.value = '1';
+                document.getElementById('quickJobForm').requestSubmit();
+            });
+        }
 
         // Carry customer + unit into the batch flow. Switching forms should
         // never mean re-typing what you already entered.
@@ -369,7 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const base = multiBreakLink.getAttribute('href');
             multiBreakLink.addEventListener('click', function() {
                 const params = new URLSearchParams();
-                if (select && select.value) params.set('customer', select.value);
+                if (realSelect.value) params.set('customer', realSelect.value);
                 const unit = document.querySelector('[name="unit_number"]');
                 if (unit && unit.value.trim()) params.set('unit', unit.value.trim());
                 const qs = params.toString();
@@ -377,33 +542,56 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
 
-        // After a draft restore, pick the mode that actually holds data. setMode
-        // clears the opposite side, so this also guarantees only one customer
-        // source gets submitted.
-        window.QuickJobForm.syncCustomerMode = function() {
+        // Initial state: server hint, then refine from actual data (a picked
+        // customer's type, a draft-restored new-customer name).
+        function syncFromState() {
             const nameInput = newBox.querySelector('input[name="new_customer_name"]');
             const hasNewCustomer = nameInput && nameInput.value.trim() !== '';
-            setMode(hasNewCustomer ? 'new' : 'existing');
-        };
-
-        // Tax-exempt customers never get tax: uncheck + lock the "Charge
-        // sales tax" box when the picked option carries data-tax-exempt.
-        const chargeTax = document.getElementById('id_charge_tax');
-        if (chargeTax && select) {
-            const exemptNote = document.getElementById('tax-exempt-note');
-            let preExemptChecked = chargeTax.checked;
-            function syncTaxExempt() {
-                const opt = select.options[select.selectedIndex];
-                const exempt = !!(opt && opt.dataset.taxExempt);
-                if (exempt && !chargeTax.disabled) preExemptChecked = chargeTax.checked;
-                chargeTax.disabled = exempt;
-                chargeTax.checked = exempt ? false : preExemptChecked;
-                if (exemptNote) exemptNote.classList.toggle('hidden', !exempt);
+            if (hasNewCustomer) {
+                setMode('individual');
+                newBox.classList.remove('hidden');
+                return;
             }
-            select.addEventListener('change', syncTaxExempt);
-            chargeTax.addEventListener('change', () => { if (!chargeTax.disabled) preExemptChecked = chargeTax.checked; });
+            const opt = realSelect.value
+                ? realSelect.options[realSelect.selectedIndex] : null;
+            if (opt && opt.dataset.type === 'individual') {
+                setMode('individual');
+                pickIndividual(opt.value, opt.text, '');
+            } else {
+                setMode(custBlock.dataset.initialMode === 'individual' && !opt ? 'individual' : 'fleet');
+                if (opt) fleetSelect.value = opt.value;
+                realSelect.value = opt ? opt.value : '';
+            }
             syncTaxExempt();
         }
+
+        // Tax-exempt customers never get tax: uncheck + lock the "Charge
+        // sales tax" box when the picked customer carries data-tax-exempt.
+        // The picker sets realSelect.value programmatically (no change event),
+        // so every mutation path below calls syncTaxExempt() explicitly.
+        const chargeTax = document.getElementById('id_charge_tax');
+        const exemptNote = document.getElementById('tax-exempt-note');
+        let preExemptChecked = chargeTax ? chargeTax.checked : true;
+        function syncTaxExempt() {
+            if (!chargeTax) return;
+            const opt = realSelect.value
+                ? realSelect.options[realSelect.selectedIndex] : null;
+            const exempt = !!(opt && opt.dataset.taxExempt);
+            if (exempt && !chargeTax.disabled) preExemptChecked = chargeTax.checked;
+            chargeTax.disabled = exempt;
+            chargeTax.checked = exempt ? false : preExemptChecked;
+            if (exemptNote) exemptNote.classList.toggle('hidden', !exempt);
+        }
+        if (chargeTax) {
+            chargeTax.addEventListener('change', () => {
+                if (!chargeTax.disabled) preExemptChecked = chargeTax.checked;
+            });
+        }
+
+        // setMode('fleet') clears the new-customer inputs — preserve a
+        // server-re-rendered duplicate-suggestion state by syncing first.
+        syncFromState();
+        window.QuickJobForm.syncCustomerMode = syncFromState;
     }
 });
 </script>
@@ -517,7 +705,7 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         if (!form.reportValidity()) return;
 
-        const select = document.querySelector('#cust-existing select');
+        const select = document.querySelector('#customer-block .hidden select');
         const selectedOpt = select && select.selectedIndex >= 0
             ? select.options[select.selectedIndex] : null;
         const usingExisting = select && select.value;

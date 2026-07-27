@@ -139,7 +139,7 @@
                             </div>
                         </div>
 
-                        <!-- Walk-in / Individual toggle -->
+                        <!-- New-individual toggle -->
                         {% if not repair %}
                         <div class="field-group" id="walkin-toggle-group" style="margin-bottom: 1rem;">
                             <label class="icon-field-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
@@ -150,12 +150,12 @@
                                        style="width: 18px; height: 18px; cursor: pointer;">
                                 <span>
                                     <i class="fas fa-user"></i>
-                                    Walk-in / Individual (no account)
+                                    New individual (not in the list)
                                 </span>
                             </label>
                             <p class="icon-field-helper">
                                 <i class="fas fa-info-circle"></i>
-                                Toggle on to create a repair for an individual car without a fleet customer account.
+                                Adds the person as an individual customer and creates the repair in one step.
                             </p>
                         </div>
                         {% endif %}
@@ -197,15 +197,29 @@
                                        class="icon-field-input"
                                        style="margin-top: 8px;"
                                        placeholder="Phone (optional)">
+                                <input type="email"
+                                       name="walkin_email"
+                                       id="id_walkin_email"
+                                       value="{{ form.walkin_email.value|default:'' }}"
+                                       class="icon-field-input"
+                                       style="margin-top: 8px;"
+                                       placeholder="Email (optional — for invoices)">
                                 <p class="icon-field-helper">
                                     <i class="fas fa-info-circle"></i>
-                                    Name and optional phone for this walk-in customer
+                                    Name, optional phone and email for this individual
                                 </p>
                                 {% if form.walkin_name.errors %}
                                     <div class="field-error">
                                         <i class="fas fa-exclamation-circle"></i>
                                         {{ form.walkin_name.errors.0 }}
                                     </div>
+                                    <label class="icon-field-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 8px;">
+                                        <input type="checkbox"
+                                               name="confirmed_new_customer"
+                                               {% if form.confirmed_new_customer.value %}checked{% endif %}
+                                               style="width: 16px; height: 16px; cursor: pointer;">
+                                        <span style="font-size: 0.875rem;">This is a different person — add a new record</span>
+                                    </label>
                                 {% endif %}
                             </div>
 

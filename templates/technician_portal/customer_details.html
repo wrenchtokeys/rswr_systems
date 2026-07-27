@@ -267,8 +267,9 @@
             {% endif %}
         </div>
 
-        <!-- Right Column: Units -->
+        <!-- Right Column: Units (fleet) / Job history (individuals) -->
         <div class="lg:col-span-2">
+            {% if customer.customer_type == 'FLEET' %}
             <div class="bg-white rounded-xl shadow-sm border border-gray-200">
                 <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
@@ -319,6 +320,51 @@
                 </div>
                 {% endif %}
             </div>
+            {% else %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">Job History</h2>
+                    <p class="text-sm text-gray-500">{{ jobs|length }} job{{ jobs|length|pluralize }}</p>
+                </div>
+
+                {% if jobs %}
+                <div class="divide-y divide-gray-100">
+                    {% for job in jobs %}
+                    <a href="{% if job.kind == 'repair' %}{% url 'repair_detail' job.obj.id %}{% else %}{% url 'replacement_detail' job.obj.id %}{% endif %}"
+                       class="block px-6 py-4 hover:bg-gray-50 transition-colors">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-10 h-10 {% if job.kind == 'repair' %}bg-teal-100{% else %}bg-indigo-100{% endif %} rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <i class="fas {% if job.kind == 'repair' %}fa-tools text-teal-600{% else %}fa-car text-indigo-600{% endif %} text-sm"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <span class="text-sm font-medium text-gray-900">
+                                        {{ job.kind|title }}{% if job.obj.vehicle_make %} — {{ job.obj.vehicle_year|default:'' }} {{ job.obj.vehicle_make }} {{ job.obj.vehicle_model }}{% elif job.obj.unit_number %} — {{ job.obj.unit_number }}{% endif %}
+                                    </span>
+                                    <span class="text-xs text-gray-500 block">
+                                        {{ job.obj.service_date|date:"M j, Y" }} · {{ job.obj.get_queue_status_display }}{% if job.obj.cost %} · ${{ job.obj.cost }}{% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-400 text-sm flex-shrink-0"></i>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="p-12 text-center">
+                    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-tools text-gray-400 text-2xl"></i>
+                    </div>
+                    <h3 class="text-sm font-medium text-gray-900 mb-1">No jobs yet</h3>
+                    <p class="text-sm text-gray-500 mb-4">No work recorded for this customer yet</p>
+                    <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                        <i class="fas fa-plus mr-2"></i>New Job
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
