@@ -175,12 +175,14 @@ def _send_overdue_reminder(invoice, config, days_overdue):
     # raise NameError, silently aborting the reminder. (CODE-179)
     pay_url = None
     pay_link_text = ''
+    open_pixel_url = None
     try:
         from rs_systems.views import generate_payment_token
         base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         token = generate_payment_token(invoice.id)
         pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
         pay_link_text = f"\nPay online: {pay_url}\n"
+        open_pixel_url = f"{base_url}/invoice/{invoice.id}/{token}/open.gif"
     except Exception:
         pass
 
@@ -228,6 +230,7 @@ Thank you,
             button_url=pay_url if pay_url else None,
             tenant=invoice.tenant,
             plain_text=body,
+            tracking_pixel_url=open_pixel_url,
         )
         
         # Log that we sent a reminder
@@ -512,9 +515,8 @@ def _create_batch_invoice(tenant, customer, config):
             if config.batch_invoice_auto_send:
                 email_sent = _send_batch_invoice_email(invoice, config)
                 if email_sent:
-                    invoice.status = 'SENT'
-                    invoice.sent_at = timezone.now()
-                    invoice.save(update_fields=['status', 'sent_at'])
+                    from apps.billing.services.invoice_send_service import InvoiceSendService
+                    invoice.record_email_sent(InvoiceSendService.resolve_recipient(invoice.customer))
                 else:
                     # Email failed — leave as DRAFT so the shop owner can see it
                     # and retry manually. Log at WARNING level for visibility.

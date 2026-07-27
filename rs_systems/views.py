@@ -1,3 +1,5 @@
+import base64
+
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import views as auth_views
@@ -486,15 +488,8 @@ def public_pay_invoice(request, invoice_id, token):
     Public payment page — no login required.
     Token is HMAC-derived from invoice ID + SECRET_KEY, so URLs are unforgeable.
     """
-    import hmac as hmac_mod
-    expected = generate_payment_token(invoice_id)
-    if not hmac_mod.compare_digest(token, expected):
-        return render(request, '404.html', status=404)
-
-    from apps.billing.models import Invoice
-    try:
-        invoice = Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
-    except Invoice.DoesNotExist:
+    invoice = _resolve_public_invoice(invoice_id, token)
+    if invoice is None:
         return render(request, '404.html', status=404)
 
     if invoice.status == 'PAID':
@@ -556,16 +551,26 @@ def public_pay_invoice(request, invoice_id, token):
 
 
 def _resolve_public_invoice(invoice_id, token):
-    """Token-check + fetch for public invoice pages; None if either fails."""
+    """Token-check + fetch for public invoice pages; None if either fails.
+
+    A successful resolve also counts as the customer viewing the invoice —
+    the token only exists in the emailed links, so any open of the view
+    page, PDF, or pay page means the recipient clicked through.
+    """
     import hmac as hmac_mod
     expected = generate_payment_token(invoice_id)
     if not hmac_mod.compare_digest(token, expected):
         return None
     from apps.billing.models import Invoice
     try:
-        return Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
+        invoice = Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
     except Invoice.DoesNotExist:
         return None
+    try:
+        invoice.mark_viewed()
+    except Exception as e:
+        logger.warning(f"Could not record invoice view for {invoice_id}: {e}")
+    return invoice
 
 
 def public_view_invoice(request, invoice_id, token):
@@ -611,6 +616,30 @@ def public_invoice_pdf(request, invoice_id, token):
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="Invoice_{invoice.invoice_number}.pdf"'
+    return response
+
+
+# 1x1 transparent GIF, the classic email open-tracking pixel.
+_TRACKING_PIXEL = base64.b64decode(
+    'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+)
+
+
+def public_invoice_open_pixel(request, invoice_id, token):
+    """Email open-tracking pixel embedded in invoice emails.
+
+    Loading this image means the recipient's mail client rendered the email,
+    so it counts as a view (same fields as the public pages). Always returns
+    the pixel — even on a bad token — so broken-image icons never show up in
+    an email; an invalid token just records nothing.
+
+    Caveat: image-blocking clients never fire this (missed opens), and
+    privacy prefetchers like Apple Mail Privacy Protection fire it without a
+    human open (phantom opens). It's a good signal, not a guarantee.
+    """
+    _resolve_public_invoice(invoice_id, token)
+    response = HttpResponse(_TRACKING_PIXEL, content_type='image/gif')
+    response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     return response
 
 

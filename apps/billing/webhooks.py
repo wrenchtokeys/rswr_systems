@@ -85,22 +85,44 @@ def _confirm_subscription(url):
 
 
 def _handle_ses_event(message):
-    """Route a decoded SES notification to bounce/complaint handling."""
+    """Route a decoded SES notification to bounce/complaint handling.
+
+    Every event type is logged with its recipients — this log is the
+    per-message delivery audit trail ("did Penske's server accept it?"),
+    which SES otherwise provides nowhere queryable.
+    """
     event_type = message.get('notificationType') or message.get('eventType') or ''
     if event_type == 'Bounce':
         bounce = message.get('bounce') or {}
+        recipients = [r.get('emailAddress', '')
+                      for r in bounce.get('bouncedRecipients', [])]
+        logger.warning(
+            f"SES {bounce.get('bounceType', '?')} bounce for "
+            f"{', '.join(filter(None, recipients)) or 'unknown recipient'} "
+            f"(subType={bounce.get('bounceSubType', '?')})"
+        )
         # Transient bounces (mailbox full, greylisting) usually self-resolve;
         # only hard/permanent bounces mean "this address doesn't work".
         if bounce.get('bounceType') == 'Transient':
             return
-        recipients = [r.get('emailAddress', '')
-                      for r in bounce.get('bouncedRecipients', [])]
         reason = 'bounced (could not be delivered)'
     elif event_type == 'Complaint':
         complaint = message.get('complaint') or {}
         recipients = [r.get('emailAddress', '')
                       for r in complaint.get('complainedRecipients', [])]
+        logger.warning(
+            f"SES complaint (marked as spam) from "
+            f"{', '.join(filter(None, recipients)) or 'unknown recipient'}"
+        )
         reason = 'was marked as spam by the recipient'
+    elif event_type == 'Delivery':
+        delivery = message.get('delivery') or {}
+        recipients = delivery.get('recipients') or []
+        logger.info(
+            f"SES delivery confirmed to {', '.join(recipients)} "
+            f"(mta={delivery.get('reportingMTA', '?')})"
+        )
+        return
     else:
         return
 
@@ -122,6 +144,16 @@ def _alert_shops_for_recipient(email, reason):
         .exclude(status='CANCELLED')
         .select_related('tenant', 'customer')
     )
+
+    if not invoices:
+        # Surfaced in logs so a bounce that can't be matched (send path
+        # predating last_sent_to, or outside the match window) is still
+        # visible when debugging "customer says they never got it".
+        logger.warning(
+            f"SES event for {email} ({reason}) matched no recently-sent "
+            f"invoice — no shop alerted"
+        )
+        return
 
     for invoice in invoices:
         try:

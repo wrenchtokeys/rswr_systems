@@ -304,10 +304,7 @@ def create_invoice(request, customer_id):
                 invoice=invoice
             )
             if success:
-                import django.utils.timezone as _tz
-                invoice.status = 'SENT'
-                invoice.sent_at = _tz.now()
-                invoice.save(update_fields=['status', 'sent_at'])
+                invoice.record_email_sent(customer.email)
             else:
                 import logging as _logging
                 _logging.getLogger(__name__).warning(
@@ -402,11 +399,8 @@ def send_invoice_email(request, invoice_id):
             )
             return JsonResponse({'error': f'Email failed: {msg}'}, status=500)
 
-        # Update invoice status to SENT if it was DRAFT (only on confirmed delivery)
-        if invoice.status == 'DRAFT':
-            invoice.status = 'SENT'
-            invoice.sent_at = timezone.now()
-            invoice.save(update_fields=['status', 'sent_at'])
+        # Promote DRAFT → SENT and stamp delivery tracking (only on confirmed delivery)
+        invoice.record_email_sent(recipient_email)
 
         all_recipients = [recipient_email] + (cc_emails or [])
         return JsonResponse({'success': True, 'sent_to': ', '.join(all_recipients)})
@@ -473,10 +467,7 @@ def send_invoice_email_batch(request):
                 # Without this, batch-sent invoices stay DRAFT: they appear in
                 # "unsent" filters, automated reminders don't trigger, and the
                 # sent_at timestamp is never recorded. (CODE-182)
-                if invoice.status == 'DRAFT':
-                    invoice.status = 'SENT'
-                    invoice.sent_at = timezone.now()
-                    invoice.save(update_fields=['status', 'sent_at'])
+                invoice.record_email_sent(invoice.customer.email)
                 results.append({'id': inv_id, 'success': True, 'sent_to': invoice.customer.email})
             else:
                 results.append({'id': inv_id, 'success': False, 'error': sent_msg})

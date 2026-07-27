@@ -3123,8 +3123,7 @@ def owner_email_invoice(request, invoice_id):
         )
 
         if success:
-            invoice.last_sent_to = recipient
-            invoice.save(update_fields=['last_sent_to'])
+            invoice.record_email_sent(recipient)
             messages.success(request, f'Invoice emailed to {recipient}.')
         else:
             messages.error(request, f'Failed to email invoice: {msg}')
