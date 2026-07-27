@@ -512,9 +512,8 @@ def _create_batch_invoice(tenant, customer, config):
             if config.batch_invoice_auto_send:
                 email_sent = _send_batch_invoice_email(invoice, config)
                 if email_sent:
-                    invoice.status = 'SENT'
-                    invoice.sent_at = timezone.now()
-                    invoice.save(update_fields=['status', 'sent_at'])
+                    from apps.billing.services.invoice_send_service import InvoiceSendService
+                    invoice.record_email_sent(InvoiceSendService.resolve_recipient(invoice.customer))
                 else:
                     # Email failed — leave as DRAFT so the shop owner can see it
                     # and retry manually. Log at WARNING level for visibility.

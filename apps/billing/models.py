@@ -428,6 +428,17 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         blank=True, default='',
         help_text="Recipient email of the most recent invoice send",
     )
+    last_sent_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the most recent invoice email went out (sent_at keeps the first send)",
+    )
+
+    # View tracking — set when anyone opens the invoice's public link
+    # (view page, PDF, or pay page) from the email. Not an email-open pixel:
+    # a view means the link was actually clicked.
+    first_viewed_at = models.DateTimeField(null=True, blank=True)
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    view_count = models.PositiveIntegerField(default=0)
 
     # Timestamps
     sent_at = models.DateTimeField(null=True, blank=True)
@@ -569,6 +580,37 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
             self.status = 'SENT'
             self.sent_at = timezone.now()
             self.save()
+
+    def record_email_sent(self, recipient=''):
+        """Stamp delivery tracking after a confirmed email send.
+
+        Promotes DRAFT → SENT, keeps sent_at as the first send, and updates
+        last_sent_at / last_sent_to on every send (including resends).
+        """
+        now = timezone.now()
+        if self.status == 'DRAFT':
+            self.status = 'SENT'
+        if not self.sent_at:
+            self.sent_at = now
+        self.last_sent_at = now
+        if recipient:
+            self.last_sent_to = recipient
+        self.save(update_fields=['status', 'sent_at', 'last_sent_at', 'last_sent_to'])
+
+    def mark_viewed(self):
+        """Record that the customer opened this invoice's public link.
+
+        Queryset update (not save()) so concurrent opens can't clobber each
+        other and updated_at / other in-memory edits stay untouched.
+        """
+        from django.db.models import F
+        from django.db.models.functions import Coalesce
+        now = timezone.now()
+        type(self).all_objects.filter(pk=self.pk).update(
+            first_viewed_at=Coalesce(F('first_viewed_at'), models.Value(now)),
+            last_viewed_at=now,
+            view_count=F('view_count') + 1,
+        )
     
     def cancel(self, reason=None):
         """Cancel this invoice."""

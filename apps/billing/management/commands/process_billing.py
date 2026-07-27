@@ -184,10 +184,7 @@ class Command(BaseCommand):
                                     invoice=invoice,
                                 )
                                 if success:
-                                    from django.utils import timezone as _tz
-                                    invoice.status = 'SENT'
-                                    invoice.sent_at = _tz.now()
-                                    invoice.save(update_fields=['status', 'sent_at'])
+                                    invoice.record_email_sent(pref.customer.email)
                                     emailed = True
                                     email_note = ' ✉️ emailed'
                                 else:

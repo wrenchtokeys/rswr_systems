@@ -486,15 +486,8 @@ def public_pay_invoice(request, invoice_id, token):
     Public payment page — no login required.
     Token is HMAC-derived from invoice ID + SECRET_KEY, so URLs are unforgeable.
     """
-    import hmac as hmac_mod
-    expected = generate_payment_token(invoice_id)
-    if not hmac_mod.compare_digest(token, expected):
-        return render(request, '404.html', status=404)
-
-    from apps.billing.models import Invoice
-    try:
-        invoice = Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
-    except Invoice.DoesNotExist:
+    invoice = _resolve_public_invoice(invoice_id, token)
+    if invoice is None:
         return render(request, '404.html', status=404)
 
     if invoice.status == 'PAID':
@@ -556,16 +549,26 @@ def public_pay_invoice(request, invoice_id, token):
 
 
 def _resolve_public_invoice(invoice_id, token):
-    """Token-check + fetch for public invoice pages; None if either fails."""
+    """Token-check + fetch for public invoice pages; None if either fails.
+
+    A successful resolve also counts as the customer viewing the invoice —
+    the token only exists in the emailed links, so any open of the view
+    page, PDF, or pay page means the recipient clicked through.
+    """
     import hmac as hmac_mod
     expected = generate_payment_token(invoice_id)
     if not hmac_mod.compare_digest(token, expected):
         return None
     from apps.billing.models import Invoice
     try:
-        return Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
+        invoice = Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
     except Invoice.DoesNotExist:
         return None
+    try:
+        invoice.mark_viewed()
+    except Exception as e:
+        logger.warning(f"Could not record invoice view for {invoice_id}: {e}")
+    return invoice
 
 
 def public_view_invoice(request, invoice_id, token):

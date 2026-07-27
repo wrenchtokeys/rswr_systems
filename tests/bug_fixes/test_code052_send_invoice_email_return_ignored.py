@@ -428,11 +428,15 @@ class SendInvoiceEmailBatchStatusUpdateTestCase(TestCase):
     )
     def test_already_sent_invoice_not_re_stamped(self, mock_send):
         """
-        CODE-182: Resending a SENT invoice must not overwrite sent_at —
-        only DRAFT invoices get promoted.
+        CODE-182: Resending a SENT invoice must not overwrite sent_at (the
+        first-send timestamp) — only last_sent_at moves. Only DRAFT invoices
+        get promoted.
         """
-        import datetime
-        original_sent_at = self.invoice_sent.sent_at  # None initially (no sent_at set)
+        from django.utils import timezone as tz
+        original_sent_at = tz.now() - tz.timedelta(days=5)
+        type(self.invoice_sent).all_objects.filter(pk=self.invoice_sent.pk).update(
+            sent_at=original_sent_at
+        )
         response = self._batch_request([self.invoice_sent.id])
 
         self.assertEqual(response.status_code, 200)
@@ -444,11 +448,17 @@ class SendInvoiceEmailBatchStatusUpdateTestCase(TestCase):
             self.invoice_sent.status, 'SENT',
             "SENT invoice should remain SENT after resend"
         )
-        # sent_at should not have changed (status was not DRAFT)
+        # sent_at (first send) should not have changed on a resend
         self.assertEqual(
             self.invoice_sent.sent_at, original_sent_at,
             "sent_at of a SENT invoice should not be overwritten by a resend"
         )
+        # ...but the resend itself is still recorded
+        self.assertIsNotNone(
+            self.invoice_sent.last_sent_at,
+            "last_sent_at should record the resend"
+        )
+        self.assertGreater(self.invoice_sent.last_sent_at, original_sent_at)
 
     @patch(
         'apps.billing.services.invoice_email_service.InvoiceEmailService.send_invoice_email',

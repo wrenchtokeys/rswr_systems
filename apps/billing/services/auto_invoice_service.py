@@ -183,10 +183,9 @@ class AutoInvoiceService:
 
                     # Mark SENT only after confirmed delivery (AGENTS.md gotcha)
                     if email_result:
-                        from django.utils import timezone as _tz
-                        invoice_record.status = 'SENT'
-                        invoice_record.sent_at = _tz.now()
-                        invoice_record.save(update_fields=['status', 'sent_at'])
+                        invoice_record.record_email_sent(
+                            prefs.billing_email or service.customer.email
+                        )
                         logger.info(f"Invoice #{invoice_record.id} marked SENT after email delivery confirmed")
             except Exception as e:
                 logger.warning(f"Could not check/send email for invoice: {e}")
