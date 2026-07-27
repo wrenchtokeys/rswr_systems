@@ -351,35 +351,44 @@ def job_create(request):
             # added inline (no "create the customer first" detour).
             customer = data.get('customer')
             if customer is None:
-                from core.models import Customer
-                from django.db import IntegrityError, transaction
+                from apps.technician_portal.services.customer_service import (
+                    create_individual, find_individual_matches, service_summary,
+                )
                 can_add, add_msg = UsageService(tenant).can_add_customer()
                 if not can_add:
                     messages.warning(request, add_msg)
                     return redirect('job_list')
-                ctype = 'WALK_IN' if data.get('new_customer_is_walkin') else 'RETAIL'
-                try:
-                    # Savepoint so a duplicate-name IntegrityError doesn't poison
-                    # the surrounding request transaction (we re-render below).
-                    with transaction.atomic():
-                        customer = Customer.objects.create(
-                            tenant=tenant,
-                            name=data['new_customer_name'].strip(),
-                            phone=(data.get('new_customer_phone') or '').strip() or None,
-                            customer_type=ctype,
-                        )
-                except IntegrityError:
-                    form.add_error(
-                        'new_customer_name',
-                        'A customer with that name already exists — pick them from '
-                        'the list, or add a distinguishing detail (e.g. a middle initial).',
+
+                # Duplicate guard: suggest the existing person instead of
+                # erroring or silently creating "John Smith (2)". A confirmed
+                # resubmit ("No, this is a different person") goes through.
+                if not data.get('confirmed_new_customer'):
+                    matches = find_individual_matches(
+                        tenant,
+                        name=data['new_customer_name'],
+                        phone=data.get('new_customer_phone'),
                     )
-                    return render(request, 'technician_portal/job_form.html', {
-                        'form': form,
-                        'allowed_types': allowed_types,
-                        'user_can_invoices': user_can_invoices,
-                        'advanced_has_errors': _advanced_has_errors(form),
-                    })
+                    if matches:
+                        suggestions = [{
+                            'id': m.id,
+                            'name': m.name,
+                            'phone': m.phone or '',
+                            'summary': service_summary(m),
+                        } for m in matches[:3]]
+                        return render(request, 'technician_portal/job_form.html', {
+                            'form': form,
+                            'allowed_types': allowed_types,
+                            'user_can_invoices': user_can_invoices,
+                            'advanced_has_errors': _advanced_has_errors(form),
+                            'duplicate_suggestions': suggestions,
+                        })
+
+                customer = create_individual(
+                    tenant,
+                    name=data['new_customer_name'],
+                    phone=data.get('new_customer_phone'),
+                    email=data.get('new_customer_email'),
+                )
 
             # An explicit pick from "More details" wins; otherwise fall back to
             # the shop's assignment strategy as before.

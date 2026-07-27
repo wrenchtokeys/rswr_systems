@@ -64,34 +64,36 @@ def deny(request, message, repair=None, technician=None, user_is_admin=False):
     return redirect('technician_dashboard')
 
 
-def _create_walkin_customer(tenant, name, phone=''):
-    """
-    Create a WALK_IN Customer record for an individual/walk-in repair.
+def _check_duplicate_individual(form, tenant):
+    """Duplicate-suggest flow for the repair form's individual toggle.
 
-    Customer.name is unique per tenant, so append a numeric suffix if the
-    plain name already exists (two "John Smith" walk-ins are different people).
+    If the new individual's name/phone matches an existing individual and the
+    tech hasn't confirmed "different person", attach a field error suggesting
+    the existing record (with history) — people share names, so we never
+    error-and-block or silently create "John Smith (2)" anymore.
     """
-    from django.db import IntegrityError
-
-    base_name = (name or 'Walk-in Customer').strip()
-    phone_value = (phone or '').strip() or None
-    for suffix in range(0, 50):
-        candidate = base_name if suffix == 0 else f"{base_name} ({suffix + 1})"
-        try:
-            with transaction.atomic():
-                return Customer.objects.create(
-                    tenant=tenant,
-                    name=candidate,
-                    customer_type='WALK_IN',
-                    phone=phone_value,
-                )
-        except IntegrityError:
-            continue
-    # Extremely unlikely fallback — guarantee a unique name with a timestamp.
-    candidate = f"{base_name} ({timezone.now().strftime('%Y%m%d%H%M%S')})"
-    return Customer.objects.create(
-        tenant=tenant, name=candidate, customer_type='WALK_IN', phone=phone_value,
+    from apps.technician_portal.services.customer_service import (
+        find_individual_matches, service_summary,
     )
+    if not form.cleaned_data.get('is_walkin'):
+        return
+    if form.cleaned_data.get('confirmed_new_customer'):
+        return
+    matches = find_individual_matches(
+        tenant,
+        name=form.cleaned_data.get('walkin_name'),
+        phone=form.cleaned_data.get('walkin_phone'),
+    )
+    if matches:
+        m = matches[0]
+        summary = service_summary(m)
+        detail = f" — {summary}" if summary else ""
+        form.add_error(
+            'walkin_name',
+            f'Looks like {m.name} is already a customer{detail}. '
+            f'Pick them from the customer dropdown instead, or check '
+            f'"This is a different person" to add a new record.',
+        )
 
 
 def _invoice_recipient_email(customer):
@@ -299,15 +301,21 @@ def create_repair(request):
 
         form = RepairForm(request.POST, request.FILES, user=request.user, tenant=getattr(request, 'tenant', None))
         if form.is_valid():
-            # Walk-in / individual repair: auto-create a WALK_IN Customer record
+            # Suggest an existing individual before creating a duplicate; adds
+            # a field error (making the form invalid) when a match is found.
+            _check_duplicate_individual(form, getattr(request, 'tenant', None))
+        if form.is_valid():
+            # Individual repair: auto-create an individual Customer record
             # from the provided name/phone so downstream pricing, approval, and
-            # invoicing behave exactly like any other retail/walk-in customer.
+            # invoicing behave exactly like any other individual customer.
             walkin_customer = None
             if form.cleaned_data.get('is_walkin'):
-                walkin_customer = _create_walkin_customer(
+                from apps.technician_portal.services.customer_service import create_individual
+                walkin_customer = create_individual(
                     getattr(request, 'tenant', None),
-                    form.cleaned_data.get('walkin_name'),
-                    form.cleaned_data.get('walkin_phone'),
+                    name=form.cleaned_data.get('walkin_name') or 'Walk-in Customer',
+                    phone=form.cleaned_data.get('walkin_phone'),
+                    email=form.cleaned_data.get('walkin_email'),
                 )
             if user_is_admin:
                 if form.cleaned_data.get('technician'):

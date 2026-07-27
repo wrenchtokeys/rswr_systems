@@ -74,10 +74,20 @@ class TenantIsolationModelTests(TestCase):
         Customer.objects.create(tenant=self.tenant_b, name='Customer A')
         # Should not raise — different tenant
 
-    def test_duplicate_customer_name_same_tenant(self):
-        """Same customer name in same tenant should fail."""
+    def test_duplicate_fleet_name_same_tenant(self):
+        """Same FLEET business name in the same tenant should fail."""
         with self.assertRaises(Exception):
-            Customer.objects.create(tenant=self.tenant_a, name='Customer A')
+            Customer.objects.create(
+                tenant=self.tenant_a, name='Customer A', customer_type='FLEET')
+
+    def test_duplicate_individual_name_same_tenant_is_allowed(self):
+        """People share names — the uniqueness constraint is FLEET-only."""
+        Customer.objects.create(
+            tenant=self.tenant_a, name='John Smith', customer_type='RETAIL')
+        Customer.objects.create(
+            tenant=self.tenant_a, name='John Smith', customer_type='RETAIL')
+        self.assertEqual(
+            Customer.objects.filter(tenant=self.tenant_a, name='John Smith').count(), 2)
 
 
 @override_settings(**TEST_OVERRIDES)

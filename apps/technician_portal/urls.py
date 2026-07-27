@@ -46,6 +46,7 @@ urlpatterns = [
     path('batch/<uuid:batch_id>/complete-all/', views.batch_complete_all, name='batch_complete_all'),
     
     # Customer management
+    path('api/customers/search/', views.customer_search_api, name='customer_search_api'),
     path('customers/', views.customer_list, name='technician_customers'),
     path('customers/create/', views.create_customer, name='create_customer'),
     path('customers/<int:customer_id>/', views.customer_details, name='customer_detail'),

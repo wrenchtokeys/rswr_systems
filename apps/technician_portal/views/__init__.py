@@ -61,6 +61,7 @@ from .customers import (
     create_customer,
     customer_list,
     customer_details,
+    customer_search_api,
     edit_customer,
     delete_customer,
     unit_details,

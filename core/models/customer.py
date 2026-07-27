@@ -136,9 +136,14 @@ class Customer(models.Model):
         verbose_name = 'Customer'
         verbose_name_plural = 'Customers'
         constraints = [
+            # Business names must be unique per shop; PEOPLE share names, so
+            # individuals (RETAIL/WALK_IN) are exempt — duplicate handling for
+            # them is a suggest-the-existing-record flow in customer_service,
+            # not a constraint (kills the old "John Smith (2)" suffix hack).
             models.UniqueConstraint(
                 fields=['tenant', 'name'],
-                name='unique_customer_name_per_tenant',
+                name='unique_fleet_name_per_tenant',
+                condition=models.Q(customer_type='FLEET'),
             ),
             models.UniqueConstraint(
                 fields=['tenant', 'email'],

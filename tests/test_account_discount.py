@@ -84,25 +84,35 @@ class InlineIndividualCreateTests(TestCase):
         self.assertEqual(repl.customer, customer)
         self.assertEqual(repl.cost, Decimal('300.00'))
 
-    def test_walkin_flag_sets_walk_in_type(self):
+    def test_legacy_walkin_flag_is_ignored(self):
+        """The one-time-walk-in checkbox is gone — inline individuals are
+        always RETAIL (WALK_IN survives only on historical rows)."""
         resp = self._post(new_customer_is_walkin='on')
         self.assertEqual(resp.status_code, 302)
         customer = Customer.objects.get(tenant=self.tenant, name='Jane Doe')
-        self.assertEqual(customer.customer_type, 'WALK_IN')
+        self.assertEqual(customer.customer_type, 'RETAIL')
 
     def test_neither_customer_nor_name_is_rejected(self):
         resp = self._post(new_customer_name='')
         self.assertEqual(resp.status_code, 200)  # re-rendered with errors
         self.assertEqual(Replacement.objects.filter(tenant=self.tenant).count(), 0)
 
-    def test_duplicate_name_shows_friendly_error(self):
+    def test_duplicate_name_suggests_existing(self):
         Customer.objects.create(tenant=self.tenant, name='Jane Doe', customer_type='RETAIL')
         resp = self._post()
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'already exists')
+        self.assertContains(resp, 'already a customer')
         # Only the pre-existing customer remains; no job created.
         self.assertEqual(Customer.objects.filter(tenant=self.tenant, name='Jane Doe').count(), 1)
         self.assertEqual(Replacement.objects.filter(tenant=self.tenant).count(), 0)
+
+    def test_confirmed_duplicate_creates_second_person(self):
+        Customer.objects.create(tenant=self.tenant, name='Jane Doe', customer_type='RETAIL')
+        resp = self._post(confirmed_new_customer='1')
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            Customer.objects.filter(tenant=self.tenant, name='Jane Doe').count(), 2)
+        self.assertEqual(Replacement.objects.filter(tenant=self.tenant).count(), 1)
 
     def test_over_limit_blocks_inline_create(self):
         # Cap the plan at the current customer count so the next add is blocked.

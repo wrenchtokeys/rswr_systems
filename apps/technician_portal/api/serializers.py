@@ -10,7 +10,7 @@ class TechnicianSerializer(serializers.ModelSerializer):
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
-        fields = ['id', 'name', 'email', 'phone', 'address', 'city', 'state', 'zip_code']
+        fields = ['id', 'name', 'customer_type', 'email', 'phone', 'address', 'city', 'state', 'zip_code']
 
 class RepairSerializer(serializers.ModelSerializer):
     technician = TechnicianSerializer(read_only=True)
