@@ -142,6 +142,11 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
         default=False,
         help_text='Enable sales tax calculation on invoices. When disabled, all invoices have zero tax.',
     )
+    tax_configured = models.BooleanField(
+        default=False,
+        help_text='Owner has explicitly answered "Do you charge sales tax?" '
+                  'Until then the shop sees the tax setup banner.',
+    )
     default_tax_rate = models.DecimalField(
         max_digits=5,
         decimal_places=3,
@@ -149,7 +154,7 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
         help_text='Combined tax rate (auto-calculated from components). Percentage, e.g. 9.500 = 9.5%.',
     )
     state_tax_rate = models.DecimalField(
-        max_digits=5, decimal_places=3, default=Decimal('6.500'),
+        max_digits=5, decimal_places=3, default=Decimal('0.000'),
         help_text='State sales tax rate (percentage)',
     )
     county_tax_rate = models.DecimalField(
@@ -218,6 +223,11 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
     def save(self, *args, **kwargs):
         # OneToOneField on tenant handles uniqueness — no manual enforcement needed
         super().save(*args, **kwargs)
+        # TaxService caches this config for 5 minutes; invalidate here so every
+        # write path (settings forms, toggles, admin) takes effect immediately.
+        if self.tenant_id:
+            from django.core.cache import cache
+            cache.delete(f'billing_config_tax_{self.tenant_id}')
 
     def delete(self, *args, **kwargs):
         raise ValidationError('Billing configuration cannot be deleted.')
@@ -700,7 +710,14 @@ class InvoiceLineItem(models.Model):
     # Metadata
     repair_date = models.DateField(null=True, blank=True)
     unit_number = models.CharField(max_length=50, blank=True)
-    
+
+    # Whether this line counts toward the invoice's tax. Lets one invoice mix
+    # taxed and untaxed jobs (no_tax cash deals, tax-exempt customers).
+    taxable = models.BooleanField(
+        default=True,
+        help_text='Include this line in the tax calculation',
+    )
+
     class Meta:
         ordering = ['id']
     
@@ -902,11 +919,11 @@ class TaxRate(models.Model):
     
     city = models.CharField(max_length=100, db_index=True)
     county = models.CharField(max_length=100, blank=True, db_index=True)
-    state = models.CharField(max_length=2, default='AR', db_index=True)
+    state = models.CharField(max_length=2, default='', blank=True, db_index=True)
     zip_code = models.CharField(max_length=10, blank=True, db_index=True)
 
     # Rates stored as percentages (e.g., 9.500 means 9.5%)
-    state_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('6.500'))
+    state_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
     county_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
     city_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))
     special_rate = models.DecimalField(max_digits=5, decimal_places=3, default=Decimal('0.000'))

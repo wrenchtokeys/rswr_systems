@@ -660,6 +660,18 @@
                             </div>
                         </div>
 
+                        <!-- No-tax toggle (cash deal / exempt sale) -->
+                        <div class="field-group mt-4">
+                            <label class="flex items-center gap-3 cursor-pointer">
+                                {{ form.no_tax }}
+                                <span class="text-sm font-medium text-gray-700">Don't charge sales tax on this job</span>
+                            </label>
+                            <p class="icon-field-helper">
+                                <i class="fas fa-info-circle"></i>
+                                For cash deals or exempt sales. Only matters when your shop charges tax.
+                            </p>
+                        </div>
+
                         <!-- Admin: Assign Technician -->
                         {% if is_admin and technicians %}
                         <div class="field-group mt-6">

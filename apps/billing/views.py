@@ -826,14 +826,16 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
 
     line_item.save()
 
-    # Recalculate invoice totals from all line items
+    # Recalculate invoice totals from all line items. Tax applies to taxable
+    # lines only (no_tax jobs, exempt sales); the TOTAL includes every line.
     all_items = invoice.line_items.all()
     invoice.subtotal = sum(item.unit_price * item.quantity for item in all_items)
     invoice.discount = sum(item.discount for item in all_items)
-    taxable = invoice.subtotal - invoice.discount
+    after_discount = invoice.subtotal - invoice.discount
     if invoice.tax_rate and invoice.tax_rate > 0:
+        taxable = sum(item.amount for item in all_items if item.taxable)
         invoice.tax_amount = (taxable * invoice.tax_rate / Decimal('100')).quantize(Decimal('0.01'))
-    invoice.total = taxable + invoice.tax_amount
+    invoice.total = after_discount + invoice.tax_amount
     invoice.save(update_fields=['subtotal', 'discount', 'tax_amount', 'total'])
 
     return JsonResponse({

@@ -148,6 +148,7 @@ class InvoiceTrackingService:
 
             subtotal = Decimal('0.00')
             total_discount = Decimal('0.00')
+            taxable_base = Decimal('0.00')
 
             for service in services:
                 if isinstance(service, Replacement):
@@ -184,6 +185,10 @@ class InvoiceTrackingService:
                         description += f" [multi-break rate]"
                     line_kwargs = {'repair': service}
 
+                # Per-job no_tax (cash deals) and customer exemption both make
+                # the line non-taxable; the invoice can mix taxed/untaxed lines.
+                line_taxable = not getattr(service, 'no_tax', False) and not customer.tax_exempt
+
                 line_item = InvoiceLineItem.objects.create(
                     invoice=invoice,
                     description=description,
@@ -193,22 +198,25 @@ class InvoiceTrackingService:
                     amount=amount,
                     repair_date=service.repair_date.date() if service.repair_date else None,
                     unit_number=service.unit_number,
+                    taxable=line_taxable,
                     **line_kwargs,
                 )
 
                 subtotal += unit_price
                 total_discount += total_line_discount
-            
+                if line_taxable:
+                    taxable_base += amount
+
             # Update invoice totals
             invoice.subtotal = subtotal
             invoice.discount = total_discount
             invoice.total = subtotal - total_discount  # default before tax
 
-            # Apply sales tax (if enabled)
+            # Apply sales tax (if enabled) — on the taxable lines only
             try:
                 from apps.billing.services.tax_service import TaxService
                 tax_svc = TaxService(tenant=invoice.tenant)
-                tax_result = tax_svc.apply_tax_to_invoice(invoice)
+                tax_result = tax_svc.apply_tax_to_invoice(invoice, taxable_base=taxable_base)
                 logger.info(
                     f"Tax for {invoice.invoice_number}: enabled={tax_result['enabled']}, "
                     f"rate={tax_result['rate']}%, amount=${tax_result['amount']}, "

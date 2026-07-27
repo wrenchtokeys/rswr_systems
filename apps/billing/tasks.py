@@ -432,12 +432,13 @@ def _create_batch_invoice(tenant, customer, config):
             # Previously repair.cost was used directly, causing customers with
             # earned rewards to be overbilled on all batch invoices.
             total_discount = Decimal('0.00')
+            taxable_base = Decimal('0.00')
             for repair in repairs_list:
                 discounted = repair.get_discounted_cost()
                 original = discounted['original_cost'] or Decimal('0.00')
                 final_amt = discounted['final_cost'] or Decimal('0.00')
                 savings = discounted['savings'] or Decimal('0.00')
-                
+
                 pricing_info = repair.get_progressive_pricing_info()
                 if pricing_info['is_discounted']:
                     prog_savings = pricing_info['base_rate'] - pricing_info['actual_cost']
@@ -448,9 +449,11 @@ def _create_batch_invoice(tenant, customer, config):
                     unit_price = original
                     total_disc = savings
                     amount = final_amt
-                
+
                 subtotal += unit_price
                 total_discount += total_disc
+                if not repair.no_tax:
+                    taxable_base += amount
 
                 description = repair.get_invoice_description()
                 if pricing_info['is_discounted']:
@@ -466,13 +469,16 @@ def _create_batch_invoice(tenant, customer, config):
                     amount=amount,
                     repair_date=repair.service_date,
                     unit_number=repair.unit_number or '',
+                    taxable=not repair.no_tax,
                 )
-            
+
             # Add replacement line items
             for replacement in replacements_list:
                 amount = replacement.cost or Decimal('0.00')
                 subtotal += amount
-                
+                if not replacement.no_tax:
+                    taxable_base += amount
+
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     replacement=replacement,
@@ -482,22 +488,20 @@ def _create_batch_invoice(tenant, customer, config):
                     amount=amount,
                     repair_date=replacement.service_date,
                     unit_number=replacement.unit_number or '',
+                    taxable=not replacement.no_tax,
                 )
-            
-            # Calculate tax via TaxService — this is the single source of truth
-            # for whether tax is enabled (checks TaxRate rows, not BillingConfig.tax_enabled)
-            # and applies the correct per-tenant rate with component breakdown.
-            # Previously this used `config.tax_enabled + config.default_tax_rate` which
-            # bypassed TaxService entirely, causing batch invoices to charge tax when it
-            # was disabled (or vice-versa) and to miss per-customer city/state rate
-            # lookups. (CODE-104)
+
+            # Calculate tax via TaxService (single source of truth for whether
+            # tax applies + per-tenant rate with component breakdown, CODE-104).
             #
-            # CODE-122: Tax is calculated on the discounted net (subtotal − discounts)
-            # so customers are not charged tax on reward savings they have already earned.
+            # CODE-122: Tax is calculated on the discounted net so customers are
+            # not charged tax on reward savings they have already earned. Jobs
+            # flagged no_tax (cash deals) are excluded from the taxable base but
+            # still count toward the invoice total.
             from apps.billing.services.tax_service import TaxService
             tax_svc = TaxService(tenant=tenant)
             discounted_subtotal = subtotal - total_discount
-            tax_result = tax_svc.calculate_tax(subtotal=discounted_subtotal, customer=customer)
+            tax_result = tax_svc.calculate_tax(subtotal=taxable_base, customer=customer)
             invoice.subtotal = subtotal
             invoice.discount = total_discount
             invoice.tax_rate = tax_result['rate']

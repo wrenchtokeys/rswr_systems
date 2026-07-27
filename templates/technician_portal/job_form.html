@@ -152,6 +152,16 @@
                 {% endif %}
             </div>
 
+            {% if shop_tax_enabled %}
+            <label class="flex items-center gap-3 py-1 cursor-pointer" id="charge-tax-row">
+                <input type="checkbox" name="charge_tax" id="id_charge_tax"
+                       {% if form.charge_tax.value or form.charge_tax.value is None %}checked{% endif %}
+                       class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                <span class="text-sm font-medium text-gray-700">Charge sales tax{% if shop_tax_rate %} ({{ shop_tax_rate }}%){% endif %}</span>
+                <span class="text-xs text-gray-400 font-normal hidden" id="tax-exempt-note">— this customer is tax-exempt</span>
+            </label>
+            {% endif %}
+
             <label class="flex items-center gap-3 py-1 cursor-pointer">
                 <input type="checkbox" name="already_completed" {% if form.already_completed.value %}checked{% endif %}
                        class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
@@ -375,6 +385,25 @@ document.addEventListener('DOMContentLoaded', function() {
             const hasNewCustomer = nameInput && nameInput.value.trim() !== '';
             setMode(hasNewCustomer ? 'new' : 'existing');
         };
+
+        // Tax-exempt customers never get tax: uncheck + lock the "Charge
+        // sales tax" box when the picked option carries data-tax-exempt.
+        const chargeTax = document.getElementById('id_charge_tax');
+        if (chargeTax && select) {
+            const exemptNote = document.getElementById('tax-exempt-note');
+            let preExemptChecked = chargeTax.checked;
+            function syncTaxExempt() {
+                const opt = select.options[select.selectedIndex];
+                const exempt = !!(opt && opt.dataset.taxExempt);
+                if (exempt && !chargeTax.disabled) preExemptChecked = chargeTax.checked;
+                chargeTax.disabled = exempt;
+                chargeTax.checked = exempt ? false : preExemptChecked;
+                if (exemptNote) exemptNote.classList.toggle('hidden', !exempt);
+            }
+            select.addEventListener('change', syncTaxExempt);
+            chargeTax.addEventListener('change', () => { if (!chargeTax.disabled) preExemptChecked = chargeTax.checked; });
+            syncTaxExempt();
+        }
     }
 });
 </script>

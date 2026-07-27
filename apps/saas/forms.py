@@ -310,10 +310,16 @@ class ReplacementForm(forms.ModelForm):
             'parts_cost', 'labor_cost',
             'requires_adas_calibration', 'adas_calibration_cost',
             'insurance_claim', 'insurance_company', 'claim_number', 'deductible',
-            'description',
+            'description', 'no_tax',
             'damage_photo_before', 'damage_photo_after',
         ]
+        labels = {
+            'no_tax': "Don't charge sales tax on this job",
+        }
         widgets = {
+            'no_tax': forms.CheckboxInput(attrs={
+                'class': 'h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500',
+            }),
             'customer': forms.Select(attrs={
                 'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white',
             }),

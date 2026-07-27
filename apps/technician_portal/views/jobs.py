@@ -6,6 +6,8 @@ view layer using the same merge pattern as the customer portal's services page
 (apps/customer_portal/views.py customer_services).
 """
 
+from decimal import Decimal
+
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db.models import Q, Count
@@ -338,6 +340,13 @@ def job_create(request):
 
     user_can_invoices = can_access(request.user, 'invoices', tenant)
 
+    # Shop-level tax state drives the "Charge sales tax" checkbox: hidden
+    # entirely when the shop doesn't charge tax.
+    from apps.billing.services.tax_service import TaxService
+    tax_svc = TaxService(tenant=tenant)
+    shop_tax_enabled = tax_svc.is_tax_enabled()
+    shop_tax_rate = tax_svc.calculate_tax(subtotal=Decimal('0'))['rate'] if shop_tax_enabled else None
+
     if request.method == 'POST':
         # request.FILES: the "More details" panel takes damage photos, so this
         # form is multipart now.
@@ -379,6 +388,8 @@ def job_create(request):
                         'allowed_types': allowed_types,
                         'user_can_invoices': user_can_invoices,
                         'advanced_has_errors': _advanced_has_errors(form),
+                        'shop_tax_enabled': shop_tax_enabled,
+                        'shop_tax_rate': shop_tax_rate,
                     })
 
             # An explicit pick from "More details" wins; otherwise fall back to
@@ -396,6 +407,11 @@ def job_create(request):
                 technician=technician,
                 unit_number=data['unit_number'] or '',
                 cost_override=data['price'],
+                # Only meaningful when the shop charges tax: unchecking the
+                # "Charge sales tax" box marks the job no-tax (cash deal).
+                # When shop tax is off the box isn't rendered, so leave
+                # no_tax False — enabling tax later behaves normally.
+                no_tax=shop_tax_enabled and not data.get('charge_tax'),
                 vehicle_year=data.get('vehicle_year'),
                 vehicle_make=data.get('vehicle_make') or '',
                 vehicle_model=data.get('vehicle_model') or '',
@@ -467,6 +483,8 @@ def job_create(request):
         'allowed_types': allowed_types,
         'user_can_invoices': user_can_invoices,
         'advanced_has_errors': _advanced_has_errors(form),
+        'shop_tax_enabled': shop_tax_enabled,
+        'shop_tax_rate': shop_tax_rate,
     })
 
 
