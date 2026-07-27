@@ -215,6 +215,13 @@ class InvoiceEmailService:
         token = generate_payment_token(invoice_id)
         return f"{base_url}/invoice/{invoice_id}/{token}/"
 
+    def _open_pixel_url(self, invoice_id) -> str:
+        """Open-tracking pixel URL — loading it marks the invoice viewed."""
+        from rs_systems.views import generate_payment_token
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+        token = generate_payment_token(invoice_id)
+        return f"{base_url}/invoice/{invoice_id}/{token}/open.gif"
+
     def _build_email_body(self, invoice_data, include_photos: bool,
                           payment_link: str = None, view_link: str = None) -> str:
         """Build the email body text"""
@@ -424,9 +431,11 @@ class InvoiceEmailService:
 
             # Public view link — invoice summary page, NOT Stripe checkout.
             view_link = None
+            open_pixel_url = None
             if invoice_record:
                 try:
                     view_link = self._public_view_link(invoice_record.id)
+                    open_pixel_url = self._open_pixel_url(invoice_record.id)
                 except Exception as e:
                     logger.warning(f"Could not generate view URL: {e}")
 
@@ -468,7 +477,8 @@ class InvoiceEmailService:
             # Build HTML version of the email
             html_body = self._build_html_email(invoice_data, payment_link=payment_link,
                                                 include_photos=len(photos) > 0,
-                                                view_link=view_link)
+                                                view_link=view_link,
+                                                open_pixel_url=open_pixel_url)
 
             from core.email_utils import shop_sender
             from_email, reply_to = shop_sender(
@@ -516,12 +526,15 @@ class InvoiceEmailService:
             return False, f"Error sending email: {str(e)}"
     
     def _build_html_email(self, invoice_data, payment_link=None, include_photos=False,
-                          view_link=None) -> str:
+                          view_link=None, open_pixel_url=None) -> str:
         """Build an HTML email with clickable buttons.
 
         "View Invoice Online" goes to the public invoice VIEW page; only the
         "Pay Invoice" button goes to the payment URL (the two used to share
         the /pay/ URL, so both buttons dumped the customer into Stripe).
+
+        open_pixel_url, when set, embeds a 1x1 open-tracking image so simply
+        opening the email marks the invoice viewed.
         """
         invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
         if view_link:
@@ -592,6 +605,13 @@ class InvoiceEmailService:
         inv_number_esc = html.escape(str(invoice_data.invoice_number))
         pay_terms_esc = html.escape(str(invoice_data.payment_terms_display))
 
+        pixel_html = ''
+        if open_pixel_url:
+            pixel_html = (
+                f'<img src="{open_pixel_url}" width="1" height="1" alt="" '
+                f'style="display:block;width:1px;height:1px;border:0;overflow:hidden;">'
+            )
+
         html_doc = f'''<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -658,6 +678,7 @@ class InvoiceEmailService:
     {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_phone + "</p>" if company_phone else ""}
 </div>
 
+{pixel_html}
 </div>
 </body>
 </html>'''

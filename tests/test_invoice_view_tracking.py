@@ -108,6 +108,76 @@ class PublicPageViewTrackingTests(TestCase):
         self.assertIsNone(self.invoice.first_viewed_at)
         self.assertEqual(self.invoice.view_count, 0)
 
+    def test_open_pixel_marks_viewed(self):
+        resp = self.client.get(f'/invoice/{self.invoice.id}/{self.token}/open.gif')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'image/gif')
+        self.assertIn('no-store', resp['Cache-Control'])
+        self.invoice.refresh_from_db()
+        self.assertIsNotNone(self.invoice.first_viewed_at)
+        self.assertEqual(self.invoice.view_count, 1)
+
+    def test_open_pixel_bad_token_serves_gif_records_nothing(self):
+        # Bad token still gets the pixel (no broken image in the email),
+        # but nothing is recorded.
+        resp = self.client.get(f'/invoice/{self.invoice.id}/{"0" * 32}/open.gif')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'image/gif')
+        self.invoice.refresh_from_db()
+        self.assertIsNone(self.invoice.first_viewed_at)
+        self.assertEqual(self.invoice.view_count, 0)
+
+
+class EmailPixelEmbedTests(TestCase):
+    """The open pixel is actually embedded in outgoing email HTML."""
+
+    def setUp(self):
+        self.tenant, self.user = _create_tenant('Pixel Shop', 'px-owner@example.com')
+        self.customer = Customer.objects.create(
+            name='Pixel Customer', email='pxcust@example.com', tenant=self.tenant,
+        )
+
+    def test_invoice_email_html_contains_open_pixel(self):
+        from django.core import mail
+        from django.test import override_settings
+        from apps.billing.models import InvoiceLineItem
+        from apps.billing.services.invoice_email_service import InvoiceEmailService
+
+        invoice = _create_invoice(self.tenant, self.customer, status='DRAFT')
+        InvoiceLineItem.objects.create(
+            invoice=invoice, description='Windshield repair',
+            quantity=1, unit_price=Decimal('100.00'), amount=Decimal('100.00'),
+        )
+        with override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            success, msg = InvoiceEmailService(tenant=self.tenant).send_invoice_email(
+                customer_id=self.customer.id,
+                recipient_email=self.customer.email,
+                invoice=invoice,
+            )
+        self.assertTrue(success, msg)
+        self.assertEqual(len(mail.outbox), 1)
+        html_body = mail.outbox[0].alternatives[0][0]
+        self.assertIn(f'/invoice/{invoice.id}/', html_body)
+        self.assertIn('/open.gif', html_body)
+
+    def test_branded_email_embeds_tracking_pixel_when_given(self):
+        from django.core import mail
+        from django.test import override_settings
+        from core.email_utils import send_branded_email
+
+        with override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            sent = send_branded_email(
+                subject='Reminder',
+                recipient_list=['someone@example.com'],
+                headline='Payment Reminder',
+                body_paragraphs=['Please pay.'],
+                tenant=self.tenant,
+                tracking_pixel_url='https://rssystems.io/invoice/1/abc/open.gif',
+            )
+        self.assertEqual(sent, 1)
+        html_body = mail.outbox[0].alternatives[0][0]
+        self.assertIn('https://rssystems.io/invoice/1/abc/open.gif', html_body)
+
 
 class RecordEmailSentTests(TestCase):
     def setUp(self):

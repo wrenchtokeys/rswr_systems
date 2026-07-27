@@ -1,3 +1,5 @@
+import base64
+
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth import views as auth_views
@@ -614,6 +616,30 @@ def public_invoice_pdf(request, invoice_id, token):
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="Invoice_{invoice.invoice_number}.pdf"'
+    return response
+
+
+# 1x1 transparent GIF, the classic email open-tracking pixel.
+_TRACKING_PIXEL = base64.b64decode(
+    'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+)
+
+
+def public_invoice_open_pixel(request, invoice_id, token):
+    """Email open-tracking pixel embedded in invoice emails.
+
+    Loading this image means the recipient's mail client rendered the email,
+    so it counts as a view (same fields as the public pages). Always returns
+    the pixel — even on a bad token — so broken-image icons never show up in
+    an email; an invalid token just records nothing.
+
+    Caveat: image-blocking clients never fire this (missed opens), and
+    privacy prefetchers like Apple Mail Privacy Protection fire it without a
+    human open (phantom opens). It's a good signal, not a guarantee.
+    """
+    _resolve_public_invoice(invoice_id, token)
+    response = HttpResponse(_TRACKING_PIXEL, content_type='image/gif')
+    response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     return response
 
 
