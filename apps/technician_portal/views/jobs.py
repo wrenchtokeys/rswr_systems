@@ -280,6 +280,14 @@ def _resolve_technician_for_create(request, tenant, service_type):
     return ability_qs.first() or qs.first()
 
 
+def _copy_to_email(request):
+    """BCC address for "Send me a copy", or None when not requested /
+    the acting user has no email on their account."""
+    if request.POST.get('send_me_copy') and request.user.email:
+        return request.user.email
+    return None
+
+
 def notify_invoice_outcome(request, invoice, created, result, excluded):
     """Consistent messages for the quick-invoice actions."""
     if excluded:
@@ -433,7 +441,8 @@ def job_create(request):
                     return _job_detail_redirect(service)
 
             if send_requested and service.queue_status == 'COMPLETED':
-                invoice, created, result, excluded = invoice_and_send(service, tenant)
+                invoice, created, result, excluded = invoice_and_send(
+                    service, tenant, copy_to_email=_copy_to_email(request))
                 notify_invoice_outcome(request, invoice, created, result, excluded)
                 return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
@@ -490,7 +499,8 @@ def repair_complete_and_invoice(request, repair_id):
         return redirect('repair_detail', repair_id=repair.id)
 
     try:
-        invoice, created, result, excluded = invoice_and_send(repair, tenant)
+        invoice, created, result, excluded = invoice_and_send(
+            repair, tenant, copy_to_email=_copy_to_email(request))
     except ValueError as e:
         messages.error(request, str(e))
         return redirect('repair_detail', repair_id=repair.id)

@@ -181,7 +181,8 @@
                                     </button>
                                 </form>
                                 {% if user_can_invoices %}
-                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline">
+                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline js-confirm-send"
+                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
                                     {% csrf_token %}
                                     <button type="submit" class="btn-primary btn-sm">
                                         <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
@@ -224,7 +225,8 @@
                                 </form>
                                 {% endif %}
                                 {% if user_can_invoices %}
-                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline">
+                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline js-confirm-send"
+                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
                                     {% csrf_token %}
                                     <button type="submit" class="btn-primary btn-sm">
                                         <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
@@ -243,7 +245,8 @@
                                 </form>
                                 {% endif %}
                                 {% if user_can_invoices %}
-                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline">
+                                <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline js-confirm-send"
+                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
                                     {% csrf_token %}
                                     <button type="submit" class="btn-primary btn-sm">
                                         <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
@@ -813,6 +816,9 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 {% endif %}
 {% include "includes/fab_quick_actions.html" with fab_role="tech" %}
+{% if user_can_invoices %}
+{% include "includes/invoice_send_confirm_modal.html" %}
+{% endif %}
 
 {% if repair.queue_status == 'COMPLETED' and repair.has_warranty %}
 <div id="warrantyClaimModal" class="hidden fixed inset-0 z-50 flex items-center justify-center px-4">

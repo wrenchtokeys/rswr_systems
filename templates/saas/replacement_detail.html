@@ -59,7 +59,8 @@
                         </button>
                     </form>
                     {% if user_can_invoices %}
-                    <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline">
+                    <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline js-confirm-send"
+                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
                         {% csrf_token %}
                         <button type="submit" class="btn-primary btn-sm">
                             <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
@@ -74,7 +75,8 @@
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
             <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700">Done with this job?</span>
-                <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline">
+                <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline js-confirm-send"
+                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
                     {% csrf_token %}
                     <button type="submit" class="btn-primary btn-sm">
                         <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
@@ -170,4 +172,7 @@
         </div>
 </div>
 {% include "includes/fab_quick_actions.html" %}
+{% if user_can_invoices %}
+{% include "includes/invoice_send_confirm_modal.html" %}
+{% endif %}
 {% endblock %}

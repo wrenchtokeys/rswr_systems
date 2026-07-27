@@ -177,8 +177,46 @@ class InvoiceEmailService:
             # Unknown placeholder or malformed template — fall back to default body.
             return ''
 
+    @staticmethod
+    def _service_phrase(invoice_data) -> str:
+        """Describe what the invoice covers, derived from its line items.
+
+        Replacement-only invoices used to read "recent windshield repair
+        services" — wrong for a replacement shop. Classify each line item by
+        its linked service object (falling back to the PDF label) and pick
+        matching wording.
+        """
+        kinds = set()
+        for item in invoice_data.line_items:
+            if getattr(item, 'replacement_obj', None) is not None:
+                kinds.add('replacement')
+            elif getattr(item, 'repair_obj', None) is not None:
+                kinds.add('repair')
+            else:
+                label = (item.damage_type or '').lower()
+                if 'replacement' in label:
+                    kinds.add('replacement')
+                elif label and label != 'service':
+                    kinds.add('repair')
+        if kinds == {'repair'}:
+            return 'recent windshield repair services'
+        if kinds == {'replacement'}:
+            return 'recent glass replacement services'
+        if kinds == {'repair', 'replacement'}:
+            return 'recent glass repair and replacement services'
+        return 'recent services'
+
+    def _public_view_link(self, invoice_id) -> str:
+        """Public tokened page where the customer can VIEW the invoice
+        (summary + PDF) — distinct from the /pay/ URL, which goes straight
+        to Stripe Checkout."""
+        from rs_systems.views import generate_payment_token
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+        token = generate_payment_token(invoice_id)
+        return f"{base_url}/invoice/{invoice_id}/{token}/"
+
     def _build_email_body(self, invoice_data, include_photos: bool,
-                          payment_link: str = None) -> str:
+                          payment_link: str = None, view_link: str = None) -> str:
         """Build the email body text"""
         lines = [
             f"Invoice #{invoice_data.invoice_number}",
@@ -187,7 +225,7 @@ class InvoiceEmailService:
             "",
             f"Customer: {invoice_data.customer_name}",
             "",
-            "Repair Summary:",
+            "Service Summary:",
             "-" * 40,
         ]
         
@@ -227,17 +265,18 @@ class InvoiceEmailService:
             "",
         ])
         
-        # Portal link — always include so customer can view invoice online.
-        # Use BASE_URL from settings so multi-tenant deployments with a custom
-        # domain get the correct link, not a hardcoded rssystems.io URL.
-        # (CODE-178: plain-text email body was missing the BASE_URL fallback that
-        # _build_html_email already had — caused wrong domain for non-RS tenants.)
-        invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
-        _base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
-        if invoice_id:
-            portal_url = f"{_base_url}/app/invoices/{invoice_id}/"
+        # View link — the public tokened invoice page (no login needed).
+        # Falls back to the customer portal when we don't know the invoice
+        # record (CODE-178: use BASE_URL so custom domains get the right host).
+        if view_link:
+            portal_url = view_link
         else:
-            portal_url = f"{_base_url}/app/invoices/"
+            invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
+            _base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+            if invoice_id:
+                portal_url = f"{_base_url}/app/invoices/{invoice_id}/"
+            else:
+                portal_url = f"{_base_url}/app/invoices/"
         lines.extend([
             "📄 View Invoice Online:",
             portal_url,
@@ -281,6 +320,7 @@ class InvoiceEmailService:
         days: int = 30,
         include_photos: bool = True,
         cc_emails: Optional[List[str]] = None,
+        bcc_emails: Optional[List[str]] = None,
         subject_prefix: str = "[RS Systems]",
         invoice_number: Optional[str] = None,
         invoice_date=None,
@@ -351,57 +391,62 @@ class InvoiceEmailService:
                 )
                 photos = self._get_photo_attachments(list(repairs))
             
-            # Look up Stripe payment link from invoice record (if exists).
-            # GATE: Only include payment link if tenant has active Stripe Connect.
-            # No Connect = no payment link in email.
+            # Resolve the invoice record — needed for BOTH the public view
+            # link (always included when we know the record) and the Stripe
+            # payment link (gated on the tenant accepting payments).
+            invoice_record = None
+            try:
+                from apps.billing.models import InvoiceLineItem, Invoice
+
+                if invoice is not None:
+                    # Existing-record path: this IS the invoice being sent.
+                    invoice_record = invoice
+                elif repair_ids:
+                    line_qs = InvoiceLineItem.objects.all()
+                    if self.tenant:
+                        line_qs = line_qs.filter(invoice__tenant=self.tenant)
+                    line_item = line_qs.filter(
+                        repair_id__in=repair_ids,
+                        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
+                    ).select_related('invoice').first()
+                    if line_item:
+                        invoice_record = line_item.invoice
+                else:
+                    inv_qs = Invoice.objects.filter(
+                        customer_id=customer_id,
+                        status__in=['SENT', 'PARTIAL'],
+                    )
+                    if self.tenant:
+                        inv_qs = inv_qs.filter(tenant=self.tenant)
+                    invoice_record = inv_qs.order_by('-created_at').first()
+            except Exception:
+                pass
+
+            # Public view link — invoice summary page, NOT Stripe checkout.
+            view_link = None
+            if invoice_record:
+                try:
+                    view_link = self._public_view_link(invoice_record.id)
+                except Exception as e:
+                    logger.warning(f"Could not generate view URL: {e}")
+
+            # Stripe payment link — only when the tenant can take payments.
             payment_link = None
             tenant_can_pay = (
                 self.tenant and self.tenant.can_accept_payments
             ) if self.tenant else False
 
-            if tenant_can_pay:
+            if tenant_can_pay and invoice_record:
+                # Public payment URL (HMAC-token based, no login needed).
+                # Redirects to Stripe Checkout if available, or shows a
+                # fallback page with contact info.
                 try:
-                    from apps.billing.models import InvoiceLineItem, Invoice
-
-                    # Find the invoice record
-                    invoice_record = None
-                    if invoice is not None:
-                        # Existing-record path: this IS the invoice being sent.
-                        invoice_record = invoice
-                    elif repair_ids:
-                        line_qs = InvoiceLineItem.objects.all()
-                        if self.tenant:
-                            line_qs = line_qs.filter(invoice__tenant=self.tenant)
-                        line_item = line_qs.filter(
-                            repair_id__in=repair_ids,
-                            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
-                        ).select_related('invoice').first()
-                        if line_item:
-                            invoice_record = line_item.invoice
-                    else:
-                        inv_qs = Invoice.objects.filter(
-                            customer_id=customer_id,
-                            status__in=['SENT', 'PARTIAL'],
-                        )
-                        if self.tenant:
-                            inv_qs = inv_qs.filter(tenant=self.tenant)
-                        invoice_record = inv_qs.order_by('-created_at').first()
-
-                    if invoice_record:
-                        # Generate public payment URL (HMAC-token based, no login needed)
-                        # This URL will redirect to Stripe Checkout if available,
-                        # or show a fallback page with contact info.
-                        try:
-                            from rs_systems.views import generate_payment_token
-                            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
-                            token = generate_payment_token(invoice_record.id)
-                            payment_link = f"{base_url}/pay/{invoice_record.id}/{token}/"
-                        except Exception as e:
-                            logger.warning(f"Could not generate payment URL: {e}")
-                            _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
-                            payment_link = f"{_fb_base}/app/invoices/{invoice_record.id}/"
-                except Exception:
-                    pass
+                    from rs_systems.views import generate_payment_token
+                    base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+                    token = generate_payment_token(invoice_record.id)
+                    payment_link = f"{base_url}/pay/{invoice_record.id}/{token}/"
+                except Exception as e:
+                    logger.warning(f"Could not generate payment URL: {e}")
             
             # Build email — use shop-defined template if configured (CODE-119)
             subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
@@ -417,12 +462,13 @@ class InvoiceEmailService:
             if not body:
                 body = self._build_email_body(
                     invoice_data, include_photos=len(photos) > 0,
-                    payment_link=payment_link
+                    payment_link=payment_link, view_link=view_link,
                 )
-            
+
             # Build HTML version of the email
             html_body = self._build_html_email(invoice_data, payment_link=payment_link,
-                                                include_photos=len(photos) > 0)
+                                                include_photos=len(photos) > 0,
+                                                view_link=view_link)
 
             from core.email_utils import shop_sender
             from_email, reply_to = shop_sender(
@@ -435,6 +481,7 @@ class InvoiceEmailService:
                 from_email=from_email,
                 to=[recipient_email],
                 cc=cc_emails or [],
+                bcc=bcc_emails or [],
                 reply_to=reply_to,
             )
             email.attach_alternative(html_body, 'text/html')
@@ -468,18 +515,20 @@ class InvoiceEmailService:
         except Exception as e:
             return False, f"Error sending email: {str(e)}"
     
-    def _build_html_email(self, invoice_data, payment_link=None, include_photos=False) -> str:
-        """Build an HTML email with clickable buttons."""
+    def _build_html_email(self, invoice_data, payment_link=None, include_photos=False,
+                          view_link=None) -> str:
+        """Build an HTML email with clickable buttons.
+
+        "View Invoice Online" goes to the public invoice VIEW page; only the
+        "Pay Invoice" button goes to the payment URL (the two used to share
+        the /pay/ URL, so both buttons dumped the customer into Stripe).
+        """
         invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
-        # Use the same public pay URL for "View Invoice" (no login required)
-        if payment_link:
-            portal_url = payment_link
+        if view_link:
+            portal_url = view_link
         elif invoice_id:
             try:
-                from rs_systems.views import generate_payment_token
-                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
-                token = generate_payment_token(invoice_id)
-                portal_url = f"{base_url}/pay/{invoice_id}/{token}/"
+                portal_url = self._public_view_link(invoice_id)
             except Exception:
                 _fb_base = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
                 portal_url = f"{_fb_base}/app/invoices/{invoice_id}/"
@@ -560,7 +609,7 @@ class InvoiceEmailService:
 
     <p style="font-size:15px;color:#374151;margin:0 0 16px;">
         Hi {cust_name_esc},<br><br>
-        Here's your invoice for recent windshield repair services.
+        Here's your invoice for {html.escape(self._service_phrase(invoice_data))}.
     </p>
 
     <!-- Invoice Details -->

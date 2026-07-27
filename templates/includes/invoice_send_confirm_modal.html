@@ -1,0 +1,117 @@
+{% comment %}
+Send-invoice confirmation modal, shared by the quick-invoice actions
+(job form "Save & Send Invoice", repair/replacement detail "Send Invoice" /
+"Complete & Send Invoice", owner invoice "Email Invoice").
+
+Usage:
+  - Include once per page.
+  - Forms that need confirmation: add class "js-confirm-send" plus
+    data-customer-name and data-recipient-email attributes (email may be
+    set/updated dynamically, e.g. from the customer dropdown).
+  - Buttons inside a larger form (job form): call
+    RSSendConfirm.open(form, {submitName: 'save_and_send'}) from a click
+    handler instead of tagging the form.
+
+On confirm the modal re-submits the original form with send_me_copy=1
+appended when "Email me a copy" is checked.
+{% endcomment %}
+<div id="send-invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="sim-title">
+    <div class="flex items-center justify-center min-h-screen px-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75" data-sim-close></div>
+        <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6">
+            <h3 id="sim-title" class="text-lg font-semibold text-gray-900 mb-4">
+                <i class="fas fa-paper-plane text-blue-600 mr-2"></i>Send this invoice?
+            </h3>
+            <div class="space-y-3 mb-5">
+                <div class="flex justify-between text-sm gap-4">
+                    <span class="text-gray-500 shrink-0">Customer</span>
+                    <span class="font-medium text-right" id="sim-customer"></span>
+                </div>
+                <div class="flex justify-between text-sm gap-4" id="sim-email-row">
+                    <span class="text-gray-500 shrink-0">Send to</span>
+                    <span class="font-medium text-green-700 text-right break-all" id="sim-email"></span>
+                </div>
+                <div id="sim-noemail" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p class="text-sm text-amber-800">
+                        <i class="fas fa-exclamation-circle mr-1"></i>
+                        No email on file for this customer. The invoice will be saved as a
+                        draft and you can add an email on the next screen.
+                    </p>
+                </div>
+            </div>
+            {% if request.user.email %}
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-5" id="sim-copy-row">
+                <input type="checkbox" id="sim-copy" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                Email me a copy ({{ request.user.email }})
+            </label>
+            {% endif %}
+            <div class="flex gap-3">
+                <button type="button" id="sim-confirm"
+                    class="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-paper-plane mr-1"></i><span id="sim-confirm-label">Confirm &amp; Send</span>
+                </button>
+                <button type="button" data-sim-close
+                    class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    const modal = document.getElementById('send-invoice-modal');
+    if (!modal) return;
+    let pending = null;   // { form, submitName }
+
+    function open(form, opts) {
+        pending = { form: form, submitName: (opts && opts.submitName) || form.dataset.submitName || '' };
+        const email = form.dataset.recipientEmail || '';
+        document.getElementById('sim-customer').textContent = form.dataset.customerName || 'this customer';
+        document.getElementById('sim-email-row').classList.toggle('hidden', !email);
+        document.getElementById('sim-noemail').classList.toggle('hidden', !!email);
+        document.getElementById('sim-email').textContent = email;
+        const copyRow = document.getElementById('sim-copy-row');
+        if (copyRow) copyRow.classList.toggle('hidden', !email);
+        document.getElementById('sim-confirm-label').textContent =
+            email ? 'Confirm & Send' : 'Save as Draft';
+        modal.classList.remove('hidden');
+    }
+
+    function close() { modal.classList.add('hidden'); pending = null; }
+
+    modal.querySelectorAll('[data-sim-close]').forEach(el => el.addEventListener('click', close));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+
+    document.querySelectorAll('form.js-confirm-send').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (form.dataset.simConfirmed === '1') return;
+            e.preventDefault();
+            open(form);
+        });
+    });
+
+    document.getElementById('sim-confirm').addEventListener('click', function () {
+        if (!pending) return;
+        const form = pending.form;
+        const copy = document.getElementById('sim-copy');
+        if (copy && copy.checked && !form.querySelector('input[name="send_me_copy"]')) {
+            const inp = document.createElement('input');
+            inp.type = 'hidden'; inp.name = 'send_me_copy'; inp.value = '1';
+            form.appendChild(inp);
+        }
+        if (pending.submitName && !form.querySelector('input[name="' + pending.submitName + '"]')) {
+            const btn = document.createElement('input');
+            btn.type = 'hidden'; btn.name = pending.submitName; btn.value = '1';
+            form.appendChild(btn);
+        }
+        form.dataset.simConfirmed = '1';
+        close();
+        // requestSubmit (not submit) so the form's own submit listeners
+        // still fire — the job form's autosave clears its draft there.
+        if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+    });
+
+    window.RSSendConfirm = { open: open };
+})();
+</script>

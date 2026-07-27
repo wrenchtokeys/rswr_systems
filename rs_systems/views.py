@@ -555,6 +555,65 @@ def public_pay_invoice(request, invoice_id, token):
     return render(request, 'billing/public_pay_unavailable.html', context)
 
 
+def _resolve_public_invoice(invoice_id, token):
+    """Token-check + fetch for public invoice pages; None if either fails."""
+    import hmac as hmac_mod
+    expected = generate_payment_token(invoice_id)
+    if not hmac_mod.compare_digest(token, expected):
+        return None
+    from apps.billing.models import Invoice
+    try:
+        return Invoice.objects.select_related('customer', 'tenant').get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return None
+
+
+def public_view_invoice(request, invoice_id, token):
+    """
+    Public invoice VIEW page — no login required.
+
+    This is where "View Invoice Online" in invoice emails lands: a summary of
+    the invoice with a PDF download and (when payable) a Pay button. The
+    email's "Pay Invoice" button goes straight to /pay/ (Stripe Checkout)
+    instead — the two links used to be the same URL.
+    """
+    invoice = _resolve_public_invoice(invoice_id, token)
+    if invoice is None:
+        return render(request, '404.html', status=404)
+
+    tenant = invoice.tenant
+    can_pay = invoice.status not in ('PAID', 'CANCELLED') and invoice.amount_due > 0
+    context = {
+        'invoice': invoice,
+        'line_items': invoice.line_items.all(),
+        'company_name': tenant.name if tenant else 'RS Systems',
+        'company_phone': tenant.business_phone if tenant else '',
+        'company_email': tenant.business_email if tenant else '',
+        'can_pay': can_pay,
+        'pay_url': f"/pay/{invoice.id}/{token}/",
+        'pdf_url': f"/invoice/{invoice.id}/{token}/pdf/",
+    }
+    return render(request, 'billing/public_invoice_view.html', context)
+
+
+def public_invoice_pdf(request, invoice_id, token):
+    """Inline PDF of the invoice for the public view page (same token)."""
+    invoice = _resolve_public_invoice(invoice_id, token)
+    if invoice is None:
+        return render(request, '404.html', status=404)
+
+    from apps.billing.services.invoice_service import InvoiceService
+    try:
+        pdf_bytes, _ = InvoiceService(tenant=invoice.tenant).generate_invoice_from_record(invoice)
+    except Exception as e:
+        logger.error(f"Public invoice PDF render failed for {invoice_id}: {e}")
+        return render(request, '404.html', status=404)
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="Invoice_{invoice.invoice_number}.pdf"'
+    return response
+
+
 def payment_complete(request):
     """Landing page after successful Stripe checkout."""
     session_id = request.GET.get('session')

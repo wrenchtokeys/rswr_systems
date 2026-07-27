@@ -77,7 +77,7 @@ def find_active_invoice(services, tenant):
     return None
 
 
-def invoice_and_send(service, tenant, submitted_email=None):
+def invoice_and_send(service, tenant, submitted_email=None, copy_to_email=None):
     """Find-or-create the invoice for a COMPLETED job and email it.
 
     Returns (invoice, created, send_result, excluded_count).
@@ -97,5 +97,6 @@ def invoice_and_send(service, tenant, submitted_email=None):
         )
         created = True
 
-    result = InvoiceSendService.send(invoice, tenant, submitted_email=submitted_email)
+    result = InvoiceSendService.send(invoice, tenant, submitted_email=submitted_email,
+                                     copy_to_email=copy_to_email)
     return invoice, created, result, excluded

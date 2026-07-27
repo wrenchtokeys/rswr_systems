@@ -790,6 +790,21 @@ class TechnicianNotificationPreferenceForm(forms.ModelForm):
         return cleaned_data
 
 
+class CustomerEmailSelect(forms.Select):
+    """Customer dropdown whose options carry data-email — the address an
+    invoice for that customer would go to — so the "Save & Send Invoice"
+    confirmation dialog can show the recipient before anything sends."""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(
+            name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        instance = getattr(value, 'instance', None)
+        if instance is not None:
+            from apps.billing.services.invoice_send_service import InvoiceSendService
+            option['attrs']['data-email'] = InvoiceSendService.resolve_recipient(instance)
+        return option
+
+
 class QuickJobForm(forms.Form):
     """The job creation form (/tech/jobs/new/).
 
@@ -814,7 +829,7 @@ class QuickJobForm(forms.Form):
     customer = forms.ModelChoiceField(
         queryset=Customer.objects.none(),
         required=False,
-        widget=forms.Select(attrs={'class': _INPUT + ' bg-white'}),
+        widget=CustomerEmailSelect(attrs={'class': _INPUT + ' bg-white'}),
     )
     # Add an individual customer on the fly — no "create the customer first" detour.
     new_customer_name = forms.CharField(
@@ -971,7 +986,10 @@ class QuickJobForm(forms.Form):
             self.fields['service_type'].initial = self.allowed_types[0]
             self.fields['service_type'].widget = forms.HiddenInput()
         if tenant:
-            self.fields['customer'].queryset = Customer.objects.filter(tenant=tenant)
+            # select_related keeps the data-email annotation in
+            # CustomerEmailSelect from issuing one query per option.
+            self.fields['customer'].queryset = Customer.objects.filter(
+                tenant=tenant).select_related('repair_preferences')
             # Tenant-scoped, same as RepairForm — never offer a technician from
             # another shop in the assignment dropdown.
             self.fields['technician'].queryset = Technician.objects.filter(
