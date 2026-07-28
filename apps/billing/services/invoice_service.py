@@ -726,6 +726,37 @@ class InvoiceService:
 
         return _stamp
 
+    @staticmethod
+    def _build_warranty_terms(line_items) -> list:
+        """Warranty wording to print under "Warranty Terms" on the invoice.
+
+        Reads live from each service's WarrantyPolicy, so whatever the shop
+        saves in Settings → Warranty shows up on invoices generated afterwards.
+        The shop's own "What the customer sees" wording (coverage_description)
+        is what prints; the generated summary is only a fallback for shops that
+        never wrote any. "No warranty" policies print nothing at all.
+        """
+        terms = []
+        seen = set()
+        for item in line_items:
+            service = (
+                getattr(item, 'repair_obj', None)
+                or getattr(item, 'replacement_obj', None)
+            )
+            policy = getattr(service, 'warranty_policy', None) if service else None
+            if not policy or policy.duration_type == 'none':
+                continue
+            term = (policy.coverage_description or '').strip()
+            if not term:
+                term = getattr(policy, 'terms_summary', '') or ''
+            if not term:
+                continue
+            # Every job on an invoice usually shares one policy — print once
+            if term not in seen:
+                seen.add(term)
+                terms.append(term)
+        return terms
+
     def generate_pdf(self, invoice_data: InvoiceData, include_photos: bool = True,
                      invoice_status: str = '') -> bytes:
         """
@@ -1000,31 +1031,7 @@ class InvoiceService:
         story.append(totals_table)
         
         # Warranty Terms Section \u2014 repairs and replacements both carry warranties
-        warranty_terms = []
-        seen_terms = set()
-        for item in invoice_data.line_items:
-            service = (
-                getattr(item, 'repair_obj', None)
-                or getattr(item, 'replacement_obj', None)
-            )
-            if not (service and service.warranty_policy):
-                continue
-            policy = service.warranty_policy
-            summary = getattr(policy, 'terms_summary', '')
-            if summary:
-                term = f"WARRANTY: {summary}"
-            else:
-                term = f"Unit {item.unit_number}: {policy.name}"
-                if policy.duration_type == 'lifetime':
-                    term += " \u2014 Lifetime Warranty"
-                elif policy.duration_type == 'custom_days':
-                    term += f" \u2014 {policy.duration_days}-day Warranty"
-                if policy.coverage_description:
-                    term += f" ({policy.coverage_description})"
-            # Every repair on an invoice usually shares one policy \u2014 print once
-            if term not in seen_terms:
-                seen_terms.add(term)
-                warranty_terms.append(term)
+        warranty_terms = self._build_warranty_terms(invoice_data.line_items)
 
         if warranty_terms:
             story.append(Spacer(1, 20))
