@@ -21,6 +21,7 @@ Documentation index for the RS Systems windshield repair management platform.
 ### `deployment/`
 - [AWS_DEPLOYMENT.md](deployment/AWS_DEPLOYMENT.md) -- AWS Elastic Beanstalk deployment
 - [PRODUCTION_CHECKLIST.md](deployment/PRODUCTION_CHECKLIST.md) -- Pre/post deployment verification
+- [STRIPE_ARCHITECTURE.md](deployment/STRIPE_ARCHITECTURE.md) -- Platform account, shop Connect (Express) accounts, price IDs, webhooks, platform fees
 
 ### `security/`
 - [SECURITY_OVERVIEW.md](security/SECURITY_OVERVIEW.md) -- Security features and roadmap

@@ -1,11 +1,13 @@
 """Set or verify Stripe price IDs on subscription plans.
 
-Historic versions hardcoded price IDs from a Stripe account that does not
-match the ones migration 0013 applied — running it would have broken every
-checkout with "No such price". Price IDs are now passed explicitly, and
---verify cross-checks each plan's stripe_price_id against Stripe so the DB
-monthly_price and the amount Stripe actually charges can never silently
-diverge.
+History: two disjoint sets of price IDs existed in the repo — migration
+0013 wrote IDs from an old/abandoned Stripe account (suffix 1JK8PzBpGP),
+which broke every subscription checkout with "No such price" until
+migration 0021 replaced them with the live account's IDs (suffix
+0zbBWahwkN, account acct_1SuOa20zbBWahwkN). Price IDs are now passed
+explicitly, and --verify cross-checks each plan's stripe_price_id against
+Stripe so the DB price and the amount Stripe actually charges can never
+silently diverge. See docs/deployment/STRIPE_ARCHITECTURE.md.
 
 Usage:
     python manage.py set_stripe_prices --verify

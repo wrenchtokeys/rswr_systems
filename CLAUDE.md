@@ -304,6 +304,7 @@ DEFAULT_FROM_EMAIL=notifications@rssystems.io
 ## Documentation
 
 - `docs/deployment/AWS_DEPLOYMENT.md` — AWS/EB deployment guide
+- `docs/deployment/STRIPE_ARCHITECTURE.md` — platform vs shop (Connect Express) money flows, live price IDs, webhooks, platform fees
 - `docs/deployment/PRODUCTION_CHECKLIST.md` — pre/post deploy verification
 - `docs/security/SECURITY_OVERVIEW.md` — security features
 - `docs/security/INCIDENT_RESPONSE.md` — emergency procedures
