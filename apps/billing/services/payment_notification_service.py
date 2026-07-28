@@ -93,11 +93,15 @@ class PaymentNotificationService:
                 except Exception:
                     pass
 
+            from apps.billing.pay_links import public_pay_url
             context = {
                 'payment': payment,
                 'invoice': invoice,
                 'customer': customer,
                 'branding': branding,
+                # Tokened /pay/ URL (shop's Connect account); None when the
+                # shop can't take online payments — template hides the button.
+                'pay_url': public_pay_url(invoice),
             }
 
             subject = (
@@ -150,22 +154,30 @@ class PaymentNotificationService:
         invoice = payment.invoice
         customer = invoice.customer
 
-        # Get owner email from BillingConfig (per-tenant) or fallback
+        # Owner recipient: BillingConfig.company_email → tenant.business_email
+        # → the owner user's own email. Always tenant-scoped — never a global
+        # settings fallback, which would leak every shop's payment activity
+        # to one address.
         owner_email = None
+        tenant = getattr(invoice, 'tenant', None)
         try:
             from apps.billing.models import BillingConfig
-            tenant = getattr(invoice, 'tenant', None)
             if tenant:
                 cfg = BillingConfig.get_for_tenant(tenant)
                 owner_email = cfg.company_email
         except Exception:
             pass
 
-        if not owner_email:
-            owner_email = getattr(settings, 'DEFAULT_OWNER_EMAIL', None)
+        if not owner_email and tenant:
+            owner_email = tenant.business_email or ''
+            if not owner_email and tenant.owner:
+                owner_email = tenant.owner.email or ''
 
         if not owner_email:
-            logger.debug("No owner email configured — skipping owner notification")
+            logger.warning(
+                f"No owner email for tenant {getattr(tenant, 'slug', None)} — "
+                f"skipping payment notification"
+            )
             return False
 
         try:

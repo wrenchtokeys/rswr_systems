@@ -198,27 +198,34 @@ class AutoInvoiceService:
     
     def _create_payment_link(self, invoice):
         """
-        Generate a Stripe payment link for an invoice (if Stripe is configured).
-        
+        Build the public pay URL for an invoice.
+
+        Routes through the shop's Stripe Connect account at click time.
+        Never mints a platform-account Payment Link — that money would
+        settle in the platform's Stripe balance, not the shop's.
+
         Args:
             invoice: Invoice model instance
-            
+
         Returns:
-            dict with success/payment_link or None if Stripe not configured
+            dict with success/payment_link or None if the shop can't take payments
         """
         try:
-            from apps.billing.services.stripe_service import StripeService
-            stripe_svc = StripeService()
-            if not stripe_svc.is_enabled():
-                logger.debug("Stripe not configured, skipping payment link")
-                return None
-            
             if invoice.amount_due <= 0:
                 return None
-            
-            return stripe_svc.create_payment_link(invoice)
+
+            from apps.billing.pay_links import public_pay_url
+            pay_url = public_pay_url(invoice)
+            if not pay_url:
+                logger.debug(
+                    f"Tenant for invoice #{invoice.id} cannot accept online "
+                    f"payments — skipping payment link"
+                )
+                return None
+
+            return {'success': True, 'payment_link': pay_url}
         except Exception as e:
-            logger.warning(f"Stripe payment link error: {e}")
+            logger.warning(f"Payment link error: {e}")
             return None
     
     def _save_to_s3(self, pdf_bytes, customer_id, invoice_number):

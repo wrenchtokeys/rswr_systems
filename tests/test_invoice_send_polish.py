@@ -143,12 +143,28 @@ class PublicInvoiceViewTests(TestCase):
         self.client = Client()
 
     def test_valid_token_shows_invoice(self):
+        # Pay button requires an active Connect account — without one the
+        # /pay/ page would dead-end (and historically charged the PLATFORM
+        # account, which is why the gate exists).
+        self.tenant.stripe_connect_account_id = 'acct_polish_a'
+        self.tenant.stripe_onboarding_status = 'active'
+        self.tenant.stripe_connect_charges_enabled = True
+        self.tenant.save()
+
         resp = self.client.get(f'/invoice/{self.invoice.id}/{self.token}/')
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, self.invoice.invoice_number)
         self.assertContains(resp, 'Windshield replacement')
         # Pay button present and points at the /pay/ URL, not this page
         self.assertContains(resp, f'/pay/{self.invoice.id}/{self.token}/')
+
+    def test_no_connect_hides_pay_button(self):
+        """A shop that can't take online payments gets no Pay button —
+        never a platform-account charge."""
+        resp = self.client.get(f'/invoice/{self.invoice.id}/{self.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, self.invoice.invoice_number)
+        self.assertNotContains(resp, f'/pay/{self.invoice.id}/{self.token}/')
 
     def test_invalid_token_404(self):
         resp = self.client.get(f'/invoice/{self.invoice.id}/{"0" * 32}/')

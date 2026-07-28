@@ -325,7 +325,7 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
 
         invoiced_ids = set(
             InvoiceLineItem.objects
-            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'])
+            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'])
             .values_list('repair_id', flat=True)
         )
         safe_to_delete = queryset.exclude(id__in=invoiced_ids)
@@ -392,7 +392,7 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
 
         invoiced_ids = set(
             InvoiceLineItem.objects
-            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'])
+            .filter(repair__in=queryset, invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'])
             .values_list('repair_id', flat=True)
         )
         safe_to_delete = queryset.exclude(id__in=invoiced_ids)
@@ -716,7 +716,7 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
             invoiced_repair_ids = InvoiceLineItem.objects.filter(
                 repair__isnull=False,
                 invoice__tenant=customer.tenant,
-                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
             ).values_list('repair_id', flat=True)
 
             unbilled_repairs = list(

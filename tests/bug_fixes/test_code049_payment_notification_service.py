@@ -257,47 +257,45 @@ class SendOwnerNotificationTests(PaymentNotificationServiceTestCase):
         mock_email_instance.send.assert_called_once()
 
     def test_no_owner_email_returns_false(self):
-        """No owner email in BillingConfig and no DEFAULT_OWNER_EMAIL → returns False."""
+        """No email anywhere (BillingConfig, tenant, owner) → returns False."""
         cfg = BillingConfig.objects.get(tenant=self.tenant)
         cfg.company_email = ''
         cfg.save()
+        self.tenant.business_email = ''
+        self.tenant.save(update_fields=['business_email'])
+        if self.tenant.owner:
+            self.tenant.owner.email = ''
+            self.tenant.owner.save(update_fields=['email'])
 
         svc = self._make_svc()
         with patch('apps.billing.services.payment_notification_service.EmailMultiAlternatives') as mock_email:
-            with override_settings(DEFAULT_OWNER_EMAIL=None):
-                # Remove attribute if set
-                from django.conf import settings as django_settings
-                had_attr = hasattr(django_settings, 'DEFAULT_OWNER_EMAIL')
-                if had_attr:
-                    original = getattr(django_settings, 'DEFAULT_OWNER_EMAIL')
-                    del django_settings.DEFAULT_OWNER_EMAIL
-                try:
-                    result = svc.send_owner_notification(self.payment)
-                finally:
-                    if had_attr:
-                        django_settings.DEFAULT_OWNER_EMAIL = original
+            result = svc.send_owner_notification(self.payment)
 
         self.assertFalse(result)
         mock_email.assert_not_called()
 
-    @patch('apps.billing.services.payment_notification_service.EmailMultiAlternatives')
-    def test_falls_back_to_default_owner_email_setting(self, mock_email_cls):
-        """Falls back to settings.DEFAULT_OWNER_EMAIL when BillingConfig email is empty."""
+    @patch('core.email_utils.send_branded_email')
+    def test_falls_back_to_tenant_business_email(self, mock_send):
+        """Falls back to tenant.business_email when BillingConfig email is
+        empty. (The old global DEFAULT_OWNER_EMAIL fallback was removed — it
+        would have leaked every shop's payment activity to one address.)"""
         cfg = BillingConfig.objects.get(tenant=self.tenant)
         cfg.company_email = ''
         cfg.save()
+        self.tenant.business_email = 'shop-inbox@example.com'
+        self.tenant.save(update_fields=['business_email'])
 
-        mock_email_instance = MagicMock()
-        mock_email_cls.return_value = mock_email_instance
+        mock_send.return_value = 1
 
         svc = self._make_svc()
-        with override_settings(DEFAULT_OWNER_EMAIL='fallback@example.com'):
-            result = svc.send_owner_notification(self.payment)
+        result = svc.send_owner_notification(self.payment)
 
         self.assertTrue(result)
-        call_kwargs = mock_email_cls.call_args
-        to_list = call_kwargs[1].get('to') or call_kwargs[0][3]
-        self.assertIn('fallback@example.com', to_list)
+        mock_send.assert_called_once()
+        self.assertIn(
+            'shop-inbox@example.com',
+            mock_send.call_args.kwargs.get('recipient_list', []),
+        )
 
     @patch('apps.billing.services.payment_notification_service.EmailMultiAlternatives')
     def test_smtp_exception_returns_false(self, mock_email_cls):

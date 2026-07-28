@@ -70,7 +70,20 @@ def create_customer(request):
             customer = form.save(commit=False)
             if tenant:
                 customer.tenant = tenant
-            customer.save()
+            # tenant is assigned after form validation, so the DB unique
+            # constraints (fleet name / email per tenant) are only enforced
+            # here — surface them as form errors, not a 500.
+            from django.db import IntegrityError, transaction as db_transaction
+            try:
+                with db_transaction.atomic():
+                    customer.save()
+            except IntegrityError:
+                form.add_error(
+                    None,
+                    f"A customer with this name or email already exists for your shop. "
+                    f"Check the customer list (including Recently Deleted) before re-adding."
+                )
+                return render(request, 'technician_portal/customer_form.html', {'form': form, 'tenant': tenant})
 
             # Handle billing preferences if any were provided
             _save_billing_preferences(customer, form.cleaned_data)
@@ -837,10 +850,24 @@ def restore_customer(request, customer_id):
 
     stamp = customer.deleted_at
 
-    with transaction.atomic():
-        customer.deleted_at = None
-        customer.save(update_fields=['deleted_at'])
+    # The unique constraints (fleet name / email per tenant) exempt
+    # soft-deleted rows, so a shop can recreate "Acme Trucking" while the
+    # old one sits in Recently Deleted. Restoring the old one then collides —
+    # surface a message instead of a 500.
+    from django.db import IntegrityError
+    try:
+        with transaction.atomic():
+            customer.deleted_at = None
+            customer.save(update_fields=['deleted_at'])
+    except IntegrityError:
+        messages.error(
+            request,
+            f"Can't restore '{customer.name}' — another customer with the same "
+            f"name or email now exists. Rename or remove that customer first."
+        )
+        return redirect('archived_repairs')
 
+    with transaction.atomic():
         Repair.all_objects.filter(customer=customer, deleted_at__gte=stamp).update(deleted_at=None)
         Replacement.all_objects.filter(customer=customer, deleted_at__gte=stamp).update(deleted_at=None)
         Invoice.all_objects.filter(customer=customer, deleted_at__gte=stamp).update(deleted_at=None)

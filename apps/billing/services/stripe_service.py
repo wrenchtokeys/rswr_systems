@@ -275,17 +275,23 @@ class StripeService:
         
         event_type = event['type']
         data = event['data']['object']
-        
+        # Present only on events that originate from a connected account —
+        # used to verify the paying account matches the invoice's tenant.
+        event_account = event.get('account')
+
+        # Subscription checkouts must reach the subscription handler — the
+        # invoice handler would drop them (no rs_invoice_id metadata) and the
+        # paying shop would never get its plan activated.
+        if event_type == 'checkout.session.completed' and data.get('mode') == 'subscription':
+            from apps.tenants.webhooks import handle_subscription_event
+            return handle_subscription_event(event_type, data)
+
         # Billing payment handlers (invoice checkout + payment intents)
-        handlers = {
-            'checkout.session.completed': self._handle_checkout_completed,
-            'payment_intent.succeeded': self._handle_payment_succeeded,
-        }
-        
-        handler = handlers.get(event_type)
-        if handler:
-            return handler(data)
-        
+        if event_type == 'checkout.session.completed':
+            return self._handle_checkout_completed(data, event_account=event_account)
+        if event_type == 'payment_intent.succeeded':
+            return self._handle_payment_succeeded(data, event_account=event_account)
+
         # SaaS subscription handlers (delegated to tenants.webhooks)
         # NOTE: These are also handled by the dedicated subscription webhook
         # at /ap/tenants/webhooks/stripe/ with its own signing secret.
@@ -303,7 +309,7 @@ class StripeService:
         logger.debug(f"Unhandled webhook: {event_type}")
         return {'success': True, 'handled': False, 'event_type': event_type}
     
-    def _handle_checkout_completed(self, session):
+    def _handle_checkout_completed(self, session, event_account=None):
         """Customer completed a Checkout Session — record the payment.
 
         IMPORTANT: Stripe sends checkout.session.completed even when
@@ -345,9 +351,10 @@ class StripeService:
             amount=amount,
             stripe_payment_id=payment_intent_id,
             notes=f"Paid via Stripe Checkout ({session['id']})",
+            event_account=event_account,
         )
-    
-    def _handle_payment_succeeded(self, payment_intent):
+
+    def _handle_payment_succeeded(self, payment_intent, event_account=None):
         """Payment intent succeeded — could be from Payment Link or Checkout."""
         metadata = payment_intent.get('metadata', {})
         invoice_id = metadata.get('rs_invoice_id')
@@ -363,7 +370,12 @@ class StripeService:
             amount=amount,
             stripe_payment_id=payment_intent_id,
             notes='Paid via Stripe',
+            event_account=event_account,
         )
+
+        # A refused (wrong-account) charge must not create a fee record either.
+        if result.get('flagged') == 'account_mismatch':
+            return result
 
         # Record platform fee if this was a direct charge with an application fee
         application_fee_amount = payment_intent.get('application_fee_amount')
@@ -405,11 +417,12 @@ class StripeService:
 
         return result
     
-    def _record_stripe_payment(self, invoice_id, amount, stripe_payment_id='', notes=''):
+    def _record_stripe_payment(self, invoice_id, amount, stripe_payment_id='', notes='',
+                               event_account=None):
         """Record a Stripe payment against our invoice."""
         from apps.billing.models import Invoice
         from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
-        
+
         try:
             # Note: Stripe webhook context has no tenant, but invoice_id
             # comes from our own metadata so this is safe. We still log
@@ -419,6 +432,28 @@ class StripeService:
         except Invoice.DoesNotExist:
             logger.error(f"Invoice {invoice_id} not found for Stripe payment")
             return {'success': False, 'error': 'Invoice not found'}
+
+        # The paying Connect account must be the invoice tenant's own account.
+        # Anything else (a charge on the platform account via a stale Payment
+        # Link, or metadata pointing at another shop's invoice) means the
+        # money did NOT reach this shop — never mark the invoice paid.
+        expected_account = (
+            invoice.tenant.stripe_connect_account_id if invoice.tenant else ''
+        )
+        if not event_account or event_account != expected_account:
+            logger.error(
+                f"REFUSING to record payment {stripe_payment_id or '(no pi)'} for "
+                f"invoice {invoice.invoice_number}: charge account "
+                f"{event_account!r} does not match tenant's Connect account "
+                f"{expected_account!r}. Money may have settled in the wrong "
+                f"Stripe account — investigate and refund/re-collect manually."
+            )
+            return {
+                'success': True,
+                'handled': False,
+                'flagged': 'account_mismatch',
+                'invoice_id': invoice.id,
+            }
         
         # Don't double-record payments. The .exists() precheck is a fast
         # path only — two concurrent webhook deliveries (Stripe sends

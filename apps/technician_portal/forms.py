@@ -472,8 +472,9 @@ class RepairForm(forms.ModelForm):
                 tenant=self.tenant, can_repair=True, is_active=True
             )
         else:
-            # Fallback for superusers / admin — still filter by active
-            self.fields['customer'].queryset = Customer.objects.all().order_by('name')
+            # No tenant context → no customers. Showing all shops' customers
+            # to a staff user with no membership is a cross-tenant leak.
+            self.fields['customer'].queryset = Customer.objects.none()
             self.fields['technician'].queryset = Technician.objects.filter(
                 can_repair=True, is_active=True
             )

@@ -3525,9 +3525,10 @@ def customer_invoice_pay(request, invoice_id):
             )
             return redirect('customer_invoice_detail', invoice_id=invoice.id)
 
-        # If there's already a Stripe hosted URL, redirect there
-        if invoice.stripe_hosted_url:
-            return redirect(invoice.stripe_hosted_url)
+        # Note: invoice.stripe_hosted_url is deliberately ignored here — old
+        # records hold platform-account Payment Links, which would route the
+        # customer's money to the platform instead of the shop's Connect
+        # account. Always create a fresh connected checkout session.
 
         # Create a direct charge checkout session on the shop's connected account
         from apps.tenants.services.connect_service import ConnectService, ConnectError
@@ -3593,15 +3594,19 @@ def accept_customer_invitation(request, token):
     # If user is already logged in
     if request.user.is_authenticated:
         from common.auth import get_user_role
-        role = get_user_role(request.user)
-        
-        # Owners/managers already have full access — don't create CustomerUser
+        # Role must be scoped to the INVITING shop's tenant — an owner at a
+        # different shop (or the shop owner previewing their own invite
+        # email) must not consume the fleet manager's token.
+        role = get_user_role(request.user, tenant=invitation.customer.tenant)
+
+        # Owners/managers of THIS shop already have full access — leave the
+        # invitation pending so the intended recipient can still use it.
         if role in ('superuser', 'owner', 'manager'):
-            invitation.mark_accepted(request.user)
             messages.info(
                 request,
-                f"Invitation accepted. You already have full access to "
-                f"{invitation.customer.name} as a shop {role}."
+                f"You already have full access to {invitation.customer.name} "
+                f"as a shop {role}. The invitation link is still valid for "
+                f"the person it was sent to."
             )
             return redirect('owner_dashboard')
         

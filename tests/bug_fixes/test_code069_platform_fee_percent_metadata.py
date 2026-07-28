@@ -126,9 +126,16 @@ class PlatformFeePercentMetadataTests(TestCase):
         )
 
     def _call_handle_payment_succeeded(self, pi_dict):
-        """Call the private handler via StripeService."""
+        """Call the private handler via StripeService.
+
+        event_account mirrors the Connect event's top-level 'account' field —
+        it must match the tenant's Connect account or the payment is refused
+        (account-mismatch guard added in the multi-shop hardening pass).
+        """
         svc = StripeService()
-        return svc._handle_payment_succeeded(pi_dict)
+        return svc._handle_payment_succeeded(
+            pi_dict, event_account=self.tenant.stripe_connect_account_id
+        )
 
     # ------------------------------------------------------------------ #
     # 1. rs_fee_percent metadata (ConnectService class-method path)

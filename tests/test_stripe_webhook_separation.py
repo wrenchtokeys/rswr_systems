@@ -276,8 +276,14 @@ class BillingWebhookEndpointTests(WebhookEndpointTestBase):
         """checkout.session.completed with rs_invoice_id records payment."""
         _, invoice = self._create_customer_and_invoice('INV-B001', Decimal('150.00'))
 
+        # Direct charges arrive as Connect events: event['account'] must
+        # match the invoice tenant's Connect account or the payment is refused.
+        self.tenant.stripe_connect_account_id = 'acct_shop_b001'
+        self.tenant.save(update_fields=['stripe_connect_account_id'])
+
         mock_construct.return_value = {
             'type': 'checkout.session.completed',
+            'account': 'acct_shop_b001',
             'data': {
                 'object': {
                     'id': 'cs_test_123',
@@ -294,6 +300,37 @@ class BillingWebhookEndpointTests(WebhookEndpointTestBase):
         self.assertTrue(result['success'])
         invoice.refresh_from_db()
         self.assertEqual(invoice.status, 'PAID')
+
+    @patch('stripe.Webhook.construct_event')
+    def test_billing_checkout_wrong_account_refused(self, mock_construct):
+        """A charge that landed on a different Stripe account (e.g. a stale
+        platform Payment Link, or forged metadata) must NOT mark the
+        invoice paid — the shop never received that money."""
+        _, invoice = self._create_customer_and_invoice('INV-B004', Decimal('99.00'))
+
+        self.tenant.stripe_connect_account_id = 'acct_shop_b004'
+        self.tenant.save(update_fields=['stripe_connect_account_id'])
+
+        mock_construct.return_value = {
+            'type': 'checkout.session.completed',
+            # No 'account' key → platform-account charge
+            'data': {
+                'object': {
+                    'id': 'cs_test_wrong',
+                    'payment_status': 'paid',
+                    'amount_total': 9900,
+                    'payment_intent': 'pi_test_wrong',
+                    'metadata': {'rs_invoice_id': str(invoice.id)},
+                }
+            },
+        }
+
+        svc = self._get_svc()
+        result = svc.handle_webhook(b'{}', 't=123,v1=abc')
+        self.assertEqual(result.get('flagged'), 'account_mismatch')
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, 'sent')  # NOT paid
+        self.assertEqual(invoice.payments.count(), 0)
 
     @patch('stripe.Webhook.construct_event')
     def test_billing_checkout_unpaid_defers(self, mock_construct):
@@ -324,8 +361,12 @@ class BillingWebhookEndpointTests(WebhookEndpointTestBase):
         """payment_intent.succeeded records payment."""
         _, invoice = self._create_customer_and_invoice('INV-B003', Decimal('75.50'))
 
+        self.tenant.stripe_connect_account_id = 'acct_shop_b003'
+        self.tenant.save(update_fields=['stripe_connect_account_id'])
+
         mock_construct.return_value = {
             'type': 'payment_intent.succeeded',
+            'account': 'acct_shop_b003',
             'data': {
                 'object': {
                     'id': 'pi_test_789',
@@ -763,6 +804,7 @@ class StripeConnectWebhookTests(WebhookEndpointTestBase):
 
         mock_construct.return_value = {
             'type': 'payment_intent.succeeded',
+            'account': 'acct_shop_fee',
             'data': {
                 'object': {
                     'id': 'pi_fee_test',
@@ -798,8 +840,12 @@ class StripeConnectWebhookTests(WebhookEndpointTestBase):
 
         _, invoice = self._create_customer_and_invoice('INV-DUPE-001', Decimal('100.00'))
 
+        self.tenant.stripe_connect_account_id = 'acct_dupe'
+        self.tenant.save(update_fields=['stripe_connect_account_id'])
+
         mock_construct.return_value = {
             'type': 'payment_intent.succeeded',
+            'account': 'acct_dupe',
             'data': {
                 'object': {
                     'id': 'pi_dupe_test',
@@ -946,8 +992,15 @@ class ConnectServiceTests(WebhookEndpointTestBase):
         self.assertTrue(result['success'])
 
         call_kwargs = mock_session.call_args[1]
-        # No payment_intent_data with fee when fee is 0
-        self.assertNotIn('payment_intent_data', call_kwargs)
+        # payment_intent_data always carries the invoice metadata (the webhook
+        # resolves the invoice from PaymentIntent metadata), but must not add
+        # an application_fee_amount when the fee is 0.
+        self.assertIn('payment_intent_data', call_kwargs)
+        self.assertNotIn('application_fee_amount', call_kwargs['payment_intent_data'])
+        self.assertEqual(
+            call_kwargs['payment_intent_data']['metadata']['rs_invoice_id'],
+            str(invoice.id),
+        )
 
 
 # =============================================================================

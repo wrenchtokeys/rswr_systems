@@ -20,6 +20,7 @@ from django.conf import settings
 from django.utils import timezone
 
 from common.auth import requires_api
+from apps.billing.pay_links import public_pay_url
 
 from core.models import Customer
 
@@ -147,7 +148,9 @@ def list_invoices(request):
             'amount_paid': float(inv.amount_paid),
             'amount_due': float(inv.amount_due),
             'status': inv.status,
-            'stripe_hosted_url': inv.stripe_hosted_url or None,
+            # Tokened /pay/ URL (shop's Connect account), never the stored
+            # stripe_hosted_url which may be a stale platform-account link.
+            'stripe_hosted_url': public_pay_url(inv),
             'line_item_count': inv.line_item_count,
         } for inv in invoices],
         'count': len(invoices),
@@ -274,21 +277,16 @@ def create_invoice(request, customer_id):
         import logging
         logging.getLogger(__name__).warning(f"PDF generation failed for {invoice.invoice_number}: {e}")
 
-    # Generate Stripe payment link (auto when Stripe is configured, skip with no_payment_link=true)
+    # Payment link = public tokened /pay/ URL (routes through the shop's
+    # Connect account at click time). No platform-account fallback — that
+    # would send the customer's money to the platform, not the shop.
     stripe_result = None
     try:
-        if not data.get('no_payment_link', False):
-            from apps.billing.services.stripe_service import StripeService
-            stripe_svc = StripeService()
-            if stripe_svc.is_enabled() and invoice.amount_due > 0:
-                # Use connected payment if tenant has Stripe Connect set up
-                if invoice.tenant and invoice.tenant.can_accept_payments:
-                    from apps.tenants.services.connect_service import ConnectService
-                    connect_svc = ConnectService()
-                    stripe_result = connect_svc.create_connected_payment_link(invoice)
-                # Fall back to platform payment link
-                if not stripe_result:
-                    stripe_result = stripe_svc.create_payment_link(invoice)
+        if not data.get('no_payment_link', False) and invoice.amount_due > 0:
+            from apps.billing.pay_links import public_pay_url
+            pay_url = public_pay_url(invoice)
+            if pay_url:
+                stripe_result = {'success': True, 'payment_link': pay_url}
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Stripe link failed for {invoice.invoice_number}: {e}")
@@ -384,11 +382,13 @@ def send_invoice_email(request, invoice_id):
     try:
         from apps.billing.services.invoice_email_service import InvoiceEmailService
         email_svc = InvoiceEmailService(tenant=tenant)
-        repair_ids = list(invoice.line_items.values_list('repair_id', flat=True))
+        # Pass the invoice record so the PDF renders from its own line items
+        # and stored number/totals (A4) — the repair-lookback path would mint
+        # a new number and break for replacement-only invoices.
         success, msg = email_svc.send_invoice_email(
             customer_id=invoice.customer_id,
             recipient_email=recipient_email,
-            repair_ids=repair_ids if repair_ids else None,
+            invoice=invoice,
             cc_emails=cc_emails if cc_emails else None,
         )
 
@@ -456,11 +456,12 @@ def send_invoice_email_batch(request):
             if not invoice.customer.email:
                 results.append({'id': inv_id, 'success': False, 'error': 'No email'})
                 continue
-            repair_ids = [item.repair_id for item in invoice.line_items.all()]
+            # Pass the invoice record so the PDF renders from its own line
+            # items and stored number/totals — not a repair lookback.
             sent_ok, sent_msg = email_svc.send_invoice_email(
                 customer_id=invoice.customer_id,
                 recipient_email=invoice.customer.email,
-                repair_ids=repair_ids if repair_ids else None,
+                invoice=invoice,
             )
             if sent_ok:
                 # Promote DRAFT → SENT on confirmed delivery (mirrors single-send logic).
@@ -516,7 +517,9 @@ def get_invoice(request, invoice_id):
             'paid_at': invoice.paid_at.isoformat() if invoice.paid_at else None,
             's3_key': invoice.s3_key,
             'stripe_invoice_id': invoice.stripe_invoice_id,
-            'stripe_hosted_url': invoice.stripe_hosted_url,
+            # Tokened /pay/ URL (shop's Connect account), never the stored
+            # stripe_hosted_url which may be a stale platform-account link.
+            'stripe_hosted_url': public_pay_url(invoice),
             'description': invoice.description,
             'notes': invoice.notes,
             'internal_notes': invoice.internal_notes,
@@ -1144,17 +1147,29 @@ def create_checkout_session(request, invoice_id):
     if not svc.is_enabled():
         return JsonResponse({'error': 'Stripe not configured'}, status=503)
 
+    # Charges must land on the shop's Connect account, never the platform's.
+    if not (invoice.tenant and invoice.tenant.can_accept_payments):
+        return JsonResponse(
+            {'error': 'Online payments are not set up for this shop. '
+                      'Complete Stripe payment setup in Owner Settings.'},
+            status=503,
+        )
+
     try:
         data = json.loads(request.body) if request.body else {}
     except json.JSONDecodeError:
         data = {}
 
-    result = svc.create_checkout_session(
-        invoice,
-        success_url=data.get('success_url'),
-        cancel_url=data.get('cancel_url'),
-    )
-    return JsonResponse(result, status=200 if result['success'] else 400)
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    try:
+        result = ConnectService().create_connected_checkout_session(
+            invoice,
+            success_url=data.get('success_url'),
+            cancel_url=data.get('cancel_url'),
+        )
+    except ConnectError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse(result, status=200 if result.get('success') else 400)
 
 
 @requires_api('invoices')
@@ -1180,14 +1195,21 @@ def create_payment_link(request, invoice_id):
     if not svc.is_enabled():
         return JsonResponse({'error': 'Stripe not configured'}, status=503)
 
-    result = svc.create_payment_link(invoice)
-    if result['success']:
-        return JsonResponse({
-            'payment_link': result['payment_link'],
-            'invoice_number': invoice.invoice_number,
-            'amount_due': float(invoice.amount_due),
-        })
-    return JsonResponse(result, status=400)
+    # The pay link is the public tokened /pay/ URL, which charges the
+    # shop's Connect account at click time — never a platform Payment Link.
+    from apps.billing.pay_links import public_pay_url
+    pay_url = public_pay_url(invoice)
+    if not pay_url:
+        return JsonResponse(
+            {'error': 'Online payments are not set up for this shop. '
+                      'Complete Stripe payment setup in Owner Settings.'},
+            status=503,
+        )
+    return JsonResponse({
+        'payment_link': pay_url,
+        'invoice_number': invoice.invoice_number,
+        'amount_due': float(invoice.amount_due),
+    })
 
 
 @csrf_exempt

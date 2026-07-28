@@ -201,7 +201,7 @@ def repair_detail(request, repair_id):
         line_item = InvoiceLineItem.objects.filter(
             repair=repair,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
         ).select_related('invoice').first()
         if line_item:
             is_invoiced = True
@@ -399,7 +399,8 @@ def create_repair(request):
 
     # Build customer types dict for JavaScript
     import json
-    customers_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.all()
+    # No tenant context → no customers (never leak other shops' data)
+    customers_qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
     customer_types_json = json.dumps({
         str(c.id): c.customer_type for c in customers_qs
     })

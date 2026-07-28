@@ -251,7 +251,15 @@ class DirectChargeSessionTests(TestCase):
         )
 
         call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        self.assertNotIn('payment_intent_data', call_kwargs)
+        # payment_intent_data always carries the invoice metadata (the webhook
+        # resolves the invoice from PaymentIntent metadata), but must not add
+        # an application_fee_amount when the fee is 0.
+        self.assertIn('payment_intent_data', call_kwargs)
+        self.assertNotIn('application_fee_amount', call_kwargs['payment_intent_data'])
+        self.assertEqual(
+            call_kwargs['payment_intent_data']['metadata']['rs_invoice_id'],
+            str(self.invoice.id),
+        )
 
 
 # ---------------------------------------------------------------------------

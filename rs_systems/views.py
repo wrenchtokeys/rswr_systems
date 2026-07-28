@@ -345,20 +345,38 @@ def accept_invite(request, token):
                 tech_group, _ = Group.objects.get_or_create(name='Technicians')
                 user.groups.add(tech_group)
 
-                if not Technician.objects.filter(user=user, tenant=invite.tenant).exists():
+                # Technician.user is a OneToOneField across ALL tenants —
+                # never steal (or crash on) another tenant's record (CODE-217).
+                from apps.tenants.services.team_service import resolve_ability_flags
+                foreign_tech = (
+                    Technician.objects.filter(user=user)
+                    .exclude(tenant=invite.tenant).first()
+                )
+                existing_tech = Technician.objects.filter(
+                    user=user, tenant=invite.tenant
+                ).first()
+                if existing_tech:
+                    if invite.role == 'manager':
+                        existing_tech.is_manager = True
+                        existing_tech.save()
+                elif foreign_tech:
+                    logger.warning(
+                        "accept_invite: user %s already has a Technician record "
+                        "for tenant %s — cannot create one for tenant %s.",
+                        user.id, foreign_tech.tenant_id, invite.tenant_id,
+                    )
+                else:
+                    # Abilities follow the shop's services (a replacement-only
+                    # shop must not get a repair-only tech).
+                    can_repair, can_replace = resolve_ability_flags(invite.tenant)
                     Technician.objects.create(
                         tenant=invite.tenant,
                         user=user,
                         is_manager=(invite.role == 'manager'),
                         is_active=True,
-                        can_repair=True,
-                        can_replace=False,
+                        can_repair=can_repair,
+                        can_replace=can_replace,
                     )
-                else:
-                    tech = Technician.objects.get(user=user, tenant=invite.tenant)
-                    if invite.role == 'manager':
-                        tech.is_manager = True
-                        tech.save()
 
         # Log the user in
         auth_user = authenticate(request, username=user.username, password=password)
@@ -518,23 +536,9 @@ def public_pay_invoice(request, invoice_id, token):
         except Exception as e:
             logger.warning(f"Could not create checkout for public pay page: {e}")
             error_msg = "Online payments are temporarily unavailable. Please contact the shop directly."
-    else:
-        # Try platform Stripe (non-Connect)
-        try:
-            from apps.billing.services.stripe_service import StripeService
-            svc = StripeService()
-            if svc.is_enabled():
-                base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
-                result = svc.create_checkout_session(
-                    invoice,
-                    success_url=f"{base_url}/payment-complete?session={{CHECKOUT_SESSION_ID}}",
-                    cancel_url=f"{base_url}/pay/{invoice_id}/{token}/",
-                )
-                if result.get('checkout_url'):
-                    checkout_url = result['checkout_url']
-        except Exception as e:
-            logger.warning(f"Could not create platform checkout: {e}")
-            error_msg = "Online payments are temporarily unavailable. Please contact the shop directly."
+    # No Connect account: never fall back to a platform-account charge —
+    # the money would settle in the platform's Stripe balance, not the
+    # shop's. Fall through to the contact-the-shop page instead.
 
     # If we got a checkout URL, redirect immediately
     if checkout_url:
@@ -587,7 +591,13 @@ def public_view_invoice(request, invoice_id, token):
         return render(request, '404.html', status=404)
 
     tenant = invoice.tenant
-    can_pay = invoice.status not in ('PAID', 'CANCELLED') and invoice.amount_due > 0
+    can_pay = (
+        invoice.status not in ('PAID', 'CANCELLED')
+        and invoice.amount_due > 0
+        # No Pay button unless the shop can actually take online payments
+        # (active Stripe Connect) — the /pay/ page would dead-end otherwise.
+        and bool(tenant and tenant.can_accept_payments)
+    )
     context = {
         'invoice': invoice,
         'line_items': invoice.line_items.all(),

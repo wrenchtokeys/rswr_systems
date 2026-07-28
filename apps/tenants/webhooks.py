@@ -152,7 +152,19 @@ def _handle_checkout_completed(session):
         # Not a subscription checkout (might be a one-time payment)
         logger.debug(f"checkout.session.completed without subscription: {session.get('id')}")
         return
-    
+
+    # Stripe fires checkout.session.completed even when payment_status is
+    # 'unpaid' (async payment methods — money hasn't arrived). Only activate
+    # on 'paid' or 'no_payment_required' (trial/zero-amount); otherwise the
+    # invoice.paid event that fires when the money clears will activate.
+    payment_status = session.get('payment_status')
+    if payment_status not in (None, 'paid', 'no_payment_required'):
+        logger.info(
+            f"checkout.session.completed with payment_status={payment_status!r} "
+            f"for customer {customer_id} — deferring activation to invoice.paid"
+        )
+        return
+
     # Try to find tenant by customer ID
     tenant = _find_tenant_by_customer_id(customer_id)
     
@@ -238,7 +250,36 @@ def _handle_invoice_paid(invoice):
     if subscription_id and tenant.stripe_subscription_id != subscription_id:
         tenant.stripe_subscription_id = subscription_id
 
-    tenant.save(update_fields=['subscription_status', 'stripe_subscription_id', 'grace_period_end'])
+    update_fields = ['subscription_status', 'stripe_subscription_id', 'grace_period_end']
+
+    # Self-heal the plan from the invoice's price ID. If the original
+    # checkout.session.completed was lost (endpoint misconfig, transient
+    # error), the tenant would otherwise pay every month while stuck on
+    # plan='trial' — and get locked out when the trial clock runs out.
+    if tenant.plan == 'trial':
+        try:
+            lines = invoice.get('lines', {}).get('data', [])
+            price_id = ''
+            if lines:
+                price_id = (lines[0].get('price') or {}).get('id', '')
+            if price_id:
+                plan = SubscriptionPlan.objects.filter(
+                    stripe_price_id=price_id
+                ).first() or SubscriptionPlan.objects.filter(
+                    stripe_annual_price_id=price_id
+                ).first()
+                if plan and plan.slug != 'trial':
+                    tenant.plan = plan.slug
+                    tenant.subscription_plan = plan
+                    update_fields.extend(['plan', 'subscription_plan'])
+                    logger.warning(
+                        f"invoice.paid: Tenant {tenant.slug} was paying while on "
+                        f"plan='trial' — self-healed to {plan.name} from price {price_id}"
+                    )
+        except Exception as e:
+            logger.warning(f"invoice.paid plan self-heal failed for {tenant.slug}: {e}")
+
+    tenant.save(update_fields=update_fields)
 
     logger.info(
         f"invoice.paid: Tenant {tenant.slug} subscription payment successful. "
@@ -417,8 +458,12 @@ def _handle_subscription_deleted(subscription):
     tenant.subscription_status = 'expired'
     tenant.plan = 'trial'  # Revert to trial-level access
 
-    # Set 30-day grace period from now
-    tenant.grace_period_end = timezone.now() + timezone.timedelta(days=30)
+    # Set 30-day grace period from now — unless one is already running.
+    # Webhook replays / duplicate deliveries must not keep extending free
+    # read-only access. (A successful payment clears grace_period_end, so
+    # a genuine second lapse still gets a fresh grace period.)
+    if not tenant.grace_period_end:
+        tenant.grace_period_end = timezone.now() + timezone.timedelta(days=30)
 
     # Try to set subscription_plan to trial plan
     trial_plan = SubscriptionPlan.objects.filter(slug='trial').first()

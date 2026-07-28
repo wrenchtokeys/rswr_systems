@@ -178,10 +178,14 @@ def _send_overdue_reminder(invoice, config, days_overdue):
     open_pixel_url = None
     try:
         from rs_systems.views import generate_payment_token
+        from apps.billing.pay_links import public_pay_url
         base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
         token = generate_payment_token(invoice.id)
-        pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
-        pay_link_text = f"\nPay online: {pay_url}\n"
+        # Pay link only when the shop can actually take online payments
+        # (active Stripe Connect) — otherwise the button dead-ends.
+        pay_url = public_pay_url(invoice)
+        if pay_url:
+            pay_link_text = f"\nPay online: {pay_url}\n"
         open_pixel_url = f"{base_url}/invoice/{invoice.id}/{token}/open.gif"
     except Exception:
         pass
@@ -359,7 +363,7 @@ def _create_batch_invoice(tenant, customer, config):
     invoiced_repair_ids = InvoiceLineItem.objects.filter(
         repair__isnull=False,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
     ).values_list('repair_id', flat=True)
     uninvoiced_repairs = Repair.objects.filter(
         tenant=tenant,
@@ -372,7 +376,7 @@ def _create_batch_invoice(tenant, customer, config):
     invoiced_replacement_ids = InvoiceLineItem.objects.filter(
         replacement__isnull=False,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
     ).values_list('replacement_id', flat=True)
     uninvoiced_replacements = Replacement.objects.filter(
         tenant=tenant,
@@ -554,15 +558,17 @@ def _generate_invoice_number(tenant, config):
     date_str = timezone.now().strftime('%Y%m%d')
 
     # Start from today's existing count + 1 and walk upward until free.
+    # MUST use all_objects: soft-deleted invoices are hidden from the default
+    # manager but still occupy their numbers in the DB unique constraint.
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    base_count = Invoice.objects.filter(
+    base_count = Invoice.all_objects.filter(
         tenant=tenant,
         created_at__gte=today_start,
     ).count() + 1
 
     for attempt in range(base_count, base_count + 500):
         candidate = f"{prefix}-{tenant.id}-{date_str}-{attempt:03d}"
-        if not Invoice.objects.filter(tenant=tenant, invoice_number=candidate).exists():
+        if not Invoice.all_objects.filter(tenant=tenant, invoice_number=candidate).exists():
             return candidate
 
     # Fallback: append microseconds for guaranteed uniqueness
@@ -660,15 +666,10 @@ Thank you for your business!
 {_company_email}
 """
 
-    # Generate public payment link
-    pay_url = None
-    try:
-        from rs_systems.views import generate_payment_token
-        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
-        token = generate_payment_token(invoice.id)
-        pay_url = f"{base_url}/pay/{invoice.id}/{token}/"
-    except Exception:
-        pass
+    # Public payment link — only when the shop can take online payments
+    # (active Stripe Connect); otherwise the button dead-ends.
+    from apps.billing.pay_links import public_pay_url
+    pay_url = public_pay_url(invoice)
 
     try:
         from core.email_utils import send_branded_email

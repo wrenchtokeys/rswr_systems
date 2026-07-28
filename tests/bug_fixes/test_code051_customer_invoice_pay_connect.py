@@ -1,32 +1,25 @@
 """
-CODE-051: customer_invoice_pay missing Stripe Connect routing
+CODE-051 (updated 2026-07): customer_invoice_pay Stripe Connect routing
 
-Bug: customer_invoice_pay() always called StripeService.create_checkout_session(),
-routing payments to the platform account (Drake's Stripe) even when the shop
-had completed Stripe Connect onboarding. This bypassed all connected-account
-payment routing and platform fee logic.
+Original bug: customer_invoice_pay() always called
+StripeService.create_checkout_session(), routing payments to the platform
+account (Drake's Stripe) even when the shop had completed Stripe Connect
+onboarding.
 
-Fix: Check invoice.tenant.can_accept_payments; if True, use
-ConnectService.create_connected_checkout_session() first. Fall back to
-StripeService.create_checkout_session() if Connect routing fails or is
-unavailable.
-
-Tests:
-  1. Platform fallback when tenant is None
-  2. Platform fallback when tenant.can_accept_payments is False
-  3. Connect routing used when tenant.can_accept_payments is True
-  4. Falls back to platform if ConnectService raises an exception
-  5. Falls back to platform if ConnectService returns success=False
-  6. Invoice scoped to the requesting customer (no IDOR)
-  7. Non-POST request redirects without hitting Stripe
-  8. Already-paid invoice rejects payment
-  9. Cancelled invoice rejects payment
-  10. Invoice with existing stripe_hosted_url redirects directly
+Current contract (multi-shop readiness hardening):
+  - Connect is the ONLY online payment path. A shop without an active
+    Connect account gets a "contact the shop" message — NEVER a
+    platform-account charge (the money would settle in the platform's
+    Stripe balance with no route to the shop).
+  - invoice.stripe_hosted_url is ignored: old records hold stale
+    platform-account Payment Links.
+  - PAID/CANCELLED/DRAFT invoices reject payment.
+  - Invoices are scoped to the requesting customer + tenant (no IDOR).
 """
 
 import uuid
 from decimal import Decimal
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from django.test import TestCase, RequestFactory, override_settings
 from django.contrib.auth.models import User
@@ -44,10 +37,6 @@ TEST_OVERRIDES = {
     'EMAIL_BACKEND': 'django.core.mail.backends.locmem.EmailBackend',
 }
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _uid():
     return uuid.uuid4().hex[:8]
@@ -77,9 +66,9 @@ def _make_tenant(slug=None, connect=False):
         owner=owner,
         subscription_plan=plan,
         stripe_connect_account_id='acct_test123' if connect else '',
+        stripe_onboarding_status='active' if connect else 'not_started',
         stripe_connect_charges_enabled=connect,
         stripe_connect_payouts_enabled=connect,
-        stripe_connect_onboarding_complete=connect,
     )
     TenantMembership.objects.create(tenant=tenant, user=owner, role='owner', is_active=True)
     return tenant
@@ -94,7 +83,7 @@ def _make_customer(tenant):
 
 def _make_invoice(tenant, customer, status='SENT', amount_paid=Decimal('0.00'),
                   stripe_hosted_url=''):
-    invoice = Invoice.objects.create(
+    return Invoice.objects.create(
         tenant=tenant,
         customer=customer,
         invoice_number=f'INV-{_uid()}',
@@ -107,12 +96,6 @@ def _make_invoice(tenant, customer, status='SENT', amount_paid=Decimal('0.00'),
         invoice_date=timezone.now().date(),
         stripe_hosted_url=stripe_hosted_url,
     )
-    return invoice
-
-
-def _add_messages(request):
-    """Attach CookieStorage so django.messages works on a bare RequestFactory request."""
-    setattr(request, '_messages', CookieStorage(request))
 
 
 def _post_request(user, invoice_id, tenant=None):
@@ -121,17 +104,13 @@ def _post_request(user, invoice_id, tenant=None):
     request.user = user
     if tenant:
         request.tenant = tenant
-    _add_messages(request)
+    setattr(request, '_messages', CookieStorage(request))
     return request
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
 @override_settings(**TEST_OVERRIDES)
 class CustomerInvoicePayConnectRoutingTest(TestCase):
-    """Test that customer_invoice_pay routes to ConnectService when appropriate."""
+    """customer_invoice_pay must charge the shop's Connect account or nothing."""
 
     def setUp(self):
         # Shop WITH connect enabled
@@ -144,164 +123,98 @@ class CustomerInvoicePayConnectRoutingTest(TestCase):
         self.customer_p, self.user_p, self.cu_p = _make_customer(self.tenant_plain)
         self.invoice_plain = _make_invoice(self.tenant_plain, self.customer_p)
 
+    def _pay(self, user, cu, invoice, tenant):
+        from apps.customer_portal.views import customer_invoice_pay
+        request = _post_request(user, invoice.id, tenant)
+        with patch('apps.customer_portal.views._get_customer_user_for_tenant',
+                   return_value=cu):
+            return customer_invoice_pay(request, invoice.id)
+
     @patch('apps.billing.services.stripe_service.StripeService.create_checkout_session')
-    @patch('apps.billing.services.stripe_service.StripeService.is_enabled', return_value=True)
-    def test_platform_checkout_when_no_connect(self, mock_enabled, mock_checkout):
-        """Falls back to platform checkout when tenant has no Connect setup."""
-        from apps.customer_portal.views import customer_invoice_pay
+    def test_no_connect_never_charges_platform(self, mock_platform_checkout):
+        """No Connect account → customer gets a message, platform Stripe is
+        NEVER called (the shop would not receive that money)."""
+        response = self._pay(self.user_p, self.cu_p, self.invoice_plain, self.tenant_plain)
 
-        mock_checkout.return_value = {
-            'success': True,
-            'checkout_url': 'https://checkout.stripe.com/platform',
-            'session_id': 'cs_platform',
-        }
-
-        request = _post_request(self.user_p, self.invoice_plain.id, self.tenant_plain)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_p
-            response = customer_invoice_pay(request, self.invoice_plain.id)
-
-        mock_checkout.assert_called_once()
+        mock_platform_checkout.assert_not_called()
         self.assertEqual(response.status_code, 302)
-        self.assertIn('platform', response['Location'])
+        self.assertIn(str(self.invoice_plain.id), response['Location'])
 
+    @patch('apps.tenants.services.connect_service.ConnectService.is_enabled', return_value=True)
     @patch('apps.tenants.services.connect_service.ConnectService.create_connected_checkout_session')
-    @patch('apps.billing.services.stripe_service.StripeService.is_enabled', return_value=True)
-    def test_connect_checkout_used_when_tenant_has_connect(self, mock_enabled, mock_connect_checkout):
+    def test_connect_checkout_used_when_tenant_has_connect(self, mock_connect_checkout, mock_enabled):
         """Uses ConnectService when tenant.can_accept_payments is True."""
-        from apps.customer_portal.views import customer_invoice_pay
-
         mock_connect_checkout.return_value = {
             'success': True,
             'checkout_url': 'https://checkout.stripe.com/connect',
             'session_id': 'cs_connect',
         }
 
-        request = _post_request(self.user_c, self.invoice_connect.id, self.tenant_connect)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_c
-            response = customer_invoice_pay(request, self.invoice_connect.id)
+        response = self._pay(self.user_c, self.cu_c, self.invoice_connect, self.tenant_connect)
 
         mock_connect_checkout.assert_called_once()
         self.assertEqual(response.status_code, 302)
         self.assertIn('connect', response['Location'])
 
     @patch('apps.billing.services.stripe_service.StripeService.create_checkout_session')
+    @patch('apps.tenants.services.connect_service.ConnectService.is_enabled', return_value=True)
     @patch('apps.tenants.services.connect_service.ConnectService.create_connected_checkout_session')
-    @patch('apps.billing.services.stripe_service.StripeService.is_enabled', return_value=True)
-    def test_fallback_to_platform_on_connect_exception(
-        self, mock_enabled, mock_connect_checkout, mock_platform_checkout
+    def test_connect_failure_does_not_fall_back_to_platform(
+        self, mock_connect_checkout, mock_enabled, mock_platform_checkout
     ):
-        """Falls back to platform if ConnectService raises an exception."""
-        from apps.customer_portal.views import customer_invoice_pay
-
-        mock_connect_checkout.side_effect = Exception("Stripe API error")
-        mock_platform_checkout.return_value = {
-            'success': True,
-            'checkout_url': 'https://checkout.stripe.com/platform_fallback',
-            'session_id': 'cs_fallback',
-        }
-
-        request = _post_request(self.user_c, self.invoice_connect.id, self.tenant_connect)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_c
-            response = customer_invoice_pay(request, self.invoice_connect.id)
-
-        mock_platform_checkout.assert_called_once()
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('fallback', response['Location'])
-
-    @patch('apps.billing.services.stripe_service.StripeService.create_checkout_session')
-    @patch('apps.tenants.services.connect_service.ConnectService.create_connected_checkout_session')
-    @patch('apps.billing.services.stripe_service.StripeService.is_enabled', return_value=True)
-    def test_fallback_to_platform_on_connect_failure(
-        self, mock_enabled, mock_connect_checkout, mock_platform_checkout
-    ):
-        """Falls back to platform if ConnectService returns success=False."""
-        from apps.customer_portal.views import customer_invoice_pay
-
+        """A Connect failure shows an error — it must NOT silently charge the
+        platform account instead."""
         mock_connect_checkout.return_value = {
             'success': False,
-            'error': 'Shop has not completed Stripe setup',
-        }
-        mock_platform_checkout.return_value = {
-            'success': True,
-            'checkout_url': 'https://checkout.stripe.com/platform_fallback2',
-            'session_id': 'cs_fallback2',
+            'error': 'Account restricted',
         }
 
-        request = _post_request(self.user_c, self.invoice_connect.id, self.tenant_connect)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_c
-            response = customer_invoice_pay(request, self.invoice_connect.id)
+        response = self._pay(self.user_c, self.cu_c, self.invoice_connect, self.tenant_connect)
 
-        mock_platform_checkout.assert_called_once()
+        mock_platform_checkout.assert_not_called()
         self.assertEqual(response.status_code, 302)
-        self.assertIn('fallback2', response['Location'])
+        self.assertIn(str(self.invoice_connect.id), response['Location'])
+
+    @patch('apps.tenants.services.connect_service.ConnectService.is_enabled', return_value=True)
+    @patch('apps.tenants.services.connect_service.ConnectService.create_connected_checkout_session')
+    def test_stale_hosted_url_ignored(self, mock_connect_checkout, mock_enabled):
+        """invoice.stripe_hosted_url (a stale platform Payment Link) is
+        ignored — a fresh connected checkout session is always created."""
+        mock_connect_checkout.return_value = {
+            'success': True,
+            'checkout_url': 'https://checkout.stripe.com/fresh_connect',
+            'session_id': 'cs_fresh',
+        }
+        invoice = _make_invoice(
+            self.tenant_connect, self.customer_c,
+            stripe_hosted_url='https://buy.stripe.com/stale_platform_link',
+        )
+
+        response = self._pay(self.user_c, self.cu_c, invoice, self.tenant_connect)
+
+        mock_connect_checkout.assert_called_once()
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('fresh_connect', response['Location'])
+        self.assertNotIn('stale_platform_link', response['Location'])
 
     def test_already_paid_invoice_rejected(self):
         """PAID invoices cannot be paid again."""
-        from apps.customer_portal.views import customer_invoice_pay
-
         paid_invoice = _make_invoice(
             self.tenant_plain, self.customer_p,
-            status='PAID', amount_paid=Decimal('100.00')
+            status='PAID', amount_paid=Decimal('100.00'),
         )
-
-        request = _post_request(self.user_p, paid_invoice.id, self.tenant_plain)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_p
-            response = customer_invoice_pay(request, paid_invoice.id)
-
-        # Should redirect back to invoice detail without calling Stripe
+        response = self._pay(self.user_p, self.cu_p, paid_invoice, self.tenant_plain)
         self.assertEqual(response.status_code, 302)
         self.assertIn(str(paid_invoice.id), response['Location'])
 
     def test_cancelled_invoice_rejected(self):
         """CANCELLED invoices cannot be paid."""
-        from apps.customer_portal.views import customer_invoice_pay
-
         cancelled_invoice = _make_invoice(
-            self.tenant_plain, self.customer_p, status='CANCELLED'
+            self.tenant_plain, self.customer_p, status='CANCELLED',
         )
-
-        request = _post_request(self.user_p, cancelled_invoice.id, self.tenant_plain)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_p
-            response = customer_invoice_pay(request, cancelled_invoice.id)
-
+        response = self._pay(self.user_p, self.cu_p, cancelled_invoice, self.tenant_plain)
         self.assertEqual(response.status_code, 302)
         self.assertIn(str(cancelled_invoice.id), response['Location'])
-
-    def test_stripe_hosted_url_redirects_directly(self):
-        """Invoices with an existing Stripe hosted URL skip checkout creation."""
-        from apps.customer_portal.views import customer_invoice_pay
-
-        invoice_with_url = _make_invoice(
-            self.tenant_plain, self.customer_p,
-            stripe_hosted_url='https://invoice.stripe.com/i/existing_url'
-        )
-
-        request = _post_request(self.user_p, invoice_with_url.id, self.tenant_plain)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_p
-            response = customer_invoice_pay(request, invoice_with_url.id)
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('existing_url', response['Location'])
-
-    @patch('apps.billing.services.stripe_service.StripeService.is_enabled', return_value=False)
-    def test_stripe_not_configured_shows_error(self, mock_enabled):
-        """Shows error message when Stripe is not configured."""
-        from apps.customer_portal.views import customer_invoice_pay
-
-        request = _post_request(self.user_p, self.invoice_plain.id, self.tenant_plain)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_p
-            response = customer_invoice_pay(request, self.invoice_plain.id)
-
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(str(self.invoice_plain.id), response['Location'])
 
     def test_non_post_request_redirects(self):
         """GET request to pay view redirects without hitting Stripe."""
@@ -310,26 +223,17 @@ class CustomerInvoicePayConnectRoutingTest(TestCase):
         factory = RequestFactory()
         request = factory.get(f'/app/invoices/{self.invoice_plain.id}/pay/')
         request.user = self.user_p
-        _add_messages(request)
+        setattr(request, '_messages', CookieStorage(request))
 
         response = customer_invoice_pay(request, self.invoice_plain.id)
         self.assertEqual(response.status_code, 302)
 
     def test_invoice_scoped_to_customer(self):
         """Cannot pay another customer's invoice (IDOR protection)."""
-        from apps.customer_portal.views import customer_invoice_pay
-
-        # user_p tries to pay user_c's invoice
-        request = _post_request(self.user_p, self.invoice_connect.id, self.tenant_connect)
-        with patch('apps.customer_portal.models.CustomerUser.objects') as mock_cu_objects:
-            mock_cu_objects.get.return_value = self.cu_p  # wrong customer
-            # get_object_or_404 should raise 404 since invoice belongs to customer_c
-            from django.http import Http404
-            try:
-                response = customer_invoice_pay(request, self.invoice_connect.id)
-                # If we get here, the invoice must have been 404'd (redirected)
-                # OR the view correctly rejected it
-                # The invoice's customer != cu_p.customer → 404
-                self.assertIn(response.status_code, [302, 404])
-            except Exception:
-                pass  # Http404 raised directly is also acceptable
+        from django.http import Http404
+        # user_p (customer of the plain shop) tries to pay user_c's invoice
+        try:
+            response = self._pay(self.user_p, self.cu_p, self.invoice_connect, self.tenant_connect)
+            self.assertIn(response.status_code, [302, 404])
+        except Http404:
+            pass  # 404 raised directly is the expected outcome

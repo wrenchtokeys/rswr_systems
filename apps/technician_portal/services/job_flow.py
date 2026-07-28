@@ -69,7 +69,7 @@ def find_active_invoice(services, tenant):
         field = 'repair' if isinstance(svc, Repair) else 'replacement'
         line_item = InvoiceLineItem.objects.filter(
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
             **{field: svc},
         ).select_related('invoice').first()
         if line_item:
