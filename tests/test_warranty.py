@@ -1519,3 +1519,169 @@ class GenerateWarrantyReportCommandTests(TestCase):
         call_command('generate_warranty_report', tenant=self.tenant.pk, stdout=out)
         output = out.getvalue()
         self.assertIn(self.tenant.name, output)
+
+
+@override_settings(**TEST_SETTINGS)
+class WarrantySettingsSaveTests(TestCase):
+    """Settings → Warranty must actually save (regression: broken save URL)."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Save Shop', 'save_owner')
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+    def _policy(self):
+        from apps.technician_portal.models import WarrantyPolicy
+        return WarrantyPolicy.objects.create(
+            tenant=self.tenant,
+            name='Save Warranty',
+            applies_to='repairs',
+            duration_type='custom_days',
+            duration_days=365,
+            coverage_description='Old wording',
+            is_active=True,
+        )
+
+    def test_update_endpoint_saves_duration_and_wording(self):
+        import json as _json
+        from django.urls import reverse
+
+        policy = self._policy()
+        resp = self.client.post(
+            reverse('update_warranty_policy', args=[policy.pk]),
+            data=_json.dumps({
+                'duration_type': 'lifetime',
+                'duration_days': 365,
+                'coverage_description': 'Lifetime warranty against the chip spreading.',
+                'is_active': True,
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()['success'])
+
+        policy.refresh_from_db()
+        self.assertEqual(policy.duration_type, 'lifetime')
+        self.assertEqual(
+            policy.coverage_description,
+            'Lifetime warranty against the chip spreading.',
+        )
+
+    def test_settings_page_save_button_targets_a_real_url(self):
+        """The JS on the page must build a URL that resolves to the update view.
+
+        Regression: the page built '/tech/settings/api/warranty/update/<id>/update/'
+        (a 404), so every Save silently failed with "Error saving".
+        """
+        import re
+        from django.urls import resolve
+
+        policy = self._policy()
+        resp = self.client.get('/tech/settings/warranty/')
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        tmpl = re.search(r'UPDATE_URL_TEMPLATE = "([^"]+)"', html)
+        self.assertIsNotNone(tmpl, 'UPDATE_URL_TEMPLATE not found on the page')
+
+        repl = re.search(
+            r"UPDATE_URL_TEMPLATE\.replace\('([^']*)',\s*'([^']*)'\s*\+\s*id\s*\+\s*'([^']*)'\)",
+            html,
+        )
+        self.assertIsNotNone(
+            repl,
+            'updateUrl() no longer builds the URL by replacing the placeholder id — '
+            'update this test alongside the template.',
+        )
+
+        built = tmpl.group(1).replace(
+            repl.group(1), f'{repl.group(2)}{policy.pk}{repl.group(3)}'
+        )
+        match = resolve(built)
+        self.assertEqual(match.url_name, 'update_warranty_policy')
+        self.assertEqual(match.kwargs['policy_id'], policy.pk)
+
+
+@override_settings(**TEST_SETTINGS)
+class InvoiceWarrantyTermsTests(TestCase):
+    """Saved warranty wording must print under "Warranty Terms" on invoices."""
+
+    def setUp(self):
+        self.user, self.tenant, self.tech = make_tenant('Terms Shop', 'terms_owner')
+
+    def _policy(self, **kwargs):
+        defaults = dict(
+            tenant=self.tenant,
+            name='Terms Warranty',
+            applies_to='repairs',
+            duration_type='custom_days',
+            duration_days=365,
+            coverage_description='',
+            is_active=True,
+        )
+        defaults.update(kwargs)
+        return WarrantyPolicy.objects.create(**defaults)
+
+    def _line_item(self, policy):
+        """Minimal stand-in for an invoice line item carrying a service."""
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            unit_number='T-001',
+            repair_obj=SimpleNamespace(warranty_policy=policy),
+            replacement_obj=None,
+        )
+
+    def _terms(self, *policies):
+        from apps.billing.services.invoice_service import InvoiceService
+        return InvoiceService._build_warranty_terms(
+            [self._line_item(p) for p in policies]
+        )
+
+    def test_shop_wording_is_what_prints(self):
+        policy = self._policy(
+            coverage_description='Lifetime warranty against the chip spreading.'
+        )
+        self.assertEqual(
+            self._terms(policy),
+            ['Lifetime warranty against the chip spreading.'],
+        )
+
+    def test_updated_wording_is_reflected(self):
+        policy = self._policy(coverage_description='Old wording')
+        self.assertEqual(self._terms(policy), ['Old wording'])
+
+        policy.coverage_description = 'New wording — 90 days on labor'
+        policy.duration_type = 'custom_days'
+        policy.duration_days = 90
+        policy.save()
+        policy.refresh_from_db()
+
+        self.assertEqual(self._terms(policy), ['New wording — 90 days on labor'])
+
+    def test_falls_back_to_summary_when_no_wording(self):
+        policy = self._policy(coverage_description='   ')
+        terms = self._terms(policy)
+        self.assertEqual(len(terms), 1)
+        self.assertIn('365 days', terms[0])
+
+    def test_no_warranty_policy_prints_nothing(self):
+        policy = self._policy(
+            duration_type='none', coverage_description='Should not print'
+        )
+        self.assertEqual(self._terms(policy), [])
+
+    def test_shared_policy_printed_once(self):
+        policy = self._policy(coverage_description='One year on all repairs.')
+        self.assertEqual(self._terms(policy, policy), ['One year on all repairs.'])
+
+    def test_service_without_warranty_is_skipped(self):
+        from apps.billing.services.invoice_service import InvoiceService
+        from types import SimpleNamespace
+        item = SimpleNamespace(
+            unit_number='T-002',
+            repair_obj=SimpleNamespace(warranty_policy=None),
+            replacement_obj=None,
+        )
+        self.assertEqual(InvoiceService._build_warranty_terms([item]), [])

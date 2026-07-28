@@ -100,7 +100,12 @@
 
 {% block extra_js %}
 <script>
-const UPDATE_URL_BASE = "{% url 'update_warranty_policy' 0 %}".replace('/0/', '/');
+// Reverse the URL with a placeholder id of 0, then swap in the real policy id.
+const UPDATE_URL_TEMPLATE = "{% url 'update_warranty_policy' 0 %}";
+
+function updateUrl(id) {
+    return UPDATE_URL_TEMPLATE.replace('/0/update/', '/' + id + '/update/');
+}
 
 function getCsrf() {
     return document.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -138,11 +143,15 @@ async function savePolicy(id) {
         is_active: true,
     };
     try {
-        const resp = await fetch(UPDATE_URL_BASE + id + '/update/', {
+        const resp = await fetch(updateUrl(id), {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrf()},
             body: JSON.stringify(payload),
         });
+        if (!resp.ok) {
+            showToast(`Couldn't save (error ${resp.status})`, true);
+            return;
+        }
         const data = await resp.json();
         if (data.success) {
             showToast('Saved');
