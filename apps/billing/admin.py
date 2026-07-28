@@ -85,7 +85,10 @@ class BillingConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
     list_select_related = ['tenant']
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        # Shop owners must never delete their own config, but superusers need
+        # this for tenant cleanup — an unconditional False blocks the admin's
+        # cascade delete of a whole (test) tenant.
+        return request.user.is_superuser
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
