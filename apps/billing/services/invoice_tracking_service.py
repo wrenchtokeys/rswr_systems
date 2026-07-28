@@ -90,7 +90,7 @@ class InvoiceTrackingService:
         already_invoiced = []
         for service in services:
             if service.invoice_line_items.filter(
-                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
+                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True
             ).exists():
                 already_invoiced.append(service.id)
 
@@ -266,7 +266,7 @@ class InvoiceTrackingService:
         invoiced_repair_ids = InvoiceLineItem.objects.filter(
             repair__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True
         ).values_list('repair_id', flat=True)
         
         repairs = repairs.exclude(id__in=invoiced_repair_ids)
@@ -302,7 +302,7 @@ class InvoiceTrackingService:
         invoiced_replacement_ids = InvoiceLineItem.objects.filter(
             replacement__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID']
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True
         ).values_list('replacement_id', flat=True)
 
         replacements = replacements.exclude(id__in=invoiced_replacement_ids)

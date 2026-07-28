@@ -8,10 +8,10 @@
         <div class="mb-6 flex items-center justify-between">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">
-                    <i class="fas fa-archive mr-2 text-gray-500"></i>Archived Repairs
+                    <i class="fas fa-trash-restore mr-2 text-gray-500"></i>Recently Deleted
                 </h1>
                 <p class="mt-1 text-sm text-gray-500">
-                    Soft-deleted repairs and invoices. Restorable within 30 days of deletion.
+                    Deleted customers, jobs, and invoices. Restorable within 30 days of deletion.
                 </p>
             </div>
             <a href="{% url 'job_list' %}" class="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors">
@@ -30,6 +30,55 @@
                 {{ message }}
             </div>
             {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Deleted Customers -->
+        {% if deleted_customers %}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="px-6 py-4 border-b border-gray-200 bg-purple-50 rounded-t-lg">
+                <h2 class="text-lg font-semibold text-gray-800">
+                    <i class="fas fa-users mr-2 text-purple-500"></i>Deleted Customers
+                    <span class="ml-2 text-sm font-normal text-gray-500">({{ deleted_customers|length }} total)</span>
+                </h2>
+                <p class="text-xs text-gray-500 mt-1">Restoring a customer also restores the jobs, invoices, and portal accounts deleted with them.</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deleted At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for customer in deleted_customers %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {{ customer.name }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                {{ customer.get_customer_type_display }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ customer.deleted_at|date:"M d, Y g:i A" }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <form method="post" action="{% url 'restore_customer' customer.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit"
+                                        class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-undo mr-1"></i>Restore
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
         {% endif %}
 
@@ -102,14 +151,72 @@
             {% endif %}
         </div>
 
+        <!-- Deleted Replacements -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="px-6 py-4 border-b border-gray-200 bg-indigo-50 rounded-t-lg">
+                <h2 class="text-lg font-semibold text-gray-800">
+                    <i class="fas fa-car mr-2 text-indigo-500"></i>Deleted Replacements
+                    <span class="ml-2 text-sm font-normal text-gray-500">({{ deleted_replacements|length }} total)</span>
+                </h2>
+            </div>
+            {% if deleted_replacements %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Replacement</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit / Date</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deleted At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for replacement in deleted_replacements %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                #{{ replacement.id }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                {% if replacement.customer %}{{ replacement.customer.name }}{% else %}—{% endif %}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                {% if replacement.unit_number %}Unit {{ replacement.unit_number }}{% else %}—{% endif %}
+                                <div class="text-xs text-gray-400">{{ replacement.service_date|date:"M d, Y" }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {{ replacement.deleted_at|date:"M d, Y g:i A" }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <form method="post" action="{% url 'restore_replacement' replacement.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit"
+                                        class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-undo mr-1"></i>Restore
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-6 py-10 text-center text-gray-400">
+                <i class="fas fa-check-circle text-3xl mb-3"></i>
+                <p class="text-sm">No deleted replacements in the last 30 days.</p>
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Archived Invoices -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <div class="px-6 py-4 border-b border-gray-200 bg-orange-50 rounded-t-lg">
                 <h2 class="text-lg font-semibold text-gray-800">
-                    <i class="fas fa-file-invoice-dollar mr-2 text-orange-500"></i>Archived Invoices
+                    <i class="fas fa-file-invoice-dollar mr-2 text-orange-500"></i>Deleted Invoices
                     <span class="ml-2 text-sm font-normal text-gray-500">({{ deleted_invoices|length }} total)</span>
                 </h2>
-                <p class="text-xs text-gray-500 mt-1">Invoices are restored automatically when their repair is restored.</p>
+                <p class="text-xs text-gray-500 mt-1">Invoices deleted along with a job are also restored automatically when that job is restored.</p>
             </div>
 
             {% if deleted_invoices %}
@@ -121,7 +228,8 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Archived At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deleted At</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -144,6 +252,15 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {{ invoice.deleted_at|date:"M d, Y g:i A" }}
                             </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <form method="post" action="{% url 'restore_invoice' invoice.id %}" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit"
+                                        class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
+                                        <i class="fas fa-undo mr-1"></i>Restore
+                                    </button>
+                                </form>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -160,7 +277,7 @@
         <!-- Info box -->
         <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
             <i class="fas fa-info-circle mr-2"></i>
-            <strong>About soft-deletion:</strong> Deleted repairs and invoices are kept for 30 days before being permanently purged by the nightly <code>purge_deleted_records</code> management command. Restoring a repair also restores its linked invoices.
+            <strong>About deletion:</strong> Deleted customers, jobs, and invoices are kept for 30 days before being permanently purged. Restoring a job also restores its linked invoices, and restoring a customer restores everything deleted with them.
         </div>
 
     </div>

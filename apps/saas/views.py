@@ -987,13 +987,15 @@ def replacement_detail(request, pk):
     invoice_line_item = InvoiceLineItem.objects.filter(
         replacement=replacement,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
     ).select_related('invoice').first()
 
     from apps.billing.services.invoice_send_service import InvoiceSendService
+    from apps.technician_portal.decorators import is_tenant_admin
     return render(request, 'saas/replacement_detail.html', {
         'replacement': replacement,
         'tenant': tenant,
+        'is_admin': is_tenant_admin(request.user, tenant=tenant),
         'status_transitions': status_transitions,
         'is_invoiced': invoice_line_item is not None,
         'existing_invoice': invoice_line_item.invoice if invoice_line_item else None,
@@ -1087,6 +1089,45 @@ def replacement_update_status(request, pk):
     messages.success(request, f'Status updated to {status_display}.')
 
     return redirect('replacement_detail', pk=pk)
+
+
+@require_POST
+@technician_required
+def replacement_delete(request, pk):
+    """Soft-delete a replacement. Owner/manager only.
+
+    Mirrors delete_repair: the replacement and any invoices containing it are
+    soft-deleted together (payments stay intact), restorable from Recently
+    Deleted for 30 days, then purged by purge_deleted_records.
+    """
+    from apps.technician_portal.decorators import is_tenant_admin
+    from apps.billing.models import Invoice
+
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        messages.error(request, 'No shop context. Please log in.')
+        from common.auth import redirect_to_portal
+        return redirect_to_portal(request.user)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+
+    if not is_tenant_admin(request.user, tenant=tenant):
+        messages.error(request, "Only owners and managers can delete replacements.")
+        return redirect('replacement_detail', pk=pk)
+
+    with transaction.atomic():
+        now = timezone.now()
+        replacement.deleted_at = now
+        replacement.save(update_fields=['deleted_at'])
+        Invoice.objects.filter(
+            line_items__replacement=replacement
+        ).distinct().update(deleted_at=now)
+
+    messages.success(
+        request,
+        f"Replacement #{pk} has been deleted. "
+        "You can restore it from Recently Deleted for 30 days."
+    )
+    return redirect('job_list')
 
 
 @require_POST
@@ -2641,7 +2682,7 @@ def owner_invoice_list(request):
         _ILI.objects.filter(
             repair__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
         ).values_list('repair_id', flat=True)
     )
 
@@ -2661,7 +2702,7 @@ def owner_invoice_list(request):
         _ILI.objects.filter(
             replacement__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
         ).values_list('replacement_id', flat=True)
     )
 
@@ -3968,48 +4009,20 @@ def owner_invoice_bulk_action(request):
         return JsonResponse({'success': True, 'message': msg})
 
     elif action == 'delete':
-        # Allow deleting DRAFT and CANCELLED (voided) invoices.
-        # (CODE-123) Payment.invoice uses on_delete=PROTECT, so we must skip
-        # any invoice that still has payment records — deleting it would raise
-        # a ProtectedError and crash with a 500.  Collect safe-to-delete IDs
-        # by excluding invoices that have any associated payments.
-        from django.db.models import ProtectedError as _ProtectedError
-        from apps.billing.models import Payment as _Payment
+        # Soft-delete any selected invoice, regardless of status.  Payments
+        # and line items stay intact so a restore brings everything back;
+        # purge_deleted_records hard-deletes (payments included) after 30
+        # days.  The jobs on the invoice become re-invoicable immediately —
+        # uninvoiced queries ignore line items on soft-deleted invoices.
+        deleted_count = invoices.update(deleted_at=timezone.now())
 
-        candidate_qs = invoices.filter(status__in=['DRAFT', 'CANCELLED'])
-        # IDs of candidates that still have payments attached
-        has_payments_ids = set(
-            _Payment.objects.filter(invoice__in=candidate_qs)
-            .values_list('invoice_id', flat=True)
-            .distinct()
-        )
-        safe_to_delete = candidate_qs.exclude(id__in=has_payments_ids)
-        payment_blocked = len(has_payments_ids)
-
-        deleted_count = safe_to_delete.count()
-        skipped_active = invoices.exclude(status__in=['DRAFT', 'CANCELLED']).count()
-
-        # Perform the delete via instance loop so Invoice.delete() fires
-        # (which cleans up S3 objects).  QuerySet.delete() bypasses model
-        # overrides — see AGENTS.md gotcha.  (CODE-152)
-        try:
-            for inv in safe_to_delete:
-                inv.delete()
-        except _ProtectedError:
-            return JsonResponse(
-                {'success': False, 'error': 'Delete failed: one or more invoices have payment records.'},
-                status=400,
-            )
-
-        msg = f'{deleted_count} invoice(s) deleted.'
-        if skipped_active:
-            msg += f' {skipped_active} active invoice(s) were skipped (void first, then delete).'
-        if payment_blocked:
-            msg += (
-                f' {payment_blocked} voided invoice(s) with recorded payments were skipped — '
-                'remove the payments first.'
-            )
-        return JsonResponse({'success': True, 'message': msg})
+        return JsonResponse({
+            'success': True,
+            'message': (
+                f'{deleted_count} invoice(s) deleted. '
+                'You can restore them from Recently Deleted for 30 days.'
+            ),
+        })
 
     else:
         return JsonResponse({'success': False, 'error': f'Unknown action: {action}'}, status=400)
@@ -4108,6 +4121,36 @@ def owner_invoice_void(request, invoice_id):
 
 
 @owner_or_manager_required
+def owner_invoice_delete(request, invoice_id):
+    """POST /owner/invoices/<id>/delete/ — soft-delete a single invoice.
+
+    Works on any status.  Payments and line items stay intact so the invoice
+    can be restored from Recently Deleted for 30 days, after which
+    purge_deleted_records hard-deletes it (payments included, S3 PDF cleaned
+    up).  Its jobs become re-invoicable immediately.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required.'}, status=405)
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+
+    invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
+
+    invoice.deleted_at = timezone.now()
+    invoice.save(update_fields=['deleted_at'])
+
+    return JsonResponse({
+        'success': True,
+        'message': (
+            f'Invoice {invoice.invoice_number} deleted. '
+            'You can restore it from Recently Deleted for 30 days.'
+        ),
+    })
+
+
+@owner_or_manager_required
 def owner_generate_invoice_from_repair(request, repair_id):
     """
     POST /owner/invoices/generate-from-repair/<repair_id>/
@@ -4163,7 +4206,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
         if InvoiceLineItem.objects.filter(
             repair=r,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
         ).exists():
             already_invoiced_repair = r
             break
@@ -4172,7 +4215,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
         line_item = InvoiceLineItem.objects.filter(
             repair=already_invoiced_repair,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
         ).select_related('invoice').first()
         existing_invoice = line_item.invoice
 
@@ -4323,7 +4366,7 @@ def owner_generate_invoice_from_replacement(request, replacement_id):
     line_item = InvoiceLineItem.objects.filter(
         replacement=replacement,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
     ).select_related('invoice').first()
     if line_item:
         messages.info(request, 'This replacement has already been invoiced.')

@@ -15,15 +15,17 @@ Root cause:
         name, no customer context, and cannot be meaningfully restored.
 
 Fix (CODE-073):
-    Changed Repair.objects.filter(...) to Repair.all_objects.filter(...) so
-    the count includes soft-deleted repairs. Any customer with any repair —
-    active OR archived — is protected from deletion.
+    Originally the fix blocked deletion whenever any repair (active OR
+    archived) existed.  delete_customer has since become a soft-delete
+    cascade: the customer and their repairs/invoices are stamped with
+    deleted_at (restorable for 30 days), so no repair row is ever orphaned
+    with a NULLed customer FK — the customer row still exists in the trash.
 
 Tests verify:
-    1. Customer with NO repairs at all: deletion allowed (happy path).
-    2. Customer with only active (non-deleted) repairs: deletion blocked.
-    3. Customer with only soft-deleted repairs: deletion blocked (the bug fix).
-    4. Customer with both active and soft-deleted repairs: deletion blocked.
+    1. Customer with NO repairs at all: soft-deletion works (happy path).
+    2-4. Customers with active/soft-deleted/mixed repairs: deletion cascades —
+         customer AND their active repairs are soft-deleted together,
+         never orphaned.
     5. Cross-tenant: cannot delete another tenant's customer (404).
     6. Non-admin user: blocked with permission error.
 """
@@ -139,26 +141,33 @@ class DeleteCustomerSoftDeletedRepairsTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Customer.objects.filter(id=customer.id).exists())
 
-    def test_delete_customer_with_active_repairs_blocked(self):
-        """Customer with active (non-deleted) repairs must not be deleted."""
+    def test_delete_customer_with_active_repairs_cascades(self):
+        """Customer with active repairs: both are soft-deleted together."""
         customer = Customer.objects.create(
             name='Active Repairs Customer',
             tenant=self.tenant,
         )
-        make_repair(customer, self.tenant, self.technician, deleted=False)
+        repair = make_repair(customer, self.tenant, self.technician, deleted=False)
 
         response = self.client.post(
             f'/tech/customers/{customer.id}/delete/',
         )
         self.assertEqual(response.status_code, 302)
-        # Customer must still exist
-        self.assertTrue(Customer.objects.filter(id=customer.id).exists())
+        # Hidden from normal querysets, but rows intact (restorable)
+        self.assertFalse(Customer.objects.filter(id=customer.id).exists())
+        self.assertFalse(Repair.objects.filter(id=repair.id).exists())
+        customer.refresh_from_db()
+        repair.refresh_from_db()
+        self.assertIsNotNone(customer.deleted_at)
+        self.assertIsNotNone(repair.deleted_at)
+        # The repair's customer FK is intact — never orphaned (CODE-073)
+        self.assertEqual(repair.customer_id, customer.id)
 
-    def test_delete_customer_with_only_soft_deleted_repairs_blocked(self):
+    def test_delete_customer_with_only_soft_deleted_repairs_cascades(self):
         """
-        THE BUG: Customer with ONLY soft-deleted repairs used to pass the
-        check (Repair.objects excludes deleted rows, returns count=0) and
-        the customer was deleted, orphaning archived repairs with NULL customer.
+        CODE-073's orphaning bug must stay fixed under the soft cascade: the
+        customer row survives in the trash, so the archived repair's customer
+        FK is never NULLed.
         """
         customer = Customer.objects.create(
             name='Archived Repairs Customer',
@@ -167,48 +176,38 @@ class DeleteCustomerSoftDeletedRepairsTest(TestCase):
         repair = make_repair(customer, self.tenant, self.technician, deleted=True)
         self.assertIsNotNone(repair.deleted_at)  # sanity-check it's soft-deleted
 
-        # Verify the bug condition: Repair.objects returns 0 (the broken path)
-        self.assertEqual(
-            Repair.objects.filter(customer=customer, tenant=self.tenant).count(),
-            0,
-            "Repair.objects should exclude soft-deleted repairs (root-cause verification)"
-        )
-        # Verify Repair.all_objects sees it
-        self.assertEqual(
-            Repair.all_objects.filter(customer=customer, tenant=self.tenant).count(),
-            1,
-        )
-
         response = self.client.post(
             f'/tech/customers/{customer.id}/delete/',
         )
-        # Must be BLOCKED — customer still exists
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(
-            Customer.objects.filter(id=customer.id).exists(),
-            "Customer with soft-deleted repairs must NOT be deletable (CODE-073)"
-        )
-        # The archived repair must still have its customer FK intact
+        self.assertFalse(Customer.objects.filter(id=customer.id).exists())
+        customer.refresh_from_db()
+        self.assertIsNotNone(customer.deleted_at)
+        # The archived repair keeps its customer FK — NOT orphaned
         repair.refresh_from_db()
         self.assertEqual(
             repair.customer_id, customer.id,
-            "Archived repair's customer FK must not be NULLed"
+            "Archived repair's customer FK must not be NULLed (CODE-073)"
         )
 
-    def test_delete_customer_with_mixed_repairs_blocked(self):
-        """Customer with both active and soft-deleted repairs must not be deleted."""
+    def test_delete_customer_with_mixed_repairs_cascades(self):
+        """Customer with both active and soft-deleted repairs: all end up deleted."""
         customer = Customer.objects.create(
             name='Mixed Repairs Customer',
             tenant=self.tenant,
         )
-        make_repair(customer, self.tenant, self.technician, deleted=False)
-        make_repair(customer, self.tenant, self.technician, deleted=True)
+        active = make_repair(customer, self.tenant, self.technician, deleted=False)
+        archived = make_repair(customer, self.tenant, self.technician, deleted=True)
 
         response = self.client.post(
             f'/tech/customers/{customer.id}/delete/',
         )
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(Customer.objects.filter(id=customer.id).exists())
+        self.assertFalse(Customer.objects.filter(id=customer.id).exists())
+        active.refresh_from_db()
+        archived.refresh_from_db()
+        self.assertIsNotNone(active.deleted_at)
+        self.assertIsNotNone(archived.deleted_at)
 
     def test_cross_tenant_delete_returns_404(self):
         """Cannot delete a customer belonging to a different tenant."""

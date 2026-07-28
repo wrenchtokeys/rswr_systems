@@ -716,7 +716,7 @@ class CustomerAdmin(TenantFilterMixin, admin.ModelAdmin):
             invoiced_repair_ids = InvoiceLineItem.objects.filter(
                 repair__isnull=False,
                 invoice__tenant=customer.tenant,
-                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
             ).values_list('repair_id', flat=True)
 
             unbilled_repairs = list(

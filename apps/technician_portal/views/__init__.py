@@ -41,6 +41,8 @@ from .repairs import (
     tech_collect_payment,
     delete_repair,
     restore_repair,
+    restore_replacement,
+    restore_invoice,
     archived_repairs,
     create_warranty_claim,
     admin_reassign_repair,
@@ -71,6 +73,9 @@ from .customers import (
     resend_customer_invitation,
     cancel_customer_invitation,
     set_primary_contact,
+    remove_portal_user,
+    restore_portal_user,
+    restore_customer,
 )
 
 # Reward management

@@ -4,7 +4,7 @@ Comprehensive tests for soft-delete repair feature.
 Covers:
 - delete_repair: soft-delete sets deleted_at, cascades to invoices
 - Permissions: only owner/manager can delete, technician blocked
-- Payment guard: repairs with payments cannot be deleted
+- Payments survive: deleting a repair keeps payments intact for restore
 - Soft-delete filtering: deleted repairs/invoices excluded from default querysets
 - restore_repair: restores repair + invoices, blocked after 30 days
 - archived_repairs: shows deleted records, owner/manager only
@@ -199,10 +199,12 @@ class DeleteRepairTests(TestCase):
         repair.refresh_from_db()
         self.assertIsNotNone(repair.deleted_at)
 
-    def test_blocked_when_payments_exist(self):
+    def test_delete_with_payments_soft_deletes(self):
+        """Payments no longer block deletion — they ride along intact so a
+        restore brings the invoice back whole (purge removes them later)."""
         repair = make_repair(self.tenant, self.customer, self.tech)
         invoice = make_invoice(self.tenant, self.customer, repairs=[repair])
-        Payment.objects.create(
+        payment = Payment.objects.create(
             invoice=invoice,
             amount=Decimal('75.00'),
             payment_method='CASH',
@@ -211,9 +213,11 @@ class DeleteRepairTests(TestCase):
         login_as(self.client, self.owner, self.tenant)
         resp = self.client.post(f'/tech/repairs/{repair.id}/delete/')
         repair.refresh_from_db()
-        self.assertIsNone(repair.deleted_at, "Repair with payments should NOT be deleted")
+        self.assertIsNotNone(repair.deleted_at, "Repair should be soft-deleted despite payments")
         invoice.refresh_from_db()
-        self.assertIsNone(invoice.deleted_at, "Invoice with payments should NOT be deleted")
+        self.assertIsNotNone(invoice.deleted_at, "Invoice should be soft-deleted despite payments")
+        self.assertTrue(Payment.objects.filter(id=payment.id).exists(),
+                        "Payments must survive for restore")
 
     def test_redirect_to_customer_after_delete(self):
         repair = make_repair(self.tenant, self.customer, self.tech)
@@ -473,15 +477,15 @@ class PurgeDeletedRecordsTests(TestCase):
         call_command('purge_deleted_records', '--apply', '--days', '5', stdout=out)
         self.assertFalse(Repair.all_objects.filter(id=repair.id).exists())
 
-    def test_purge_repair_with_active_invoice_line_item(self):
+    def test_purge_skips_repair_with_active_invoice_line_item(self):
         """
-        CODE-234: A soft-deleted repair referenced by a line item on an
-        ACTIVE (non-deleted) invoice must still be purgeable.
+        CODE-258: A soft-deleted repair referenced by a line item on an
+        ACTIVE (non-deleted) invoice must be SKIPPED, not purged.
 
-        Before the fix, the command only deleted line items belonging to
-        soft-deleted invoices.  If the repair's invoice was still active,
-        its InvoiceLineItem (with on_delete=PROTECT on the repair FK)
-        remained, causing ProtectedError and rolling back the entire purge.
+        Deleting that line item to satisfy the PROTECT constraint (the old
+        CODE-234 behavior) corrupted the active invoice's financial data —
+        line items vanished from SENT/PAID invoices.  The repair is retained
+        and purges in a later run once its invoice is also deleted and aged.
         """
         repair = make_repair(self.tenant, self.customer)
         # Invoice is NOT soft-deleted — it was sent/paid and is still active
@@ -493,15 +497,14 @@ class PurgeDeletedRecordsTests(TestCase):
         repair.save()
 
         out = StringIO()
-        # This used to raise ProtectedError and purge nothing
+        # Must not raise ProtectedError — the repair is simply skipped
         call_command('purge_deleted_records', '--apply', stdout=out)
 
-        # Repair should be hard-deleted
-        self.assertFalse(Repair.all_objects.filter(id=repair.id).exists())
-        # The line item linking repair to the active invoice should also be gone
-        self.assertFalse(InvoiceLineItem.objects.filter(id=line_item_id).exists())
-        # The invoice itself should NOT be deleted (it was never soft-deleted)
+        # Repair retained (still soft-deleted), line item and invoice intact
+        self.assertTrue(Repair.all_objects.filter(id=repair.id).exists())
+        self.assertTrue(InvoiceLineItem.objects.filter(id=line_item_id).exists())
         self.assertTrue(Invoice.all_objects.filter(id=invoice.id).exists())
+        self.assertIn('skipped', out.getvalue())
 
     def test_purge_repair_dry_run_reports_active_invoice_refs(self):
         """CODE-234: Dry run should report repairs with active invoice references."""

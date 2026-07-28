@@ -10,9 +10,14 @@
         <h1 class="text-2xl font-bold text-gray-900">Invoices</h1>
         <p class="text-sm text-gray-500 mt-1">Manage invoices across all customers</p>
     </div>
-    <a href="{% url 'owner_dashboard' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
-        <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
-    </a>
+    <div class="flex items-center gap-4">
+        <a href="{% url 'archived_repairs' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900" title="Restore deleted invoices and jobs">
+            <i class="fas fa-trash-restore mr-2"></i>Recently Deleted
+        </a>
+        <a href="{% url 'owner_dashboard' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
+            <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+        </a>
+    </div>
 </div>
 
 <!-- Aging Report Widget -->
@@ -804,7 +809,7 @@ function voidSelectedInvoices() {
 function deleteSelectedInvoices() {
     const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
-    if (!confirm(`Delete ${ids.length} selected invoice(s)?\n\nOnly draft and voided invoices can be deleted. Active invoices will be skipped — void them first.`)) return;
+    if (!confirm(`Delete ${ids.length} selected invoice(s)?\n\nThe jobs on them become uninvoiced again. You can restore deleted invoices from Recently Deleted for 30 days.`)) return;
 
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];

@@ -64,6 +64,7 @@ urlpatterns = [
     path('owner/invoices/<int:invoice_id>/email/', views.owner_email_invoice, name='owner_email_invoice'),
     path('owner/invoices/<int:invoice_id>/reminder/', views.owner_send_reminder, name='owner_send_reminder'),
     path('owner/invoices/<int:invoice_id>/void/', views.owner_invoice_void, name='owner_invoice_void'),
+    path('owner/invoices/<int:invoice_id>/delete/', views.owner_invoice_delete, name='owner_invoice_delete'),
     path('owner/invoices/generate-from-repair/<int:repair_id>/', views.owner_generate_invoice_from_repair, name='owner_generate_invoice_from_repair'),
     path('owner/invoices/generate-from-replacement/<int:replacement_id>/', views.owner_generate_invoice_from_replacement, name='owner_generate_invoice_from_replacement'),
 
@@ -105,4 +106,5 @@ urlpatterns = [
     path('tech/replacement/<int:pk>/edit/', views.replacement_edit, name='replacement_edit'),
     path('tech/replacement/<int:pk>/update-status/', views.replacement_update_status, name='replacement_update_status'),
     path('tech/replacement/<int:pk>/complete-and-invoice/', views.replacement_complete_and_invoice, name='replacement_complete_and_invoice'),
+    path('tech/replacement/<int:pk>/delete/', views.replacement_delete, name='replacement_delete'),
 ]

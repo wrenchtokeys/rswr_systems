@@ -17,6 +17,14 @@ class CustomerUser(models.Model):
         default=False,
         help_text="If True, this user will never receive review request emails.",
     )
+    # Soft-removal — when a shop removes a portal user, the login is
+    # deactivated (User.is_active=False) and this timestamp is set.  The
+    # account can be restored for 30 days, then purge_deleted_records
+    # deletes the User for good.
+    deactivated_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this portal user was removed and their login deactivated",
+    )
 
     class Meta:
         verbose_name = 'Customer User'
