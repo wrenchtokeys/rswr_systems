@@ -414,7 +414,7 @@ class InvoiceEmailService:
                         line_qs = line_qs.filter(invoice__tenant=self.tenant)
                     line_item = line_qs.filter(
                         repair_id__in=repair_ids,
-                        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'],
+                        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL'], invoice__deleted_at__isnull=True,
                     ).select_related('invoice').first()
                     if line_item:
                         invoice_record = line_item.invoice

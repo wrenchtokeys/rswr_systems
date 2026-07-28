@@ -359,7 +359,7 @@ def _create_batch_invoice(tenant, customer, config):
     invoiced_repair_ids = InvoiceLineItem.objects.filter(
         repair__isnull=False,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
     ).values_list('repair_id', flat=True)
     uninvoiced_repairs = Repair.objects.filter(
         tenant=tenant,
@@ -372,7 +372,7 @@ def _create_batch_invoice(tenant, customer, config):
     invoiced_replacement_ids = InvoiceLineItem.objects.filter(
         replacement__isnull=False,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'],
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
     ).values_list('replacement_id', flat=True)
     uninvoiced_replacements = Replacement.objects.filter(
         tenant=tenant,

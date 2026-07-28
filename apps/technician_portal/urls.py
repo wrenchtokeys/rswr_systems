@@ -32,6 +32,8 @@ urlpatterns = [
     path('repairs/<int:repair_id>/collect-payment/', views.tech_collect_payment, name='tech_collect_payment'),
     path('repairs/<int:repair_id>/delete/', views.delete_repair, name='delete_repair'),
     path('repairs/<int:repair_id>/restore/', views.restore_repair, name='restore_repair'),
+    path('replacements/<int:replacement_id>/restore/', views.restore_replacement, name='restore_replacement'),
+    path('invoices/<int:invoice_id>/restore/', views.restore_invoice, name='restore_invoice'),
     path('repairs/archived/', views.archived_repairs, name='archived_repairs'),
     path('check-existing-repair/', views.check_existing_repair, name='check_existing_repair'),
     path('repairs/bulk-action/', views.bulk_repair_action, name='tech_bulk_repair_action'),
@@ -52,6 +54,7 @@ urlpatterns = [
     path('customers/<int:customer_id>/', views.customer_details, name='customer_detail'),
     path('customers/<int:customer_id>/edit/', views.edit_customer, name='edit_customer'),
     path('customers/<int:customer_id>/delete/', views.delete_customer, name='delete_customer'),
+    path('customers/<int:customer_id>/restore/', views.restore_customer, name='restore_customer'),
     path('customers/<int:customer_id>/primary-tech/', views.update_primary_technician, name='update_primary_technician'),
     path('customers/<int:customer_id>/units/<str:unit_number>/', views.unit_details, name='unit_details'),
     path('customers/<int:customer_id>/units/<str:unit_number>/replace/', views.mark_unit_replaced, name='mark_unit_replaced'),
@@ -59,6 +62,8 @@ urlpatterns = [
     path('invitations/<int:invitation_id>/resend/', views.resend_customer_invitation, name='resend_customer_invitation'),
     path('invitations/<int:invitation_id>/cancel/', views.cancel_customer_invitation, name='cancel_customer_invitation'),
     path('customers/<int:customer_id>/portal-users/<int:cu_id>/set-primary/', views.set_primary_contact, name='set_primary_contact'),
+    path('customers/<int:customer_id>/portal-users/<int:cu_id>/remove/', views.remove_portal_user, name='remove_portal_user'),
+    path('customers/<int:customer_id>/portal-users/<int:cu_id>/restore/', views.restore_portal_user, name='restore_portal_user'),
     
     # Rewards and notifications
     path('reward-fulfillment/<int:redemption_id>/', views.reward_fulfillment_detail, name='reward_fulfillment_detail'),

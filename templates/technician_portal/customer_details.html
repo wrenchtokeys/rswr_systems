@@ -213,6 +213,37 @@
                                 </button>
                             </form>
                             {% endif %}
+                            <form method="post" action="{% url 'remove_portal_user' customer.id cu.id %}" class="inline"
+                                  onsubmit="return confirm('Remove portal access for {{ cu.user.get_full_name|default:cu.user.username|escapejs }}?\n\nTheir login will be deactivated. You can restore it for 30 days.');">
+                                {% csrf_token %}
+                                <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline" title="Remove this portal user">
+                                    Remove
+                                </button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Removed Users (30-day restore window) -->
+                    {% if removed_portal_users %}
+                    <div class="{% if portal_users %}pt-4 border-t border-gray-100{% endif %}">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Removed Users</p>
+                        {% for cu in removed_portal_users %}
+                        <div class="flex items-center gap-3 py-2 opacity-70">
+                            <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-user-slash text-gray-400 text-xs"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-700 truncate">{{ cu.user.get_full_name|default:cu.user.username }}</p>
+                                <p class="text-xs text-gray-500 truncate">Removed {{ cu.deactivated_at|date:"M d, Y" }}</p>
+                            </div>
+                            <form method="post" action="{% url 'restore_portal_user' customer.id cu.id %}" class="inline">
+                                {% csrf_token %}
+                                <button type="submit" class="text-xs text-blue-600 hover:text-blue-800 hover:underline" title="Restore this portal user">
+                                    <i class="fas fa-undo mr-1"></i>Restore
+                                </button>
+                            </form>
                         </div>
                         {% endfor %}
                     </div>

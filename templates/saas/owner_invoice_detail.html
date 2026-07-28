@@ -60,6 +60,9 @@
         </button>
         {% endif %}
         {% endif %}
+        <button onclick="deleteInvoice()" aria-label="Delete invoice" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 transition-colors">
+            <i class="fas fa-trash mr-1.5 sm:mr-2"></i><span class="sm:hidden">Delete</span><span class="hidden sm:inline">Delete Invoice</span>
+        </button>
     </div>
 </div>
 
@@ -913,6 +916,26 @@ function voidInvoice() {
 }
 </script>
 {% endif %}
+<script>
+function deleteInvoice() {
+    if (!confirm('Delete invoice {{ invoice.invoice_number }}?\n\nThe jobs on it become uninvoiced again. You can restore it from Recently Deleted for 30 days.')) return;
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+        document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
+    fetch('{% url "owner_invoice_delete" invoice_id=invoice.id %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = '{% url "owner_invoice_list" %}';
+        } else {
+            alert(data.error || 'Failed to delete invoice');
+        }
+    })
+    .catch(err => alert('Error: ' + err.message));
+}
+</script>
 {% if invoice.status != 'DRAFT' %}
 {% include "includes/invoice_send_confirm_modal.html" %}
 {% endif %}

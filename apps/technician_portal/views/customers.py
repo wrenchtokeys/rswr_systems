@@ -6,6 +6,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.db import IntegrityError, transaction
 from django.db.models import Q, Count
+from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from apps.technician_portal.models import Technician, Repair, UnitRepairCount
@@ -267,10 +268,18 @@ def customer_details(request, customer_id):
 
     # Portal access info (for admins/managers)
     portal_users = []
+    removed_portal_users = []
     pending_invitations = []
     if can_edit_customer:
         from apps.customer_portal.models import CustomerUser, CustomerInvitation
-        portal_users = CustomerUser.objects.filter(customer=customer).select_related('user')
+        portal_users = CustomerUser.objects.filter(
+            customer=customer, deactivated_at__isnull=True
+        ).select_related('user')
+        # Removed within the 30-day restore window
+        removed_portal_users = CustomerUser.objects.filter(
+            customer=customer,
+            deactivated_at__gte=timezone.now() - timezone.timedelta(days=30),
+        ).select_related('user')
         pending_invitations = CustomerInvitation.objects.filter(
             customer=customer,
             status='pending'
@@ -310,6 +319,7 @@ def customer_details(request, customer_id):
         'can_edit_customer': can_edit_customer,
         'available_technicians': available_technicians,
         'portal_users': portal_users,
+        'removed_portal_users': removed_portal_users,
         'pending_invitations': pending_invitations,
     })
 
@@ -561,14 +571,25 @@ def edit_customer(request, customer_id):
 @technician_required
 @require_POST
 def delete_customer(request, customer_id):
-    """Delete a customer (admin only). Requires confirmation."""
+    """Soft-delete a customer and their entire history (admin only).
+
+    Everything is stamped with the same deleted_at so a restore can bring
+    back exactly this cascade: the customer's repairs, replacements, and
+    invoices are soft-deleted (payments stay intact), and portal user logins
+    are deactivated.  Restorable from Recently Deleted for 30 days, then
+    purge_deleted_records hard-deletes the lot.
+    """
+    from apps.billing.models import Invoice
+    from apps.technician_portal.models import Replacement
+    from apps.customer_portal.models import CustomerUser
+
     tenant = getattr(request, 'tenant', None)
-    
+
     # Only admins can delete
     if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
         messages.error(request, "Only shop owners can delete customers.")
         return redirect('customer_detail', customer_id=customer_id)
-    
+
     qs = Customer.objects.all()
     if tenant:
         qs = qs.filter(tenant=tenant)
@@ -576,27 +597,36 @@ def delete_customer(request, customer_id):
     else:
         qs = qs.none()
     customer = get_object_or_404(qs, id=customer_id)
-    
-    # Check for related repairs — use all_objects to include soft-deleted repairs.
-    # Repair.objects uses RepairSoftDeleteManager which excludes deleted records.
-    # A customer with only soft-deleted repairs would pass the Repair.objects count
-    # check (count=0), allowing deletion and orphaning those archived repairs
-    # (customer FK becomes NULL since GlassService.customer is SET_NULL).
-    # We must block deletion whenever ANY repair — active OR archived — exists.
-    repair_count = Repair.all_objects.filter(customer=customer, tenant=tenant).count()
-    
-    if repair_count > 0:
-        # Soft approach: don't delete, show error
-        messages.error(
-            request, 
-            f"Cannot delete '{customer.name}' — they have {repair_count} repair(s) on record. "
-            "Delete or reassign their repairs first."
-        )
-        return redirect('customer_detail', customer_id=customer_id)
-    
+
     customer_name = customer.name
-    customer.delete()
-    messages.success(request, f"Customer '{customer_name}' has been deleted.")
+
+    with transaction.atomic():
+        now = timezone.now()
+        customer.deleted_at = now
+        customer.save(update_fields=['deleted_at'])
+
+        # Soft-delete active jobs and invoices.  Rows deleted earlier keep
+        # their original (older) deleted_at, so restoring this customer
+        # doesn't resurrect things that were already in the trash.
+        Repair.objects.filter(customer=customer).update(deleted_at=now)
+        Replacement.objects.filter(customer=customer).update(deleted_at=now)
+        Invoice.objects.filter(customer=customer).update(deleted_at=now)
+
+        # Deactivate portal logins (restore reactivates them; purge deletes
+        # the User rows after 30 days).
+        for cu in CustomerUser.objects.filter(
+            customer=customer, deactivated_at__isnull=True
+        ).select_related('user'):
+            cu.deactivated_at = now
+            cu.save(update_fields=['deactivated_at'])
+            cu.user.is_active = False
+            cu.user.save(update_fields=['is_active'])
+
+    messages.success(
+        request,
+        f"Customer '{customer_name}' and all their jobs, invoices, and portal accounts "
+        "have been deleted. You can restore them from Recently Deleted for 30 days."
+    )
     return redirect('technician_customers')
 
 
@@ -770,6 +800,146 @@ def set_primary_contact(request, customer_id, cu_id):
     cu.save(update_fields=['is_primary_contact'])
 
     messages.success(request, f"{cu.user.get_full_name() or cu.user.username} is now the primary contact.")
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def restore_customer(request, customer_id):
+    """Restore a soft-deleted customer and the history deleted with them.
+
+    Only rows stamped at (or after) the customer's own deleted_at come back —
+    jobs or invoices the shop deleted separately, before deleting the
+    customer, stay in the trash with their original timestamps.
+    Admin only, within the 30-day window.
+    """
+    from apps.billing.models import Invoice
+    from apps.technician_portal.models import Replacement
+    from apps.customer_portal.models import CustomerUser
+
+    tenant = getattr(request, 'tenant', None)
+
+    if not is_tenant_admin(request.user, tenant=getattr(request, "tenant", None)):
+        messages.error(request, "Only shop owners can restore customers.")
+        return redirect('archived_repairs')
+
+    qs = Customer.all_objects.filter(tenant=tenant) if tenant else Customer.all_objects.none()
+    customer = get_object_or_404(qs, id=customer_id)
+
+    if customer.deleted_at is None:
+        messages.info(request, "That customer is not deleted.")
+        return redirect('customer_detail', customer_id=customer_id)
+
+    cutoff = timezone.now() - timezone.timedelta(days=30)
+    if customer.deleted_at < cutoff:
+        messages.error(request, "Cannot restore customers deleted more than 30 days ago.")
+        return redirect('archived_repairs')
+
+    stamp = customer.deleted_at
+
+    with transaction.atomic():
+        customer.deleted_at = None
+        customer.save(update_fields=['deleted_at'])
+
+        Repair.all_objects.filter(customer=customer, deleted_at__gte=stamp).update(deleted_at=None)
+        Replacement.all_objects.filter(customer=customer, deleted_at__gte=stamp).update(deleted_at=None)
+        Invoice.all_objects.filter(customer=customer, deleted_at__gte=stamp).update(deleted_at=None)
+
+        for cu in CustomerUser.objects.filter(
+            customer=customer, deactivated_at__gte=stamp
+        ).select_related('user'):
+            cu.deactivated_at = None
+            cu.save(update_fields=['deactivated_at'])
+            cu.user.is_active = True
+            cu.user.save(update_fields=['is_active'])
+
+    messages.success(
+        request,
+        f"Customer '{customer.name}' and their jobs, invoices, and portal accounts have been restored."
+    )
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def remove_portal_user(request, customer_id, cu_id):
+    """Remove a customer portal user by deactivating their login.
+
+    The account can be restored for 30 days (see restore_portal_user);
+    after that purge_deleted_records deletes the User row for good.
+    """
+    from apps.customer_portal.models import CustomerUser
+
+    tenant = getattr(request, 'tenant', None)
+
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
+    _scoped_tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    is_mgr = bool(_scoped_tech and _scoped_tech.is_manager)
+
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can remove portal users.")
+        return redirect('customer_detail', customer_id=customer_id)
+
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
+    customer = get_object_or_404(qs, id=customer_id)
+
+    cu = get_object_or_404(CustomerUser, id=cu_id, customer=customer, deactivated_at__isnull=True)
+    display = cu.user.get_full_name() or cu.user.username
+
+    cu.deactivated_at = timezone.now()
+    cu.save(update_fields=['deactivated_at'])
+    cu.user.is_active = False
+    cu.user.save(update_fields=['is_active'])
+
+    messages.success(
+        request,
+        f"Portal access for {display} has been removed. "
+        "You can restore it for 30 days."
+    )
+    return redirect('customer_detail', customer_id=customer_id)
+
+
+@technician_required
+@require_POST
+def restore_portal_user(request, customer_id, cu_id):
+    """Reactivate a removed portal user (within the 30-day window)."""
+    from apps.customer_portal.models import CustomerUser
+
+    tenant = getattr(request, 'tenant', None)
+
+    is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
+    _scoped_tech = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    is_mgr = bool(_scoped_tech and _scoped_tech.is_manager)
+
+    if not (is_admin or is_mgr):
+        messages.error(request, "Only managers can restore portal users.")
+        return redirect('customer_detail', customer_id=customer_id)
+
+    qs = Customer.objects.all()
+    if tenant:
+        qs = qs.filter(tenant=tenant)
+    else:
+        qs = qs.none()
+    customer = get_object_or_404(qs, id=customer_id)
+
+    cu = get_object_or_404(CustomerUser, id=cu_id, customer=customer, deactivated_at__isnull=False)
+
+    cutoff = timezone.now() - timezone.timedelta(days=30)
+    if cu.deactivated_at < cutoff:
+        messages.error(request, "Cannot restore portal users removed more than 30 days ago.")
+        return redirect('customer_detail', customer_id=customer_id)
+
+    cu.deactivated_at = None
+    cu.save(update_fields=['deactivated_at'])
+    cu.user.is_active = True
+    cu.user.save(update_fields=['is_active'])
+
+    display = cu.user.get_full_name() or cu.user.username
+    messages.success(request, f"Portal access for {display} has been restored.")
     return redirect('customer_detail', customer_id=customer_id)
 
 

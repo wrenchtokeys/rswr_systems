@@ -31,7 +31,7 @@ def get_invoice_status(repair):
 
         line_item = InvoiceLineItem.objects.filter(
             repair=repair,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'],
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
         ).select_related('invoice').first()
 
         if not line_item:

@@ -16,6 +16,15 @@
                     <a href="{% url 'replacement_edit' pk=replacement.pk %}" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                         <i class="fas fa-edit mr-1.5"></i> Edit
                     </a>
+                    {% if is_admin %}
+                    <form method="post" action="{% url 'replacement_delete' pk=replacement.pk %}" class="inline"
+                          onsubmit="return confirm('Delete Replacement #{{ replacement.id }}?\n\nAny invoices containing it will be deleted too. You can restore everything from Recently Deleted for 30 days.');">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50">
+                            <i class="fas fa-trash mr-1.5"></i> Delete
+                        </button>
+                    </form>
+                    {% endif %}
                     {% status_badge replacement.queue_status label=replacement.get_queue_status_display %}
                 </div>
             </div>

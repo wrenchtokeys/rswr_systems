@@ -226,15 +226,19 @@ class BulkDeleteProtectedErrorTests(TestCase):
         data = response.json()
         self.assertTrue(data['success'])
 
-    def test_delete_skips_payment_blocked_invoices(self):
-        """Protected invoices must remain after the bulk delete."""
+    def test_delete_soft_deletes_invoices_with_payments(self):
+        """Invoices with payments are deleted too — it's a soft delete, so no
+        ProtectedError (the CODE-123 crash) can occur and the payments stay
+        intact for a potential restore."""
         self._bulk_action(
             'delete',
             [self.safe_invoice.id, self.protected_invoice.id],
         )
-        # The protected one still exists
+        self.protected_invoice.refresh_from_db()
+        self.assertIsNotNone(self.protected_invoice.deleted_at)
         self.assertTrue(
-            Invoice.objects.filter(id=self.protected_invoice.id).exists()
+            Payment.objects.filter(invoice_id=self.protected_invoice.id).exists(),
+            "Payments must survive the soft delete"
         )
 
     def test_delete_removes_safe_invoices(self):
@@ -247,20 +251,14 @@ class BulkDeleteProtectedErrorTests(TestCase):
             Invoice.objects.filter(id=self.safe_invoice.id).exists()
         )
 
-    def test_delete_message_mentions_skipped_payments(self):
-        """The response message must mention the payment-blocked skipped count."""
+    def test_delete_message_reports_full_count(self):
+        """Nothing is skipped anymore — the message reports both deletions."""
         response = self._bulk_action(
             'delete',
             [self.safe_invoice.id, self.protected_invoice.id],
         )
         data = response.json()
-        self.assertIn('payment', data['message'].lower())
-
-    def test_delete_only_safe_invoices_no_skipped_message(self):
-        """When no invoices are blocked, the message must not mention payments."""
-        response = self._bulk_action('delete', [self.safe_invoice.id])
-        data = response.json()
-        self.assertNotIn('payment', data['message'].lower())
+        self.assertIn('2 invoice(s) deleted', data['message'])
 
 
 class BulkVoidPartialSkipTests(TestCase):

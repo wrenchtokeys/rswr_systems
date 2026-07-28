@@ -3,6 +3,15 @@ from django.core.validators import RegexValidator
 from apps.tenants.managers import TenantManager
 
 
+class CustomerSoftDeleteManager(TenantManager):
+    """
+    Default manager for Customer — automatically excludes soft-deleted records.
+    Use Customer.all_objects for unfiltered access (including deleted).
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class Customer(models.Model):
     """
     A customer account. Supports three types:
@@ -128,8 +137,17 @@ class Customer(models.Model):
         help_text="Stripe Customer ID for billing integration"
     )
 
-    # Default manager + tenant-aware manager
-    objects = TenantManager()
+    # Soft-delete — set to a timestamp to mark as deleted (hidden from normal
+    # querysets, restorable for 30 days, then purged by purge_deleted_records)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this customer is soft-deleted and excluded from normal querysets"
+    )
+
+    # Soft-delete manager (default — excludes deleted records)
+    objects = CustomerSoftDeleteManager()
+    # Unfiltered manager — use when you need deleted records too
+    all_objects = TenantManager()
 
     class Meta:
         ordering = ['name']
@@ -140,15 +158,17 @@ class Customer(models.Model):
             # individuals (RETAIL/WALK_IN) are exempt — duplicate handling for
             # them is a suggest-the-existing-record flow in customer_service,
             # not a constraint (kills the old "John Smith (2)" suffix hack).
+            # Soft-deleted rows are exempt too, so a shop can recreate a fleet
+            # while the old one sits in Recently Deleted.
             models.UniqueConstraint(
                 fields=['tenant', 'name'],
                 name='unique_fleet_name_per_tenant',
-                condition=models.Q(customer_type='FLEET'),
+                condition=models.Q(customer_type='FLEET', deleted_at__isnull=True),
             ),
             models.UniqueConstraint(
                 fields=['tenant', 'email'],
                 name='unique_customer_email_per_tenant',
-                condition=models.Q(email__isnull=False),
+                condition=models.Q(email__isnull=False, deleted_at__isnull=True),
             ),
         ]
 

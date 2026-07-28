@@ -1499,21 +1499,32 @@ class Repair(GlassService):
 # REPLACEMENT MODEL
 # =============================================================================
 
+class ReplacementSoftDeleteManager(TenantManager):
+    """
+    Default manager for Replacement — automatically excludes soft-deleted
+    records. Use Replacement.all_objects for unfiltered access.
+    """
+    def get_queryset(self):
+        return super().get_queryset().filter(deleted_at__isnull=True)
+
+
 class Replacement(GlassService):
     """
     A glass replacement job — full glass swap.
-    
+
     Pricing is based on parts + labor + optional ADAS calibration.
     Insurance fields from GlassService are commonly used here.
-    
+
     Works with ALL customer types:
     - Fleet: identified by unit_number
     - Retail: identified by vehicle (year/make/model)
     - Walk-in: minimal info
     """
-    
-    # Tenant-aware manager
-    objects = TenantManager()
+
+    # Soft-delete manager (default — excludes deleted records)
+    objects = ReplacementSoftDeleteManager()
+    # Unfiltered manager — use when you need deleted records too
+    all_objects = TenantManager()
     
     # Keep QUEUE_CHOICES as alias for consistency with Repair
     QUEUE_CHOICES = GlassService.STATUS_CHOICES
@@ -1598,6 +1609,12 @@ class Replacement(GlassService):
     skip_invoicing = models.BooleanField(
         default=False,
         help_text="Skip this replacement when listing uninvoiced work (e.g., already paid outside system)"
+    )
+
+    # Soft-delete — set to a timestamp to mark as deleted (not visible in default queryset)
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When set, this replacement is soft-deleted and excluded from normal querysets"
     )
 
     # =========================================================================
