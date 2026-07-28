@@ -90,7 +90,7 @@ class InvoiceTrackingService:
         already_invoiced = []
         for service in services:
             if service.invoice_line_items.filter(
-                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True
+                invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True
             ).exists():
                 already_invoiced.append(service.id)
 
@@ -266,7 +266,7 @@ class InvoiceTrackingService:
         invoiced_repair_ids = InvoiceLineItem.objects.filter(
             repair__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True
         ).values_list('repair_id', flat=True)
         
         repairs = repairs.exclude(id__in=invoiced_repair_ids)
@@ -302,7 +302,7 @@ class InvoiceTrackingService:
         invoiced_replacement_ids = InvoiceLineItem.objects.filter(
             replacement__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True
         ).values_list('replacement_id', flat=True)
 
         replacements = replacements.exclude(id__in=invoiced_replacement_ids)
@@ -455,15 +455,19 @@ class InvoiceTrackingService:
         tenant = self.tenant or customer.tenant
 
         # Start from today's existing count + 1 and walk upward until free.
+        # MUST use all_objects: soft-deleted invoices are hidden from the
+        # default manager but still occupy their numbers in the DB unique
+        # constraint — probing with Invoice.objects would report a taken
+        # number as free and crash with IntegrityError.
         today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        base_count = Invoice.objects.filter(
+        base_count = Invoice.all_objects.filter(
             tenant=tenant,
             created_at__gte=today_start,
         ).count() + 1
 
         for attempt in range(base_count, base_count + 500):
             candidate = f"{prefix}-{tenant.id}-{date_str}-{attempt:03d}"
-            if not Invoice.objects.filter(tenant=tenant, invoice_number=candidate).exists():
+            if not Invoice.all_objects.filter(tenant=tenant, invoice_number=candidate).exists():
                 return candidate
 
         # Fallback: append microseconds for guaranteed uniqueness

@@ -25,7 +25,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
-from common.decorators import owner_or_manager_required
+from common.decorators import owner_or_manager_required, owner_required
 from apps.technician_portal.decorators import technician_required
 from django.utils import timezone
 from django.utils.text import slugify
@@ -431,7 +431,11 @@ def onboarding_view(request):
                             tech_last = cd.get('tech_last_name', '')
 
                             if tech_email:
-                                if User.objects.filter(email__iexact=tech_email).exists():
+                                from apps.tenants.services.usage_service import UsageService
+                                can_add, limit_msg = UsageService(tenant).can_add_technician()
+                                if not can_add:
+                                    messages.warning(request, limit_msg)
+                                elif User.objects.filter(email__iexact=tech_email).exists():
                                     messages.info(request, 'A user with that email already exists. You can add them to your team from Settings → Team.')
                                 else:
                                     from apps.tenants.services.team_service import (
@@ -987,7 +991,7 @@ def replacement_detail(request, pk):
     invoice_line_item = InvoiceLineItem.objects.filter(
         replacement=replacement,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
     ).select_related('invoice').first()
 
     from apps.billing.services.invoice_send_service import InvoiceSendService
@@ -1177,7 +1181,7 @@ def replacement_complete_and_invoice(request, pk):
 # 8. Billing — plan update, cancel, portal redirect
 # ------------------------------------------------------------------
 
-@owner_or_manager_required
+@owner_required
 def billing_update_plan(request):
     """POST /owner/billing/update/ — upgrade or downgrade plan."""
     if request.method != 'POST':
@@ -1230,7 +1234,7 @@ def billing_update_plan(request):
         return redirect('billing_settings')
 
 
-@owner_or_manager_required
+@owner_required
 def billing_cancel(request):
     """POST /owner/billing/cancel/ — cancel subscription at end of period."""
     if request.method != 'POST':
@@ -1251,7 +1255,7 @@ def billing_cancel(request):
     return redirect('billing_settings')
 
 
-@owner_or_manager_required
+@owner_required
 def update_payment_method(request):
     """GET /owner/update-payment-method/ — redirect to Stripe Billing Portal for card update."""
     tenant, membership = _get_owner_tenant(request)
@@ -1269,7 +1273,7 @@ def update_payment_method(request):
         return redirect('billing_settings')
 
 
-@owner_or_manager_required
+@owner_required
 def billing_portal_redirect(request):
     """GET /owner/billing/portal/ — redirect to Stripe Billing Portal."""
     tenant, membership = _get_owner_tenant(request)
@@ -1295,7 +1299,7 @@ def billing_portal_redirect(request):
 # 9. Stripe Connect (Receive Invoice Payments)
 # ------------------------------------------------------------------
 
-@owner_or_manager_required
+@owner_required
 def connect_setup(request):
     """POST /owner/payments/setup/ — start Stripe Connect onboarding."""
     tenant, membership = _get_owner_tenant(request)
@@ -1327,7 +1331,7 @@ def connect_setup(request):
         return redirect('billing_settings')
 
 
-@owner_or_manager_required
+@owner_required
 def connect_return(request):
     """GET /owner/payments/setup/return/ — user returned from Stripe onboarding."""
     tenant, membership = _get_owner_tenant(request)
@@ -1363,7 +1367,7 @@ def connect_return(request):
     return redirect('billing_settings')
 
 
-@owner_or_manager_required
+@owner_required
 def connect_refresh(request):
     """GET /owner/payments/setup/refresh/ — onboarding link expired, create new one."""
     tenant, membership = _get_owner_tenant(request)
@@ -1383,7 +1387,7 @@ def connect_refresh(request):
         return redirect('billing_settings')
 
 
-@owner_or_manager_required
+@owner_required
 def connect_dashboard(request):
     """GET /owner/payments/dashboard/ — redirect to Stripe Express Dashboard."""
     tenant, membership = _get_owner_tenant(request)
@@ -2383,6 +2387,14 @@ def update_team_member(request, membership_id):
                         tenant.id,
                     )
                 else:
+                    # Promotion to a tech role consumes a Technician seat —
+                    # enforce the same plan limit as the invite path.
+                    from apps.tenants.services.usage_service import UsageService
+                    can_add, limit_msg = UsageService(tenant).can_add_technician()
+                    if not can_add:
+                        messages.warning(request, limit_msg)
+                        transaction.set_rollback(True)
+                        return redirect('owner_settings')
                     Technician.objects.create(
                         user=target.user,
                         tenant=tenant,
@@ -2682,7 +2694,7 @@ def owner_invoice_list(request):
         _ILI.objects.filter(
             repair__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
         ).values_list('repair_id', flat=True)
     )
 
@@ -2702,7 +2714,7 @@ def owner_invoice_list(request):
         _ILI.objects.filter(
             replacement__isnull=False,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
         ).values_list('replacement_id', flat=True)
     )
 
@@ -4206,7 +4218,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
         if InvoiceLineItem.objects.filter(
             repair=r,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
         ).exists():
             already_invoiced_repair = r
             break
@@ -4215,7 +4227,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
         line_item = InvoiceLineItem.objects.filter(
             repair=already_invoiced_repair,
             invoice__tenant=tenant,
-            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+            invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
         ).select_related('invoice').first()
         existing_invoice = line_item.invoice
 
@@ -4366,7 +4378,7 @@ def owner_generate_invoice_from_replacement(request, replacement_id):
     line_item = InvoiceLineItem.objects.filter(
         replacement=replacement,
         invoice__tenant=tenant,
-        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID'], invoice__deleted_at__isnull=True,
+        invoice__status__in=['DRAFT', 'SENT', 'PARTIAL', 'PAID', 'OVERDUE'], invoice__deleted_at__isnull=True,
     ).select_related('invoice').first()
     if line_item:
         messages.info(request, 'This replacement has already been invoiced.')

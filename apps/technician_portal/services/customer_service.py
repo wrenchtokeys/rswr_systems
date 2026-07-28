@@ -75,14 +75,32 @@ def find_individual_matches(tenant, name='', phone=''):
 
 def create_individual(tenant, name, phone=None, email=None):
     """Create a new individual (RETAIL) customer. No suffixing, no dedupe —
-    callers run find_individual_matches() first and confirm with the tech."""
-    return Customer.objects.create(
-        tenant=tenant,
-        name=(name or '').strip(),
-        phone=(phone or '').strip() or None,
-        email=(email or '').strip() or None,
-        customer_type='RETAIL',
-    )
+    callers run find_individual_matches() first and confirm with the tech.
+
+    If the email is already on file for this tenant (unique constraint),
+    reuse that customer instead of crashing the whole job with an
+    IntegrityError — the tech is mid-job-creation and must not lose it.
+    """
+    from django.db import IntegrityError, transaction
+
+    email = (email or '').strip() or None
+    try:
+        with transaction.atomic():
+            return Customer.objects.create(
+                tenant=tenant,
+                name=(name or '').strip(),
+                phone=(phone or '').strip() or None,
+                email=email,
+                customer_type='RETAIL',
+            )
+    except IntegrityError:
+        if email:
+            existing = Customer.objects.filter(
+                tenant=tenant, email__iexact=email
+            ).first()
+            if existing:
+                return existing
+        raise
 
 
 def service_summary(customer):

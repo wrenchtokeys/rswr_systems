@@ -337,17 +337,21 @@ Best regards,
         """Build reminder email subject and body."""
         
         customer_name = invoice.customer.name
-        
+
+        # Subject carries the SHOP's name, not the platform's.
+        _tenant = self.tenant or getattr(invoice, 'tenant', None)
+        shop_prefix = f"[{_tenant.name}]" if _tenant else "[RS Systems]"
+
         if reminder_type.startswith('due_soon'):
             days = reminder_type.split('_')[-1]
-            subject = f"[RS Systems] Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
+            subject = f"{shop_prefix} Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
             urgency = "friendly"
         elif reminder_type.startswith('overdue'):
             days = reminder_type.split('_')[-1]
-            subject = f"[RS Systems] Overdue Notice: Invoice {invoice.invoice_number} - {customer_name}"
+            subject = f"{shop_prefix} Overdue Notice: Invoice {invoice.invoice_number} - {customer_name}"
             urgency = "urgent" if '30d' in reminder_type else "firm"
         else:
-            subject = f"[RS Systems] Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
+            subject = f"{shop_prefix} Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
             urgency = "friendly"
         
         # Build body
@@ -378,11 +382,15 @@ Invoice Details:
 - Amount Due: ${invoice.amount_due:,.2f}
 """
         
-        # Add payment link if available
+        # Add payment link if available — the public tokened /pay/ URL,
+        # which charges the shop's Connect account (never the stored
+        # stripe_hosted_url, which may be a stale platform-account link).
+        from apps.billing.pay_links import public_pay_url
+        pay_url = public_pay_url(invoice)
         payment_info = ""
-        if invoice.stripe_hosted_url:
+        if pay_url:
             payment_info = f"""
-Pay Online: {invoice.stripe_hosted_url}
+Pay Online: {pay_url}
 
 Or contact us to arrange alternative payment methods.
 """

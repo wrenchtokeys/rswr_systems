@@ -18,7 +18,7 @@ Total Paid:        ${{ invoice.amount_paid }}
 Remaining Balance: {% if invoice.amount_due > 0 %}${{ invoice.amount_due }}{% else %}$0.00 - PAID IN FULL{% endif %}
 Status:            {{ invoice.get_status_display }}
 
-{% if invoice.amount_due > 0 and invoice.stripe_hosted_url %}Pay remaining balance online: {{ invoice.stripe_hosted_url }}
+{% if invoice.amount_due > 0 and pay_url %}Pay remaining balance online: {{ pay_url }}
 {% endif %}
 Thank you for your prompt payment!
 

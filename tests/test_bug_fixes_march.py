@@ -108,11 +108,13 @@ class RepairFormTenantIsolationTests(TestCase):
         self.assertIn(self.tech_a, tech_qs)
         self.assertNotIn(self.tech_b, tech_qs)
 
-    def test_form_without_tenant_shows_all(self):
-        """Without tenant (superuser), should fall back to all."""
+    def test_form_without_tenant_shows_none(self):
+        """Without tenant context the customer dropdown must be EMPTY —
+        showing every shop's customers to a tenant-less (staff) user is a
+        cross-tenant leak (closed in the multi-shop hardening pass)."""
         form = RepairForm(user=self.user_a, tenant=None)
         customer_qs = form.fields['customer'].queryset
-        self.assertEqual(customer_qs.count(), 3)
+        self.assertEqual(customer_qs.count(), 0)
 
 
 # =============================================================================

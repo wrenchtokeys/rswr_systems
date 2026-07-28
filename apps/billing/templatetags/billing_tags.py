@@ -42,6 +42,10 @@ def get_invoice_status(repair):
         # invoice.tenant must have active Stripe Connect, otherwise the Pay
         # Online button must be hidden — shop can't process the payment.
         can_pay_online = bool(invoice.tenant and invoice.tenant.can_accept_payments)
+        # Pay link is the public tokened /pay/ URL (charges the shop's
+        # Connect account at click time) — never the stored
+        # stripe_hosted_url, which may be a stale platform-account link.
+        from apps.billing.pay_links import public_pay_url
         return {
             'invoice_id': invoice.id,
             'status': invoice.status,
@@ -50,7 +54,7 @@ def get_invoice_status(repair):
             'amount_paid': invoice.amount_paid,
             'amount_due': invoice.amount_due,
             'due_date': invoice.due_date,
-            'stripe_url': invoice.stripe_hosted_url or '',
+            'stripe_url': public_pay_url(invoice) or '',
             'payment_terms': invoice.get_payment_terms_display(),
             'can_pay_online': can_pay_online,
         }

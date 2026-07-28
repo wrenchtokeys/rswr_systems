@@ -150,11 +150,11 @@
 </table>
 
 <!-- Pay remaining balance button (if partial) -->
-{% if invoice.amount_due > 0 and invoice.stripe_hosted_url %}
+{% if invoice.amount_due > 0 and pay_url %}
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 20px;">
     <tr>
         <td style="text-align: center; padding: 20px 0;">
-            <a href="{{ invoice.stripe_hosted_url }}" style="background-color: {{ branding.primary_color }}; color: white; text-decoration: none; padding: 14px 35px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold; display: inline-block;">
+            <a href="{{ pay_url }}" style="background-color: {{ branding.primary_color }}; color: white; text-decoration: none; padding: 14px 35px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 16px; font-weight: bold; display: inline-block;">
                 Pay Remaining Balance
             </a>
         </td>

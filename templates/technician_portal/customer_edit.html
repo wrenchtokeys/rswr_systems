@@ -128,7 +128,7 @@
                             class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm bg-white">
                             <option value="">— None —</option>
                             {% for tech in form.fields.primary_technician.queryset %}
-                            <option value="{{ tech.id }}" {% if form.primary_technician.value == tech.id|stringformat:"s" %}selected{% endif %}>
+                            <option value="{{ tech.id }}" {% if form.primary_technician.value|stringformat:"s" == tech.id|stringformat:"s" %}selected{% endif %}>
                                 {{ tech.user.get_full_name|default:tech.user.username }}
                             </option>
                             {% endfor %}

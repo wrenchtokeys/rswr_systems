@@ -458,6 +458,10 @@ class InvoiceEmailService:
                     logger.warning(f"Could not generate payment URL: {e}")
             
             # Build email — use shop-defined template if configured (CODE-119)
+            # Subject carries the SHOP's name, not the platform's — customers
+            # know their glass shop, not RS Systems.
+            if subject_prefix == "[RS Systems]" and self.tenant:
+                subject_prefix = f"[{self.tenant.name}]"
             subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
             body = ''
             if self.tenant:

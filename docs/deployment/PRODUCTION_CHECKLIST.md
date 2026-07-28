@@ -510,7 +510,6 @@ These commands are implemented but not yet in `.ebextensions/11_billing_cron.con
 
 | Command | Purpose |
 |---------|---------|
-| `fix_connect_account` | Fix broken Stripe Connect account state on specific tenant |
 | `reset_connect` | Full reset of Stripe Connect for a tenant (use with extreme care) |
 | `load_tax_rates` | Bulk-load tax rates from CSV (deprecated — owners now manage via UI) |
 | `tax_debug` | Debug tax calculation for a specific tenant |

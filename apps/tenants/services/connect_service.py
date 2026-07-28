@@ -318,15 +318,25 @@ class ConnectService:
                     'rs_tenant_id': str(tenant.id),
                     'rs_fee_percent': str(fee_percent),
                 },
+                # Metadata must ALSO live on the PaymentIntent — Stripe does
+                # not copy session metadata onto it, and the webhook's
+                # payment_intent.succeeded handler resolves the invoice (and
+                # writes PlatformFeeRecord) from PaymentIntent metadata.
+                'payment_intent_data': {
+                    'metadata': {
+                        'rs_invoice_id': str(invoice.id),
+                        'rs_invoice_number': invoice.invoice_number,
+                        'rs_tenant_id': str(tenant.id),
+                        'rs_fee_percent': str(fee_percent),
+                    },
+                },
                 # Direct charge: session created ON the connected account
                 'stripe_account': tenant.stripe_connect_account_id,
             }
 
             # Add platform fee if configured (only with direct charges)
             if fee_cents > 0:
-                session_params['payment_intent_data'] = {
-                    'application_fee_amount': fee_cents,
-                }
+                session_params['payment_intent_data']['application_fee_amount'] = fee_cents
 
             session = stripe.checkout.Session.create(**session_params)
 
@@ -682,14 +692,23 @@ def create_direct_charge_session(invoice, success_url, cancel_url):
             'rs_tenant_id': str(tenant.id),
             'rs_fee_cents': str(fee_cents),
         },
+        # Metadata must ALSO live on the PaymentIntent — Stripe does not
+        # copy session metadata onto it, and the webhook resolves the
+        # invoice (and writes PlatformFeeRecord) from PaymentIntent metadata.
+        'payment_intent_data': {
+            'metadata': {
+                'rs_invoice_id': str(invoice.id),
+                'rs_invoice_number': invoice.invoice_number,
+                'rs_tenant_id': str(tenant.id),
+                'rs_fee_cents': str(fee_cents),
+            },
+        },
         # Direct charge on connected account
         'stripe_account': tenant.stripe_connect_account_id,
     }
 
     if fee_cents > 0:
-        session_params['payment_intent_data'] = {
-            'application_fee_amount': fee_cents,
-        }
+        session_params['payment_intent_data']['application_fee_amount'] = fee_cents
 
     try:
         session = stripe.checkout.Session.create(**session_params)
