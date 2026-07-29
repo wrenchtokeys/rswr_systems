@@ -83,6 +83,10 @@ python manage.py generate_aging_report        # Refresh aging data
 
 # Subscription alerts (scheduled via EB cron)
 python manage.py check_subscription_alerts    # Send expiry warning emails
+
+# Review requests (scheduled via EB cron, every 20 min — 12_reviews_cron.config)
+python manage.py send_review_requests           # Send due review request emails
+python manage.py send_review_requests --dry-run # Count without sending
 ```
 
 ---
@@ -157,6 +161,8 @@ All fire via `core.services.notification_service`. Per-user and per-customer pre
 **Configure Your Shop** (`/owner/setup/`): Onboarding page where new owners fill in shop info. Includes viscosity auto-populate — selecting windshield type auto-fills viscosity value.
 
 **BillingConfig (per-tenant, fixed CODE-002)**: BillingConfig is now per-tenant via `OneToOneField(Tenant)`. Use `BillingConfig.get_for_tenant(tenant)` — creates with defaults if missing. `get_instance()` raises `RuntimeError`. Migrations: `0013_billingconfig_tenant_fk`, `0014_alter_billingconfig_options`.
+
+**Review Request System**: After a repair completes, `review_request_hook` (`apps/technician_portal/hooks.py`) calls `ReviewRequestService.schedule_review_request`, which queues a Google-review email (per-tenant `ReviewConfig`, Settings → Reviews tab). The `send_review_requests` command (EB cron `12_reviews_cron.config`, every 20 min) sends due requests — concurrency-safe via `select_for_update(skip_locked=True)` (CODE-230). **Fleet accounts are excluded by default** (`ReviewConfig.send_to_fleet=False`, skip_reason `fleet_disabled`) — only RETAIL/WALK_IN customers get requests unless the shop enables the "Include Fleet Accounts" toggle. Note `Customer.customer_type` defaults to `'FLEET'`. Tests that exercise sending must set `send_to_fleet=True` or use a RETAIL customer. See `docs/proposals/review-request-system.md`.
 
 **v2.3 — Subscription Expiry UX**: Grace period, blocked/upgrade page, subscription enforcement middleware, email alerts via `check_subscription_alerts` management command.
 

@@ -91,7 +91,9 @@ def _ensure_config(tenant, is_enabled=True):
         defaults={'is_enabled': is_enabled},
     )
     config.is_enabled = is_enabled
-    config.save(update_fields=['is_enabled'])
+    # Fixture customers default to FLEET — opt in so sends aren't gated.
+    config.send_to_fleet = True
+    config.save(update_fields=['is_enabled', 'send_to_fleet'])
     return config
 
 

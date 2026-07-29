@@ -21,6 +21,13 @@ class ReviewConfig(TenantConfig):
         blank=True,
         help_text="Direct Google review URL (e.g. from Google Business dashboard).",
     )
+    send_to_fleet = models.BooleanField(
+        default=False,
+        help_text=(
+            "Also send review requests to fleet accounts. Off by default — "
+            "requests go only to individual (retail / walk-in) customers."
+        ),
+    )
 
     # Email customisation
     email_subject = models.CharField(

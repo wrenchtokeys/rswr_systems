@@ -971,10 +971,10 @@ class ReviewConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
     to superusers in the Django admin.
     """
     list_display = [
-        'tenant', 'is_enabled', 'google_review_url_short',
+        'tenant', 'is_enabled', 'send_to_fleet', 'google_review_url_short',
         'retail_cooldown_days', 'fleet_cooldown_days', 'send_delay_hours',
     ]
-    list_filter = ['tenant', 'is_enabled']
+    list_filter = ['tenant', 'is_enabled', 'send_to_fleet']
     search_fields = ['tenant__name', 'google_review_url']
     list_select_related = ['tenant']
     list_per_page = 25
@@ -982,7 +982,7 @@ class ReviewConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
 
     fieldsets = (
         ('Tenant & Status', {
-            'fields': ('tenant', 'is_enabled'),
+            'fields': ('tenant', 'is_enabled', 'send_to_fleet'),
         }),
         ('Google Review Link', {
             'fields': ('google_review_url',),
