@@ -29,7 +29,7 @@ Not every completed repair should trigger a review request. The system needs to 
 |--------------|------|-----------|
 | **One-time retail** | Ask after every completed repair | They may never come back — get the review now |
 | **Repeat customer** (non-fleet) | Ask once per 90 days max | Don't nag regulars, but they're still individuals |
-| **Fleet account** | Ask the **primary contact** once per 180 days max | Fleet managers don't want an email for every truck. One ask every 6 months is respectful. |
+| **Fleet account** | **Excluded by default** (`ReviewConfig.send_to_fleet=False`). If the shop opts in, ask the **primary contact** once per 180 days max | Fleet managers are repeat customers who don't want an email for every truck. Shops must explicitly opt fleets in via the "Include Fleet Accounts" toggle in Settings → Reviews. |
 | **Already reviewed** | Never ask again (unless shop resets) | Once is enough. Pestering reviewers is a bad look. |
 | **Denied/negative experience** | Never ask | If the customer denied a repair or had a dispute, don't ask for a review |
 
@@ -377,15 +377,21 @@ This is a **flywheel**: more reviews → better Google ranking → more quote re
 
 ## Implementation Plan
 
-### Phase 1: Core (2-3 days)
-- [ ] ReviewRequest + ReviewConfig models + migrations
-- [ ] ReviewRequestService with smart throttling
-- [ ] Hook into repair completion (Repair.save signal)
-- [ ] Review request email template (branded HTML)
-- [ ] Click tracking redirect endpoint
-- [ ] Management command: `send_review_requests` (add to cron)
-- [ ] Owner settings page for ReviewConfig
-- [ ] Tests
+### Phase 1: Core (2-3 days) — DONE
+- [x] ReviewRequest + ReviewConfig models + migrations
+- [x] ReviewRequestService with smart throttling
+- [x] Hook into repair completion (`review_request_hook` in `apps/technician_portal/hooks.py`)
+- [x] Review request email template (branded HTML)
+- [x] Click tracking redirect endpoint (`/reviews/click/<token>/`, `/reviews/opt-out/<token>/`)
+- [x] Management command: `send_review_requests` — production cron added 2026-07-28
+      (`.ebextensions/12_reviews_cron.config`, every 20 min; before that, pending
+      requests queued but were never sent in production)
+- [x] Owner settings page for ReviewConfig (Settings → Reviews tab)
+- [x] Tests (`tests/test_reviews.py`, `tests/bug_fixes/test_code230_review_request_duplicate_send.py`)
+- [x] Fleet gating (2026-07-28): `ReviewConfig.send_to_fleet` (default **off**) —
+      review requests go only to individual (RETAIL / WALK_IN) customers unless
+      the shop enables the "Include Fleet Accounts" toggle. Enforced at
+      scheduling (`skip_reason='fleet_disabled'`) and re-checked at send time.
 
 ### Phase 2: Dashboard + Analytics (1-2 days)
 - [ ] Dashboard widget showing request stats

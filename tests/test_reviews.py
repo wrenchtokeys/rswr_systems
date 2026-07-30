@@ -178,9 +178,10 @@ class ScheduleReviewRequestTests(TestCase):
         self.customer = data['customer']
         self.customer_user = data['customer_user']
         self.tech = data['tech']
-        # Enable reviews
+        # Enable reviews (fixture customer is FLEET, so opt fleets in)
         self.config = ReviewConfig.get_for_tenant(self.tenant)
         self.config.is_enabled = True
+        self.config.send_to_fleet = True
         self.config.google_review_url = 'https://g.page/test/review'
         self.config.save()
 
@@ -324,6 +325,7 @@ class ScheduleReviewRequestTests(TestCase):
         customer_b = data_b['customer']
         config_b = ReviewConfig.get_for_tenant(tenant_b)
         config_b.is_enabled = True
+        config_b.send_to_fleet = True
         config_b.google_review_url = 'https://g.page/other/review'
         config_b.save()
 
@@ -343,6 +345,79 @@ class ScheduleReviewRequestTests(TestCase):
 # =====================================================================
 # Business Hours Tests
 # =====================================================================
+
+class FleetGatingTests(TestCase):
+    """Fleet accounts are excluded from review requests unless the shop opts in."""
+
+    def setUp(self):
+        data = make_tenant()
+        self.tenant = data['tenant']
+        self.customer = data['customer']          # FLEET (fixture default)
+        self.customer_user = data['customer_user']
+        self.tech = data['tech']
+        self.config = ReviewConfig.get_for_tenant(self.tenant)
+        self.config.is_enabled = True
+        self.config.google_review_url = 'https://g.page/test/review'
+        self.config.save()
+
+    def _make_individual(self, customer_type='RETAIL'):
+        customer = Customer.objects.create(
+            tenant=self.tenant, name='Jane Driver', customer_type=customer_type,
+        )
+        contact = User.objects.create_user(
+            f'contact_{customer_type.lower()}', f'{customer_type.lower()}@test.com',
+            'testpass123!',
+        )
+        customer_user = CustomerUser.objects.create(
+            user=contact, customer=customer, is_primary_contact=True,
+        )
+        return customer, customer_user
+
+    def test_send_to_fleet_defaults_off(self):
+        self.assertFalse(ReviewConfig.get_for_tenant(self.tenant).send_to_fleet)
+
+    def test_fleet_skipped_by_default(self):
+        repair = make_completed_repair(self.tenant, self.customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'skipped')
+        self.assertEqual(rr.skip_reason, 'fleet_disabled')
+
+    def test_fleet_allowed_when_opted_in(self):
+        self.config.send_to_fleet = True
+        self.config.save()
+        repair = make_completed_repair(self.tenant, self.customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'pending')
+
+    def test_retail_unaffected_by_fleet_gate(self):
+        customer, _ = self._make_individual('RETAIL')
+        repair = make_completed_repair(self.tenant, customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'pending')
+
+    def test_walk_in_unaffected_by_fleet_gate(self):
+        customer, _ = self._make_individual('WALK_IN')
+        repair = make_completed_repair(self.tenant, customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'pending')
+
+    def test_send_time_recheck_skips_fleet(self):
+        # Scheduled while fleet was allowed, toggle switched off before cron ran
+        self.config.send_to_fleet = True
+        self.config.save()
+        repair = make_completed_repair(self.tenant, self.customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'pending')
+        self.config.send_to_fleet = False
+        self.config.save()
+        rr.scheduled_at = timezone.now() - timedelta(minutes=5)
+        rr.save(update_fields=['scheduled_at'])
+        sent = ReviewRequestService.send_pending_requests()
+        self.assertEqual(sent, 0)
+        rr.refresh_from_db()
+        self.assertEqual(rr.status, 'skipped')
+        self.assertEqual(rr.skip_reason, 'fleet_disabled')
+
 
 class BusinessHoursTests(TestCase):
     """Test _adjust_to_business_hours helper."""
@@ -389,6 +464,7 @@ class SendPendingRequestsTests(TestCase):
         self.tech = data['tech']
         self.config = ReviewConfig.get_for_tenant(self.tenant)
         self.config.is_enabled = True
+        self.config.send_to_fleet = True
         self.config.google_review_url = 'https://g.page/test/review'
         self.config.save()
 
@@ -465,6 +541,7 @@ class ReviewRequestHookTests(TestCase):
         self.tech = data['tech']
         self.config = ReviewConfig.get_for_tenant(self.tenant)
         self.config.is_enabled = True
+        self.config.send_to_fleet = True
         self.config.google_review_url = 'https://g.page/test/review'
         self.config.save()
 
@@ -528,6 +605,7 @@ class ReviewEndpointTests(TestCase):
         self.client = Client()
         config = ReviewConfig.get_for_tenant(self.tenant)
         config.is_enabled = True
+        config.send_to_fleet = True
         config.google_review_url = 'https://g.page/test/review'
         config.save()
 
@@ -592,6 +670,7 @@ class SendReviewRequestsCommandTests(TestCase):
         self.tech = data['tech']
         config = ReviewConfig.get_for_tenant(self.tenant)
         config.is_enabled = True
+        config.send_to_fleet = True
         config.google_review_url = 'https://g.page/test/review'
         config.save()
 
@@ -665,6 +744,21 @@ class OwnerSettingsReviewsTabTests(TestCase):
         self.assertEqual(config.google_review_url, 'https://g.page/myshop/review')
         self.assertEqual(config.email_subject, 'Rate us, {shop_name}!')
         self.assertEqual(config.email_body_template, 'Thanks for your business.')
+        # Fleet toggle not posted → stays off
+        self.assertFalse(config.send_to_fleet)
+
+    def test_save_fleet_toggle(self):
+        response = self.client.post('/owner/settings/', {
+            'form_type': 'review_settings',
+            'review_enabled': 'on',
+            'review_send_to_fleet': 'on',
+            'google_review_url': 'https://g.page/myshop/review',
+            'email_subject': '',
+            'email_body_template': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        config = ReviewConfig.get_for_tenant(self.tenant)
+        self.assertTrue(config.send_to_fleet)
 
     def test_disable_review_settings(self):
         config = ReviewConfig.get_for_tenant(self.tenant)

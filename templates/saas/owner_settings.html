@@ -1328,6 +1328,19 @@ Thank you,
                 </label>
             </div>
 
+            <!-- Fleet toggle -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">Include Fleet Accounts</label>
+                    <p class="text-xs text-gray-500">Off by default — review requests go only to individual customers. Turn on to also ask fleet account contacts.</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="review_send_to_fleet" class="sr-only peer"
+                        {% if review_config.send_to_fleet %}checked{% endif %}>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
             <!-- Google Review URL -->
             <div>
                 <label for="google_review_url" class="block text-sm font-medium text-gray-700 mb-1">Google Review URL</label>

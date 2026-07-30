@@ -68,6 +68,15 @@ class ReviewRequestService:
                 repair, config, customer_user, 'customer_opted_out',
             )
 
+        # Check: fleet accounts are excluded unless the shop opts in.
+        # Default off — review requests go to individual (retail/walk-in)
+        # customers only.
+        is_fleet = customer.customer_type == 'FLEET'
+        if is_fleet and not config.send_to_fleet:
+            return _create_skipped(
+                repair, config, customer_user, 'fleet_disabled',
+            )
+
         # Check: negative experience (repair was DENIED at some point)
         from apps.technician_portal.models import TechnicianNotification
         if TechnicianNotification.objects.filter(
@@ -89,7 +98,6 @@ class ReviewRequestService:
             )
 
         # Check: cooldown (fleet vs retail)
-        is_fleet = customer.customer_type == 'FLEET'
         cooldown_days = config.fleet_cooldown_days if is_fleet else config.retail_cooldown_days
 
         last_request = ReviewRequest.objects.filter(
@@ -202,6 +210,14 @@ class ReviewRequestService:
                     if rr.customer_user and rr.customer_user.review_opt_out:
                         rr.status = 'skipped'
                         rr.skip_reason = 'customer_opted_out'
+                        rr.save(update_fields=['status', 'skip_reason'])
+                        continue
+
+                    # Re-check fleet gating (the toggle may have been switched
+                    # off between scheduling and the cron run)
+                    if rr.customer.customer_type == 'FLEET' and not config.send_to_fleet:
+                        rr.status = 'skipped'
+                        rr.skip_reason = 'fleet_disabled'
                         rr.save(update_fields=['status', 'skip_reason'])
                         continue
 

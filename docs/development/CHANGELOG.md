@@ -14,6 +14,26 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-07-28 — Review requests: production cron + fleet gating
+
+### Added
+- **Fleet gating for review requests** — new `ReviewConfig.send_to_fleet`
+  (default **off**): automated Google review requests now go only to individual
+  (RETAIL / WALK_IN) customers. Fleet accounts are skipped with
+  `skip_reason='fleet_disabled'` unless the shop turns on the new
+  "Include Fleet Accounts" toggle in Settings → Reviews. The gate is enforced
+  when scheduling and re-checked at send time (the toggle may change between
+  the two). Migration `technician_portal/0047`.
+
+### Fixed
+- **Review request emails were never sent in production** — the
+  `send_review_requests` management command existed but had no cron entry, so
+  requests queued as `pending` forever. Added
+  `.ebextensions/12_reviews_cron.config` (every 20 minutes, logs to
+  `/var/log/review-requests.log`). Overlapping runs are safe per CODE-230
+  (`select_for_update(skip_locked=True)`).
+
+
 ## 2026-07-12 — Shop-branded emails + replacement-aware customer portal
 
 Deployed to production 2026-07-12 via PR #108 (which also carried the full
