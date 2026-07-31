@@ -1,4 +1,5 @@
 import base64
+import re
 
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
@@ -505,8 +506,13 @@ def public_pay_invoice(request, invoice_id, token):
     """
     Public payment page — no login required.
     Token is HMAC-derived from invoice ID + SECRET_KEY, so URLs are unforgeable.
+
+    GET renders a confirm page; only the POST from that page creates the
+    Stripe Checkout session. Mail security gateways GET every link in an
+    email while scanning it — creating a Checkout session on GET meant every
+    scanned invoice email spawned a real Stripe session.
     """
-    invoice = _resolve_public_invoice(invoice_id, token)
+    invoice = _resolve_public_invoice(invoice_id, token, request=request)
     if invoice is None:
         return render(request, '404.html', status=404)
 
@@ -516,12 +522,24 @@ def public_pay_invoice(request, invoice_id, token):
     if invoice.amount_due <= 0:
         return render(request, 'billing/payment_complete.html')
 
-    # Try to create a Stripe Checkout session
-    checkout_url = None
-    error_msg = None
     tenant = invoice.tenant
 
-    if tenant and tenant.can_accept_payments:
+    if not (tenant and tenant.can_accept_payments):
+        # No Connect account: never fall back to a platform-account charge —
+        # the money would settle in the platform's Stripe balance, not the
+        # shop's. Show the contact-the-shop page instead.
+        context = {
+            'invoice': invoice,
+            'error_msg': "Online payments are not yet available for this shop. Please contact them directly to arrange payment.",
+            'company_name': tenant.name if tenant else 'RS Systems',
+            'company_phone': tenant.business_phone if tenant else '',
+        }
+        return render(request, 'billing/public_pay_unavailable.html', context)
+
+    if request.method == 'POST':
+        # Human clicked "Continue to secure payment" — create the session.
+        checkout_url = None
+        error_msg = None
         try:
             from apps.tenants.services.connect_service import ConnectService
             connect_svc = ConnectService()
@@ -536,30 +554,58 @@ def public_pay_invoice(request, invoice_id, token):
         except Exception as e:
             logger.warning(f"Could not create checkout for public pay page: {e}")
             error_msg = "Online payments are temporarily unavailable. Please contact the shop directly."
-    # No Connect account: never fall back to a platform-account charge —
-    # the money would settle in the platform's Stripe balance, not the
-    # shop's. Fall through to the contact-the-shop page instead.
 
-    # If we got a checkout URL, redirect immediately
-    if checkout_url:
-        return redirect(checkout_url)
+        if checkout_url:
+            return redirect(checkout_url)
+        context = {
+            'invoice': invoice,
+            'error_msg': error_msg or "Online payments are temporarily unavailable. Please contact the shop directly.",
+            'company_name': tenant.name if tenant else 'RS Systems',
+            'company_phone': tenant.business_phone if tenant else '',
+        }
+        return render(request, 'billing/public_pay_unavailable.html', context)
 
-    # Otherwise show an info page
+    # GET: confirm page (no Stripe side effects).
     context = {
         'invoice': invoice,
-        'error_msg': error_msg or "Online payments are not yet available for this shop. Please contact them directly to arrange payment.",
         'company_name': tenant.name if tenant else 'RS Systems',
         'company_phone': tenant.business_phone if tenant else '',
+        'view_url': f"/invoice/{invoice.id}/{token}/",
     }
-    return render(request, 'billing/public_pay_unavailable.html', context)
+    return render(request, 'billing/public_pay_confirm.html', context)
 
 
-def _resolve_public_invoice(invoice_id, token):
+# Mail security gateways (Microsoft Defender Safe Links, Proofpoint,
+# Mimecast, Barracuda...) fetch every link in an email while scanning it.
+# Their fetches must not count as the customer viewing the invoice — that
+# phantom "viewed" signal is worse than no signal.
+_SCANNER_UA_RE = re.compile(
+    r'bot|crawl|spider|preview|scan|monitor|fetch|probe|validator|checker'
+    r'|python|curl|wget|libwww|okhttp|headless|phantom|slurp'
+    r'|proofpoint|mimecast|barracuda|defender|safelinks|urldefense',
+    re.IGNORECASE,
+)
+
+
+def _is_scanner_request(request):
+    """Heuristic: does this request look like a mail-gateway scanner?"""
+    if request is None:
+        return False
+    if request.method not in ('GET',):
+        return True
+    ua = request.META.get('HTTP_USER_AGENT', '')
+    if not ua:
+        return True
+    return bool(_SCANNER_UA_RE.search(ua))
+
+
+def _resolve_public_invoice(invoice_id, token, request=None, record_view=True):
     """Token-check + fetch for public invoice pages; None if either fails.
 
-    A successful resolve also counts as the customer viewing the invoice —
-    the token only exists in the emailed links, so any open of the view
-    page, PDF, or pay page means the recipient clicked through.
+    A successful resolve counts as the customer viewing the invoice ONLY
+    when it looks like a human click: scanner user-agents are ignored, and
+    so is anything within INVOICE_VIEW_GRACE_SECONDS of the send — security
+    gateways detonate emailed links seconds after delivery.
     """
     import hmac as hmac_mod
     expected = generate_payment_token(invoice_id)
@@ -571,7 +617,14 @@ def _resolve_public_invoice(invoice_id, token):
     except Invoice.DoesNotExist:
         return None
     try:
-        invoice.mark_viewed()
+        if record_view and not _is_scanner_request(request):
+            grace = getattr(settings, 'INVOICE_VIEW_GRACE_SECONDS', 300)
+            recently_sent = (
+                invoice.last_sent_at is not None
+                and (timezone.now() - invoice.last_sent_at).total_seconds() < grace
+            )
+            if not recently_sent:
+                invoice.mark_viewed()
     except Exception as e:
         logger.warning(f"Could not record invoice view for {invoice_id}: {e}")
     return invoice
@@ -586,7 +639,7 @@ def public_view_invoice(request, invoice_id, token):
     email's "Pay Invoice" button goes straight to /pay/ (Stripe Checkout)
     instead — the two links used to be the same URL.
     """
-    invoice = _resolve_public_invoice(invoice_id, token)
+    invoice = _resolve_public_invoice(invoice_id, token, request=request)
     if invoice is None:
         return render(request, '404.html', status=404)
 
@@ -598,6 +651,33 @@ def public_view_invoice(request, invoice_id, token):
         # (active Stripe Connect) — the /pay/ page would dead-end otherwise.
         and bool(tenant and tenant.can_accept_payments)
     )
+
+    # Repair photos live here, not as email attachments — multi-MB photo
+    # payloads get invoice emails quarantined at corporate mail gateways.
+    photos = []
+    try:
+        repair_items = invoice.line_items.exclude(repair_id__isnull=True).select_related('repair')
+        for item in repair_items:
+            repair = item.repair
+            if not repair:
+                continue
+            for field, label in (
+                (repair.damage_photo_before, 'Before'),
+                (repair.damage_photo_after, 'After'),
+                (repair.customer_submitted_photo, 'Customer submitted'),
+            ):
+                if field:
+                    try:
+                        photos.append({
+                            'unit': repair.unit_number,
+                            'label': label,
+                            'url': field.url,
+                        })
+                    except Exception:
+                        continue
+    except Exception as e:
+        logger.warning(f"Could not load photos for public invoice {invoice_id}: {e}")
+
     context = {
         'invoice': invoice,
         'line_items': invoice.line_items.all(),
@@ -607,13 +687,14 @@ def public_view_invoice(request, invoice_id, token):
         'can_pay': can_pay,
         'pay_url': f"/pay/{invoice.id}/{token}/",
         'pdf_url': f"/invoice/{invoice.id}/{token}/pdf/",
+        'photos': photos,
     }
     return render(request, 'billing/public_invoice_view.html', context)
 
 
 def public_invoice_pdf(request, invoice_id, token):
     """Inline PDF of the invoice for the public view page (same token)."""
-    invoice = _resolve_public_invoice(invoice_id, token)
+    invoice = _resolve_public_invoice(invoice_id, token, request=request)
     if invoice is None:
         return render(request, '404.html', status=404)
 
@@ -636,18 +717,15 @@ _TRACKING_PIXEL = base64.b64decode(
 
 
 def public_invoice_open_pixel(request, invoice_id, token):
-    """Email open-tracking pixel embedded in invoice emails.
+    """Legacy email open-tracking pixel endpoint.
 
-    Loading this image means the recipient's mail client rendered the email,
-    so it counts as a view (same fields as the public pages). Always returns
-    the pixel — even on a bad token — so broken-image icons never show up in
-    an email; an invalid token just records nothing.
-
-    Caveat: image-blocking clients never fire this (missed opens), and
-    privacy prefetchers like Apple Mail Privacy Protection fire it without a
-    human open (phantom opens). It's a good signal, not a guarantee.
+    New invoice emails no longer embed the pixel — mail security gateways
+    (Microsoft Defender etc.) prefetch it while scanning, producing phantom
+    "viewed" counts, and a remote 1x1 image is itself a spam-filter signal.
+    The endpoint stays alive so already-sent emails don't render a broken
+    image, but it never records a view: delivery is tracked via SES events,
+    views via genuine invoice-page opens.
     """
-    _resolve_public_invoice(invoice_id, token)
     response = HttpResponse(_TRACKING_PIXEL, content_type='image/gif')
     response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     return response

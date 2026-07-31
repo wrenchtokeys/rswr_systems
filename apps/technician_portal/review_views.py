@@ -9,7 +9,8 @@ import logging
 from django.http import HttpResponse
 from django.shortcuts import redirect, get_object_or_404
 from django.utils import timezone
-from django.views.decorators.http import require_GET
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET, require_http_methods
 
 from apps.technician_portal.review_models import ReviewConfig, ReviewRequest
 
@@ -45,13 +46,16 @@ def review_click(request, token):
     )
 
 
-@require_GET
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def review_opt_out(request, token):
     """
-    GET /reviews/opt-out/<uuid:token>/
+    GET/POST /reviews/opt-out/<uuid:token>/
 
     Sets review_opt_out=True on the CustomerUser. No auth required.
-    CAN-SPAM compliant unsubscribe link.
+    CAN-SPAM compliant unsubscribe link. POST (csrf-exempt) is the RFC 8058
+    one-click unsubscribe target — mail clients POST here directly from the
+    List-Unsubscribe header, with no page render and no CSRF token.
     """
     rr = get_object_or_404(ReviewRequest, token=token)
 

@@ -175,18 +175,13 @@ def _send_overdue_reminder(invoice, config, days_overdue):
     # raise NameError, silently aborting the reminder. (CODE-179)
     pay_url = None
     pay_link_text = ''
-    open_pixel_url = None
     try:
-        from rs_systems.views import generate_payment_token
         from apps.billing.pay_links import public_pay_url
-        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
-        token = generate_payment_token(invoice.id)
         # Pay link only when the shop can actually take online payments
         # (active Stripe Connect) — otherwise the button dead-ends.
         pay_url = public_pay_url(invoice)
         if pay_url:
             pay_link_text = f"\nPay online: {pay_url}\n"
-        open_pixel_url = f"{base_url}/invoice/{invoice.id}/{token}/open.gif"
     except Exception:
         pass
 
@@ -230,11 +225,14 @@ Thank you,
                 ('Due Date', invoice.due_date.strftime('%B %d, %Y')),
                 ('Amount Due', f'${invoice.amount_due:.2f}'),
             ],
-            button_text='💳 Pay Now' if pay_url else None,
+            button_text='Pay Now' if pay_url else None,
             button_url=pay_url if pay_url else None,
             tenant=invoice.tenant,
             plain_text=body,
-            tracking_pixel_url=open_pixel_url,
+            headers={
+                'X-SES-MESSAGE-TAGS': f'rs_invoice_id={invoice.id}',
+                'List-Unsubscribe': f'<mailto:{settings.DEFAULT_FROM_EMAIL}?subject=unsubscribe>',
+            },
         )
         
         # Log that we sent a reminder
@@ -687,10 +685,11 @@ Thank you for your business!
                 ('Due Date', invoice.due_date.strftime('%B %d, %Y')),
                 ('Total', f'${invoice.total:,.2f}'),
             ],
-            button_text='💳 Pay Invoice' if pay_url else None,
+            button_text='Pay Invoice' if pay_url else None,
             button_url=pay_url,
             tenant=invoice.tenant,
             plain_text=body,
+            headers={'X-SES-MESSAGE-TAGS': f'rs_invoice_id={invoice.id}'},
         )
         return sent_count > 0
     except Exception as e:

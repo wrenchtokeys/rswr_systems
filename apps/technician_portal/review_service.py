@@ -358,6 +358,16 @@ def _send_review_email(review_request, config):
     opt_out_url = f"{base_url}/reviews/opt-out/{rr.token}/"
     click_url = f"{base_url}/reviews/click/{rr.token}/"
 
+    # RFC 8058 one-click unsubscribe headers — mailbox providers and
+    # corporate gateways score bulk-ish mail without them as spam, and
+    # Gmail/Yahoo require them for bulk senders.
+    from email.utils import parseaddr
+    platform_address = parseaddr(settings.DEFAULT_FROM_EMAIL)[1]
+    headers = {
+        'List-Unsubscribe': f'<{opt_out_url}>, <mailto:{platform_address}?subject=unsubscribe>',
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    }
+
     result = send_branded_email(
         subject=subject,
         recipient_list=[rr.customer_user.user.email],
@@ -369,5 +379,6 @@ def _send_review_email(review_request, config):
         secondary_button_text="Unsubscribe from review requests",
         secondary_button_url=opt_out_url,
         fail_silently=True,
+        headers=headers,
     )
     return result > 0

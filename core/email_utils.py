@@ -22,11 +22,18 @@ def shop_sender(shop_name=None, reply_to_email=None):
     sending from a shop's own domain would fail SPF/DKIM — but the From
     header shows the shop's name and replies route to the shop's email.
 
+    The display name is "<Shop> via RS Systems" (the Stripe/Xero pattern):
+    a bare third-party name over a platform address reads as display-name
+    spoofing to corporate mail gateways and gets quarantined.
+
     Returns:
         tuple: (from_email str, reply_to list)
     """
     bare_address = parseaddr(settings.DEFAULT_FROM_EMAIL)[1]
-    from_email = formataddr((shop_name, bare_address)) if shop_name else settings.DEFAULT_FROM_EMAIL
+    if shop_name:
+        from_email = formataddr((f"{shop_name} via RS Systems", bare_address))
+    else:
+        from_email = settings.DEFAULT_FROM_EMAIL
     reply_to = [reply_to_email] if reply_to_email else []
     return from_email, reply_to
 
@@ -49,6 +56,7 @@ def send_branded_email(
     attachments=None,
     fail_silently=False,
     tracking_pixel_url=None,
+    headers=None,
 ):
     """
     Send a branded HTML email with consistent styling.
@@ -69,6 +77,8 @@ def send_branded_email(
         cc: Optional CC list
         attachments: Optional list of (filename, content, mimetype) tuples
         fail_silently: Whether to suppress send errors
+        headers: Optional dict of extra message headers (e.g. List-Unsubscribe,
+            X-SES-MESSAGE-TAGS for SES event correlation)
 
     Returns:
         int: Number of emails sent (0 or 1)
@@ -197,6 +207,7 @@ def send_branded_email(
         to=recipient_list,
         cc=cc or [],
         reply_to=reply_to,
+        headers=headers or None,
     )
     email.attach_alternative(html, 'text/html')
 

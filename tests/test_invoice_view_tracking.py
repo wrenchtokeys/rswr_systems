@@ -1,12 +1,18 @@
 """
-Tests for invoice delivery/view tracking (feature/invoice-delivery-tracking):
+Tests for invoice delivery/view tracking:
 
-1. Opening a public invoice page (view page, PDF, or pay page) records a
-   view on the invoice: first_viewed_at, last_viewed_at, view_count.
-2. Invalid tokens record nothing.
-3. Invoice.record_email_sent stamps sent_at / last_sent_at / last_sent_to
-   consistently, on first sends and resends.
-4. The owner invoice list surfaces Viewed / Not viewed.
+1. Opening a public invoice page (view page, PDF, or pay page) with a real
+   browser user-agent records a view: first_viewed_at, last_viewed_at,
+   view_count.
+2. Mail-gateway scanner traffic does NOT count: empty/bot user-agents, the
+   legacy open-pixel endpoint, and any hit inside the post-send grace window
+   (security gateways detonate emailed links seconds after delivery).
+3. Invalid tokens record nothing.
+4. The /pay/ page never creates a Stripe Checkout session on GET — only the
+   confirm-page POST does.
+5. Invoice.record_email_sent stamps sent_at / last_sent_at / last_sent_to
+   and resets email_delivery_status for the new send.
+6. The owner invoice list surfaces Viewed / Not viewed.
 """
 
 import uuid
@@ -21,6 +27,13 @@ from apps.billing.models import BillingConfig, Invoice
 from apps.tenants.models import SubscriptionPlan, Tenant, TenantMembership
 from core.models import Customer
 from rs_systems.views import generate_payment_token
+
+# A real browser UA — the test client sends none by default, which the
+# scanner heuristic (correctly) refuses to count.
+BROWSER_UA = (
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+)
 
 
 def _create_tenant(name, email):
@@ -56,7 +69,7 @@ def _create_invoice(tenant, customer, status='SENT'):
 
 class PublicPageViewTrackingTests(TestCase):
     def setUp(self):
-        self.client = Client()
+        self.client = Client(HTTP_USER_AGENT=BROWSER_UA)
         self.tenant, self.user = _create_tenant('View Track Shop', 'vt-owner@example.com')
         self.customer = Customer.objects.create(
             name='VT Customer', email='vtcust@example.com', tenant=self.tenant,
@@ -108,28 +121,125 @@ class PublicPageViewTrackingTests(TestCase):
         self.assertIsNone(self.invoice.first_viewed_at)
         self.assertEqual(self.invoice.view_count, 0)
 
-    def test_open_pixel_marks_viewed(self):
-        resp = self.client.get(f'/invoice/{self.invoice.id}/{self.token}/open.gif')
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp['Content-Type'], 'image/gif')
-        self.assertIn('no-store', resp['Cache-Control'])
-        self.invoice.refresh_from_db()
-        self.assertIsNotNone(self.invoice.first_viewed_at)
-        self.assertEqual(self.invoice.view_count, 1)
 
-    def test_open_pixel_bad_token_serves_gif_records_nothing(self):
-        # Bad token still gets the pixel (no broken image in the email),
-        # but nothing is recorded.
-        resp = self.client.get(f'/invoice/{self.invoice.id}/{"0" * 32}/open.gif')
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp['Content-Type'], 'image/gif')
+class ScannerFilteringTests(TestCase):
+    """Mail-gateway scanner traffic must not produce phantom 'viewed' data."""
+
+    def setUp(self):
+        self.tenant, self.user = _create_tenant('Scan Filter Shop', 'sf-owner@example.com')
+        self.customer = Customer.objects.create(
+            name='SF Customer', email='sfcust@example.com', tenant=self.tenant,
+        )
+        self.invoice = _create_invoice(self.tenant, self.customer, status='SENT')
+        self.token = generate_payment_token(self.invoice.id)
+
+    def _assert_no_view(self):
         self.invoice.refresh_from_db()
         self.assertIsNone(self.invoice.first_viewed_at)
         self.assertEqual(self.invoice.view_count, 0)
 
+    def test_empty_user_agent_not_counted(self):
+        resp = Client().get(f'/invoice/{self.invoice.id}/{self.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self._assert_no_view()
 
-class EmailPixelEmbedTests(TestCase):
-    """The open pixel is actually embedded in outgoing email HTML."""
+    def test_scanner_user_agents_not_counted(self):
+        for ua in (
+            'python-requests/2.31.0',
+            'curl/8.4.0',
+            'Mozilla/5.0 (compatible; Barracuda Sentinel)',
+            'Mozilla/5.0 (Windows NT 10.0) HeadlessChrome/120.0',
+            'SomeCorp URLScanBot/1.0',
+        ):
+            resp = Client(HTTP_USER_AGENT=ua).get(
+                f'/invoice/{self.invoice.id}/{self.token}/')
+            self.assertEqual(resp.status_code, 200, ua)
+        self._assert_no_view()
+
+    def test_hit_within_grace_window_not_counted(self):
+        # Safe Links detonation happens seconds after the send.
+        Invoice.all_objects.filter(pk=self.invoice.pk).update(
+            last_sent_at=timezone.now(),
+        )
+        resp = Client(HTTP_USER_AGENT=BROWSER_UA).get(
+            f'/invoice/{self.invoice.id}/{self.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self._assert_no_view()
+
+    def test_hit_after_grace_window_counted(self):
+        Invoice.all_objects.filter(pk=self.invoice.pk).update(
+            last_sent_at=timezone.now() - timezone.timedelta(minutes=30),
+        )
+        resp = Client(HTTP_USER_AGENT=BROWSER_UA).get(
+            f'/invoice/{self.invoice.id}/{self.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.view_count, 1)
+
+    def test_open_pixel_never_counts(self):
+        resp = Client(HTTP_USER_AGENT=BROWSER_UA).get(
+            f'/invoice/{self.invoice.id}/{self.token}/open.gif')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'image/gif')
+        self.assertIn('no-store', resp['Cache-Control'])
+        self._assert_no_view()
+
+    def test_open_pixel_bad_token_still_serves_gif(self):
+        # Bad token still gets the pixel (no broken image in the email).
+        resp = Client().get(f'/invoice/{self.invoice.id}/{"0" * 32}/open.gif')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'image/gif')
+        self._assert_no_view()
+
+
+class PayPageStripeSessionTests(TestCase):
+    """GET must never create a Stripe Checkout session; only POST may."""
+
+    def setUp(self):
+        self.client = Client(HTTP_USER_AGENT=BROWSER_UA)
+        self.tenant, self.user = _create_tenant('Pay Flow Shop', 'pf-owner@example.com')
+        self.customer = Customer.objects.create(
+            name='PF Customer', email='pfcust@example.com', tenant=self.tenant,
+        )
+        self.invoice = _create_invoice(self.tenant, self.customer, status='SENT')
+        self.token = generate_payment_token(self.invoice.id)
+
+    def test_get_shows_confirm_page_without_stripe_call(self):
+        with patch.object(
+            type(self.tenant), 'can_accept_payments',
+            property(lambda self: True),
+        ), patch(
+            'apps.tenants.services.connect_service.ConnectService.create_connected_checkout_session',
+        ) as mock_create:
+            resp = self.client.get(f'/pay/{self.invoice.id}/{self.token}/')
+        self.assertEqual(resp.status_code, 200)
+        mock_create.assert_not_called()
+        self.assertIn('Continue to secure payment', resp.content.decode())
+
+    def test_post_creates_session_and_redirects(self):
+        with patch.object(
+            type(self.tenant), 'can_accept_payments',
+            property(lambda self: True),
+        ), patch(
+            'apps.tenants.services.connect_service.ConnectService.create_connected_checkout_session',
+            return_value={'checkout_url': 'https://checkout.stripe.com/c/pay/test123'},
+        ) as mock_create:
+            get_resp = self.client.get(f'/pay/{self.invoice.id}/{self.token}/')
+            resp = self.client.post(f'/pay/{self.invoice.id}/{self.token}/')
+        self.assertEqual(get_resp.status_code, 200)
+        mock_create.assert_called_once()
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], 'https://checkout.stripe.com/c/pay/test123')
+
+    def test_get_without_connect_shows_unavailable(self):
+        resp = self.client.get(f'/pay/{self.invoice.id}/{self.token}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('contact', resp.content.decode().lower())
+
+
+class EmailPixelRemovedTests(TestCase):
+    """Invoice emails must NOT embed an open-tracking pixel — gateways
+    prefetch it (phantom views) and a remote 1x1 image is a spam signal."""
 
     def setUp(self):
         self.tenant, self.user = _create_tenant('Pixel Shop', 'px-owner@example.com')
@@ -137,7 +247,7 @@ class EmailPixelEmbedTests(TestCase):
             name='Pixel Customer', email='pxcust@example.com', tenant=self.tenant,
         )
 
-    def test_invoice_email_html_contains_open_pixel(self):
+    def test_invoice_email_html_has_no_open_pixel(self):
         from django.core import mail
         from django.test import override_settings
         from apps.billing.models import InvoiceLineItem
@@ -157,26 +267,54 @@ class EmailPixelEmbedTests(TestCase):
         self.assertTrue(success, msg)
         self.assertEqual(len(mail.outbox), 1)
         html_body = mail.outbox[0].alternatives[0][0]
-        self.assertIn(f'/invoice/{invoice.id}/', html_body)
-        self.assertIn('/open.gif', html_body)
+        self.assertIn(f'/invoice/{invoice.id}/', html_body)  # view link stays
+        self.assertNotIn('/open.gif', html_body)
 
-    def test_branded_email_embeds_tracking_pixel_when_given(self):
+    def test_invoice_email_carries_ses_message_tag(self):
         from django.core import mail
         from django.test import override_settings
-        from core.email_utils import send_branded_email
+        from apps.billing.models import InvoiceLineItem
+        from apps.billing.services.invoice_email_service import InvoiceEmailService
 
+        invoice = _create_invoice(self.tenant, self.customer, status='DRAFT')
+        InvoiceLineItem.objects.create(
+            invoice=invoice, description='Windshield repair',
+            quantity=1, unit_price=Decimal('100.00'), amount=Decimal('100.00'),
+        )
         with override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
-            sent = send_branded_email(
-                subject='Reminder',
-                recipient_list=['someone@example.com'],
-                headline='Payment Reminder',
-                body_paragraphs=['Please pay.'],
-                tenant=self.tenant,
-                tracking_pixel_url='https://rssystems.io/invoice/1/abc/open.gif',
+            success, msg = InvoiceEmailService(tenant=self.tenant).send_invoice_email(
+                customer_id=self.customer.id,
+                recipient_email=self.customer.email,
+                invoice=invoice,
             )
-        self.assertEqual(sent, 1)
-        html_body = mail.outbox[0].alternatives[0][0]
-        self.assertIn('https://rssystems.io/invoice/1/abc/open.gif', html_body)
+        self.assertTrue(success, msg)
+        message = mail.outbox[0].message()
+        self.assertEqual(
+            message['X-SES-MESSAGE-TAGS'], f'rs_invoice_id={invoice.id}')
+
+    def test_invoice_email_from_uses_via_platform_format(self):
+        from django.core import mail
+        from django.test import override_settings
+        from apps.billing.models import InvoiceLineItem
+        from apps.billing.services.invoice_email_service import InvoiceEmailService
+
+        invoice = _create_invoice(self.tenant, self.customer, status='DRAFT')
+        InvoiceLineItem.objects.create(
+            invoice=invoice, description='Windshield repair',
+            quantity=1, unit_price=Decimal('100.00'), amount=Decimal('100.00'),
+        )
+        with override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend'):
+            success, msg = InvoiceEmailService(tenant=self.tenant).send_invoice_email(
+                customer_id=self.customer.id,
+                recipient_email=self.customer.email,
+                invoice=invoice,
+            )
+        self.assertTrue(success, msg)
+        self.assertIn('via RS Systems', mail.outbox[0].from_email)
+        # No bracketed subject prefix; "Invoice <num> from <shop>" instead.
+        subject = mail.outbox[0].subject
+        self.assertFalse(subject.startswith('['), subject)
+        self.assertIn(f'Invoice {invoice.invoice_number} from Pixel Shop', subject)
 
 
 class RecordEmailSentTests(TestCase):
@@ -194,12 +332,15 @@ class RecordEmailSentTests(TestCase):
         self.assertIsNotNone(invoice.sent_at)
         self.assertEqual(invoice.last_sent_at, invoice.sent_at)
         self.assertEqual(invoice.last_sent_to, 'billing@fleet.example.com')
+        self.assertEqual(invoice.email_delivery_status, 'sent')
 
     def test_resend_updates_last_sent_but_not_sent_at(self):
         invoice = _create_invoice(self.tenant, self.customer, status='SENT')
         original_sent_at = timezone.now() - timezone.timedelta(days=3)
         Invoice.all_objects.filter(pk=invoice.pk).update(
             sent_at=original_sent_at, last_sent_at=original_sent_at,
+            email_delivery_status='bounced',
+            email_delivery_detail='old failure',
         )
         invoice.refresh_from_db()
         invoice.record_email_sent('newaddress@fleet.example.com')
@@ -208,6 +349,9 @@ class RecordEmailSentTests(TestCase):
         self.assertGreater(invoice.last_sent_at, original_sent_at)
         self.assertEqual(invoice.last_sent_to, 'newaddress@fleet.example.com')
         self.assertEqual(invoice.status, 'SENT')
+        # Resend resets delivery tracking for the new message.
+        self.assertEqual(invoice.email_delivery_status, 'sent')
+        self.assertEqual(invoice.email_delivery_detail, '')
 
     def test_send_without_recipient_keeps_existing_recipient(self):
         invoice = _create_invoice(self.tenant, self.customer, status='SENT')
@@ -245,14 +389,35 @@ class OwnerInvoiceListIndicatorTests(TestCase):
         self.assertIn('Viewed', content)
         self.assertIn('Not viewed', content)
 
+    def test_list_shows_delivery_status(self):
+        delivered = _create_invoice(self.tenant, self.customer, status='SENT')
+        now = timezone.now()
+        Invoice.all_objects.filter(pk=delivered.pk).update(
+            sent_at=now, email_delivery_status='delivered',
+            email_delivery_status_at=now,
+        )
+        bounced = _create_invoice(self.tenant, self.customer, status='SENT')
+        Invoice.all_objects.filter(pk=bounced.pk).update(
+            sent_at=now, email_delivery_status='bounced',
+            email_delivery_status_at=now,
+            email_delivery_detail='550 mailbox not found',
+        )
+        resp = self.client.get('/owner/invoices/')
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode()
+        self.assertIn('Delivered', content)
+        self.assertIn('Not delivered', content)
+
     def test_detail_shows_delivery_trail(self):
         invoice = _create_invoice(self.tenant, self.customer, status='SENT')
         now = timezone.now()
         Invoice.all_objects.filter(pk=invoice.pk).update(
             sent_at=now, last_sent_at=now, last_sent_to='ltcust@example.com',
+            email_delivery_status='delivered', email_delivery_status_at=now,
         )
         resp = self.client.get(f'/owner/invoices/{invoice.id}/')
         self.assertEqual(resp.status_code, 200)
         content = resp.content.decode()
         self.assertIn('ltcust@example.com', content)
+        self.assertIn('Delivered', content)
         self.assertIn('Not viewed by the customer yet', content)

@@ -208,6 +208,15 @@
                         </div>
                         <div class="shrink-0 text-right">
                             {% status_badge inv.status kind='invoice' %}
+                            {% if inv.email_delivery_status == 'bounced' or inv.email_delivery_status == 'rejected' %}
+                            <div class="mt-1 text-xs text-red-600" title="{{ inv.email_delivery_detail|default:'The email could not be delivered' }}"><i class="fas fa-exclamation-triangle mr-0.5"></i>Not delivered</div>
+                            {% elif inv.email_delivery_status == 'complained' %}
+                            <div class="mt-1 text-xs text-red-600" title="The recipient marked the email as spam"><i class="fas fa-exclamation-triangle mr-0.5"></i>Marked spam</div>
+                            {% elif inv.email_delivery_status == 'delayed' %}
+                            <div class="mt-1 text-xs text-amber-600" title="{{ inv.email_delivery_detail|default:'Delivery delayed — the mail server will keep retrying' }}"><i class="fas fa-clock mr-0.5"></i>Delayed</div>
+                            {% elif inv.email_delivery_status == 'delivered' %}
+                            <div class="mt-1 text-xs text-green-600" title="Accepted by the customer's mail server {{ inv.email_delivery_status_at|date:'M d, Y g:i A' }}"><i class="fas fa-check mr-0.5"></i>Delivered</div>
+                            {% endif %}
                             {% if inv.first_viewed_at %}
                             <div class="mt-1 text-xs text-green-600" title="Customer opened this invoice {{ inv.last_viewed_at|date:'M d, Y g:i A' }}"><i class="fas fa-eye mr-0.5"></i>Viewed</div>
                             {% elif inv.sent_at and inv.status in 'SENT,OVERDUE,PARTIAL' %}
@@ -297,6 +306,15 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center">
                         {% status_badge inv.status kind='invoice' %}
+                        {% if inv.email_delivery_status == 'bounced' or inv.email_delivery_status == 'rejected' %}
+                        <div class="mt-1 text-xs text-red-600" title="{{ inv.email_delivery_detail|default:'The email could not be delivered' }}"><i class="fas fa-exclamation-triangle mr-0.5"></i>Not delivered</div>
+                        {% elif inv.email_delivery_status == 'complained' %}
+                        <div class="mt-1 text-xs text-red-600" title="The recipient marked the email as spam"><i class="fas fa-exclamation-triangle mr-0.5"></i>Marked spam</div>
+                        {% elif inv.email_delivery_status == 'delayed' %}
+                        <div class="mt-1 text-xs text-amber-600" title="{{ inv.email_delivery_detail|default:'Delivery delayed — the mail server will keep retrying' }}"><i class="fas fa-clock mr-0.5"></i>Delayed</div>
+                        {% elif inv.email_delivery_status == 'delivered' %}
+                        <div class="mt-1 text-xs text-green-600" title="Accepted by the customer's mail server {{ inv.email_delivery_status_at|date:'M d, Y g:i A' }}"><i class="fas fa-check mr-0.5"></i>Delivered</div>
+                        {% endif %}
                         {% if inv.first_viewed_at %}
                         <div class="mt-1 text-xs text-green-600" title="Customer opened this invoice {{ inv.last_viewed_at|date:'M d, Y g:i A' }}"><i class="fas fa-eye mr-0.5"></i>Viewed</div>
                         {% elif inv.sent_at and inv.status in 'SENT,OVERDUE,PARTIAL' %}

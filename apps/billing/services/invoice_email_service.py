@@ -215,13 +215,6 @@ class InvoiceEmailService:
         token = generate_payment_token(invoice_id)
         return f"{base_url}/invoice/{invoice_id}/{token}/"
 
-    def _open_pixel_url(self, invoice_id) -> str:
-        """Open-tracking pixel URL — loading it marks the invoice viewed."""
-        from rs_systems.views import generate_payment_token
-        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
-        token = generate_payment_token(invoice_id)
-        return f"{base_url}/invoice/{invoice_id}/{token}/open.gif"
-
     def _build_email_body(self, invoice_data, include_photos: bool,
                           payment_link: str = None, view_link: str = None) -> str:
         """Build the email body text"""
@@ -285,7 +278,7 @@ class InvoiceEmailService:
             else:
                 portal_url = f"{_base_url}/app/invoices/"
         lines.extend([
-            "📄 View Invoice Online:",
+            "View your invoice online:",
             portal_url,
             "",
         ])
@@ -293,14 +286,14 @@ class InvoiceEmailService:
         # Stripe payment link
         if payment_link:
             lines.extend([
-                "💳 Pay Online:",
+                "Pay online:",
                 payment_link,
                 "",
             ])
-        
+
         if include_photos:
             lines.extend([
-                "📸 Repair photos are attached to this email.",
+                "Repair photos are attached to this email.",
                 "   Photos are named: [Unit#] - before.jpg / [Unit#] - after.jpg",
                 "",
             ])
@@ -325,7 +318,7 @@ class InvoiceEmailService:
         recipient_email: str,
         repair_ids: Optional[List[int]] = None,
         days: int = 30,
-        include_photos: bool = True,
+        include_photos: bool = False,
         cc_emails: Optional[List[str]] = None,
         bcc_emails: Optional[List[str]] = None,
         subject_prefix: str = "[RS Systems]",
@@ -341,7 +334,10 @@ class InvoiceEmailService:
             recipient_email: Primary recipient email
             repair_ids: Optional specific repair IDs
             days: Number of days to look back (default 30)
-            include_photos: Whether to attach repair photos
+            include_photos: Whether to attach repair photos. Off by default —
+                multi-MB photo attachments get invoice email quarantined at
+                corporate mail gateways; photos live on the public invoice
+                page instead.
             cc_emails: Optional CC recipients
             subject_prefix: Email subject prefix
             invoice_number: Stored invoice number to embed in PDF (CODE-120).
@@ -431,11 +427,9 @@ class InvoiceEmailService:
 
             # Public view link — invoice summary page, NOT Stripe checkout.
             view_link = None
-            open_pixel_url = None
             if invoice_record:
                 try:
                     view_link = self._public_view_link(invoice_record.id)
-                    open_pixel_url = self._open_pixel_url(invoice_record.id)
                 except Exception as e:
                     logger.warning(f"Could not generate view URL: {e}")
 
@@ -459,10 +453,13 @@ class InvoiceEmailService:
             
             # Build email — use shop-defined template if configured (CODE-119)
             # Subject carries the SHOP's name, not the platform's — customers
-            # know their glass shop, not RS Systems.
-            if subject_prefix == "[RS Systems]" and self.tenant:
-                subject_prefix = f"[{self.tenant.name}]"
-            subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
+            # know their glass shop, not RS Systems. No bracketed tag: [Shop]
+            # prefixes read as bulk mail to corporate spam filters.
+            if subject_prefix == "[RS Systems]":
+                shop = self.tenant.name if self.tenant else "RS Systems"
+                subject = f"Invoice {invoice_data.invoice_number} from {shop}"
+            else:
+                subject = f"{subject_prefix} Invoice {invoice_data.invoice_number} - {invoice_data.customer_name}"
             body = ''
             if self.tenant:
                 try:
@@ -481,14 +478,19 @@ class InvoiceEmailService:
             # Build HTML version of the email
             html_body = self._build_html_email(invoice_data, payment_link=payment_link,
                                                 include_photos=len(photos) > 0,
-                                                view_link=view_link,
-                                                open_pixel_url=open_pixel_url)
+                                                view_link=view_link)
 
             from core.email_utils import shop_sender
             from_email, reply_to = shop_sender(
                 shop_name=self.tenant.name if self.tenant else None,
                 reply_to_email=self.tenant.business_email if self.tenant else '',
             )
+            # SES message tag: echoed back in configuration-set event
+            # payloads (mail.tags) so the SES webhook can attribute
+            # Delivery/Bounce events to this exact invoice.
+            headers = {}
+            if invoice_record:
+                headers['X-SES-MESSAGE-TAGS'] = f'rs_invoice_id={invoice_record.id}'
             email = EmailMultiAlternatives(
                 subject=subject,
                 body=body,  # plain text fallback
@@ -497,6 +499,7 @@ class InvoiceEmailService:
                 cc=cc_emails or [],
                 bcc=bcc_emails or [],
                 reply_to=reply_to,
+                headers=headers or None,
             )
             email.attach_alternative(html_body, 'text/html')
             
@@ -530,15 +533,17 @@ class InvoiceEmailService:
             return False, f"Error sending email: {str(e)}"
     
     def _build_html_email(self, invoice_data, payment_link=None, include_photos=False,
-                          view_link=None, open_pixel_url=None) -> str:
+                          view_link=None) -> str:
         """Build an HTML email with clickable buttons.
 
         "View Invoice Online" goes to the public invoice VIEW page; only the
         "Pay Invoice" button goes to the payment URL (the two used to share
         the /pay/ URL, so both buttons dumped the customer into Stripe).
 
-        open_pixel_url, when set, embeds a 1x1 open-tracking image so simply
-        opening the email marks the invoice viewed.
+        No open-tracking pixel: security gateways (Microsoft Defender etc.)
+        prefetch remote images while scanning, producing phantom "viewed"
+        events, and a remote 1x1 image is itself a spam-filter signal.
+        Delivery is tracked via SES events; views via the invoice page.
         """
         invoice_id = getattr(invoice_data, 'id', None) or getattr(invoice_data, 'pk', None)
         if view_link:
@@ -600,7 +605,7 @@ class InvoiceEmailService:
             pay_button_html = f'''
             <div style="text-align:center;margin:24px 0;">
                 <a href="{payment_link}" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;border-radius:8px;">
-                    💳 Pay Invoice — ${invoice_data.total:.2f}
+                    Pay Invoice — ${invoice_data.total:.2f}
                 </a>
             </div>'''
 
@@ -608,13 +613,6 @@ class InvoiceEmailService:
         cust_name_esc = html.escape(str(invoice_data.customer_name))
         inv_number_esc = html.escape(str(invoice_data.invoice_number))
         pay_terms_esc = html.escape(str(invoice_data.payment_terms_display))
-
-        pixel_html = ''
-        if open_pixel_url:
-            pixel_html = (
-                f'<img src="{open_pixel_url}" width="1" height="1" alt="" '
-                f'style="display:block;width:1px;height:1px;border:0;overflow:hidden;">'
-            )
 
         html_doc = f'''<!DOCTYPE html>
 <html>
@@ -666,7 +664,7 @@ class InvoiceEmailService:
     <!-- View Online Link -->
     <div style="text-align:center;margin:16px 0;">
         <a href="{portal_url}" style="display:inline-block;padding:10px 24px;background-color:#ffffff;color:#2563eb;text-decoration:none;font-size:14px;font-weight:500;border:2px solid #2563eb;border-radius:8px;">
-            📄 View Invoice Online
+            View Invoice Online
         </a>
     </div>
 
@@ -682,7 +680,6 @@ class InvoiceEmailService:
     {"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>" + company_phone + "</p>" if company_phone else ""}
 </div>
 
-{pixel_html}
 </div>
 </body>
 </html>'''
@@ -755,7 +752,7 @@ def send_customer_invoice(
     customer_id: int,
     recipient_email: str,
     days: int = 30,
-    include_photos: bool = True
+    include_photos: bool = False
 ) -> Tuple[bool, str]:
     """Send an invoice email to a customer"""
     service = InvoiceEmailService()

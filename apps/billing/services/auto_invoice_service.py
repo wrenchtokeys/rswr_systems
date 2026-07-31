@@ -316,11 +316,13 @@ class AutoInvoiceService:
 
         try:
             email_service = InvoiceEmailService(tenant=getattr(service, 'tenant', None))
+            # Photos are never attached to invoice emails — multi-MB photo
+            # payloads get quarantined at corporate mail gateways. Customers
+            # see photos on the public invoice page instead.
             success, message = email_service.send_invoice_email(
                 customer_id=service.customer.id,
                 recipient_email=recipient,
                 invoice=invoice_record,
-                include_photos=prefs.include_photos_in_invoice
             )
 
             if success:

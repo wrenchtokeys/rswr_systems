@@ -183,6 +183,17 @@ DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssyste
 DEFAULT_FROM_NAME = os.environ.get('DEFAULT_FROM_NAME', 'RS Systems')
 SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
+# Canonical public origin for links in emails and webhooks. SITE_URL is the
+# legacy alias some services read (review_service, invitation_service,
+# notification templates) — keep both pointing at the same value.
+BASE_URL = os.environ.get('BASE_URL', 'https://rssystems.io').rstrip('/')
+SITE_URL = BASE_URL
+
+# Don't count an invoice "view" within this window after sending — mail
+# security gateways (Microsoft Defender Safe Links etc.) fetch every link
+# in an email seconds after delivery while scanning it.
+INVOICE_VIEW_GRACE_SECONDS = int(os.environ.get('INVOICE_VIEW_GRACE_SECONDS', 300))
+
 # Site admins — receive new signup notifications and error reports
 ADMINS = [
     ('Drake', os.environ.get('ADMIN_EMAIL', 'wdrakeduncan@gmail.com')),
@@ -220,6 +231,5 @@ STRIPE_TEST_MODE = STRIPE_MODE == 'test'
 # =========================================
 
 INVOICE_DEFAULT_DUE_DAYS = 30
-INVOICE_FROM_EMAIL = os.environ.get('INVOICE_FROM_EMAIL', 'billing@rssystems.io')
 
 # Celery removed — notifications are synchronous; batch billing runs via management commands.

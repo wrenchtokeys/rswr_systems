@@ -50,7 +50,6 @@ class RepairPreferenceForm(forms.ModelForm):
             'invoice_preference',
             'billing_email',
             'auto_email_invoices',
-            'include_photos_in_invoice',
         ]
 
         # Customize how fields appear in the form
@@ -82,7 +81,6 @@ class RepairPreferenceForm(forms.ModelForm):
             'invoice_preference': 'Invoice Generation Mode',
             'billing_email': 'Billing Email Address',
             'auto_email_invoices': 'Automatically Email Invoices',
-            'include_photos_in_invoice': 'Include Photos in Invoices',
         }
 
     def __init__(self, *args, **kwargs):

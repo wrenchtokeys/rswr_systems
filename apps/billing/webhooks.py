@@ -1,23 +1,28 @@
 """
-AWS SES delivery-event webhook (bounces / complaints via SNS).
+AWS SES delivery-event webhook (SNS → HTTPS).
 
-When an invoice email bounces, the shop currently finds out never — the
-invoice sits "SENT" while the customer never got it. SES publishes bounce
-and complaint events to an SNS topic; an HTTPS subscription on that topic
-POSTs them here. We match the bounced recipient to recently sent invoices
-(Invoice.last_sent_to) and alert the shop in-app and by email.
+SES publishes Send/Delivery/DeliveryDelay/Bounce/Complaint/Reject events for
+the `rs-systems-default` configuration set (attached as the identity default,
+so every SMTP send gets it) to the `rs-systems-ses-events` SNS topic; an
+HTTPS subscription on that topic POSTs them here. Events are attributed to
+invoices via the rs_invoice_id message tag (exact) or last_sent_to (fallback)
+and persisted on Invoice.email_delivery_status, so the UI can show real
+Delivered/Bounced state instead of trusting "SENT". Permanent bounces,
+complaints, and rejects also alert the shop in-app and by email.
 
 One-time AWS setup (see docs/deployment/SES_BOUNCE_NOTIFICATIONS.md):
   1. Create an SNS topic (e.g. rs-systems-ses-events).
-  2. SES console → verified identity (or configuration set) → set Bounce and
-     Complaint feedback notifications to that topic.
-  3. Subscribe the topic to
+  2. Create a SES configuration set with an SNS event destination for
+     SEND, DELIVERY, BOUNCE, COMPLAINT, REJECT, DELIVERY_DELAY, and attach
+     it to the rssystems.io identity as the default configuration set.
+  3. `eb setenv SES_WEBHOOK_SECRET=<long random string>`.
+  4. Subscribe the topic to
      https://rssystems.io/api/billing/webhooks/ses/<SES_WEBHOOK_SECRET>/
      (HTTPS). This endpoint auto-confirms the subscription.
-  4. `eb setenv SES_WEBHOOK_SECRET=<long random string>`.
 
 The URL secret is the auth: without it the endpoint 404s. A forged POST with
-the secret could at worst generate a spurious "email bounced" alert.
+the secret could at worst generate a spurious "email bounced" alert or flip
+an invoice's advisory delivery-status field.
 """
 
 import hmac
@@ -84,50 +89,172 @@ def _confirm_subscription(url):
         logger.warning("Could not confirm SNS subscription", exc_info=True)
 
 
-def _handle_ses_event(message):
-    """Route a decoded SES notification to bounce/complaint handling.
+# Later statuses may not regress to earlier ones: a late "Send" event must
+# never overwrite "delivered", and "delivered" must not mask a subsequent
+# complaint. Equal-rank transitions are allowed (a re-bounce refreshes detail).
+_STATUS_RANK = {
+    '': 0,
+    'sent': 1,
+    'delayed': 2,
+    'delivered': 3,
+    'bounced': 4,
+    'complained': 4,
+    'rejected': 4,
+}
 
-    Every event type is logged with its recipients — this log is the
-    per-message delivery audit trail ("did Penske's server accept it?"),
-    which SES otherwise provides nowhere queryable.
+
+def _handle_ses_event(message):
+    """Route a decoded SES event to status tracking + shop alerting.
+
+    Handles both the configuration-set event format (eventType, includes
+    mail.tags) and the legacy identity-notification format (notificationType).
+    Every event is logged with its recipients — this log is the per-message
+    delivery audit trail ("did Penske's server accept it?").
     """
     event_type = message.get('notificationType') or message.get('eventType') or ''
-    if event_type == 'Bounce':
-        bounce = message.get('bounce') or {}
-        recipients = [r.get('emailAddress', '')
-                      for r in bounce.get('bouncedRecipients', [])]
-        logger.warning(
-            f"SES {bounce.get('bounceType', '?')} bounce for "
-            f"{', '.join(filter(None, recipients)) or 'unknown recipient'} "
-            f"(subType={bounce.get('bounceSubType', '?')})"
-        )
-        # Transient bounces (mailbox full, greylisting) usually self-resolve;
-        # only hard/permanent bounces mean "this address doesn't work".
-        if bounce.get('bounceType') == 'Transient':
-            return
-        reason = 'bounced (could not be delivered)'
-    elif event_type == 'Complaint':
-        complaint = message.get('complaint') or {}
-        recipients = [r.get('emailAddress', '')
-                      for r in complaint.get('complainedRecipients', [])]
-        logger.warning(
-            f"SES complaint (marked as spam) from "
-            f"{', '.join(filter(None, recipients)) or 'unknown recipient'}"
-        )
-        reason = 'was marked as spam by the recipient'
+    mail = message.get('mail') or {}
+    recipients = []
+    status = None
+    detail = ''
+    alert_reason = None
+
+    if event_type == 'Send':
+        recipients = mail.get('destination') or []
+        status = 'sent'
+        logger.info(f"SES accepted send to {', '.join(recipients)}")
     elif event_type == 'Delivery':
         delivery = message.get('delivery') or {}
         recipients = delivery.get('recipients') or []
+        status = 'delivered'
         logger.info(
             f"SES delivery confirmed to {', '.join(recipients)} "
             f"(mta={delivery.get('reportingMTA', '?')})"
         )
-        return
+    elif event_type == 'DeliveryDelay':
+        delay = message.get('deliveryDelay') or {}
+        recipients = [r.get('emailAddress', '')
+                      for r in delay.get('delayedRecipients', [])]
+        status = 'delayed'
+        detail = delay.get('delayType', 'delivery delayed')
+        logger.warning(
+            f"SES delivery delayed for {', '.join(filter(None, recipients))} "
+            f"(type={delay.get('delayType', '?')})"
+        )
+    elif event_type == 'Bounce':
+        bounce = message.get('bounce') or {}
+        bounced = bounce.get('bouncedRecipients', [])
+        recipients = [r.get('emailAddress', '') for r in bounced]
+        diagnostics = '; '.join(filter(None, (
+            r.get('diagnosticCode', '') for r in bounced)))[:255]
+        logger.warning(
+            f"SES {bounce.get('bounceType', '?')} bounce for "
+            f"{', '.join(filter(None, recipients)) or 'unknown recipient'} "
+            f"(subType={bounce.get('bounceSubType', '?')}) {diagnostics}"
+        )
+        # Transient bounces (mailbox full, greylisting) usually self-resolve;
+        # only hard/permanent bounces mean "this address doesn't work".
+        if bounce.get('bounceType') == 'Transient':
+            status = 'delayed'
+            detail = diagnostics or 'temporary delivery problem'
+        else:
+            status = 'bounced'
+            detail = diagnostics or 'could not be delivered'
+            alert_reason = 'bounced (could not be delivered)'
+    elif event_type == 'Complaint':
+        complaint = message.get('complaint') or {}
+        recipients = [r.get('emailAddress', '')
+                      for r in complaint.get('complainedRecipients', [])]
+        status = 'complained'
+        detail = complaint.get('complaintFeedbackType', '') or 'marked as spam'
+        alert_reason = 'was marked as spam by the recipient'
+        logger.warning(
+            f"SES complaint (marked as spam) from "
+            f"{', '.join(filter(None, recipients)) or 'unknown recipient'}"
+        )
+    elif event_type == 'Reject':
+        reject = message.get('reject') or {}
+        recipients = mail.get('destination') or []
+        status = 'rejected'
+        detail = reject.get('reason', '') or 'rejected by SES'
+        alert_reason = f"was rejected before sending ({detail})"
+        logger.warning(
+            f"SES rejected message to {', '.join(recipients)}: {detail}"
+        )
     else:
         return
 
-    for email in filter(None, recipients):
-        _alert_shops_for_recipient(email, reason)
+    _update_invoice_delivery_status(message, recipients, status, detail)
+
+    if alert_reason:
+        for email in filter(None, recipients):
+            _alert_shops_for_recipient(email, alert_reason)
+
+
+def _resolve_event_invoices(message, recipients):
+    """Find the Invoice(s) an SES event belongs to.
+
+    Preferred: the rs_invoice_id message tag we set at send time
+    (X-SES-MESSAGE-TAGS), echoed back in mail.tags by configuration-set
+    events — exact attribution. Fallback: recipient match against
+    recently-sent invoices (last_sent_to), for mail sent before tagging
+    existed or via paths that don't tag.
+    """
+    from apps.billing.models import Invoice
+
+    tags = (message.get('mail') or {}).get('tags') or {}
+    tag_values = tags.get('rs_invoice_id') or []
+    invoice_ids = [v for v in tag_values if str(v).isdigit()]
+    if invoice_ids:
+        return list(
+            Invoice.all_objects.filter(pk__in=invoice_ids)
+        )
+
+    emails = [e for e in recipients if e]
+    if not emails:
+        return []
+    cutoff = timezone.now() - timezone.timedelta(days=MATCH_WINDOW_DAYS)
+    return list(
+        Invoice.objects.filter(
+            last_sent_to__in=emails,
+            last_sent_at__gte=cutoff,
+        ).exclude(status='CANCELLED')
+    )
+
+
+def _update_invoice_delivery_status(message, recipients, status, detail):
+    """Persist a delivery-status transition, guarding against regressions."""
+    if not status:
+        return
+    from apps.billing.models import Invoice
+
+    try:
+        invoices = _resolve_event_invoices(message, recipients)
+    except Exception:
+        logger.warning("Could not resolve invoices for SES event", exc_info=True)
+        return
+
+    new_rank = _STATUS_RANK.get(status, 0)
+    now = timezone.now()
+    for invoice in invoices:
+        current_rank = _STATUS_RANK.get(invoice.email_delivery_status, 0)
+        if new_rank < current_rank:
+            continue
+        # Queryset update: no save() side effects, no clobbering concurrent
+        # payment edits, and the same regression guard applied atomically.
+        allowed_current = [
+            s for s, rank in _STATUS_RANK.items() if rank <= new_rank
+        ]
+        Invoice.all_objects.filter(
+            pk=invoice.pk,
+            email_delivery_status__in=allowed_current,
+        ).update(
+            email_delivery_status=status,
+            email_delivery_status_at=now,
+            email_delivery_detail=(detail or '')[:255],
+        )
+        logger.info(
+            f"Invoice {invoice.invoice_number}: email delivery status → {status}"
+        )
 
 
 def _alert_shops_for_recipient(email, reason):

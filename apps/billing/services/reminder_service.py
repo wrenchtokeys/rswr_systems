@@ -338,20 +338,21 @@ Best regards,
         
         customer_name = invoice.customer.name
 
-        # Subject carries the SHOP's name, not the platform's.
+        # Subject carries the SHOP's name, not the platform's. No bracketed
+        # tag — [Shop] prefixes read as bulk mail to corporate spam filters.
         _tenant = self.tenant or getattr(invoice, 'tenant', None)
-        shop_prefix = f"[{_tenant.name}]" if _tenant else "[RS Systems]"
+        shop_name = _tenant.name if _tenant else "RS Systems"
 
         if reminder_type.startswith('due_soon'):
             days = reminder_type.split('_')[-1]
-            subject = f"{shop_prefix} Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
+            subject = f"Payment reminder: Invoice {invoice.invoice_number} from {shop_name}"
             urgency = "friendly"
         elif reminder_type.startswith('overdue'):
             days = reminder_type.split('_')[-1]
-            subject = f"{shop_prefix} Overdue Notice: Invoice {invoice.invoice_number} - {customer_name}"
+            subject = f"Overdue notice: Invoice {invoice.invoice_number} from {shop_name}"
             urgency = "urgent" if '30d' in reminder_type else "firm"
         else:
-            subject = f"{shop_prefix} Payment Reminder: Invoice {invoice.invoice_number} - {customer_name}"
+            subject = f"Payment reminder: Invoice {invoice.invoice_number} from {shop_name}"
             urgency = "friendly"
         
         # Build body
@@ -464,7 +465,15 @@ Please contact us to arrange payment or if you have any questions.
                     (f"Invoice_{invoice.invoice_number}.pdf", pdf_attachment, 'application/pdf')
                 )
 
+            from django.conf import settings as dj_settings
             tenant = getattr(invoice, 'tenant', None) if invoice else None
+            headers = {
+                'List-Unsubscribe': f'<mailto:{dj_settings.DEFAULT_FROM_EMAIL}?subject=unsubscribe>',
+            }
+            if invoice is not None and getattr(invoice, 'id', None):
+                # Echoed back in SES event payloads so the webhook can
+                # attribute Delivery/Bounce events to this invoice.
+                headers['X-SES-MESSAGE-TAGS'] = f'rs_invoice_id={invoice.id}'
             send_branded_email(
                 subject=subject,
                 recipient_list=[to_email],
@@ -473,6 +482,7 @@ Please contact us to arrange payment or if you have any questions.
                 tenant=tenant,
                 attachments=attachments,
                 from_email=self.from_email,
+                headers=headers,
             )
             return True
             

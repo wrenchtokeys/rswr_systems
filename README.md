@@ -408,18 +408,33 @@ See the [`docs/`](docs/) directory for detailed guides:
 ## Email Configuration
 
 ### Outbound (Amazon SES)
-- Sends from: `notifications@rssystems.io`
+- Sends from: `notifications@rssystems.io`, display name `"<Shop> via RS Systems"`
 - Transport: SES SMTP (`email-smtp.us-east-1.amazonaws.com:587`, STARTTLS)
-- Domain `rssystems.io` verified in SES with Easy DKIM (3 CNAME tokens)
+- Domain `rssystems.io` verified in SES with Easy DKIM (3 CNAME tokens, 2048-bit)
+- Custom MAIL FROM: `mail.rssystems.io` (MX → `feedback-smtp.us-east-1.amazonses.com`,
+  TXT `v=spf1 include:amazonses.com ~all`) — gives DMARC-aligned SPF; without it
+  the envelope is `amazonses.com` and only DKIM aligns
+- Default configuration set `rs-systems-default`: publishes SEND / DELIVERY /
+  BOUNCE / COMPLAINT / REJECT / DELIVERY_DELAY events to SNS topic
+  `rs-systems-ses-events` → webhook `/api/billing/webhooks/ses/<SES_WEBHOOK_SECRET>/`,
+  which stamps `Invoice.email_delivery_status` (real Delivered/Bounced in the UI)
 - Account has production access: 50,000 messages/day, 14 messages/second
-- Bounces and complaints are handled by the SES account-level suppression list
-- Used for: repair notifications, invoice delivery, invitation emails, subscription alerts
+- Deliverability rules (learned the hard way — corporate gateways quarantined us):
+  no photo attachments on invoice email (photos live on the public invoice page),
+  no open-tracking pixel, no emoji or `[Bracketed]` subject tags, and the From
+  display name always carries "via RS Systems"
+
+### DNS / authentication (Route 53, zone rssystems.io)
+- SPF (apex): `v=spf1 include:amazonses.com include:spf.improvmx.com ~all`
+- DMARC: `v=DMARC1; p=none; rua=mailto:dmarc@rssystems.io` — tighten to
+  `p=quarantine` once 2–4 weeks of aggregate reports show 100% alignment
+- Easy DKIM CNAMEs ×3 → `*.dkim.amazonses.com`
+- MAIL FROM records on `mail.rssystems.io` (see above)
 
 ### Inbound (ImprovMX)
 - `contact@rssystems.io` forwards to the team inbox (Gmail)
 - MX records on Route 53: `mx1.improvmx.com` / `mx2.improvmx.com`
-- SPF record currently: `v=spf1 include:amazonses.com include:sendgrid.net include:spf.improvmx.com ~all`
-- Once the SendGrid subscription is cancelled, drop `include:sendgrid.net` (SPF allows only 10 DNS lookups)
+- `dmarc@rssystems.io` must exist as an ImprovMX alias to receive DMARC reports
 
 ---
 

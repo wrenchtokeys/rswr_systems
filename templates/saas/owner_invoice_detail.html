@@ -112,6 +112,23 @@
                     <span class="text-gray-500">(resent {{ invoice.last_sent_at|date:"M d, Y g:i A" }})</span>
                     {% endif %}
                 </p>
+                {% if invoice.email_delivery_status == 'bounced' or invoice.email_delivery_status == 'rejected' %}
+                <p class="text-red-700"><i class="fas fa-exclamation-triangle mr-1"></i><span class="font-medium">Not delivered</span>
+                    {{ invoice.email_delivery_status_at|date:"M d, Y g:i A" }}{% if invoice.email_delivery_detail %} — {{ invoice.email_delivery_detail }}{% endif %}
+                </p>
+                {% elif invoice.email_delivery_status == 'complained' %}
+                <p class="text-red-700"><i class="fas fa-exclamation-triangle mr-1"></i><span class="font-medium">Marked as spam</span> by the recipient
+                    {{ invoice.email_delivery_status_at|date:"M d, Y g:i A" }}
+                </p>
+                {% elif invoice.email_delivery_status == 'delayed' %}
+                <p class="text-amber-700"><i class="fas fa-clock mr-1"></i><span class="font-medium">Delivery delayed</span>
+                    — the mail server will keep retrying{% if invoice.email_delivery_detail %} ({{ invoice.email_delivery_detail }}){% endif %}
+                </p>
+                {% elif invoice.email_delivery_status == 'delivered' %}
+                <p class="text-green-700"><i class="fas fa-check mr-1"></i><span class="font-medium">Delivered</span>
+                    — accepted by the customer's mail server {{ invoice.email_delivery_status_at|date:"M d, Y g:i A" }}
+                </p>
+                {% endif %}
                 {% if invoice.first_viewed_at %}
                 <p class="text-green-700"><i class="fas fa-eye mr-1"></i><span class="font-medium">Viewed</span>
                     {{ invoice.last_viewed_at|date:"M d, Y g:i A" }}{% if invoice.view_count > 1 %} · {{ invoice.view_count }} views{% endif %}

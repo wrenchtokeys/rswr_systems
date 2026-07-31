@@ -443,9 +443,35 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         help_text="When the most recent invoice email went out (sent_at keeps the first send)",
     )
 
-    # View tracking — set when anyone opens the invoice's public link
-    # (view page, PDF, or pay page) from the email. Not an email-open pixel:
-    # a view means the link was actually clicked.
+    # Real delivery status from SES configuration-set events (via the SES/SNS
+    # webhook). "Delivered" means the recipient's mail server accepted the
+    # message — the only trustworthy signal; gateway-scanned "views" are not.
+    EMAIL_DELIVERY_CHOICES = [
+        ('', 'Unknown'),
+        ('sent', 'Sent'),
+        ('delivered', 'Delivered'),
+        ('delayed', 'Delayed'),
+        ('bounced', 'Bounced'),
+        ('complained', 'Marked as spam'),
+        ('rejected', 'Rejected'),
+    ]
+    email_delivery_status = models.CharField(
+        max_length=12, blank=True, default='',
+        choices=EMAIL_DELIVERY_CHOICES,
+        help_text="Delivery status of the most recent invoice email (from SES events)",
+    )
+    email_delivery_status_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the delivery status last changed",
+    )
+    email_delivery_detail = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Short diagnostic from the mail server (e.g. bounce reason)",
+    )
+
+    # View tracking — set when a human opens the invoice's public link
+    # (view page, PDF, or pay page) from the email. Mail-gateway scanner
+    # fetches are filtered out before this is recorded.
     first_viewed_at = models.DateTimeField(null=True, blank=True)
     last_viewed_at = models.DateTimeField(null=True, blank=True)
     view_count = models.PositiveIntegerField(default=0)
@@ -605,7 +631,15 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         self.last_sent_at = now
         if recipient:
             self.last_sent_to = recipient
-        self.save(update_fields=['status', 'sent_at', 'last_sent_at', 'last_sent_to'])
+        # Reset delivery status for the new send — SES events will advance it
+        # to delivered/bounced/etc. via the webhook.
+        self.email_delivery_status = 'sent'
+        self.email_delivery_status_at = now
+        self.email_delivery_detail = ''
+        self.save(update_fields=[
+            'status', 'sent_at', 'last_sent_at', 'last_sent_to',
+            'email_delivery_status', 'email_delivery_status_at', 'email_delivery_detail',
+        ])
 
     def mark_viewed(self):
         """Record that the customer opened this invoice's public link.

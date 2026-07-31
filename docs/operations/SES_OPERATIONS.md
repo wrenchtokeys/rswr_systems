@@ -13,20 +13,34 @@ stops sending, invoices and notifications silently stop.
   SES Console → SMTP settings → Create SMTP credentials, and stored as Elastic Beanstalk
   env vars: `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`.
   Rotation/region change is `eb setenv`, not a deploy.
-- From addresses: `notifications@rssystems.io` (default), `billing@rssystems.io` (invoices).
+- From address: `notifications@rssystems.io` with display name `"<Shop> via RS Systems"`
+  (`core/email_utils.py:shop_sender`). One address for all mail — one coherent domain
+  reputation.
+- **Authentication (2026-07-30):** Easy DKIM (2048-bit) + custom MAIL FROM
+  `mail.rssystems.io` → SPF and DKIM both DMARC-aligned. DMARC is `p=none` with
+  `rua=mailto:dmarc@rssystems.io`; tighten to `p=quarantine` after 2–4 clean weeks
+  of reports.
+- **Default configuration set `rs-systems-default`** is attached to the rssystems.io
+  identity, so every SMTP send publishes SEND/DELIVERY/BOUNCE/COMPLAINT/REJECT/
+  DELIVERY_DELAY events to SNS topic `rs-systems-ses-events`.
 - `EMAIL_TIMEOUT=10` caps SMTP connect time so a slow provider can't hang web workers.
 - Development uses the console backend unless `USE_REAL_EMAIL=True` **and**
   `EMAIL_HOST_PASSWORD` are set (`rs_systems/settings/development.py`).
 - SES production access granted 2026-07-09 (50,000 msgs/day, 14 msgs/sec quota at grant time).
 
-## Bounce / Complaint Handling Today
+## Bounce / Complaint / Delivery Handling Today
 
-- **Account-level suppression list only** (SES default): SES suppresses addresses that
-  hard-bounce or complain, account-wide. Nothing more.
-- **No SNS wiring exists.** `NotificationDeliveryLog` has a `STATUS_BOUNCED` status defined,
-  but no code ever sets it — the app never learns about bounces or complaints.
-- Consequence: repeated sends to bad addresses still count against reputation until SES
-  suppresses them, and shop owners see "sent" for email that actually bounced.
+- **SES event webhook** (`apps/billing/webhooks.py`, route
+  `POST /api/billing/webhooks/ses/<SES_WEBHOOK_SECRET>/`) receives all configuration-set
+  events via SNS. It attributes events to invoices via the `rs_invoice_id` message tag
+  (set as `X-SES-MESSAGE-TAGS` at send time) or `last_sent_to` fallback, and stamps
+  `Invoice.email_delivery_status` (sent → delivered / delayed / bounced / complained /
+  rejected) — shown in the owner invoice list and detail pages.
+- Permanent bounces, complaints, and rejects also alert the shop in-app and by email.
+- **Account-level suppression list** (SES default) still suppresses hard-bounced or
+  complained addresses account-wide.
+- `NotificationDeliveryLog.STATUS_BOUNCED` is still never set (repair notifications
+  aren't tagged yet) — see follow-ups.
 
 ## The Danger: Reputation-Based Sending Pause
 
@@ -71,8 +85,11 @@ To test without touching reputation, use the SES mailbox simulator:
 
 ## Follow-Ups (not yet done)
 
-- [ ] Create SNS topic for SES bounce + complaint notifications; subscribe an app endpoint
-- [ ] Set `NotificationDeliveryLog.STATUS_BOUNCED` from those events (field already exists)
+- [ ] `eb setenv SES_WEBHOOK_SECRET=<random>` and subscribe the SNS topic to the webhook
+      URL (topic + config set exist; subscription needs the secret live first)
+- [ ] Tighten DMARC to `p=quarantine` after 2–4 clean weeks of rua reports
+- [ ] Set `NotificationDeliveryLog.STATUS_BOUNCED` from SES events (field already exists;
+      repair notifications need message tags first)
 - [ ] Per-recipient suppression in-app: stop emailing addresses that hard-bounced
 - [ ] CloudWatch alarms on Bounce/Complaint rates (alert well below 5% / 0.1%)
 - [ ] Email verification loop at customer signup to prevent typo'd addresses

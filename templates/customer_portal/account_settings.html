@@ -360,14 +360,8 @@
                                 <p class="text-xs text-gray-500 mt-0.5">Invoices are emailed as soon as they're generated</p>
                             </div>
                         </label>
-                        <label class="flex items-start gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
-                            <input type="checkbox" class="mt-0.5 h-4 w-4 text-brand-500 focus:ring-brand-500 border-gray-300 rounded" id="{{ repair_form.include_photos_in_invoice.id_for_label }}" name="{{ repair_form.include_photos_in_invoice.name }}" {% if repair_form.include_photos_in_invoice.value %}checked{% endif %}>
-                            <div>
-                                <span class="text-sm font-medium text-gray-900">Include repair photos</span>
-                                <p class="text-xs text-gray-500 mt-0.5">Attach before/after photos to invoice emails</p>
-                            </div>
-                        </label>
                     </div>
+                    <p class="text-xs text-gray-400 mt-2">Repair photos are available on each invoice's online view page.</p>
                 </div>
             </div>
         </div>
