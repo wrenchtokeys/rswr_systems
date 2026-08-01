@@ -106,11 +106,13 @@
                 {% endif %}
                 <p><span class="font-medium text-gray-700">Terms:</span> {{ invoice.get_payment_terms_display }}</p>
                 {% if invoice.sent_at %}
+                {% comment %} last_sent_to is the recipient of the LATEST send only — after a resend to a
+                different address it must display next to the resend timestamp, not the original send. {% endcomment %}
                 <p><span class="font-medium text-gray-700">Sent:</span>
-                    {{ invoice.sent_at|date:"M d, Y g:i A" }}{% if invoice.last_sent_to %} to {{ invoice.last_sent_to }}{% endif %}
+                    {{ invoice.sent_at|date:"M d, Y g:i A" }}
                     {% if invoice.last_sent_at and invoice.last_sent_at|date:"YmdHi" != invoice.sent_at|date:"YmdHi" %}
-                    <span class="text-gray-500">(resent {{ invoice.last_sent_at|date:"M d, Y g:i A" }})</span>
-                    {% endif %}
+                    <span class="text-gray-500">(resent {{ invoice.last_sent_at|date:"M d, Y g:i A" }}{% if invoice.last_sent_to %} to {{ invoice.last_sent_to }}{% endif %})</span>
+                    {% elif invoice.last_sent_to %} to {{ invoice.last_sent_to }}{% endif %}
                 </p>
                 {% if invoice.email_delivery_status == 'bounced' or invoice.email_delivery_status == 'rejected' %}
                 <p class="text-red-700"><i class="fas fa-exclamation-triangle mr-1"></i><span class="font-medium">Not delivered</span>

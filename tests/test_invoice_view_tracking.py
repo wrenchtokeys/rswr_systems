@@ -421,3 +421,26 @@ class OwnerInvoiceListIndicatorTests(TestCase):
         self.assertIn('ltcust@example.com', content)
         self.assertIn('Delivered', content)
         self.assertIn('Not viewed by the customer yet', content)
+
+    def test_detail_resend_recipient_shown_next_to_resend_timestamp(self):
+        # last_sent_to is the LATEST send's recipient. After a resend to a
+        # different address it must render inside the "(resent ...)" trail, not
+        # next to the original sent_at.
+        invoice = _create_invoice(self.tenant, self.customer, status='SENT')
+        original_sent = timezone.now() - timezone.timedelta(hours=1)
+        resent_at = timezone.now()
+        Invoice.all_objects.filter(pk=invoice.pk).update(
+            sent_at=original_sent, last_sent_at=resent_at,
+            last_sent_to='resend-target@example.com',
+        )
+        resp = self.client.get(f'/owner/invoices/{invoice.id}/')
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode()
+        # Recipient appears attached to the resend timestamp.
+        resent_idx = content.find('resent')
+        self.assertNotEqual(resent_idx, -1)
+        recipient_idx = content.find('resend-target@example.com')
+        self.assertNotEqual(recipient_idx, -1)
+        self.assertGreater(recipient_idx, resent_idx)
+        # The explanatory template note must never reach the rendered page.
+        self.assertNotIn('LATEST send', content)
