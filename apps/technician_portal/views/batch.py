@@ -397,15 +397,16 @@ def create_multi_break_repair(request):
                                 # Owners/superusers can always override; no approval_limit applies.
                                 pass
                             elif requesting_role == 'manager':
-                                # Managers: must have override permission, reason, and stay within limit.
-                                # Use tenant-scoped Technician lookup so a manager from another
-                                # shop cannot bleed their can_override_pricing=True into this tenant.
+                                # Managers: need a reason and must stay within limit.
+                                # The tenant-scoped Technician lookup is the cross-tenant
+                                # guard; can_override_pricing is deprecated (never set by
+                                # any signup/team path, so it locked all managers out).
                                 requesting_tech = (
                                     Technician.objects.filter(user=request.user, tenant=_req_tenant).first()
                                     if _req_tenant else None
                                 )
-                                if not (requesting_tech and requesting_tech.can_override_pricing):
-                                    messages.error(request, f"Break {i+1}: You don't have permission to override prices.")
+                                if not requesting_tech:
+                                    messages.error(request, f"Break {i+1}: You don't have permission to set custom prices.")
                                     return redirect('create_multi_break_repair')
                                 if not override_reason:
                                     messages.error(request, f"Break {i+1}: Override reason is required when setting a custom price.")
@@ -681,14 +682,15 @@ def convert_to_batch(request, repair_id):
                             cost = override_cost_decimal
                         elif requesting_role == 'manager':
                             # Use tenant-scoped lookup so a manager from another shop
-                            # cannot bleed their can_override_pricing=True into this
-                            # tenant via the OneToOne Technician relation. (CODE-059)
+                            # cannot bleed manager privileges into this tenant via the
+                            # OneToOne Technician relation. (CODE-059; can_override_pricing
+                            # is deprecated — never set by any signup/team path.)
                             requesting_tech = (
                                 Technician.objects.filter(user=request.user, tenant=tenant).first()
                                 if tenant else None
                             )
-                            if not (requesting_tech and requesting_tech.can_override_pricing):
-                                raise ValueError("You don't have permission to override prices")
+                            if not requesting_tech:
+                                raise ValueError("You don't have permission to set custom prices")
                             # approval_limit=None means unlimited; comparison requires non-None
                             if requesting_tech.approval_limit is not None and override_cost_decimal > requesting_tech.approval_limit:
                                 raise ValueError(f"Override amount ${override_cost} exceeds your approval limit of ${requesting_tech.approval_limit}")

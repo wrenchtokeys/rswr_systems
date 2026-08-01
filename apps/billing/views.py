@@ -829,6 +829,25 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
 
     line_item.save()
 
+    # Keep the job's price in sync with the invoice. Without this, editing a
+    # line item left Repair.cost at the old value forever (the drift that
+    # audit_remediation_data measures). Write via queryset .update() to skip
+    # save() side effects; cost_override is stored pre-account-discount so a
+    # future save() re-derives cost == the invoiced amount.
+    service = line_item.repair or line_item.replacement
+    if service and ('unit_price' in data or 'discount' in data or 'amount' in data):
+        per_unit = (line_item.amount / line_item.quantity).quantize(Decimal('0.01')) \
+            if line_item.quantity else line_item.amount
+        override = per_unit
+        pct = service.customer.get_effective_discount_percentage() if service.customer else 0
+        if pct and pct > 0 and pct < 100:
+            override = (per_unit * Decimal('100') / (Decimal('100') - pct)).quantize(Decimal('0.01'))
+        type(service).objects.filter(pk=service.pk).update(
+            cost=per_unit,
+            cost_override=override,
+            override_reason=f'Priced on invoice {invoice.invoice_number}',
+        )
+
     # Recalculate invoice totals from all line items. Tax applies to taxable
     # lines only (no_tax jobs, exempt sales); the TOTAL includes every line.
     all_items = invoice.line_items.all()

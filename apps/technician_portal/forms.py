@@ -499,11 +499,15 @@ class RepairForm(forms.ModelForm):
             except Technician.DoesNotExist:
                 pass
 
-        if _form_technician and _form_technician.is_manager and _form_technician.can_override_pricing:
-            pass  # Show override fields
-        else:
-            self.fields['cost_override'].widget = forms.HiddenInput()
-            self.fields['override_reason'].widget = forms.HiddenInput()
+        # Owners/managers see the pricing fields (can_override_pricing is
+        # deprecated — nothing ever set it, so it locked owners out too).
+        # For everyone else the fields must be REMOVED, not hidden: a field
+        # left in Meta.fields but absent from the POST cleans to None, so a
+        # HiddenInput here silently wiped any existing cost_override every
+        # time the repair was edited and saved.
+        if not (_form_technician and _form_technician.is_manager):
+            del self.fields['cost_override']
+            del self.fields['override_reason']
         
         # Auto-populate repair_date from service_date for existing repairs
         if self.instance and self.instance.pk:
@@ -614,10 +618,12 @@ class RepairForm(forms.ModelForm):
                         pass
 
             if not _clean_technician:
-                self.add_error('cost_override', 'Only managers can override pricing.')
+                self.add_error('cost_override', 'Only owners and managers can set a custom price.')
             else:
-                if not (_clean_technician.is_manager and _clean_technician.can_override_pricing):
-                    self.add_error('cost_override', 'You do not have permission to override pricing.')
+                # is_manager alone authorizes — can_override_pricing is
+                # deprecated (never set by any signup/team path).
+                if not _clean_technician.is_manager:
+                    self.add_error('cost_override', 'You do not have permission to set a custom price.')
                 # Use `is not None` so approval_limit=Decimal('0.00') is a valid
                 # "zero cap" — bare truthiness would treat 0.00 as "no limit" (AGENTS.md).
                 elif _clean_technician.approval_limit is not None and cost_override > _clean_technician.approval_limit:
