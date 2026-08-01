@@ -1403,6 +1403,31 @@ Thank you,
                 </label>
             </div>
 
+            <!-- Delivery channels -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">Send by Email</label>
+                    <p class="text-xs text-gray-500">Email the review link to the customer's email address on file.</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="review_send_via_email" class="sr-only peer"
+                        {% if review_config.send_via_email %}checked{% endif %}>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">Send by Text (SMS)</label>
+                    <p class="text-xs text-gray-500">Text the review link to the customer's phone number on file. Standard SMS rates apply.</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="review_send_via_sms" class="sr-only peer"
+                        {% if review_config.send_via_sms %}checked{% endif %}>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
             <!-- Google Review URL -->
             <div>
                 <label for="google_review_url" class="block text-sm font-medium text-gray-700 mb-1">Google Review URL</label>
@@ -1429,6 +1454,16 @@ Thank you,
                 <textarea id="email_body_template" name="email_body_template" rows="3"
                     class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
                     placeholder="Leave blank for default message">{{ review_config.email_body_template }}</textarea>
+            </div>
+
+            <!-- SMS Body Template -->
+            <div>
+                <label for="sms_body_template" class="block text-sm font-medium text-gray-700 mb-1">Custom Text Message <span class="text-gray-400">(optional)</span></label>
+                <input type="text" id="sms_body_template" name="sms_body_template" maxlength="120"
+                    value="{{ review_config.sms_body_template }}"
+                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition"
+                    placeholder="Thanks for choosing {shop_name}! Mind leaving us a quick Google review?">
+                <p class="text-xs text-gray-500 mt-1">Keep it short — the review link and opt-out notice are added automatically. Use <code>{shop_name}</code> and <code>{customer_name}</code>.</p>
             </div>
 
             <div class="flex justify-end">
@@ -1481,7 +1516,7 @@ Thank you,
                                 {% endif %}
                             </td>
                             <td class="py-2 px-3 text-gray-500">{{ rr.scheduled_at|date:"M d, Y g:i A" }}</td>
-                            <td class="py-2 px-3 text-gray-500">{% if rr.sent_at %}{{ rr.sent_at|date:"M d, Y g:i A" }}{% else %}—{% endif %}</td>
+                            <td class="py-2 px-3 text-gray-500">{% if rr.sent_at %}{{ rr.sent_at|date:"M d, Y g:i A" }}{% if rr.sent_via %} <span class="text-gray-400">({{ rr.sent_via }})</span>{% endif %}{% else %}—{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

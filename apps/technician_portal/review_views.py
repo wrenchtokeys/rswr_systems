@@ -66,6 +66,15 @@ def review_opt_out(request, token):
             "Review opt-out: customer_user pk=%s opted out via token=%s",
             rr.customer_user.pk, token,
         )
+    else:
+        # Retail / walk-in customers have no portal account — the opt-out
+        # lives on the Customer record itself.
+        rr.customer.review_opt_out = True
+        rr.customer.save(update_fields=['review_opt_out'])
+        logger.info(
+            "Review opt-out: customer pk=%s opted out via token=%s",
+            rr.customer.pk, token,
+        )
 
     return HttpResponse(
         "<h2>You've been unsubscribed</h2>"

@@ -103,6 +103,14 @@ class Customer(models.Model):
         help_text="When phone number was verified"
     )
 
+    # Review requests — opt-out for customers contacted directly (retail /
+    # walk-in customers with no portal account). Portal users have their own
+    # CustomerUser.review_opt_out; both are honored.
+    review_opt_out = models.BooleanField(
+        default=False,
+        help_text="Customer opted out of review request emails/texts"
+    )
+
     # Primary technician assignment
     primary_technician = models.ForeignKey(
         'technician_portal.Technician',

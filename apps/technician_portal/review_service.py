@@ -53,17 +53,26 @@ class ReviewRequestService:
 
         customer = repair.customer
 
-        # Find the primary contact — no fallback per implementation plan §7
+        # Find the primary contact if the customer has portal users. Retail /
+        # walk-in customers usually have no portal account — fall back to the
+        # contact info captured on the Customer record itself.
         customer_user = CustomerUser.objects.filter(
             customer=customer,
             is_primary_contact=True,
         ).first()
 
-        if not customer_user or not customer_user.user.email:
-            return None  # No primary contact to email
+        email, phone = _resolve_contact(customer, customer_user)
 
-        # Check: customer opted out
-        if customer_user.review_opt_out:
+        # Gate: at least one enabled channel must have contact info
+        can_email = config.send_via_email and bool(email)
+        can_sms = config.send_via_sms and bool(_to_e164(phone))
+        if not can_email and not can_sms:
+            return _create_skipped(
+                repair, config, customer_user, 'no_contact_info',
+            )
+
+        # Check: customer opted out (portal-user level or customer level)
+        if (customer_user and customer_user.review_opt_out) or customer.review_opt_out:
             return _create_skipped(
                 repair, config, customer_user, 'customer_opted_out',
             )
@@ -206,8 +215,10 @@ class ReviewRequestService:
                         rr.save(update_fields=['status', 'skip_reason'])
                         continue
 
-                    # Re-check opt-out (may have changed since scheduling)
-                    if rr.customer_user and rr.customer_user.review_opt_out:
+                    # Re-check opt-out (may have changed since scheduling) —
+                    # portal-user level or customer level
+                    if (rr.customer_user and rr.customer_user.review_opt_out) \
+                            or rr.customer.review_opt_out:
                         rr.status = 'skipped'
                         rr.skip_reason = 'customer_opted_out'
                         rr.save(update_fields=['status', 'skip_reason'])
@@ -231,7 +242,7 @@ class ReviewRequestService:
                     # between the send and the save, the worst case is a retry on
                     # the next cron run (row stays 'pending').
                     try:
-                        success = _send_review_email(rr, config)
+                        channels = _send_review_request(rr, config)
                     except Exception:
                         logger.exception(
                             "Failed to send review request pk=%s for tenant=%s",
@@ -242,14 +253,15 @@ class ReviewRequestService:
                         # this atomic block (none in the exception path, but safe).
                         continue
 
-                    if success:
+                    if channels:
                         rr.status = 'sent'
                         rr.sent_at = now
-                        rr.save(update_fields=['status', 'sent_at'])
+                        rr.sent_via = '+'.join(channels)
+                        rr.save(update_fields=['status', 'sent_at', 'sent_via'])
                         sent_count += 1
                     else:
                         logger.warning(
-                            "send_branded_email returned 0 for review request pk=%s", rr.pk,
+                            "No channel delivered review request pk=%s", rr.pk,
                         )
 
             except Exception:
@@ -264,6 +276,75 @@ class ReviewRequestService:
 # ------------------------------------------------------------------ #
 # Private helpers
 # ------------------------------------------------------------------ #
+
+def _resolve_contact(customer, customer_user):
+    """
+    Return (email, phone) for a review request.
+
+    Prefers the portal primary contact's email when one exists; otherwise
+    falls back to the contact info on the Customer record (how retail /
+    walk-in customers are captured from the repair form). Phone always comes
+    from the Customer record — portal accounts don't carry one.
+    """
+    email = ''
+    if customer_user and customer_user.user.email:
+        email = customer_user.user.email
+    elif customer.email:
+        email = customer.email
+    phone = customer.phone or ''
+    return email, phone
+
+
+def _to_e164(phone):
+    """
+    Normalize a phone number to E.164 (+1XXXXXXXXXX) for AWS SNS.
+
+    Handles the formats techs actually type: '(501) 555-1234',
+    '501-555-1234', '15015551234', '+15015551234'. Returns None when the
+    number can't be normalized to a US/Canada E.164 number.
+    """
+    import re
+    if not phone:
+        return None
+    digits = re.sub(r'\D', '', phone)
+    if len(digits) == 10:
+        return f'+1{digits}'
+    if len(digits) == 11 and digits.startswith('1'):
+        return f'+{digits}'
+    # Already-international numbers ('+44...') pass through if E.164-valid
+    if phone.strip().startswith('+') and re.match(r'^\+[1-9]\d{1,14}$', phone.strip()):
+        return phone.strip()
+    return None
+
+
+def _send_review_request(rr, config):
+    """
+    Send the review request over every enabled channel with contact info.
+
+    Returns the list of channels that actually delivered (e.g. ['email'],
+    ['email', 'sms'], or [] if nothing went out).
+    """
+    email, phone = _resolve_contact(rr.customer, rr.customer_user)
+    channels = []
+
+    if config.send_via_email and email:
+        try:
+            if _send_review_email(rr, config, email):
+                channels.append('email')
+        except Exception:
+            logger.exception("Review email failed for request pk=%s", rr.pk)
+
+    if config.send_via_sms:
+        e164 = _to_e164(phone)
+        if e164:
+            try:
+                if _send_review_sms(rr, config, e164):
+                    channels.append('sms')
+            except Exception:
+                logger.exception("Review SMS failed for request pk=%s", rr.pk)
+
+    return channels
+
 
 def _create_skipped(repair, config, customer_user, reason):
     from apps.technician_portal.review_models import ReviewRequest
@@ -321,7 +402,7 @@ def _safe_format(template, **kwargs):
         return template
 
 
-def _send_review_email(review_request, config):
+def _send_review_email(review_request, config, recipient_email):
     """Send a branded review request email. Returns True on success."""
     from core.email_utils import send_branded_email
 
@@ -370,7 +451,7 @@ def _send_review_email(review_request, config):
 
     result = send_branded_email(
         subject=subject,
-        recipient_list=[rr.customer_user.user.email],
+        recipient_list=[recipient_email],
         headline=f"How was your experience with {shop_name}?",
         body_paragraphs=body_paragraphs,
         tenant=rr.tenant,
@@ -382,3 +463,55 @@ def _send_review_email(review_request, config):
         headers=headers,
     )
     return result > 0
+
+
+def _send_review_sms(review_request, config, e164_phone):
+    """
+    Send a review request text via SMSService (AWS SNS). Returns True on success.
+
+    The whole message must fit in one 160-character SMS *with the tracked
+    review link intact* — SMSService hard-truncates at 160 and a truncated
+    link is worthless. So the body text is trimmed to whatever room is left
+    after the link and the opt-out notice.
+    """
+    from django.conf import settings
+    from core.services.sms_service import SMSService
+
+    rr = review_request
+    shop_name = rr.tenant.name or 'our shop'
+    customer_name = rr.customer.name or 'there'
+
+    base_url = getattr(settings, 'SITE_URL', 'https://rssystems.io')
+    click_url = f"{base_url}/reviews/click/{rr.token}/"
+    opt_out_notice = "Reply STOP to opt out."
+
+    if config.sms_body_template:
+        body = _safe_format(
+            config.sms_body_template,
+            shop_name=shop_name, customer_name=customer_name,
+        )
+    else:
+        body = (
+            f"Thanks for choosing {shop_name}! Mind leaving us a quick Google review?"
+        )
+
+    # Trim the body so body + link + opt-out fits in one SMS segment.
+    max_len = SMSService.MAX_SMS_LENGTH
+    reserved = len(click_url) + len(opt_out_notice) + 2  # two joining spaces
+    room = max_len - reserved
+    if room < 10:
+        # Pathological (very long SITE_URL) — send link + opt-out only
+        message = f"{click_url} {opt_out_notice}"
+    else:
+        if len(body) > room:
+            # Plain ASCII '...' — a unicode ellipsis would flip the SMS to
+            # UCS-2 encoding and shrink the single-segment limit to 70 chars.
+            body = body[:room - 3].rstrip() + '...'
+        message = f"{body} {click_url} {opt_out_notice}"
+
+    success, _log = SMSService.send_notification_sms(
+        notification_id=None,
+        recipient_phone=e164_phone,
+        message=message,
+    )
+    return success

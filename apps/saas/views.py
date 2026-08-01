@@ -1749,9 +1749,13 @@ def owner_settings_view(request):
                     or "How was your experience with {shop_name}?"
                 )
                 review_config.email_body_template = request.POST.get('email_body_template', '').strip()
+                review_config.send_via_email = request.POST.get('review_send_via_email') == 'on'
+                review_config.send_via_sms = request.POST.get('review_send_via_sms') == 'on'
+                review_config.sms_body_template = request.POST.get('sms_body_template', '').strip()[:120]
                 review_config.save(update_fields=[
                     'is_enabled', 'send_to_fleet', 'google_review_url',
                     'email_subject', 'email_body_template',
+                    'send_via_email', 'send_via_sms', 'sms_body_template',
                 ])
                 messages.success(request, 'Review settings saved.')
             except Exception as e:

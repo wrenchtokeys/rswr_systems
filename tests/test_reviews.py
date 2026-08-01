@@ -225,12 +225,60 @@ class ScheduleReviewRequestTests(TestCase):
         self.assertEqual(rr.status, 'skipped')
         self.assertEqual(rr.skip_reason, 'goodwill_repair')
 
-    def test_returns_none_when_no_primary_contact(self):
+    def test_skips_when_no_contact_info_at_all(self):
+        """No primary contact AND no email/phone on the Customer → visible skip."""
         self.customer_user.is_primary_contact = False
         self.customer_user.save()
         repair = self._make_repair()
         rr = ReviewRequestService.schedule_review_request(repair)
-        self.assertIsNone(rr)
+        self.assertEqual(rr.status, 'skipped')
+        self.assertEqual(rr.skip_reason, 'no_contact_info')
+
+    def test_falls_back_to_customer_email_without_portal_account(self):
+        """Retail/walk-in customers with no CustomerUser still get scheduled
+        using the email captured on the Customer record (the repair-form flow)."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, name='Walkin Wendy', customer_type='RETAIL',
+            email='wendy@example.com',
+        )
+        repair = make_completed_repair(self.tenant, customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'pending')
+        self.assertIsNone(rr.customer_user)
+
+    def test_falls_back_to_customer_phone_when_sms_enabled(self):
+        """A phone-only retail customer is schedulable when SMS is on."""
+        self.config.send_via_sms = True
+        self.config.save()
+        customer = Customer.objects.create(
+            tenant=self.tenant, name='Phone Phil', customer_type='RETAIL',
+            phone='(501) 555-1234',
+        )
+        repair = make_completed_repair(self.tenant, customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'pending')
+
+    def test_phone_only_customer_skipped_when_sms_disabled(self):
+        """Phone-only customer with SMS off → nothing usable → skip."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, name='Phone Pam', customer_type='RETAIL',
+            phone='(501) 555-9999',
+        )
+        repair = make_completed_repair(self.tenant, customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'skipped')
+        self.assertEqual(rr.skip_reason, 'no_contact_info')
+
+    def test_skips_customer_level_opt_out(self):
+        """Customer.review_opt_out (retail, no portal account) is honored."""
+        customer = Customer.objects.create(
+            tenant=self.tenant, name='Optout Otto', customer_type='RETAIL',
+            email='otto@example.com', review_opt_out=True,
+        )
+        repair = make_completed_repair(self.tenant, customer, self.tech)
+        rr = ReviewRequestService.schedule_review_request(repair)
+        self.assertEqual(rr.status, 'skipped')
+        self.assertEqual(rr.skip_reason, 'customer_opted_out')
 
     def test_skips_opted_out_customer(self):
         self.customer_user.review_opt_out = True
@@ -774,6 +822,23 @@ class OwnerSettingsReviewsTabTests(TestCase):
         config.refresh_from_db()
         self.assertFalse(config.is_enabled)
 
+    def test_save_channel_toggles_and_sms_template(self):
+        response = self.client.post('/owner/settings/', {
+            'form_type': 'review_settings',
+            'review_enabled': 'on',
+            'review_send_via_sms': 'on',
+            'google_review_url': 'https://g.page/myshop/review',
+            'email_subject': '',
+            'email_body_template': '',
+            'sms_body_template': 'Thanks from {shop_name}! Quick review?',
+        })
+        self.assertEqual(response.status_code, 302)
+        config = ReviewConfig.get_for_tenant(self.tenant)
+        self.assertTrue(config.send_via_sms)
+        # Email toggle not posted → off
+        self.assertFalse(config.send_via_email)
+        self.assertEqual(config.sms_body_template, 'Thanks from {shop_name}! Quick review?')
+
     def test_recent_requests_shown(self):
         config = ReviewConfig.get_for_tenant(self.tenant)
         data = make_tenant(name='Tab Shop', owner_username='tabowner')
@@ -789,3 +854,167 @@ class OwnerSettingsReviewsTabTests(TestCase):
         )
         response = self.client.get('/owner/settings/?tab=reviews')
         self.assertContains(response, 'TabCustomer')
+
+
+# =====================================================================
+# SMS Channel Tests
+# =====================================================================
+
+class PhoneNormalizationTests(TestCase):
+    """Test _to_e164 phone normalization."""
+
+    def test_formats(self):
+        from apps.technician_portal.review_service import _to_e164
+        self.assertEqual(_to_e164('(501) 555-1234'), '+15015551234')
+        self.assertEqual(_to_e164('501-555-1234'), '+15015551234')
+        self.assertEqual(_to_e164('5015551234'), '+15015551234')
+        self.assertEqual(_to_e164('15015551234'), '+15015551234')
+        self.assertEqual(_to_e164('+15015551234'), '+15015551234')
+        self.assertEqual(_to_e164('+447911123456'), '+447911123456')
+        self.assertIsNone(_to_e164(''))
+        self.assertIsNone(_to_e164(None))
+        self.assertIsNone(_to_e164('555-1234'))       # 7 digits — not routable
+        self.assertIsNone(_to_e164('not a phone'))
+
+
+@override_settings(**TEST_SETTINGS, EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class SmsSendTests(TestCase):
+    """Test the SMS delivery channel end to end (SNS mocked)."""
+
+    def setUp(self):
+        data = make_tenant()
+        self.tenant = data['tenant']
+        self.tech = data['tech']
+        self.config = ReviewConfig.get_for_tenant(self.tenant)
+        self.config.is_enabled = True
+        self.config.google_review_url = 'https://g.page/test/review'
+        self.config.send_via_sms = True
+        self.config.save()
+        # Retail customer captured from the repair form — no portal account
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='Walkin Wanda', customer_type='RETAIL',
+            email='wanda@example.com', phone='(501) 555-1234',
+        )
+
+    def _make_due_request(self):
+        repair = make_completed_repair(self.tenant, self.customer, self.tech)
+        return ReviewRequest.objects.create(
+            tenant=self.tenant, customer=self.customer, repair=repair,
+            status='pending',
+            scheduled_at=timezone.now() - timedelta(minutes=5),
+        )
+
+    def test_sends_email_and_sms(self):
+        from unittest.mock import patch
+        rr = self._make_due_request()
+        with patch(
+            'core.services.sms_service.SMSService.send_notification_sms',
+            return_value=(True, None),
+        ) as mock_sms:
+            sent = ReviewRequestService.send_pending_requests()
+        self.assertEqual(sent, 1)
+        rr.refresh_from_db()
+        self.assertEqual(rr.status, 'sent')
+        self.assertEqual(rr.sent_via, 'email+sms')
+        mock_sms.assert_called_once()
+        kwargs = mock_sms.call_args.kwargs
+        self.assertEqual(kwargs['recipient_phone'], '+15015551234')
+        message = kwargs['message']
+        self.assertIn(f'/reviews/click/{rr.token}/', message)
+        self.assertIn('STOP', message)
+        self.assertLessEqual(len(message), 160)
+
+    def test_sms_only_customer(self):
+        from unittest.mock import patch
+        self.customer.email = None
+        self.customer.save()
+        rr = self._make_due_request()
+        with patch(
+            'core.services.sms_service.SMSService.send_notification_sms',
+            return_value=(True, None),
+        ):
+            sent = ReviewRequestService.send_pending_requests()
+        self.assertEqual(sent, 1)
+        rr.refresh_from_db()
+        self.assertEqual(rr.sent_via, 'sms')
+
+    def test_email_only_when_sms_disabled(self):
+        from unittest.mock import patch
+        self.config.send_via_sms = False
+        self.config.save()
+        rr = self._make_due_request()
+        with patch(
+            'core.services.sms_service.SMSService.send_notification_sms',
+        ) as mock_sms:
+            sent = ReviewRequestService.send_pending_requests()
+        self.assertEqual(sent, 1)
+        rr.refresh_from_db()
+        self.assertEqual(rr.sent_via, 'email')
+        mock_sms.assert_not_called()
+
+    def test_sms_failure_still_sends_email(self):
+        from unittest.mock import patch
+        rr = self._make_due_request()
+        with patch(
+            'core.services.sms_service.SMSService.send_notification_sms',
+            return_value=(False, None),
+        ):
+            sent = ReviewRequestService.send_pending_requests()
+        self.assertEqual(sent, 1)
+        rr.refresh_from_db()
+        self.assertEqual(rr.status, 'sent')
+        self.assertEqual(rr.sent_via, 'email')
+
+    def test_custom_sms_template_used(self):
+        from unittest.mock import patch
+        self.config.sms_body_template = 'Hey {customer_name}, rate {shop_name}?'
+        self.config.save()
+        self._make_due_request()
+        with patch(
+            'core.services.sms_service.SMSService.send_notification_sms',
+            return_value=(True, None),
+        ) as mock_sms:
+            ReviewRequestService.send_pending_requests()
+        message = mock_sms.call_args.kwargs['message']
+        self.assertIn('Hey Walkin Wanda, rate Test Shop?', message)
+
+    def test_long_shop_name_message_stays_single_segment(self):
+        from unittest.mock import patch
+        self.tenant.name = 'Rockstar Windshield Repair and Auto Glass Emporium of Greater Little Rock'
+        self.tenant.save()
+        self._make_due_request()
+        with patch(
+            'core.services.sms_service.SMSService.send_notification_sms',
+            return_value=(True, None),
+        ) as mock_sms:
+            ReviewRequestService.send_pending_requests()
+        message = mock_sms.call_args.kwargs['message']
+        self.assertLessEqual(len(message), 160)
+        # The tracked link must survive the trim intact
+        self.assertRegex(message, r'/reviews/click/[0-9a-f-]{36}/')
+
+
+@override_settings(**TEST_SETTINGS)
+class CustomerOptOutEndpointTests(TestCase):
+    """Opt-out endpoint for retail customers without portal accounts."""
+
+    def setUp(self):
+        data = make_tenant()
+        self.tenant = data['tenant']
+        self.tech = data['tech']
+        self.client = Client()
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, name='No Portal Nancy', customer_type='RETAIL',
+            email='nancy@example.com',
+        )
+
+    def test_opt_out_sets_customer_flag(self):
+        repair = make_completed_repair(self.tenant, self.customer, self.tech)
+        rr = ReviewRequest.objects.create(
+            tenant=self.tenant, customer=self.customer, repair=repair,
+            status='sent', scheduled_at=timezone.now(), sent_at=timezone.now(),
+        )
+        response = self.client.get(f'/reviews/opt-out/{rr.token}/')
+        self.assertEqual(response.status_code, 200)
+        self.customer.refresh_from_db()
+        self.assertTrue(self.customer.review_opt_out)

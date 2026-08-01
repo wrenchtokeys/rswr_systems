@@ -252,7 +252,7 @@ class SendPendingRequestsRaceConditionTests(TestCase):
         rr2 = _make_review_request(self.tenant, self.customer)
 
         # Track which PKs were attempted; only fail for rr1
-        def side_effect_fn(rr, config):
+        def side_effect_fn(rr, config, recipient_email):
             if rr.pk == rr1.pk:
                 raise Exception("SMTP timeout")
             return True

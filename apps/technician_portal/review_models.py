@@ -29,6 +29,16 @@ class ReviewConfig(TenantConfig):
         ),
     )
 
+    # Delivery channels
+    send_via_email = models.BooleanField(
+        default=True,
+        help_text="Send review requests by email.",
+    )
+    send_via_sms = models.BooleanField(
+        default=False,
+        help_text="Send review requests by text message (SMS).",
+    )
+
     # Email customisation
     email_subject = models.CharField(
         max_length=200,
@@ -37,6 +47,18 @@ class ReviewConfig(TenantConfig):
     email_body_template = models.TextField(
         blank=True,
         help_text="Custom message body. Leave blank for default template.",
+    )
+
+    # SMS customisation — keep it short: the tracked review link and opt-out
+    # notice are appended automatically and the whole message must fit in one
+    # 160-character SMS.
+    sms_body_template = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text=(
+            "Custom SMS text (review link is added automatically). "
+            "Leave blank for default. Placeholders: {shop_name}, {customer_name}."
+        ),
     )
 
     # Throttling
@@ -101,6 +123,10 @@ class ReviewRequest(models.Model):
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     skip_reason = models.CharField(max_length=100, blank=True)
+
+    # Which channel(s) the request actually went out on: 'email', 'sms',
+    # or 'email+sms'. Blank until sent.
+    sent_via = models.CharField(max_length=20, blank=True)
 
     # Token for opt-out / click-tracking links (unguessable)
     token = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)
