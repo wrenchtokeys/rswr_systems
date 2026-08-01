@@ -136,17 +136,14 @@ class InvoiceNumberRaceConditionTests(TestCase):
         n2 = self._get_number()
         self.assertNotEqual(n1, n2)
 
-    def test_number_contains_tenant_id_not_customer_id(self):
-        """New format uses tenant ID; old format used customer ID.
+    def test_number_does_not_embed_customer_id_timestamp(self):
+        """The old (buggy) format was: {prefix}-{customer.id}-{timestamp}.
 
-        The old (buggy) format was: {prefix}-{customer.id}-{timestamp}
-        The new format should be:  {prefix}-{tenant.id}-{date}-{seq}
-
-        This verifies we've moved to the new format.
+        Numbers are now a per-tenant sequence: {prefix}-{counter}. Verify the
+        simple format and that the counter (not a timestamp) drives it.
         """
         number = self._get_number()
-        # Should contain the tenant id as a component
-        self.assertIn(str(self.tenant.id), number)
+        self.assertRegex(number, r'^TEST-\d+$')
 
     def test_prefix_from_billing_config(self):
         """Invoice number should use the configured prefix."""
@@ -168,9 +165,9 @@ class InvoiceNumberRaceConditionTests(TestCase):
     def test_tenant_scoped_uniqueness(self):
         """Two different tenants can have the same-numbered invoice without conflict.
 
-        The old format embedded customer.id which could clash across tenants
-        if two different tenants had a customer with the same integer id.
-        The new format embeds tenant.id which guarantees per-tenant uniqueness.
+        Numbers only need to be unique per tenant — the DB constraint is
+        (tenant, invoice_number) — so both shops independently start their
+        sequence at the same counter without colliding.
         """
         owner2 = User.objects.create_user(
             username=f'code156_owner2_{uuid.uuid4().hex[:8]}',
@@ -191,12 +188,19 @@ class InvoiceNumberRaceConditionTests(TestCase):
         svc1 = InvoiceTrackingService(tenant=self.tenant)
         svc2 = InvoiceTrackingService(tenant=tenant2)
 
-        # Both services can generate invoice numbers without UniqueConstraint issues
-        # because they embed different tenant ids
+        # Both tenants draw from their own sequence; identical numbers are
+        # fine because the unique constraint is (tenant, invoice_number).
         n1 = svc1._generate_invoice_number(self.customer)
         n2 = svc2._generate_invoice_number(customer2)
 
-        # They should differ (different tenant IDs)
-        self.assertIn(str(self.tenant.id), n1)
-        self.assertIn(str(tenant2.id), n2)
-        # This proves tenant isolation — n1 and n2 won't collide
+        self.assertEqual(n1, n2)
+        Invoice.objects.create(
+            tenant=self.tenant, invoice_number=n1, customer=self.customer,
+            invoice_date=timezone.now().date(), due_date=timezone.now().date(),
+            status='DRAFT',
+        )
+        Invoice.objects.create(
+            tenant=tenant2, invoice_number=n2, customer=customer2,
+            invoice_date=timezone.now().date(), due_date=timezone.now().date(),
+            status='DRAFT',
+        )

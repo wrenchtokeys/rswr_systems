@@ -118,7 +118,12 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
     invoice_number_prefix = models.CharField(
         max_length=20,
         default='INV',
-        help_text='Prefix for auto-generated invoice numbers (e.g., INV → INV-1-20260131...)',
+        help_text='Prefix for invoice numbers (e.g., INV → INV-1001)',
+    )
+    next_invoice_number = models.PositiveIntegerField(
+        default=1001,
+        help_text='The number your next invoice will get. Counts up from here: '
+                  'INV-1001, INV-1002, … Set it to continue from your old books.',
     )
 
     # === EMAIL TEMPLATES (editable defaults) ===
@@ -251,6 +256,35 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
             instance.company_name = tenant.name
             instance.save(update_fields=['company_name'])
         return instance
+
+    @classmethod
+    def allocate_invoice_number(cls, tenant):
+        """
+        Atomically hand out the next sequential invoice number for a tenant
+        and advance the counter: "{prefix}-{next_invoice_number}".
+
+        Locks the tenant's BillingConfig row so two concurrent invoice
+        creations can't be given the same number. If the counter points at a
+        number that's already taken (owner reset it below existing invoices),
+        walks forward to the first free one — soft-deleted invoices still
+        occupy their numbers via the (tenant, invoice_number) unique
+        constraint, hence Invoice.all_objects.
+
+        A number allocated for an invoice creation that later fails is simply
+        skipped; gaps are harmless.
+        """
+        cls.get_for_tenant(tenant)  # ensure the row exists before locking it
+        with transaction.atomic():
+            config = cls.objects.select_for_update().get(tenant=tenant)
+            prefix = (config.invoice_number_prefix or 'INV').strip() or 'INV'
+            number = config.next_invoice_number or 1
+            while Invoice.all_objects.filter(
+                tenant=tenant, invoice_number=f"{prefix}-{number}"
+            ).exists():
+                number += 1
+            config.next_invoice_number = number + 1
+            config.save(update_fields=['next_invoice_number'])
+            return f"{prefix}-{number}"
 
     @classmethod
     def get_instance(cls):

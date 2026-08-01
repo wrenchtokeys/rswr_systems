@@ -541,37 +541,14 @@ def _create_batch_invoice(tenant, customer, config):
 
 
 def _generate_invoice_number(tenant, config):
+    """Sequential per-tenant invoice number: "{prefix}-{counter}".
+
+    Delegates to BillingConfig.allocate_invoice_number, which locks the config
+    row (concurrency-safe — replaces the count-based scheme from CODE-036) and
+    advances the shop's next_invoice_number counter.
     """
-    Generate a unique invoice number for the tenant.
-
-    The simple count-based approach has a race condition: two concurrent batch
-    runs can compute the same count, then one will hit the UniqueConstraint and
-    crash.  (CODE-036)
-
-    Fix: keep incrementing the counter until we find an unused number.  The
-    DB-level UniqueConstraint on (tenant, invoice_number) is the ultimate guard;
-    this loop just avoids predictable collisions under normal concurrency.
-    """
-    prefix = config.invoice_number_prefix or 'INV'
-    date_str = timezone.now().strftime('%Y%m%d')
-
-    # Start from today's existing count + 1 and walk upward until free.
-    # MUST use all_objects: soft-deleted invoices are hidden from the default
-    # manager but still occupy their numbers in the DB unique constraint.
-    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    base_count = Invoice.all_objects.filter(
-        tenant=tenant,
-        created_at__gte=today_start,
-    ).count() + 1
-
-    for attempt in range(base_count, base_count + 500):
-        candidate = f"{prefix}-{tenant.id}-{date_str}-{attempt:03d}"
-        if not Invoice.all_objects.filter(tenant=tenant, invoice_number=candidate).exists():
-            return candidate
-
-    # Fallback: append microseconds for guaranteed uniqueness
-    import time
-    return f"{prefix}-{tenant.id}-{date_str}-{int(time.time() * 1000) % 1000000:06d}"
+    from apps.billing.models import BillingConfig
+    return BillingConfig.allocate_invoice_number(tenant)
 
 
 def _calculate_due_date(config, payment_terms_override=None):

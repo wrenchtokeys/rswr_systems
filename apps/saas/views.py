@@ -1701,6 +1701,30 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not update batch invoice settings.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'invoice_numbering':
+            try:
+                config = BillingConfig.get_for_tenant(tenant)
+                prefix = request.POST.get('invoice_number_prefix', '').strip() or 'INV'
+                if len(prefix) > 20:
+                    messages.error(request, 'Invoice prefix must be 20 characters or fewer.')
+                    return redirect('/owner/settings/?tab=billing')
+                try:
+                    next_number = int(request.POST.get('next_invoice_number', ''))
+                except (ValueError, TypeError):
+                    messages.error(request, 'Next invoice number must be a whole number.')
+                    return redirect('/owner/settings/?tab=billing')
+                if next_number < 1:
+                    messages.error(request, 'Next invoice number must be at least 1.')
+                    return redirect('/owner/settings/?tab=billing')
+                config.invoice_number_prefix = prefix
+                config.next_invoice_number = next_number
+                config.save(update_fields=['invoice_number_prefix', 'next_invoice_number'])
+                messages.success(request, f'Invoice numbering saved. Your next invoice will be {prefix}-{next_number}.')
+            except Exception as e:
+                logger.error(f"Error saving invoice numbering: {e}")
+                messages.error(request, 'Could not save invoice numbering.')
+            return redirect('/owner/settings/?tab=billing')
+
         if form_type == 'email_templates':
             try:
                 config = BillingConfig.get_for_tenant(tenant)
