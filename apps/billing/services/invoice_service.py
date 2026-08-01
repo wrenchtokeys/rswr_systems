@@ -327,8 +327,11 @@ class InvoiceService:
         """Convert a Repair object to an InvoiceLineItem"""
         discounted = repair.get_discounted_cost()
         
-        # Combine all notes into description
+        # Combine all notes into description. The break type (Star Break, Chip…)
+        # belongs here as detail — the Type/Service column shows the service.
         description_parts = []
+        if repair.get_damage_type_display():
+            description_parts.append(repair.get_damage_type_display())
         if repair.description:
             description_parts.append(repair.description)
         if repair.technician_notes:
@@ -341,7 +344,7 @@ class InvoiceService:
         return InvoiceLineItem(
             repair_id=repair.id,
             unit_number=repair.unit_number,
-            damage_type=repair.get_damage_type_display() or 'Repair',
+            damage_type='Windshield Repair',
             repair_date=repair.repair_date,
             description=full_description,
             original_cost=discounted['original_cost'],
@@ -511,10 +514,17 @@ class InvoiceService:
             'repair__warranty_policy', 'replacement__warranty_policy',
         ).all():
             repair = li.repair
+            # Service label, not the break type — customers were seeing
+            # "Star Break" as the service on emailed invoices. The break
+            # type lives in li.description (get_invoice_description).
             if repair is not None:
-                damage_type = repair.get_damage_type_display() or 'Repair'
+                damage_type = 'Windshield Repair'
             elif li.replacement_id:
-                damage_type = 'Replacement'
+                position = (
+                    li.replacement.get_glass_position_display()
+                    if li.replacement.glass_position else 'Glass'
+                )
+                damage_type = f'{position} Replacement'
             else:
                 damage_type = 'Service'
 
