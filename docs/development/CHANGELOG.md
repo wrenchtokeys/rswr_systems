@@ -14,6 +14,83 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-08-02 — Simplicity pass + bidirectional price sync
+
+PR #135 deployed to production 2026-08-02; the job→invoice sync (direct
+commits `63032da3`, `841475f5`) ships with the next deploy.
+
+### Added
+- **Flat repair price** — with progressive pricing off, Settings → Pricing
+  shows a single editable "Price per repair" instead of the tier ladder.
+  `calculate_batch_pricing` now respects the progressive toggle (tenant- and
+  customer-level) instead of always walking tiers.
+- **Job→invoice price sync** (`apps/billing/services/invoice_sync.py`) —
+  changing a Repair/Replacement's price updates its line on any live
+  (unpaid, uncancelled, untrashed) invoice and recalculates totals. Mirror
+  of the line-item editor's existing invoice→job write-back, so the two
+  sides can no longer drift.
+- **Paid-invoice price lock** — jobs billed on a PAID invoice get their
+  price fields removed from the repair form with a lock note naming the
+  invoice. Paid invoices are financial history: nothing rewrites them.
+- **`sync_job_prices_from_invoices` command** — audits (dry-run default)
+  and back-fills (`--apply`) historical job-vs-invoice drift;
+  `--customer` / `--invoice` filters. Production back-filled 2026-08-02.
+- Plain-language billing settings: batch invoicing card explains actual
+  behavior with a real "Next run" date; warnings for batch-on-with-no-batch-
+  customers and reminders-on-with-no-days.
+
+### Changed
+- **`can_override_pricing` deprecated** — no signup/team path ever set it,
+  so it silently locked every real owner/manager out of custom pricing.
+  Authorization is now `is_manager` everywhere (single form, multi-break,
+  convert-to-batch, invoice line editor). Field remains on the model.
+- Per-break "Custom Price (Optional)" in the multi-break flow is now
+  visible to owners/managers (it existed end-to-end but was hidden behind
+  the dead flag).
+- Nav: search is the flexible middle slot; tenant name + plan badge moved
+  into the user dropdown.
+
+### Fixed
+- **Editing an invoiced job wiped its custom price** — RepairForm hid but
+  kept the override fields, so every edit-save cleaned them to None. Fields
+  are now removed for non-managers and rendered for managers.
+- **Invoice line "Unit Price" double-subtracted the progressive discount** —
+  job-linked lines now show a single Price field; the amount typed is the
+  amount charged, and it writes back to the job (cost + pre-discount
+  cost_override).
+- Partial pricing-settings POST no longer resets untouched tiers to the
+  40/35/30/25 factory defaults.
+
+## 2026-07-31 — Email deliverability overhaul + simple invoice numbers
+
+Deployed to production 2026-07-31. See `docs/operations/SES_OPERATIONS.md`
+for the verification log.
+
+### Added
+- **Per-shop invoice numbers** — plain `{prefix}-{counter}` sequence
+  (default INV-1001, INV-1002, …) replaces `INV-{tenant_id}-{date}-{seq}`.
+  Owners set prefix and next number in Settings → Billing (live preview),
+  e.g. to continue from paper books. `allocate_invoice_number()` locks the
+  BillingConfig row (no concurrent collisions) and walks past taken numbers.
+- **Real delivery status on invoices** — SES webhook handles
+  Send/Delivery/DeliveryDelay/Bounce/Complaint/Reject and stamps
+  `Invoice.email_delivery_status`; the invoice detail shows
+  Delivered/Not delivered/Marked as spam/Delivery delayed.
+
+### Changed
+- **De-phished invoice email content** (Microsoft 365 EOP was quarantining
+  invoices while its Safe Links scanner fired the tracking pixel, faking
+  "viewed" counts): From is now `"<Shop> via RS Systems"
+  <notifications@rssystems.io>`; photos moved off the email onto the public
+  invoice page (PDF stays attached); subjects un-bracketed; emoji removed;
+  open-tracking pixel removed from all emails.
+- Invoice emails/PDF "Service" column shows the service performed, not the
+  break type.
+
+### Fixed
+- Invoice detail paired the first-send timestamp with the latest resend's
+  recipient; the recipient now renders next to the timestamp it belongs to.
+
 ## 2026-07-28 — Review requests: production cron + fleet gating
 
 ### Added

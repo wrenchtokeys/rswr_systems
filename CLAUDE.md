@@ -70,6 +70,9 @@ python manage.py audit_repair_photos         # Dry run — show orphaned S3 phot
 python manage.py audit_repair_photos --delete # Delete orphaned photos
 python manage.py security_audit              # Security checks
 python manage.py setup_simplified_rewards    # Seed 4 default reward options
+python manage.py audit_remediation_data      # Read-only data-drift audit (A1/A2/A3/C2)
+python manage.py sync_job_prices_from_invoices                    # Dry run — job vs invoiced price drift
+python manage.py sync_job_prices_from_invoices --customer x --apply  # Back-fill job cost from invoice
 ```
 
 ### Notification & Billing Commands
@@ -139,7 +142,11 @@ Tax is calculated automatically on every `Repair.save()` via `TaxService(tenant=
 
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.
 
-**Progressive Pricing**: Repair cost decreases per unit: $50→$40→$35→$30→$25. Tracked via `UnitRepairCount`. Configurable at shop level and per-customer.
+**Progressive Pricing**: Repair cost decreases per unit: $50→$40→$35→$30→$25. Tracked via `UnitRepairCount`. Configurable at shop level and per-customer. With progressive off, the shop sets a single flat "Price per repair" (`repair_price_1`); `calculate_batch_pricing` honors the toggle too. Custom prices are per-job (and per-break in multi-break) — authorization is `is_manager` (`can_override_pricing` is deprecated: nothing ever set it).
+
+**Job ↔ Invoice Price Sync** (`apps/billing/services/invoice_sync.py`): the two directions can't drift. Invoice→job: the owner line-item editor writes edited prices back to the Repair/Replacement (cost + pre-discount `cost_override`). Job→invoice: `Repair.save()`/`Replacement.save()` update the job's line on any live invoice and recalc totals via `recalculate_invoice_totals`. PAID/CANCELLED/trashed invoices are never touched; jobs on a PAID invoice get their price fields removed in RepairForm (lock note names the invoice). Historical drift: audit with `sync_job_prices_from_invoices` (dry-run default).
+
+**Invoice Numbers**: per-tenant `{prefix}-{counter}` sequence (default INV-1001, …), configured in Settings → Billing. Always allocate via `BillingConfig.allocate_invoice_number()` (row-locked, skips taken numbers incl. soft-deleted); never hand-format invoice numbers in record-creating paths.
 
 **Tenant Isolation**: All data queries must be scoped to `request.tenant`. Views that don't do this are bugs. The subscription middleware redirects authenticated users with no tenant context to `/login/` — tests that use `client.login()` need to verify the login actually succeeds (use `force_login()` when the username is auto-generated from first name, not email).
 
@@ -152,7 +159,7 @@ All fire via `core.services.notification_service`. Per-user and per-customer pre
 
 **Tenant Email Branding**: `templates/emails/base.html` renders `{{ branding.company_name }}` in the header/footer/title. Always build that context with `EmailBrandingConfig.get_tenant_context(tenant)` (`core/models/email_branding.py`) — it keeps the platform singleton's visual identity but overrides identity fields with the tenant's name/contact/logo. Using the raw singleton (`get_instance().to_template_context()`) in tenant-scoped email is a bug: the singleton is platform-wide and its `company_name` is the platform-owner tenant. `NotificationService.create_notification` auto-injects `branding` (derived repair → customer → recipient) when the context doesn't include one.
 
-**Shop Branding (`Tenant.brand_color` + `Tenant.logo`)**: Owners configure branding in Owner Settings → General (Business Information card = logo/contact, Branding card = one brand color, `form_type='branding'`). `brand_color` overrides `primary_color`/`secondary_color` in `get_tenant_context`, drives `send_branded_email` header/buttons, and colors the invoice PDF — `InvoiceService._load_branding_config` reads colors + logo from the **tenant only**, never the `EmailBrandingConfig` singleton (the singleton leaked the platform owner's logo/colors onto every shop's invoices; migration `tenants/0020` copied them onto the platform-owner tenant). The customer portal's Tailwind `brand-*` palette reads `--brand-N` CSS variables (defaults in `static/css/src/input.css`, per-shop shades from `apps/tenants/branding.brand_shades` injected via `{% tenant_brand_css %}` in `base_customer.html`). Outgoing shop email uses `core.email_utils.shop_sender`: From = shop name over the platform's SES-verified address (never the shop's own domain — SPF/DKIM), Reply-To = `tenant.business_email`.
+**Shop Branding (`Tenant.brand_color` + `Tenant.logo`)**: Owners configure branding in Owner Settings → General (Business Information card = logo/contact, Branding card = one brand color, `form_type='branding'`). `brand_color` overrides `primary_color`/`secondary_color` in `get_tenant_context`, drives `send_branded_email` header/buttons, and colors the invoice PDF — `InvoiceService._load_branding_config` reads colors + logo from the **tenant only**, never the `EmailBrandingConfig` singleton (the singleton leaked the platform owner's logo/colors onto every shop's invoices; migration `tenants/0020` copied them onto the platform-owner tenant). The customer portal's Tailwind `brand-*` palette reads `--brand-N` CSS variables (defaults in `static/css/src/input.css`, per-shop shades from `apps/tenants/branding.brand_shades` injected via `{% tenant_brand_css %}` in `base_customer.html`). Outgoing shop email uses `core.email_utils.shop_sender`: From = `"<Shop> via RS Systems" <notifications@rssystems.io>` (never the shop's own domain — SPF/DKIM alignment; the "via" pattern defuses display-name-spoof heuristics), Reply-To = `tenant.business_email`. No emoji, no bracketed subjects, no tracking pixel, no photo attachments in email (photos render on the public invoice page) — see `docs/operations/SES_OPERATIONS.md` before changing email content.
 
 **Customer Replacement Requests**: `/app/replacements/request/` (`request_replacement` in `apps/customer_portal/views.py`). Creates a `Replacement` with `queue_status='REQUESTED'` and no parts/labor pricing (cost stays 0, tax skipped) — the shop prices it, then the customer approves. `get_available_technician(tenant, service_type='replacement')` prefers `can_replace=True` techs but falls back to any active tech (new shops' auto-created owner tech has `can_replace=False`). The customer dashboard merges repairs + replacements into `recent_services` and `pending_approval_replacements`; the legacy repair-only context keys are preserved and asserted by `tests/bug_fixes/test_code141/149/159/168/262`.
 
@@ -312,6 +319,7 @@ DEFAULT_FROM_EMAIL=notifications@rssystems.io
 - `docs/deployment/AWS_DEPLOYMENT.md` — AWS/EB deployment guide
 - `docs/deployment/STRIPE_ARCHITECTURE.md` — platform vs shop (Connect Express) money flows, live price IDs, webhooks, platform fees
 - `docs/deployment/PRODUCTION_CHECKLIST.md` — pre/post deploy verification
+- `docs/operations/SES_OPERATIONS.md` — email deliverability: auth setup, content rules, verification log
 - `docs/security/SECURITY_OVERVIEW.md` — security features
 - `docs/security/INCIDENT_RESPONSE.md` — emergency procedures
 - `docs/development/TESTING.md` — testing procedures
