@@ -114,7 +114,6 @@
                     <span class="text-gray-500">(resent {{ invoice.last_sent_at|date:"M d, Y g:i A" }}{% if invoice.last_sent_to %} to {{ invoice.last_sent_to }}{% endif %})</span>
                     {% elif invoice.last_sent_to %} to {{ invoice.last_sent_to }}{% endif %}
                 </p>
-                {% endif %}
                 {% if invoice.email_delivery_status == 'bounced' or invoice.email_delivery_status == 'rejected' %}
                 <p class="text-red-700"><i class="fas fa-exclamation-triangle mr-1"></i><span class="font-medium">Not delivered</span>
                     {{ invoice.email_delivery_status_at|date:"M d, Y g:i A" }}{% if invoice.email_delivery_detail %} — {{ invoice.email_delivery_detail }}{% endif %}
