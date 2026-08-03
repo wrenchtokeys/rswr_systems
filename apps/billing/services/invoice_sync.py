@@ -28,6 +28,8 @@ def recalculate_invoice_totals(invoice):
     if invoice.tax_rate and invoice.tax_rate > 0:
         taxable = sum((item.amount for item in all_items if item.taxable), Decimal('0.00'))
         invoice.tax_amount = (taxable * invoice.tax_rate / Decimal('100')).quantize(Decimal('0.01'))
+    else:
+        invoice.tax_amount = Decimal('0.00')
     invoice.total = after_discount + invoice.tax_amount
     invoice.save(update_fields=['subtotal', 'discount', 'tax_amount', 'total'])
 
