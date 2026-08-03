@@ -23,6 +23,10 @@
         <span class="text-sm font-medium text-gray-700">Statement of Account — {{ customer.name }}</span>
     </div>
     <div class="flex items-center gap-2">
+        <a href="{% url 'owner_receive_payment' %}?customer={{ customer.id }}"
+            class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
+            <i class="fas fa-hand-holding-usd mr-2"></i>Receive Payment
+        </a>
         <button onclick="window.print()"
             class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <i class="fas fa-print mr-2"></i>Print

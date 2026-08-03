@@ -253,3 +253,124 @@ class PaymentNotificationService:
         result['owner_sent'] = self.send_owner_notification(payment)
 
         return result
+
+    def notify_payment_batch(self, payments):
+        """
+        One payment covering several invoices for the SAME customer (a fleet
+        check applied across open invoices): send ONE combined customer
+        receipt and ONE owner notification instead of an email per invoice.
+
+        Args:
+            payments: list of Payment instances, all on invoices of one customer
+
+        Returns:
+            dict: {customer_sent: bool, owner_sent: bool}
+        """
+        payments = [p for p in payments if p is not None]
+        if not payments:
+            return {'customer_sent': False, 'owner_sent': False}
+        if len(payments) == 1:
+            return self.notify_payment(payments[0])
+
+        for p in payments:
+            p.invoice.refresh_from_db()
+
+        first = payments[0]
+        customer = first.invoice.customer
+        tenant = getattr(first.invoice, 'tenant', None)
+        total = sum((p.amount for p in payments), 0)
+        method_display = first.get_payment_method_display()
+        reference = first.reference_number
+
+        per_invoice_rows = []
+        for p in payments:
+            inv = p.invoice
+            status_note = 'Paid in full' if inv.status == 'PAID' else f'${inv.amount_due:.2f} remaining'
+            per_invoice_rows.append(
+                (f'Invoice {inv.invoice_number}', f'${p.amount:.2f} — {status_note}')
+            )
+
+        result = {'customer_sent': False, 'owner_sent': False}
+
+        # --- Customer receipt ---
+        recipient = None
+        try:
+            recipient = customer.repair_preferences.billing_email
+        except Exception:
+            pass
+        recipient = recipient or customer.email
+
+        from core.email_utils import send_branded_email, shop_sender
+
+        if recipient:
+            try:
+                detail_rows = [
+                    ('Amount Received', f'${total:.2f}'),
+                    ('Method', method_display),
+                    ('Date', str(first.payment_date)),
+                ]
+                if reference:
+                    detail_rows.append(('Reference', reference))
+                detail_rows.append(('', ''))
+                detail_rows.extend(per_invoice_rows)
+
+                from_email, _ = shop_sender(shop_name=tenant.name if tenant else None)
+                shop_name = tenant.name if tenant else 'RS Systems'
+                send_branded_email(
+                    subject=f'[{shop_name}] Payment Received — ${total:.2f} across {len(payments)} invoices',
+                    recipient_list=[recipient],
+                    headline=f'Payment Received — ${total:.2f}',
+                    body_paragraphs=[
+                        f'Thank you! We received your payment of ${total:.2f} '
+                        f'and applied it across {len(payments)} invoices as shown below.',
+                    ],
+                    detail_rows=detail_rows,
+                    tenant=tenant,
+                    from_email=from_email,
+                )
+                result['customer_sent'] = True
+            except Exception as e:
+                logger.error(f"Failed to send combined payment receipt: {e}")
+
+        # --- Owner notification ---
+        owner_email = None
+        try:
+            from apps.billing.models import BillingConfig
+            if tenant:
+                owner_email = BillingConfig.get_for_tenant(tenant).company_email
+        except Exception:
+            pass
+        if not owner_email and tenant:
+            owner_email = tenant.business_email or ''
+            if not owner_email and tenant.owner:
+                owner_email = tenant.owner.email or ''
+
+        if owner_email:
+            try:
+                detail_rows = [
+                    ('Customer', customer.name),
+                    ('Amount', f'${total:.2f}'),
+                    ('Method', method_display),
+                    ('Date', str(first.payment_date)),
+                ]
+                if reference:
+                    detail_rows.append(('Reference', reference))
+                detail_rows.append(('', ''))
+                detail_rows.extend(per_invoice_rows)
+
+                send_branded_email(
+                    subject=f'Payment: ${total:.2f} from {customer.name} ({len(payments)} invoices)',
+                    recipient_list=[owner_email],
+                    headline=f'Payment Received — ${total:.2f}',
+                    body_paragraphs=[
+                        f'{customer.name} paid ${total:.2f}, applied across '
+                        f'{len(payments)} invoices.',
+                    ],
+                    detail_rows=detail_rows,
+                    tenant=tenant,
+                )
+                result['owner_sent'] = True
+            except Exception as e:
+                logger.error(f"Failed to send combined owner payment notification: {e}")
+
+        return result

@@ -59,6 +59,7 @@ urlpatterns = [
     path('owner/invoices/<int:invoice_id>/', views.owner_invoice_detail, name='owner_invoice_detail'),
     path('owner/invoices/<int:invoice_id>/record-payment/', views.owner_record_payment, name='owner_record_payment'),
     path('owner/invoices/bulk/', views.owner_invoice_bulk_action, name='owner_invoice_bulk_action'),
+    path('owner/payments/receive/', views.owner_receive_payment, name='owner_receive_payment'),
     path('owner/invoices/<int:invoice_id>/pdf/', views.owner_invoice_pdf, name='owner_invoice_pdf'),
     path('owner/invoices/<int:invoice_id>/send/', views.owner_send_invoice, name='owner_send_invoice'),
     path('owner/invoices/<int:invoice_id>/email/', views.owner_email_invoice, name='owner_email_invoice'),
