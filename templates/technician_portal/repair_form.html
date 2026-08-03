@@ -735,6 +735,12 @@
                                 {% endif %}
                             </div>
                         </div>
+                        {% elif form.price_locked_invoice %}
+                        <div class="mt-4 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm text-gray-600">
+                            <i class="fas fa-lock mr-1"></i>
+                            This job is on paid invoice <span class="font-semibold">{{ form.price_locked_invoice }}</span>,
+                            so its price is locked to what the customer paid.
+                        </div>
                         {% endif %}
 
                         <!-- Admin: Assign Technician -->

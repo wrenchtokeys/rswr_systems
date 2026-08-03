@@ -966,6 +966,15 @@ class Repair(GlassService):
             # Just save without updating repair counts
             super().save(*args, **kwargs)
 
+        # Keep any live invoice line equal to this job's price (job→invoice
+        # half of the price sync; the invoice→job half is the owner line-item
+        # editor). Paid/cancelled invoices are financial history — untouched.
+        try:
+            from apps.billing.services.invoice_sync import sync_lines_for_service
+            sync_lines_for_service(self)
+        except Exception:
+            pass  # never block a repair save on billing
+
     def apply_available_rewards(self):
         """
         Automatically apply any available rewards to this repair.
@@ -1706,8 +1715,16 @@ class Replacement(GlassService):
                         unit_repair_count.save()
                 except Exception:
                     pass  # Don't fail replacement save if reset fails
-        
+
         super().save(*args, **kwargs)
+
+        # Keep any live invoice line equal to this job's price (job→invoice
+        # half of the price sync — see Repair.save for the same hook).
+        try:
+            from apps.billing.services.invoice_sync import sync_lines_for_service
+            sync_lines_for_service(self)
+        except Exception:
+            pass  # never block a replacement save on billing
 
         # Auto-assign warranty on first-time COMPLETED transition (mirrors the
         # Repair post-completion warranty_hook). Silent no-op if the shop has

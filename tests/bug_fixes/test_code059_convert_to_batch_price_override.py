@@ -258,19 +258,25 @@ class TestConvertToBatchPriceOverride(TestCase):
     # ----------------------------------------------------------------
     # Test 4: Manager without can_override_pricing — blocked
     # ----------------------------------------------------------------
-    def test_manager_without_override_perm_blocked(self):
-        """Manager with can_override_pricing=False must be blocked."""
+    def test_manager_without_deprecated_flag_can_override(self):
+        """is_manager alone authorizes overrides — can_override_pricing is
+        deprecated (no signup/team path ever set it, so it used to lock ALL
+        managers out; see the 2026-07 simplicity pass)."""
         self.repair.technician = self.mgr_no_tech
         self.repair.save()
 
         response, msgs = self._call_view(
             self.mgr_no_user, self.repair,
-            override_cost="80.00", override_reason="Should fail",
+            override_cost="80.00", override_reason="Fleet rate",
         )
         combined = " ".join(msgs).lower()
+        self.assertFalse(
+            "permission" in combined,
+            f"Manager (is_manager=True) should be able to override. Got: {msgs}",
+        )
         self.assertTrue(
-            "permission" in combined or "override" in combined,
-            f"Manager without override perm should be blocked. Got: {msgs}",
+            "successfully" in combined,
+            f"Expected successful batch conversion. Got: {msgs}",
         )
 
     # ----------------------------------------------------------------

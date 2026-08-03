@@ -505,9 +505,20 @@ class RepairForm(forms.ModelForm):
         # left in Meta.fields but absent from the POST cleans to None, so a
         # HiddenInput here silently wiped any existing cost_override every
         # time the repair was edited and saved.
+        self.price_locked_invoice = None
         if not (_form_technician and _form_technician.is_manager):
             del self.fields['cost_override']
             del self.fields['override_reason']
+        elif self.instance and self.instance.pk:
+            # Once the job is billed on a PAID invoice its price is history —
+            # changing it here would silently disagree with the money that
+            # actually changed hands. Remove the fields (same REMOVED-not-
+            # hidden rule as above) and tell the template why.
+            from apps.billing.services.invoice_sync import paid_invoice_number_for_service
+            self.price_locked_invoice = paid_invoice_number_for_service(self.instance)
+            if self.price_locked_invoice:
+                del self.fields['cost_override']
+                del self.fields['override_reason']
         
         # Auto-populate repair_date from service_date for existing repairs
         if self.instance and self.instance.pk:
