@@ -1528,6 +1528,33 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not update pricing tiers.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'add_fee_preset':
+            # Saved fees (trip charge etc.) — one-tap chips on the job form
+            from decimal import Decimal, InvalidOperation
+            from apps.technician_portal.models import FeePreset
+            label = request.POST.get('label', '').strip()
+            try:
+                amount = Decimal(request.POST.get('amount', ''))
+            except (InvalidOperation, TypeError):
+                amount = None
+            if not label or amount is None or amount <= 0:
+                messages.error(request, 'A saved fee needs a name and an amount above zero.')
+            else:
+                FeePreset.objects.create(tenant=tenant, label=label[:100], amount=amount)
+                messages.success(request, f'Saved fee "{label}" added.')
+            return redirect('/owner/settings/?tab=billing#saved-fees')
+
+        if form_type == 'delete_fee_preset':
+            from apps.technician_portal.models import FeePreset
+            try:
+                preset = FeePreset.objects.get(
+                    tenant=tenant, id=int(request.POST.get('preset_id', '')))
+                preset.delete()
+                messages.success(request, f'Saved fee "{preset.label}" removed.')
+            except (FeePreset.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Saved fee not found.')
+            return redirect('/owner/settings/?tab=billing#saved-fees')
+
         if form_type == 'billing_location':
             # Update shop address ONLY. Tax setup is its own explicit form
             # (form_type='tax_settings') — saving your address must never
@@ -1922,6 +1949,10 @@ def owner_settings_view(request):
     i_am_technician = bool(my_tech and my_tech.is_active)
     can_add_self_as_tech = not i_am_technician and not my_foreign_tech
 
+    # Saved fees for the Billing tab (one-tap extra charges on the job form)
+    from apps.technician_portal.models import FeePreset
+    fee_presets = FeePreset.objects.filter(tenant=tenant).order_by('display_order', 'id')
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1947,6 +1978,7 @@ def owner_settings_view(request):
         'warranty_applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
         'warranty_duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
         'completion': _setup_completion(tenant),
+        'fee_presets': fee_presets,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -4581,6 +4613,9 @@ def owner_generate_invoice_from_repair(request, repair_id):
                         unit_number=mr.unit_number,
                         taxable=not mr.no_tax and not mr.customer.tax_exempt,
                     )
+
+                    from apps.billing.services.invoice_sync import create_charge_lines
+                    create_charge_lines(existing_invoice, mr)
 
                 # Recalculate invoice totals
                 all_line_items = InvoiceLineItem.objects.filter(invoice=existing_invoice)

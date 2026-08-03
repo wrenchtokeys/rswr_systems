@@ -300,10 +300,14 @@ def create_repair(request):
             request.FILES['damage_photo_after'] = convert_heic_to_jpeg(request.FILES['damage_photo_after'])
 
         form = RepairForm(request.POST, request.FILES, user=request.user, tenant=getattr(request, 'tenant', None))
+        from apps.technician_portal.views.jobs import _parse_extra_charges, _save_extra_charges
+        charges, charge_error = _parse_extra_charges(request)
         if form.is_valid():
             # Suggest an existing individual before creating a duplicate; adds
             # a field error (making the form invalid) when a match is found.
             _check_duplicate_individual(form, getattr(request, 'tenant', None))
+        if form.is_valid() and charge_error:
+            form.add_error(None, charge_error)
         if form.is_valid():
             # Individual repair: auto-create an individual Customer record
             # from the provided name/phone so downstream pricing, approval, and
@@ -335,12 +339,16 @@ def create_repair(request):
                 else:
                     messages.error(request, "As an admin, you must select a technician to assign the repair to.")
                     tenant = getattr(request, 'tenant', None)
+                    from apps.technician_portal.models import FeePreset as _FeePreset
                     return render(request, 'technician_portal/repair_form.html', {
                         'form': form,
                         'is_admin': True,
                         'technicians': Technician.objects.filter(
                             tenant=tenant, can_repair=True, is_active=True
                         ) if tenant else Technician.objects.filter(can_repair=True, is_active=True),
+                        'show_charges_editor': True,
+                        'charge_rows': charges,
+                        'fee_presets': _FeePreset.objects.filter(tenant=tenant, is_active=True) if tenant else [],
                     })
             else:
                 try:
@@ -368,6 +376,9 @@ def create_repair(request):
                 except AttributeError:
                     messages.error(request, "You don't have a technician profile to create repairs.")
                     return redirect('technician_dashboard')
+
+            if charges:
+                _save_extra_charges(repair, charges, tenant, taxable=not repair.no_tax)
 
             messages.success(request, f'Repair #{repair.id} created successfully!')
             return redirect('repair_detail', repair_id=repair.id)
@@ -417,6 +428,7 @@ def create_repair(request):
         Technician.objects.filter(user=request.user, tenant=tenant).first()
         if tenant else None
     )
+    from apps.technician_portal.models import FeePreset
     context = {
         'form': form,
         'pending_repair_warning': pending_repair_warning,
@@ -425,6 +437,14 @@ def create_repair(request):
         'customer_types_json': customer_types_json,
         'customer_primary_tech_json': customer_primary_tech_json,
         'current_technician': current_technician,
+        'show_charges_editor': True,
+        'charge_rows': [
+            (d.strip(), a.strip())
+            for d, a in zip(request.POST.getlist('charge_desc'),
+                            request.POST.getlist('charge_amount'))
+            if d.strip() or a.strip()
+        ] if request.method == 'POST' else [],
+        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True) if tenant else [],
     }
     if admin:
         context['technicians'] = Technician.objects.filter(
@@ -497,6 +517,16 @@ def update_repair(request, repair_id):
         logger.info(f"UPDATE_REPAIR: Saved original_technician_id={original_technician_id}")
 
         form = RepairForm(request.POST, request.FILES, instance=repair, user=request.user, tenant=getattr(request, 'tenant', None))
+
+        # Extra charges are editable until the job lands on a live invoice;
+        # after that they're managed on the invoice (Add Line Item).
+        from apps.billing.services.invoice_sync import live_invoice_number_for_service
+        from apps.technician_portal.views.jobs import _parse_extra_charges, _save_extra_charges
+        charges_locked_invoice = live_invoice_number_for_service(repair)
+        charges, charge_error = _parse_extra_charges(request)
+        if not charges_locked_invoice and charge_error and form.is_valid():
+            form.add_error(None, charge_error)
+
         if form.is_valid():
             logger.info(f"UPDATE_REPAIR: Form is valid, calling save(commit=False)")
             updated_repair = form.save(commit=False)
@@ -524,6 +554,13 @@ def update_repair(request, repair_id):
 
             updated_repair.save()
             form.save_m2m()
+
+            if not charges_locked_invoice:
+                _save_extra_charges(
+                    updated_repair, charges, tenant,
+                    taxable=not updated_repair.no_tax,
+                )
+
             messages.success(request, "Repair has been updated successfully.")
 
             # Batch navigation
@@ -571,6 +608,20 @@ def update_repair(request, repair_id):
         Technician.objects.filter(user=request.user, tenant=tenant).first()
         if tenant else None
     )
+    # Extra-charge editor state (shared by GET render and bounced POST render)
+    from apps.billing.services.invoice_sync import live_invoice_number_for_service as _live_inv
+    from apps.technician_portal.models import FeePreset
+    charges_locked_invoice = _live_inv(repair)
+    if request.method == 'POST' and not charges_locked_invoice:
+        charge_rows = [
+            (d.strip(), a.strip())
+            for d, a in zip(request.POST.getlist('charge_desc'),
+                            request.POST.getlist('charge_amount'))
+            if d.strip() or a.strip()
+        ]
+    else:
+        charge_rows = [(c.description, c.amount) for c in repair.extra_charges.all()]
+
     update_context = {
         'form': form,
         'repair': repair,
@@ -579,6 +630,10 @@ def update_repair(request, repair_id):
         'batch_id': batch_id,
         'batch_repairs': batch_repairs,
         'current_technician': current_technician,
+        'show_charges_editor': True,
+        'charges_locked_invoice': charges_locked_invoice,
+        'charge_rows': charge_rows,
+        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True) if tenant else [],
     }
     if admin:
         update_context['technicians'] = Technician.objects.filter(

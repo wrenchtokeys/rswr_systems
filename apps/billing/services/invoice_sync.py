@@ -34,6 +34,35 @@ def recalculate_invoice_totals(invoice):
     invoice.save(update_fields=['subtotal', 'discount', 'tax_amount', 'total'])
 
 
+def create_charge_lines(invoice, service):
+    """Create free-form invoice lines for a job's extra charges (JobCharge).
+
+    The lines deliberately carry NO repair/replacement FK: sync_lines_for_service
+    rewrites job-linked lines to service.cost, which would corrupt a charge
+    line. Free-form lines are ignored by the sync and editable/deletable
+    through the invoice line-item endpoints. Returns the created lines.
+    """
+    from apps.billing.models import InvoiceLineItem
+
+    customer = invoice.customer
+    lines = []
+    for charge in service.extra_charges.all():
+        taxable = charge.taxable and not (customer and customer.tax_exempt)
+        repair_date = getattr(service, 'repair_date', None)
+        lines.append(InvoiceLineItem.objects.create(
+            invoice=invoice,
+            description=charge.description,
+            quantity=1,
+            unit_price=charge.amount,
+            discount=Decimal('0.00'),
+            amount=charge.amount,
+            repair_date=repair_date.date() if repair_date else None,
+            unit_number=getattr(service, 'unit_number', '') or '',
+            taxable=taxable,
+        ))
+    return lines
+
+
 def sync_lines_for_service(service):
     """Update the service's line on every live invoice to match service.cost.
 
@@ -69,6 +98,29 @@ def sync_lines_for_service(service):
         recalculate_invoice_totals(line.invoice)
         synced += 1
     return synced
+
+
+def live_invoice_number_for_service(service):
+    """Invoice number of any live (non-cancelled) invoice this job is on, or None.
+
+    Used to lock the job's extra-charge editor: once invoiced, charges are
+    managed on the invoice itself (Add Line Item) so the ticket and the
+    invoice can't quietly disagree.
+    """
+    from apps.billing.models import InvoiceLineItem
+
+    if service.pk is None:
+        return None
+    field = 'repair' if type(service).__name__ == 'Repair' else 'replacement'
+    line = (
+        InvoiceLineItem.objects
+        .filter(**{field: service})
+        .filter(invoice__deleted_at__isnull=True)
+        .exclude(invoice__status='CANCELLED')
+        .select_related('invoice')
+        .first()
+    )
+    return line.invoice.invoice_number if line else None
 
 
 def paid_invoice_number_for_service(service):

@@ -474,6 +474,12 @@ def _create_batch_invoice(tenant, customer, config):
                     taxable=not repair.no_tax,
                 )
 
+                from apps.billing.services.invoice_sync import create_charge_lines
+                for charge_line in create_charge_lines(invoice, repair):
+                    subtotal += charge_line.unit_price
+                    if charge_line.taxable:
+                        taxable_base += charge_line.amount
+
             # Add replacement line items
             for replacement in replacements_list:
                 amount = replacement.cost or Decimal('0.00')
@@ -492,6 +498,12 @@ def _create_batch_invoice(tenant, customer, config):
                     unit_number=replacement.unit_number or '',
                     taxable=not replacement.no_tax,
                 )
+
+                from apps.billing.services.invoice_sync import create_charge_lines
+                for charge_line in create_charge_lines(invoice, replacement):
+                    subtotal += charge_line.unit_price
+                    if charge_line.taxable:
+                        taxable_base += charge_line.amount
 
             # Calculate tax via TaxService (single source of truth for whether
             # tax applies + per-tenant rate with component breakdown, CODE-104).
