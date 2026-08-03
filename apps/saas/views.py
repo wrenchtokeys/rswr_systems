@@ -1510,16 +1510,19 @@ def owner_settings_view(request):
                     except (InvalidOperation, ValueError):
                         return default
 
-                tenant.repair_price_1 = _parse_price('repair_price_1', Decimal('50.00'))
-                tenant.repair_price_2 = _parse_price('repair_price_2', Decimal('40.00'))
-                tenant.repair_price_3 = _parse_price('repair_price_3', Decimal('35.00'))
-                tenant.repair_price_4 = _parse_price('repair_price_4', Decimal('30.00'))
-                tenant.repair_price_5_plus = _parse_price('repair_price_5_plus', Decimal('25.00'))
+                # Fall back to the tenant's current value, not the factory
+                # defaults — the flat-price form posts only repair_price_1,
+                # and a partial POST must never reset the other tiers.
+                tenant.repair_price_1 = _parse_price('repair_price_1', tenant.repair_price_1)
+                tenant.repair_price_2 = _parse_price('repair_price_2', tenant.repair_price_2)
+                tenant.repair_price_3 = _parse_price('repair_price_3', tenant.repair_price_3)
+                tenant.repair_price_4 = _parse_price('repair_price_4', tenant.repair_price_4)
+                tenant.repair_price_5_plus = _parse_price('repair_price_5_plus', tenant.repair_price_5_plus)
                 tenant.save(update_fields=[
                     'repair_price_1', 'repair_price_2', 'repair_price_3',
                     'repair_price_4', 'repair_price_5_plus'
                 ])
-                messages.success(request, 'Pricing tiers updated successfully.')
+                messages.success(request, 'Repair pricing updated.')
             except Exception as e:
                 logger.error(f"Error updating pricing tiers: {e}")
                 messages.error(request, 'Could not update pricing tiers.')
@@ -1861,6 +1864,35 @@ def owner_settings_view(request):
 
     batch_month_days = [{'value': d, 'label': f'{d}{_ordinal_suffix(d)} of the month'} for d in range(1, 29)]
 
+    # Batch invoicing only touches customers whose invoice preference is
+    # 'batch' — surface a warning when the schedule is on but nobody qualifies.
+    from apps.customer_portal.models import CustomerRepairPreference
+    has_batch_customers = CustomerRepairPreference.objects.filter(
+        customer__tenant=tenant, invoice_preference='batch',
+    ).exists()
+
+    # Next batch run date, computed with the nightly task's own scheduling
+    # logic so the preview can never drift from what the cron actually does.
+    # The job fires at 06:00 UTC; past that, today's run already happened.
+    batch_next_run = None
+    if billing_config and billing_config.batch_invoice_frequency != 'disabled':
+        from datetime import timedelta
+        from apps.billing.tasks import _should_run_batch_today
+        now = timezone.now()
+        start = now.date() + timedelta(days=1) if now.hour >= 6 else now.date()
+        for offset in range(70):
+            candidate = start + timedelta(days=offset)
+            if _should_run_batch_today(billing_config, candidate):
+                batch_next_run = candidate
+                break
+
+    # Reminders toggled on with no day marks selected will never email anyone
+    reminders_misconfigured = bool(
+        billing_config
+        and billing_config.overdue_reminder_enabled
+        and not active_reminder_days
+    )
+
     # Review request settings + recent requests
     from apps.technician_portal.review_models import ReviewConfig, ReviewRequest
     review_config = ReviewConfig.get_for_tenant(tenant)
@@ -1906,6 +1938,9 @@ def owner_settings_view(request):
         'reminder_day_choices': reminder_day_choices,
         'active_reminder_days': active_reminder_days,
         'batch_month_days': batch_month_days,
+        'has_batch_customers': has_batch_customers,
+        'batch_next_run': batch_next_run,
+        'reminders_misconfigured': reminders_misconfigured,
         'review_config': review_config,
         'recent_review_requests': recent_review_requests,
         'warranty_policies': warranty_policies,
@@ -3524,15 +3559,38 @@ def _setup_completion(tenant):
     if tenant.offers_repairs:
         items.append(has_viscosity)
 
+    # Defaults genuinely work, so pricing/billing/assignment always count as
+    # "complete" — but the checklist should say "Using standard defaults"
+    # rather than the false "Configured" when the owner never touched them.
+    from decimal import Decimal
+    pricing_defaulted = bool(
+        tenant.offers_repairs
+        and tenant.use_progressive_pricing
+        and (
+            tenant.repair_price_1, tenant.repair_price_2, tenant.repair_price_3,
+            tenant.repair_price_4, tenant.repair_price_5_plus,
+        ) == (
+            Decimal('50.00'), Decimal('40.00'), Decimal('35.00'),
+            Decimal('30.00'), Decimal('25.00'),
+        )
+    )
+    billing_defaulted = not billing_config or billing_config.default_payment_terms == 'COD'
+    assignment_defaulted = tenant.assignment_strategy == 'primary_first'
+
     return {
         'business_info': has_business_info,
         'pricing': True,  # always has defaults
+        'pricing_defaulted': pricing_defaulted,
         'tax': has_tax,
         'billing': has_billing,
+        'billing_defaulted': billing_defaulted,
         'viscosity': has_viscosity,
         'assignment': True,  # always has default
+        'assignment_defaulted': assignment_defaulted,
         'team': has_team,
-        'critical_complete': has_business_info and has_billing,
+        # has_billing was always True (default_payment_terms defaults 'COD'),
+        # so business info is the only genuinely critical item.
+        'critical_complete': has_business_info,
         'all_complete': all(items),
         'configured_count': sum(items),
         'total_count': len(items),

@@ -180,7 +180,7 @@
                             <span class="text-sm font-medium text-gray-900">${{ item.amount|floatformat:2 }}</span>
                             {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
                             <button type="button"
-                                onclick="openLineItemEditModal({{ item.id }}, '{{ item.description|escapejs }}', '{{ item.unit_price }}', '{{ item.discount }}')"
+                                onclick="openLineItemEditModal({{ item.id }}, '{{ item.description|escapejs }}', '{{ item.unit_price }}', '{{ item.discount }}', {% if item.repair_id or item.replacement_id %}true{% else %}false{% endif %}, '{{ item.amount }}')"
                                 aria-label="Edit line item: {{ item.description }}"
                                 class="text-gray-400 hover:text-blue-600 transition-colors p-1">
                                 <i class="fas fa-pen text-xs"></i>
@@ -261,7 +261,7 @@
                                     <span>${{ item.amount|floatformat:2 }}</span>
                                     {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
                                     <button type="button"
-                                        onclick="openLineItemEditModal({{ item.id }}, '{{ item.description|escapejs }}', '{{ item.unit_price }}', '{{ item.discount }}')"
+                                        onclick="openLineItemEditModal({{ item.id }}, '{{ item.description|escapejs }}', '{{ item.unit_price }}', '{{ item.discount }}', {% if item.repair_id or item.replacement_id %}true{% else %}false{% endif %}, '{{ item.amount }}')"
                                         title="Edit line item"
                                         class="text-gray-400 hover:text-blue-600 transition-colors">
                                         <i class="fas fa-pen text-xs"></i>
@@ -677,7 +677,19 @@ document.addEventListener('keydown', function(e) {
                     <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
                     <input type="text" id="li-edit-description" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
                 </div>
-                <div class="grid grid-cols-2 gap-4">
+                <!-- Job-linked lines: one Price field, the price the customer pays.
+                     The old Unit Price/Discount pair was a trap here — "Unit Price"
+                     was the pre-discount base rate, so typing the price you wanted
+                     subtracted the progressive discount a second time. -->
+                <div id="li-edit-price-simple" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="text-gray-500 text-sm">$</span></div>
+                        <input type="number" id="li-edit-price" step="0.01" min="0" class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    <p class="mt-1 text-xs text-gray-400">What the customer pays for this job. The job's price in RS Systems updates to match.</p>
+                </div>
+                <div id="li-edit-price-split" class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Unit Price</label>
                         <div class="relative">
@@ -759,11 +771,16 @@ function _toggleModal(id, show) {
 }
 
 // --- Line item edit ---
-function openLineItemEditModal(id, description, unitPrice, discount) {
+let liEditIsService = false;
+function openLineItemEditModal(id, description, unitPrice, discount, isService, amount) {
+    liEditIsService = !!isService;
     document.getElementById('li-edit-id').value = id;
     document.getElementById('li-edit-description').value = description;
     document.getElementById('li-edit-unit-price').value = parseFloat(unitPrice).toFixed(2);
     document.getElementById('li-edit-discount').value = parseFloat(discount).toFixed(2);
+    document.getElementById('li-edit-price').value = parseFloat(amount || '0').toFixed(2);
+    document.getElementById('li-edit-price-simple').classList.toggle('hidden', !liEditIsService);
+    document.getElementById('li-edit-price-split').classList.toggle('hidden', liEditIsService);
     document.getElementById('li-edit-error').classList.add('hidden');
     _toggleModal('line-item-modal', true);
 }
@@ -773,7 +790,13 @@ function saveLineItem() {
     const id = document.getElementById('li-edit-id').value;
     const btn = document.getElementById('li-edit-save');
     const errEl = document.getElementById('li-edit-error');
-    const payload = {
+    // Job-linked lines send the typed price as unit_price with discount
+    // cleared, so the amount charged is exactly what was typed.
+    const payload = liEditIsService ? {
+        description: document.getElementById('li-edit-description').value,
+        unit_price: parseFloat(document.getElementById('li-edit-price').value || '0'),
+        discount: 0,
+    } : {
         description: document.getElementById('li-edit-description').value,
         unit_price: parseFloat(document.getElementById('li-edit-unit-price').value || '0'),
         discount: parseFloat(document.getElementById('li-edit-discount').value || '0'),

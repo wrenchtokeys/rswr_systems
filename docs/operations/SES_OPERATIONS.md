@@ -83,11 +83,44 @@ To test without touching reputation, use the SES mailbox simulator:
 `success@simulator.amazonses.com` (delivery) or `bounce@simulator.amazonses.com`
 (exercises a bounce safely).
 
+## Deliverability Status & Verification Log
+
+- **2026-07-31 — overhaul deployed and verified:**
+  - Custom MAIL FROM `mail.rssystems.io` verified (aligned SPF); DKIM 2048-bit SUCCESS;
+    config set `rs-systems-default` publishing events; SNS → webhook confirmed live.
+  - mail-tester.com score: **10/10**. (Its two advisories are intentional: invoices
+    carry no List-Unsubscribe because they're transactional, and the text-ratio note
+    is cosmetic.)
+  - First post-fix real-world delivery: invoice reached the **inbox** at penske.com
+    (Proofpoint) — recipient had also emailed notifications@ first, which safe-lists
+    the sender for their mailbox (useful onboarding trick for fleet contacts).
+  - ImprovMX aliases probe-verified working: contact@, dmarc@, notifications@ all
+    accept and forward.
+  - Per-invoice delivery status confirmed stamping in prod (sent → delivered).
+
+## Deliverability Timeline — scheduled checkpoints
+
+- [ ] **2026-08-07** — first DMARC aggregate reports should have arrived at
+      dmarc@rssystems.io (forwards to team Gmail). Confirm reports show SES mail
+      passing with BOTH spf and dkim aligned. Also skim invoice delivery statuses
+      for any bounced/delayed patterns.
+- [ ] **2026-08-28** — if ~4 weeks of reports are clean (100% aligned, no legit
+      source failing): DMARC → `v=DMARC1; p=quarantine; pct=25; rua=mailto:dmarc@rssystems.io`
+- [ ] **2026-09-11** — bump to `pct=100` if no issues surfaced.
+- [ ] **2026-11-02** — consider `p=reject` (final hardening; only if reports stayed clean).
+- Ongoing: young-domain reputation keeps improving with every clean send; expect
+  occasional first-contact quarantines at strict gateways to fade over Aug–Sep 2026.
+
+## Testing notes
+
+- Failure-path testing: ALWAYS use the SES mailbox simulator
+  (`bounce@simulator.amazonses.com`, `complaint@simulator.amazonses.com`) — bounces
+  to real fake domains count against account reputation. Note: a made-up address at
+  a parked domain (e.g. fakeemail.com, which publishes a null MX) may bounce slowly
+  or never, so it's a bad test target as well as a reputation cost.
+
 ## Follow-Ups (not yet done)
 
-- [ ] `eb setenv SES_WEBHOOK_SECRET=<random>` and subscribe the SNS topic to the webhook
-      URL (topic + config set exist; subscription needs the secret live first)
-- [ ] Tighten DMARC to `p=quarantine` after 2–4 clean weeks of rua reports
 - [ ] Set `NotificationDeliveryLog.STATUS_BOUNCED` from SES events (field already exists;
       repair notifications need message tags first)
 - [ ] Per-recipient suppression in-app: stop emailing addresses that hard-bounced

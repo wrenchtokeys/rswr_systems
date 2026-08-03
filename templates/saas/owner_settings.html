@@ -40,7 +40,7 @@
         </a>
         <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
             <span class="text-sm text-gray-700">Job Prices</span>
-            {% if completion.pricing %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
+            {% if completion.pricing_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
         </a>
         <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
             <span class="text-sm text-gray-700">Sales Tax</span>
@@ -48,7 +48,7 @@
         </a>
         <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
             <span class="text-sm text-gray-700">Invoicing</span>
-            {% if completion.billing %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
+            {% if completion.billing_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
         </a>
         {% if tenant.offers_repairs %}
         <a href="{% url 'manage_viscosity_rules' %}" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
@@ -58,7 +58,7 @@
         {% endif %}
         <a href="?tab=general" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
             <span class="text-sm text-gray-700">Job Assignment</span>
-            {% if completion.assignment %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
+            {% if completion.assignment_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
         </a>
     </div>
 </details>
@@ -730,9 +730,24 @@
                 </div>
             </form>
             {% else %}
-            <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p class="text-sm text-gray-600"><i class="fas fa-info-circle mr-1"></i> Every repair uses first-repair pricing (${{ tenant.repair_price_1 }}). Simple and predictable for all customers.</p>
-            </div>
+            <form method="post" action="{% url 'owner_settings' %}">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="update_pricing_tiers">
+                <div class="flex items-end gap-3">
+                    <div>
+                        <label class="block text-xs text-gray-500 mb-1">Price per repair</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                            <input type="number" name="repair_price_1" step="0.01" min="0" value="{{ tenant.repair_price_1 }}"
+                                   class="w-40 pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        </div>
+                    </div>
+                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-save mr-2"></i> Save
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400 mt-2">Every repair is charged this price, no matter how many a vehicle has had.</p>
+            </form>
             {% endif %}
         </div>
     </div>
@@ -921,7 +936,8 @@
                     </div>
                     <div>
                         <h3 class="text-lg font-semibold text-gray-900">Overdue Reminders</h3>
-                        <p class="text-sm text-gray-500">Automatically send reminder emails when invoices are past due</p>
+                        <p class="text-sm text-gray-500">Every morning we check for unpaid invoices past their due date and email the customer a nudge</p>
+                        <p class="text-xs text-gray-400 mt-0.5">Invoices are marked Overdue automatically either way — this switch only controls the reminder emails.</p>
                     </div>
                 </div>
                 <form method="post" action="{% url 'owner_settings' %}">
@@ -961,7 +977,7 @@
                     </label>
                     {% endfor %}
                 </div>
-                <p class="text-xs text-gray-400 mt-2">Select when to send reminder emails after an invoice's due date has passed</p>
+                <p class="text-xs text-gray-400 mt-2">When an invoice passes one of these marks, the customer gets one reminder email — at most one per invoice per day. If a mark gets skipped (say the invoice was already 20 days overdue), we send the latest one and move on.</p>
             </div>
 
             <div class="mb-4">
@@ -982,9 +998,18 @@
 
         {% if billing_config.overdue_reminder_enabled %}
         <div class="px-6 pb-6">
-            <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
-                <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> Reminders active — emails sent at {{ billing_config.overdue_reminder_days }} days past due.</p>
+            {% if reminders_misconfigured %}
+            <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p class="text-sm text-yellow-800">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Reminders are on, but no days are selected — so no reminder emails will ever go out. Pick at least one mark above and save.
+                </p>
             </div>
+            {% else %}
+            <div class="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p class="text-sm text-green-700"><i class="fas fa-check-circle mr-1"></i> Reminders active — customers get a nudge as invoices pass {{ billing_config.overdue_reminder_days }} days overdue.</p>
+            </div>
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -998,7 +1023,7 @@
                 </div>
                 <div>
                     <h3 class="text-lg font-semibold text-gray-900">Batch Invoicing</h3>
-                    <p class="text-sm text-gray-500">Send one combined invoice for multiple jobs instead of many separate ones</p>
+                    <p class="text-sm text-gray-500">On a schedule you pick, we roll each customer's finished, un-invoiced jobs into one combined invoice</p>
                 </div>
             </div>
         </div>
@@ -1069,11 +1094,23 @@
             <div class="p-3 bg-purple-50 border border-purple-200 rounded-lg">
                 <p class="text-sm text-purple-700">
                     <i class="fas fa-info-circle mr-1"></i>
-                    Invoices will be generated {{ billing_config.batch_invoice_frequency }}
-                    for fleet customers with completed repairs.
-                    {% if billing_config.batch_invoice_auto_send %}They'll be emailed automatically.{% else %}You'll review them as drafts first.{% endif %}
+                    {% if batch_next_run %}Next run: <strong>{{ batch_next_run|date:"l, N j" }}</strong>.{% endif %}
+                    That night, each customer set to <strong>Batch</strong> invoicing gets one invoice covering
+                    all their completed jobs that haven't been invoiced yet.
+                    {% if billing_config.batch_invoice_auto_send %}It's emailed to them automatically.{% else %}It's saved as a draft for you to review and send.{% endif %}
                 </p>
             </div>
+            <p class="text-xs text-gray-400 mt-2">Applies to customers whose "Invoicing" is set to Batch on their customer page (new customers start as Batch). Everyone else keeps getting one invoice per job.</p>
+            {% if not has_batch_customers %}
+            <div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p class="text-sm text-yellow-800">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Batch invoicing is on, but none of your customers are set to Batch — so no combined invoices
+                    will be created. Open a customer and set "Invoicing" to Batch.
+                    <a href="{% url 'technician_customers' %}" class="font-medium underline">View customers →</a>
+                </p>
+            </div>
+            {% endif %}
             {% else %}
             <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                 <p class="text-sm text-gray-500"><i class="fas fa-info-circle mr-1"></i> Batch invoicing is off. You can still create invoices manually from the customer page.</p>

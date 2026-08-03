@@ -416,21 +416,24 @@
                 ></textarea>
             </div>
 
-            <!-- Manager Price Override Section -->
-            {% if current_technician and current_technician.is_manager and current_technician.can_override_pricing %}
+            <!-- Owner/manager price override. Gated on is_manager to match the
+                 server-side check (views/batch.py authorizes owners outright);
+                 can_override_pricing is deprecated — nothing ever set it, which
+                 hid this section from every real shop owner. -->
+            {% if current_technician and current_technician.is_manager %}
             <div class="pt-4 border-t border-gray-200 bg-purple-50 -mx-6 px-6 py-4 rounded">
                 <h3 class="text-sm font-semibold text-purple-900 uppercase tracking-wide mb-3">
-                    <i class="fas fa-shield-alt mr-1"></i> Price Override (Manager Only)
+                    <i class="fas fa-tag mr-1"></i> Custom Price (Optional)
                 </h3>
                 <p class="text-xs text-purple-700 mb-4">
-                    Leave blank to use automatic progressive pricing. Override only when necessary.
+                    Leave blank to use automatic pricing.
                 </p>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <!-- Override Price -->
                     <div>
                         <label for="modal_cost_override" class="block text-sm font-medium text-gray-700 mb-1">
-                            Override Price ($)
+                            Price ($)
                         </label>
                         <input
                             type="number"
@@ -450,16 +453,16 @@
                     <!-- Override Reason -->
                     <div>
                         <label for="modal_override_reason" class="block text-sm font-medium text-gray-700 mb-1">
-                            Override Reason <span class="text-red-500" id="override_reason_required" style="display:none;">*</span>
+                            Reason <span class="text-red-500" id="override_reason_required" style="display:none;">*</span>
                         </label>
                         <input
                             type="text"
                             id="modal_override_reason"
                             maxlength="200"
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            placeholder="Required if overriding price"
+                            placeholder="Required when setting a custom price"
                         >
-                        <p class="mt-1 text-xs text-gray-600">Explain why override is needed</p>
+                        <p class="mt-1 text-xs text-gray-600">A quick note on why, for your records</p>
                     </div>
                 </div>
             </div>

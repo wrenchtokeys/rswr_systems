@@ -20,11 +20,13 @@ def calculate_batch_pricing(
     """
     Calculate pricing for a batch of breaks on the same unit.
 
-    Multi-break batches ALWAYS use progressive pricing within the batch
-    (break 2 is cheaper than break 1, etc.) regardless of tenant settings.
-    This is because finding multiple breaks at once should be rewarded.
+    Batches follow the same flat/progressive rules as single repairs
+    (see get_expected_repair_cost): progressive tiers apply only when both
+    the tenant and the customer have progressive pricing enabled and the
+    customer isn't retail/walk-in. Otherwise every break is priced flat
+    at the first-repair price.
 
-    Each break increments the repair count, so:
+    With progressive pricing, each break increments the repair count, so:
     - Break 1 priced as repair #N+1
     - Break 2 priced as repair #N+2
     - Break 3 priced as repair #N+3
@@ -62,15 +64,22 @@ def calculate_batch_pricing(
     except UnitRepairCount.DoesNotExist:
         base_repair_count = 0
 
+    # Same flat/progressive decision as get_expected_repair_cost
+    tenant_allows_progressive = getattr(tenant, 'use_progressive_pricing', True) if tenant else True
+    customer_wants_progressive = getattr(customer, 'use_progressive_pricing', True) if customer else True
+    is_retail = bool(customer) and customer.customer_type in ('RETAIL', 'WALK_IN')
+    use_progressive = tenant_allows_progressive and customer_wants_progressive and not is_retail
+
     # Calculate price for each break in sequence
     pricing_breakdown = []
 
     for i in range(breaks_count):
-        # Each break increments the repair count
+        # Each break increments the repair count (repair_tier stays the true
+        # sequence number for UnitRepairCount bookkeeping even in flat mode)
         repair_tier = base_repair_count + i + 1
 
         # Use existing pricing service (handles custom pricing, tenant pricing, defaults)
-        price = calculate_repair_cost(customer, repair_tier, tenant)
+        price = calculate_repair_cost(customer, repair_tier if use_progressive else 1, tenant)
 
         pricing_breakdown.append({
             'break_number': i + 1,
@@ -209,9 +218,11 @@ def validate_batch_pricing_authorization(
     if proposed_override is None:
         return True, None
 
-    # Check manager authorization
-    if not (technician.is_manager and technician.can_override_pricing):
-        return False, "Only managers with pricing override permission can set custom batch pricing"
+    # Owners and managers may set custom prices. (can_override_pricing is
+    # deprecated: no signup/team path ever set it, so requiring it locked
+    # every real shop owner out of the price field.)
+    if not technician.is_manager:
+        return False, "Only owners and managers can set custom batch pricing"
 
     # Validate override amount is reasonable (not negative, not absurdly high)
     if proposed_override < 0:

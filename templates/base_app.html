@@ -16,10 +16,14 @@
     <!-- Unified App Navbar -->
     <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
+            <!-- Three slots: links (fixed) / search (flexible, shrinks first) / user (fixed).
+                 Owners get 7 links, which never fit next to a search box between
+                 768-1023px — so the owner link row waits for lg: and the hamburger
+                 covers md. Technicians (4-5 links) keep the md: row. -->
+            <div class="flex h-16 items-center gap-4">
                 <!-- Left: Logo + Nav Links -->
-                <div class="flex items-center space-x-6">
-                    <a href="{% if is_owner_or_manager %}{% url 'owner_dashboard' %}{% else %}{% url 'technician_dashboard' %}{% endif %}" class="flex items-center space-x-2">
+                <div class="flex items-center gap-4 shrink-0">
+                    <a href="{% if is_owner_or_manager %}{% url 'owner_dashboard' %}{% else %}{% url 'technician_dashboard' %}{% endif %}" class="flex items-center space-x-2 shrink-0">
                         <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                             <svg viewBox="0 0 40 40" class="w-5 h-5">
                                 <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">RS</text>
@@ -29,72 +33,59 @@
                         </div>
                         <span class="text-xl font-bold text-gray-900 hidden sm:inline">RS Systems</span>
                     </a>
-                    <div class="hidden md:flex items-center space-x-4">
+                    <div class="{% if is_owner_or_manager %}hidden lg:flex{% else %}hidden md:flex{% endif %} items-center space-x-4">
                         {% if is_owner_or_manager %}
-                        <a href="{% url 'owner_dashboard' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'owner_dashboard' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Dashboard</a>
+                        <a href="{% url 'owner_dashboard' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'owner_dashboard' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Dashboard</a>
                         {% else %}
-                        <a href="{% url 'technician_dashboard' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'technician_dashboard' or request.resolver_match.url_name == 'technician_dashboard_alt' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Dashboard</a>
+                        <a href="{% url 'technician_dashboard' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'technician_dashboard' or request.resolver_match.url_name == 'technician_dashboard_alt' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Dashboard</a>
                         {% endif %}
 
                         {% if user_can_repairs %}
-                        <a href="{% url 'job_list' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'job_list' or request.resolver_match.url_name == 'repair_list' or request.resolver_match.url_name == 'assigned_repairs' or request.resolver_match.url_name == 'repair_detail' or request.resolver_match.url_name == 'create_repair' or 'replacement' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Jobs</a>
+                        <a href="{% url 'job_list' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'job_list' or request.resolver_match.url_name == 'repair_list' or request.resolver_match.url_name == 'assigned_repairs' or request.resolver_match.url_name == 'repair_detail' or request.resolver_match.url_name == 'create_repair' or 'replacement' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Jobs</a>
                         {% endif %}
 
                         {% if user_can_customers %}
-                        <a href="{% url 'technician_customers' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'technician_customers' or request.resolver_match.url_name == 'customer_detail' or request.resolver_match.url_name == 'create_customer' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Customers</a>
+                        <a href="{% url 'technician_customers' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'technician_customers' or request.resolver_match.url_name == 'customer_detail' or request.resolver_match.url_name == 'create_customer' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Customers</a>
                         {% endif %}
 
                         {% if user_can_invoices %}
-                        <a href="{% url 'owner_invoice_list' %}" class="text-sm font-medium {% if 'invoice' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Invoices</a>
+                        <a href="{% url 'owner_invoice_list' %}" class="text-sm font-medium whitespace-nowrap {% if 'invoice' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Invoices</a>
                         {% endif %}
 
                         {% if is_owner_or_manager %}
-                        <a href="{% url 'owner_loyalty_dashboard' %}" class="text-sm font-medium {% if 'loyalty' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Loyalty</a>
+                        <a href="{% url 'owner_loyalty_dashboard' %}" class="text-sm font-medium whitespace-nowrap {% if 'loyalty' in request.resolver_match.url_name %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Loyalty</a>
                         {% endif %}
 
                         {% if is_owner_or_manager %}
-                        <a href="{% url 'billing_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'billing_settings' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">My Plan</a>
+                        <a href="{% url 'billing_settings' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'billing_settings' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">My Plan</a>
                         {% endif %}
 
                         {% if user_can_settings %}
-                        <a href="{% url 'owner_settings' %}" class="text-sm font-medium {% if request.resolver_match.url_name == 'owner_settings' or request.resolver_match.url_name == 'manager_settings_dashboard' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Settings</a>
+                        <a href="{% url 'owner_settings' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'owner_settings' or request.resolver_match.url_name == 'manager_settings_dashboard' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Settings</a>
                         {% endif %}
                     </div>
                 </div>
 
-                <!-- Right: Search + Tenant info + User dropdown -->
-                <div class="flex items-center space-x-4">
-                    <!-- Global search. Page-level search only ever existed inside
-                         the job and customer lists, so finding a unit meant first
-                         knowing which page to be on. -->
-                    <form method="get" action="{% url 'global_search' %}" class="hidden md:block" role="search">
-                        <label for="global-search" class="sr-only">Search jobs, customers and invoices</label>
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
-                            <input type="search" name="q" id="global-search"
-                                   value="{{ request.GET.q|default:'' }}"
-                                   placeholder="Search jobs, customers, invoices"
-                                   class="w-44 lg:w-64 pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                        </div>
-                    </form>
+                <!-- Middle: Global search. Fills leftover width and shrinks
+                     first; page-level search only ever existed inside the job
+                     and customer lists, so finding a unit meant first knowing
+                     which page to be on. -->
+                <form method="get" action="{% url 'global_search' %}"
+                      class="{% if is_owner_or_manager %}hidden lg:block{% else %}hidden md:block{% endif %} flex-1 min-w-0 max-w-xs ml-auto" role="search">
+                    <label for="global-search" class="sr-only">Search jobs, customers and invoices</label>
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                        <input type="search" name="q" id="global-search"
+                               value="{{ request.GET.q|default:'' }}"
+                               placeholder="Search jobs, customers, invoices"
+                               class="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </form>
 
-                    {% if tenant %}
-                    <!-- lg, not sm: the search box needs the room at md. -->
-                    <span class="text-sm text-gray-500 hidden lg:inline truncate max-w-[200px]" title="{{ tenant.name }}">{{ tenant.name }}</span>
-                    {% if is_owner_or_manager %}
-                    <span class="hidden lg:inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
-                        {% if tenant.plan == 'trial' %}border border-blue-300 text-blue-600 bg-white
-                        {% elif tenant.plan == 'starter' %}bg-blue-100 text-blue-800
-                        {% elif tenant.plan == 'pro' %}bg-green-100 text-green-800
-                        {% elif tenant.plan == 'enterprise' %}bg-purple-100 text-purple-800
-                        {% else %}bg-gray-100 text-gray-800{% endif %}">
-                        {{ tenant.get_plan_display }}
-                    </span>
-                    {% endif %}
-                    {% endif %}
-
-                    <!-- Mobile nav toggle -->
-                    <button class="md:hidden text-gray-600 hover:text-gray-900" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')">
+                <!-- Right: hamburger + user dropdown (tenant name + plan moved
+                     into the dropdown to free bar width) -->
+                <div class="flex items-center gap-3 shrink-0 ml-auto">
+                    <button class="{% if is_owner_or_manager %}lg:hidden{% else %}md:hidden{% endif %} text-gray-600 hover:text-gray-900" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')">
                         <i class="fas fa-bars text-lg"></i>
                     </button>
 
@@ -106,7 +97,22 @@
                             <span class="text-sm font-medium hidden sm:inline">{{ request.user.first_name|default:request.user.username }}</span>
                             <i class="fas fa-chevron-down text-xs hidden sm:inline"></i>
                         </button>
-                        <div id="app-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                        <div id="app-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                            {% if tenant %}
+                            <div class="px-4 py-2 border-b border-gray-200">
+                                <p class="text-sm text-gray-700 truncate" title="{{ tenant.name }}">{{ tenant.name }}</p>
+                                {% if is_owner_or_manager %}
+                                <span class="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
+                                    {% if tenant.plan == 'trial' %}border border-blue-300 text-blue-600 bg-white
+                                    {% elif tenant.plan == 'starter' %}bg-blue-100 text-blue-800
+                                    {% elif tenant.plan == 'pro' %}bg-green-100 text-green-800
+                                    {% elif tenant.plan == 'enterprise' %}bg-purple-100 text-purple-800
+                                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {{ tenant.get_plan_display }}
+                                </span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
                             {% if is_owner_or_manager %}
                             <a href="{% url 'owner_dashboard' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <i class="fas fa-tachometer-alt mr-2 w-4"></i>Dashboard
@@ -132,7 +138,7 @@
             </div>
 
             <!-- Mobile Nav (hidden by default) -->
-            <div id="mobile-nav" class="hidden md:hidden pb-4 border-t border-gray-100 pt-2">
+            <div id="mobile-nav" class="hidden {% if is_owner_or_manager %}lg:hidden{% else %}md:hidden{% endif %} pb-4 border-t border-gray-100 pt-2">
                 <form method="get" action="{% url 'global_search' %}" class="pb-3" role="search">
                     <label for="global-search-mobile" class="sr-only">Search jobs, customers and invoices</label>
                     <div class="relative">

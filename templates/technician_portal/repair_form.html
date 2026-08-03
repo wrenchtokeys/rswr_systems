@@ -686,6 +686,57 @@
                             </p>
                         </div>
 
+                        <!-- Pricing (owners/managers only — RepairForm removes these
+                             fields for everyone else). Posting them back on every
+                             edit is what keeps a custom price from being wiped. -->
+                        {% if form.cost_override %}
+                        <div class="field-grid field-grid-2 mt-4">
+                            <div class="field-group">
+                                <label class="icon-field-label" for="id_cost_override">
+                                    <i class="fas fa-tag"></i>
+                                    Custom Price ($)
+                                </label>
+                                <input type="number"
+                                       name="cost_override"
+                                       id="id_cost_override"
+                                       step="0.01"
+                                       min="0"
+                                       value="{{ form.cost_override.value|default_if_none:'' }}"
+                                       class="icon-field-input"
+                                       placeholder="Leave blank for automatic pricing">
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Overrides the calculated price for this job
+                                </p>
+                                {% if form.cost_override.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.cost_override.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="field-group">
+                                <label class="icon-field-label" for="id_override_reason">
+                                    <i class="fas fa-comment-dollar"></i>
+                                    Reason
+                                </label>
+                                <input type="text"
+                                       name="override_reason"
+                                       id="id_override_reason"
+                                       maxlength="200"
+                                       value="{{ form.override_reason.value|default_if_none:'' }}"
+                                       class="icon-field-input"
+                                       placeholder="Required when setting a custom price">
+                                {% if form.override_reason.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.override_reason.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+
                         <!-- Admin: Assign Technician -->
                         {% if is_admin and technicians %}
                         <div class="field-group mt-6">

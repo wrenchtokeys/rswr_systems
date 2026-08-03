@@ -235,9 +235,8 @@ def can_manager_override_price(technician, proposed_amount: Decimal) -> bool:
     Returns:
         bool: True if technician can override this amount
     """
-    if not hasattr(technician, 'can_override_pricing') or not technician.can_override_pricing:
-        return False
-
+    # can_override_pricing is deprecated (never set by any signup/team path);
+    # is_manager alone authorizes owners and managers.
     if not technician.is_manager:
         return False
 

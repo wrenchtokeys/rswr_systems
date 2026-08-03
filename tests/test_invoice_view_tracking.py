@@ -408,6 +408,28 @@ class OwnerInvoiceListIndicatorTests(TestCase):
         self.assertIn('Delivered', content)
         self.assertIn('Not delivered', content)
 
+    def test_detail_resend_shows_recipient_next_to_resend_time(self):
+        # last_sent_to holds only the LATEST recipient. After a resend to a
+        # different address, that address must display with the resend
+        # timestamp — pairing it with the original send time claims the
+        # first email went to an address it never went to.
+        invoice = _create_invoice(self.tenant, self.customer, status='SENT')
+        first_send = timezone.now() - timezone.timedelta(hours=2)
+        resend = timezone.now()
+        Invoice.all_objects.filter(pk=invoice.pk).update(
+            sent_at=first_send, last_sent_at=resend,
+            last_sent_to='failed-email-address@fakeemail.com',
+        )
+        resp = self.client.get(f'/owner/invoices/{invoice.id}/')
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode()
+        self.assertIn('resent', content)
+        # The recipient must appear inside the "(resent ...)" span, not
+        # after the original send timestamp.
+        resent_idx = content.index('resent')
+        addr_idx = content.index('failed-email-address@fakeemail.com')
+        self.assertGreater(addr_idx, resent_idx)
+
     def test_detail_shows_delivery_trail(self):
         invoice = _create_invoice(self.tenant, self.customer, status='SENT')
         now = timezone.now()
