@@ -92,24 +92,22 @@
 
 <!-- Stats + Billing — Combined compact grid -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-    <!-- Jobs (usage counts repairs + replacements) -->
+    <!-- Jobs (usage counts repairs + replacements this month).
+         Plan-limit bars only appear when a limit is actually getting close
+         (>=70%) — a green quota bar on every tile was noise. -->
     <div class="bg-white rounded-xl border border-gray-200 p-4">
         <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-gray-500">Jobs</span>
+            <span class="text-xs font-medium text-gray-500">Jobs this month</span>
             <i class="fas fa-tools text-green-500 text-xs"></i>
         </div>
         <div class="text-2xl font-bold text-gray-900">{{ usage.repairs.used }}</div>
-        {% if usage.repairs.limit %}
+        {% if usage.repairs.limit and usage.repairs.percent >= 70 %}
         <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
             <div class="h-1.5 rounded-full transition-all
-                {% if usage.repairs.percent >= 90 %}bg-red-500
-                {% elif usage.repairs.percent >= 70 %}bg-amber-500
-                {% else %}bg-green-500{% endif %}"
-                style="width: {% if usage.repairs.percent %}{{ usage.repairs.percent }}{% else %}0{% endif %}%"></div>
+                {% if usage.repairs.percent >= 90 %}bg-red-500{% else %}bg-amber-500{% endif %}"
+                style="width: {{ usage.repairs.percent }}%"></div>
         </div>
-        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.repairs.limit }}</span>
-        {% else %}
-        <span class="text-[11px] text-gray-400 mt-1 block">Unlimited</span>
+        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.repairs.limit }} on your plan</span>
         {% endif %}
     </div>
 
@@ -120,17 +118,13 @@
             <i class="fas fa-users text-blue-500 text-xs"></i>
         </div>
         <div class="text-2xl font-bold text-gray-900">{{ usage.technicians.used }}</div>
-        {% if usage.technicians.limit %}
+        {% if usage.technicians.limit and usage.technicians.percent >= 70 %}
         <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
             <div class="h-1.5 rounded-full transition-all
-                {% if usage.technicians.percent >= 90 %}bg-red-500
-                {% elif usage.technicians.percent >= 70 %}bg-amber-500
-                {% else %}bg-blue-500{% endif %}"
-                style="width: {% if usage.technicians.percent %}{{ usage.technicians.percent }}{% else %}0{% endif %}%"></div>
+                {% if usage.technicians.percent >= 90 %}bg-red-500{% else %}bg-amber-500{% endif %}"
+                style="width: {{ usage.technicians.percent }}%"></div>
         </div>
-        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.technicians.limit }}</span>
-        {% else %}
-        <span class="text-[11px] text-gray-400 mt-1 block">Unlimited</span>
+        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.technicians.limit }} on your plan</span>
         {% endif %}
     </div>
 
@@ -141,17 +135,13 @@
             <i class="fas fa-building text-purple-500 text-xs"></i>
         </div>
         <div class="text-2xl font-bold text-gray-900">{{ usage.customers.used }}</div>
-        {% if usage.customers.limit %}
+        {% if usage.customers.limit and usage.customers.percent >= 70 %}
         <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
             <div class="h-1.5 rounded-full transition-all
-                {% if usage.customers.percent >= 90 %}bg-red-500
-                {% elif usage.customers.percent >= 70 %}bg-amber-500
-                {% else %}bg-purple-500{% endif %}"
-                style="width: {% if usage.customers.percent %}{{ usage.customers.percent }}{% else %}0{% endif %}%"></div>
+                {% if usage.customers.percent >= 90 %}bg-red-500{% else %}bg-amber-500{% endif %}"
+                style="width: {{ usage.customers.percent }}%"></div>
         </div>
-        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.customers.limit }}</span>
-        {% else %}
-        <span class="text-[11px] text-gray-400 mt-1 block">Unlimited</span>
+        <span class="text-[11px] text-gray-400 mt-1 block">of {{ usage.customers.limit }} on your plan</span>
         {% endif %}
     </div>
 
@@ -164,6 +154,30 @@
         <div class="text-2xl font-bold text-green-600">${{ collected_this_month|floatformat:0 }}</div>
         <a href="{% url 'owner_invoice_list' %}" class="text-[11px] text-blue-500 hover:text-blue-700 mt-1 block">View invoices →</a>
     </div>
+</div>
+
+<!-- Desktop Quick Actions — up top where they're reachable (mobile uses the FAB) -->
+<div class="hidden sm:flex items-center gap-3 mb-6">
+    {% if shop_offers_repairs %}
+    <a href="{% url 'job_create' %}?type=repair" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-green-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-green-600 text-xs"></i></div>
+        New Repair
+    </a>
+    {% endif %}
+    {% if shop_offers_replacements %}
+    <a href="{% url 'job_create' %}?type=replacement" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-blue-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-car-crash text-blue-600 text-xs"></i></div>
+        New Replacement
+    </a>
+    {% endif %}
+    <a href="{% url 'create_customer' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-purple-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><i class="fas fa-user-plus text-purple-600 text-xs"></i></div>
+        New Customer
+    </a>
+    <a href="{% url 'job_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-amber-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-list text-amber-600 text-xs"></i></div>
+        View Jobs
+    </a>
 </div>
 
 <!-- Setup Progress (only if incomplete) -->
@@ -309,30 +323,6 @@
 
 <!-- Mobile FAB — Quick Actions -->
 {% include "includes/fab_quick_actions.html" %}
-
-<!-- Desktop Quick Actions — compact row -->
-<div class="hidden sm:flex items-center justify-center gap-3 mt-6">
-    {% if shop_offers_repairs %}
-    <a href="{% url 'job_create' %}?type=repair" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-green-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-green-600 text-xs"></i></div>
-        New Repair
-    </a>
-    {% endif %}
-    {% if shop_offers_replacements %}
-    <a href="{% url 'job_create' %}?type=replacement" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-blue-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-car-crash text-blue-600 text-xs"></i></div>
-        New Replacement
-    </a>
-    {% endif %}
-    <a href="{% url 'create_customer' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-purple-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><i class="fas fa-user-plus text-purple-600 text-xs"></i></div>
-        New Customer
-    </a>
-    <a href="{% url 'job_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-amber-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-list text-amber-600 text-xs"></i></div>
-        View Jobs
-    </a>
-</div>
 
 </div>
 
