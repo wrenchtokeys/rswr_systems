@@ -275,6 +275,106 @@ class UpdateRepairChargeTests(ChargeTestBase):
 
 
 @override_settings(**TEST_OVERRIDES)
+class ReplacementChargeTests(ChargeTestBase):
+    shop_name = 'Replace Charge Shop'
+    shop_email = 'replchargeowner@test.com'
+    shop_first = 'Replcharge'
+
+    def make_replacement(self, **kwargs):
+        from apps.technician_portal.models import Replacement
+        defaults = dict(
+            tenant=self.tenant, customer=self.customer, technician=self.technician,
+            unit_number='R-100', glass_position='WINDSHIELD',
+            parts_cost=Decimal('250.00'), labor_cost=Decimal('150.00'),
+            queue_status='COMPLETED',
+        )
+        defaults.update(kwargs)
+        return Replacement.objects.create(**defaults)
+
+    def _edit_payload(self, replacement, charge_rows):
+        return {
+            'customer': self.customer.id,
+            'technician': self.technician.id,
+            'unit_number': replacement.unit_number,
+            'glass_position': replacement.glass_position,
+            'parts_cost': '250.00',
+            'labor_cost': '150.00',
+            'charge_desc': [d for d, a in charge_rows],
+            'charge_amount': [a for d, a in charge_rows],
+        }
+
+    def test_create_with_charges(self):
+        resp = self.client.post('/tech/replacement/new/', {
+            'customer': self.customer.id,
+            'technician': self.technician.id,
+            'unit_number': 'R-200',
+            'glass_position': 'WINDSHIELD',
+            'parts_cost': '250.00',
+            'labor_cost': '150.00',
+            'charge_desc': ['Trip charge'],
+            'charge_amount': ['25.00'],
+        })
+        self.assertEqual(resp.status_code, 302, getattr(resp, 'context', None) and str(resp.context.get('form').errors))
+        from apps.technician_portal.models import Replacement
+        replacement = Replacement.objects.get(unit_number='R-200')
+        charges = list(replacement.extra_charges.all())
+        self.assertEqual(len(charges), 1)
+        self.assertEqual(charges[0].description, 'Trip charge')
+        self.assertEqual(charges[0].amount, Decimal('25.00'))
+        self.assertEqual(replacement.total_with_charges,
+                         replacement.cost + Decimal('25.00'))
+
+    def test_edit_saves_charges(self):
+        replacement = self.make_replacement(queue_status='APPROVED')
+        resp = self.client.post(
+            f'/tech/replacement/{replacement.pk}/edit/',
+            self._edit_payload(replacement, [('Trip charge', '25.00')]),
+        )
+        self.assertEqual(resp.status_code, 302, getattr(resp, 'context', None) and str(resp.context.get('form').errors))
+        self.assertEqual(replacement.extra_charges.count(), 1)
+
+    def test_invoiced_replacement_charges_locked(self):
+        replacement = self.make_replacement()
+        JobCharge.objects.create(
+            tenant=self.tenant, replacement=replacement,
+            description='Trip charge', amount=Decimal('25.00'),
+        )
+        invoice = InvoiceTrackingService(tenant=self.tenant).create_invoice_from_services(
+            self.customer, [replacement]
+        )
+        # Edit without charge rows must not wipe the charges
+        resp = self.client.post(
+            f'/tech/replacement/{replacement.pk}/edit/',
+            self._edit_payload(replacement, []),
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(replacement.extra_charges.count(), 1)
+        # And the edit page shows the lock note
+        resp = self.client.get(f'/tech/replacement/{replacement.pk}/edit/')
+        self.assertContains(resp, invoice.invoice_number)
+
+    def test_replacement_invoice_includes_charge_line(self):
+        replacement = self.make_replacement()
+        JobCharge.objects.create(
+            tenant=self.tenant, replacement=replacement,
+            description='Trip charge', amount=Decimal('25.00'),
+        )
+        invoice = InvoiceTrackingService(tenant=self.tenant).create_invoice_from_services(
+            self.customer, [replacement]
+        )
+        charge_line = invoice.line_items.get(description='Trip charge')
+        self.assertIsNone(charge_line.repair_id)
+        self.assertIsNone(charge_line.replacement_id)
+        self.assertEqual(invoice.subtotal, replacement.cost + Decimal('25.00'))
+
+    def test_preset_chips_render_on_replacement_form(self):
+        FeePreset.objects.create(tenant=self.tenant, label='Trip charge', amount=Decimal('25.00'))
+        resp = self.client.get('/tech/replacement/new/')
+        self.assertContains(resp, 'Trip charge')
+        self.assertContains(resp, 'addChargeRow')
+
+
+@override_settings(**TEST_OVERRIDES)
 class FeePresetSettingsTests(ChargeTestBase):
     shop_name = 'Preset Shop'
     shop_email = 'presetowner@test.com'

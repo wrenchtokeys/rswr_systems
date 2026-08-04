@@ -924,12 +924,24 @@ def replacement_create(request):
         messages.warning(request, limit_msg)
         return redirect('owner_dashboard')
 
+    from apps.technician_portal.views.jobs import _parse_extra_charges, _save_extra_charges
+    from apps.technician_portal.models import FeePreset
+
+    charges = []
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, tenant=tenant)
+        charges, charge_error = _parse_extra_charges(request)
+        if form.is_valid() and charge_error:
+            form.add_error(None, charge_error)
         if form.is_valid():
             replacement = form.save(commit=False)
             replacement.tenant = tenant
             replacement.save()
+
+            if charges:
+                _save_extra_charges(
+                    replacement, charges, tenant, taxable=not replacement.no_tax,
+                )
 
             # Auto-assign technician if none was chosen
             if not replacement.technician_id:
@@ -956,6 +968,8 @@ def replacement_create(request):
     return render(request, 'saas/replacement_form.html', {
         'form': form,
         'tenant': tenant,
+        'charge_rows': charges,
+        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True),
     })
 
 
@@ -1023,19 +1037,46 @@ def replacement_edit(request, pk):
         messages.warning(request, "You don't have access to edit this replacement.")
         return redirect('job_list')
 
+    # Extra charges are editable until the job lands on a live invoice;
+    # after that they're managed on the invoice (Add Line Item).
+    from apps.billing.services.invoice_sync import live_invoice_number_for_service
+    from apps.technician_portal.views.jobs import _parse_extra_charges, _save_extra_charges
+    from apps.technician_portal.models import FeePreset
+    charges_locked_invoice = live_invoice_number_for_service(replacement)
+
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
+        charges, charge_error = _parse_extra_charges(request)
+        if not charges_locked_invoice and charge_error and form.is_valid():
+            form.add_error(None, charge_error)
         if form.is_valid():
             form.save()
+            if not charges_locked_invoice:
+                _save_extra_charges(
+                    replacement, charges, tenant, taxable=not replacement.no_tax,
+                )
             messages.success(request, 'Replacement updated successfully!')
             return redirect('replacement_detail', pk=replacement.pk)
     else:
         form = ReplacementForm(instance=replacement, tenant=tenant)
 
+    if request.method == 'POST' and not charges_locked_invoice:
+        charge_rows = [
+            (d.strip(), a.strip())
+            for d, a in zip(request.POST.getlist('charge_desc'),
+                            request.POST.getlist('charge_amount'))
+            if d.strip() or a.strip()
+        ]
+    else:
+        charge_rows = [(c.description, c.amount) for c in replacement.extra_charges.all()]
+
     return render(request, 'saas/replacement_edit.html', {
         'form': form,
         'replacement': replacement,
         'tenant': tenant,
+        'charges_locked_invoice': charges_locked_invoice,
+        'charge_rows': charge_rows,
+        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True),
     })
 
 

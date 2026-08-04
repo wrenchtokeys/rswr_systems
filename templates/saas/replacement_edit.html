@@ -180,6 +180,10 @@
                     <span class="text-sm font-medium text-gray-700">Don't charge sales tax on this job</span>
                     <span class="text-xs text-gray-400 font-normal">(cash deal / exempt sale)</span>
                 </label>
+
+                <!-- Extra charges: additive one-off fees (trip charge, after-hours).
+                     Each becomes its own line on the invoice. -->
+                {% include "includes/extra_charges_editor.html" %}
             </div>
 
             <!-- Non-field errors -->
