@@ -23,96 +23,93 @@
     </div>
 </div>
 
-<!-- Aging Report Widget -->
-<div class="card mb-6" id="aging-widget">
-    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-brand-600 rounded-t-xl">
-        <div class="flex items-center gap-2">
-            <i class="fas fa-chart-bar text-white text-sm"></i>
-            <h3 class="text-sm font-semibold text-white uppercase tracking-wider">AR Aging Report</h3>
+<!-- Money at a glance: what's owed (by age) + this month -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+    <!-- Owed to you -->
+    <div class="card p-5 lg:col-span-2">
+        <div class="flex items-start justify-between gap-3">
+            <div>
+                <div class="text-xs font-medium text-gray-500 uppercase tracking-wider">Owed to you</div>
+                <div class="mt-1 text-3xl font-bold text-gray-900">${{ outstanding_amount|floatformat:2 }}</div>
+            </div>
+            <a href="{% url 'owner_aging_report_csv' %}"
+                class="inline-flex items-center text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
+                title="Download the full aging report as a spreadsheet">
+                <i class="fas fa-download mr-1"></i>Spreadsheet
+            </a>
         </div>
-        <a href="{% url 'owner_aging_report_csv' %}"
-            class="inline-flex items-center px-2 py-1 text-blue-100 text-xs hover:text-white hover:bg-blue-600 rounded transition-colors"
-            title="Export aging report as CSV">
-            <i class="fas fa-download mr-1"></i>CSV
+
+        {% if aging_buckets %}
+        <!-- One bar, split by how late the money is — the older, the darker -->
+        <div class="mt-4 flex h-4 w-full" style="gap: 2px" role="img"
+            aria-label="Unpaid invoices grouped by how late they are">
+            {% for b in aging_buckets %}
+            <div class="rounded-[3px]" style="flex-grow: {{ b.pct }}; min-width: 8px; background: {{ b.color }}"
+                title="{{ b.label }}: ${{ b.total|floatformat:2 }} ({{ b.count }} invoice{{ b.count|pluralize }})"></div>
+            {% endfor %}
+        </div>
+        <div class="mt-3 flex flex-wrap gap-x-5 gap-y-1.5">
+            {% for b in aging_buckets %}
+            <div class="flex items-center gap-1.5 text-sm" title="{{ b.count }} invoice{{ b.count|pluralize }}">
+                <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background: {{ b.color }}"></span>
+                <span class="text-gray-500">{{ b.label }}</span>
+                <span class="font-semibold text-gray-800">${{ b.total|floatformat:2 }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% if overdue_count > 0 %}
+        <a href="?status=overdue" class="mt-3 inline-flex items-center text-sm font-medium text-red-600 hover:text-red-800">
+            See the {{ overdue_count }} overdue invoice{{ overdue_count|pluralize }}<i class="fas fa-arrow-right text-xs ml-1.5"></i>
         </a>
+        {% endif %}
+        {% else %}
+        <div class="mt-4 flex items-center gap-2 text-sm text-green-700">
+            <i class="fas fa-check-circle text-green-500"></i>
+            Nothing outstanding — every invoice is paid.
+        </div>
+        {% endif %}
     </div>
-    <div id="aging-content" class="p-4">
-        <div class="text-center py-4 text-gray-400 text-sm">
-            <i class="fas fa-spinner fa-spin mr-2"></i>Loading aging data...
+
+    <!-- This month -->
+    <div class="card p-5">
+        <div class="text-xs font-medium text-gray-500 uppercase tracking-wider">This month</div>
+        <div class="mt-3 space-y-3">
+            <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-500">Collected</span>
+                <span class="text-lg font-bold text-green-600">${{ payments_month_amount|floatformat:2 }}</span>
+            </div>
+            <div class="flex items-center justify-between border-t border-gray-100 pt-3">
+                <span class="text-sm text-gray-500">Invoices created</span>
+                <span class="text-lg font-bold text-gray-900">{{ invoices_this_month }}</span>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Summary Cards -->
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-    <div class="card p-5">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</span>
-            <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-file-invoice-dollar text-amber-600 text-sm"></i>
-            </div>
-        </div>
-        <div class="text-xl sm:text-2xl font-bold text-gray-900">${{ outstanding_amount|floatformat:2 }}</div>
-    </div>
-    <a href="?status=overdue" class="card p-5 hover:shadow-md hover:border-red-300 transition-all cursor-pointer {% if status_filter == 'overdue' %}ring-2 ring-red-400{% endif %}">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Overdue</span>
-            <div class="w-8 h-8 {% if overdue_amount > 0 %}bg-red-100{% else %}bg-green-100{% endif %} rounded-lg flex items-center justify-center">
-                <i class="fas fa-exclamation-circle {% if overdue_amount > 0 %}text-red-600{% else %}text-green-600{% endif %} text-sm"></i>
-            </div>
-        </div>
-        <div class="flex items-center justify-between">
-            <div class="text-xl sm:text-2xl font-bold {% if overdue_amount > 0 %}text-red-600{% else %}text-green-600{% endif %}">${{ overdue_amount|floatformat:2 }}</div>
-            {% if overdue_count > 0 %}
-            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-600 text-white text-xs font-bold">{{ overdue_count }}</span>
-            {% endif %}
-        </div>
+<!-- Filters: status pills + customer dropdown -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+    {% for value, label in status_pills %}
+    <a href="?status={{ value }}{% if customer_filter %}&customer={{ customer_filter }}{% endif %}"
+        class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border transition-colors
+        {% if status_filter == value %}bg-gray-900 border-gray-900 text-white{% else %}bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900{% endif %}">
+        {{ label }}
+        {% if value == 'overdue' and overdue_count > 0 %}
+        <span class="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-bold
+            {% if status_filter == value %}bg-white text-red-600{% else %}bg-red-100 text-red-700{% endif %}">{{ overdue_count }}</span>
+        {% endif %}
     </a>
-    <div class="card p-5">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Payments This Mo.</span>
-            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-money-bill-wave text-green-600 text-sm"></i>
-            </div>
-        </div>
-        <div class="text-xl sm:text-2xl font-bold text-green-600">${{ payments_month_amount|floatformat:2 }}</div>
-    </div>
-    <div class="card p-5">
-        <div class="flex items-center justify-between mb-2">
-            <span class="text-xs font-medium text-gray-500 uppercase tracking-wider">Invoices This Mo.</span>
-            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <i class="fas fa-file-alt text-blue-600 text-sm"></i>
-            </div>
-        </div>
-        <div class="text-xl sm:text-2xl font-bold text-gray-900">{{ invoices_this_month }}</div>
-    </div>
-</div>
-
-<!-- Filters -->
-<div class="card p-4 mb-6">
-    <form method="get" class="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div class="flex items-center gap-2">
-            <label class="text-sm font-medium text-gray-700">Status:</label>
-            <select name="status" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-3">
-                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
-                <option value="paid" {% if status_filter == 'paid' %}selected{% endif %}>Paid</option>
-                <option value="unpaid" {% if status_filter == 'unpaid' %}selected{% endif %}>Unpaid</option>
-                <option value="overdue" {% if status_filter == 'overdue' %}selected{% endif %}>Overdue</option>
-                <option value="partial" {% if status_filter == 'partial' %}selected{% endif %}>Partial</option>
-            </select>
-        </div>
-        <div class="flex items-center gap-2">
-            <label class="text-sm font-medium text-gray-700">Customer:</label>
-            <select name="customer" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-3">
-                <option value="">All Customers</option>
-                {% for cust in customers %}
-                <option value="{{ cust.id }}" {% if customer_filter == cust.id|stringformat:"d" %}selected{% endif %}>{{ cust.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
+    {% endfor %}
+    <form method="get" class="ml-auto flex items-center gap-2">
+        <input type="hidden" name="status" value="{{ status_filter }}">
+        <select name="customer" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 pl-3 pr-8">
+            <option value="">All customers</option>
+            {% for cust in customers %}
+            <option value="{{ cust.id }}" {% if customer_filter == cust.id|stringformat:"d" %}selected{% endif %}>{{ cust.name }}</option>
+            {% endfor %}
+        </select>
         {% if status_filter != 'all' or customer_filter %}
-        <a href="{% url 'owner_invoice_list' %}" class="text-sm text-blue-600 hover:text-blue-800 font-medium">
-            <i class="fas fa-times mr-1"></i>Clear filters
+        <a href="{% url 'owner_invoice_list' %}" class="text-sm text-gray-400 hover:text-gray-600 font-medium whitespace-nowrap" title="Clear filters">
+            <i class="fas fa-times mr-1"></i>Clear
         </a>
         {% endif %}
     </form>
@@ -626,48 +623,6 @@
 
 {% block extra_js %}
 <script>
-// === Aging Report Widget ===
-(function loadAgingReport() {
-    fetch('{% url "owner_aging_report" %}')
-        .then(r => r.json())
-        .then(data => {
-            const buckets = data.buckets || {};
-            const bucketDefs = [
-                { key: 'current',  label: 'Current',      color: 'green',  bg: 'bg-green-50',  border: 'border-green-200', text: 'text-green-800', badge: 'bg-green-100 text-green-700' },
-                { key: '1_30',    label: '1–30 days',    color: 'yellow', bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-800', badge: 'bg-yellow-100 text-yellow-700' },
-                { key: '31_60',   label: '31–60 days',   color: 'orange', bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-800', badge: 'bg-orange-100 text-orange-700' },
-                { key: '61_90',   label: '61–90 days',   color: 'red',    bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-800',    badge: 'bg-red-100 text-red-700' },
-                { key: '90_plus', label: '90+ days',     color: 'darkred',bg: 'bg-red-100',   border: 'border-red-400',    text: 'text-red-900',    badge: 'bg-red-200 text-red-900' },
-            ];
-            const totalAmt = data.grand_total || 0;
-            let html = '<div class="grid grid-cols-2 sm:grid-cols-5 gap-3">';
-            bucketDefs.forEach(def => {
-                const b = buckets[def.key] || { count: 0, total: 0 };
-                const pct = totalAmt > 0 ? ((b.total / totalAmt) * 100).toFixed(0) : 0;
-                html += `
-                <div class="${def.bg} ${def.border} border rounded-lg p-4">
-                    <div class="text-xs font-semibold ${def.text} uppercase tracking-wider mb-2">${def.label}</div>
-                    <div class="text-lg font-bold ${def.text}">$${parseFloat(b.total).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
-                    <div class="flex items-center gap-2 mt-1">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${def.badge}">${b.count} inv</span>
-                        ${totalAmt > 0 ? `<span class="text-xs ${def.text} opacity-70">${pct}%</span>` : ''}
-                    </div>
-                </div>`;
-            });
-            html += '</div>';
-            if (totalAmt > 0) {
-                html += `<div class="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
-                    <span class="text-xs text-gray-500">Total Outstanding AR</span>
-                    <span class="text-sm font-bold text-gray-900">$${parseFloat(totalAmt).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                </div>`;
-            }
-            document.getElementById('aging-content').innerHTML = html;
-        })
-        .catch(() => {
-            document.getElementById('aging-content').innerHTML = '<p class="text-sm text-gray-400 text-center py-4">Could not load aging data.</p>';
-        });
-})();
-
 // === Send Reminder (from invoice list) ===
 function sendReminderAjax(invoiceId, invoiceNumber, customerName) {
     if (!confirm(`Send payment reminder for ${invoiceNumber} to ${customerName}?`)) return;

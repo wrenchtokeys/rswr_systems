@@ -2815,6 +2815,39 @@ def owner_invoice_list(request):
         created_at__gte=month_start,
     ).count()
 
+    # AR aging, server-rendered (replaces the old client-side fetch of the
+    # JSON endpoint, which showed a spinner on every page load). Only buckets
+    # with money in them are passed — the template hides the rest.
+    from apps.billing.tasks import generate_aging_report
+    _aging = generate_aging_report(tenant_id=tenant.id).get(tenant.slug) or {}
+    _aging_data = _aging.get('buckets') or {}
+    aging_total = _aging.get('grand_total') or 0
+    _bucket_defs = [
+        # (key, plain-language label, segment color)
+        # Severity ramp: neutral gray for not-yet-due, then light amber to
+        # dark red as invoices get older. Hex (not Tailwind classes) so the
+        # CSS purge can't drop them.
+        ('current', 'Not yet due', '#9ca3af'),
+        ('1_30', '1–30 days late', '#fde68a'),
+        ('31_60', '31–60 days late', '#f59e0b'),
+        ('61_90', '61–90 days late', '#dc2626'),
+        ('90_plus', 'Over 90 days late', '#7f1d1d'),
+    ]
+    aging_buckets = []
+    for key, label, color in _bucket_defs:
+        b = _aging_data.get(key) or {}
+        total = b.get('total') or 0
+        if total <= 0:
+            continue
+        aging_buckets.append({
+            'key': key,
+            'label': label,
+            'color': color,
+            'count': b.get('count') or 0,
+            'total': total,
+            'pct': round(total / aging_total * 100, 1) if aging_total else 0,
+        })
+
     # Customer list for filter dropdown
     customers = Customer.objects.filter(tenant=tenant).order_by('name')
 
@@ -2906,6 +2939,15 @@ def owner_invoice_list(request):
         'overdue_count': overdue_count,
         'payments_month_amount': payments_month_amount,
         'invoices_this_month': invoices_this_month,
+        'aging_buckets': aging_buckets,
+        'aging_total': aging_total,
+        'status_pills': [
+            ('all', 'All'),
+            ('unpaid', 'Unpaid'),
+            ('overdue', 'Overdue'),
+            ('partial', 'Partially paid'),
+            ('paid', 'Paid'),
+        ],
         'uninvoiced_customers': uninvoiced_customers,
         'default_payment_terms': default_payment_terms,
         'default_payment_terms_display': terms_display,

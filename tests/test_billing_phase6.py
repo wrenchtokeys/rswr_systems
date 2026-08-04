@@ -314,3 +314,46 @@ class SendReminderFromListTests(TestCase):
     def test_invoice_list_url_resolves(self):
         url = reverse('owner_invoice_list')
         self.assertEqual(url, '/owner/invoices/')
+
+
+@override_settings(**TEST_OVERRIDES)
+class OwnerInvoicesAgingCardTests(TestCase):
+    """The /owner/invoices/ page renders the aging summary server-side
+    (the old widget fetched the JSON endpoint client-side)."""
+
+    def setUp(self):
+        self.user, self.tenant = make_tenant('AgingCardShop', 'agingcard_ph6')
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.customer = Customer.objects.create(
+            name='Aging Card Corp', tenant=self.tenant, email='agingcard@test.com'
+        )
+
+    def test_renders_only_nonempty_buckets(self):
+        make_invoice(self.customer, self.tenant, status='SENT', days_overdue=0)      # current
+        make_invoice(self.customer, self.tenant, status='OVERDUE', days_overdue=20)  # 1–30
+        make_invoice(self.customer, self.tenant, status='OVERDUE', days_overdue=75)  # 61–90
+        resp = self.client.get('/owner/invoices/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Owed to you')
+        self.assertContains(resp, 'Not yet due')
+        self.assertContains(resp, '1–30 days late')
+        self.assertContains(resp, '61–90 days late')
+        self.assertNotContains(resp, '31–60 days late')  # empty bucket is hidden
+        self.assertNotContains(resp, 'Over 90 days late')
+        buckets = resp.context['aging_buckets']
+        self.assertEqual([b['key'] for b in buckets], ['current', '1_30', '61_90'])
+        self.assertEqual(resp.context['aging_total'], 1500.0)
+
+    def test_all_paid_shows_caught_up_state(self):
+        make_invoice(self.customer, self.tenant, status='PAID', days_overdue=0)
+        resp = self.client.get('/owner/invoices/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Nothing outstanding')
+        self.assertEqual(resp.context['aging_buckets'], [])
+
+    def test_overdue_pill_shows_count_and_filter_link(self):
+        make_invoice(self.customer, self.tenant, status='OVERDUE', days_overdue=10)
+        resp = self.client.get('/owner/invoices/')
+        self.assertContains(resp, '?status=overdue')
+        self.assertContains(resp, 'See the 1 overdue invoice')
