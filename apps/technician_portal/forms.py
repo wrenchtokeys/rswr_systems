@@ -982,15 +982,11 @@ class QuickJobForm(forms.Form):
     )
     damage_photo_before = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={
-            'accept': 'image/*', 'capture': 'environment',
-        }),
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
     )
     damage_photo_after = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={
-            'accept': 'image/*', 'capture': 'environment',
-        }),
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
     )
     customer_notes = forms.CharField(
         required=False,
