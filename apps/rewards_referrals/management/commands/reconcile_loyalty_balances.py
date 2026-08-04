@@ -126,11 +126,11 @@ class Command(BaseCommand):
 
     def _reconcile_tenant(self, tenant, fix_mode, as_json):
         """Reconcile all customers for a single tenant."""
-        # Find all customer_users who have at least one PointTransaction for this tenant
-        customer_user_ids = (
+        # Find all customers who have at least one PointTransaction for this tenant
+        customer_ids = (
             PointTransaction.objects
             .filter(tenant=tenant)
-            .values_list('customer_user_id', flat=True)
+            .values_list('customer_id', flat=True)
             .distinct()
         )
 
@@ -141,13 +141,13 @@ class Command(BaseCommand):
         missing_reward_row = 0
         discrepancies = []
 
-        for cu_id in customer_user_ids:
+        for customer_id in customer_ids:
             checked += 1
 
             # Sum the ledger (ground truth) — always tenant-scoped
             ledger_sum = (
                 PointTransaction.objects
-                .filter(tenant=tenant, customer_user_id=cu_id)
+                .filter(tenant=tenant, customer_id=customer_id)
                 .aggregate(total=Sum('amount'))
             )['total'] or 0
 
@@ -156,17 +156,17 @@ class Command(BaseCommand):
             # select_for_update() outside a transaction raises TransactionManagementError.
             try:
                 reward = Reward.objects.get(
-                    customer_user_id=cu_id,
+                    customer_id=customer_id,
                 )
             except Reward.DoesNotExist:
                 missing_reward_row += 1
                 logger.error(
-                    'reconcile_loyalty: Reward row missing for customer_user_id=%s '
+                    'reconcile_loyalty: Reward row missing for customer_id=%s '
                     'tenant=%s (ledger_sum=%s)',
-                    cu_id, tenant.slug, ledger_sum,
+                    customer_id, tenant.slug, ledger_sum,
                 )
                 discrepancies.append({
-                    'customer_user_id': cu_id,
+                    'customer_id': customer_id,
                     'issue': 'missing_reward_row',
                     'ledger_sum': ledger_sum,
                     'cached_balance': None,
@@ -183,7 +183,7 @@ class Command(BaseCommand):
             drifted += 1
             drift = ledger_sum - cached_balance
             discrepancy = {
-                'customer_user_id': cu_id,
+                'customer_id': customer_id,
                 'tenant_slug': tenant.slug,
                 'ledger_sum': ledger_sum,
                 'cached_balance': cached_balance,
@@ -192,9 +192,9 @@ class Command(BaseCommand):
             discrepancies.append(discrepancy)
 
             logger.error(
-                'reconcile_loyalty: DRIFT detected — customer_user_id=%s tenant=%s '
+                'reconcile_loyalty: DRIFT detected — customer_id=%s tenant=%s '
                 'ledger_sum=%s cached=%s drift=%s%s',
-                cu_id, tenant.slug, ledger_sum, cached_balance, drift,
+                customer_id, tenant.slug, ledger_sum, cached_balance, drift,
                 ' (FIXING)' if fix_mode else ' (run --fix to correct)',
             )
 
@@ -207,8 +207,8 @@ class Command(BaseCommand):
                 fixed += 1
                 discrepancy['fixed'] = True
                 logger.info(
-                    'reconcile_loyalty: FIXED customer_user_id=%s — set points=%s',
-                    cu_id, ledger_sum,
+                    'reconcile_loyalty: FIXED customer_id=%s — set points=%s',
+                    customer_id, ledger_sum,
                 )
 
         return {
@@ -240,12 +240,12 @@ class Command(BaseCommand):
             for d in tenant_result.get('discrepancies', []):
                 if d.get('issue') == 'missing_reward_row':
                     self.stdout.write(self.style.WARNING(
-                        f'    → customer_user={d["customer_user_id"]} MISSING Reward row (ledger={d["ledger_sum"]})'
+                        f'    → customer={d["customer_id"]} MISSING Reward row (ledger={d["ledger_sum"]})'
                     ))
                 else:
                     fix_note = ' [FIXED]' if d.get('fixed') else ' [UNRESOLVED — run --fix]'
                     self.stdout.write(self.style.ERROR(
-                        f'    → customer_user={d["customer_user_id"]} '
+                        f'    → customer={d["customer_id"]} '
                         f'ledger={d["ledger_sum"]} cached={d["cached_balance"]} '
                         f'drift={d["drift"]}{fix_note}'
                     ))

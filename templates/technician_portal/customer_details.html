@@ -214,7 +214,8 @@
                             </form>
                             {% endif %}
                             <form method="post" action="{% url 'remove_portal_user' customer.id cu.id %}" class="inline"
-                                  onsubmit="return confirm('Remove portal access for {{ cu.user.get_full_name|default:cu.user.username|escapejs }}?\n\nTheir login will be deactivated. You can restore it for 30 days.');">
+                                  data-confirm="Remove portal access for {{ cu.user.get_full_name|default:cu.user.username }}?&#10;&#10;Their login will be deactivated. You can restore it for 30 days."
+                                  data-confirm-title="Remove portal access" data-confirm-label="Remove Access" data-confirm-danger>
                                 {% csrf_token %}
                                 <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline" title="Remove this portal user">
                                     Remove
@@ -293,6 +294,67 @@
                             <i class="fas fa-user-plus mr-2"></i>Invite to Portal
                         </button>
                     </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if loyalty %}
+            <!-- Rewards / Loyalty -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+                <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+                        <i class="fas fa-star mr-1.5 text-gray-400"></i>{{ loyalty.program_name }}
+                    </h3>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold {% if loyalty.balance > 0 %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-600{% endif %}">
+                        {{ loyalty.balance }} pts
+                    </span>
+                </div>
+                <div class="p-6 space-y-4">
+                    {% if loyalty.pending_redemptions %}
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Waiting to Use</p>
+                        {% for redemption in loyalty.pending_redemptions %}
+                        <div class="flex items-center justify-between py-1.5 text-sm">
+                            <span class="text-gray-900">{{ redemption.reward_option.name }}</span>
+                            <span class="text-xs text-gray-500">{{ redemption.created_at|date:"M d" }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if loyalty.recent_transactions %}
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Recent Activity</p>
+                        {% for tx in loyalty.recent_transactions %}
+                        <div class="flex items-center justify-between py-1.5 text-sm">
+                            <span class="text-gray-600 truncate pr-2">{{ tx.description }}</span>
+                            <span class="font-medium whitespace-nowrap {% if tx.amount >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                                {% if tx.amount >= 0 %}+{% endif %}{{ tx.amount }}
+                            </span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500">No points activity yet. Points are earned automatically when jobs are completed.</p>
+                    {% endif %}
+
+                    {% if loyalty.can_redeem and loyalty.affordable_options %}
+                    <div class="pt-4 border-t border-gray-100">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Redeem Points</p>
+                        {% for option in loyalty.affordable_options %}
+                        <form method="post" action="{% url 'redeem_for_customer' customer.id %}" class="flex items-center justify-between gap-2 py-1.5"
+                              data-confirm="Redeem {{ option.name }} for {{ option.points_required }} points? This spends the customer's points."
+                              data-confirm-title="Redeem reward" data-confirm-label="Redeem">
+                            {% csrf_token %}
+                            <input type="hidden" name="option_id" value="{{ option.id }}">
+                            <span class="text-sm text-gray-900">{{ option.name }} <span class="text-xs text-gray-500">({{ option.points_required }} pts)</span></span>
+                            <button type="submit" class="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                                Redeem
+                            </button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}

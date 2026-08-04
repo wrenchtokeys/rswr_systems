@@ -92,7 +92,7 @@ class RewardFulfillmentLeastLoadedTest(TestCase):
         self.cu = _make_customer_user(self.tenant, "main")
         self.reward_option = _make_reward_option(self.tenant)
 
-        reward = Reward.objects.create(customer_user=self.cu, points=500)
+        reward = Reward.objects.create(customer=self.cu.customer, tenant=self.tenant, points=500)
 
         # Give tech_busy 2 active repairs, tech_free 0
         _make_active_repair(self.tenant, self.cu, self.tech_busy)
@@ -126,7 +126,7 @@ class RewardFulfillmentTiebreakerTest(TestCase):
 
         self.cu = _make_customer_user(self.tenant, "tie")
         self.reward_option = _make_reward_option(self.tenant)
-        reward = Reward.objects.create(customer_user=self.cu, points=500)
+        reward = Reward.objects.create(customer=self.cu.customer, tenant=self.tenant, points=500)
         self.redemption = RewardRedemption.objects.create(
             reward=reward, reward_option=self.reward_option, status="PENDING"
         )
@@ -153,7 +153,7 @@ class RewardFulfillmentCrossTenantIsolationTest(TestCase):
 
         self.cu_a = _make_customer_user(self.tenant_a, "a")
         self.opt_a = _make_reward_option(self.tenant_a)
-        reward_a = Reward.objects.create(customer_user=self.cu_a, points=500)
+        reward_a = Reward.objects.create(customer=self.cu_a.customer, tenant=self.tenant_a, points=500)
         self.redemption_a = RewardRedemption.objects.create(
             reward=reward_a, reward_option=self.opt_a, status="PENDING"
         )
@@ -176,7 +176,7 @@ class RewardFulfillmentNoTechniciansTest(TestCase):
 
         self.cu = _make_customer_user(self.tenant, "alone")
         self.opt = _make_reward_option(self.tenant)
-        reward = Reward.objects.create(customer_user=self.cu, points=500)
+        reward = Reward.objects.create(customer=self.cu.customer, tenant=self.tenant, points=500)
         self.redemption = RewardRedemption.objects.create(
             reward=reward, reward_option=self.opt, status="PENDING"
         )
@@ -194,7 +194,7 @@ class RewardFulfillmentQueryCountTest(TestCase):
 
         self.cu = _make_customer_user(self.tenant, "perf")
         self.opt = _make_reward_option(self.tenant)
-        reward = Reward.objects.create(customer_user=self.cu, points=500)
+        reward = Reward.objects.create(customer=self.cu.customer, tenant=self.tenant, points=500)
         self.redemption = RewardRedemption.objects.create(
             reward=reward, reward_option=self.opt, status="PENDING"
         )

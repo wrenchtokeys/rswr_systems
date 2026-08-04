@@ -76,7 +76,7 @@ class TestRewardDiscountFix:
 
         # Create reward balance with enough points for all tests
         self.test_reward = Reward.objects.create(
-            customer_user=self.test_customer_user,
+            customer=self.test_customer,
             points=10000  # Enough points for all redemptions
         )
         print(f"✓ Created reward balance: {self.test_reward.points} points")

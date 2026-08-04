@@ -2214,6 +2214,78 @@ def invite_member(request):
 # 10. Shop Join — Customer Self-Signup (Phase 4)
 # ------------------------------------------------------------------
 
+def _record_signup_referral(tenant, customer_user, raw_code):
+    """
+    Validate + record a referral code entered at signup. Returns True if a
+    PENDING referral was recorded (bonuses pay on first completed job).
+    Never raises — signup must succeed even if the code is bad.
+    """
+    if not raw_code or not str(raw_code).strip():
+        return False
+    try:
+        from apps.rewards_referrals.services import ReferralService
+        code_obj = ReferralService.validate_referral_code(str(raw_code).strip().upper())
+        if code_obj is None:
+            return False
+        # Cross-tenant codes are rejected inside record_referral too, but
+        # check here so we can tell the difference for messaging.
+        if code_obj.customer_user.customer.tenant_id != tenant.id:
+            return False
+        return ReferralService.record_referral(code_obj, customer_user)
+    except Exception:
+        logger.warning('Failed to record signup referral', exc_info=True)
+        return False
+
+
+def _notify_shop_new_signup(tenant, customer, user, referral_recorded=False):
+    """
+    Best-effort owner notification when a customer self-signs up via
+    /join/<slug>/. In-app notification to manager technicians + email to the
+    shop owner. Never raises — signup must succeed even if delivery fails.
+    """
+    signup_kind = 'fleet account' if customer.customer_type == 'FLEET' else 'individual account'
+    referral_note = ' (used a referral code)' if referral_recorded else ''
+
+    try:
+        from apps.technician_portal.models import Technician, TechnicianNotification
+        for tech in Technician.objects.filter(tenant=tenant, is_active=True, is_manager=True):
+            TechnicianNotification.objects.create(
+                technician=tech,
+                message=f"New portal signup: {customer.name} ({signup_kind}){referral_note}",
+                read=False,
+            )
+    except Exception:
+        logger.warning('Failed to create signup TechnicianNotification', exc_info=True)
+
+    try:
+        recipient = getattr(getattr(tenant, 'owner', None), 'email', '') or (tenant.business_email or '')
+        if not recipient:
+            return
+        from core.email_utils import send_branded_email
+        detail_rows = [
+            ('Customer', customer.name),
+            ('Type', 'Fleet' if customer.customer_type == 'FLEET' else 'Individual'),
+            ('Contact', user.get_full_name() or user.email),
+            ('Email', user.email),
+        ]
+        if referral_recorded:
+            detail_rows.append(('Referral', 'Signed up with a referral code — bonus pays after their first completed job'))
+        send_branded_email(
+            subject=f"New customer signup — {customer.name}",
+            recipient_list=[recipient],
+            headline="New Portal Signup",
+            body_paragraphs=[
+                f"{customer.name} just created a portal account at your shop{referral_note}.",
+                "They can now request services from the customer portal. Requests will appear in your queue for pricing and approval as usual.",
+            ],
+            detail_rows=detail_rows,
+            tenant=tenant,
+            fail_silently=True,
+        )
+    except Exception:
+        logger.warning('Failed to send signup notification email', exc_info=True)
+
+
 @ratelimit(key='ip', rate='10/h', method='POST', block=False)
 def shop_join_view(request, slug):
     """Public page: /join/<slug>/ — customer self-signup for a shop's portal."""
@@ -2263,7 +2335,7 @@ def shop_join_view(request, slug):
                 customer_type='RETAIL',
                 email=request.user.email,
             )
-            CustomerUserModel.objects.create(
+            new_cu = CustomerUserModel.objects.create(
                 user=request.user,
                 customer=customer,
                 is_primary_contact=True,
@@ -2273,6 +2345,8 @@ def shop_join_view(request, slug):
                 user=request.user,
                 defaults={'role': 'viewer'},
             )
+        referral_recorded = _record_signup_referral(tenant, new_cu, request.GET.get('ref'))
+        _notify_shop_new_signup(tenant, customer, request.user, referral_recorded)
         request.session['tenant_id'] = tenant.id
         messages.success(request, f"Welcome to {tenant.name}! Your portal account is ready.")
         return redirect('customer_dashboard')
@@ -2294,6 +2368,7 @@ def shop_join_view(request, slug):
         email = request.POST.get('email', '').strip().lower()
         phone = request.POST.get('phone', '').strip() or None
         company_name = request.POST.get('company_name', '').strip()
+        referral_code_input = request.POST.get('referral_code', '').strip()
         password = request.POST.get('password', '')
         confirm_password = request.POST.get('confirm_password', '')
 
@@ -2340,6 +2415,7 @@ def shop_join_view(request, slug):
                     'email': email,
                     'phone': phone or '',
                     'company_name': company_name,
+                    'referral_code': referral_code_input,
                 },
                 'turnstile_site_key': turnstile_site_key,
             })
@@ -2374,7 +2450,7 @@ def shop_join_view(request, slug):
                 )
 
                 # 3. Create CustomerUser
-                CustomerUser.objects.create(
+                customer_user_rec = CustomerUser.objects.create(
                     user=user,
                     customer=customer,
                     is_primary_contact=True,
@@ -2386,6 +2462,14 @@ def shop_join_view(request, slug):
                     user=user,
                     role='viewer',
                 )
+
+            # Referral (PENDING — pays after first completed job) + owner heads-up
+            referral_recorded = _record_signup_referral(tenant, customer_user_rec, referral_code_input)
+            _notify_shop_new_signup(tenant, customer, user, referral_recorded)
+            if referral_code_input and not referral_recorded:
+                messages.warning(request, "That referral code wasn't valid for this shop, so no referral was recorded — your account was still created.")
+            elif referral_recorded:
+                messages.info(request, "Referral recorded! You and your referrer will receive bonus points after your first completed service.")
 
             # 5. Log them in
             auth_user = authenticate(request, username=user.username, password=password)
@@ -2400,7 +2484,7 @@ def shop_join_view(request, slug):
             return redirect('customer_dashboard')
 
         except Exception as e:
-            logger.error(f"Shop join error for {email} at {tenant.slug}: {e}")
+            logger.error(f"Shop join error for {email} at {tenant.slug}: {e}", exc_info=True)
             return render(request, 'saas/shop_join.html', {
                 'tenant': tenant,
                 'errors': ['An unexpected error occurred. Please try again.'],
@@ -2410,6 +2494,7 @@ def shop_join_view(request, slug):
                     'email': email,
                     'phone': phone or '',
                     'company_name': company_name,
+                    'referral_code': referral_code_input,
                 },
                 'turnstile_site_key': turnstile_site_key,
             })
@@ -2417,6 +2502,7 @@ def shop_join_view(request, slug):
     return render(request, 'saas/shop_join.html', {
         'tenant': tenant,
         'turnstile_site_key': turnstile_site_key,
+        'prefill_referral_code': (request.GET.get('ref') or '').strip().upper(),
     })
 
 
@@ -4843,12 +4929,12 @@ def owner_generate_invoice_from_replacement(request, replacement_id):
 
 @owner_or_manager_required
 @require_POST
-def owner_loyalty_adjust_points(request, customer_user_id):
+def owner_loyalty_adjust_points(request, customer_id):
     """
-    POST /owner/loyalty/customers/<customer_user_id>/adjust/
+    POST /owner/loyalty/customers/<customer_id>/adjust/
 
-    Manually award or deduct loyalty points for a specific customer.
-    Restricted to owners and managers of the same tenant.
+    Manually award or deduct loyalty points for a specific customer
+    (company). Restricted to owners and managers of the same tenant.
 
     Form fields:
         amount  (int, non-zero — positive = award, negative = deduct)
@@ -4860,20 +4946,17 @@ def owner_loyalty_adjust_points(request, customer_user_id):
         { "success": false, "error": "..." }
     """
     from apps.rewards_referrals.services import LoyaltyService
-    from apps.customer_portal.models import CustomerUser
+    from core.models import Customer
 
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
         return JsonResponse({'success': False, 'error': 'Unauthorized.'}, status=403)
 
     # Unscoped get_object_or_404 is forbidden — always include tenant= scoping.
-    # CustomerUser doesn't have a direct tenant FK but we reach it via customer__tenant.
+    # Default manager: soft-deleted customers are not adjustable.
     try:
-        cu = CustomerUser.objects.select_related('customer', 'user').get(
-            pk=customer_user_id,
-            customer__tenant=tenant,
-        )
-    except CustomerUser.DoesNotExist:
+        customer = Customer.objects.get(pk=customer_id, tenant=tenant)
+    except Customer.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Customer not found.'}, status=404)
 
     # Parse and validate inputs
@@ -4887,7 +4970,7 @@ def owner_loyalty_adjust_points(request, customer_user_id):
 
     try:
         pt = LoyaltyService.manual_adjustment(
-            customer_user=cu,
+            customer=customer,
             amount=amount,
             reason=reason,
             created_by=request.user,
@@ -4896,7 +4979,7 @@ def owner_loyalty_adjust_points(request, customer_user_id):
     except ValueError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
     except Exception as exc:
-        logger.error('owner_loyalty_adjust_points: unexpected error for cu=%s: %s', customer_user_id, exc, exc_info=True)
+        logger.error('owner_loyalty_adjust_points: unexpected error for customer=%s: %s', customer_id, exc, exc_info=True)
         return JsonResponse({'success': False, 'error': 'An unexpected error occurred.'}, status=500)
 
     return JsonResponse({
@@ -4927,7 +5010,7 @@ def owner_loyalty_liability_report(request):
             "active_customer_count": 7,
             "customers": [
                 {
-                    "customer_user_id": 3,
+                    "customer_id": 3,
                     "email": "fleet@eos.com",
                     "customer_name": "EOS Trucking",
                     "current_balance": 450,
@@ -4998,7 +5081,8 @@ def owner_loyalty_dashboard(request):
 def owner_loyalty_save_config(request):
     """
     POST /owner/loyalty/config/
-    Save LoyaltyConfig fields: is_active, points_per_repair, points_expiry_days.
+    Save LoyaltyConfig fields: is_active, points_per_repair,
+    points_expiry_days, show_balance_in_emails.
     """
     from apps.rewards_referrals.models import LoyaltyConfig
 
@@ -5010,8 +5094,10 @@ def owner_loyalty_save_config(request):
 
     errors = []
 
-    # Toggle
+    # Toggles
     config.is_active = request.POST.get('is_active') == 'true'
+    if 'show_balance_in_emails' in request.POST:
+        config.show_balance_in_emails = request.POST.get('show_balance_in_emails') == 'true'
 
     # points_per_repair
     try:
@@ -5040,6 +5126,7 @@ def owner_loyalty_save_config(request):
         'is_active': config.is_active,
         'points_per_repair': config.points_per_repair,
         'points_expiry_days': config.points_expiry_days,
+        'show_balance_in_emails': config.show_balance_in_emails,
     })
 
 

@@ -324,6 +324,30 @@ def customer_details(request, customer_id):
             reverse=True,
         )
 
+    # Loyalty: shared company balance + recent activity, shown to all shop
+    # staff when the program is on. Redeeming on the customer's behalf is
+    # manager/owner-only (mirrors price-override authorization).
+    loyalty = None
+    try:
+        from apps.rewards_referrals.models import LoyaltyConfig, RewardRedemption
+        from apps.rewards_referrals.services import LoyaltyService, RewardService
+
+        config = LoyaltyConfig.get_for_tenant(tenant) if tenant else None
+        if config and config.is_active:
+            available = RewardService.get_available_rewards(customer)
+            loyalty = {
+                'balance': LoyaltyService.get_balance(customer),
+                'recent_transactions': LoyaltyService.get_transaction_history(customer, limit=5),
+                'pending_redemptions': RewardRedemption.objects.filter(
+                    reward__customer=customer, status='PENDING',
+                ).select_related('reward_option'),
+                'affordable_options': available['available'],
+                'program_name': config.program_name,
+                'can_redeem': is_admin or is_mgr,
+            }
+    except Exception:
+        logger.error('customer_details: loyalty card failed for customer=%s', customer_id, exc_info=True)
+
     return render(request, 'technician_portal/customer_details.html', {
         'customer': customer,
         'units': units,
@@ -334,6 +358,7 @@ def customer_details(request, customer_id):
         'portal_users': portal_users,
         'removed_portal_users': removed_portal_users,
         'pending_invitations': pending_invitations,
+        'loyalty': loyalty,
     })
 
 

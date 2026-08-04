@@ -2,14 +2,16 @@
 Reward fulfillment and application views for the technician portal.
 """
 
-from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
+from django.db import transaction
+from django.shortcuts import render, get_object_or_404, redirect
+from django.views.decorators.http import require_POST
 
 from apps.technician_portal.models import Technician, Repair
-from apps.customer_portal.models import CustomerUser
 from apps.rewards_referrals.models import RewardRedemption
-from apps.rewards_referrals.services import RewardFulfillmentService
+from apps.rewards_referrals.services import RewardFulfillmentService, RewardService
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
+from core.models import Customer
 
 import logging
 
@@ -33,12 +35,12 @@ def reward_fulfillment_detail(request, redemption_id):
 
     # Scope redemption to the current tenant via the customer chain.
     # RewardRedemption has no direct tenant FK; path is
-    # redemption → reward → customer_user → customer → tenant.
+    # redemption → reward → customer → tenant.
     # An unscoped get_object_or_404 here lets a tech from Shop A read/fulfill
     # redemptions belonging to Shop B just by guessing the integer PK (IDOR).
     if tenant:
         redemption_qs = RewardRedemption.objects.filter(
-            reward__customer_user__customer__tenant=tenant
+            reward__customer__tenant=tenant
         )
     else:
         redemption_qs = RewardRedemption.objects.none()
@@ -57,19 +59,12 @@ def reward_fulfillment_detail(request, redemption_id):
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     can_fulfill = is_assigned_technician or is_admin
 
-    # Get customer repairs for applying reward.
-    #
-    # CODE-180: Previously this looked up the Customer via email:
-    #   customer_qs.get(email=customer_email)
-    # Customer.email is NOT unique — two fleet accounts at the same shop can
-    # share an AP email address, which raises MultipleObjectsReturned (500 crash).
-    # The CustomerUser already has a direct FK to Customer, so we resolve the
-    # customer through the ORM relationship instead.  This is both correct and
-    # cheaper (one fewer DB query).
+    # Get customer repairs for applying reward. The reward now has a direct
+    # customer FK (customer-anchored loyalty), so no CustomerUser hop needed.
     customer_repairs = []
-    if redemption.reward and redemption.reward.customer_user:
+    if redemption.reward:
         try:
-            customer = redemption.reward.customer_user.customer
+            customer = redemption.reward.customer
             # Guard: ensure the customer belongs to the current tenant.
             # The redemption queryset above is already tenant-scoped, so this
             # should always hold, but an explicit check avoids surprises if the
@@ -152,9 +147,56 @@ def apply_reward_to_repair(request, repair_id):
             qs = qs.none()
         repair = get_object_or_404(qs, id=repair_id)
 
+    # Manager/owner check — creating a NEW redemption (spending the customer's
+    # points) is gated like a price override; applying an existing redemption
+    # stays open to any tech.
+    acting_is_admin = is_tenant_admin(request.user, tenant=tenant)
+    acting_tech_row = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    can_create_redemption = acting_is_admin or bool(acting_tech_row and acting_tech_row.is_manager)
+
     if request.method == 'POST':
+        option_id = request.POST.get('option_id')
         redemption_id = request.POST.get('redemption_id')
         auto_fulfill = request.POST.get('auto_fulfill') == 'on'
+
+        # One-step "redeem & apply": spend points on a reward option and put
+        # it straight on this repair. Atomic — a failed apply rolls back the
+        # point deduction.
+        if option_id:
+            if not can_create_redemption:
+                messages.error(request, "Only managers and owners can redeem a customer's points.")
+                return redirect('repair_detail', repair_id=repair.id)
+
+            class _ApplyFailed(Exception):
+                pass
+
+            try:
+                with transaction.atomic():
+                    success, result = RewardService.redeem_reward(
+                        repair.customer, option_id, created_by=request.user,
+                    )
+                    if not success:
+                        messages.error(request, result)
+                        return redirect('apply_reward_to_repair', repair_id=repair.id)
+                    result.notes = (
+                        f"Redeemed in-shop by {request.user.get_full_name() or request.user.username}"
+                    )
+                    result.save(update_fields=['notes'])
+                    applied, message = repair.apply_reward(
+                        result,
+                        technician=acting_tech_row,
+                        auto_fulfill=auto_fulfill,
+                    )
+                    if not applied:
+                        # Abort the atomic block so the redemption AND the
+                        # point deduction roll back together.
+                        raise _ApplyFailed(message)
+            except _ApplyFailed as exc:
+                messages.error(request, str(exc))
+                return redirect('apply_reward_to_repair', repair_id=repair.id)
+
+            messages.success(request, f"Redeemed {result.reward_option.name} and applied it to this repair.")
+            return redirect('repair_detail', repair_id=repair.id)
 
         if not redemption_id:
             messages.error(request, "No reward selected")
@@ -163,16 +205,13 @@ def apply_reward_to_repair(request, repair_id):
         # Scope to tenant; prevents applying a redemption from Shop B to a Shop A repair.
         if tenant:
             redemption_qs = RewardRedemption.objects.filter(
-                reward__customer_user__customer__tenant=tenant
+                reward__customer__tenant=tenant
             )
         else:
             redemption_qs = RewardRedemption.objects.none()
         redemption = get_object_or_404(redemption_qs, id=redemption_id)
 
-        customer_users = CustomerUser.objects.filter(customer=repair.customer)
-        reward_customer_user = redemption.reward.customer_user
-
-        if not customer_users.filter(id=reward_customer_user.id).exists():
+        if redemption.reward.customer_id != repair.customer_id:
             messages.error(request, "This reward belongs to a different customer and cannot be applied to this repair.")
             return redirect('repair_detail', repair_id=repair.id)
 
@@ -192,15 +231,67 @@ def apply_reward_to_repair(request, repair_id):
         return redirect('repair_detail', repair_id=repair.id)
 
     # GET request
-    customer_users = CustomerUser.objects.filter(customer=repair.customer)
-
     available_redemptions = RewardRedemption.objects.filter(
-        reward__customer_user__in=customer_users,
+        reward__customer=repair.customer,
         status='PENDING',
         applied_to_repair__isnull=True
     ).select_related('reward_option', 'reward_option__reward_type')
 
+    # Options the customer's balance can afford right now (managers can
+    # redeem & apply in one step). Only discount-type rewards make sense on
+    # a repair — merchandise is fulfilled separately.
+    from apps.rewards_referrals.services import LoyaltyService
+    balance = LoyaltyService.get_balance(repair.customer)
+    affordable_options = [
+        opt for opt in RewardService.get_available_rewards(repair.customer)['available']
+        if opt.reward_type and opt.reward_type.category in ('REPAIR_DISCOUNT', 'FREE_SERVICE')
+    ]
+
     return render(request, 'technician_portal/apply_reward.html', {
         'repair': repair,
         'available_redemptions': available_redemptions,
+        'affordable_options': affordable_options,
+        'points_balance': balance,
+        'can_create_redemption': can_create_redemption,
     })
+
+
+@technician_required
+@require_POST
+def redeem_for_customer(request, customer_id):
+    """
+    In-shop redemption from the customer page: a manager/owner spends the
+    customer's points on a reward option (e.g. merchandise, or a discount
+    to be applied to a job later). Point-of-sale path for customers without
+    portal accounts.
+    """
+    tenant = getattr(request, 'tenant', None)
+    qs = Customer.objects.filter(tenant=tenant) if tenant else Customer.objects.none()
+    customer = get_object_or_404(qs, id=customer_id)
+
+    is_admin = is_tenant_admin(request.user, tenant=tenant)
+    technician = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    if not (is_admin or (technician and technician.is_manager)):
+        messages.error(request, "Only managers and owners can redeem a customer's points.")
+        return redirect('customer_detail', customer_id=customer.id)
+
+    option_id = request.POST.get('option_id')
+    if not option_id:
+        messages.error(request, "No reward selected.")
+        return redirect('customer_detail', customer_id=customer.id)
+
+    success, result = RewardService.redeem_reward(
+        customer, option_id, created_by=request.user,
+    )
+    if success:
+        result.notes = f"Redeemed in-shop by {request.user.get_full_name() or request.user.username}"
+        result.save(update_fields=['notes'])
+        messages.success(
+            request,
+            f"Redeemed {result.reward_option.name} for {customer.name}. "
+            "Discount rewards will be applied to their next repair automatically, "
+            "or apply one from a repair's Apply Reward page."
+        )
+    else:
+        messages.error(request, result)
+    return redirect('customer_detail', customer_id=customer.id)

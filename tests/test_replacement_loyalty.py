@@ -75,7 +75,7 @@ class ReplacementLoyaltyPointsTests(TestCase):
         repl.save()
 
         pt = PointTransaction.objects.get(
-            customer_user=self.customer_user,
+            customer=self.customer,
             transaction_type='replacement_complete',
         )
         self.assertEqual(pt.amount, self.config.points_per_repair)
@@ -106,7 +106,7 @@ class ReplacementLoyaltyPointsTests(TestCase):
         repl.save()
 
         milestone = PointTransaction.objects.filter(
-            customer_user=self.customer_user,
+            customer=self.customer,
             transaction_type='milestone_bonus',
         ).order_by('-id').first()
         self.assertIsNotNone(milestone)
@@ -135,7 +135,7 @@ class ReplacementRewardRedemptionTests(TestCase):
             points_required=100, reward_type=self.reward_type,
         )
         self.reward = Reward.objects.create(
-            tenant=self.tenant, customer_user=self.customer_user, points=500,
+            tenant=self.tenant, customer=self.customer, points=500,
         )
         self.redemption = RewardRedemption.objects.create(
             reward=self.reward, reward_option=self.reward_option,

@@ -38,16 +38,16 @@ logger = logging.getLogger(__name__)
 
 def loyalty_hook(service) -> None:
     """
-    Award completion points to the primary contact for this job.
+    Award completion points to the customer (company) for this job.
 
     Accepts either a Repair or a Replacement. Delegates to LoyaltyService
-    after loading per-tenant LoyaltyConfig. Skips re-awards if the job was
-    already COMPLETED (idempotency guard via original_status).
+    after loading per-tenant LoyaltyConfig. Points anchor on the Customer
+    record, so customers WITHOUT portal accounts earn too. Skips re-awards
+    if the job was already COMPLETED (idempotency guard via original_status).
     """
     try:
         from apps.rewards_referrals.models import LoyaltyConfig
         from apps.rewards_referrals.services import LoyaltyService
-        from apps.customer_portal.models import CustomerUser
         from apps.technician_portal.models import Repair, Replacement
 
         is_repair = isinstance(service, Repair)
@@ -63,24 +63,17 @@ def loyalty_hook(service) -> None:
         if getattr(service, 'is_goodwill_repair', False):
             return
 
-        # Prefer primary contact; fall back to any contact.
-        customer_users = CustomerUser.objects.filter(customer=service.customer)
-        if not customer_users.exists():
+        customer = service.customer
+        tenant = customer.tenant
+        if tenant is None:
             return
-
-        customer_user = (
-            customer_users.filter(is_primary_contact=True).first()
-            or customer_users.first()
-        )
-
-        tenant = service.customer.tenant
         config = LoyaltyConfig.get_for_tenant(tenant)
 
         base_points = config.points_per_repair
         related = {'related_repair': service} if is_repair else {'related_replacement': service}
 
         LoyaltyService.award_points(
-            customer_user=customer_user,
+            customer=customer,
             amount=base_points,
             transaction_type='repair_complete' if is_repair else 'replacement_complete',
             description=(
@@ -111,7 +104,7 @@ def loyalty_hook(service) -> None:
 
         if milestone_bonus > 0:
             LoyaltyService.award_points(
-                customer_user=customer_user,
+                customer=customer,
                 amount=milestone_bonus,
                 transaction_type='milestone_bonus',
                 description=f'Milestone bonus — {completed_count} jobs completed',
@@ -122,7 +115,7 @@ def loyalty_hook(service) -> None:
                 "Loyalty milestone bonus of %s points awarded to %s "
                 "(%d jobs completed, job pk=%s)",
                 milestone_bonus,
-                customer_user.user.email,
+                customer.name,
                 completed_count,
                 service.pk,
             )
@@ -132,13 +125,54 @@ def loyalty_hook(service) -> None:
             base_points,
             milestone_bonus,
             base_points + milestone_bonus,
-            customer_user.user.email,
+            customer.name,
             service.pk,
         )
 
     except Exception as exc:
         logger.error(
             "Post-completion hook 'loyalty_hook' failed for job pk=%s: %s",
+            service.pk,
+            exc,
+            exc_info=True,
+        )
+
+
+def referral_payout_hook(service) -> None:
+    """
+    Pay out pending referral bonuses when the referred customer's first
+    job completes.
+
+    Referrals are recorded as PENDING at signup (no points move) and pay
+    out here — a referral only counts once it becomes real work.
+
+    Idempotency: award_referral_bonuses flips each Referral to AWARDED
+    under a row lock, so re-runs are no-ops; the original_status guard
+    skips re-saves of already-COMPLETED jobs entirely.
+    """
+    try:
+        from apps.rewards_referrals.services import ReferralService
+
+        if hasattr(service, 'original_status') and service.original_status == 'COMPLETED':
+            return
+
+        # Goodwill work doesn't trigger payouts either — a referral pays
+        # when the customer's first REAL job completes.
+        if getattr(service, 'is_goodwill_repair', False):
+            return
+
+        awarded = ReferralService.award_referral_bonuses(service.customer)
+        if awarded:
+            logger.info(
+                "Referral payout: %d referral(s) awarded for customer %s (job pk=%s)",
+                awarded,
+                service.customer.name,
+                service.pk,
+            )
+
+    except Exception as exc:
+        logger.error(
+            "Post-completion hook 'referral_payout_hook' failed for job pk=%s: %s",
             service.pk,
             exc,
             exc_info=True,
@@ -215,6 +249,7 @@ def review_request_hook(repair) -> None:
 # so points are in the ledger before warranty or review logic inspect state.
 COMPLETION_HOOKS = [
     ('loyalty', loyalty_hook),
+    ('referral_payout', referral_payout_hook),
     ('warranty', warranty_hook),
     ('review_request', review_request_hook),
 ]

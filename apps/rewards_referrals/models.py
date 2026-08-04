@@ -23,14 +23,22 @@ class ReferralCode(AutoUpdateTimestampMixin, models.Model):
     
 class Referral(models.Model):
     """
-    Tracks successful referrals when new customers use a referral code.
-    
-    Each record represents a successful referral where a new customer used
-    an existing customer's referral code. This triggers reward points for both
-    the referrer and the new customer.
+    Tracks referrals when new customers sign up with a referral code.
+
+    Created as PENDING at signup; bonuses pay out (and status flips to
+    AWARDED) when the referred customer's first job completes. Deferring
+    the payout means a referral only counts once it becomes real work —
+    fake signups earn nothing.
     """
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending first job'),
+        ('AWARDED', 'Awarded'),
+    ]
+
     referral_code = models.ForeignKey(ReferralCode, on_delete=models.CASCADE)
     customer_user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    awarded_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 class RewardType(models.Model):
@@ -85,11 +93,12 @@ class RewardType(models.Model):
 
 class Reward(AutoUpdateTimestampMixin, models.Model):
     """
-    Tracks point balances for customers.
+    Tracks the shared point balance for a customer (company).
 
-    Each customer has one reward record that keeps track of their current
-    point balance. Points are earned through referrals and can be spent
-    on reward redemptions.
+    One reward record per Customer. Points are earned on completed jobs and
+    referrals and spent on redemptions. Anchored on Customer — not portal
+    accounts — so customers without portal logins still earn, and every
+    portal user of a company sees the same balance.
     """
     tenant = models.ForeignKey(
         'tenants.Tenant',
@@ -98,7 +107,11 @@ class Reward(AutoUpdateTimestampMixin, models.Model):
         null=True,
         blank=True,
     )
-    customer_user = models.ForeignKey(CustomerUser, on_delete=models.CASCADE)
+    customer = models.ForeignKey(
+        'core.Customer',
+        on_delete=models.CASCADE,
+        related_name='rewards',
+    )
     points = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -106,13 +119,13 @@ class Reward(AutoUpdateTimestampMixin, models.Model):
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['customer_user'],
-                name='unique_reward_per_customer_user',
+                fields=['customer'],
+                name='unique_reward_per_customer',
             )
         ]
 
     def __str__(self):
-        return f"{self.customer_user.user.email} - {self.points} points"
+        return f"{self.customer.name} - {self.points} points"
     
 class RewardOption(AutoUpdateTimestampMixin, models.Model):
     """
@@ -214,7 +227,7 @@ class RewardRedemption(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.reward.customer_user.user.email} - {self.reward_option.name} ({self.status})"
+        return f"{self.reward.customer.name} - {self.reward_option.name} ({self.status})"
 
 
 class PointTransaction(models.Model):
@@ -239,9 +252,15 @@ class PointTransaction(models.Model):
     tenant = models.ForeignKey(
         'tenants.Tenant', on_delete=models.CASCADE, related_name='point_transactions',
     )
-    customer_user = models.ForeignKey(
-        'customer_portal.CustomerUser', on_delete=models.CASCADE,
+    customer = models.ForeignKey(
+        'core.Customer', on_delete=models.CASCADE,
         related_name='point_transactions',
+    )
+    customer_user = models.ForeignKey(
+        'customer_portal.CustomerUser', on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='point_transactions',
+        help_text='Portal user who triggered this transaction, if any (attribution only)',
     )
     amount = models.IntegerField(help_text='Positive for earn, negative for spend')
     balance_after = models.IntegerField(help_text='Running balance after this transaction')
@@ -276,7 +295,7 @@ class PointTransaction(models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['customer_user', '-created_at']),
+            models.Index(fields=['customer', '-created_at'], name='idx_pt_customer_created'),
             models.Index(fields=['tenant', 'transaction_type']),
             models.Index(
                 fields=['expires_at'],
@@ -287,7 +306,7 @@ class PointTransaction(models.Model):
 
     def __str__(self):
         sign = '+' if self.amount >= 0 else ''
-        return f"{self.customer_user} {sign}{self.amount} ({self.transaction_type})"
+        return f"{self.customer} {sign}{self.amount} ({self.transaction_type})"
 
 
 class LoyaltyConfig(TenantConfig):
@@ -302,6 +321,10 @@ class LoyaltyConfig(TenantConfig):
     points_for_early_payment = models.PositiveIntegerField(default=25)
     points_expiry_days = models.PositiveIntegerField(
         default=365, help_text='0 = never expire',
+    )
+    show_balance_in_emails = models.BooleanField(
+        default=True,
+        help_text='Include the customer point balance in invoice and review emails',
     )
     expiry_warning_days = models.PositiveIntegerField(default=30)
     program_name = models.CharField(max_length=100, default='Rewards')

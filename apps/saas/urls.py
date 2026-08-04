@@ -88,7 +88,7 @@ urlpatterns = [
     # Loyalty Phase 2: Manual point adjustment + liability report (CODE-197)
     path('owner/loyalty/', views.owner_loyalty_dashboard, name='owner_loyalty_dashboard'),
     path('owner/loyalty/config/', views.owner_loyalty_save_config, name='owner_loyalty_save_config'),
-    path('owner/loyalty/customers/<int:customer_user_id>/adjust/', views.owner_loyalty_adjust_points, name='owner_loyalty_adjust_points'),
+    path('owner/loyalty/customers/<int:customer_id>/adjust/', views.owner_loyalty_adjust_points, name='owner_loyalty_adjust_points'),
     path('owner/loyalty/liability/', views.owner_loyalty_liability_report, name='owner_loyalty_liability_report'),
 
     # Tax management (single-rate UI; per-city CRUD removed — BillingConfig

@@ -4,6 +4,19 @@
 **Date:** 2026-03-24  
 **Status:** ✅ Phase 1 SHIPPED (LOYALTY-001, March 24 2026) — ✅ Phase 2 SHIPPED (CODE-197, March 25 2026) — Phases 3-4 pending
 
+> **Addendum (August 2026) — Customer-anchored loyalty.** The ledger no longer
+> anchors on portal accounts. `Reward` and `PointTransaction` are keyed on
+> `core.Customer` (one shared balance per company); `PointTransaction.customer_user`
+> survives only as nullable "acting portal user" attribution. Consequences:
+> customers with **no portal login** (walk-ins, most retail) earn points; all
+> portal users of a company share one balance; the shop can see the balance and
+> redeem on the customer's behalf from the customer page and Apply Reward page
+> (creating a redemption is manager/owner-gated); invoice + review emails carry a
+> factual balance line (LoyaltyConfig.show_balance_in_emails). Referrals moved to
+> deferred payout: recorded PENDING at signup on `/join/<slug>/?ref=CODE`, paid
+> when the referred customer's first job completes (`referral_payout_hook`).
+> Migrations 0016–0019; per-user balances were SUM-merged per company in 0017.
+
 ---
 
 ## Executive Summary

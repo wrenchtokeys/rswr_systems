@@ -58,6 +58,9 @@ class ReferralSystemTest(TestCase):
         )
         self.assertEqual(referral.referral_code, referral_code)
         self.assertEqual(referral.customer_user, new_customer_user)
+        # New referrals start PENDING — bonuses pay out on first job
+        self.assertEqual(referral.status, 'PENDING')
+        self.assertIsNone(referral.awarded_at)
 
 
 class RewardSystemTest(TestCase):
@@ -104,11 +107,11 @@ class RewardSystemTest(TestCase):
 
     def test_reward_creation(self):
         reward = Reward.objects.create(
-            customer_user=self.customer_user,
+            customer=self.customer,
             points=100
         )
         self.assertEqual(reward.points, 100)
-        self.assertIn(self.user.email, str(reward))
+        self.assertIn(self.customer.name, str(reward))
         self.assertIn('100 points', str(reward))
 
     def test_reward_option_creation(self):
@@ -145,18 +148,18 @@ class RewardSystemTest(TestCase):
         )
         
         reward = Reward.objects.create(
-            customer_user=self.customer_user,
+            customer=self.customer,
             points=100
         )
-        
+
         # Create redemption
         redemption = RewardRedemption.objects.create(
             reward=reward,
             reward_option=reward_option,
             status='PENDING'
         )
-        
+
         self.assertEqual(redemption.status, 'PENDING')
         self.assertEqual(redemption.reward_option, reward_option)
-        self.assertIn(self.user.email, str(redemption))
+        self.assertIn(self.customer.name, str(redemption))
         self.assertIn('PENDING', str(redemption))

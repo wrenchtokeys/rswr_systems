@@ -93,7 +93,8 @@ class RewardStatusFilterTests(TestCase):
             reward_type=cls.reward_type,
         )
         cls.reward = Reward.objects.create(
-            customer_user=cls.customer_user,
+            customer=cls.customer,
+            tenant=cls.tenant,
             points=100,
         )
 

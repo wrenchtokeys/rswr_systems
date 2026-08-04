@@ -82,6 +82,7 @@ from .customers import (
 from .rewards import (
     reward_fulfillment_detail,
     apply_reward_to_repair,
+    redeem_for_customer,
 )
 
 # Manager settings

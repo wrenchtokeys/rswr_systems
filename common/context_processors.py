@@ -106,6 +106,7 @@ def customer_loyalty(request):
 
     try:
         from apps.customer_portal.models import CustomerUser
+        from apps.rewards_referrals.models import LoyaltyConfig
         from apps.rewards_referrals.services import LoyaltyService
 
         cu = CustomerUser.objects.filter(
@@ -113,7 +114,11 @@ def customer_loyalty(request):
         ).first()
         if cu is None:
             return {}
-        return {'loyalty_points': LoyaltyService.get_balance(cu)}
+        # Hide the nav badge entirely when the shop's program is off.
+        config = LoyaltyConfig.get_for_tenant(tenant)
+        if not config.is_active:
+            return {}
+        return {'loyalty_points': LoyaltyService.get_balance(cu.customer)}
     except Exception:
         logger.debug('customer_loyalty context processor skipped', exc_info=True)
         return {}

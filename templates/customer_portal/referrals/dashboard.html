@@ -68,18 +68,20 @@
 
         <!-- Share Actions -->
         <div class="flex flex-wrap justify-center gap-2 mb-6">
-            <button id="copyCode" data-code="{{ referral_code }}"
+            {% if referral_share_url %}
+            <button id="copyLink" data-link="{{ referral_share_url }}"
                     class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-md hover:bg-brand-600 transition-colors shadow-sm">
-                <i class="fas fa-copy mr-2"></i> Copy Code
+                <i class="fas fa-link mr-2"></i> Copy Signup Link
+            </button>
+            {% endif %}
+            <button id="copyCode" data-code="{{ referral_code }}"
+                    class="inline-flex items-center px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors">
+                <i class="fas fa-copy mr-2 text-gray-400"></i> Copy Code
             </button>
             <button id="shareEmail"
                     class="inline-flex items-center px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors">
                 <i class="fas fa-envelope mr-2 text-gray-400"></i> Email
             </button>
-            <a href="https://twitter.com/intent/tweet?text=Use%20my%20referral%20code%20{{ referral_code }}%20to%20join!" target="_blank"
-               class="inline-flex items-center px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 transition-colors">
-                <i class="fab fa-twitter mr-2 text-gray-400"></i> Tweet
-            </a>
         </div>
 
         <!-- How it Works -->
@@ -90,7 +92,7 @@
                 </div>
                 <div>
                     <p class="text-sm font-semibold text-brand-800">How referrals work</p>
-                    <p class="text-sm text-brand-700 mt-0.5">Share your code with other businesses. When they sign up using your code, you earn <strong>500 points</strong> and they get <strong>100 bonus points</strong>!</p>
+                    <p class="text-sm text-brand-700 mt-0.5">Share your signup link (or code) with other businesses. After their first completed service, you earn <strong>{{ referrer_bonus }} points</strong> and they get <strong>{{ referred_bonus }} bonus points</strong>.</p>
                 </div>
             </div>
         </div>
@@ -141,7 +143,11 @@
                     <td class="px-5 py-3.5 text-sm text-gray-900">{{ referral.customer_user.user.email }}</td>
                     <td class="px-5 py-3.5 text-sm text-gray-500">{{ referral.created_at|date:"M d, Y" }}</td>
                     <td class="px-5 py-3.5 text-right">
-                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">+500</span>
+                        {% if referral.status == 'AWARDED' %}
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">+{{ referrer_bonus }}</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">Pending first job</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -157,7 +163,11 @@
                 <p class="text-sm font-medium text-gray-900 truncate">{{ referral.customer_user.user.email }}</p>
                 <p class="text-xs text-gray-500 mt-0.5">{{ referral.created_at|date:"M d, Y" }}</p>
             </div>
-            <span class="ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">+500</span>
+            {% if referral.status == 'AWARDED' %}
+            <span class="ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">+{{ referrer_bonus }}</span>
+            {% else %}
+            <span class="ml-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">Pending first job</span>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
@@ -313,16 +323,30 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Copy referral code
+    // Copy referral code (outline button — only swap the label)
     const copyBtn = document.getElementById('copyCode');
     if (copyBtn) {
         copyBtn.addEventListener('click', function(e) {
             e.preventDefault();
             const code = this.getAttribute('data-code');
             navigator.clipboard.writeText(code).then(() => {
-                const icon = this.querySelector('i');
                 const originalHTML = this.innerHTML;
-                this.innerHTML = '<i class="fas fa-check mr-2"></i> Copied!';
+                this.innerHTML = '<i class="fas fa-check mr-2 text-green-600"></i> Copied!';
+                setTimeout(() => {
+                    this.innerHTML = originalHTML;
+                }, 2000);
+            });
+        });
+    }
+
+    // Copy signup link
+    const copyLinkBtn = document.getElementById('copyLink');
+    if (copyLinkBtn) {
+        copyLinkBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            navigator.clipboard.writeText(this.getAttribute('data-link')).then(() => {
+                const originalHTML = this.innerHTML;
+                this.innerHTML = '<i class="fas fa-check mr-2"></i> Link Copied!';
                 this.classList.remove('bg-brand-500', 'hover:bg-brand-600');
                 this.classList.add('bg-green-600');
                 setTimeout(() => {
@@ -340,8 +364,12 @@ document.addEventListener('DOMContentLoaded', function() {
         shareEmailBtn.addEventListener('click', function(e) {
             e.preventDefault();
             const code = document.getElementById('copyCode').getAttribute('data-code');
+            const linkBtn = document.getElementById('copyLink');
+            const link = linkBtn ? linkBtn.getAttribute('data-link') : '';
             const subject = 'Join using my referral code!';
-            const body = `I think you'll like this service. Use my referral code ${code} when you sign up!`;
+            const body = link
+                ? `I think you'll like this service. Sign up with my referral link: ${link}`
+                : `I think you'll like this service. Use my referral code ${code} when you sign up!`;
             window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         });
     }

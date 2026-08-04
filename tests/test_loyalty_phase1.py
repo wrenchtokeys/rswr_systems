@@ -1,7 +1,7 @@
 """
 Tests for Loyalty System Phase 1 — LOYALTY-001
-PointTransaction ledger, LoyaltyConfig, LoyaltyService, refactored
-award_completion_points and ReferralService.
+PointTransaction ledger, LoyaltyConfig, LoyaltyService, the customer-anchored
+completion-hook awards and ReferralService.
 Includes regression tests for CODE-186: post_completion_hooks orchestrator.
 """
 from datetime import timedelta
@@ -92,10 +92,11 @@ class LoyaltyServiceAwardTests(TestCase):
     def setUp(self):
         self.tenant = _make_tenant()
         self.cu = _make_customer_user(self.tenant)
+        self.customer = self.cu.customer
 
     def test_basic_award(self):
         pt = LoyaltyService.award_points(
-            self.cu, 50, 'repair_complete', 'Test repair',
+            self.customer, 50, 'repair_complete', 'Test repair',
         )
         self.assertIsNotNone(pt)
         self.assertEqual(pt.amount, 50)
@@ -104,29 +105,29 @@ class LoyaltyServiceAwardTests(TestCase):
         self.assertEqual(pt.tenant, self.tenant)
 
     def test_balance_accumulates(self):
-        LoyaltyService.award_points(self.cu, 50, 'repair_complete', 'R1')
-        LoyaltyService.award_points(self.cu, 100, 'referral_made', 'Ref')
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 150)
+        LoyaltyService.award_points(self.customer, 50, 'repair_complete', 'R1')
+        LoyaltyService.award_points(self.customer, 100, 'referral_made', 'Ref')
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 150)
 
     def test_negative_deduction(self):
-        LoyaltyService.award_points(self.cu, 500, 'manual_adjustment', 'Seed')
-        pt = LoyaltyService.award_points(self.cu, -200, 'redemption', 'Redeem')
+        LoyaltyService.award_points(self.customer, 500, 'manual_adjustment', 'Seed')
+        pt = LoyaltyService.award_points(self.customer, -200, 'redemption', 'Redeem')
         self.assertEqual(pt.balance_after, 300)
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 300)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 300)
 
     def test_inactive_config_returns_none(self):
         config = LoyaltyConfig.get_for_tenant(self.tenant)
         config.is_active = False
         config.save()
-        pt = LoyaltyService.award_points(self.cu, 50, 'repair_complete', 'Nope')
+        pt = LoyaltyService.award_points(self.customer, 50, 'repair_complete', 'Nope')
         self.assertIsNone(pt)
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 0)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 0)
 
     def test_expiry_set_when_configured(self):
         config = LoyaltyConfig.get_for_tenant(self.tenant)
         config.points_expiry_days = 365
         config.save()
-        pt = LoyaltyService.award_points(self.cu, 50, 'repair_complete', 'Test')
+        pt = LoyaltyService.award_points(self.customer, 50, 'repair_complete', 'Test')
         self.assertIsNotNone(pt.expires_at)
         # Should be ~365 days from now
         delta = pt.expires_at - timezone.now()
@@ -136,25 +137,25 @@ class LoyaltyServiceAwardTests(TestCase):
         config = LoyaltyConfig.get_for_tenant(self.tenant)
         config.points_expiry_days = 0
         config.save()
-        pt = LoyaltyService.award_points(self.cu, 50, 'repair_complete', 'Test')
+        pt = LoyaltyService.award_points(self.customer, 50, 'repair_complete', 'Test')
         self.assertIsNone(pt.expires_at)
 
     def test_no_expiry_on_deductions(self):
-        LoyaltyService.award_points(self.cu, 500, 'manual_adjustment', 'Seed')
-        pt = LoyaltyService.award_points(self.cu, -100, 'redemption', 'Redeem')
+        LoyaltyService.award_points(self.customer, 500, 'manual_adjustment', 'Seed')
+        pt = LoyaltyService.award_points(self.customer, -100, 'redemption', 'Redeem')
         self.assertIsNone(pt.expires_at)
 
     def test_tenant_auto_resolved(self):
-        """Tenant is resolved from customer_user if not passed."""
+        """Tenant is resolved from the customer if not passed."""
         pt = LoyaltyService.award_points(
-            self.cu, 50, 'repair_complete', 'Auto tenant',
+            self.customer, 50, 'repair_complete', 'Auto tenant',
         )
         self.assertEqual(pt.tenant, self.tenant)
 
     def test_created_by_recorded(self):
         admin = User.objects.create_user('admin', password='x')
         pt = LoyaltyService.award_points(
-            self.cu, 100, 'manual_adjustment', 'Bonus', created_by=admin,
+            self.customer, 100, 'manual_adjustment', 'Bonus', created_by=admin,
         )
         self.assertEqual(pt.created_by, admin)
 
@@ -166,23 +167,24 @@ class LoyaltyServiceReadTests(TestCase):
     def setUp(self):
         self.tenant = _make_tenant()
         self.cu = _make_customer_user(self.tenant)
+        self.customer = self.cu.customer
 
     def test_get_balance_zero_for_new_user(self):
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 0)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 0)
 
     def test_get_transaction_history(self):
         for i in range(5):
-            LoyaltyService.award_points(self.cu, 10, 'repair_complete', f'R{i}')
-        history = LoyaltyService.get_transaction_history(self.cu, limit=3)
+            LoyaltyService.award_points(self.customer, 10, 'repair_complete', f'R{i}')
+        history = LoyaltyService.get_transaction_history(self.customer, limit=3)
         self.assertEqual(len(history), 3)
         # Most recent first
         self.assertEqual(history[0].description, 'R4')
 
     def test_get_lifetime_earned(self):
-        LoyaltyService.award_points(self.cu, 100, 'repair_complete', 'Earn')
-        LoyaltyService.award_points(self.cu, 200, 'referral_made', 'Ref')
-        LoyaltyService.award_points(self.cu, -50, 'redemption', 'Spend')
-        self.assertEqual(LoyaltyService.get_lifetime_earned(self.cu), 300)
+        LoyaltyService.award_points(self.customer, 100, 'repair_complete', 'Earn')
+        LoyaltyService.award_points(self.customer, 200, 'referral_made', 'Ref')
+        LoyaltyService.award_points(self.customer, -50, 'redemption', 'Spend')
+        self.assertEqual(LoyaltyService.get_lifetime_earned(self.customer), 300)
 
 
 # ---------------------------------------------------------------------------
@@ -194,17 +196,19 @@ class LoyaltyTenantIsolationTests(TestCase):
         self.tenant_b = _make_tenant('Shop B', 'shop-b')
         self.cu_a = _make_customer_user(self.tenant_a, 'a@test.com')
         self.cu_b = _make_customer_user(self.tenant_b, 'b@test.com')
+        self.customer_a = self.cu_a.customer
+        self.customer_b = self.cu_b.customer
 
     def test_points_isolated(self):
-        LoyaltyService.award_points(self.cu_a, 100, 'repair_complete', 'A repair')
-        LoyaltyService.award_points(self.cu_b, 200, 'repair_complete', 'B repair')
-        self.assertEqual(LoyaltyService.get_balance(self.cu_a), 100)
-        self.assertEqual(LoyaltyService.get_balance(self.cu_b), 200)
+        LoyaltyService.award_points(self.customer_a, 100, 'repair_complete', 'A repair')
+        LoyaltyService.award_points(self.customer_b, 200, 'repair_complete', 'B repair')
+        self.assertEqual(LoyaltyService.get_balance(self.customer_a), 100)
+        self.assertEqual(LoyaltyService.get_balance(self.customer_b), 200)
 
     def test_transaction_history_isolated(self):
-        LoyaltyService.award_points(self.cu_a, 100, 'repair_complete', 'A')
-        LoyaltyService.award_points(self.cu_b, 200, 'repair_complete', 'B')
-        history_a = LoyaltyService.get_transaction_history(self.cu_a)
+        LoyaltyService.award_points(self.customer_a, 100, 'repair_complete', 'A')
+        LoyaltyService.award_points(self.customer_b, 200, 'repair_complete', 'B')
+        history_a = LoyaltyService.get_transaction_history(self.customer_a)
         self.assertEqual(len(history_a), 1)
         self.assertEqual(history_a[0].tenant, self.tenant_a)
 
@@ -217,12 +221,13 @@ class LoyaltyTenantIsolationTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# award_completion_points refactor
+# Completion-hook point awards (loyalty_hook via Repair.save)
 # ---------------------------------------------------------------------------
 class AwardCompletionPointsTests(TestCase):
     def setUp(self):
         self.tenant = _make_tenant()
         self.cu = _make_customer_user(self.tenant)
+        self.customer = self.cu.customer
         self.tech_user = User.objects.create_user('tech1', password='x')
         self.tech = Technician.objects.create(
             user=self.tech_user, tenant=self.tenant,
@@ -246,9 +251,9 @@ class AwardCompletionPointsTests(TestCase):
         repair.queue_status = 'COMPLETED'
         repair.save()
 
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 75)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 75)
         pt = PointTransaction.objects.filter(
-            customer_user=self.cu, transaction_type='repair_complete',
+            customer=self.customer, transaction_type='repair_complete',
         ).first()
         self.assertIsNotNone(pt)
         self.assertEqual(pt.amount, 75)
@@ -269,10 +274,10 @@ class AwardCompletionPointsTests(TestCase):
         repair.save()
 
         expected = config.points_per_repair + config.milestone_5_bonus
-        self.assertEqual(LoyaltyService.get_balance(self.cu), expected)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), expected)
 
         milestone_tx = PointTransaction.objects.filter(
-            customer_user=self.cu, transaction_type='milestone_bonus',
+            customer=self.customer, transaction_type='milestone_bonus',
         ).first()
         self.assertIsNotNone(milestone_tx)
         self.assertEqual(milestone_tx.amount, config.milestone_5_bonus)
@@ -281,11 +286,11 @@ class AwardCompletionPointsTests(TestCase):
         repair = self._make_repair('REQUESTED')
         repair.queue_status = 'COMPLETED'
         repair.save()
-        balance_after_first = LoyaltyService.get_balance(self.cu)
+        balance_after_first = LoyaltyService.get_balance(self.customer)
 
         # Resave as COMPLETED
         repair.save()
-        self.assertEqual(LoyaltyService.get_balance(self.cu), balance_after_first)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), balance_after_first)
 
 
 # ---------------------------------------------------------------------------
@@ -302,26 +307,34 @@ class ReferralServiceLoyaltyTests(TestCase):
         )
 
     def test_referral_awards_config_points(self):
+        """record_referral moves no points; award_referral_bonuses pays config amounts."""
         config = LoyaltyConfig.get_for_tenant(self.tenant)
         config.referral_bonus_referrer = 600
         config.referral_bonus_referred = 150
         config.save()
 
-        result = ReferralService.process_referral(self.code, self.referred)
+        result = ReferralService.record_referral(self.code, self.referred)
         self.assertTrue(result)
-        self.assertEqual(LoyaltyService.get_balance(self.referrer), 600)
-        self.assertEqual(LoyaltyService.get_balance(self.referred), 150)
+        # No points move at signup — the referral is PENDING until first job.
+        self.assertEqual(LoyaltyService.get_balance(self.referrer.customer), 0)
+        self.assertEqual(LoyaltyService.get_balance(self.referred.customer), 0)
+
+        awarded = ReferralService.award_referral_bonuses(self.referred.customer)
+        self.assertEqual(awarded, 1)
+        self.assertEqual(LoyaltyService.get_balance(self.referrer.customer), 600)
+        self.assertEqual(LoyaltyService.get_balance(self.referred.customer), 150)
 
     def test_referral_creates_transactions(self):
-        ReferralService.process_referral(self.code, self.referred)
+        ReferralService.record_referral(self.code, self.referred)
+        ReferralService.award_referral_bonuses(self.referred.customer)
 
         referrer_tx = PointTransaction.objects.filter(
-            customer_user=self.referrer, transaction_type='referral_made',
+            customer=self.referrer.customer, transaction_type='referral_made',
         )
         self.assertEqual(referrer_tx.count(), 1)
 
         referred_tx = PointTransaction.objects.filter(
-            customer_user=self.referred, transaction_type='referral_received',
+            customer=self.referred.customer, transaction_type='referral_received',
         )
         self.assertEqual(referred_tx.count(), 1)
 
@@ -333,8 +346,9 @@ class RedemptionLoyaltyTests(TestCase):
     def setUp(self):
         self.tenant = _make_tenant()
         self.cu = _make_customer_user(self.tenant)
+        self.customer = self.cu.customer
         # Seed points
-        LoyaltyService.award_points(self.cu, 500, 'manual_adjustment', 'Seed')
+        LoyaltyService.award_points(self.customer, 500, 'manual_adjustment', 'Seed')
         # Create reward option
         self.reward_type = RewardType.objects.create(
             name='Repair Discount', category='REPAIR_DISCOUNT',
@@ -347,12 +361,12 @@ class RedemptionLoyaltyTests(TestCase):
         )
 
     def test_redemption_deducts_and_logs(self):
-        success, redemption = RewardService.redeem_reward(self.cu, self.option.pk)
+        success, redemption = RewardService.redeem_reward(self.customer, self.option.pk)
         self.assertTrue(success)
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 300)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 300)
 
         tx = PointTransaction.objects.filter(
-            customer_user=self.cu, transaction_type='redemption',
+            customer=self.customer, transaction_type='redemption',
         ).first()
         self.assertIsNotNone(tx)
         self.assertEqual(tx.amount, -200)
@@ -365,10 +379,10 @@ class RedemptionLoyaltyTests(TestCase):
             description='Free repair', points_required=1000,
             reward_type=self.reward_type,
         )
-        success, msg = RewardService.redeem_reward(self.cu, expensive.pk)
+        success, msg = RewardService.redeem_reward(self.customer, expensive.pk)
         self.assertFalse(success)
         self.assertIn('Not enough points', msg)
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 500)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 500)
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +392,7 @@ class ConfigurablePointValuesTests(TestCase):
     def setUp(self):
         self.tenant = _make_tenant()
         self.cu = _make_customer_user(self.tenant)
+        self.customer = self.cu.customer
 
     def test_zero_points_per_repair(self):
         """Shop can set 0 points per repair (loyalty disabled for repairs)."""
@@ -397,7 +412,7 @@ class ConfigurablePointValuesTests(TestCase):
 
         # Should still get 0 from repair but no crash
         # (base_points=0 is valid — uses is not None check not truthiness)
-        self.assertEqual(LoyaltyService.get_balance(self.cu), 0)
+        self.assertEqual(LoyaltyService.get_balance(self.customer), 0)
 
 
 # ---------------------------------------------------------------------------
@@ -407,20 +422,21 @@ class PointTransactionModelTests(TestCase):
     def setUp(self):
         self.tenant = _make_tenant()
         self.cu = _make_customer_user(self.tenant)
+        self.customer = self.cu.customer
 
     def test_str_positive(self):
-        pt = LoyaltyService.award_points(self.cu, 50, 'repair_complete', 'Test')
+        pt = LoyaltyService.award_points(self.customer, 50, 'repair_complete', 'Test')
         self.assertIn('+50', str(pt))
 
     def test_str_negative(self):
-        LoyaltyService.award_points(self.cu, 500, 'manual_adjustment', 'Seed')
-        pt = LoyaltyService.award_points(self.cu, -100, 'redemption', 'Spend')
+        LoyaltyService.award_points(self.customer, 500, 'manual_adjustment', 'Seed')
+        pt = LoyaltyService.award_points(self.customer, -100, 'redemption', 'Spend')
         self.assertIn('-100', str(pt))
 
     def test_ordering_newest_first(self):
-        pt1 = LoyaltyService.award_points(self.cu, 10, 'repair_complete', 'First')
-        pt2 = LoyaltyService.award_points(self.cu, 20, 'repair_complete', 'Second')
-        txs = list(PointTransaction.objects.filter(customer_user=self.cu))
+        pt1 = LoyaltyService.award_points(self.customer, 10, 'repair_complete', 'First')
+        pt2 = LoyaltyService.award_points(self.customer, 20, 'repair_complete', 'Second')
+        txs = list(PointTransaction.objects.filter(customer=self.customer))
         self.assertEqual(txs[0].pk, pt2.pk)
 
 
@@ -444,6 +460,7 @@ class PostCompletionHooksOrchestratorTests(TestCase):
     def setUp(self):
         self.tenant = _make_tenant('Orchestrator Shop', 'orch-shop')
         self.cu = _make_customer_user(self.tenant, 'orch@example.com')
+        self.customer = self.cu.customer
         tech_user = User.objects.create_user('orch_tech', password='x')
         self.tech = Technician.objects.create(user=tech_user, tenant=self.tenant)
         LoyaltyConfig.get_for_tenant(self.tenant)  # ensure config exists
@@ -470,11 +487,11 @@ class PostCompletionHooksOrchestratorTests(TestCase):
         repair.queue_status = 'COMPLETED'
         repair.save()
 
-        balance = LoyaltyService.get_balance(self.cu)
+        balance = LoyaltyService.get_balance(self.customer)
         self.assertEqual(balance, 60)
 
         tx = PointTransaction.objects.filter(
-            customer_user=self.cu, transaction_type='repair_complete'
+            customer=self.customer, transaction_type='repair_complete'
         ).first()
         self.assertIsNotNone(tx)
         self.assertEqual(tx.amount, 60)
@@ -620,12 +637,12 @@ class PostCompletionHooksOrchestratorTests(TestCase):
         repair.queue_status = 'COMPLETED'
         repair.save()
 
-        balance_after_first = LoyaltyService.get_balance(self.cu)
+        balance_after_first = LoyaltyService.get_balance(self.customer)
         self.assertEqual(balance_after_first, 50)
 
         # Re-save without changing status
         repair.save()
 
-        balance_after_resave = LoyaltyService.get_balance(self.cu)
+        balance_after_resave = LoyaltyService.get_balance(self.customer)
         self.assertEqual(balance_after_resave, 50,
                          "Double award detected on re-save of already-COMPLETED repair")

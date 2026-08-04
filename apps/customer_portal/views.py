@@ -294,7 +294,7 @@ def customer_dashboard(request):
         referral_count = ReferralService.get_referral_count(customer_user)
         
         # Get reward points balance
-        reward_points = RewardService.get_reward_balance(customer_user)
+        reward_points = RewardService.get_reward_balance(customer_user.customer)
         
         # Get outstanding invoices for the customer.
         # CODE-149: aggregate on the FULL queryset BEFORE slicing so outstanding_total
@@ -420,6 +420,17 @@ def profile_creation(request):
             company_phone = request.POST.get('company_phone')
             company_address = request.POST.get('company_address')
 
+            # Guard: without tenant context this would create an orphaned
+            # Customer(tenant=None) invisible to every shop. Send the user to
+            # their shop's join link instead.
+            if tenant is None:
+                messages.error(
+                    request,
+                    "We couldn't tell which shop you're signing up with. "
+                    "Please use your shop's join link (ask them for it, or check your invitation email)."
+                )
+                return render(request, 'customer_portal/profile_creation.html', {'customers': tenant_customers})
+
             try:
                 # Create new customer — associate with tenant
                 customer = Customer.objects.create(
@@ -469,16 +480,18 @@ def profile_creation(request):
                 # Validate and process the referral
                 referral_code_obj = ReferralService.validate_referral_code(referral_code)
                 if referral_code_obj:
-                    # Process the referral and give points to both users
-                    success = ReferralService.process_referral(referral_code_obj, customer_user)
+                    # Record the referral — bonuses pay out after the first
+                    # completed job, not at signup (anti-farming).
+                    success = ReferralService.record_referral(referral_code_obj, customer_user)
                     if success:
                         messages.success(
-                            request, 
-                            "Thanks for using a referral code! You and your referrer have received bonus points."
+                            request,
+                            "Thanks for using a referral code! You and your referrer will "
+                            "receive bonus points after your first completed service."
                         )
                     else:
                         messages.warning(
-                            request, 
+                            request,
                             "The referral code was valid, but we couldn't process it. Perhaps it's already been used."
                         )
                 else:
@@ -703,7 +716,7 @@ def customer_repair_detail(request, repair_id):
             # showed unapproved and already-fulfilled rewards.  The correct status
             # is 'APPROVED', matching _get_available_monetary_rewards().  (CODE-251)
             available_rewards = RewardRedemption.objects.filter(
-                reward__customer_user=customer_user,
+                reward__customer=customer_user.customer,
                 status='APPROVED',
                 applied_to_repair__isnull=True,
                 applied_to_replacement__isnull=True,
@@ -756,7 +769,7 @@ def customer_apply_reward(request, repair_id):
         redemption = get_object_or_404(
             RewardRedemption,
             id=redemption_id,
-            reward__customer_user=customer_user,
+            reward__customer=customer_user.customer,
             status='APPROVED',
             applied_to_repair__isnull=True,
             applied_to_replacement__isnull=True,
@@ -811,7 +824,7 @@ def customer_apply_reward_replacement(request, replacement_id):
         redemption = get_object_or_404(
             RewardRedemption,
             id=redemption_id,
-            reward__customer_user=customer_user,
+            reward__customer=customer_user.customer,
             status='APPROVED',
             applied_to_repair__isnull=True,
             applied_to_replacement__isnull=True,
@@ -1312,7 +1325,7 @@ def customer_replacement_detail(request, replacement_id):
         is_invoiced = replacement.invoice_line_items.exists()
         if not is_invoiced and replacement.queue_status not in ('COMPLETED', 'DENIED'):
             available_rewards = RewardRedemption.objects.filter(
-                reward__customer_user=customer_user,
+                reward__customer=customer_user.customer,
                 status='APPROVED',
                 applied_to_repair__isnull=True,
                 applied_to_replacement__isnull=True,
@@ -1826,7 +1839,7 @@ def _get_available_monetary_rewards(customer_user):
     """
     monetary_categories = ('REPAIR_DISCOUNT', 'REPLACEMENT_DISCOUNT', 'FREE_SERVICE')
     return RewardRedemption.objects.filter(
-        reward__customer_user=customer_user,
+        reward__customer=customer_user.customer,
         status='APPROVED',
         applied_to_repair__isnull=True,
         applied_to_replacement__isnull=True,
@@ -1922,7 +1935,7 @@ def handle_single_repair_request(request, customer, customer_user=None):
             try:
                 redemption = RewardRedemption.objects.get(
                     id=apply_reward_id,
-                    reward__customer_user=customer_user,
+                    reward__customer=customer_user.customer,
                     status='APPROVED',
                     applied_to_repair__isnull=True,
                     applied_to_replacement__isnull=True,
@@ -2677,7 +2690,7 @@ def customer_rewards_redirect(request):
         referral_count = ReferralService.get_referral_count(customer_user)
         
         # Get reward points balance
-        reward_points = RewardService.get_reward_balance(customer_user)
+        reward_points = RewardService.get_reward_balance(customer_user.customer)
         
         # Get available reward options — scoped to this customer's tenant
         reward_options = RewardOption.objects.filter(is_active=True, tenant=tenant).order_by('points_required')
@@ -2689,11 +2702,24 @@ def customer_rewards_redirect(request):
         
         # Get recent redemptions
         recent_redemptions = RewardRedemption.objects.filter(
-            reward__customer_user=customer_user
+            reward__customer=customer_user.customer
         ).order_by('-created_at')[:5]
         
+        # Shareable signup link — lands on the shop's join page with the code
+        # prefilled. Bonus values come from the shop's LoyaltyConfig.
+        from django.conf import settings as django_settings
+        from apps.rewards_referrals.models import LoyaltyConfig
+        loyalty_config = LoyaltyConfig.get_for_tenant(tenant)
+        referral_share_url = ''
+        if referral_code_value and tenant and tenant.slug:
+            base_url = getattr(django_settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+            referral_share_url = f"{base_url}/join/{tenant.slug}/?ref={referral_code_value}"
+
         context = {
             'referral_code': referral_code_value,
+            'referral_share_url': referral_share_url,
+            'referrer_bonus': loyalty_config.referral_bonus_referrer,
+            'referred_bonus': loyalty_config.referral_bonus_referred,
             'referral_count': referral_count,
             'reward_points': reward_points,
             'points': reward_points,  # For template compatibility
@@ -2718,11 +2744,11 @@ def customer_points_history(request):
         tenant = customer_user.customer.tenant
         config = LoyaltyConfig.get_for_tenant(tenant)
 
-        transactions = LoyaltyService.get_transaction_history(customer_user, limit=50)
+        transactions = LoyaltyService.get_transaction_history(customer_user.customer, limit=50)
         context = {
             'transactions': transactions,
-            'points': LoyaltyService.get_balance(customer_user),
-            'lifetime_earned': LoyaltyService.get_lifetime_earned(customer_user),
+            'points': LoyaltyService.get_balance(customer_user.customer),
+            'lifetime_earned': LoyaltyService.get_lifetime_earned(customer_user.customer),
             'program_name': config.program_name,
         }
         return render(request, 'customer_portal/referrals/points_history.html', context)

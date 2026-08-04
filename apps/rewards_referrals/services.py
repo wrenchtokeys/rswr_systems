@@ -33,17 +33,30 @@ class LoyaltyService:
 
     @staticmethod
     @transaction.atomic
-    def award_points(customer_user, amount, transaction_type, description,
-                     tenant=None, related_repair=None, related_replacement=None,
+    def award_points(customer, amount, transaction_type, description,
+                     tenant=None, acting_customer_user=None,
+                     related_repair=None, related_replacement=None,
                      related_payment=None, related_redemption=None, created_by=None):
         """
-        Award (or deduct) points and create an immutable PointTransaction.
+        Award (or deduct) points for a customer (company) and create an
+        immutable PointTransaction.
 
-        Returns the PointTransaction, or None if the loyalty program is inactive.
+        ``customer`` is a core.Customer — points do not require a portal
+        account. ``acting_customer_user`` optionally records which portal
+        user triggered the change (attribution only).
+
+        Returns the PointTransaction, or None if the loyalty program is
+        inactive or the customer has no tenant.
         """
-        # Resolve tenant
+        # Resolve tenant. Customer.tenant is nullable — never look up config
+        # for a tenant-less customer.
         if tenant is None:
-            tenant = customer_user.customer.tenant
+            tenant = customer.tenant
+        if tenant is None:
+            logger.warning(
+                'award_points skipped: customer pk=%s has no tenant', customer.pk,
+            )
+            return None
 
         config = LoyaltyConfig.get_for_tenant(tenant)
         if not config.is_active:
@@ -52,11 +65,11 @@ class LoyaltyService:
         # Lock the Reward row (CODE-165 / CODE-173 pattern).
         # Use get_or_create() so concurrent calls don't race between a failed
         # .get() and a subsequent .create() — which could produce two Reward rows
-        # for the same customer_user and cause MultipleObjectsReturned on the
-        # next call.  The unique_reward_per_customer_user DB constraint enforces
+        # for the same customer and cause MultipleObjectsReturned on the
+        # next call.  The unique_reward_per_customer DB constraint enforces
         # this at the database level as a second line of defence.
         reward, _created = Reward.objects.get_or_create(
-            customer_user=customer_user,
+            customer=customer,
             defaults={'tenant': tenant, 'points': 0},
         )
         # Re-fetch with select_for_update so the row is locked for the
@@ -77,7 +90,8 @@ class LoyaltyService:
 
         pt = PointTransaction.objects.create(
             tenant=tenant,
-            customer_user=customer_user,
+            customer=customer,
+            customer_user=acting_customer_user,
             amount=amount,
             balance_after=reward.points,
             transaction_type=transaction_type,
@@ -92,32 +106,56 @@ class LoyaltyService:
         return pt
 
     @staticmethod
-    def get_balance(customer_user):
-        """Return cached balance from Reward row."""
-        reward = Reward.objects.filter(customer_user=customer_user).first()
+    def get_balance(customer):
+        """Return cached balance from the customer's Reward row."""
+        reward = Reward.objects.filter(customer=customer).first()
         return reward.points if reward else 0
 
     @staticmethod
-    def get_transaction_history(customer_user, limit=20):
-        """Return recent PointTransactions."""
+    def get_transaction_history(customer, limit=20):
+        """Return recent PointTransactions for a customer."""
         qs = PointTransaction.objects.filter(
-            customer_user=customer_user,
+            customer=customer,
         ).order_by('-created_at')
         if limit:
             qs = qs[:limit]
         return qs
 
     @staticmethod
-    def get_lifetime_earned(customer_user):
+    def get_lifetime_earned(customer):
         """Sum of all positive PointTransactions (for tier calculation)."""
         result = PointTransaction.objects.filter(
-            customer_user=customer_user,
+            customer=customer,
             amount__gt=0,
         ).aggregate(total=Sum('amount'))
         return result['total'] or 0
 
     @staticmethod
-    def reconcile_balance(customer_user):
+    def get_email_balance_line(customer):
+        """
+        One-line factual balance string for transactional emails, or None.
+
+        The single gate both invoice and review emails use: program active,
+        shop's show_balance_in_emails toggle on, and a positive balance.
+        Returns None on any failure — emails must never break on loyalty.
+        """
+        try:
+            tenant = customer.tenant
+            if tenant is None:
+                return None
+            config = LoyaltyConfig.get_for_tenant(tenant)
+            if not (config.is_active and config.show_balance_in_emails):
+                return None
+            balance = LoyaltyService.get_balance(customer)
+            if balance <= 0:
+                return None
+            return f"{config.program_name} balance: {balance:,} points"
+        except Exception:
+            logger.debug('get_email_balance_line skipped', exc_info=True)
+            return None
+
+    @staticmethod
+    def reconcile_balance(customer):
         """
         Recompute Reward.points from the PointTransaction ledger and flag drift.
 
@@ -133,14 +171,13 @@ class LoyaltyService:
         Use the reconcile_loyalty_balances management command (with --fix) to
         correct drift automatically, or update Reward.points manually.
         """
-        tenant = customer_user.customer.tenant
         ledger_sum = (
             PointTransaction.objects
-            .filter(tenant=tenant, customer_user=customer_user)
+            .filter(customer=customer)
             .aggregate(total=Sum('amount'))
         )['total'] or 0
 
-        reward = Reward.objects.filter(customer_user=customer_user).first()
+        reward = Reward.objects.filter(customer=customer).first()
         cached_balance = reward.points if reward else 0
 
         drift = ledger_sum - cached_balance
@@ -153,7 +190,7 @@ class LoyaltyService:
 
     @staticmethod
     @transaction.atomic
-    def manual_adjustment(customer_user, amount, reason, created_by, tenant=None):
+    def manual_adjustment(customer, amount, reason, created_by, tenant=None):
         """
         Apply a manual point adjustment by an owner or manager.
 
@@ -178,7 +215,9 @@ class LoyaltyService:
             raise ValueError('A reason is required for manual point adjustments (audit trail).')
 
         if tenant is None:
-            tenant = customer_user.customer.tenant
+            tenant = customer.tenant
+        if tenant is None:
+            raise ValueError('Cannot adjust points for a customer with no tenant.')
 
         config = LoyaltyConfig.get_for_tenant(tenant)
         if not config.is_active:
@@ -188,7 +227,7 @@ class LoyaltyService:
             # Guard: deductions must not take the balance below zero.
             # Lock first to get the current balance under the atomic block.
             reward, _ = Reward.objects.get_or_create(
-                customer_user=customer_user,
+                customer=customer,
                 defaults={'tenant': tenant, 'points': 0},
             )
             reward = Reward.objects.select_for_update().get(pk=reward.pk)
@@ -200,7 +239,7 @@ class LoyaltyService:
 
         description = f'Manual adjustment: {str(reason).strip()}'
         pt = LoyaltyService.award_points(
-            customer_user=customer_user,
+            customer=customer,
             amount=amount,
             transaction_type='manual_adjustment',
             description=description,
@@ -227,9 +266,9 @@ class LoyaltyService:
                 'active_customer_count': int,
                 'customers': [
                     {
-                        'customer_user_id': int,
-                        'email': str,
+                        'customer_id': int,
                         'customer_name': str,
+                        'email': str,          # Customer.email (may be '')
                         'current_balance': int,
                         'lifetime_earned': int,
                         'lifetime_redeemed': int,
@@ -305,28 +344,28 @@ class LoyaltyService:
 
         # Per-customer breakdown — only customers with any activity.
         # Build stats in a SINGLE annotated query (CODE-200 fix: was N+1).
-        per_cu_stats = {
-            row['customer_user_id']: row
+        per_customer_stats = {
+            row['customer_id']: row
             for row in (
                 PointTransaction.objects
                 .filter(tenant=tenant)
-                .values('customer_user_id')
+                .values('customer_id')
                 .annotate(
-                    cu_issued=Sum(
+                    c_issued=Sum(
                         Case(
                             When(amount__gt=0, then='amount'),
                             default=Value(0),
                             output_field=IntegerField(),
                         )
                     ),
-                    cu_redeemed=Sum(
+                    c_redeemed=Sum(
                         Case(
                             When(transaction_type='redemption', then='amount'),
                             default=Value(0),
                             output_field=IntegerField(),
                         )
                     ),
-                    cu_expired=Sum(
+                    c_expired=Sum(
                         Case(
                             When(transaction_type='expiration', then='amount'),
                             default=Value(0),
@@ -341,21 +380,21 @@ class LoyaltyService:
         rewards = (
             Reward.objects
             .filter(tenant=tenant)
-            .select_related('customer_user__user', 'customer_user__customer')
+            .select_related('customer')
             .order_by('-points')
         )
 
         for reward in rewards:
-            cu = reward.customer_user
-            cu_stats = per_cu_stats.get(cu.pk, {})
+            customer = reward.customer
+            c_stats = per_customer_stats.get(customer.pk, {})
             customer_data.append({
-                'customer_user_id': cu.pk,
-                'email': cu.user.email,
-                'customer_name': cu.customer.name,
+                'customer_id': customer.pk,
+                'customer_name': customer.name,
+                'email': customer.email or '',
                 'current_balance': reward.points,
-                'lifetime_earned': cu_stats.get('cu_issued') or 0,
-                'lifetime_redeemed': abs(cu_stats.get('cu_redeemed') or 0),
-                'lifetime_expired': abs(cu_stats.get('cu_expired') or 0),
+                'lifetime_earned': c_stats.get('c_issued') or 0,
+                'lifetime_redeemed': abs(c_stats.get('c_redeemed') or 0),
+                'lifetime_expired': abs(c_stats.get('c_expired') or 0),
             })
 
         active_count = sum(1 for c in customer_data if c['current_balance'] > 0)
@@ -380,22 +419,9 @@ class ReferralService:
     """
 
     # Legacy class-level constants kept for backwards compat, but
-    # process_referral() now reads from LoyaltyConfig.
+    # award_referral_bonuses() now reads from LoyaltyConfig.
     REFERRER_POINTS = 500
     REFERRED_POINTS = 100
-
-    @staticmethod
-    def generate_referral_code(customer_user):
-        """Generate a random 6-character referral code for a given customer."""
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        ReferralCode.objects.create(code=code, customer_user=customer_user)
-        return code
-
-    @staticmethod
-    def track_referral(referral_code, customer_user):
-        """Create a record of a successful referral."""
-        referral = Referral.objects.create(referral_code=referral_code, customer_user=customer_user)
-        return referral
 
     @staticmethod
     def validate_referral_code(code):
@@ -407,14 +433,22 @@ class ReferralService:
 
     @staticmethod
     @transaction.atomic
-    def process_referral(referral_code_obj, customer_user):
+    def record_referral(referral_code_obj, customer_user):
         """
-        Process a referral when a new user signs up with a referral code.
+        Record a referral at signup time — NO points move here.
 
-        Reads point values from LoyaltyConfig and delegates to LoyaltyService.
+        Creates a PENDING Referral; bonuses pay out via
+        award_referral_bonuses() when the referred customer's first job
+        completes. Deferring the payout means fake signups earn nothing.
+
+        Returns True if the referral was recorded, False if rejected
+        (self-referral, cross-tenant, or duplicate).
         """
-        # Ensure users can't refer themselves
+        # Ensure users can't refer themselves — neither their own portal
+        # account nor another portal account of the same company.
         if referral_code_obj.customer_user == customer_user:
+            return False
+        if referral_code_obj.customer_user.customer_id == customer_user.customer_id:
             return False
 
         # Ensure both parties belong to the same tenant (CODE-072)
@@ -430,45 +464,77 @@ class ReferralService:
         if Referral.objects.filter(referral_code=referral_code_obj, customer_user=customer_user).exists():
             return False
 
-        # Create the referral
         Referral.objects.create(
             referral_code=referral_code_obj,
-            customer_user=customer_user
+            customer_user=customer_user,
+            status='PENDING',
         )
+        return True
 
-        tenant = customer_user.customer.tenant
+    @staticmethod
+    @transaction.atomic
+    def award_referral_bonuses(customer):
+        """
+        Pay out PENDING referrals for a customer's portal users.
+
+        Called by the completion hook when one of the customer's jobs
+        completes. Idempotent: each Referral pays exactly once (status flag,
+        row-locked). Referrer earns per referral; the referred customer's
+        welcome bonus pays at most once per customer.
+
+        Returns the number of referrals awarded.
+        """
+        pending = list(
+            Referral.objects.select_for_update()
+            .filter(customer_user__customer=customer, status='PENDING')
+            .select_related('referral_code__customer_user__customer', 'customer_user')
+        )
+        if not pending:
+            return 0
+
+        tenant = customer.tenant
+        if tenant is None:
+            return 0
         config = LoyaltyConfig.get_for_tenant(tenant)
 
-        # Award points to the referrer
-        referrer = referral_code_obj.customer_user
-        LoyaltyService.award_points(
-            customer_user=referrer,
-            amount=config.referral_bonus_referrer,
-            transaction_type='referral_made',
-            description=f'Referral bonus — referred {customer_user.user.email}',
-            tenant=tenant,
-        )
-
-        # Award points to the referred user — AT MOST ONCE per user. The
-        # welcome bonus is one-time by design; without this check a user
-        # could redeem codes from several different coworkers and collect
-        # the bonus for each (the duplicate guard above is per (code, user)
-        # pair, not per user). The referrer-side award above stays per
-        # referral — a referrer legitimately earns for each signup. (B4)
-        already_received = PointTransaction.objects.filter(
-            customer_user=customer_user,
-            transaction_type='referral_received',
-        ).exists()
-        if not already_received:
+        awarded = 0
+        for referral in pending:
+            referrer_cu = referral.referral_code.customer_user
             LoyaltyService.award_points(
-                customer_user=customer_user,
-                amount=config.referral_bonus_referred,
-                transaction_type='referral_received',
-                description='Welcome bonus — signed up with referral code',
+                customer=referrer_cu.customer,
+                amount=config.referral_bonus_referrer,
+                transaction_type='referral_made',
+                description=f'Referral bonus — {customer.name} completed their first job',
                 tenant=tenant,
+                acting_customer_user=referrer_cu,
             )
 
-        return True
+            # Welcome bonus — AT MOST ONCE per referred customer. Without
+            # this check a company could collect the bonus for codes from
+            # several different referrers (the duplicate guard in
+            # record_referral is per (code, user) pair, not per customer).
+            # The referrer-side award above stays per referral — a referrer
+            # legitimately earns for each company they bring in. (B4)
+            already_received = PointTransaction.objects.filter(
+                customer=customer,
+                transaction_type='referral_received',
+            ).exists()
+            if not already_received:
+                LoyaltyService.award_points(
+                    customer=customer,
+                    amount=config.referral_bonus_referred,
+                    transaction_type='referral_received',
+                    description='Welcome bonus — joined with a referral code',
+                    tenant=tenant,
+                    acting_customer_user=referral.customer_user,
+                )
+
+            referral.status = 'AWARDED'
+            referral.awarded_at = timezone.now()
+            referral.save(update_fields=['status', 'awarded_at'])
+            awarded += 1
+
+        return awarded
 
     @staticmethod
     def get_referral_count(customer_user):
@@ -505,12 +571,6 @@ class RewardService:
     """
 
     @staticmethod
-    def calculate_points(customer_user):
-        """Calculate points based on customer's activity."""
-        points = 0
-        return points
-
-    @staticmethod
     def get_reward_options(active_only=True, tenant=None):
         """Get available reward options, scoped to tenant."""
         qs = RewardOption.objects.all()
@@ -521,31 +581,36 @@ class RewardService:
         return qs
 
     @staticmethod
-    def get_reward_redemptions(customer_user):
+    def get_reward_redemptions(customer):
         """Get all reward redemptions for a customer."""
-        return RewardRedemption.objects.filter(reward__customer_user=customer_user).order_by('-created_at')
+        return RewardRedemption.objects.filter(reward__customer=customer).order_by('-created_at')
 
     @staticmethod
-    def get_reward_balance(customer_user):
-        """Get the current reward balance for a user."""
-        return LoyaltyService.get_balance(customer_user)
+    def get_reward_balance(customer):
+        """Get the current reward balance for a customer."""
+        return LoyaltyService.get_balance(customer)
 
     @staticmethod
-    def get_reward_history(customer_user):
+    def get_reward_history(customer):
         """Get reward history for a customer."""
-        return Reward.objects.filter(customer_user=customer_user).order_by('-created_at')
+        return Reward.objects.filter(customer=customer).order_by('-created_at')
 
     @staticmethod
     @transaction.atomic
-    def redeem_reward(customer_user, reward_option_id):
+    def redeem_reward(customer, reward_option_id, acting_customer_user=None, created_by=None):
         """
-        Redeem a reward for a user via LoyaltyService.
+        Redeem a reward against a customer's balance via LoyaltyService.
+
+        ``acting_customer_user`` records the portal user who redeemed (portal
+        flow); ``created_by`` records the staff Django user (in-shop flow).
 
         Returns:
             tuple: (bool success, str message or RewardRedemption object)
         """
         try:
-            tenant = customer_user.customer.tenant
+            tenant = customer.tenant
+            if tenant is None:
+                return False, "This customer is not linked to a shop."
             reward_option = RewardOption.objects.get(id=reward_option_id, tenant=tenant)
 
             if not reward_option.is_active:
@@ -563,7 +628,7 @@ class RewardService:
             # Lock the Reward row (CODE-165 / CODE-173 pattern).
             # Use get_or_create() to avoid the race that produces duplicate rows.
             reward, _created = Reward.objects.get_or_create(
-                customer_user=customer_user,
+                customer=customer,
                 defaults={'tenant': tenant, 'points': 0},
             )
             reward = Reward.objects.select_for_update().get(pk=reward.pk)
@@ -583,12 +648,14 @@ class RewardService:
             # not short-circuit.  Use the already-fetched config to avoid a second
             # get_or_create inside award_points().
             pt = LoyaltyService.award_points(
-                customer_user=customer_user,
+                customer=customer,
                 amount=-reward_option.points_required,
                 transaction_type='redemption',
                 description=f'Redeemed: {reward_option.name}',
                 tenant=tenant,
+                acting_customer_user=acting_customer_user,
                 related_redemption=redemption,
+                created_by=created_by,
             )
 
             # Defensive check: if award_points() still returned None for any
@@ -603,11 +670,11 @@ class RewardService:
             return False, "Invalid reward option"
 
     @staticmethod
-    def get_available_rewards(customer_user):
-        """Get list of rewards the user can redeem based on their balance."""
-        points = RewardService.get_reward_balance(customer_user)
+    def get_available_rewards(customer):
+        """Get list of rewards the customer can redeem based on their balance."""
+        points = RewardService.get_reward_balance(customer)
 
-        tenant = customer_user.customer.tenant
+        tenant = customer.tenant
         all_rewards = RewardOption.objects.filter(is_active=True, tenant=tenant).order_by('points_required')
 
         result = {
@@ -624,10 +691,10 @@ class RewardService:
         return result
 
     @staticmethod
-    def get_redemption_history(customer_user, limit=None):
-        """Get reward redemption history for a user."""
+    def get_redemption_history(customer, limit=None):
+        """Get reward redemption history for a customer."""
         redemptions = RewardRedemption.objects.filter(
-            reward__customer_user=customer_user
+            reward__customer=customer
         ).order_by('-created_at')
 
         if limit:
@@ -651,7 +718,7 @@ class RewardFulfillmentService:
         from apps.technician_portal.models import Technician, Repair
 
         try:
-            tenant = redemption.reward.customer_user.customer.tenant
+            tenant = redemption.reward.customer.tenant
         except AttributeError:
             tenant = None
         technicians_qs = Technician.objects.all()
@@ -690,7 +757,7 @@ class RewardFulfillmentService:
 
         TechnicianNotification.objects.create(
             technician=technician,
-            message=f"New reward redemption to fulfill: {redemption.reward_option.name} for {redemption.reward.customer_user.user.email}",
+            message=f"New reward redemption to fulfill: {redemption.reward_option.name} for {redemption.reward.customer.name}",
             redemption=redemption,
             created_at=timezone.now()
         )
@@ -726,7 +793,7 @@ class RewardFulfillmentService:
         """Get all pending redemptions that need to be fulfilled."""
         qs = RewardRedemption.objects.filter(status='PENDING')
         if tenant:
-            qs = qs.filter(reward__customer_user__customer__tenant=tenant)
+            qs = qs.filter(reward__customer__tenant=tenant)
         return qs.order_by('created_at')
 
     @staticmethod

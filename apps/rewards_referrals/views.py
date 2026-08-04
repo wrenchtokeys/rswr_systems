@@ -90,15 +90,15 @@ def get_user_referral_code(customer_user):
 
 def get_user_reward(customer_user):
     """
-    Helper function to get a user's reward record.
-    
+    Helper function to get the reward record for a portal user's company.
+
     Args:
         customer_user: The CustomerUser object
-        
+
     Returns:
-        Reward or None: The user's reward object, or None if not found
+        Reward or None: the company's shared reward object, or None if not found
     """
-    return Reward.objects.filter(customer_user=customer_user).first()
+    return Reward.objects.filter(customer=customer_user.customer).first()
 
 # Referral code management
 @login_required
@@ -200,11 +200,12 @@ def referral_tracking(request):
             if customer_user is None:
                 return JsonResponse({'success': False, 'message': 'Customer account required.'}, status=403)
 
-            # Use the service to process the referral
-            success = ReferralService.process_referral(referral_code, customer_user)
-            
+            # Record the referral — bonuses pay out after the referred
+            # customer's first completed job, not at signup.
+            success = ReferralService.record_referral(referral_code, customer_user)
+
             if success:
-                return JsonResponse({'success': True, 'message': 'Referral processed successfully'})
+                return JsonResponse({'success': True, 'message': 'Referral recorded — bonus points arrive after the first completed service'})
             else:
                 return JsonResponse({'success': False, 'message': 'Unable to process referral'})
             
@@ -239,7 +240,7 @@ def referral_history(request):
     referral_code_obj = get_user_referral_code(customer_user)
 
     # Reward points
-    points = RewardService.get_reward_balance(customer_user)
+    points = RewardService.get_reward_balance(customer_user.customer)
 
     # Tenant-scoped reward options
     tenant = getattr(request, 'tenant', None)
@@ -249,7 +250,7 @@ def referral_history(request):
 
     # Recent redemptions
     redemptions = RewardRedemption.objects.filter(
-        reward__customer_user=customer_user
+        reward__customer=customer_user.customer
     ).order_by('-created_at')[:5]
 
     if referral_code_obj:
@@ -306,7 +307,7 @@ def referral_stats(request):
     referral_count = ReferralService.get_referral_count(customer_user)
     
     # Get reward points using the service
-    points = RewardService.get_reward_balance(customer_user)
+    points = RewardService.get_reward_balance(customer_user.customer)
     
     return JsonResponse({
         'success': True,
@@ -368,7 +369,7 @@ def reward_balance(request):
     customer_user = get_customer_user(request)
     if customer_user is None:
         return _customer_required_redirect(request)
-    points = RewardService.get_reward_balance(customer_user)
+    points = RewardService.get_reward_balance(customer_user.customer)
     
     return JsonResponse({
         'success': True,
@@ -391,8 +392,8 @@ def reward_history(request):
     customer_user = get_customer_user(request)
     if customer_user is None:
         return _customer_required_redirect(request)
-    redemptions = RewardService.get_reward_redemptions(customer_user)
-    points = RewardService.get_reward_balance(customer_user)
+    redemptions = RewardService.get_reward_redemptions(customer_user.customer)
+    points = RewardService.get_reward_balance(customer_user.customer)
     
     # Get reward options scoped to tenant
     tenant = getattr(request, 'tenant', None)
@@ -483,7 +484,9 @@ def redeem_reward(request):
             return _customer_required_redirect(request)
 
         # Use the reward service to handle the redemption
-        success, result = RewardService.redeem_reward(customer_user, option_id)
+        success, result = RewardService.redeem_reward(
+            customer_user.customer, option_id, acting_customer_user=customer_user,
+        )
         
         if not success:
             messages.error(request, result)  # Result contains the error message
@@ -595,7 +598,7 @@ def referral_rewards(request):
     
     # Get redemption history - limit to 5 recent for better display
     redemptions = RewardRedemption.objects.filter(
-        reward__customer_user=customer_user
+        reward__customer=customer_user.customer
     ).order_by('-created_at')[:5]
     
     context = {
@@ -630,10 +633,10 @@ def referral_rewards_history(request):
         return _customer_required_redirect(request)
 
     redemptions = RewardRedemption.objects.filter(
-        reward__customer_user=customer_user
+        reward__customer=customer_user.customer
     ).order_by('-created_at')
 
-    points = RewardService.get_reward_balance(customer_user)
+    points = RewardService.get_reward_balance(customer_user.customer)
 
     tenant = getattr(request, 'tenant', None)
     reward_options_qs = RewardOption.objects.none()
@@ -687,7 +690,7 @@ def _notify_manager_physical_reward(request, redemption):
             tenant=tenant, is_manager=True, is_active=True
         ).select_related('user')
 
-        customer_name = redemption.reward.customer_user.user.get_full_name() or redemption.reward.customer_user.user.email
+        customer_name = redemption.reward.customer.name
         reward_name = redemption.reward_option.name
         date_str = redemption.preferred_date.strftime('%B %d, %Y') if redemption.preferred_date else 'No date specified'
         time_str = redemption.preferred_time.strftime('%I:%M %p') if redemption.preferred_time else ''

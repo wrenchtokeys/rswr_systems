@@ -329,8 +329,21 @@ def _send_review_email(review_request, config):
     shop_name = rr.tenant.name or 'our shop'
     customer_name = rr.customer.name or 'Valued Customer'
 
+    # Loyalty balance line — one factual sentence, or None when the shop's
+    # program/email toggle is off or the balance is zero.
+    points_line = None
+    try:
+        from apps.rewards_referrals.services import LoyaltyService
+        points_line = LoyaltyService.get_email_balance_line(rr.customer)
+    except Exception:
+        points_line = None
+
     # Template vars available to tenant-customised subject & body
-    tpl_vars = dict(shop_name=shop_name, customer_name=customer_name)
+    tpl_vars = dict(
+        shop_name=shop_name,
+        customer_name=customer_name,
+        points_balance=points_line or '',
+    )
 
     subject = _safe_format(config.email_subject, **tpl_vars)
 
@@ -368,6 +381,10 @@ def _send_review_email(review_request, config):
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     }
 
+    # Quiet rewards-balance footer row (only when the program is on and the
+    # balance is positive) — factual, not promotional, per SES content rules.
+    detail_rows = [("Rewards", points_line)] if points_line else None
+
     result = send_branded_email(
         subject=subject,
         recipient_list=[rr.customer_user.user.email],
@@ -378,6 +395,7 @@ def _send_review_email(review_request, config):
         button_url=click_url,
         secondary_button_text="Unsubscribe from review requests",
         secondary_button_url=opt_out_url,
+        detail_rows=detail_rows,
         fail_silently=True,
         headers=headers,
     )
