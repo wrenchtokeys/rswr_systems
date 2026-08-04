@@ -315,6 +315,51 @@ def notify_invoice_outcome(request, invoice, created, result, excluded):
         messages.error(request, result.message)
 
 
+def _parse_extra_charges(request):
+    """Parse the repeatable extra-charge rows (charge_desc[] / charge_amount[]).
+
+    Returns (charges, error): charges is a list of (description, Decimal)
+    tuples; error is a user-facing message or None. Fully blank rows are
+    skipped.
+    """
+    from decimal import InvalidOperation
+
+    descs = request.POST.getlist('charge_desc')
+    amounts = request.POST.getlist('charge_amount')
+    charges = []
+    for desc, raw_amount in zip(descs, amounts):
+        desc = desc.strip()
+        raw_amount = (raw_amount or '').strip()
+        if not desc and not raw_amount:
+            continue
+        if not desc:
+            return [], 'Each extra charge needs a description.'
+        try:
+            amount = Decimal(raw_amount)
+        except (InvalidOperation, TypeError):
+            return [], f'Enter a valid amount for the "{desc}" charge.'
+        if amount <= 0:
+            return [], f'The "{desc}" charge must be more than zero.'
+        charges.append((desc[:200], amount.quantize(Decimal('0.01'))))
+    return charges, None
+
+
+def _save_extra_charges(service, charges, tenant, taxable=True):
+    """Replace the job's extra charges with the parsed rows."""
+    from apps.technician_portal.models import JobCharge
+
+    service.extra_charges.all().delete()
+    field = 'replacement' if type(service).__name__ == 'Replacement' else 'repair'
+    for desc, amount in charges:
+        JobCharge.objects.create(
+            tenant=tenant,
+            description=desc,
+            amount=amount,
+            taxable=taxable,
+            **{field: service},
+        )
+
+
 @technician_required
 def job_create(request):
     """Quick job + invoice: one short form, optionally straight to a sent
@@ -347,12 +392,18 @@ def job_create(request):
     shop_tax_enabled = tax_svc.is_tax_enabled()
     shop_tax_rate = tax_svc.calculate_tax(subtotal=Decimal('0'))['rate'] if shop_tax_enabled else None
 
+    from apps.technician_portal.models import FeePreset
+    fee_presets = FeePreset.objects.filter(tenant=tenant, is_active=True)
+
     if request.method == 'POST':
         # request.FILES: the "More details" panel takes damage photos, so this
         # form is multipart now.
         form = QuickJobForm(
             request.POST, request.FILES, tenant=tenant, allowed_types=allowed_types,
         )
+        charges, charge_error = _parse_extra_charges(request)
+        if form.is_valid() and charge_error:
+            form.add_error(None, charge_error)
         if form.is_valid():
             data = form.cleaned_data
 
@@ -392,6 +443,8 @@ def job_create(request):
                             'duplicate_suggestions': suggestions,
                             'shop_tax_enabled': shop_tax_enabled,
                             'shop_tax_rate': shop_tax_rate,
+                            'fee_presets': fee_presets,
+                            'charge_rows': charges,
                         })
 
                 customer = create_individual(
@@ -455,6 +508,14 @@ def job_create(request):
                 )
             service.save()
 
+            # Extra charges (trip fee etc.) ride along on the ticket and
+            # invoice as their own lines. Must exist before complete/invoice
+            # below so auto-invoicing picks them up.
+            if charges:
+                _save_extra_charges(
+                    service, charges, tenant, taxable=not common['no_tax'],
+                )
+
             send_requested = 'save_and_send' in request.POST and user_can_invoices
             if data['already_completed'] or send_requested:
                 try:
@@ -487,6 +548,17 @@ def job_create(request):
             initial['service_type'] = request.GET.get('type')
         form = QuickJobForm(initial=initial, tenant=tenant, allowed_types=allowed_types)
 
+    # On a bounced POST, re-render whatever charge rows were typed so they
+    # aren't silently lost with the validation error.
+    charge_rows = []
+    if request.method == 'POST':
+        charge_rows = [
+            (d.strip(), a.strip())
+            for d, a in zip(request.POST.getlist('charge_desc'),
+                            request.POST.getlist('charge_amount'))
+            if d.strip() or a.strip()
+        ]
+
     return render(request, 'technician_portal/job_form.html', {
         'form': form,
         'allowed_types': allowed_types,
@@ -494,6 +566,8 @@ def job_create(request):
         'advanced_has_errors': _advanced_has_errors(form),
         'shop_tax_enabled': shop_tax_enabled,
         'shop_tax_rate': shop_tax_rate,
+        'fee_presets': fee_presets,
+        'charge_rows': charge_rows,
     })
 
 

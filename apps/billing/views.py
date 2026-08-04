@@ -10,7 +10,7 @@ Author: Amelia (Clawdbot AI)
 
 import json
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST
@@ -860,6 +860,128 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
             'discount': float(line_item.discount),
             'amount': float(line_item.amount),
         },
+        'invoice': {
+            'subtotal': float(invoice.subtotal),
+            'discount': float(invoice.discount),
+            'tax_amount': float(invoice.tax_amount),
+            'total': float(invoice.total),
+        },
+    })
+
+
+@requires_api('invoices')
+@require_POST
+def add_invoice_line_item(request, invoice_id):
+    """
+    Add a free-form line item (no repair/replacement) to a live invoice —
+    trip charges, service fees, and other one-off amounts.
+    POST: {"description": "Trip charge", "amount": 25.00, "taxable": true}
+    """
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    from apps.billing.models import Invoice, InvoiceLineItem
+
+    try:
+        invoice = Invoice.objects.for_tenant(tenant).get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+
+    if invoice.status in ('PAID', 'CANCELLED'):
+        return JsonResponse({'error': f'Cannot edit a {invoice.status.lower()} invoice'}, status=400)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    description = (data.get('description') or '').strip()
+    if not description:
+        return JsonResponse({'error': 'Description is required'}, status=400)
+    if len(description) > 500:
+        return JsonResponse({'error': 'Description is too long (500 characters max)'}, status=400)
+
+    try:
+        amount = Decimal(str(data.get('amount'))).quantize(Decimal('0.01'))
+    except (InvalidOperation, TypeError):
+        return JsonResponse({'error': 'Enter a valid amount'}, status=400)
+    if amount <= 0:
+        return JsonResponse({'error': 'Amount must be greater than zero'}, status=400)
+
+    customer = invoice.customer
+    default_taxable = not (customer and customer.tax_exempt)
+    taxable = bool(data.get('taxable', default_taxable))
+
+    line_item = InvoiceLineItem.objects.create(
+        invoice=invoice,
+        description=description,
+        quantity=1,
+        unit_price=amount,
+        discount=Decimal('0.00'),
+        amount=amount,
+        taxable=taxable,
+    )
+
+    from apps.billing.services.invoice_sync import recalculate_invoice_totals
+    recalculate_invoice_totals(invoice)
+
+    return JsonResponse({
+        'success': True,
+        'line_item': {
+            'id': line_item.id,
+            'description': line_item.description,
+            'amount': float(line_item.amount),
+            'taxable': line_item.taxable,
+        },
+        'invoice': {
+            'subtotal': float(invoice.subtotal),
+            'discount': float(invoice.discount),
+            'tax_amount': float(invoice.tax_amount),
+            'total': float(invoice.total),
+        },
+    })
+
+
+@requires_api('invoices')
+@require_POST
+def delete_invoice_line_item(request, invoice_id, line_item_id):
+    """
+    Remove a free-form line item from a live invoice. Job-linked lines can't
+    be deleted here — the job itself is the source of truth for those.
+    """
+    tenant, err = _get_tenant_or_403(request)
+    if err:
+        return err
+
+    from apps.billing.models import Invoice, InvoiceLineItem
+
+    try:
+        invoice = Invoice.objects.for_tenant(tenant).get(id=invoice_id)
+    except Invoice.DoesNotExist:
+        return JsonResponse({'error': 'Invoice not found'}, status=404)
+
+    if invoice.status in ('PAID', 'CANCELLED'):
+        return JsonResponse({'error': f'Cannot edit a {invoice.status.lower()} invoice'}, status=400)
+
+    try:
+        line_item = invoice.line_items.get(id=line_item_id)
+    except InvoiceLineItem.DoesNotExist:
+        return JsonResponse({'error': 'Line item not found'}, status=404)
+
+    if line_item.repair_id or line_item.replacement_id:
+        return JsonResponse(
+            {'error': 'This line is linked to a job and can\'t be removed here'},
+            status=400,
+        )
+
+    line_item.delete()
+
+    from apps.billing.services.invoice_sync import recalculate_invoice_totals
+    recalculate_invoice_totals(invoice)
+
+    return JsonResponse({
+        'success': True,
         'invoice': {
             'subtotal': float(invoice.subtotal),
             'discount': float(invoice.discount),

@@ -1448,6 +1448,19 @@ class Repair(GlassService):
         """Check if this repair has a manual price override"""
         return self.cost_override is not None
 
+    @property
+    def extra_charges_total(self):
+        """Sum of one-off extra charges (trip fees etc.) on this job."""
+        from django.db.models import Sum
+        from decimal import Decimal
+        return self.extra_charges.aggregate(t=Sum('amount'))['t'] or Decimal('0.00')
+
+    @property
+    def total_with_charges(self):
+        """Job price plus extra charges — what the ticket actually costs."""
+        from decimal import Decimal
+        return (self.cost or Decimal('0.00')) + self.extra_charges_total
+
     class Meta:
         ordering = ['-service_date']
         verbose_name = 'Repair'
@@ -1759,7 +1772,18 @@ class Replacement(GlassService):
     def has_price_override(self):
         """Check if this replacement has a manual price override"""
         return self.cost_override is not None
-    
+
+    @property
+    def extra_charges_total(self):
+        """Sum of one-off extra charges (trip fees etc.) on this job."""
+        from django.db.models import Sum
+        return self.extra_charges.aggregate(t=Sum('amount'))['t'] or Decimal('0.00')
+
+    @property
+    def total_with_charges(self):
+        """Job price plus extra charges — what the ticket actually costs."""
+        return (self.cost or Decimal('0.00')) + self.extra_charges_total
+
     def get_discounted_cost(self):
         """Final cost with any applied reward redemption (mirrors Repair's)."""
         base_cost = self.cost or Decimal('0.00')
@@ -2005,6 +2029,64 @@ class ViscosityRecommendation(AutoUpdateTimestampMixin, models.Model):
                 }
 
         return None
+
+
+class JobCharge(models.Model):
+    """
+    A one-off extra charge on a job (trip charge, after-hours fee, disposal).
+
+    Additive to the job's price — never touches Repair.cost / cost_override,
+    so pricing sync and progressive pricing are unaffected. At invoicing time
+    each charge becomes its own free-form line item on the invoice (no
+    repair/replacement FK on the line, so job→invoice price sync leaves it
+    alone). Once the job is invoiced, charges are managed on the invoice
+    instead (Add Line Item on the invoice detail page).
+    """
+    tenant = models.ForeignKey(
+        'tenants.Tenant', on_delete=models.CASCADE, related_name='job_charges',
+    )
+    repair = models.ForeignKey(
+        'Repair', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='extra_charges',
+    )
+    replacement = models.ForeignKey(
+        'Replacement', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='extra_charges',
+    )
+    description = models.CharField(max_length=200)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    taxable = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        verbose_name = 'Job Charge'
+        verbose_name_plural = 'Job Charges'
+
+    def __str__(self):
+        return f"{self.description} (${self.amount})"
+
+
+class FeePreset(models.Model):
+    """
+    A saved extra charge the shop applies often ("Trip charge — $25").
+    Rendered as one-tap chips on the job form; managed in Settings → Billing.
+    """
+    tenant = models.ForeignKey(
+        'tenants.Tenant', on_delete=models.CASCADE, related_name='fee_presets',
+    )
+    label = models.CharField(max_length=100)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['display_order', 'id']
+        verbose_name = 'Fee Preset'
+        verbose_name_plural = 'Fee Presets'
+
+    def __str__(self):
+        return f"{self.label} (${self.amount})"
 
 
 # Review request models live in a separate file to keep this module manageable.

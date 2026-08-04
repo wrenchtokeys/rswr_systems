@@ -753,6 +753,65 @@
     </div>
     {% endif %}
 
+    <!-- Saved Fees (one-tap extra charges on the job form) -->
+    <div class="card mb-6" id="saved-fees">
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-receipt text-amber-600 text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900">Saved Fees</h3>
+                    <p class="text-sm text-gray-500">Charges you add often — trip charge, after-hours, disposal. They show up as one-tap buttons on the job form and get their own line on the invoice.</p>
+                </div>
+            </div>
+        </div>
+        <div class="p-6">
+            {% if fee_presets %}
+            <div class="space-y-2 mb-4">
+                {% for preset in fee_presets %}
+                <div class="flex items-center justify-between px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div class="text-sm text-gray-800">
+                        <span class="font-medium">{{ preset.label }}</span>
+                        <span class="text-gray-500 ml-2">${{ preset.amount|floatformat:2 }}</span>
+                    </div>
+                    <form method="post" action="{% url 'owner_settings' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="form_type" value="delete_fee_preset">
+                        <input type="hidden" name="preset_id" value="{{ preset.id }}">
+                        <button type="submit" class="text-gray-400 hover:text-red-600 p-1" title="Remove saved fee">
+                            <i class="fas fa-trash-alt text-sm"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-sm text-gray-400 mb-4">No saved fees yet — add your first one below.</p>
+            {% endif %}
+            <form method="post" action="{% url 'owner_settings' %}" class="flex flex-wrap items-end gap-3">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="add_fee_preset">
+                <div class="flex-1 min-w-[180px]">
+                    <label class="block text-xs text-gray-500 mb-1">Fee name</label>
+                    <input type="text" name="label" maxlength="100" required placeholder="e.g. Trip charge"
+                           class="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-500 mb-1">Amount</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                        <input type="number" name="amount" step="0.01" min="0.01" required placeholder="25.00"
+                               class="w-36 pl-7 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+                <button type="submit" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-plus mr-2"></i> Add
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- Sales Tax Setup -->
     <div class="card mb-6" id="sales-tax">
         <div class="px-6 py-4 border-b border-gray-200">

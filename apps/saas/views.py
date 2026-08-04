@@ -924,12 +924,24 @@ def replacement_create(request):
         messages.warning(request, limit_msg)
         return redirect('owner_dashboard')
 
+    from apps.technician_portal.views.jobs import _parse_extra_charges, _save_extra_charges
+    from apps.technician_portal.models import FeePreset
+
+    charges = []
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, tenant=tenant)
+        charges, charge_error = _parse_extra_charges(request)
+        if form.is_valid() and charge_error:
+            form.add_error(None, charge_error)
         if form.is_valid():
             replacement = form.save(commit=False)
             replacement.tenant = tenant
             replacement.save()
+
+            if charges:
+                _save_extra_charges(
+                    replacement, charges, tenant, taxable=not replacement.no_tax,
+                )
 
             # Auto-assign technician if none was chosen
             if not replacement.technician_id:
@@ -956,6 +968,8 @@ def replacement_create(request):
     return render(request, 'saas/replacement_form.html', {
         'form': form,
         'tenant': tenant,
+        'charge_rows': charges,
+        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True),
     })
 
 
@@ -1023,19 +1037,46 @@ def replacement_edit(request, pk):
         messages.warning(request, "You don't have access to edit this replacement.")
         return redirect('job_list')
 
+    # Extra charges are editable until the job lands on a live invoice;
+    # after that they're managed on the invoice (Add Line Item).
+    from apps.billing.services.invoice_sync import live_invoice_number_for_service
+    from apps.technician_portal.views.jobs import _parse_extra_charges, _save_extra_charges
+    from apps.technician_portal.models import FeePreset
+    charges_locked_invoice = live_invoice_number_for_service(replacement)
+
     if request.method == 'POST':
         form = ReplacementForm(request.POST, request.FILES, instance=replacement, tenant=tenant)
+        charges, charge_error = _parse_extra_charges(request)
+        if not charges_locked_invoice and charge_error and form.is_valid():
+            form.add_error(None, charge_error)
         if form.is_valid():
             form.save()
+            if not charges_locked_invoice:
+                _save_extra_charges(
+                    replacement, charges, tenant, taxable=not replacement.no_tax,
+                )
             messages.success(request, 'Replacement updated successfully!')
             return redirect('replacement_detail', pk=replacement.pk)
     else:
         form = ReplacementForm(instance=replacement, tenant=tenant)
 
+    if request.method == 'POST' and not charges_locked_invoice:
+        charge_rows = [
+            (d.strip(), a.strip())
+            for d, a in zip(request.POST.getlist('charge_desc'),
+                            request.POST.getlist('charge_amount'))
+            if d.strip() or a.strip()
+        ]
+    else:
+        charge_rows = [(c.description, c.amount) for c in replacement.extra_charges.all()]
+
     return render(request, 'saas/replacement_edit.html', {
         'form': form,
         'replacement': replacement,
         'tenant': tenant,
+        'charges_locked_invoice': charges_locked_invoice,
+        'charge_rows': charge_rows,
+        'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True),
     })
 
 
@@ -1528,6 +1569,33 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not update pricing tiers.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'add_fee_preset':
+            # Saved fees (trip charge etc.) — one-tap chips on the job form
+            from decimal import Decimal, InvalidOperation
+            from apps.technician_portal.models import FeePreset
+            label = request.POST.get('label', '').strip()
+            try:
+                amount = Decimal(request.POST.get('amount', ''))
+            except (InvalidOperation, TypeError):
+                amount = None
+            if not label or amount is None or amount <= 0:
+                messages.error(request, 'A saved fee needs a name and an amount above zero.')
+            else:
+                FeePreset.objects.create(tenant=tenant, label=label[:100], amount=amount)
+                messages.success(request, f'Saved fee "{label}" added.')
+            return redirect('/owner/settings/?tab=billing#saved-fees')
+
+        if form_type == 'delete_fee_preset':
+            from apps.technician_portal.models import FeePreset
+            try:
+                preset = FeePreset.objects.get(
+                    tenant=tenant, id=int(request.POST.get('preset_id', '')))
+                preset.delete()
+                messages.success(request, f'Saved fee "{preset.label}" removed.')
+            except (FeePreset.DoesNotExist, ValueError, TypeError):
+                messages.error(request, 'Saved fee not found.')
+            return redirect('/owner/settings/?tab=billing#saved-fees')
+
         if form_type == 'billing_location':
             # Update shop address ONLY. Tax setup is its own explicit form
             # (form_type='tax_settings') — saving your address must never
@@ -1922,6 +1990,10 @@ def owner_settings_view(request):
     i_am_technician = bool(my_tech and my_tech.is_active)
     can_add_self_as_tech = not i_am_technician and not my_foreign_tech
 
+    # Saved fees for the Billing tab (one-tap extra charges on the job form)
+    from apps.technician_portal.models import FeePreset
+    fee_presets = FeePreset.objects.filter(tenant=tenant).order_by('display_order', 'id')
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -1947,6 +2019,7 @@ def owner_settings_view(request):
         'warranty_applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
         'warranty_duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
         'completion': _setup_completion(tenant),
+        'fee_presets': fee_presets,
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -2699,7 +2772,9 @@ def owner_invoice_list(request):
     if status_filter == 'paid':
         invoices = invoices.filter(status='PAID')
     elif status_filter == 'unpaid':
-        invoices = invoices.filter(status__in=['SENT', 'PARTIAL', 'DRAFT'])
+        # Overdue invoices are the most unpaid of all — excluding them here
+        # hid exactly the invoices most worth chasing.
+        invoices = invoices.filter(status__in=['SENT', 'PARTIAL', 'DRAFT', 'OVERDUE'])
     elif status_filter == 'overdue':
         invoices = invoices.filter(status='OVERDUE')
     elif status_filter == 'partial':
@@ -2834,6 +2909,12 @@ def owner_invoice_list(request):
         'uninvoiced_customers': uninvoiced_customers,
         'default_payment_terms': default_payment_terms,
         'default_payment_terms_display': terms_display,
+        # For the quick "Record payment" and bulk mark-paid modals
+        'payment_methods': [
+            choice for choice in Payment.PAYMENT_METHOD_CHOICES
+            if choice[0] != 'STRIPE'
+        ],
+        'today': timezone.now().date(),
     }
     return render(request, 'saas/owner_invoices.html', context)
 
@@ -2907,6 +2988,18 @@ def owner_record_payment(request, invoice_id):
 
     invoice = get_object_or_404(Invoice, id=invoice_id, customer__tenant=tenant)
 
+    # Where to land afterwards — the invoice detail page by default, or a
+    # same-site path passed by the caller (the invoice list's quick-payment
+    # modal stays on the list).
+    next_url = request.POST.get('next', '')
+    if not (next_url.startswith('/') and not next_url.startswith('//')):
+        next_url = ''
+
+    def _done():
+        return redirect(next_url) if next_url else redirect(
+            'owner_invoice_detail', invoice_id=invoice.id
+        )
+
     # Parse and validate fields
     from decimal import Decimal, InvalidOperation
 
@@ -2914,7 +3007,7 @@ def owner_record_payment(request, invoice_id):
         amount = Decimal(request.POST.get('amount', '0'))
     except (InvalidOperation, TypeError):
         messages.error(request, 'Invalid amount. Please enter a valid number.')
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+        return _done()
 
     payment_method = request.POST.get('payment_method', 'OTHER')
     reference_number = request.POST.get('reference_number', '').strip()
@@ -2924,17 +3017,17 @@ def owner_record_payment(request, invoice_id):
     # Validate amount
     if amount <= Decimal('0'):
         messages.error(request, 'Payment amount must be greater than zero.')
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+        return _done()
 
     if invoice.status in ('PAID', 'CANCELLED'):
         messages.error(request, f'Cannot record payment — invoice is {invoice.get_status_display()}.')
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+        return _done()
 
     # Validate payment method
     valid_methods = [c[0] for c in Payment.PAYMENT_METHOD_CHOICES]
     if payment_method not in valid_methods:
         messages.error(request, 'Invalid payment method.')
-        return redirect('owner_invoice_detail', invoice_id=invoice.id)
+        return _done()
 
     # Parse payment date
     from datetime import date
@@ -2944,7 +3037,7 @@ def owner_record_payment(request, invoice_id):
             payment_date = date.fromisoformat(payment_date_str)
         except ValueError:
             messages.error(request, 'Invalid payment date.')
-            return redirect('owner_invoice_detail', invoice_id=invoice.id)
+            return _done()
 
     # Create the Payment record
     # NOTE: The amount_due check must happen INSIDE the transaction with a row-level
@@ -3003,7 +3096,181 @@ def owner_record_payment(request, invoice_id):
         logger.error(f"Error recording payment for invoice {invoice.invoice_number}: {e}")
         messages.error(request, 'An error occurred while recording the payment. Please try again.')
 
-    return redirect('owner_invoice_detail', invoice_id=invoice.id)
+    return _done()
+
+
+@owner_or_manager_required
+def owner_receive_payment(request):
+    """
+    GET/POST /owner/payments/receive/ — receive one customer payment and
+    apply it across their open invoices (the fleet-check workflow: Penske
+    cuts one check that covers four invoices).
+    """
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    from decimal import Decimal, InvalidOperation
+    from datetime import date
+    from django.db.models import Sum, Count
+
+    OPEN_STATUSES = ['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT']
+
+    open_invoices_qs = Invoice.objects.filter(
+        customer__tenant=tenant,
+        status__in=OPEN_STATUSES,
+        deleted_at__isnull=True,
+    )
+
+    # Customer picker: everyone with an open balance
+    customer_rows = list(
+        open_invoices_qs.values('customer_id', 'customer__name')
+        .annotate(open_count=Count('id'), outstanding=Sum('total') - Sum('amount_paid'))
+        .order_by('customer__name')
+    )
+
+    selected_customer = None
+    raw_customer = request.POST.get('customer_id') or request.GET.get('customer') or ''
+    if raw_customer:
+        try:
+            selected_customer = Customer.objects.get(tenant=tenant, id=int(raw_customer))
+        except (Customer.DoesNotExist, ValueError, TypeError):
+            messages.error(request, 'Customer not found.')
+            return redirect('owner_receive_payment')
+
+    open_invoices = []
+    if selected_customer:
+        open_invoices = [
+            inv for inv in open_invoices_qs.filter(customer=selected_customer)
+            .order_by('due_date', 'invoice_date', 'id')
+            if inv.amount_due > 0
+        ]
+
+    if request.method == 'POST' and selected_customer:
+        def _fail(msg):
+            messages.error(request, msg)
+            return redirect(f"{reverse('owner_receive_payment')}?customer={selected_customer.id}")
+
+        payment_method = request.POST.get('payment_method', 'OTHER')
+        valid_methods = [c[0] for c in Payment.PAYMENT_METHOD_CHOICES]
+        if payment_method not in valid_methods:
+            return _fail('Invalid payment method.')
+
+        reference_number = request.POST.get('reference_number', '').strip()
+        notes = request.POST.get('notes', '').strip()
+
+        payment_date = timezone.now().date()
+        if request.POST.get('payment_date'):
+            try:
+                payment_date = date.fromisoformat(request.POST['payment_date'])
+            except ValueError:
+                return _fail('Invalid payment date.')
+
+        # Per-invoice allocations
+        allocations = {}
+        for inv in open_invoices:
+            raw = (request.POST.get(f'alloc_{inv.id}') or '').strip()
+            if not raw:
+                continue
+            try:
+                val = Decimal(raw)
+            except InvalidOperation:
+                return _fail(f'Invalid amount for invoice {inv.invoice_number}.')
+            if val < 0:
+                return _fail(f'Amount for invoice {inv.invoice_number} can\'t be negative.')
+            if val > 0:
+                allocations[inv.id] = val.quantize(Decimal('0.01'))
+
+        if not allocations:
+            return _fail('Apply the payment to at least one invoice.')
+
+        total_alloc = sum(allocations.values(), Decimal('0.00'))
+
+        # The typed payment amount must match what's applied — a mismatch
+        # means money would silently vanish or appear.
+        try:
+            amount = Decimal(request.POST.get('amount', '0')).quantize(Decimal('0.01'))
+        except (InvalidOperation, TypeError):
+            return _fail('Invalid payment amount.')
+        if amount != total_alloc:
+            return _fail(
+                f'Payment amount (${amount}) doesn\'t match the total applied '
+                f'to invoices (${total_alloc}). Adjust the amounts so they match.'
+            )
+
+        invoice_by_id = {inv.id: inv for inv in open_invoices}
+        try:
+            with transaction.atomic():
+                # Lock in id order (consistent order avoids deadlocks) and
+                # re-validate against fresh balances — same TOCTOU guard as
+                # owner_record_payment (CODE-056).
+                locked = list(
+                    Invoice.objects.select_for_update()
+                    .filter(id__in=allocations.keys(), customer=selected_customer,
+                            deleted_at__isnull=True)
+                    .order_by('id')
+                )
+                if len(locked) != len(allocations):
+                    raise ValueError('One of the selected invoices no longer exists.')
+
+                payments = []
+                for inv in locked:
+                    alloc = allocations[inv.id]
+                    if inv.status in ('PAID', 'CANCELLED'):
+                        raise ValueError(
+                            f'Invoice {inv.invoice_number} is already '
+                            f'{inv.get_status_display().lower()}.'
+                        )
+                    if alloc > inv.amount_due:
+                        raise ValueError(
+                            f'${alloc} exceeds the remaining balance '
+                            f'(${inv.amount_due}) on invoice {inv.invoice_number}.'
+                        )
+                    payments.append(Payment.objects.create(
+                        invoice=inv,
+                        amount=alloc,
+                        payment_date=payment_date,
+                        payment_method=payment_method,
+                        reference_number=reference_number,
+                        notes=notes,
+                        recorded_by=request.user,
+                    ))
+
+            # One combined receipt + owner notification (best-effort)
+            try:
+                from apps.billing.services.payment_notification_service import PaymentNotificationService
+                PaymentNotificationService().notify_payment_batch(payments)
+            except Exception as e:
+                logger.warning(f"Batch payment notification failed: {e}")
+
+            messages.success(
+                request,
+                f'Payment of ${total_alloc} from {selected_customer.name} recorded '
+                f'across {len(payments)} invoice{"s" if len(payments) != 1 else ""}.'
+            )
+            return redirect(f"{reverse('owner_invoice_list')}?customer={selected_customer.id}")
+
+        except ValueError as e:
+            return _fail(str(e))
+        except Exception as e:
+            logger.error(f"Error receiving payment for customer {selected_customer.id}: {e}")
+            return _fail('An error occurred while recording the payment. Please try again.')
+
+    payment_methods = [
+        choice for choice in Payment.PAYMENT_METHOD_CHOICES
+        if choice[0] != 'STRIPE'
+    ]
+
+    context = {
+        'tenant': tenant,
+        'customer_rows': customer_rows,
+        'selected_customer': selected_customer,
+        'open_invoices': open_invoices,
+        'payment_methods': payment_methods,
+        'today': timezone.now().date(),
+    }
+    return render(request, 'saas/owner_receive_payment.html', context)
 
 
 # ─── Tax Rate Management ─────────────────────────────────────────────
@@ -4053,8 +4320,23 @@ def owner_invoice_bulk_action(request):
         # Previously this action wrote amount_paid/status directly with no
         # Payment row and no paid_at stamp — payment history tab was empty and
         # the paid_at field was always NULL for bulk-paid invoices.
-        updated = 0
+        from datetime import date as _date
         from django.utils import timezone as _tz
+
+        payment_method = data.get('payment_method') or 'OTHER'
+        valid_methods = [c[0] for c in Payment.PAYMENT_METHOD_CHOICES]
+        if payment_method not in valid_methods:
+            return JsonResponse({'success': False, 'error': 'Invalid payment method.'}, status=400)
+        reference_number = (data.get('reference_number') or '').strip()
+        payment_date = _tz.now().date()
+        if data.get('payment_date'):
+            try:
+                payment_date = _date.fromisoformat(data['payment_date'])
+            except (ValueError, TypeError):
+                return JsonResponse({'success': False, 'error': 'Invalid payment date.'}, status=400)
+
+        updated = 0
+        payments_by_customer = {}
         payable = invoices.filter(status__in=['SENT', 'PARTIAL', 'OVERDUE', 'DRAFT'])
         for inv in payable.select_related('customer'):
             remaining = inv.amount_due
@@ -4062,13 +4344,14 @@ def owner_invoice_bulk_action(request):
                 continue
             try:
                 with transaction.atomic():
-                    Payment.objects.create(
+                    payment = Payment.objects.create(
                         invoice=inv,
                         amount=remaining,
-                        payment_method='OTHER',
-                        notes='Bulk marked as paid by shop owner',
+                        payment_method=payment_method,
+                        reference_number=reference_number,
+                        notes='Marked as paid by shop owner',
                         recorded_by=request.user,
-                        payment_date=_tz.now().date(),
+                        payment_date=payment_date,
                     )
                     # Payment.save() → _update_invoice_totals() sets paid_at
                     # and status='PAID' via invoice.update_status(). No manual
@@ -4077,6 +4360,19 @@ def owner_invoice_bulk_action(request):
                 logger.warning(f"Bulk mark_paid: could not create payment for invoice {inv.id}: {e}")
             else:
                 updated += 1
+                payments_by_customer.setdefault(inv.customer_id, []).append(payment)
+
+        # Receipts: one combined email per customer (the single-invoice
+        # Record Payment path sends these too — bulk used to silently skip
+        # them, so paying by check got a receipt but bulk mark-paid didn't).
+        try:
+            from apps.billing.services.payment_notification_service import PaymentNotificationService
+            svc = PaymentNotificationService()
+            for customer_payments in payments_by_customer.values():
+                svc.notify_payment_batch(customer_payments)
+        except Exception as e:
+            logger.warning(f"Bulk mark_paid: receipt notification failed: {e}")
+
         return JsonResponse({
             'success': True,
             'message': f'{updated} invoice(s) marked as paid.',
@@ -4358,6 +4654,9 @@ def owner_generate_invoice_from_repair(request, repair_id):
                         unit_number=mr.unit_number,
                         taxable=not mr.no_tax and not mr.customer.tax_exempt,
                     )
+
+                    from apps.billing.services.invoice_sync import create_charge_lines
+                    create_charge_lines(existing_invoice, mr)
 
                 # Recalculate invoice totals
                 all_line_items = InvoiceLineItem.objects.filter(invoice=existing_invoice)

@@ -156,8 +156,14 @@
     <div class="lg:col-span-2 space-y-6">
         <!-- Line Items -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Line Items</h2>
+                {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
+                <button type="button" onclick="openAddLineItemModal()"
+                    class="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700">
+                    <i class="fas fa-plus text-xs"></i>Add Line Item
+                </button>
+                {% endif %}
             </div>
             {% if line_items %}
             <!-- ===== MOBILE: stacked line items =====
@@ -185,6 +191,14 @@
                                 class="text-gray-400 hover:text-blue-600 transition-colors p-1">
                                 <i class="fas fa-pen text-xs"></i>
                             </button>
+                            {% if not item.repair_id and not item.replacement_id %}
+                            <button type="button"
+                                onclick="deleteLineItem({{ item.id }}, '{{ item.description|escapejs }}')"
+                                aria-label="Remove line item: {{ item.description }}"
+                                class="text-gray-400 hover:text-red-600 transition-colors p-1">
+                                <i class="fas fa-trash-alt text-xs"></i>
+                            </button>
+                            {% endif %}
                             {% endif %}
                         </div>
                     </div>
@@ -266,6 +280,14 @@
                                         class="text-gray-400 hover:text-blue-600 transition-colors">
                                         <i class="fas fa-pen text-xs"></i>
                                     </button>
+                                    {% if not item.repair_id and not item.replacement_id %}
+                                    <button type="button"
+                                        onclick="deleteLineItem({{ item.id }}, '{{ item.description|escapejs }}')"
+                                        title="Remove line item"
+                                        class="text-gray-400 hover:text-red-600 transition-colors">
+                                        <i class="fas fa-trash-alt text-xs"></i>
+                                    </button>
+                                    {% endif %}
                                     {% endif %}
                                 </div>
                             </td>
@@ -715,6 +737,46 @@ document.addEventListener('keydown', function(e) {
     </div>
 </div>
 
+<!-- Line Item Add Modal -->
+<div id="line-item-add-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeAddLineItemModal()"></div>
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full">
+            <div class="bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 border-b border-blue-100 flex items-center justify-between">
+                <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-plus mr-2 text-blue-600"></i>Add Line Item</h3>
+                <button onclick="closeAddLineItemModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+            </div>
+            <div class="px-6 py-5 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <input type="text" id="li-add-description" maxlength="500" placeholder="Trip charge, service fee, etc."
+                        class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="text-gray-500 text-sm">$</span></div>
+                        <input type="number" id="li-add-amount" step="0.01" min="0.01" placeholder="0.00"
+                            class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                </div>
+                {% if invoice.tax_rate > 0 %}
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" id="li-add-taxable" checked
+                        class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                    Charge tax on this item ({{ invoice.tax_rate }}%)
+                </label>
+                {% endif %}
+                <p id="li-add-error" class="hidden text-sm text-red-600"></p>
+            </div>
+            <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+                <button onclick="closeAddLineItemModal()" class="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button id="li-add-save" onclick="saveNewLineItem()" class="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">Add to Invoice</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Invoice Details Edit Modal -->
 <div id="invoice-edit-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
@@ -815,6 +877,61 @@ function saveLineItem() {
     .catch(err => { errEl.textContent = 'Error: ' + err.message; errEl.classList.remove('hidden'); btn.disabled = false; });
 }
 
+// --- Line item add / delete (free-form charges: trip fees, etc.) ---
+function openAddLineItemModal() {
+    document.getElementById('li-add-description').value = '';
+    document.getElementById('li-add-amount').value = '';
+    const taxable = document.getElementById('li-add-taxable');
+    if (taxable) { taxable.checked = true; }
+    document.getElementById('li-add-error').classList.add('hidden');
+    _toggleModal('line-item-add-modal', true);
+    document.getElementById('li-add-description').focus();
+}
+function closeAddLineItemModal() { _toggleModal('line-item-add-modal', false); }
+
+function saveNewLineItem() {
+    const btn = document.getElementById('li-add-save');
+    const errEl = document.getElementById('li-add-error');
+    const taxable = document.getElementById('li-add-taxable');
+    const payload = {
+        description: document.getElementById('li-add-description').value.trim(),
+        amount: parseFloat(document.getElementById('li-add-amount').value || '0'),
+        taxable: taxable ? taxable.checked : true,
+    };
+    if (!payload.description) {
+        errEl.textContent = 'Enter a description'; errEl.classList.remove('hidden'); return;
+    }
+    if (!(payload.amount > 0)) {
+        errEl.textContent = 'Enter an amount greater than zero'; errEl.classList.remove('hidden'); return;
+    }
+    btn.disabled = true;
+    fetch(`/api/billing/invoices/${INVOICE_ID}/line-items/add/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() },
+        body: JSON.stringify(payload),
+    })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+        if (ok && d.success) { window.location.reload(); }
+        else { errEl.textContent = d.error || 'Failed to add line item'; errEl.classList.remove('hidden'); btn.disabled = false; }
+    })
+    .catch(err => { errEl.textContent = 'Error: ' + err.message; errEl.classList.remove('hidden'); btn.disabled = false; });
+}
+
+function deleteLineItem(id, description) {
+    if (!confirm(`Remove "${description}" from this invoice?`)) { return; }
+    fetch(`/api/billing/invoices/${INVOICE_ID}/line-items/${id}/delete/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': _csrf() },
+    })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+        if (ok && d.success) { window.location.reload(); }
+        else { alert(d.error || 'Failed to remove line item'); }
+    })
+    .catch(err => { alert('Error: ' + err.message); });
+}
+
 // --- Invoice details edit ---
 function openInvoiceEditModal() { document.getElementById('inv-edit-error').classList.add('hidden'); _toggleModal('invoice-edit-modal', true); }
 function closeInvoiceEditModal() { _toggleModal('invoice-edit-modal', false); }
@@ -844,7 +961,7 @@ function saveInvoiceDetails() {
 }
 
 document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { closeLineItemEditModal(); closeInvoiceEditModal(); }
+    if (e.key === 'Escape') { closeLineItemEditModal(); closeAddLineItemModal(); closeInvoiceEditModal(); }
 });
 </script>
 {% endif %}

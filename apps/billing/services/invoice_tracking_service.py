@@ -207,6 +207,13 @@ class InvoiceTrackingService:
                 if line_taxable:
                     taxable_base += amount
 
+                # Extra charges (trip fees etc.) become their own free-form lines
+                from apps.billing.services.invoice_sync import create_charge_lines
+                for charge_line in create_charge_lines(invoice, service):
+                    subtotal += charge_line.unit_price
+                    if charge_line.taxable:
+                        taxable_base += charge_line.amount
+
             # Update invoice totals
             invoice.subtotal = subtotal
             invoice.discount = total_discount

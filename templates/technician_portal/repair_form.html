@@ -743,6 +743,12 @@
                         </div>
                         {% endif %}
 
+                        {% if show_charges_editor %}
+                        <!-- Extra charges: additive one-off fees (trip charge, after-hours).
+                             Each becomes its own line on the invoice. -->
+                        {% include "includes/extra_charges_editor.html" %}
+                        {% endif %}
+
                         <!-- Admin: Assign Technician -->
                         {% if is_admin and technicians %}
                         <div class="field-group mt-6">

@@ -8,7 +8,13 @@
  *             (element with [data-modal-overlay]).
  *   Dropdown: trigger [data-dropdown-toggle="menuId"]; menu starts `.hidden`;
  *             closes on outside click or Escape.
- *   Confirm:  <form data-confirm="Are you sure?"> shows a native confirm() before submit.
+ *   Confirm:  <form data-confirm="Are you sure?"> shows a branded confirm dialog before
+ *             submit. Optional: data-confirm-title, data-confirm-label (confirm button
+ *             text), data-confirm-danger (red confirm button for destructive actions).
+ *   Toasts:   UI.toast(message, type) — type: success | error | warning | info.
+ *             UI.flash(message, type) stores the toast and shows it after the next
+ *             page load (use right before location.reload() / navigation).
+ *             UI.confirm({title, message, confirmLabel, danger}) -> Promise<boolean>.
  *   Tabs:     nav [data-tabs data-tabs-default="name"] with buttons [data-tab="name"]
  *             (.tab-btn); panels [data-tab-panel="name"]. Active button gets
  *             .tab-btn-active, other panels get `.hidden`; ?tab= is kept in the URL
