@@ -68,11 +68,14 @@ no-ops. Note `expiry_warning_days` is also unused (no warning email exists).
 the app sets them — real flow is PENDING → FULFILLED (or REJECTED via cancel).
 Either collapse the enum or build the approval step it implies.
 
-### 6. Customer-side point ledger visibility
-The portal shows redemption history but not the `PointTransaction` ledger
-(`LoyaltyService.get_transaction_history` exists, unused by any customer
-view). Showing "why my balance changed" (earned on job X / expired /
-redeemed / refunded) would preempt disputes, especially with expiry on.
+### 6. Customer-side visibility — mostly done already (correction)
+The portal DOES have a point ledger page: `/app/rewards/points-history/`
+(`customer_points_history` in `apps/customer_portal/views.py`, last 50
+transactions + lifetime earned), linked from the rewards dashboard. Refunds
+from the new cancel path render there generically (+amount, description).
+Remaining gaps are smaller: no notification to the customer when the shop
+cancels/refunds or fulfills a redemption (they only see it if they check the
+history), and no expiry-warning email despite `expiry_warning_days` config.
 
 ### Smaller notes
 - Django admin status flips still bypass the refund path — admin should call
