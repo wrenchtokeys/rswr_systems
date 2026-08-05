@@ -149,7 +149,13 @@ class LoyaltyService:
             balance = LoyaltyService.get_balance(customer)
             if balance <= 0:
                 return None
-            return f"{config.program_name} balance: {balance:,} points"
+            # One factual sentence with a claim hint. Deliberately no links:
+            # most earning customers have no portal login, and links push
+            # invoice email toward a promotional classification (SES rules).
+            return (
+                f"{config.program_name} balance: {balance:,} points — "
+                "ask us about redeeming them on your next service."
+            )
         except Exception:
             logger.debug('get_email_balance_line skipped', exc_info=True)
             return None
