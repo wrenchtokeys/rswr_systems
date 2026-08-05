@@ -155,8 +155,9 @@ def _send_confirmation_email(request, user, tenant):
     log in until they click the link. Uses Django's built-in token generator
     (same one as password reset) for secure one-time tokens.
 
-    Fails silently so a transient email outage never breaks signup entirely —
-    the admin can manually activate accounts if needed.
+    Returns True if the email was handed to the backend, False on failure.
+    A failure never breaks signup — the check-email page surfaces it and
+    offers the resend link instead of leaving the user stranded.
     """
     try:
         token = default_token_generator.make_token(user)
@@ -166,7 +167,7 @@ def _send_confirmation_email(request, user, tenant):
         )
 
         from core.email_utils import send_branded_email
-        send_branded_email(
+        sent = send_branded_email(
             subject='Confirm your email address — RS Systems',
             recipient_list=[user.email],
             headline='Confirm Your Email',
@@ -176,13 +177,15 @@ def _send_confirmation_email(request, user, tenant):
                 'To activate your account and start your 30-day free trial, please confirm your email address by clicking the button below.',
                 "This link expires in 24 hours. If you didn't create an account, you can safely ignore this email.",
             ],
-            button_text='🚀 Activate My Account',
+            button_text='Activate My Account',
             button_url=confirm_url,
-            fail_silently=True,
+            fail_silently=False,
         )
-        logger.info(f"Confirmation email sent to {user.email} (account inactive, tenant={tenant.slug})")
+        logger.info(f"Confirmation email sent to {user.email} (account inactive, tenant={tenant.slug if tenant else '?'})")
+        return bool(sent)
     except Exception as e:
         logger.warning(f"Failed to send confirmation email to {user.email}: {e}")
+        return False
 
 
 # ------------------------------------------------------------------
@@ -267,13 +270,14 @@ def signup_view(request):
                     password=cd['password'],
                     first_name=cd['first_name'],
                     last_name=cd['last_name'],
+                    phone=cd.get('phone', ''),
                     services_offered=cd.get('services_offered', 'both'),
                 )
                 user = result['user']
                 tenant = result['tenant']
 
-                # Save intended plan if selected
-                if cd.get('plan') and cd['plan'] != 'not_sure':
+                # Save intended plan if selected (clean_plan already validated)
+                if cd.get('plan'):
                     tenant.intended_plan = cd['plan']
                     tenant.save(update_fields=['intended_plan'])
 
@@ -281,8 +285,9 @@ def signup_view(request):
                 user.is_active = False
                 user.save(update_fields=['is_active'])
 
-                # Send confirmation email
-                _send_confirmation_email(request, user, tenant)
+                # Send confirmation email; a failure is surfaced on the
+                # check-email page (resend link) instead of silently lost.
+                email_sent = _send_confirmation_email(request, user, tenant)
 
                 # Notify site admins of new signup
                 try:
@@ -301,11 +306,15 @@ def signup_view(request):
                 except Exception:
                     pass  # Non-fatal — don't block signup
 
-                # Don't log in yet — redirect to "check your email" page
-                return render(request, 'saas/email_confirmation_sent.html', {
+                # Don't log in yet — Post/Redirect/Get to the "check your
+                # email" page so a refresh never re-submits the form.
+                request.session['signup_pending'] = {
                     'email': cd['email'],
                     'first_name': cd['first_name'],
-                })
+                    'uidb64': urlsafe_base64_encode(force_bytes(user.pk)),
+                    'email_send_failed': not email_sent,
+                }
+                return redirect('signup_check_email')
 
             except SignupError as e:
                 messages.error(request, str(e))
@@ -316,9 +325,34 @@ def signup_view(request):
                     'An unexpected error occurred. Please try again.',
                 )
     else:
-        form = SignupForm()
+        initial = {}
+        plan_param = request.GET.get('plan', '')
+        if plan_param and SubscriptionPlan.objects.filter(
+            slug=plan_param, is_active=True
+        ).exclude(slug='trial').exists():
+            initial['plan'] = plan_param
+        form = SignupForm(initial=initial)
 
     return render(request, 'saas/signup.html', {'form': form, 'turnstile_site_key': turnstile_site_key})
+
+
+def signup_check_email(request):
+    """
+    GET /signup/check-email/ — refresh-safe landing after signup.
+
+    Reads (without popping) the session state stashed by signup_view so the
+    page survives refreshes. Direct visits with no pending signup go back to
+    the signup form.
+    """
+    pending = request.session.get('signup_pending')
+    if not pending:
+        return redirect('signup')
+    return render(request, 'saas/email_confirmation_sent.html', {
+        'email': pending.get('email'),
+        'first_name': pending.get('first_name'),
+        'uidb64': pending.get('uidb64'),
+        'email_send_failed': pending.get('email_send_failed', False),
+    })
 
 
 # ------------------------------------------------------------------
@@ -692,13 +726,12 @@ def owner_dashboard(request):
     # Setup checklist for new users
     setup_steps = []
     has_customers = Customer.objects.filter(tenant=tenant).exists()
-    has_technicians = Technician.objects.filter(tenant=tenant, is_active=True).exists()
     has_business_info = bool(tenant.business_phone and tenant.business_email)
 
     if not has_business_info:
         setup_steps.append({
-            'label': 'Add your business info',
-            'desc': 'Phone number and email for invoices',
+            'label': 'Add your business details',
+            'desc': 'Contact info shown on your invoices',
             'url': '/owner/settings/?tab=general',
             'icon': 'fas fa-building',
         })
@@ -716,13 +749,9 @@ def owner_dashboard(request):
             'url': '/tech/customers/create/',
             'icon': 'fas fa-users',
         })
-    if not has_technicians:
-        setup_steps.append({
-            'label': 'Add a technician',
-            'desc': 'Add yourself or invite a team member',
-            'url': '/owner/settings/?tab=team',
-            'icon': 'fas fa-hard-hat',
-        })
+    # NOTE: "Add a technician" step removed — signup auto-creates the owner as
+    # an active technician, so the step could never fire. (Phase 1, launch
+    # readiness roadmap.)
 
     setup_completion = _setup_completion(tenant)
 
@@ -764,8 +793,8 @@ def owner_dashboard(request):
 # ------------------------------------------------------------------
 
 def pricing_view(request):
-    """Public pricing page."""
-    plans = SubscriptionPlan.objects.filter(is_active=True).order_by('display_order')
+    """Public pricing page. Trial isn't a card — every plan starts as a trial."""
+    plans = SubscriptionPlan.objects.filter(is_active=True).exclude(slug='trial').order_by('display_order')
     return render(request, 'saas/pricing.html', {'plans': plans})
 
 
@@ -846,11 +875,19 @@ def billing_view(request):
 
         return redirect('billing_settings')
 
+    # Single source of truth for the displayed plan: tenant.plan (the slug the
+    # middleware enforces) wins over a stale subscription_plan FK. The two can
+    # drift (e.g. migration 0016 set plan='pro' without touching the FK).
+    current_plan = tenant.subscription_plan
+    if tenant.plan and (not current_plan or current_plan.slug != tenant.plan):
+        current_plan = SubscriptionPlan.objects.filter(slug=tenant.plan).first() or current_plan
+
     context = {
         'tenant': tenant,
         'usage': usage,
         'plans': plans,
-        'current_plan': tenant.subscription_plan,
+        'current_plan': current_plan,
+        'current_plan_slug': current_plan.slug if current_plan else tenant.plan,
         'is_trial': tenant.plan == 'trial' and not tenant.is_platform_owner,
         'is_platform_owner': tenant.is_platform_owner,
         'trial_days_remaining': tenant.trial_days_remaining,
@@ -4308,7 +4345,7 @@ def owner_confirm_email(request, uidb64, token):
             except Exception as e:
                 logger.warning(f"Welcome email failed for {user.email}: {e}")
 
-        messages.success(request, "Email confirmed! Welcome to RS Systems. Let's get your shop set up.")
+        messages.success(request, "🎉 You're in! Your free trial has started — let's set up your shop.")
         return redirect('onboarding')
 
     # Token invalid. If the account is already active, the most common cause
@@ -4384,11 +4421,13 @@ def resend_confirmation_email(request, uidb64):
     membership = TenantMembership.objects.filter(user=user).select_related('tenant').first()
     tenant = membership.tenant if membership else None
 
-    _send_confirmation_email(request, user, tenant)
+    email_sent = _send_confirmation_email(request, user, tenant)
 
     return render(request, 'saas/email_confirmation_sent.html', {
         'email': user.email,
         'first_name': user.first_name,
+        'uidb64': uidb64,
+        'email_send_failed': not email_sent,
         'resent': True,
     })
 

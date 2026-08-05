@@ -11,7 +11,18 @@
                 <i class="fas fa-envelope text-blue-600 text-2xl"></i>
             </div>
 
-            {% if resent %}
+            {% if email_send_failed %}
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">One More Step</h2>
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-left">
+                    <p class="text-sm text-amber-800 font-medium mb-1">
+                        <i class="fas fa-triangle-exclamation mr-1"></i> We had trouble sending your confirmation email
+                    </p>
+                    <p class="text-sm text-amber-700">
+                        Your account was created, but the email to <strong>{{ email }}</strong> didn't go out.
+                        Try the resend button below — if it keeps failing, email us and we'll activate your account by hand.
+                    </p>
+                </div>
+            {% elif resent %}
                 <h2 class="text-2xl font-bold text-gray-900 mb-2">Email Resent</h2>
                 <p class="text-gray-500 mb-6">
                     We sent another confirmation email to <strong>{{ email }}</strong>.
@@ -26,6 +37,7 @@
                 </p>
             {% endif %}
 
+            {% if not email_send_failed %}
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
                 <p class="text-sm text-blue-800 font-medium mb-1">
                     <i class="fas fa-info-circle mr-1"></i> Didn't get the email?
@@ -36,6 +48,14 @@
                     <li>Allow a minute for delivery</li>
                 </ul>
             </div>
+            {% endif %}
+
+            {% if uidb64 %}
+            <a href="{% url 'resend_confirmation_email' uidb64=uidb64 %}"
+               class="w-full inline-flex items-center justify-center py-3 mb-4 text-sm font-semibold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+                <i class="fas fa-paper-plane mr-2"></i> Resend the email
+            </a>
+            {% endif %}
 
             <a href="{% url 'signup' %}"
                class="text-sm text-gray-500 hover:text-gray-700 underline">

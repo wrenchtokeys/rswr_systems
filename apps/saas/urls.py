@@ -23,6 +23,7 @@ urlpatterns = [
 
     # Public pages
     path('signup/', views.signup_view, name='signup'),
+    path('signup/check-email/', views.signup_check_email, name='signup_check_email'),
     path('pricing/', views.pricing_view, name='pricing'),
     path('terms/', views.terms_of_service, name='terms_of_service'),
     path('privacy/', views.privacy_policy, name='privacy_policy'),

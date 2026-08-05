@@ -210,6 +210,11 @@ def create_tenant_with_owner(
 
     except SignupError:
         raise
-    except Exception as e:
-        logger.error(f"Signup error for {email}: {e}")
-        raise SignupError(f'An unexpected error occurred during signup: {e}')
+    except Exception:
+        # Full traceback to the log; only a user-safe message leaves here —
+        # SignupError text is rendered verbatim to the signup page.
+        logger.exception(f"Signup error for {email}")
+        raise SignupError(
+            'Something went wrong creating your account. Please try again — '
+            'if it keeps happening, email us and we\'ll get you set up.'
+        )

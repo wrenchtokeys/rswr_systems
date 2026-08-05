@@ -302,7 +302,8 @@ class SignupCaptchaAndPlanTests(TestCase):
                 'password_confirm': 'Str0ngP@ss123!',
                 'plan': 'starter',
             })
-        self.assertEqual(response.status_code, 200)  # renders confirmation page
+        # PRG (Phase 1 launch-readiness): success redirects to check-email
+        self.assertRedirects(response, '/signup/check-email/')
         tenant = Tenant.objects.get(name='Plan Test Shop')
         self.assertEqual(tenant.intended_plan, 'starter')
 
@@ -319,7 +320,7 @@ class SignupCaptchaAndPlanTests(TestCase):
                 'password_confirm': 'Str0ngP@ss123!',
                 'plan': '',
             })
-        self.assertEqual(response.status_code, 200)
+        self.assertRedirects(response, '/signup/check-email/')
         tenant = Tenant.objects.get(name='No Plan Shop')
         self.assertEqual(tenant.intended_plan, '')
 
@@ -328,7 +329,9 @@ class SignupCaptchaAndPlanTests(TestCase):
         from apps.saas.forms import SignupForm
         form = SignupForm()
         self.assertIn('plan', form.fields)
-        choices = [c[0] for c in form.fields['plan'].choices]
+        # plan is a CharField with a Select widget (stale options degrade
+        # gracefully), so the rendered choices live on the widget.
+        choices = [c[0] for c in form.fields['plan'].widget.choices]
         self.assertIn('starter', choices)
         self.assertIn('pro', choices)
         self.assertNotIn('trial', choices)  # trial excluded
