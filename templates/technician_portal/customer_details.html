@@ -314,9 +314,21 @@
                     <div>
                         <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Waiting to Use</p>
                         {% for redemption in loyalty.pending_redemptions %}
-                        <div class="flex items-center justify-between py-1.5 text-sm">
-                            <span class="text-gray-900">{{ redemption.reward_option.name }}</span>
-                            <span class="text-xs text-gray-500">{{ redemption.created_at|date:"M d" }}</span>
+                        <div class="flex items-center justify-between gap-2 py-1.5 text-sm">
+                            <a href="{% url 'reward_fulfillment_detail' redemption.id %}" class="text-gray-900 hover:text-blue-600 truncate">{{ redemption.reward_option.name }}</a>
+                            <span class="flex items-center gap-2 whitespace-nowrap">
+                                <span class="text-xs text-gray-500">{{ redemption.created_at|date:"M d" }}</span>
+                                {% if loyalty.can_redeem %}
+                                <form method="post" action="{% url 'cancel_redemption' redemption.id %}" class="inline"
+                                      data-confirm="Cancel {{ redemption.reward_option.name }} and refund {{ redemption.reward_option.points_required }} points to {{ customer.name }}?"
+                                      data-confirm-title="Cancel redemption" data-confirm-label="Cancel &amp; refund" data-confirm-danger>
+                                    {% csrf_token %}
+                                    <button type="submit" class="px-2 py-0.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+                                        Cancel
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </span>
                         </div>
                         {% endfor %}
                     </div>

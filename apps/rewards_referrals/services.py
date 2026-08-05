@@ -28,6 +28,40 @@ from core.models import Customer
 logger = logging.getLogger(__name__)
 
 
+def _email_customer_about_redemption(redemption, subject, headline, body_paragraphs):
+    """
+    Send a shop-branded, factual email about a redemption to the customer's
+    email on file. Silent no-op when there is no email or no tenant; never
+    raises — loyalty flows must not break on email problems.
+
+    Callers inside @transaction.atomic should invoke this via
+    transaction.on_commit so the mail only goes out if the change commits.
+    """
+    try:
+        # send_branded_email derives the shop From/Reply-To from ``tenant``.
+        from core.email_utils import send_branded_email
+
+        customer = redemption.reward.customer
+        tenant = customer.tenant
+        if tenant is None or not customer.email:
+            return
+
+        send_branded_email(
+            subject=subject,
+            recipient_list=[customer.email],
+            headline=headline,
+            body_paragraphs=body_paragraphs,
+            tenant=tenant,
+            fail_silently=True,
+        )
+    except Exception:
+        logger.warning(
+            'Redemption email failed for redemption pk=%s',
+            getattr(redemption, 'pk', 'unknown'),
+            exc_info=True,
+        )
+
+
 class LoyaltyService:
     """Single entry point for all point balance changes."""
 
@@ -787,6 +821,24 @@ class RewardService:
         redemption.notes = f"{redemption.notes}\n{cancel_note}" if redemption.notes else cancel_note
         redemption.save()
 
+        # Tell the customer their points are back. on_commit so the email
+        # only goes out if the refund actually lands.
+        option_name = redemption.reward_option.name
+        points = redemption.reward_option.points_required
+        new_balance = pt.balance_after
+        program_name = config.program_name
+        transaction.on_commit(lambda: _email_customer_about_redemption(
+            redemption,
+            subject=f'Reward redemption cancelled — {points} points returned',
+            headline='Redemption Cancelled',
+            body_paragraphs=[
+                f'Your redemption of {option_name} was cancelled and the '
+                f'{points} points have been returned to your balance.',
+                f'Your {program_name} balance is now {new_balance:,} points. '
+                'Ask us about redeeming them on your next service.',
+            ],
+        ))
+
         return True, (
             f"Cancelled {redemption.reward_option.name} and refunded "
             f"{redemption.reward_option.points_required} points to {customer.name}."
@@ -908,6 +960,22 @@ class RewardFulfillmentService:
             redemption.notes = notes
 
         redemption.save()
+
+        # Tell the customer their reward was fulfilled — but only for
+        # standalone redemptions (merchandise, gift cards). Discounts applied
+        # to a job already show up on that job's invoice; a second email
+        # would be noise.
+        if redemption.applied_to_repair_id is None and redemption.applied_to_replacement_id is None:
+            option_name = redemption.reward_option.name
+            transaction.on_commit(lambda: _email_customer_about_redemption(
+                redemption,
+                subject=f'Your reward is ready — {option_name}',
+                headline='Reward Fulfilled',
+                body_paragraphs=[
+                    f'Your redemption of {option_name} has been fulfilled.',
+                    'Questions? Just reply to this email.',
+                ],
+            ))
 
         return redemption
 

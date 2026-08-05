@@ -371,3 +371,66 @@ class TechPortalCancelRedemptionTests(LoyaltyManagementBase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Cancel &amp; Refund Points')
+
+    def test_customer_page_shows_cancel_for_manager(self):
+        resp = self.client.get(
+            reverse('customer_detail', args=[self.customer.id]),
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Cancel redemption')
+
+
+@override_settings(**{
+    **TEST_OVERRIDES,
+    'EMAIL_BACKEND': 'django.core.mail.backends.locmem.EmailBackend',
+})
+class RedemptionEmailTests(LoyaltyManagementBase):
+
+    EMAIL = 'redemail@test.com'
+    SHOP = 'Redemption Email Shop'
+
+    def setUp(self):
+        super().setUp()
+        self.customer.email = 'fleet@eos.com'
+        self.customer.save(update_fields=['email'])
+
+    def test_cancel_emails_customer_with_refund(self):
+        from django.core import mail
+        with self.captureOnCommitCallbacks(execute=True):
+            ok, msg = RewardService.cancel_redemption(
+                self.redemption.id, self.tenant, cancelled_by=self.user,
+            )
+        self.assertTrue(ok, msg)
+        self.assertEqual(len(mail.outbox), 1)
+        sent = mail.outbox[0]
+        self.assertEqual(sent.to, ['fleet@eos.com'])
+        self.assertIn('cancelled', sent.subject.lower())
+        self.assertIn('1000', sent.subject)
+        self.assertIn('1,500 points', sent.body)
+
+    def test_standalone_fulfill_emails_customer(self):
+        from django.core import mail
+        from apps.rewards_referrals.services import RewardFulfillmentService
+        with self.captureOnCommitCallbacks(execute=True):
+            RewardFulfillmentService.mark_as_fulfilled(self.redemption, None)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('ready', mail.outbox[0].subject.lower())
+
+    def test_applied_fulfill_sends_no_email(self):
+        from django.core import mail
+        from apps.rewards_referrals.services import RewardFulfillmentService
+        repair = self._make_repair('APPROVED')
+        repair.apply_reward(self.redemption)
+        self.redemption.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            RewardFulfillmentService.mark_as_fulfilled(self.redemption, None)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_cancel_without_customer_email_is_silent(self):
+        from django.core import mail
+        self.customer.email = ''
+        self.customer.save(update_fields=['email'])
+        with self.captureOnCommitCallbacks(execute=True):
+            ok, _ = RewardService.cancel_redemption(self.redemption.id, self.tenant)
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 0)
