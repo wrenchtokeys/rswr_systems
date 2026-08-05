@@ -5121,6 +5121,8 @@ def owner_loyalty_save_config(request):
     config.is_active = request.POST.get('is_active') == 'true'
     if 'show_balance_in_emails' in request.POST:
         config.show_balance_in_emails = request.POST.get('show_balance_in_emails') == 'true'
+    if 'auto_apply_rewards' in request.POST:
+        config.auto_apply_rewards = request.POST.get('auto_apply_rewards') == 'true'
 
     # points_per_repair
     try:
@@ -5150,6 +5152,7 @@ def owner_loyalty_save_config(request):
         'points_per_repair': config.points_per_repair,
         'points_expiry_days': config.points_expiry_days,
         'show_balance_in_emails': config.show_balance_in_emails,
+        'auto_apply_rewards': config.auto_apply_rewards,
     })
 
 

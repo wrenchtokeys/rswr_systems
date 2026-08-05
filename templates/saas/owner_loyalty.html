@@ -333,6 +333,23 @@
                 </button>
             </div>
 
+            <!-- Auto-apply rewards toggle -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="text-sm font-medium text-gray-900">Auto-Use Waiting Rewards</label>
+                    <p class="text-sm text-gray-500 mt-0.5">Automatically put a customer's oldest waiting discount on their next completed job. When off, the job form asks instead.</p>
+                </div>
+                <button type="button"
+                    id="toggle-auto-apply"
+                    data-active="{{ config.auto_apply_rewards|yesno:'true,false' }}"
+                    onclick="toggleLoyaltyVisual(this)"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                        {% if config.auto_apply_rewards %}bg-blue-600{% else %}bg-gray-200{% endif %}">
+                    <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+                        {% if config.auto_apply_rewards %}translate-x-6{% else %}translate-x-1{% endif %}"></span>
+                </button>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <!-- Points per job (field name kept for back-compat) -->
                 <div>
@@ -672,6 +689,7 @@ document.getElementById('config-form').addEventListener('submit', async function
     body.append('points_per_repair', document.getElementById('points_per_repair').value);
     body.append('points_expiry_days', document.getElementById('points_expiry_days').value);
     body.append('show_balance_in_emails', document.getElementById('toggle-emails').dataset.active === 'true' ? 'true' : 'false');
+    body.append('auto_apply_rewards', document.getElementById('toggle-auto-apply').dataset.active === 'true' ? 'true' : 'false');
 
     try {
         const resp = await fetch("{% url 'owner_loyalty_save_config' %}", {

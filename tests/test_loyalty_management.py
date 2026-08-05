@@ -426,6 +426,79 @@ class RedemptionEmailTests(LoyaltyManagementBase):
             RewardFulfillmentService.mark_as_fulfilled(self.redemption, None)
         self.assertEqual(len(mail.outbox), 0)
 
+    def test_auto_apply_off_completion_does_not_consume_reward(self):
+        """Default: completing a job leaves the waiting reward untouched."""
+        repair = self._make_repair('APPROVED')
+        repair.queue_status = 'COMPLETED'
+        repair.save()
+
+        self.redemption.refresh_from_db()
+        self.assertEqual(self.redemption.status, 'PENDING')
+        self.assertIsNone(self.redemption.applied_to_repair)
+
+    def test_auto_apply_on_restores_old_behavior(self):
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        config.auto_apply_rewards = True
+        config.save()
+
+        repair = self._make_repair('APPROVED')
+        repair.queue_status = 'COMPLETED'
+        repair.save()
+
+        self.redemption.refresh_from_db()
+        self.assertEqual(self.redemption.status, 'FULFILLED')
+        self.assertEqual(self.redemption.applied_to_repair_id, repair.id)
+
+    def test_explicitly_applied_reward_fulfills_on_completion(self):
+        """A deliberate apply is finalized at completion even with auto off."""
+        repair = self._make_repair('APPROVED')
+        applied, msg = repair.apply_reward(self.redemption)
+        self.assertTrue(applied, msg)
+
+        repair.queue_status = 'COMPLETED'
+        repair.save()
+
+        self.redemption.refresh_from_db()
+        self.assertEqual(self.redemption.status, 'FULFILLED')
+
+    def test_edit_form_shows_waiting_reward_prompt(self):
+        repair = self._make_repair('APPROVED')
+        resp = self.client.get(reverse('update_repair', args=[repair.id]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'has a reward waiting')
+        self.assertContains(resp, self.redemption.reward_option.name)
+
+    def test_edit_form_post_applies_chosen_reward(self):
+        from apps.technician_portal.models import Technician
+        repair = self._make_repair('APPROVED')
+        tech = Technician.objects.get(user=self.user, tenant=self.tenant)
+        resp = self.client.post(
+            reverse('update_repair', args=[repair.id]),
+            data={
+                'customer': self.customer.id,
+                'technician': tech.id,
+                'unit_number': repair.unit_number,
+                'queue_status': 'COMPLETED',
+                'repair_date': timezone.now().strftime('%Y-%m-%dT%H:%M'),
+                'technician_notes': 'apply reward via form',
+                'apply_redemption_id': str(self.redemption.id),
+            },
+        )
+        self.assertIn(resp.status_code, (200, 302))
+
+        self.redemption.refresh_from_db()
+        self.assertEqual(self.redemption.applied_to_repair_id, repair.id)
+        self.assertEqual(self.redemption.status, 'FULFILLED')
+
+    def test_config_endpoint_saves_auto_apply(self):
+        resp = self.client.post(reverse('owner_loyalty_save_config'), {
+            'is_active': 'true',
+            'auto_apply_rewards': 'true',
+        })
+        self.assertEqual(resp.status_code, 200)
+        config = LoyaltyConfig.get_for_tenant(self.tenant)
+        self.assertTrue(config.auto_apply_rewards)
+
     def test_cancel_without_customer_email_is_silent(self):
         from django.core import mail
         self.customer.email = ''

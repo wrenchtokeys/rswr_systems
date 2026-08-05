@@ -516,6 +516,10 @@ def update_repair(request, repair_id):
         original_technician_id = repair.technician_id
         logger.info(f"UPDATE_REPAIR: Saved original_technician_id={original_technician_id}")
 
+        # Capture BEFORE form binding — RepairForm(instance=repair) mutates
+        # this same instance in place.
+        was_completed_before = repair.queue_status == 'COMPLETED'
+
         form = RepairForm(request.POST, request.FILES, instance=repair, user=request.user, tenant=getattr(request, 'tenant', None))
 
         # Extra charges are editable until the job lands on a live invoice;
@@ -552,8 +556,55 @@ def update_repair(request, repair_id):
                 logger.info(f"UPDATE_REPAIR: Auto-completing repair #{updated_repair.id} (has after photo)")
                 messages.success(request, "Repair marked as COMPLETED! (After photo uploaded)")
 
+            # Use a waiting reward the user picked on the form. Applied BEFORE
+            # save so a completion in this same save fulfills it and the
+            # invoice picks up the discount.
+            apply_redemption_id = request.POST.get('apply_redemption_id')
+            if apply_redemption_id:
+                from apps.rewards_referrals.models import RewardRedemption
+                chosen = RewardRedemption.objects.filter(
+                    pk=apply_redemption_id,
+                    reward__customer=updated_repair.customer,
+                    reward__customer__tenant=tenant,
+                    status='PENDING',
+                    applied_to_repair__isnull=True,
+                    applied_to_replacement__isnull=True,
+                ).select_related('reward_option').first()
+                if chosen is not None:
+                    acting_tech = (
+                        Technician.objects.filter(user=request.user, tenant=tenant).first()
+                        if tenant else None
+                    )
+                    applied_ok, apply_msg = updated_repair.apply_reward(
+                        chosen, technician=acting_tech,
+                    )
+                    if applied_ok:
+                        messages.success(request, f"Reward applied: {chosen.reward_option.name}.")
+                    else:
+                        messages.error(request, apply_msg)
+                else:
+                    messages.error(request, "That reward is no longer available to apply.")
+
             updated_repair.save()
             form.save_m2m()
+
+            # Completed just now and the customer still has an unused waiting
+            # reward? Say so — nothing is applied silently anymore.
+            if updated_repair.queue_status == 'COMPLETED' and not was_completed_before:
+                from apps.rewards_referrals.models import RewardRedemption
+                leftover = RewardRedemption.objects.filter(
+                    reward__customer=updated_repair.customer,
+                    status='PENDING',
+                    applied_to_repair__isnull=True,
+                    applied_to_replacement__isnull=True,
+                    reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
+                ).select_related('reward_option').first()
+                if leftover is not None:
+                    messages.info(
+                        request,
+                        f"{updated_repair.customer.name} still has a waiting reward "
+                        f"({leftover.reward_option.name}) — it stays available for a future job.",
+                    )
 
             if not charges_locked_invoice:
                 _save_extra_charges(
@@ -622,6 +673,22 @@ def update_repair(request, repair_id):
     else:
         charge_rows = [(c.description, c.amount) for c in repair.extra_charges.all()]
 
+    # Waiting discount rewards the user can choose to put on this job.
+    # Replaces the old silent auto-apply-on-completion (see
+    # Repair.apply_available_rewards / LoyaltyConfig.auto_apply_rewards).
+    pending_reward_redemptions = []
+    if repair.customer_id and not repair.applied_rewards.exists():
+        from apps.rewards_referrals.models import RewardRedemption
+        pending_reward_redemptions = list(
+            RewardRedemption.objects.filter(
+                reward__customer_id=repair.customer_id,
+                status='PENDING',
+                applied_to_repair__isnull=True,
+                applied_to_replacement__isnull=True,
+                reward_option__reward_type__category__in=['REPAIR_DISCOUNT', 'FREE_SERVICE'],
+            ).select_related('reward_option', 'reward_option__reward_type').order_by('created_at')
+        )
+
     update_context = {
         'form': form,
         'repair': repair,
@@ -634,6 +701,7 @@ def update_repair(request, repair_id):
         'charges_locked_invoice': charges_locked_invoice,
         'charge_rows': charge_rows,
         'fee_presets': FeePreset.objects.filter(tenant=tenant, is_active=True) if tenant else [],
+        'pending_reward_redemptions': pending_reward_redemptions,
     }
     if admin:
         update_context['technicians'] = Technician.objects.filter(
