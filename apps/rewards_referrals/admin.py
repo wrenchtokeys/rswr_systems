@@ -15,17 +15,18 @@ from .models import (
 
 
 # ---------------------------------------------------------------------------
-# Helper mixin for models that reach tenant through CustomerUser → Customer → Tenant
+# Helper mixin for models that reach tenant through Customer → Tenant
 # ---------------------------------------------------------------------------
 
-class CustomerUserTenantFilterMixin:
+class CustomerTenantFilterMixin:
     """
     Mixin for admin classes whose models reach their tenant via:
-    customer_user → customer → tenant
+    customer → tenant
 
-    Override `customer_user_path` if the path to CustomerUser differs.
+    Override `customer_path` if the path to the Customer FK differs
+    (e.g. 'customer_user__customer' for referral models).
     """
-    customer_user_path: str = 'customer_user'
+    customer_path: str = 'customer'
 
     def _get_user_tenant_ids(self, request):
         from apps.tenants.models import TenantMembership
@@ -40,12 +41,12 @@ class CustomerUserTenantFilterMixin:
         if request.user.is_superuser:
             return qs
         tenant_ids = self._get_user_tenant_ids(request)
-        return qs.filter(**{f"{self.customer_user_path}__customer__tenant__in": tenant_ids})
+        return qs.filter(**{f"{self.customer_path}__tenant__in": tenant_ids})
 
     def get_list_filter(self, request):
         filters = list(super().get_list_filter(request))
         if request.user.is_superuser:
-            tenant_filter = f'{self.customer_user_path}__customer__tenant'
+            tenant_filter = f'{self.customer_path}__tenant'
             if tenant_filter not in filters:
                 filters = [tenant_filter] + filters
         return filters
@@ -93,10 +94,10 @@ class CustomerUserTenantFilterMixin:
     def get_tenant_display(self, obj):
         """Helper for list_display: shows tenant name."""
         try:
-            cu = obj
-            for part in self.customer_user_path.split('__'):
-                cu = getattr(cu, part)
-            return cu.customer.tenant.name
+            customer = obj
+            for part in self.customer_path.split('__'):
+                customer = getattr(customer, part)
+            return customer.tenant.name
         except AttributeError:
             return '—'
     get_tenant_display.short_description = 'Tenant'
@@ -141,7 +142,7 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
     Admin configuration for RewardRedemption model.
 
     RewardRedemption has no direct tenant FK but is scoped via reward_option → tenant
-    for superuser filtering, and via reward → customer_user → customer → tenant
+    for superuser filtering, and via reward → customer → tenant
     for non-superuser access control.
     """
     list_display = [
@@ -157,7 +158,8 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'assigned_technician', 'created_at']
     search_fields = [
-        'reward__customer_user__user__email',
+        'reward__customer__name',
+        'reward__customer__email',
         'reward_option__name',
         'notes'
     ]
@@ -187,15 +189,13 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         # Eagerly load all FK chains used in list_display to prevent N+1 queries.
-        # Without this, each row fires 5+ extra SELECTs for:
-        #   reward → customer_user → user         (get_customer_email)
-        #   reward → customer_user → customer → tenant  (get_tenant_display)
+        # Without this, each row fires extra SELECTs for:
+        #   reward → customer → tenant             (get_customer_name / get_tenant_display)
         #   reward_option                          (reward_option col)
         #   assigned_technician → user             (assigned_technician col)
         #   applied_to_repair                      (get_applied_to_repair)
         qs = qs.select_related(
-            'reward__customer_user__user',
-            'reward__customer_user__customer__tenant',
+            'reward__customer__tenant',
             'reward_option__tenant',
             'assigned_technician__user',
             'applied_to_repair',
@@ -208,7 +208,7 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
             .filter(user=request.user, is_active=True)
             .values_list('tenant_id', flat=True)
         )
-        return qs.filter(reward__customer_user__customer__tenant__in=tenant_ids)
+        return qs.filter(reward__customer__tenant__in=tenant_ids)
 
     def get_list_filter(self, request):
         filters = list(super().get_list_filter(request))
@@ -218,15 +218,15 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
 
     def get_tenant_display(self, obj):
         try:
-            return obj.reward.customer_user.customer.tenant.name
+            return obj.reward.customer.tenant.name
         except AttributeError:
             return '—'
     get_tenant_display.short_description = 'Tenant'
 
     def get_customer_email(self, obj):
-        return obj.reward.customer_user.user.email
+        return obj.reward.customer.name
     get_customer_email.short_description = 'Customer'
-    get_customer_email.admin_order_field = 'reward__customer_user__user__email'
+    get_customer_email.admin_order_field = 'reward__customer__name'
 
     def get_applied_to_repair(self, obj):
         if obj.applied_to_repair:
@@ -272,7 +272,7 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
             elif db_field.name == 'reward':
                 from apps.rewards_referrals.models import Reward
                 kwargs['queryset'] = Reward.objects.filter(
-                    customer_user__customer__tenant__in=tenant_ids
+                    customer__tenant__in=tenant_ids
                 )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
@@ -287,22 +287,22 @@ class RewardRedemptionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Reward)
-class RewardAdmin(CustomerUserTenantFilterMixin, admin.ModelAdmin):
+class RewardAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
     """
     Admin configuration for Reward model.
-    Reward → customer_user → customer → tenant
+    Reward → customer → tenant
     """
-    list_display = ['get_tenant_display', 'customer_email', 'points', 'created_at', 'updated_at']
-    search_fields = ['customer_user__user__email', 'customer_user__customer__tenant__name']
+    list_display = ['get_tenant_display', 'customer_name', 'points', 'created_at', 'updated_at']
+    search_fields = ['customer__name', 'customer__email', 'customer__tenant__name']
     list_filter = ['created_at']
-    list_select_related = ['customer_user', 'customer_user__user', 'customer_user__customer', 'customer_user__customer__tenant']
+    list_select_related = ['customer', 'customer__tenant']
     readonly_fields = ['created_at', 'updated_at']
     date_hierarchy = 'created_at'
     list_per_page = 25
 
     fieldsets = [
         ('Customer Information', {
-            'fields': ['customer_user']
+            'fields': ['customer']
         }),
         ('Reward Points', {
             'fields': ['points']
@@ -313,18 +313,19 @@ class RewardAdmin(CustomerUserTenantFilterMixin, admin.ModelAdmin):
         }),
     ]
 
-    def customer_email(self, obj):
-        return obj.customer_user.user.email
-    customer_email.short_description = 'Customer'
-    customer_email.admin_order_field = 'customer_user__user__email'
+    def customer_name(self, obj):
+        return obj.customer.name
+    customer_name.short_description = 'Customer'
+    customer_name.admin_order_field = 'customer__name'
 
 
 @admin.register(ReferralCode)
-class ReferralCodeAdmin(CustomerUserTenantFilterMixin, admin.ModelAdmin):
+class ReferralCodeAdmin(CustomerTenantFilterMixin, admin.ModelAdmin):
     """
     Admin configuration for ReferralCode model.
     ReferralCode → customer_user → customer → tenant
     """
+    customer_path = 'customer_user__customer'
     list_display = ['get_tenant_display', 'code', 'customer_email', 'created_at', 'get_referral_count']
     search_fields = ['code', 'customer_user__user__email', 'customer_user__customer__tenant__name']
     list_filter = ['created_at']
@@ -509,6 +510,9 @@ class LoyaltyConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
         ('Expiry', {
             'fields': ['points_expiry_days', 'expiry_warning_days']
         }),
+        ('Email', {
+            'fields': ['show_balance_in_emails']
+        }),
         ('Timestamps', {
             'fields': ['created_at', 'updated_at'],
             'classes': ['collapse']
@@ -520,14 +524,14 @@ class LoyaltyConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
 class PointTransactionAdmin(TenantFilterMixin, admin.ModelAdmin):
     """Admin for the immutable point ledger."""
     list_display = [
-        'tenant', 'get_customer_email', 'amount', 'balance_after',
+        'tenant', 'get_customer_name', 'amount', 'balance_after',
         'transaction_type', 'description', 'created_at',
     ]
     list_filter = ['tenant', 'transaction_type', 'created_at']
-    search_fields = ['customer_user__user__email', 'description']
-    list_select_related = ['tenant', 'customer_user__user']
+    search_fields = ['customer__name', 'customer_user__user__email', 'description']
+    list_select_related = ['tenant', 'customer', 'customer_user__user']
     readonly_fields = [
-        'tenant', 'customer_user', 'amount', 'balance_after',
+        'tenant', 'customer', 'customer_user', 'amount', 'balance_after',
         'transaction_type', 'description', 'related_repair',
         'related_redemption', 'related_payment', 'expires_at',
         'expired', 'created_at', 'created_by',
@@ -535,10 +539,10 @@ class PointTransactionAdmin(TenantFilterMixin, admin.ModelAdmin):
     date_hierarchy = 'created_at'
     list_per_page = 50
 
-    def get_customer_email(self, obj):
-        return obj.customer_user.user.email
-    get_customer_email.short_description = 'Customer'
-    get_customer_email.admin_order_field = 'customer_user__user__email'
+    def get_customer_name(self, obj):
+        return obj.customer.name
+    get_customer_name.short_description = 'Customer'
+    get_customer_name.admin_order_field = 'customer__name'
 
     def has_add_permission(self, request):
         return False

@@ -176,12 +176,10 @@ class RewardTimestampTest(SetUpMixin, AutoUpdateTimestampMixinTestMixin, TestCas
     def create_instance(self):
         from apps.rewards_referrals.models import Reward
         from apps.technician_portal.models import Customer
-        from apps.customer_portal.models import CustomerUser
         customer = Customer.objects.create(
             name='Reward Test Customer', tenant=self.tenant, email='rwd@test.com',
         )
-        cu = CustomerUser.objects.create(user=self.user, customer=customer)
-        return Reward.objects.create(customer_user=cu, points=100)
+        return Reward.objects.create(customer=customer, tenant=self.tenant, points=100)
 
     def get_updatable_field(self):
         return ('points', 200)

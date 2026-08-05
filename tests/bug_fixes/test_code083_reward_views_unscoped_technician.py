@@ -151,7 +151,8 @@ def _make_reward_redemption(customer_user, tenant):
         },
     )
     reward = Reward.objects.create(
-        customer_user=customer_user,
+        customer=customer_user.customer,
+        tenant=tenant,
         points=100,
     )
     redemption = RewardRedemption.objects.create(

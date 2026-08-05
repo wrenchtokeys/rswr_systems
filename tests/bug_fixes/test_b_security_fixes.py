@@ -140,11 +140,22 @@ class B3BatchStartWorkMethodGuardTests(SecurityFixesTestBase):
 
 
 class B4ReferralBonusFarmingTests(SecurityFixesTestBase):
-    def _make_customer_user(self, name):
+    """
+    B4 under customer-anchored loyalty: the referred COMPANY's welcome bonus
+    pays at most once, even when referrals from several different companies'
+    codes are recorded. (Referrals are recorded PENDING at signup and pay out
+    via award_referral_bonuses on first job completion.)
+    """
+
+    def _make_customer_user(self, name, customer=None):
+        if customer is None:
+            customer = Customer.objects.create(
+                tenant=self.tenant, name=f'B4 Co {name}', customer_type='FLEET',
+            )
         user = User.objects.create_user(
             username=f'b4_{name}', email=f'b4_{name}@test.com', password='pass123!',
         )
-        cu = CustomerUser.objects.create(user=user, customer=self.customer)
+        cu = CustomerUser.objects.create(user=user, customer=customer)
         TenantMembership.objects.create(
             tenant=self.tenant, user=user, role='viewer', is_active=True,
         )
@@ -152,6 +163,8 @@ class B4ReferralBonusFarmingTests(SecurityFixesTestBase):
 
     def test_welcome_bonus_granted_at_most_once(self):
         newbie = self._make_customer_user('newbie')
+        # Referrers must belong to DIFFERENT companies (same-company
+        # referrals are rejected outright).
         referrers = [self._make_customer_user(f'ref{i}') for i in range(3)]
         codes = [
             ReferralCode.objects.create(customer_user=r, code=f'B4CODE{i}')
@@ -159,19 +172,25 @@ class B4ReferralBonusFarmingTests(SecurityFixesTestBase):
         ]
 
         for code in codes:
-            result = ReferralService.process_referral(code, newbie)
+            result = ReferralService.record_referral(code, newbie)
             self.assertTrue(result, "each distinct-code referral is recorded")
 
+        # No points move at signup — payout happens on first job completion.
+        self.assertEqual(PointTransaction.objects.count(), 0)
+
+        awarded = ReferralService.award_referral_bonuses(newbie.customer)
+        self.assertEqual(awarded, 3)
+
         received = PointTransaction.objects.filter(
-            customer_user=newbie, transaction_type='referral_received',
+            customer=newbie.customer, transaction_type='referral_received',
         ).count()
         self.assertEqual(
             received, 1,
-            "The one-time welcome bonus must not be farmable via multiple coworkers' codes",
+            "The one-time welcome bonus must not be farmable via multiple referrers' codes",
         )
 
         made = PointTransaction.objects.filter(
             transaction_type='referral_made',
-            customer_user__in=referrers,
+            customer__in=[r.customer for r in referrers],
         ).count()
-        self.assertEqual(made, 3, "each referrer still earns their per-referral bonus")
+        self.assertEqual(made, 3, "each referrer's company still earns their per-referral bonus")

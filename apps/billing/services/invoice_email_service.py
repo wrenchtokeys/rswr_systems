@@ -146,12 +146,16 @@ class InvoiceEmailService:
         
         return attachments
     
-    def _render_invoice_template(self, template_str, invoice_data) -> str:
+    def _render_invoice_template(self, template_str, invoice_data, points_line=None) -> str:
         """Render a shop-defined invoice email template.
 
         Supports the same placeholders documented in BillingConfig.invoice_email_template
         help_text:
-          {customer_name}, {invoice_number}, {total}, {invoice_date}, {company_name}
+          {customer_name}, {invoice_number}, {total}, {invoice_date}, {company_name},
+          {points_balance}
+
+        {points_balance} renders as an empty string when the loyalty program
+        (or its email toggle) is off, so custom templates never break.
 
         Falls back to the original hardcoded body if rendering fails (e.g. unknown
         placeholder in a legacy template).
@@ -172,6 +176,7 @@ class InvoiceEmailService:
                 total=f'${invoice_data.total:,.2f}',
                 invoice_date=invoice_data.invoice_date.strftime('%B %d, %Y') if invoice_data.invoice_date else 'N/A',
                 company_name=company_name,
+                points_balance=points_line or '',
             )
         except (KeyError, IndexError, ValueError):
             # Unknown placeholder or malformed template — fall back to default body.
@@ -216,7 +221,8 @@ class InvoiceEmailService:
         return f"{base_url}/invoice/{invoice_id}/{token}/"
 
     def _build_email_body(self, invoice_data, include_photos: bool,
-                          payment_link: str = None, view_link: str = None) -> str:
+                          payment_link: str = None, view_link: str = None,
+                          points_line: str = None) -> str:
         """Build the email body text"""
         lines = [
             f"Invoice #{invoice_data.invoice_number}",
@@ -264,7 +270,12 @@ class InvoiceEmailService:
             f"Total: ${invoice_data.total:.2f}",
             "",
         ])
-        
+
+        # Short factual loyalty line (already gated by the caller).
+        if points_line:
+            lines.extend([points_line, ""])
+
+
         # View link — the public tokened invoice page (no login needed).
         # Falls back to the customer portal when we don't know the invoice
         # record (CODE-178: use BASE_URL so custom domains get the right host).
@@ -451,6 +462,19 @@ class InvoiceEmailService:
                 except Exception as e:
                     logger.warning(f"Could not generate payment URL: {e}")
             
+            # Loyalty balance line — one short factual sentence, or None.
+            # Gated inside get_email_balance_line (program active + shop
+            # toggle + positive balance). Never let loyalty break invoicing.
+            points_line = None
+            try:
+                from core.models import Customer as CoreCustomer
+                from apps.rewards_referrals.services import LoyaltyService
+                _cust = CoreCustomer.objects.filter(pk=customer_id).first()
+                if _cust:
+                    points_line = LoyaltyService.get_email_balance_line(_cust)
+            except Exception:
+                points_line = None
+
             # Build email — use shop-defined template if configured (CODE-119)
             # Subject carries the SHOP's name, not the platform's — customers
             # know their glass shop, not RS Systems. No bracketed tag: [Shop]
@@ -466,19 +490,24 @@ class InvoiceEmailService:
                     from apps.billing.models import BillingConfig
                     cfg = BillingConfig.get_for_tenant(self.tenant)
                     if cfg.invoice_email_template:
-                        body = self._render_invoice_template(cfg.invoice_email_template, invoice_data)
+                        body = self._render_invoice_template(
+                            cfg.invoice_email_template, invoice_data,
+                            points_line=points_line,
+                        )
                 except Exception:
                     pass
             if not body:
                 body = self._build_email_body(
                     invoice_data, include_photos=len(photos) > 0,
                     payment_link=payment_link, view_link=view_link,
+                    points_line=points_line,
                 )
 
             # Build HTML version of the email
             html_body = self._build_html_email(invoice_data, payment_link=payment_link,
                                                 include_photos=len(photos) > 0,
-                                                view_link=view_link)
+                                                view_link=view_link,
+                                                points_line=points_line)
 
             from core.email_utils import shop_sender
             from_email, reply_to = shop_sender(
@@ -533,7 +562,7 @@ class InvoiceEmailService:
             return False, f"Error sending email: {str(e)}"
     
     def _build_html_email(self, invoice_data, payment_link=None, include_photos=False,
-                          view_link=None) -> str:
+                          view_link=None, points_line=None) -> str:
         """Build an HTML email with clickable buttons.
 
         "View Invoice Online" goes to the public invoice VIEW page; only the
@@ -599,6 +628,12 @@ class InvoiceEmailService:
                 <td style="padding:6px 12px;font-size:14px;color:#059669;text-align:right;">-${invoice_data.total_discount:.2f}</td>
             </tr>'''
 
+        # Loyalty balance — one quiet factual line under the totals.
+        points_html = ''
+        if points_line:
+            points_html = f'''
+    <p style="font-size:13px;color:#6b7280;text-align:right;margin:0 0 16px;">{html.escape(points_line)}</p>'''
+
         # Payment button
         pay_button_html = ''
         if payment_link:
@@ -658,7 +693,7 @@ class InvoiceEmailService:
             <td style="padding:12px;font-size:16px;font-weight:700;color:#1e40af;text-align:right;">${invoice_data.total:.2f}</td>
         </tr>
     </table>
-
+    {points_html}
     {pay_button_html}
 
     <!-- View Online Link -->

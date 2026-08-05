@@ -125,20 +125,20 @@ class Command(BaseCommand):
                 expires_at__isnull=False,
                 amount__gt=0,
             )
-            .select_related('customer_user')
-            .order_by('customer_user_id', 'expires_at')
+            .select_related('customer')
+            .order_by('customer_id', 'expires_at')
         )
 
         transactions_expired = 0
         points_removed = 0
         expired_details = []
 
-        # Group by customer_user to batch balance updates
-        current_cu_id = None
+        # Group by customer to batch balance updates
+        current_customer_id = None
         pending_expiry_amount = 0
         pending_transaction_pks = []
 
-        def _flush_pending(cu_id, amount_to_expire, txn_pks):
+        def _flush_pending(customer_id, amount_to_expire, txn_pks):
             """Atomically expire a batch of transactions for one customer."""
             nonlocal transactions_expired, points_removed
 
@@ -154,12 +154,12 @@ class Command(BaseCommand):
                 # Lock Reward row
                 try:
                     reward = Reward.objects.select_for_update().get(
-                        customer_user_id=cu_id,
+                        customer_id=customer_id,
                     )
                 except Reward.DoesNotExist:
                     logger.error(
-                        'expire_loyalty: Reward row missing for customer_user_id=%s — skipping',
-                        cu_id,
+                        'expire_loyalty: Reward row missing for customer_id=%s — skipping',
+                        customer_id,
                     )
                     return
 
@@ -175,8 +175,8 @@ class Command(BaseCommand):
                     new_balance = 0
                     logger.warning(
                         'expire_loyalty: expiry would take balance negative for '
-                        'customer_user_id=%s (balance=%s, expiring=%s) — clamping to 0',
-                        cu_id, reward.points, amount_to_expire,
+                        'customer_id=%s (balance=%s, expiring=%s) — clamping to 0',
+                        customer_id, reward.points, amount_to_expire,
                     )
                 else:
                     actual_amount = -amount_to_expire
@@ -184,7 +184,7 @@ class Command(BaseCommand):
                 if actual_amount != 0:
                     PointTransaction.objects.create(
                         tenant=reward.tenant,
-                        customer_user_id=cu_id,
+                        customer_id=customer_id,
                         amount=actual_amount,
                         balance_after=new_balance,
                         transaction_type='expiration',
@@ -197,26 +197,26 @@ class Command(BaseCommand):
                 points_removed += abs(actual_amount)
 
         for pt in expirable.iterator(chunk_size=BATCH_SIZE):
-            cu_id = pt.customer_user_id
+            customer_id = pt.customer_id
 
-            if current_cu_id is not None and cu_id != current_cu_id:
-                _flush_pending(current_cu_id, pending_expiry_amount, pending_transaction_pks)
+            if current_customer_id is not None and customer_id != current_customer_id:
+                _flush_pending(current_customer_id, pending_expiry_amount, pending_transaction_pks)
                 pending_expiry_amount = 0
                 pending_transaction_pks = []
 
-            current_cu_id = cu_id
+            current_customer_id = customer_id
             pending_expiry_amount += pt.amount
             pending_transaction_pks.append(pt.pk)
             expired_details.append({
                 'transaction_id': pt.pk,
-                'customer_user_id': cu_id,
+                'customer_id': customer_id,
                 'amount': pt.amount,
                 'expires_at': pt.expires_at.isoformat() if pt.expires_at else None,
             })
 
         # Flush last group
         if pending_transaction_pks:
-            _flush_pending(current_cu_id, pending_expiry_amount, pending_transaction_pks)
+            _flush_pending(current_customer_id, pending_expiry_amount, pending_transaction_pks)
 
         return {
             'tenant_id': tenant.pk,

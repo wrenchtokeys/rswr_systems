@@ -27,11 +27,11 @@
                                 <div class="space-y-3">
                                     <div>
                                         <p class="text-sm text-gray-500">Customer</p>
-                                        <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.user.email }}</p>
+                                        <p class="font-medium text-gray-900">{{ redemption.reward.customer.email|default:'No email on file' }}</p>
                                     </div>
                                     <div>
                                         <p class="text-sm text-gray-500">Customer Name</p>
-                                        <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.user.get_full_name|default:"N/A" }}</p>
+                                        <p class="font-medium text-gray-900">{{ redemption.reward.customer.name }}</p>
                                     </div>
                                     <div>
                                         <p class="text-sm text-gray-500">Reward Option</p>
@@ -257,20 +257,20 @@
                     <div class="p-6 space-y-3">
                         <div>
                             <p class="text-sm text-gray-500">Email</p>
-                            <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.user.email }}</p>
+                            <p class="font-medium text-gray-900">{{ redemption.reward.customer.email|default:'No email on file' }}</p>
                         </div>
                         <div>
                             <p class="text-sm text-gray-500">Name</p>
-                            <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.user.get_full_name|default:"N/A" }}</p>
+                            <p class="font-medium text-gray-900">{{ redemption.reward.customer.name }}</p>
                         </div>
                         <div>
                             <p class="text-sm text-gray-500">Reward Balance</p>
                             <p class="font-medium text-gray-900">{{ redemption.reward.points }} points remaining</p>
                         </div>
-                        {% if redemption.reward.customer_user.phone %}
+                        {% if redemption.reward.customer.phone %}
                         <div>
                             <p class="text-sm text-gray-500">Phone</p>
-                            <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.phone }}</p>
+                            <p class="font-medium text-gray-900">{{ redemption.reward.customer.phone }}</p>
                         </div>
                         {% endif %}
                     </div>
@@ -319,18 +319,18 @@
         <div class="mt-4 space-y-4">
             <div>
                 <p class="text-sm text-gray-500">Customer</p>
-                <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.user.get_full_name|default:"N/A" }}</p>
+                <p class="font-medium text-gray-900">{{ redemption.reward.customer.name }}</p>
             </div>
             
             <div>
                 <p class="text-sm text-gray-500">Email</p>
-                <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.user.email }}</p>
+                <p class="font-medium text-gray-900">{{ redemption.reward.customer.email|default:'No email on file' }}</p>
             </div>
             
-            {% if redemption.reward.customer_user.phone %}
+            {% if redemption.reward.customer.phone %}
             <div>
                 <p class="text-sm text-gray-500">Phone</p>
-                <p class="font-medium text-gray-900">{{ redemption.reward.customer_user.phone }}</p>
+                <p class="font-medium text-gray-900">{{ redemption.reward.customer.phone }}</p>
             </div>
             {% else %}
             <div>
@@ -348,7 +348,7 @@
             
             <div>
                 <label for="emailMessage" class="block text-sm font-medium text-gray-700 mb-2">Email Message</label>
-                <textarea id="emailMessage" rows="5" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">Hello {{ redemption.reward.customer_user.user.first_name }},
+                <textarea id="emailMessage" rows="5" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">Hello {{ redemption.reward.customer.name }},
 
 I'm reaching out regarding your redemption of {{ redemption.reward_option.name }}. 
 
@@ -361,7 +361,7 @@ Best regards,
             <button onclick="closeContactModal()" type="button" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
                 Cancel
             </button>
-            <a href="mailto:{{ redemption.reward.customer_user.user.email }}?subject=Regarding your reward redemption" id="sendEmailBtn" class="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors text-center">
+            <a href="mailto:{{ redemption.reward.customer.email|default:'No email on file' }}?subject=Regarding your reward redemption" id="sendEmailBtn" class="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors text-center">
                 Send Email
             </a>
         </div>
@@ -387,7 +387,7 @@ Best regards,
         function updateEmailLink() {
             const subject = encodeURIComponent(subjectInput.value);
             const body = encodeURIComponent(messageInput.value);
-            const emailAddress = '{{ redemption.reward.customer_user.user.email }}';
+            const emailAddress = '{{ redemption.reward.customer.email|default:'No email on file' }}';
             
             emailBtn.href = `mailto:${emailAddress}?subject=${subject}&body=${body}`;
         }

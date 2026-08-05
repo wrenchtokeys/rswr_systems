@@ -24,6 +24,9 @@ Tests verify:
  - Milestone bonuses fire at the correct repair counts (5th, 10th, 25th)
  - Milestone bonuses don't double-fire on subsequent saves
  - Points are tenant-scoped (different customers at different shops are isolated)
+
+Loyalty is anchored on the Customer (company) — no portal account is
+required for points to accrue.
 """
 
 from django.test import TestCase
@@ -31,7 +34,6 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 from core.models import Customer
-from apps.customer_portal.models import CustomerUser
 from apps.technician_portal.models import Technician, Repair
 from apps.tenants.models import Tenant, TenantMembership
 from apps.rewards_referrals.models import Reward
@@ -55,18 +57,10 @@ def _make_tech(tenant, suffix):
 
 
 def _make_customer(tenant, name="Test Fleet"):
-    customer = Customer.objects.create(
+    # Loyalty anchors on the Customer — no portal account required.
+    return Customer.objects.create(
         tenant=tenant, name=name, customer_type="FLEET"
     )
-    cu_user = User.objects.create_user(
-        f"cu_{tenant.slug}_{name.replace(' ', '')}",
-        f"cu@{tenant.slug}.com",
-        "Pass123!",
-    )
-    customer_user = CustomerUser.objects.create(
-        user=cu_user, customer=customer, is_primary_contact=True
-    )
-    return customer, customer_user
 
 
 def _make_repair(tenant, tech, customer, status="PENDING"):
@@ -87,12 +81,12 @@ class AwardPointsOnCompletionTest(TestCase):
     def setUp(self):
         _, self.tenant = _make_tenant("Shop Alpha", "alpha")
         self.tech = _make_tech(self.tenant, "1")
-        self.customer, self.customer_user = _make_customer(self.tenant)
+        self.customer = _make_customer(self.tenant)
 
     def _get_points(self):
         """Return the customer's current reward balance (0 if no Reward row yet)."""
         try:
-            return Reward.objects.get(customer_user=self.customer_user).points
+            return Reward.objects.get(customer=self.customer).points
         except Reward.DoesNotExist:
             return 0
 
@@ -182,7 +176,7 @@ class AwardPointsOnCompletionTest(TestCase):
         """Points at Shop A must not bleed into Shop B."""
         _, tenant_b = _make_tenant("Shop Beta", "beta")
         tech_b = _make_tech(tenant_b, "b")
-        customer_b, cu_b = _make_customer(tenant_b, "Beta Fleet")
+        customer_b = _make_customer(tenant_b, "Beta Fleet")
 
         # Complete a repair at Shop A
         r_a = _make_repair(self.tenant, self.tech, self.customer, status="APPROVED")
@@ -195,8 +189,8 @@ class AwardPointsOnCompletionTest(TestCase):
         r_b.save()
 
         # Both customers should have exactly 50 points — no cross-tenant bleeding
-        points_a = Reward.objects.get(customer_user=self.customer_user).points
-        points_b = Reward.objects.get(customer_user=cu_b).points
+        points_a = Reward.objects.get(customer=self.customer).points
+        points_b = Reward.objects.get(customer=customer_b).points
 
         self.assertEqual(points_a, 50, "Shop A customer should have 50 points")
         self.assertEqual(points_b, 50, "Shop B customer should have 50 points")

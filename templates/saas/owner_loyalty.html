@@ -96,7 +96,7 @@
                     <td class="px-6 py-4 text-center">
                         <button
                             class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-                            onclick="openAdjustModal({{ c.customer_user_id }}, '{{ c.customer_name|escapejs }}', {{ c.current_balance }})">
+                            onclick="openAdjustModal({{ c.customer_id }}, '{{ c.customer_name|escapejs }}', {{ c.current_balance }})">
                             <i class="fas fa-sliders-h mr-1.5"></i>Adjust
                         </button>
                     </td>
@@ -166,6 +166,23 @@
                         {% if config.is_active %}bg-blue-600{% else %}bg-gray-200{% endif %}">
                     <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
                         {% if config.is_active %}translate-x-6{% else %}translate-x-1{% endif %}"></span>
+                </button>
+            </div>
+
+            <!-- Show balance in emails toggle -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="text-sm font-medium text-gray-900">Show Balance in Emails</label>
+                    <p class="text-sm text-gray-500 mt-0.5">Add a short "Rewards balance: X points" line to invoice and review emails</p>
+                </div>
+                <button type="button"
+                    id="toggle-emails"
+                    data-active="{{ config.show_balance_in_emails|yesno:'true,false' }}"
+                    onclick="toggleEmails(this)"
+                    class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                        {% if config.show_balance_in_emails %}bg-blue-600{% else %}bg-gray-200{% endif %}">
+                    <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform
+                        {% if config.show_balance_in_emails %}translate-x-6{% else %}translate-x-1{% endif %}"></span>
                 </button>
             </div>
 
@@ -260,11 +277,11 @@
 {% block extra_js %}
 <script>
 // ─── Adjust Modal ───────────────────────────────────────────────────────────
-let currentCustomerUserId = null;
+let currentCustomerId = null;
 let adjustUrls = {};  // populated per row
 
 function openAdjustModal(cuId, name, balance) {
-    currentCustomerUserId = cuId;
+    currentCustomerId = cuId;
     document.getElementById('modal-customer-name').textContent = name;
     document.getElementById('modal-current-balance').textContent = balance;
     document.getElementById('adjust-amount').value = '';
@@ -276,7 +293,7 @@ function openAdjustModal(cuId, name, balance) {
 
 function closeAdjustModal() {
     document.getElementById('adjust-modal').classList.add('hidden');
-    currentCustomerUserId = null;
+    currentCustomerId = null;
 }
 
 // Close modal on backdrop click
@@ -286,7 +303,7 @@ document.getElementById('adjust-modal').addEventListener('click', function(e) {
 
 document.getElementById('adjust-form').addEventListener('submit', async function(e) {
     e.preventDefault();
-    if (!currentCustomerUserId) return;
+    if (!currentCustomerId) return;
 
     const submitBtn = document.getElementById('adjust-submit');
     const errorDiv = document.getElementById('adjust-error');
@@ -294,7 +311,7 @@ document.getElementById('adjust-form').addEventListener('submit', async function
     submitBtn.textContent = 'Saving…';
     errorDiv.classList.add('hidden');
 
-    const url = `/owner/loyalty/customers/${currentCustomerUserId}/adjust/`;
+    const url = `/owner/loyalty/customers/${currentCustomerId}/adjust/`;
     const formData = new FormData(this);
 
     try {
@@ -340,6 +357,29 @@ function toggleLoyalty(btn) {
     }
 }
 
+function toggleEmails(btn) {
+    // Same visual toggle behavior as the program switch.
+    toggleLoyaltyVisual(btn);
+}
+
+function toggleLoyaltyVisual(btn) {
+    const active = btn.dataset.active === 'true';
+    const newActive = !active;
+    btn.dataset.active = newActive.toString();
+
+    if (newActive) {
+        btn.classList.remove('bg-gray-200');
+        btn.classList.add('bg-blue-600');
+        btn.querySelector('span').classList.remove('translate-x-1');
+        btn.querySelector('span').classList.add('translate-x-6');
+    } else {
+        btn.classList.remove('bg-blue-600');
+        btn.classList.add('bg-gray-200');
+        btn.querySelector('span').classList.remove('translate-x-6');
+        btn.querySelector('span').classList.add('translate-x-1');
+    }
+}
+
 // ─── Config Form ─────────────────────────────────────────────────────────────
 document.getElementById('config-form').addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -357,6 +397,7 @@ document.getElementById('config-form').addEventListener('submit', async function
     body.append('is_active', isActive ? 'true' : 'false');
     body.append('points_per_repair', document.getElementById('points_per_repair').value);
     body.append('points_expiry_days', document.getElementById('points_expiry_days').value);
+    body.append('show_balance_in_emails', document.getElementById('toggle-emails').dataset.active === 'true' ? 'true' : 'false');
 
     try {
         const resp = await fetch("{% url 'owner_loyalty_save_config' %}", {

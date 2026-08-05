@@ -84,11 +84,11 @@ class RewardRedemptionUXTestMixin:
 
     def make_reward_with_points(self, customer_user, points=1000):
         return Reward.objects.create(
-            tenant=self.tenant, customer_user=customer_user, points=points,
+            tenant=self.tenant, customer=customer_user.customer, points=points,
         )
 
     def make_approved_redemption(self, customer_user, option, repair=None):
-        reward = Reward.objects.filter(customer_user=customer_user).first()
+        reward = Reward.objects.filter(customer=customer_user.customer).first()
         if not reward:
             reward = self.make_reward_with_points(customer_user)
         return RewardRedemption.objects.create(
@@ -315,7 +315,7 @@ class PhysicalRewardSchedulingTest(RewardRedemptionUXTestMixin, TestCase):
         self.assertEqual(resp.status_code, 302)
 
         redemption = RewardRedemption.objects.filter(
-            reward__customer_user=self.cu,
+            reward__customer=self.cu.customer,
             reward_option=self.opt_pizza,
         ).first()
         self.assertIsNotNone(redemption)

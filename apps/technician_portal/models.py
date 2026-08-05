@@ -987,22 +987,15 @@ class Repair(GlassService):
         """
         try:
             from apps.rewards_referrals.models import RewardRedemption
-            from apps.customer_portal.models import CustomerUser
-            
+
             # Check if there's already a reward applied to this repair
             if self.applied_rewards.exists():
                 return
-            
-            # Find the customer user associated with this repair
-            customer_users = CustomerUser.objects.filter(customer=self.customer)
-            
-            if not customer_users.exists():
-                return
-                
+
             # Check for pending reward redemptions that can be applied to repairs
             # Only include rewards that are repair-related (not merchandise like donuts/pizza)
             pending_redemptions = RewardRedemption.objects.filter(
-                reward__customer_user__in=customer_users,
+                reward__customer=self.customer,
                 status='PENDING',
                 applied_to_repair__isnull=True,  # Not already applied to another repair
                 reward_option__reward_type__category__in=[
@@ -1034,93 +1027,6 @@ class Repair(GlassService):
             # Log the error but don't fail the save
             logger.error(f"Error auto-applying rewards: {e}")
     
-    def award_completion_points(self):
-        """
-        [DEPRECATED — superseded by apps.technician_portal.hooks.loyalty_hook]
-
-        Award points to customer when repair is completed.
-
-        This method is no longer called from Repair.save(). The loyalty logic
-        has been extracted to hooks.loyalty_hook() and is invoked via the
-        post_completion_hooks() orchestrator in hooks.py.
-
-        Kept for backwards compatibility (tests reference it via comments and
-        the method may be called directly in custom management commands).  Do
-        NOT add new callers — use post_completion_hooks() or loyalty_hook()
-        directly instead.
-
-        Reads point values from LoyaltyConfig and delegates to LoyaltyService.
-        Awards base points per repair plus milestone bonuses for multiple repairs.
-        Only awards points once per repair completion to prevent duplicate awards.
-        """
-        try:
-            from apps.rewards_referrals.models import LoyaltyConfig
-            from apps.rewards_referrals.services import LoyaltyService
-            from apps.customer_portal.models import CustomerUser
-
-            # Skip if already awarded points for this repair
-            if hasattr(self, 'original_status') and self.original_status == 'COMPLETED':
-                return
-
-            # Find the customer user associated with this repair.
-            # Prefer the primary contact (CODE-169).
-            customer_users = CustomerUser.objects.filter(customer=self.customer)
-
-            if not customer_users.exists():
-                return
-
-            customer_user = (
-                customer_users.filter(is_primary_contact=True).first()
-                or customer_users.first()
-            )
-
-            tenant = self.customer.tenant
-            config = LoyaltyConfig.get_for_tenant(tenant)
-
-            # Base points from config
-            base_points = config.points_per_repair
-
-            # Award base points
-            LoyaltyService.award_points(
-                customer_user=customer_user,
-                amount=base_points,
-                transaction_type='repair_complete',
-                description=f'Repair completed — Unit #{self.unit_number}',
-                tenant=tenant,
-                related_repair=self,
-            )
-
-            # Calculate milestone bonus based on total completed repairs
-            completed_repairs_count = Repair.objects.filter(
-                customer=self.customer,
-                queue_status='COMPLETED'
-            ).count()
-
-            milestone_bonus = 0
-            if completed_repairs_count == 5:
-                milestone_bonus = config.milestone_5_bonus
-            elif completed_repairs_count == 10:
-                milestone_bonus = config.milestone_10_bonus
-            elif completed_repairs_count >= 25 and completed_repairs_count % 25 == 0:
-                milestone_bonus = config.milestone_25_bonus
-
-            if milestone_bonus > 0:
-                LoyaltyService.award_points(
-                    customer_user=customer_user,
-                    amount=milestone_bonus,
-                    transaction_type='milestone_bonus',
-                    description=f'Milestone bonus — {completed_repairs_count} repairs completed',
-                    tenant=tenant,
-                    related_repair=self,
-                )
-
-            total_points = base_points + milestone_bonus
-            logger.info(f"Awarded {total_points} points to {customer_user.user.email} for repair completion")
-            if milestone_bonus > 0:
-                logger.info(f"Milestone bonus of {milestone_bonus} points awarded!")
-
-        except Exception as e:
-            logger.error(f"Error awarding completion points: {e}")
 
     def get_damage_location_label(self):
         """Return human-readable damage location from X/Y coordinates.

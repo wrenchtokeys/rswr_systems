@@ -134,17 +134,16 @@ class LoyaltyEndpointDecoratorTests(TestCase):
         self.technician = _make_technician(self.tenant)
         self.cu_user, self.customer = _make_customer_user(self.tenant)
 
-        # Create a CustomerUser to target for adjust_points
+        # Create a Customer to target for adjust_points (loyalty is
+        # customer-anchored: the endpoint takes a Customer pk)
         _, self.target_customer = _make_customer_user(self.tenant)
-        # Get the CustomerUser pk for the target
-        self.target_cu = CustomerUser.objects.get(customer=self.target_customer)
 
         self.client = Client(HTTP_HOST='testserver')
 
         # URLs
         self.adjust_url = reverse(
             'owner_loyalty_adjust_points',
-            kwargs={'customer_user_id': self.target_cu.pk},
+            kwargs={'customer_id': self.target_customer.pk},
         )
         self.liability_url = reverse('owner_loyalty_liability_report')
 

@@ -436,7 +436,7 @@ class RewardRedemptionTenantIsolationTests(TestCase):
             user=cust_user_b, customer=self.customer_b,
         )
         self.reward_b = Reward.objects.create(
-            customer_user=self.customer_user_b, points=500,
+            customer=self.customer_b, tenant=self.tenant_b, points=500,
         )
         reward_opt_b = RewardOption.objects.create(
             tenant=self.tenant_b, name='Free wash', description='desc',
@@ -481,7 +481,7 @@ class RewardRedemptionTenantIsolationTests(TestCase):
             defaults={'field_repair_approval_mode': 'REQUIRE_APPROVAL'},
         )
         cu_a = CustomerUser.objects.create(user=cust_user_a, customer=customer_a)
-        reward_a = Reward.objects.create(customer_user=cu_a, points=200)
+        reward_a = Reward.objects.create(customer=customer_a, tenant=self.tenant_a, points=200)
         opt_a = RewardOption.objects.create(
             tenant=self.tenant_a, name='Discount', description='d',
             points_required=50,

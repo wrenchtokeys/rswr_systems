@@ -1,13 +1,15 @@
 """
 CODE-233: FK dropdown scoping for rewards/referrals admin classes.
 
-Bug: CustomerUserTenantFilterMixin (used by RewardAdmin, ReferralCodeAdmin)
+Bug: CustomerTenantFilterMixin (used by RewardAdmin, ReferralCodeAdmin)
 and ReferralAdmin had no formfield_for_foreignkey override. Non-superuser
 staff could see FK dropdown entries from ALL tenants when editing rewards,
 referral codes, or referrals — a cross-tenant data leak.
 
-Fix: Added formfield_for_foreignkey to CustomerUserTenantFilterMixin and
+Fix: Added formfield_for_foreignkey to CustomerTenantFilterMixin and
 ReferralAdmin that scopes FK dropdowns to the user's tenant(s).
+(Reward is now customer-anchored: its FK is `customer`, scoped via the
+direct Customer.tenant FK.)
 """
 
 from django.contrib.admin.sites import AdminSite
@@ -82,9 +84,13 @@ class RewardsFKTenantScopingTests(TestCase):
             user=cls.cu_user_b, customer=cls.customer_b,
         )
 
-        # Rewards
-        cls.reward_a = Reward.objects.create(customer_user=cls.cu_a, points=100)
-        cls.reward_b = Reward.objects.create(customer_user=cls.cu_b, points=200)
+        # Rewards (customer-anchored)
+        cls.reward_a = Reward.objects.create(
+            customer=cls.customer_a, tenant=cls.tenant_a, points=100,
+        )
+        cls.reward_b = Reward.objects.create(
+            customer=cls.customer_b, tenant=cls.tenant_b, points=200,
+        )
 
         # Referral codes
         cls.code_a = ReferralCode.objects.create(
@@ -102,27 +108,27 @@ class RewardsFKTenantScopingTests(TestCase):
         request.user = user
         return request
 
-    # ---- RewardAdmin: customer_user FK scoping ----
+    # ---- RewardAdmin: customer FK scoping ----
 
-    def test_reward_admin_customer_user_fk_scoped_for_staff(self):
-        """Staff should only see their tenant's CustomerUsers in the dropdown."""
+    def test_reward_admin_customer_fk_scoped_for_staff(self):
+        """Staff should only see their tenant's Customers in the dropdown."""
         admin_obj = RewardAdmin(Reward, self.site)
         request = self._make_request(self.staff_user)
-        db_field = Reward._meta.get_field('customer_user')
+        db_field = Reward._meta.get_field('customer')
         formfield = admin_obj.formfield_for_foreignkey(db_field, request)
         qs = formfield.queryset
-        self.assertIn(self.cu_a, qs)
-        self.assertNotIn(self.cu_b, qs)
+        self.assertIn(self.customer_a, qs)
+        self.assertNotIn(self.customer_b, qs)
 
-    def test_reward_admin_customer_user_fk_unscoped_for_superuser(self):
-        """Superuser should see ALL CustomerUsers."""
+    def test_reward_admin_customer_fk_unscoped_for_superuser(self):
+        """Superuser should see ALL Customers."""
         admin_obj = RewardAdmin(Reward, self.site)
         request = self._make_request(self.superuser)
-        db_field = Reward._meta.get_field('customer_user')
+        db_field = Reward._meta.get_field('customer')
         formfield = admin_obj.formfield_for_foreignkey(db_field, request)
         qs = formfield.queryset
-        self.assertIn(self.cu_a, qs)
-        self.assertIn(self.cu_b, qs)
+        self.assertIn(self.customer_a, qs)
+        self.assertIn(self.customer_b, qs)
 
     # ---- ReferralCodeAdmin: customer_user FK scoping ----
 

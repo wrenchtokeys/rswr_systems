@@ -95,7 +95,7 @@ def technician_dashboard(request):
         )
         if tenant:
             pending_qs = pending_qs.filter(
-                reward__customer_user__customer__tenant=tenant
+                reward__customer__tenant=tenant
             )
         all_pending_redemptions = pending_qs.order_by('-created_at')[:5]
 
@@ -263,7 +263,7 @@ def technician_dashboard(request):
         pending_qs = RewardRedemption.objects.filter(status='PENDING')
         if tenant:
             pending_qs = pending_qs.filter(
-                reward__customer_user__customer__tenant=tenant
+                reward__customer__tenant=tenant
             )
         all_pending_redemptions = pending_qs.order_by('-created_at')
 
@@ -297,7 +297,7 @@ def technician_dashboard(request):
             customer_qs = customer_qs.filter(tenant=tenant)
             tech_qs = tech_qs.filter(tenant=tenant)
             redemption_qs = redemption_qs.filter(
-                reward__customer_user__customer__tenant=tenant
+                reward__customer__tenant=tenant
             )
         else:
             repair_qs = repair_qs.none()

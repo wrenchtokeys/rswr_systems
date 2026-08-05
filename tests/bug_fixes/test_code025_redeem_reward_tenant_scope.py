@@ -13,7 +13,7 @@ returned reward options from ALL tenants to a customer — a data leak.
 
 FIX:
   - redeem_reward(): lookup now uses .get(id=..., tenant=tenant)
-    where tenant = customer_user.customer.tenant
+    where tenant = customer.tenant (loyalty anchors on the Customer)
   - get_available_rewards(): filter now includes tenant=tenant
 """
 
@@ -48,8 +48,9 @@ def _make_customer_user(tenant, username):
     user = User.objects.create_user(username, f'{username}@test.com', 'pass')
     customer = Customer.objects.create(tenant=tenant, name=f'{username} Corp')
     cu = CustomerUser.objects.create(user=user, customer=customer)
-    # Give them some points so redemption can proceed
-    Reward.objects.create(customer_user=cu, points=500)
+    # Give the company some points so redemption can proceed (loyalty is
+    # anchored on the Customer, not the portal account)
+    Reward.objects.create(customer=customer, tenant=tenant, points=500)
     return cu
 
 
@@ -73,23 +74,23 @@ class RedeemRewardTenantScopeTests(TestCase):
 
     def test_same_tenant_redemption_succeeds(self):
         """Customer A can redeem Shop A's option."""
-        success, result = RewardService.redeem_reward(self.cu_a, self.opt_a.id)
+        success, result = RewardService.redeem_reward(self.cu_a.customer, self.opt_a.id, acting_customer_user=self.cu_a)
         self.assertTrue(success, f"Expected success but got: {result}")
         self.assertIsInstance(result, RewardRedemption)
 
     def test_same_tenant_points_deducted(self):
         """Points are deducted on successful redemption."""
-        before = Reward.objects.get(customer_user=self.cu_a).points
-        RewardService.redeem_reward(self.cu_a, self.opt_a.id)
-        after = Reward.objects.get(customer_user=self.cu_a).points
+        before = Reward.objects.get(customer=self.cu_a.customer).points
+        RewardService.redeem_reward(self.cu_a.customer, self.opt_a.id, acting_customer_user=self.cu_a)
+        after = Reward.objects.get(customer=self.cu_a.customer).points
         self.assertEqual(after, before - self.opt_a.points_required)
 
     def test_same_tenant_redemption_record_created(self):
         """A RewardRedemption row is created on success."""
-        RewardService.redeem_reward(self.cu_a, self.opt_a.id)
+        RewardService.redeem_reward(self.cu_a.customer, self.opt_a.id, acting_customer_user=self.cu_a)
         self.assertEqual(
             RewardRedemption.objects.filter(
-                reward__customer_user=self.cu_a,
+                reward__customer=self.cu_a.customer,
                 reward_option=self.opt_a
             ).count(),
             1
@@ -101,28 +102,28 @@ class RedeemRewardTenantScopeTests(TestCase):
 
     def test_cross_tenant_option_rejected(self):
         """Customer A must NOT be able to redeem Shop B's option ID."""
-        success, result = RewardService.redeem_reward(self.cu_a, self.opt_b.id)
+        success, result = RewardService.redeem_reward(self.cu_a.customer, self.opt_b.id, acting_customer_user=self.cu_a)
         self.assertFalse(success, "Cross-tenant redemption must fail")
         self.assertIn("Invalid", result)
 
     def test_cross_tenant_no_redemption_row_created(self):
         """No RewardRedemption row should exist after a cross-tenant attempt."""
-        RewardService.redeem_reward(self.cu_a, self.opt_b.id)
+        RewardService.redeem_reward(self.cu_a.customer, self.opt_b.id, acting_customer_user=self.cu_a)
         self.assertEqual(
-            RewardRedemption.objects.filter(reward__customer_user=self.cu_a).count(),
+            RewardRedemption.objects.filter(reward__customer=self.cu_a.customer).count(),
             0
         )
 
     def test_cross_tenant_points_not_deducted(self):
         """Cross-tenant rejection must not alter the user's point balance."""
-        before = Reward.objects.get(customer_user=self.cu_a).points
-        RewardService.redeem_reward(self.cu_a, self.opt_b.id)
-        after = Reward.objects.get(customer_user=self.cu_a).points
+        before = Reward.objects.get(customer=self.cu_a.customer).points
+        RewardService.redeem_reward(self.cu_a.customer, self.opt_b.id, acting_customer_user=self.cu_a)
+        after = Reward.objects.get(customer=self.cu_a.customer).points
         self.assertEqual(after, before)
 
     def test_nonexistent_option_id_rejected(self):
         """A completely bogus option ID must fail gracefully."""
-        success, result = RewardService.redeem_reward(self.cu_a, 99999)
+        success, result = RewardService.redeem_reward(self.cu_a.customer, 99999, acting_customer_user=self.cu_a)
         self.assertFalse(success)
         self.assertIn("Invalid", result)
 
@@ -147,13 +148,13 @@ class GetAvailableRewardsTenantScopeTests(TestCase):
 
     def test_available_list_excludes_other_tenant_options(self):
         """get_available_rewards must not return Shop B's options to Shop A customer."""
-        result = RewardService.get_available_rewards(self.cu_a)
+        result = RewardService.get_available_rewards(self.cu_a.customer)
         all_names = [o.name for o in result['available']] + [o.name for o in result['unavailable']]
         self.assertNotIn('B-Cheap', all_names)
 
     def test_available_list_contains_own_tenant_options(self):
         """get_available_rewards returns this tenant's options."""
-        result = RewardService.get_available_rewards(self.cu_a)
+        result = RewardService.get_available_rewards(self.cu_a.customer)
         all_names = [o.name for o in result['available']] + [o.name for o in result['unavailable']]
         self.assertIn('A-Cheap', all_names)
         self.assertIn('A-Pricey', all_names)
@@ -161,7 +162,7 @@ class GetAvailableRewardsTenantScopeTests(TestCase):
     def test_available_and_unavailable_partition_by_balance(self):
         """Options are correctly partitioned by the customer's balance."""
         # cu_a has 500 points (from setUp helper)
-        result = RewardService.get_available_rewards(self.cu_a)
+        result = RewardService.get_available_rewards(self.cu_a.customer)
         avail_names = [o.name for o in result['available']]
         unavail_names = [o.name for o in result['unavailable']]
         # A-Cheap (100) ≤ 500 → available; A-Pricey (9999) > 500 → unavailable

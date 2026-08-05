@@ -19,11 +19,11 @@ Root cause:
     customer_repairs = [] — technicians can't see any repairs on the fulfillment
     page even when active repairs exist.
 
-Fix (CODE-180):
+Fix (CODE-180, updated for customer-anchored loyalty):
     Resolve the customer through the ORM relationship directly:
-        customer = redemption.reward.customer_user.customer
-    CustomerUser already has a direct FK to Customer — one fewer DB query
-    and always correct regardless of what emails contain.
+        customer = redemption.reward.customer
+    Reward now has a direct FK to Customer — one fewer DB query and always
+    correct regardless of what emails contain.
 
 Tests:
     1. Normal case — user email matches customer billing email → works
@@ -108,7 +108,7 @@ def _make_reward_option(tenant):
 
 def _make_redemption(customer_user, reward_option):
     reward, _ = Reward.objects.get_or_create(
-        customer_user=customer_user,
+        customer=customer_user.customer,
         defaults={'tenant': customer_user.customer.tenant, 'points': 500},
     )
     return RewardRedemption.objects.create(
@@ -192,7 +192,7 @@ class TestCode180RewardFulfillmentCustomerLookup(TestCase):
             customer_repairs is empty, the select dropdown doesn't include the repair.
 
         NEW CODE (fix):
-            customer = redemption.reward.customer_user.customer  → correct, repairs visible
+            customer = redemption.reward.customer  → correct, repairs visible
             The repair unit number DOES appear in the select dropdown.
         """
         uid = _uid()
@@ -256,7 +256,7 @@ class TestCode180RewardFulfillmentCustomerLookup(TestCase):
 
     def test_broken_customer_chain_handled_gracefully(self):
         """
-        If reward.customer_user is None (broken data), customer_repairs
+        If redemption.reward is None (broken data), customer_repairs
         defaults to [] without raising an exception.
         """
         uid = _uid()
@@ -266,7 +266,7 @@ class TestCode180RewardFulfillmentCustomerLookup(TestCase):
         redemption = _make_redemption(customer_user, self.reward_option)
 
         # Simulate broken chain in memory (not saved to DB)
-        redemption.reward.customer_user = None
+        redemption.reward = None
 
         req = _build_request(self.factory, self.admin_user, self.tenant)
         try:
@@ -297,10 +297,10 @@ class TestCode180RewardFulfillmentCustomerLookup(TestCase):
             'customer_email =',
             source,
             "The old 'customer_email = ...' assignment must be removed. "
-            "Customer should be resolved via redemption.reward.customer_user.customer"
+            "Customer should be resolved via redemption.reward.customer"
         )
         self.assertIn(
-            'customer_user.customer',
+            'redemption.reward.customer',
             source,
-            "The fix must resolve the customer via redemption.reward.customer_user.customer"
+            "The fix must resolve the customer via redemption.reward.customer"
         )

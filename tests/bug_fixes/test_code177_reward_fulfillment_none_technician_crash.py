@@ -103,7 +103,7 @@ def _make_reward_option(tenant):
 def _make_redemption(customer_user, reward_option, tenant):
     """Create a minimal Reward + RewardRedemption pair."""
     reward, _ = Reward.objects.get_or_create(
-        customer_user=customer_user,
+        customer=customer_user.customer,
         defaults={"tenant": tenant, "points": 500},
     )
     return RewardRedemption.objects.create(

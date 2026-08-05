@@ -6,15 +6,16 @@ Regression tests for CODE-165:
   (double-spend).
 
 Root cause:
-    Reward.objects.get_or_create(customer_user=customer_user) performed a
-    non-locking SELECT.  Within the same @transaction.atomic block, a second
-    concurrent call would see the same row with the full balance before the
-    first call had saved its deduction.
+    Reward.objects.get_or_create(...) performed a non-locking SELECT.
+    Within the same @transaction.atomic block, a second concurrent call
+    would see the same row with the full balance before the first call had
+    saved its deduction.
 
 Fix:
     Replaced get_or_create() with a select_for_update() pattern:
-      1. Try Reward.objects.select_for_update().get(...)
-      2. If DoesNotExist, create, then re-fetch with select_for_update()
+      1. get_or_create() the Reward row (now keyed by customer — loyalty is
+         anchored on the Customer/company, not the portal account)
+      2. Re-fetch the row with select_for_update()
     This acquires a row-level lock so concurrent calls serialize on the
     balance check-and-deduct step.
 
@@ -107,16 +108,17 @@ class RedeemRewardRaceConditionTestCase(TestCase):
         self.customer_user = _make_customer_user(
             self.tenant, "cust_race", "cust@race.com"
         )
+        self.customer = self.customer_user.customer
         # Give customer 500 points
         self.reward_obj = Reward.objects.create(
-            customer_user=self.customer_user, points=500
+            customer=self.customer, tenant=self.tenant, points=500
         )
         self.option_200 = _make_reward_option(self.tenant, 200, "200pt Option")
         self.option_400 = _make_reward_option(self.tenant, 400, "400pt Option")
 
     def test_single_redemption_succeeds(self):
         """A single redemption deducts the correct number of points."""
-        success, result = RewardService.redeem_reward(self.customer_user, self.option_200.id)
+        success, result = RewardService.redeem_reward(self.customer, self.option_200.id, acting_customer_user=self.customer_user)
         self.assertTrue(success, f"Expected success but got: {result}")
         self.assertIsInstance(result, RewardRedemption)
 
@@ -126,11 +128,11 @@ class RedeemRewardRaceConditionTestCase(TestCase):
     def test_second_redemption_with_insufficient_balance_rejected(self):
         """A second redemption that would leave a negative balance is rejected."""
         # First redemption: 500 - 400 = 100 remaining
-        success1, _ = RewardService.redeem_reward(self.customer_user, self.option_400.id)
+        success1, _ = RewardService.redeem_reward(self.customer, self.option_400.id, acting_customer_user=self.customer_user)
         self.assertTrue(success1)
 
         # Second redemption of 200 would require 200 but we only have 100
-        success2, msg = RewardService.redeem_reward(self.customer_user, self.option_200.id)
+        success2, msg = RewardService.redeem_reward(self.customer, self.option_200.id, acting_customer_user=self.customer_user)
         self.assertFalse(success2)
         self.assertIn("Not enough points", msg)
 
@@ -143,10 +145,10 @@ class RedeemRewardRaceConditionTestCase(TestCase):
         # 500 points, two 400-point redemptions
         option_400b = _make_reward_option(self.tenant, 400, "400pt Option B")
 
-        success1, _ = RewardService.redeem_reward(self.customer_user, self.option_400.id)
+        success1, _ = RewardService.redeem_reward(self.customer, self.option_400.id, acting_customer_user=self.customer_user)
         self.assertTrue(success1)
 
-        success2, msg = RewardService.redeem_reward(self.customer_user, option_400b.id)
+        success2, msg = RewardService.redeem_reward(self.customer, option_400b.id, acting_customer_user=self.customer_user)
         self.assertFalse(success2)  # Should be blocked — only 100 pts remain
 
         self.reward_obj.refresh_from_db()
@@ -157,7 +159,7 @@ class RedeemRewardRaceConditionTestCase(TestCase):
         other_tenant, _ = _make_tenant("othershoprace")
         other_option = _make_reward_option(other_tenant, 100, "Cross-Tenant Option")
 
-        success, msg = RewardService.redeem_reward(self.customer_user, other_option.id)
+        success, msg = RewardService.redeem_reward(self.customer, other_option.id, acting_customer_user=self.customer_user)
         self.assertFalse(success)
         self.assertEqual(msg, "Invalid reward option")
 
@@ -166,7 +168,7 @@ class RedeemRewardRaceConditionTestCase(TestCase):
         inactive_option = _make_reward_option(
             self.tenant, 100, "Inactive Option", active=False
         )
-        success, msg = RewardService.redeem_reward(self.customer_user, inactive_option.id)
+        success, msg = RewardService.redeem_reward(self.customer, inactive_option.id, acting_customer_user=self.customer_user)
         self.assertFalse(success)
         self.assertIn("not currently available", msg)
 
@@ -175,12 +177,12 @@ class RedeemRewardRaceConditionTestCase(TestCase):
         new_cu = _make_customer_user(self.tenant, "cust_new", "new@race.com")
         # No Reward row for new_cu
 
-        success, msg = RewardService.redeem_reward(new_cu, self.option_200.id)
+        success, msg = RewardService.redeem_reward(new_cu.customer, self.option_200.id, acting_customer_user=new_cu)
         self.assertFalse(success)
         self.assertIn("Not enough points", msg)
 
         # A Reward row should have been created (with 0 points)
-        reward = Reward.objects.filter(customer_user=new_cu).first()
+        reward = Reward.objects.filter(customer=new_cu.customer).first()
         self.assertIsNotNone(reward)
         self.assertEqual(reward.points, 0)
 
@@ -189,7 +191,7 @@ class RedeemRewardRaceConditionTestCase(TestCase):
         self.reward_obj.points = 200
         self.reward_obj.save()
 
-        success, _ = RewardService.redeem_reward(self.customer_user, self.option_200.id)
+        success, _ = RewardService.redeem_reward(self.customer, self.option_200.id, acting_customer_user=self.customer_user)
         self.assertTrue(success)
 
         self.reward_obj.refresh_from_db()

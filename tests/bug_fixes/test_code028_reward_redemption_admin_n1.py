@@ -5,8 +5,8 @@ BUG: RewardRedemptionAdmin.get_queryset() returned a plain queryset with no
 select_related. The admin list_display included computed columns that traversed
 multi-hop FK chains on each row:
 
-  get_tenant_display()  → reward → customer_user → customer → tenant (4 hops)
-  get_customer_email()  → reward → customer_user → user              (3 hops)
+  get_tenant_display()  → reward → customer → tenant                 (3 hops)
+  get_customer_email()  → reward → customer                          (2 hops)
   reward_option col     → reward_option                              (1 hop)
   assigned_technician   → assigned_technician → user                 (1-2 hops)
   get_applied_to_repair → applied_to_repair                          (1 hop)
@@ -54,7 +54,8 @@ def _make_reward_setup(tenant, username):
     user = User.objects.create_user(username, f'{username}@example.com', 'pass')
     customer = Customer.objects.create(tenant=tenant, name=f'{username} Corp')
     cu = CustomerUser.objects.create(user=user, customer=customer)
-    reward = Reward.objects.create(customer_user=cu, points=100)
+    # Loyalty anchors on the Customer (company), not the portal account
+    reward = Reward.objects.create(customer=customer, tenant=tenant, points=100)
     return cu, reward
 
 
@@ -158,10 +159,10 @@ class RewardRedemptionAdminN1Tests(TestCase):
         self.assertEqual(self.admin.get_tenant_display(row), self.tenant_a.name)
 
     def test_get_customer_email_correct_value(self):
-        """get_customer_email() returns the correct customer email."""
+        """get_customer_email() returns the customer (company) name."""
         req = self._make_request(self.superuser)
         row = self.admin.get_queryset(req).get(id=self.redemption_a.id)
-        self.assertEqual(self.admin.get_customer_email(row), self.cu_a.user.email)
+        self.assertEqual(self.admin.get_customer_email(row), self.reward_a.customer.name)
 
     def test_select_related_is_set_on_queryset(self):
         """

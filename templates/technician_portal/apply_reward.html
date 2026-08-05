@@ -125,7 +125,59 @@
                 </div>
             </div>
             {% endif %}
-            
+
+            {% if can_create_redemption and affordable_options %}
+            <!-- Redeem & Apply: spend the customer's points in one step (managers/owners) -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">Redeem Points &amp; Apply</h3>
+                </div>
+                <div class="card-body">
+                    <p>{{ repair.customer.name }} has <strong>{{ points_balance }} points</strong>. Redeem a reward and apply it to this repair in one step:</p>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Reward</th>
+                                    <th>Points</th>
+                                    <th>Redeem &amp; Apply</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for option in affordable_options %}
+                                <tr>
+                                    <td>{{ option.name }}</td>
+                                    <td>{{ option.points_required }}</td>
+                                    <td>
+                                        <form method="post"
+                                              data-confirm="Redeem {{ option.name }} for {{ option.points_required }} points and apply it to this repair? This spends the customer's points."
+                                              data-confirm-title="Redeem &amp; apply" data-confirm-label="Redeem &amp; Apply">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="option_id" value="{{ option.id }}">
+                                            <div class="form-check mb-2">
+                                                <input class="form-check-input" type="checkbox" name="auto_fulfill" id="auto_fulfill_opt_{{ option.id }}" {% if repair.queue_status == 'COMPLETED' %}checked{% endif %}>
+                                                <label class="form-check-label" for="auto_fulfill_opt_{{ option.id }}">
+                                                    Auto-fulfill
+                                                </label>
+                                            </div>
+                                            <button type="submit" class="btn btn-sm btn-primary">Redeem &amp; Apply</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% elif can_create_redemption and points_balance %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <p class="mb-0 text-muted">{{ repair.customer.name }} has {{ points_balance }} points — not enough for any discount reward yet.</p>
+                </div>
+            </div>
+            {% endif %}
+
             <div class="mt-3">
                 <a href="{% url 'repair_detail' repair.id %}" class="btn btn-outline-secondary">Back to Repair</a>
             </div>

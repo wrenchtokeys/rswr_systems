@@ -134,43 +134,63 @@ class ReferralCodeTests(RewardsTestMixin, TestCase):
 
 
 class ReferralProcessingTests(RewardsTestMixin, TestCase):
-    """Test referral processing and point awards."""
+    """Test referral recording and deferred point payout."""
 
     def setUp(self):
         self.create_base_data()
 
-    def test_process_referral_awards_points(self):
-        """Processing a referral should award 500 to referrer, 100 to referred."""
+    def test_referral_bonuses_paid_on_first_job(self):
+        """Recording a referral moves no points; award_referral_bonuses pays
+        500 to the referrer's company and 100 to the referred company."""
         code_obj = ReferralService.generate_code_for_user(self.cu_a)
-        success = ReferralService.process_referral(code_obj, self.cu_b)
+        success = ReferralService.record_referral(code_obj, self.cu_b)
         self.assertTrue(success)
 
-        # Check referrer points
-        reward_a = Reward.objects.get(customer_user=self.cu_a)
+        # No points move at signup — the referral is PENDING until first job.
+        self.assertFalse(Reward.objects.filter(customer=self.customer_a, points__gt=0).exists())
+        self.assertFalse(Reward.objects.filter(customer=self.customer_b, points__gt=0).exists())
+
+        awarded = ReferralService.award_referral_bonuses(self.customer_b)
+        self.assertEqual(awarded, 1)
+
+        # Check referrer company points
+        reward_a = Reward.objects.get(customer=self.customer_a)
         self.assertEqual(reward_a.points, 500)
 
-        # Check referred points
-        reward_b = Reward.objects.get(customer_user=self.cu_b)
+        # Check referred company points
+        reward_b = Reward.objects.get(customer=self.customer_b)
         self.assertEqual(reward_b.points, 100)
 
     def test_self_referral_blocked(self):
         """Users cannot refer themselves."""
         code_obj = ReferralService.generate_code_for_user(self.cu_a)
-        success = ReferralService.process_referral(code_obj, self.cu_a)
+        success = ReferralService.record_referral(code_obj, self.cu_a)
         self.assertFalse(success)
-        # No reward should be created
-        self.assertFalse(Reward.objects.filter(customer_user=self.cu_a).exists())
+        # No referral (and hence no future payout) should be created
+        self.assertFalse(Referral.objects.filter(referral_code=code_obj).exists())
+
+    def test_same_company_referral_blocked(self):
+        """A referral code cannot be used by another portal user of the same company."""
+        code_obj = ReferralService.generate_code_for_user(self.cu_a)
+        colleague_user = User.objects.create_user('cust_a2', 'custa2@test.com', 'TestPass123!')
+        colleague = CustomerUser.objects.create(user=colleague_user, customer=self.customer_a)
+
+        success = ReferralService.record_referral(code_obj, colleague)
+        self.assertFalse(success)
+        self.assertFalse(Referral.objects.filter(referral_code=code_obj).exists())
 
     def test_duplicate_referral_blocked(self):
-        """Same referral should not be processed twice."""
+        """Same referral should not be recorded (or paid) twice."""
         code_obj = ReferralService.generate_code_for_user(self.cu_a)
-        success1 = ReferralService.process_referral(code_obj, self.cu_b)
-        success2 = ReferralService.process_referral(code_obj, self.cu_b)
+        success1 = ReferralService.record_referral(code_obj, self.cu_b)
+        success2 = ReferralService.record_referral(code_obj, self.cu_b)
         self.assertTrue(success1)
         self.assertFalse(success2)
 
-        # Points should only be awarded once
-        reward_a = Reward.objects.get(customer_user=self.cu_a)
+        # Points should only be awarded once — payouts are idempotent too
+        ReferralService.award_referral_bonuses(self.customer_b)
+        ReferralService.award_referral_bonuses(self.customer_b)
+        reward_a = Reward.objects.get(customer=self.customer_a)
         self.assertEqual(reward_a.points, 500)  # Not 1000
 
     def test_referral_count(self):
@@ -181,32 +201,34 @@ class ReferralProcessingTests(RewardsTestMixin, TestCase):
         user_c = User.objects.create_user('cust_c', 'custc@test.com', 'TestPass123!')
         cu_c = CustomerUser.objects.create(user=user_c, customer=customer_c)
 
-        ReferralService.process_referral(code_obj, self.cu_b)
-        ReferralService.process_referral(code_obj, cu_c)
+        ReferralService.record_referral(code_obj, self.cu_b)
+        ReferralService.record_referral(code_obj, cu_c)
 
         count = ReferralService.get_referral_count(self.cu_a)
         self.assertEqual(count, 2)
 
     def test_referral_creates_record(self):
-        """Processing referral should create a Referral record."""
+        """Recording a referral should create a PENDING Referral record."""
         code_obj = ReferralService.generate_code_for_user(self.cu_a)
-        ReferralService.process_referral(code_obj, self.cu_b)
+        ReferralService.record_referral(code_obj, self.cu_b)
 
         referral = Referral.objects.filter(referral_code=code_obj, customer_user=self.cu_b)
         self.assertTrue(referral.exists())
+        self.assertEqual(referral.first().status, 'PENDING')
 
     def test_multiple_referrals_accumulate_points(self):
-        """Multiple successful referrals should accumulate points."""
+        """Multiple successful referrals should accumulate referrer points."""
         code_obj = ReferralService.generate_code_for_user(self.cu_a)
 
-        # Create multiple referred users
+        # Create multiple referred companies, each completing their first job
         for i in range(5):
             cust = Customer.objects.create(tenant=self.tenant, name=f'Fleet {i}', customer_type='FLEET')
             user = User.objects.create_user(f'ref_user_{i}', f'ref{i}@test.com', 'TestPass123!')
             cu = CustomerUser.objects.create(user=user, customer=cust)
-            ReferralService.process_referral(code_obj, cu)
+            ReferralService.record_referral(code_obj, cu)
+            ReferralService.award_referral_bonuses(cust)
 
-        reward_a = Reward.objects.get(customer_user=self.cu_a)
+        reward_a = Reward.objects.get(customer=self.customer_a)
         self.assertEqual(reward_a.points, 2500)  # 500 * 5
 
 
@@ -217,11 +239,11 @@ class RewardRedemptionTests(RewardsTestMixin, TestCase):
         self.create_base_data()
         self.create_reward_types_and_options()
         # Give customer A 1000 points
-        self.reward_a = Reward.objects.create(customer_user=self.cu_a, points=1000)
+        self.reward_a = Reward.objects.create(customer=self.customer_a, tenant=self.tenant, points=1000)
 
     def test_redeem_with_sufficient_points(self):
         """Redemption should succeed with enough points."""
-        success, result = RewardService.redeem_reward(self.cu_a, self.opt_50off.id)
+        success, result = RewardService.redeem_reward(self.customer_a, self.opt_50off.id)
         self.assertTrue(success)
         self.assertIsInstance(result, RewardRedemption)
         self.assertEqual(result.status, 'PENDING')
@@ -235,7 +257,7 @@ class RewardRedemptionTests(RewardsTestMixin, TestCase):
         self.reward_a.points = 100
         self.reward_a.save()
 
-        success, message = RewardService.redeem_reward(self.cu_a, self.opt_50off.id)
+        success, message = RewardService.redeem_reward(self.customer_a, self.opt_50off.id)
         self.assertFalse(success)
         self.assertIn('Not enough points', message)
 
@@ -248,13 +270,13 @@ class RewardRedemptionTests(RewardsTestMixin, TestCase):
         self.reward_a.points = 10000
         self.reward_a.save()
 
-        success, message = RewardService.redeem_reward(self.cu_a, self.opt_inactive.id)
+        success, message = RewardService.redeem_reward(self.customer_a, self.opt_inactive.id)
         self.assertFalse(success)
         self.assertIn('not currently available', message)
 
     def test_redeem_invalid_option(self):
         """Cannot redeem a non-existent reward option."""
-        success, message = RewardService.redeem_reward(self.cu_a, 99999)
+        success, message = RewardService.redeem_reward(self.customer_a, 99999)
         self.assertFalse(success)
         self.assertIn('Invalid', message)
 
@@ -263,7 +285,7 @@ class RewardRedemptionTests(RewardsTestMixin, TestCase):
         self.reward_a.points = 300
         self.reward_a.save()
 
-        success, result = RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
+        success, result = RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
         self.assertTrue(success)
 
         self.reward_a.refresh_from_db()
@@ -273,29 +295,29 @@ class RewardRedemptionTests(RewardsTestMixin, TestCase):
         """Multiple redemptions should correctly deplete points."""
         # Start with 1000 points
         # Redeem donuts (300) -> 700
-        success1, _ = RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
+        success1, _ = RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
         self.assertTrue(success1)
         self.reward_a.refresh_from_db()
         self.assertEqual(self.reward_a.points, 700)
 
         # Redeem 50% off (500) -> 200
-        success2, _ = RewardService.redeem_reward(self.cu_a, self.opt_50off.id)
+        success2, _ = RewardService.redeem_reward(self.customer_a, self.opt_50off.id)
         self.assertTrue(success2)
         self.reward_a.refresh_from_db()
         self.assertEqual(self.reward_a.points, 200)
 
         # Try free repair (1000) -> should fail
-        success3, msg = RewardService.redeem_reward(self.cu_a, self.opt_free.id)
+        success3, msg = RewardService.redeem_reward(self.customer_a, self.opt_free.id)
         self.assertFalse(success3)
         self.reward_a.refresh_from_db()
         self.assertEqual(self.reward_a.points, 200)  # Unchanged
 
     def test_redemption_history(self):
         """Redemption history should track all redemptions."""
-        RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
-        RewardService.redeem_reward(self.cu_a, self.opt_50off.id)
+        RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
+        RewardService.redeem_reward(self.customer_a, self.opt_50off.id)
 
-        history = RewardService.get_redemption_history(self.cu_a)
+        history = RewardService.get_redemption_history(self.customer_a)
         self.assertEqual(history.count(), 2)
 
     def test_available_vs_unavailable_rewards(self):
@@ -303,7 +325,7 @@ class RewardRedemptionTests(RewardsTestMixin, TestCase):
         self.reward_a.points = 400
         self.reward_a.save()
 
-        result = RewardService.get_available_rewards(self.cu_a)
+        result = RewardService.get_available_rewards(self.customer_a)
         available_names = [o.name for o in result['available']]
         unavailable_names = [o.name for o in result['unavailable']]
 
@@ -313,12 +335,12 @@ class RewardRedemptionTests(RewardsTestMixin, TestCase):
 
     def test_reward_balance_service(self):
         """RewardService.get_reward_balance should return correct balance."""
-        balance = RewardService.get_reward_balance(self.cu_a)
+        balance = RewardService.get_reward_balance(self.customer_a)
         self.assertEqual(balance, 1000)
 
     def test_reward_balance_no_reward(self):
-        """Balance should be 0 for user with no reward record."""
-        balance = RewardService.get_reward_balance(self.cu_b)
+        """Balance should be 0 for a company with no reward record."""
+        balance = RewardService.get_reward_balance(self.customer_b)
         self.assertEqual(balance, 0)
 
 
@@ -328,11 +350,11 @@ class RewardFulfillmentTests(RewardsTestMixin, TestCase):
     def setUp(self):
         self.create_base_data()
         self.create_reward_types_and_options()
-        self.reward_a = Reward.objects.create(customer_user=self.cu_a, points=1000)
+        self.reward_a = Reward.objects.create(customer=self.customer_a, tenant=self.tenant, points=1000)
 
     def test_assign_technician(self):
         """Should assign a technician to fulfill a redemption."""
-        _, redemption = RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
+        _, redemption = RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
         assigned = RewardFulfillmentService.assign_technician(redemption)
 
         self.assertIsNotNone(assigned)
@@ -341,7 +363,7 @@ class RewardFulfillmentTests(RewardsTestMixin, TestCase):
 
     def test_mark_as_fulfilled(self):
         """Should mark redemption as fulfilled."""
-        _, redemption = RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
+        _, redemption = RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
         redemption.assigned_technician = self.tech
         redemption.save()
 
@@ -352,15 +374,15 @@ class RewardFulfillmentTests(RewardsTestMixin, TestCase):
 
     def test_pending_redemptions_list(self):
         """Should list all pending redemptions."""
-        RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
-        RewardService.redeem_reward(self.cu_a, self.opt_50off.id)
+        RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
+        RewardService.redeem_reward(self.customer_a, self.opt_50off.id)
 
         pending = RewardFulfillmentService.get_pending_redemptions()
         self.assertEqual(pending.count(), 2)
 
     def test_fulfilled_not_in_pending(self):
         """Fulfilled redemptions should not appear in pending list."""
-        _, redemption = RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
+        _, redemption = RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
         RewardFulfillmentService.mark_as_fulfilled(redemption, self.tech)
 
         pending = RewardFulfillmentService.get_pending_redemptions()
@@ -374,7 +396,7 @@ class RewardViewTests(RewardsTestMixin, TestCase):
         self.client = Client()
         self.create_base_data()
         self.create_reward_types_and_options()
-        self.reward_a = Reward.objects.create(customer_user=self.cu_a, points=1000)
+        self.reward_a = Reward.objects.create(customer=self.customer_a, tenant=self.tenant, points=1000)
         self.code_a = ReferralService.generate_code_for_user(self.cu_a)
 
     def test_reward_balance_api(self):
@@ -406,16 +428,18 @@ class RewardViewTests(RewardsTestMixin, TestCase):
         self.assertEqual(data['points'], 1000)
 
     def test_referral_tracking_post(self):
-        """Should process a referral via POST."""
+        """Should record a referral via POST — no points until first job."""
         self.client.login(username='cust_b', password='TestPass123!')
         resp = self.client.post('/referrals/referral-tracking/', {'code': self.code_a.code})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertTrue(data['success'])
 
-        # Verify points awarded
-        reward_a = Reward.objects.get(customer_user=self.cu_a)
-        self.assertEqual(reward_a.points, 1500)  # 1000 + 500
+        # A PENDING referral is recorded; points pay out on first completed job
+        referral = Referral.objects.get(referral_code=self.code_a, customer_user=self.cu_b)
+        self.assertEqual(referral.status, 'PENDING')
+        reward_a = Reward.objects.get(customer=self.customer_a)
+        self.assertEqual(reward_a.points, 1000)  # unchanged at signup
 
     def test_referral_tracking_invalid_code(self):
         """Should reject invalid referral code."""
@@ -515,8 +539,9 @@ class EndToEndRewardsFlowTest(RewardsTestMixin, TestCase):
         """
         Complete flow:
         1. Customer A generates referral code
-        2. Customer B uses referral code
-        3. Customer A gets 500 points, Customer B gets 100 points
+        2. Customer B uses referral code (PENDING referral, no points yet)
+        3. Customer B's first job completes — Company A gets 500 points,
+           Company B gets 100 welcome + 50 repair-completion points
         4. Customer A redeems donuts (300 pts)
         5. Technician fulfills the reward
         6. Customer A has 200 points remaining
@@ -525,18 +550,30 @@ class EndToEndRewardsFlowTest(RewardsTestMixin, TestCase):
         code_obj = ReferralService.generate_code_for_user(self.cu_a)
         self.assertIsNotNone(code_obj)
 
-        # Step 2: Customer B uses the code
-        success = ReferralService.process_referral(code_obj, self.cu_b)
+        # Step 2: Customer B uses the code — recorded as PENDING, no points move
+        success = ReferralService.record_referral(code_obj, self.cu_b)
         self.assertTrue(success)
+        self.assertFalse(Reward.objects.filter(customer=self.customer_a, points__gt=0).exists())
 
-        # Step 3: Verify points
-        reward_a = Reward.objects.get(customer_user=self.cu_a)
-        reward_b = Reward.objects.get(customer_user=self.cu_b)
-        self.assertEqual(reward_a.points, 500)
-        self.assertEqual(reward_b.points, 100)
+        # Step 3: Customer B's first job completes — the completion hooks
+        # award repair points to B and pay out the pending referral.
+        repair = Repair.objects.create(
+            tenant=self.tenant, customer=self.customer_b, technician=self.tech,
+            unit_number='E2E-1', queue_status='APPROVED',
+        )
+        repair.queue_status = 'COMPLETED'
+        repair.save()
+
+        reward_a = Reward.objects.get(customer=self.customer_a)
+        reward_b = Reward.objects.get(customer=self.customer_b)
+        self.assertEqual(reward_a.points, 500)  # referrer bonus
+        self.assertEqual(reward_b.points, 150)  # 50 repair + 100 welcome bonus
+
+        referral = Referral.objects.get(referral_code=code_obj, customer_user=self.cu_b)
+        self.assertEqual(referral.status, 'AWARDED')
 
         # Step 4: Customer A redeems donuts (300 pts)
-        success, redemption = RewardService.redeem_reward(self.cu_a, self.opt_donuts.id)
+        success, redemption = RewardService.redeem_reward(self.customer_a, self.opt_donuts.id)
         self.assertTrue(success)
         self.assertEqual(redemption.status, 'PENDING')
 
@@ -559,6 +596,6 @@ class EndToEndRewardsFlowTest(RewardsTestMixin, TestCase):
         self.assertEqual(ReferralService.get_referral_count(self.cu_a), 1)
 
         # Verify redemption history
-        history = RewardService.get_redemption_history(self.cu_a)
+        history = RewardService.get_redemption_history(self.customer_a)
         self.assertEqual(history.count(), 1)
         self.assertEqual(history.first().status, 'FULFILLED')
