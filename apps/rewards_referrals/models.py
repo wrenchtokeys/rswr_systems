@@ -246,6 +246,7 @@ class PointTransaction(models.Model):
         ('tier_bonus', 'Tier Bonus'),
         ('manual_adjustment', 'Manual Adjustment'),
         ('redemption', 'Redemption'),
+        ('redemption_refund', 'Redemption Refund'),
         ('expiration', 'Expiration'),
     ]
 

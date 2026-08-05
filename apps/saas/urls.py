@@ -90,6 +90,11 @@ urlpatterns = [
     path('owner/loyalty/config/', views.owner_loyalty_save_config, name='owner_loyalty_save_config'),
     path('owner/loyalty/customers/<int:customer_id>/adjust/', views.owner_loyalty_adjust_points, name='owner_loyalty_adjust_points'),
     path('owner/loyalty/liability/', views.owner_loyalty_liability_report, name='owner_loyalty_liability_report'),
+    path('owner/loyalty/options/create/', views.owner_reward_option_create, name='owner_reward_option_create'),
+    path('owner/loyalty/options/<int:option_id>/edit/', views.owner_reward_option_edit, name='owner_reward_option_edit'),
+    path('owner/loyalty/options/<int:option_id>/toggle/', views.owner_reward_option_toggle, name='owner_reward_option_toggle'),
+    path('owner/loyalty/options/<int:option_id>/delete/', views.owner_reward_option_delete, name='owner_reward_option_delete'),
+    path('owner/loyalty/redemptions/<int:redemption_id>/cancel/', views.owner_loyalty_cancel_redemption, name='owner_loyalty_cancel_redemption'),
 
     # Tax management (single-rate UI; per-city CRUD removed — BillingConfig
     # is the source of truth and the settings page has the tax_settings form)

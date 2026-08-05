@@ -1,17 +1,41 @@
-from django.core.management.base import BaseCommand
-from apps.rewards_referrals.models import RewardType, RewardOption
+from django.core.management.base import BaseCommand, CommandError
+
+from apps.rewards_referrals.models import RewardOption, RewardType
+from apps.tenants.models import Tenant
+
 
 class Command(BaseCommand):
-    help = 'Setup simplified reward options with balanced point requirements for professional customers'
+    help = (
+        'Seed the 4 default reward options for ONE tenant. '
+        'Requires --tenant <slug>; never touches other tenants\' options.'
+    )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--tenant',
+            required=True,
+            help='Slug of the tenant to seed reward options for.',
+        )
+        parser.add_argument(
+            '--reset',
+            action='store_true',
+            help="Delete the tenant's existing reward options before seeding "
+                 '(default: keep them and only add missing ones).',
+        )
 
     def handle(self, *args, **options):
-        self.stdout.write('Setting up simplified reward options...')
-        
-        # Clear existing reward options to start fresh
-        RewardOption.objects.all().delete()
-        self.stdout.write('Cleared existing reward options.')
-        
-        # Create or get reward types
+        try:
+            tenant = Tenant.objects.get(slug=options['tenant'])
+        except Tenant.DoesNotExist:
+            raise CommandError(f"No tenant with slug '{options['tenant']}'.")
+
+        self.stdout.write(f'Seeding reward options for {tenant.name}...')
+
+        if options['reset']:
+            deleted, _ = RewardOption.objects.filter(tenant=tenant).delete()
+            self.stdout.write(f'Cleared {deleted} existing reward option(s) for this tenant.')
+
+        # Create or get reward types (shared, non-tenant lookup table)
         repair_discount_type, _ = RewardType.objects.get_or_create(
             name="Repair Service Discount",
             category="REPAIR_DISCOUNT",
@@ -21,7 +45,7 @@ class Command(BaseCommand):
                 'description': 'Percentage discount on repair services'
             }
         )
-        
+
         free_service_type, _ = RewardType.objects.get_or_create(
             name="Free Service",
             category="FREE_SERVICE",
@@ -31,7 +55,7 @@ class Command(BaseCommand):
                 'description': 'Complimentary repair services'
             }
         )
-        
+
         office_treats_type, _ = RewardType.objects.get_or_create(
             name="Office Treats",
             category="MERCHANDISE",
@@ -70,28 +94,22 @@ class Command(BaseCommand):
             }
         ]
 
-        # Create the reward options
+        # Create the reward options for this tenant
         created_count = 0
         for option_data in reward_options:
             option, created = RewardOption.objects.get_or_create(
+                tenant=tenant,
                 name=option_data['name'],
-                defaults=option_data
+                defaults=option_data,
             )
             if created:
                 created_count += 1
                 self.stdout.write(f"Created reward option: {option.name} ({option.points_required} points)")
 
+        total = RewardOption.objects.filter(tenant=tenant).count()
         self.stdout.write(
             self.style.SUCCESS(
-                f'Successfully created {created_count} simplified reward options! '
-                f'Total reward options available: {RewardOption.objects.count()}'
+                f'Successfully created {created_count} reward option(s) for {tenant.name}. '
+                f'This tenant now has {total} option(s).'
             )
         )
-        
-        # Display summary
-        self.stdout.write('\n--- Simplified Rewards Summary ---')
-        self.stdout.write('50% Off Next Repair: 2,000 points')
-        self.stdout.write('Free Windshield Repair: 3,500 points') 
-        self.stdout.write('5 Dozen Donuts for Office: 1,500 points')
-        self.stdout.write('5 Large Pizzas for Team: 2,500 points')
-        self.stdout.write('\nNote: With 500 points per referral, customers need 3-7 referrals for rewards.')

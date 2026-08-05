@@ -68,6 +68,7 @@ urlpatterns = [
     
     # Rewards and notifications
     path('reward-fulfillment/<int:redemption_id>/', views.reward_fulfillment_detail, name='reward_fulfillment_detail'),
+    path('reward-fulfillment/<int:redemption_id>/cancel/', views.cancel_redemption, name='cancel_redemption'),
 
     # Notification Management (Phase 5)
     path('notifications/preferences/', views.notification_preferences, name='notification_preferences'),
