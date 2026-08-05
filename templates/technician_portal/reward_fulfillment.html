@@ -289,6 +289,19 @@
                             Back to Dashboard
                         </a>
                         
+                        {% if redemption.status == 'PENDING' and can_cancel %}
+                        <form method="post" action="{% url 'cancel_redemption' redemption.id %}"
+                            onsubmit="return confirm('Cancel this redemption and refund {{ redemption.reward_option.points_required }} points to {{ redemption.reward.customer.name|escapejs }}?');">
+                            {% csrf_token %}
+                            <button type="submit" class="block w-full text-center px-4 py-2 border border-red-300 text-red-700 bg-red-50 text-sm font-medium rounded-md hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
+                                <svg class="inline-block w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v1m-15-6l4-4m-4 4l4 4"></path>
+                                </svg>
+                                Cancel &amp; Refund Points
+                            </button>
+                        </form>
+                        {% endif %}
+
                         {% if redemption.status == 'PENDING' %}
                         <button onclick="openContactModal()" type="button" class="block w-full text-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                             <svg class="inline-block w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

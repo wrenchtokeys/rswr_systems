@@ -5045,7 +5045,9 @@ def owner_loyalty_dashboard(request):
     POST /owner/loyalty/config/   — handled separately (see owner_loyalty_save_config)
     """
     from apps.rewards_referrals.services import LoyaltyService
-    from apps.rewards_referrals.models import LoyaltyConfig, PointTransaction
+    from apps.rewards_referrals.models import (
+        LoyaltyConfig, PointTransaction, RewardOption, RewardRedemption,
+    )
     from django.db.models import Sum, Q
     from django.utils import timezone
 
@@ -5067,11 +5069,32 @@ def owner_loyalty_dashboard(request):
 
     config = LoyaltyConfig.get_for_tenant(tenant)
 
+    # Reward catalog (all options, including hidden — owners manage them here)
+    reward_options = (
+        RewardOption.objects
+        .filter(tenant=tenant)
+        .select_related('reward_type')
+        .order_by('points_required')
+    )
+
+    # Open redemptions awaiting fulfillment — cancellable while PENDING
+    pending_redemptions = (
+        RewardRedemption.objects
+        .filter(reward__customer__tenant=tenant, status='PENDING')
+        .select_related(
+            'reward__customer', 'reward_option',
+            'applied_to_repair', 'applied_to_replacement',
+        )
+        .order_by('-created_at')[:50]
+    )
+
     ctx = {
         'tenant': tenant,
         'report': report,
         'points_this_month': points_this_month,
         'config': config,
+        'reward_options': reward_options,
+        'pending_redemptions': pending_redemptions,
     }
     return render(request, 'saas/owner_loyalty.html', ctx)
 
@@ -5128,6 +5151,240 @@ def owner_loyalty_save_config(request):
         'points_expiry_days': config.points_expiry_days,
         'show_balance_in_emails': config.show_balance_in_emails,
     })
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reward Option CRUD + Redemption Cancel (owner/manager only)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Owner-facing "kind" choices → (RewardType.category, RewardType.discount_type).
+# Kept deliberately simple: the four shapes a shop reward actually takes.
+REWARD_KIND_MAP = {
+    'percent': ('REPAIR_DISCOUNT', 'PERCENTAGE'),
+    'fixed': ('REPAIR_DISCOUNT', 'FIXED_AMOUNT'),
+    'free': ('FREE_SERVICE', 'FREE'),
+    'merch': ('MERCHANDISE', 'NONE'),
+}
+
+
+def _resolve_reward_type(kind, value):
+    """
+    Map an owner-facing reward kind + value to a RewardType row.
+
+    RewardType is a shared (non-tenant) lookup table, so identical shapes are
+    reused across shops via get_or_create on (category, discount_type, value).
+    Returns (RewardType, None) or (None, error message).
+    """
+    from decimal import Decimal, InvalidOperation
+    from apps.rewards_referrals.models import RewardType
+
+    if kind not in REWARD_KIND_MAP:
+        return None, 'Invalid reward type.'
+    category, discount_type = REWARD_KIND_MAP[kind]
+
+    if kind in ('percent', 'fixed'):
+        try:
+            value = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return None, 'Discount value must be a number.'
+        if kind == 'percent' and not (0 < value <= 100):
+            return None, 'Percentage discount must be between 1 and 100.'
+        if kind == 'fixed' and value <= 0:
+            return None, 'Dollar discount must be greater than zero.'
+    else:
+        value = 0
+
+    if kind == 'percent':
+        name = f'{value.normalize()}% Off Service'
+        description = f'{value.normalize()}% discount applied to a job'
+    elif kind == 'fixed':
+        name = f'${value.normalize()} Off Service'
+        description = f'${value.normalize()} discount applied to a job'
+    elif kind == 'free':
+        name = 'Free Service'
+        description = 'One job free of charge'
+    else:
+        name = 'Merchandise / Other'
+        description = 'Fulfilled by the shop outside of job pricing'
+
+    reward_type, _created = RewardType.objects.get_or_create(
+        category=category,
+        discount_type=discount_type,
+        discount_value=value,
+        defaults={'name': name, 'description': description, 'is_active': True},
+    )
+    return reward_type, None
+
+
+def _parse_reward_option_form(request):
+    """Validate the shared create/edit form. Returns (data dict, errors list)."""
+    errors = []
+    name = request.POST.get('name', '').strip()
+    description = request.POST.get('description', '').strip()
+    kind = request.POST.get('kind', '')
+
+    if not name:
+        errors.append('Name is required.')
+
+    try:
+        points_required = int(request.POST.get('points_required', ''))
+        if points_required <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        points_required = None
+        errors.append('Point cost must be a positive whole number.')
+
+    reward_type = None
+    if not errors:
+        reward_type, type_error = _resolve_reward_type(
+            kind, request.POST.get('discount_value', '0'),
+        )
+        if type_error:
+            errors.append(type_error)
+
+    return {
+        'name': name,
+        'description': description,
+        'points_required': points_required,
+        'reward_type': reward_type,
+        'is_active': request.POST.get('is_active', 'on') == 'on',
+    }, errors
+
+
+@owner_or_manager_required
+@require_POST
+def owner_reward_option_create(request):
+    """POST /owner/loyalty/options/create/ — add a reward option."""
+    from apps.rewards_referrals.models import RewardOption
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    data, errors = _parse_reward_option_form(request)
+    if errors:
+        messages.error(request, ' '.join(errors))
+        return redirect('owner_loyalty_dashboard')
+
+    RewardOption.objects.create(
+        tenant=tenant,
+        name=data['name'],
+        description=data['description'] or data['name'],
+        points_required=data['points_required'],
+        reward_type=data['reward_type'],
+        is_active=data['is_active'],
+    )
+    messages.success(request, f'Reward "{data["name"]}" added.')
+    return redirect('owner_loyalty_dashboard')
+
+
+@owner_or_manager_required
+@require_POST
+def owner_reward_option_edit(request, option_id):
+    """POST /owner/loyalty/options/<id>/edit/ — update a reward option."""
+    from apps.rewards_referrals.models import RewardOption
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    option = get_object_or_404(RewardOption, pk=option_id, tenant=tenant)
+
+    data, errors = _parse_reward_option_form(request)
+    if errors:
+        messages.error(request, ' '.join(errors))
+        return redirect('owner_loyalty_dashboard')
+
+    option.name = data['name']
+    option.description = data['description'] or data['name']
+    option.points_required = data['points_required']
+    option.reward_type = data['reward_type']
+    option.is_active = data['is_active']
+    option.save()
+    messages.success(request, f'Reward "{option.name}" updated.')
+    return redirect('owner_loyalty_dashboard')
+
+
+@owner_or_manager_required
+@require_POST
+def owner_reward_option_toggle(request, option_id):
+    """POST /owner/loyalty/options/<id>/toggle/ — flip is_active."""
+    from apps.rewards_referrals.models import RewardOption
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    option = get_object_or_404(RewardOption, pk=option_id, tenant=tenant)
+    option.is_active = not option.is_active
+    option.save(update_fields=['is_active', 'updated_at'])
+    state = 'active' if option.is_active else 'hidden from customers'
+    messages.success(request, f'Reward "{option.name}" is now {state}.')
+    return redirect('owner_loyalty_dashboard')
+
+
+@owner_or_manager_required
+@require_POST
+def owner_reward_option_delete(request, option_id):
+    """
+    POST /owner/loyalty/options/<id>/delete/ — remove a reward option.
+
+    RewardRedemption.reward_option is CASCADE, so deleting an option that has
+    ever been redeemed would erase redemption history. Those options are
+    deactivated instead; hard delete is reserved for never-used options.
+    """
+    from apps.rewards_referrals.models import RewardOption, RewardRedemption
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    option = get_object_or_404(RewardOption, pk=option_id, tenant=tenant)
+
+    if RewardRedemption.objects.filter(reward_option=option).exists():
+        option.is_active = False
+        option.save(update_fields=['is_active', 'updated_at'])
+        messages.info(
+            request,
+            f'"{option.name}" has past redemptions, so it was hidden instead of '
+            'deleted (deleting it would erase that history).',
+        )
+    else:
+        name = option.name
+        option.delete()
+        messages.success(request, f'Reward "{name}" deleted.')
+    return redirect('owner_loyalty_dashboard')
+
+
+@owner_or_manager_required
+@require_POST
+def owner_loyalty_cancel_redemption(request, redemption_id):
+    """
+    POST /owner/loyalty/redemptions/<id>/cancel/ — cancel a pending
+    redemption and refund the points (the only sanctioned undo path).
+    """
+    from apps.rewards_referrals.services import RewardService
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        messages.error(request, 'No shop found.')
+        return redirect('signup')
+
+    success, message = RewardService.cancel_redemption(
+        redemption_id,
+        tenant,
+        cancelled_by=request.user,
+        reason=request.POST.get('reason', ''),
+    )
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+    return redirect('owner_loyalty_dashboard')
 
 
 # ─────────────────────────────────────────────

@@ -123,10 +123,16 @@ class LoyaltyService:
 
     @staticmethod
     def get_lifetime_earned(customer):
-        """Sum of all positive PointTransactions (for tier calculation)."""
+        """Sum of all positive PointTransactions (for tier calculation).
+
+        Redemption refunds are excluded — refunded points were already
+        counted when originally earned.
+        """
         result = PointTransaction.objects.filter(
             customer=customer,
             amount__gt=0,
+        ).exclude(
+            transaction_type='redemption_refund',
         ).aggregate(total=Sum('amount'))
         return result['total'] or 0
 
@@ -316,9 +322,11 @@ class LoyaltyService:
                         output_field=IntegerField(),
                     )
                 ),
+                # Refunds (positive) net against redemptions (negative) so a
+                # cancelled redemption doesn't inflate lifetime-redeemed.
                 redeemed=Sum(
                     Case(
-                        When(transaction_type='redemption', then='amount'),
+                        When(transaction_type__in=['redemption', 'redemption_refund'], then='amount'),
                         default=Value(0),
                         output_field=IntegerField(),
                     )
@@ -357,16 +365,21 @@ class LoyaltyService:
                 .filter(tenant=tenant)
                 .values('customer_id')
                 .annotate(
+                    # Refunds are excluded from earned (already counted when
+                    # first earned) and net against redeemed.
                     c_issued=Sum(
                         Case(
-                            When(amount__gt=0, then='amount'),
+                            When(
+                                Q(amount__gt=0) & ~Q(transaction_type='redemption_refund'),
+                                then='amount',
+                            ),
                             default=Value(0),
                             output_field=IntegerField(),
                         )
                     ),
                     c_redeemed=Sum(
                         Case(
-                            When(transaction_type='redemption', then='amount'),
+                            When(transaction_type__in=['redemption', 'redemption_refund'], then='amount'),
                             default=Value(0),
                             output_field=IntegerField(),
                         )
@@ -674,6 +687,110 @@ class RewardService:
 
         except RewardOption.DoesNotExist:
             return False, "Invalid reward option"
+
+    @staticmethod
+    @transaction.atomic
+    def cancel_redemption(redemption_id, tenant, cancelled_by=None, reason=''):
+        """
+        Cancel a PENDING redemption and refund its points.
+
+        This is the ONLY sanctioned way to undo a redemption — it restores the
+        points through the ledger (transaction_type='redemption_refund') so
+        the liability report stays honest. Flipping status to REJECTED in the
+        Django admin does NOT refund.
+
+        Rules:
+          - Only PENDING redemptions can be cancelled (FULFILLED means the
+            reward was delivered; REJECTED is already terminal).
+          - If the redemption is applied to a job, the job must not be
+            COMPLETED or invoiced (the discount may already be on paper);
+            otherwise the application is cleared as part of the cancel.
+          - The loyalty program must be active — award_points() refuses to
+            move points while it is off, and a cancel that doesn't refund
+            would silently burn the customer's balance.
+
+        ``cancelled_by`` is the Django User performing the cancel (stored in
+        processed_by and on the refund transaction). ``reason`` is optional
+        free text appended to the redemption notes.
+
+        Returns:
+            tuple: (bool success, str message)
+        """
+        redemption = (
+            RewardRedemption.objects
+            .select_for_update()
+            .select_related('reward__customer', 'reward_option')
+            .filter(pk=redemption_id, reward__customer__tenant=tenant)
+            .first()
+        )
+        if redemption is None:
+            return False, "Redemption not found."
+
+        if redemption.status != 'PENDING':
+            return False, (
+                f"Only pending redemptions can be cancelled "
+                f"(this one is {redemption.get_status_display().lower()})."
+            )
+
+        config = LoyaltyConfig.get_for_tenant(tenant)
+        if not config.is_active:
+            return False, (
+                "The loyalty program is turned off. Re-enable it before "
+                "cancelling so the points can be refunded."
+            )
+
+        # If applied to a job, only cancel while the discount can't have
+        # reached an invoice yet.
+        applied_job = redemption.applied_to_repair or redemption.applied_to_replacement
+        if applied_job is not None:
+            if applied_job.queue_status == 'COMPLETED':
+                return False, (
+                    "This reward is applied to a completed job and can no "
+                    "longer be cancelled."
+                )
+            if applied_job.invoice_line_items.filter(
+                invoice__deleted_at__isnull=True,
+            ).exclude(invoice__status='CANCELLED').exists():
+                return False, (
+                    "This reward is applied to a job that has been invoiced "
+                    "and can no longer be cancelled."
+                )
+            redemption.applied_to_repair = None
+            redemption.applied_to_replacement = None
+
+        customer = redemption.reward.customer
+        pt = LoyaltyService.award_points(
+            customer=customer,
+            amount=redemption.reward_option.points_required,
+            transaction_type='redemption_refund',
+            description=f'Refund: cancelled redemption of {redemption.reward_option.name}',
+            tenant=tenant,
+            related_redemption=redemption,
+            created_by=cancelled_by,
+        )
+        if pt is None:
+            # Should be unreachable (is_active checked above) — abort rather
+            # than reject without refunding.
+            raise RuntimeError(
+                "award_points() returned None during redemption cancel — "
+                "aborting to protect point balance."
+            )
+
+        redemption.status = 'REJECTED'
+        redemption.processed_by = cancelled_by
+        redemption.processed_at = timezone.now()
+        cancel_note = 'Cancelled and points refunded'
+        if cancelled_by is not None:
+            cancel_note += f' by {cancelled_by.get_full_name() or cancelled_by.username}'
+        if reason and str(reason).strip():
+            cancel_note += f' — {str(reason).strip()}'
+        redemption.notes = f"{redemption.notes}\n{cancel_note}" if redemption.notes else cancel_note
+        redemption.save()
+
+        return True, (
+            f"Cancelled {redemption.reward_option.name} and refunded "
+            f"{redemption.reward_option.points_required} points to {customer.name}."
+        )
 
     @staticmethod
     def get_available_rewards(customer):

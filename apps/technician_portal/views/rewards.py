@@ -59,6 +59,10 @@ def reward_fulfillment_detail(request, redemption_id):
     is_admin = is_tenant_admin(request.user, tenant=getattr(request, "tenant", None))
     can_fulfill = is_assigned_technician or is_admin
 
+    # Cancelling (refunding points) is gated like creating a redemption:
+    # managers and owners only.
+    can_cancel = is_admin or bool(technician and technician.is_manager)
+
     # Get customer repairs for applying reward. The reward now has a direct
     # customer FK (customer-anchored loyalty), so no CustomerUser hop needed.
     customer_repairs = []
@@ -116,9 +120,49 @@ def reward_fulfillment_detail(request, redemption_id):
         'customer_repairs': customer_repairs,
         'is_assigned_technician': is_assigned_technician,
         'can_fulfill': can_fulfill,
+        'can_cancel': can_cancel,
         'current_technician': technician,
         'is_admin': is_admin,
     })
+
+
+@technician_required
+@require_POST
+def cancel_redemption(request, redemption_id):
+    """
+    Cancel a PENDING redemption and refund the points to the customer's
+    balance. Manager/owner only — same gate as spending the points.
+    """
+    tenant = getattr(request, 'tenant', None)
+
+    is_admin = is_tenant_admin(request.user, tenant=tenant)
+    technician = Technician.objects.filter(user=request.user, tenant=tenant).first() if tenant else None
+    if not (is_admin or (technician and technician.is_manager)):
+        messages.error(request, "Only managers and owners can cancel a redemption.")
+        return redirect('technician_dashboard')
+
+    if tenant is None:
+        messages.error(request, "No shop context.")
+        return redirect('technician_dashboard')
+
+    success, message = RewardService.cancel_redemption(
+        redemption_id,
+        tenant,
+        cancelled_by=request.user,
+        reason=request.POST.get('reason', ''),
+    )
+    if success:
+        messages.success(request, message)
+    else:
+        messages.error(request, message)
+
+    # Send the user back to the customer page when we can, else the dashboard.
+    redemption = RewardRedemption.objects.filter(
+        pk=redemption_id, reward__customer__tenant=tenant,
+    ).select_related('reward__customer').first()
+    if redemption is not None:
+        return redirect('customer_detail', customer_id=redemption.reward.customer_id)
+    return redirect('technician_dashboard')
 
 
 @technician_required
