@@ -2,7 +2,8 @@ from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
 from django.contrib.admin.models import LogEntry, ADDITION, CHANGE, DELETION
-from django.urls import path
+from django.core.exceptions import PermissionDenied
+from django.urls import path, reverse
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.utils.html import format_html
@@ -159,9 +160,23 @@ class UserAdmin(BaseUserAdmin):
     make_dual_role.short_description = 'Give selected users both technician and customer roles (requires tenant — see warning)'
     
     def deactivate_users(self, request, queryset):
-        """Deactivate selected users"""
-        count = queryset.update(is_active=False)
-        self.message_user(request, f'{count} users were successfully deactivated.')
+        """
+        Deactivate selected users.
+
+        Guardrails: never deactivate yourself, and only superusers may
+        deactivate staff or superuser accounts (otherwise a non-superuser
+        staff member could lock out platform admins).
+        """
+        from django.db.models import Q
+        safe = queryset.exclude(id=request.user.id)
+        if not request.user.is_superuser:
+            safe = safe.exclude(Q(is_staff=True) | Q(is_superuser=True))
+        skipped = queryset.count() - safe.count()
+        count = safe.update(is_active=False)
+        msg = f'{count} users were successfully deactivated.'
+        if skipped:
+            msg += f' {skipped} skipped (your own account, staff, or superusers).'
+        self.message_user(request, msg, level=messages.WARNING if skipped else messages.INFO)
     deactivate_users.short_description = 'Deactivate selected users'
     
     def activate_users(self, request, queryset):
@@ -220,7 +235,16 @@ class UserAdmin(BaseUserAdmin):
         return custom_urls + urls
     
     def user_management_view(self, request):
-        """Custom view for comprehensive user management"""
+        """
+        Custom view for comprehensive user management.
+
+        Superuser-only: the stats and user list span every tenant on the
+        platform, so exposing this page to non-superuser staff would leak
+        cross-tenant account data (usernames, emails, roles).
+        """
+        if not request.user.is_superuser:
+            raise PermissionDenied
+
         # Get role filter
         role_filter = request.GET.get('role', 'all')
         
@@ -279,13 +303,27 @@ class UserAdmin(BaseUserAdmin):
             display_users = User.objects.order_by('-date_joined')[:20]
         else:
             display_users = users.order_by('-date_joined')[:50]
-        
+
+        # Compute each user's role server-side. The old template probed
+        # user.technician_set/customeruser_set — those attributes don't exist
+        # (both relations are OneToOne, exposed as .technician/.customeruser),
+        # so the template silently rendered every non-admin as "Unassigned".
+        from django.db.models import Prefetch
+        display_users = display_users.prefetch_related(
+            Prefetch('technician', queryset=Technician.objects.only('id', 'user_id')),
+            Prefetch('customeruser', queryset=CustomerUser.objects.only('id', 'user_id')),
+        )
+        display_rows = [
+            {'user': u, 'role': self.get_role(u)} for u in display_users
+        ]
+
         context = {
+            **self.admin_site.each_context(request),
             'stats': stats,
-            'users': display_users,
+            'users': display_rows,
             'role_filter': role_filter,
             'opts': self.model._meta,
-            'title': 'User Management Dashboard',
+            'title': 'User Management',
         }
         
         return render(request, 'admin/user_management.html', context)
@@ -311,14 +349,45 @@ _original_index = admin.AdminSite.index
 
 def _dashboard_index(self, request, extra_context=None):
     extra_context = extra_context or {}
-    try:
-        extra_context.update(get_dashboard_context())
-    except Exception:
-        pass  # Never let dashboard errors break the admin
+    # Platform-wide metrics (tenant counts, revenue, recent repairs/invoices
+    # across ALL shops) are superuser-only. Non-superuser staff previously got
+    # the full cross-tenant dashboard, leaking other shops' customers, revenue,
+    # and invoice activity on the index page.
+    if request.user.is_active and request.user.is_superuser:
+        try:
+            extra_context.update(get_dashboard_context())
+            extra_context['show_platform_dashboard'] = True
+        except Exception:
+            pass  # Never let dashboard errors break the admin
     return _original_index(self, request, extra_context)
 
 
 admin.AdminSite.index = _dashboard_index
+
+
+# Throttle the admin login form. The public app login is rate-limited in
+# rs_systems/views.py, but /admin/login/ used the stock Django view with no
+# limit, leaving it open to credential stuffing. 10 POSTs per 5 minutes per IP.
+_original_admin_login = admin.AdminSite.login
+
+
+def _throttled_login(self, request, extra_context=None):
+    if request.method == 'POST':
+        from django_ratelimit.core import is_ratelimited
+        limited = is_ratelimited(
+            request, group='admin-login', key='ip',
+            rate='10/5m', method='POST', increment=True,
+        )
+        if limited:
+            from django.http import HttpResponse
+            return HttpResponse(
+                'Too many login attempts. Please wait a few minutes and try again.',
+                status=429,
+            )
+    return _original_admin_login(self, request, extra_context)
+
+
+admin.AdminSite.login = _throttled_login
 
 
 # =============================================================================
@@ -389,7 +458,7 @@ class AuditLogAdmin(admin.ModelAdmin):
         return False
 
     def user_link(self, obj):
-        url = f"/admin/auth/user/{obj.user_id}/change/"
+        url = reverse('admin:auth_user_change', args=[obj.user_id])
         return format_html('<a href="{}">{}</a>', url, obj.user.get_full_name() or obj.user.username)
     user_link.short_description = 'User'
     user_link.admin_order_field = 'user__username'
