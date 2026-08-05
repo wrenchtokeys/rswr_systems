@@ -124,27 +124,26 @@ function getCookie(name) {
 
 // Mark all as read
 document.getElementById('mark-all-read-btn')?.addEventListener('click', function() {
-    if (confirm('Mark all notifications as read?')) {
-        fetch('/app/notifications/mark-all-read/', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Error: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Failed to mark notifications as read');
-        });
-    }
+    fetch('/app/notifications/mark-all-read/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            UI.flash('All notifications marked as read', 'success');
+            location.reload();
+        } else {
+            UI.toast('Error: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        UI.toast('Failed to mark notifications as read', 'error');
+    });
 });
 </script>
 {% endblock %}

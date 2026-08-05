@@ -18,7 +18,8 @@
                     </a>
                     {% if is_admin %}
                     <form method="post" action="{% url 'replacement_delete' pk=replacement.pk %}" class="inline"
-                          onsubmit="return confirm('Delete Replacement #{{ replacement.id }}?\n\nAny invoices containing it will be deleted too. You can restore everything from Recently Deleted for 30 days.');">
+                          data-confirm="Delete Replacement #{{ replacement.id }}?&#10;&#10;Any invoices containing it will be deleted too. You can restore everything from Recently Deleted for 30 days."
+                          data-confirm-title="Delete replacement" data-confirm-label="Delete" data-confirm-danger>
                         {% csrf_token %}
                         <button type="submit" class="inline-flex items-center px-3 py-1.5 text-sm font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50">
                             <i class="fas fa-trash mr-1.5"></i> Delete

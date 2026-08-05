@@ -291,12 +291,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic'];
 
         if (file.size > maxSize) {
-            alert(`File size (${formatFileSize(file.size)}) exceeds maximum allowed size of 5MB. Please choose a smaller file.`);
+            UI.toast(`File size (${formatFileSize(file.size)}) exceeds the 5MB maximum. Please choose a smaller file.`, 'warning');
             return false;
         }
 
         if (!allowedTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.heic')) {
-            alert('Invalid file type. Please upload a JPG, PNG, WebP, or HEIC image.');
+            UI.toast('Invalid file type. Please upload a JPG, PNG, WebP, or HEIC image.', 'warning');
             return false;
         }
 
@@ -417,7 +417,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 } else {
-                    alert('Please drop an image file (PNG, JPG, WebP, or HEIC)');
+                    UI.toast('Please drop an image file (PNG, JPG, WebP, or HEIC)', 'warning');
                 }
             }
         });

@@ -200,12 +200,12 @@ Expects `unread_count` and `recent_notifications` in context.
                         if (badge) badge.remove();
                     });
                 } else {
-                    alert(`Failed: ${data.error || 'Unknown error'}`);
+                    UI.toast(`Failed: ${data.error || 'Unknown error'}`, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert(`Error marking notifications as read: ${error.message}`);
+                UI.toast(`Error marking notifications as read: ${error.message}`, 'error');
             });
         });
     }

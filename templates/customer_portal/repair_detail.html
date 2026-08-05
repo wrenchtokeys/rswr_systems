@@ -30,7 +30,7 @@
                     <i class="fas fa-check mr-2"></i> Approve
                 </button>
             </form>
-            <form action="{% url 'customer_repair_deny' repair.id %}" method="post" class="flex-1 sm:flex-initial" onsubmit="return confirm('Deny this repair?');">
+            <form action="{% url 'customer_repair_deny' repair.id %}" method="post" class="flex-1 sm:flex-initial" data-confirm="Deny this repair? The shop will be notified." data-confirm-title="Deny repair" data-confirm-label="Deny Repair" data-confirm-danger>
                 {% csrf_token %}
                 <input type="hidden" name="reason" value="Denied from detail page">
                 <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 border-2 border-red-300 text-red-600 text-base font-bold rounded-xl hover:bg-red-50 transition-colors">
@@ -146,7 +146,8 @@
                     </div>
                     <div class="space-y-2">
                         {% for redemption in available_rewards %}
-                        <form action="{% url 'customer_apply_reward' repair.id %}" method="post" class="flex items-center justify-between bg-white rounded-lg p-3 border border-gray-200">
+                        <form action="{% url 'customer_apply_reward' repair.id %}" method="post" class="flex items-center justify-between bg-white rounded-lg p-3 border border-gray-200"
+                              data-confirm="Apply this reward to this repair?" data-confirm-title="Apply reward" data-confirm-label="Apply Reward">
                             {% csrf_token %}
                             <input type="hidden" name="redemption_id" value="{{ redemption.id }}">
                             <div class="min-w-0 flex-1">
@@ -161,7 +162,7 @@
                                     {% endif %}
                                 </p>
                             </div>
-                            <button type="submit" class="ml-3 px-4 py-2 bg-brand-500 text-white text-xs font-bold rounded-lg hover:bg-brand-600 transition-colors flex-shrink-0" onclick="return confirm('Apply this reward to this repair?')">
+                            <button type="submit" class="ml-3 px-4 py-2 bg-brand-500 text-white text-xs font-bold rounded-lg hover:bg-brand-600 transition-colors flex-shrink-0">
                                 <i class="fas fa-check mr-1"></i> Apply
                             </button>
                         </form>

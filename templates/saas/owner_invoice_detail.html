@@ -918,18 +918,24 @@ function saveNewLineItem() {
     .catch(err => { errEl.textContent = 'Error: ' + err.message; errEl.classList.remove('hidden'); btn.disabled = false; });
 }
 
-function deleteLineItem(id, description) {
-    if (!confirm(`Remove "${description}" from this invoice?`)) { return; }
+async function deleteLineItem(id, description) {
+    const ok = await UI.confirm({
+        title: 'Remove line item',
+        message: `Remove "${description}" from this invoice?`,
+        confirmLabel: 'Remove',
+        danger: true,
+    });
+    if (!ok) return;
     fetch(`/api/billing/invoices/${INVOICE_ID}/line-items/${id}/delete/`, {
         method: 'POST',
         headers: { 'X-CSRFToken': _csrf() },
     })
     .then(r => r.json().then(d => ({ ok: r.ok, d })))
     .then(({ ok, d }) => {
-        if (ok && d.success) { window.location.reload(); }
-        else { alert(d.error || 'Failed to remove line item'); }
+        if (ok && d.success) { UI.flash('Line item removed', 'success'); window.location.reload(); }
+        else { UI.toast(d.error || 'Failed to remove line item', 'error'); }
     })
-    .catch(err => { alert('Error: ' + err.message); });
+    .catch(err => { UI.toast('Error: ' + err.message, 'error'); });
 }
 
 // --- Invoice details edit ---
@@ -1054,8 +1060,14 @@ document.addEventListener('keydown', function(e) {
 
 {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
 <script>
-function voidInvoice() {
-    if (!confirm('Void invoice {{ invoice.invoice_number }}?\n\nThis will mark it as cancelled. You can delete it afterwards.')) return;
+async function voidInvoice() {
+    const ok = await UI.confirm({
+        title: 'Void invoice',
+        message: 'Void invoice {{ invoice.invoice_number }}?\n\nThis will mark it as cancelled. You can delete it afterwards.',
+        confirmLabel: 'Void Invoice',
+        danger: true,
+    });
+    if (!ok) return;
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
     fetch('{% url "owner_invoice_void" invoice_id=invoice.id %}', {
@@ -1065,19 +1077,25 @@ function voidInvoice() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            UI.flash(data.message, 'success');
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to void invoice');
+            UI.toast(data.error || 'Failed to void invoice', 'error');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => UI.toast('Error: ' + err.message, 'error'));
 }
 </script>
 {% endif %}
 <script>
-function deleteInvoice() {
-    if (!confirm('Delete invoice {{ invoice.invoice_number }}?\n\nThe jobs on it become uninvoiced again. You can restore it from Recently Deleted for 30 days.')) return;
+async function deleteInvoice() {
+    const ok = await UI.confirm({
+        title: 'Delete invoice',
+        message: 'Delete invoice {{ invoice.invoice_number }}?\n\nThe jobs on it become uninvoiced again. You can restore it from Recently Deleted for 30 days.',
+        confirmLabel: 'Delete Invoice',
+        danger: true,
+    });
+    if (!ok) return;
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
     fetch('{% url "owner_invoice_delete" invoice_id=invoice.id %}', {
@@ -1087,12 +1105,13 @@ function deleteInvoice() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
+            UI.flash('Invoice {{ invoice.invoice_number }} deleted', 'success');
             window.location.href = '{% url "owner_invoice_list" %}';
         } else {
-            alert(data.error || 'Failed to delete invoice');
+            UI.toast(data.error || 'Failed to delete invoice', 'error');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => UI.toast('Error: ' + err.message, 'error'));
 }
 </script>
 {% if invoice.status != 'DRAFT' %}

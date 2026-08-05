@@ -102,15 +102,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Restore from localStorage if available. Must run before the Flatpickr
     // sync below — otherwise setDate(now) stomps the restored repair date.
-    const restored = restoreFromLocalStorage();
-
-    // If Flatpickr is available, set the default date through its API
-    // This ensures Flatpickr shows the correct date in its UI
-    setTimeout(() => {
-        if (repairDateInput._flatpickr) {
-            repairDateInput._flatpickr.setDate(restored ? repairDateInput.value : now, false);
-        }
-    }, 100);
+    restoreFromLocalStorage().then((restored) => {
+        // If Flatpickr is available, set the default date through its API
+        // This ensures Flatpickr shows the correct date in its UI
+        setTimeout(() => {
+            if (repairDateInput._flatpickr) {
+                repairDateInput._flatpickr.setDate(restored ? repairDateInput.value : now, false);
+            }
+        }, 100);
+    });
 });
 
 // Helper function to generate UUID
@@ -308,13 +308,13 @@ document.getElementById('saveBreakBtn').addEventListener('click', () => {
 
     // Validation
     if (!damageType) {
-        alert('Please select a damage type');
+        UI.toast('Please select a damage type', 'warning');
         return;
     }
 
     // Validate override reason if override price is set
     if (costOverride && !overrideReason) {
-        alert('Override reason is required when setting a custom price');
+        UI.toast('Override reason is required when setting a custom price', 'warning');
         return;
     }
 
@@ -496,8 +496,14 @@ window.editBreak = function(index) {
 };
 
 // Delete Break Function
-window.deleteBreak = function(index) {
-    if (confirm(`Are you sure you want to delete Break ${index + 1}?`)) {
+window.deleteBreak = async function(index) {
+    const ok = await UI.confirm({
+        title: 'Delete break',
+        message: `Delete Break ${index + 1} from this batch?`,
+        confirmLabel: 'Delete',
+        danger: true,
+    });
+    if (ok) {
         breaks.splice(index, 1);
         renderBreaksList();
         saveToLocalStorage();
@@ -658,7 +664,7 @@ function createBreakCard(breakData, index) {
 function submitForm() {
     // Validate we have breaks
     if (breaks.length === 0) {
-        alert('Please add at least one break before submitting');
+        UI.toast('Please add at least one break before submitting', 'warning');
         return;
     }
 
@@ -668,7 +674,7 @@ function submitForm() {
     const repairDate = document.getElementById('repair_date').value;
 
     if (!customer || !unitNumber || !repairDate) {
-        alert('Please fill in all required base information fields');
+        UI.toast('Please fill in all required base information fields', 'warning');
         return;
     }
 
@@ -751,7 +757,7 @@ function submitForm() {
     })
     .catch(error => {
         console.error('Error submitting repairs:', error);
-        alert('Error submitting repairs: ' + error.message);
+        UI.toast('Error submitting repairs: ' + error.message, 'error');
         submitBtn.disabled = false;
         submitBtn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i> Submit All Repairs (<span id="submitBreakCount">${breaks.length}</span>)`;
     });
@@ -817,7 +823,7 @@ function saveToLocalStorage() {
     }
 }
 
-function restoreFromLocalStorage() {
+async function restoreFromLocalStorage() {
     try {
         const saved = localStorage.getItem(DRAFT_KEY);
         if (!saved) return false;
@@ -841,12 +847,18 @@ function restoreFromLocalStorage() {
         if (savedBreaks.length) {
             message += ` with ${savedBreaks.length} break${savedBreaks.length > 1 ? 's' : ''}`;
         }
-        message += '. Restore it?';
+        message += ' from an earlier session.';
         if (photoCount) {
             message += `\n\nPhotos can't be saved by the browser — you'll need to re-take them on ${photoCount} break${photoCount > 1 ? 's' : ''}.`;
         }
 
-        if (!confirm(message)) {
+        const restore = await UI.confirm({
+            title: 'Restore unsaved work?',
+            message: message,
+            confirmLabel: 'Restore',
+            cancelLabel: 'Discard',
+        });
+        if (!restore) {
             localStorage.removeItem(DRAFT_KEY);
             return false;
         }
@@ -927,12 +939,12 @@ document.getElementById('startWorkNowBtn').addEventListener('click', function() 
             // Redirect to batch detail page
             window.location.href = `/tech/batch/${batchId}/`;
         } else {
-            alert('Error starting work: ' + (data.error || 'Unknown error'));
+            UI.toast('Error starting work: ' + (data.error || 'Unknown error'), 'error');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error starting work on batch');
+        UI.toast('Error starting work on batch', 'error');
     });
 });
 

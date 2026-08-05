@@ -203,13 +203,18 @@ class FormAutosave {
             // Show restore prompt
             if (this.options.confirmRestore) {
                 const timeAgo = this.formatTimeAgo(timestamp);
-                const message = `Found a draft saved ${timeAgo}. Would you like to restore it?`;
-
-                if (confirm(message)) {
-                    this.restoreFormData(data);
-                } else {
-                    this.clearSavedData();
-                }
+                UI.confirm({
+                    title: 'Restore draft?',
+                    message: `Found a draft saved ${timeAgo}. Would you like to restore it?`,
+                    confirmLabel: 'Restore',
+                    cancelLabel: 'Discard',
+                }).then((ok) => {
+                    if (ok) {
+                        this.restoreFormData(data);
+                    } else {
+                        this.clearSavedData();
+                    }
+                });
             } else {
                 this.restoreFormData(data);
             }

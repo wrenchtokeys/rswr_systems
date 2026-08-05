@@ -458,8 +458,14 @@ function finalizeSaveUnit(unit) {
     saveToLocalStorage();
 }
 
-function deleteUnit(index) {
-    if (confirm('Remove this unit from the batch?')) {
+async function deleteUnit(index) {
+    const ok = await UI.confirm({
+        title: 'Remove unit',
+        message: 'Remove this unit from the batch?',
+        confirmLabel: 'Remove',
+        danger: true,
+    });
+    if (ok) {
         units.splice(index, 1);
         renderUnitCards();
         updateSubmitButton();
@@ -769,7 +775,7 @@ function handleBatchSubmit(event) {
     event.preventDefault();
 
     if (units.length === 0) {
-        alert('Please add at least one unit to submit.');
+        UI.toast('Please add at least one unit to submit.', 'warning');
         return;
     }
 
@@ -880,7 +886,7 @@ async function confirmAndSubmit() {
         }
     } catch (error) {
         console.error('Error submitting batch:', error);
-        alert(error.message || 'There was an error submitting your request. Please try again.');
+        UI.toast(error.message || 'There was an error submitting your request. Please try again.', 'error');
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
     }

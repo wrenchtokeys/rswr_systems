@@ -670,25 +670,41 @@ function getSelectedRepairIds() {
     return Array.from(document.querySelectorAll('.repair-checkbox:checked')).map(cb => cb.dataset.repairId).filter(Boolean);
 }
 
-function bulkApprove() {
+async function bulkApprove() {
     const ids = getSelectedRepairIds();
-    if (ids.length && confirm(`Approve ${ids.length} repair${ids.length === 1 ? '' : 's'}?`)) {
-        submitBulkAction('approve', ids);
-    }
+    if (!ids.length) return;
+    const plural = ids.length === 1 ? '' : 's';
+    const ok = await UI.confirm({
+        title: 'Approve repairs',
+        message: `Approve ${ids.length} repair${plural}?`,
+        confirmLabel: 'Approve',
+    });
+    if (ok) submitBulkAction('approve', ids);
 }
 
-function bulkDeny() {
+async function bulkDeny() {
     const ids = getSelectedRepairIds();
-    if (ids.length && confirm(`Deny ${ids.length} repair${ids.length === 1 ? '' : 's'}?`)) {
-        submitBulkAction('deny', ids);
-    }
+    if (!ids.length) return;
+    const plural = ids.length === 1 ? '' : 's';
+    const ok = await UI.confirm({
+        title: 'Deny repairs',
+        message: `Deny ${ids.length} repair${plural}?`,
+        confirmLabel: 'Deny',
+        danger: true,
+    });
+    if (ok) submitBulkAction('deny', ids);
 }
 
-function bulkResetToPending() {
+async function bulkResetToPending() {
     const ids = getSelectedRepairIds();
-    if (ids.length && confirm('Reset ' + ids.length + ' repair(s) to Pending? This will NOT affect completed repairs.')) {
-        submitBulkAction('reset_to_pending', ids);
-    }
+    if (!ids.length) return;
+    const plural = ids.length === 1 ? '' : 's';
+    const ok = await UI.confirm({
+        title: 'Reset to Pending',
+        message: `Reset ${ids.length} repair${plural} to Pending? This will NOT affect completed repairs.`,
+        confirmLabel: 'Reset',
+    });
+    if (ok) submitBulkAction('reset_to_pending', ids);
 }
 
 function bulkReassign() {

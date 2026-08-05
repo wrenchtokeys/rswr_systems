@@ -624,8 +624,13 @@
 {% block extra_js %}
 <script>
 // === Send Reminder (from invoice list) ===
-function sendReminderAjax(invoiceId, invoiceNumber, customerName) {
-    if (!confirm(`Send payment reminder for ${invoiceNumber} to ${customerName}?`)) return;
+async function sendReminderAjax(invoiceId, invoiceNumber, customerName) {
+    const ok = await UI.confirm({
+        title: 'Send payment reminder',
+        message: `Send a payment reminder for ${invoiceNumber} to ${customerName}?`,
+        confirmLabel: 'Send Reminder',
+    });
+    if (!ok) return;
 
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
@@ -637,20 +642,9 @@ function sendReminderAjax(invoiceId, invoiceNumber, customerName) {
     })
     .then(r => {
         // owner_send_reminder redirects — treat any 2xx/3xx as success
-        showToast(`Reminder sent for ${invoiceNumber}`, 'success');
+        UI.toast(`Reminder sent for ${invoiceNumber}`, 'success');
     })
-    .catch(err => showToast('Failed to send reminder: ' + err.message, 'error'));
-}
-
-function showToast(msg, type) {
-    const existing = document.getElementById('toast-msg');
-    if (existing) existing.remove();
-    const toast = document.createElement('div');
-    toast.id = 'toast-msg';
-    toast.className = `fixed bottom-6 right-6 z-50 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium transition-all ${type === 'success' ? 'bg-green-600' : 'bg-red-600'}`;
-    toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'} mr-2"></i>${msg}`;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    .catch(err => UI.toast('Failed to send reminder: ' + err.message, 'error'));
 }
 
 // === Create Invoice Modal ===
@@ -683,7 +677,7 @@ function openInvoiceModal(customerId, customerName) {
         })
         .catch(err => {
             document.getElementById('modal-loading').classList.add('hidden');
-            alert('Error loading repairs: ' + err.message);
+            UI.toast('Error loading repairs: ' + err.message, 'error');
             closeInvoiceModal();
         });
 }
@@ -739,13 +733,13 @@ function getSelectedServiceIds() {
 
 function createInvoiceDraft() {
     const ids = getSelectedServiceIds();
-    if (!ids.repair_ids.length && !ids.replacement_ids.length) { alert('Select at least one item'); return; }
+    if (!ids.repair_ids.length && !ids.replacement_ids.length) { UI.toast('Select at least one item to invoice', 'warning'); return; }
     submitInvoice(ids, false);
 }
 
 function createInvoiceAndSend() {
     const ids = getSelectedServiceIds();
-    if (!ids.repair_ids.length && !ids.replacement_ids.length) { alert('Select at least one item'); return; }
+    if (!ids.repair_ids.length && !ids.replacement_ids.length) { UI.toast('Select at least one item to invoice', 'warning'); return; }
     // First create as draft, then show send confirmation modal
     submitInvoiceForSend(ids);
 }
@@ -764,12 +758,13 @@ function submitInvoice(serviceIds, sendEmail) {
     .then(data => {
         if (data.success) {
             closeInvoiceModal();
+            UI.flash(`Invoice ${data.invoice?.invoice_number || ''} created`.replace('  ', ' ').trim(), 'success');
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to create invoice');
+            UI.toast(data.error || 'Failed to create invoice', 'error');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => UI.toast('Error: ' + err.message, 'error'));
 }
 
 // === Batch Actions (existing invoices table) ===
@@ -815,10 +810,16 @@ function clearSelection() {
     updateBatchBar();
 }
 
-function sendSelectedEmails() {
+async function sendSelectedEmails() {
     const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
-    if (!confirm(`Send invoice emails for ${ids.length} invoice(s)?`)) return;
+    const plural = ids.length === 1 ? '' : 's';
+    const ok = await UI.confirm({
+        title: 'Send invoice emails',
+        message: ids.length === 1 ? 'Email this invoice to its customer?' : `Email ${ids.length} invoices to their customers?`,
+        confirmLabel: `Send ${ids.length} Email${plural}`,
+    });
+    if (!ok) return;
 
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
@@ -831,15 +832,18 @@ function sendSelectedEmails() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            const msg = `Sent: ${data.sent}` + (data.failed > 0 ? `, Failed: ${data.failed}` : '');
-            alert(msg);
+            const sentPlural = data.sent === 1 ? '' : 's';
+            const msg = data.failed > 0
+                ? `Sent ${data.sent} invoice email${sentPlural} — ${data.failed} failed`
+                : `Sent ${data.sent} invoice email${sentPlural}`;
+            UI.flash(msg, data.failed > 0 ? 'warning' : 'success');
             clearSelection();
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to send emails');
+            UI.toast(data.error || 'Failed to send emails', 'error');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => UI.toast('Error: ' + err.message, 'error'));
 }
 
 function markSelectedPaid() {
@@ -879,14 +883,14 @@ function doMarkSelectedPaid() {
         btn.disabled = false;
         if (data.success) {
             closeBulkPaidModal();
-            alert(data.message);
+            UI.flash(data.message, 'success');
             clearSelection();
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to mark invoices as paid');
+            UI.toast(data.error || 'Failed to mark invoices as paid', 'error');
         }
     })
-    .catch(err => { btn.disabled = false; alert('Error: ' + err.message); });
+    .catch(err => { btn.disabled = false; UI.toast('Error: ' + err.message, 'error'); });
 }
 
 // === Quick Record Payment (per-row) ===
@@ -904,10 +908,16 @@ function closeQuickPayModal() {
     document.getElementById('quick-pay-modal').classList.add('hidden');
 }
 
-function voidSelectedInvoices() {
+async function voidSelectedInvoices() {
     const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
-    if (!confirm(`Void ${ids.length} selected invoice(s)?\n\nPaid and already-voided invoices will be skipped.`)) return;
+    const ok = await UI.confirm({
+        title: 'Void invoices',
+        message: `Void ${ids.length} selected invoice${ids.length === 1 ? '' : 's'}?\n\nPaid and already-voided invoices will be skipped.`,
+        confirmLabel: 'Void',
+        danger: true,
+    });
+    if (!ok) return;
 
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
@@ -920,20 +930,26 @@ function voidSelectedInvoices() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            UI.flash(data.message, 'success');
             clearSelection();
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to void invoices');
+            UI.toast(data.error || 'Failed to void invoices', 'error');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => UI.toast('Error: ' + err.message, 'error'));
 }
 
-function deleteSelectedInvoices() {
+async function deleteSelectedInvoices() {
     const ids = invoiceCheckboxes('.invoice-checkbox:checked').map(cb => parseInt(cb.value));
     if (!ids.length) return;
-    if (!confirm(`Delete ${ids.length} selected invoice(s)?\n\nThe jobs on them become uninvoiced again. You can restore deleted invoices from Recently Deleted for 30 days.`)) return;
+    const ok = await UI.confirm({
+        title: 'Delete invoices',
+        message: `Delete ${ids.length} selected invoice${ids.length === 1 ? '' : 's'}?\n\nThe jobs on them become uninvoiced again. You can restore deleted invoices from Recently Deleted for 30 days.`,
+        confirmLabel: 'Delete',
+        danger: true,
+    });
+    if (!ok) return;
 
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
@@ -946,24 +962,27 @@ function deleteSelectedInvoices() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            UI.flash(data.message, 'success');
             clearSelection();
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to delete invoices');
+            UI.toast(data.error || 'Failed to delete invoices', 'error');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => UI.toast('Error: ' + err.message, 'error'));
 }
 
 // Old createInvoice removed — replaced by modal flow (openInvoiceModal)
 
 // === Dismiss Uninvoiced ===
-function dismissUninvoiced(customerId, customerName) {
-    if (!confirm(`Dismiss all uninvoiced work for ${customerName}?\n\nUse this if they were already paid outside the system. This won't delete anything, just hide it from invoicing.`)) {
-        return;
-    }
-    
+async function dismissUninvoiced(customerId, customerName) {
+    const ok = await UI.confirm({
+        title: 'Dismiss uninvoiced work',
+        message: `Dismiss all uninvoiced work for ${customerName}?\n\nUse this if they were already paid outside the system. This won't delete anything, just hide it from invoicing.`,
+        confirmLabel: 'Dismiss',
+    });
+    if (!ok) return;
+
     const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
         document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1];
 
@@ -975,13 +994,13 @@ function dismissUninvoiced(customerId, customerName) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert(data.message);
+            UI.flash(data.message, 'success');
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to dismiss repairs');
+            UI.toast(data.error || 'Failed to dismiss repairs', 'error');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => UI.toast('Error: ' + err.message, 'error'));
 }
 
 // === Send Email Confirmation Modal ===
@@ -1013,7 +1032,7 @@ function confirmSendEmail() {
     const ccInput = document.getElementById('send-modal-cc').value.trim();
     
     if (!toInput) {
-        alert('Please enter at least one recipient email address');
+        UI.toast('Please enter at least one recipient email address', 'warning');
         return;
     }
     
@@ -1024,7 +1043,7 @@ function confirmSendEmail() {
     const toEmails = toInput.split(',').map(e => e.trim()).filter(e => e);
     const invalidTo = toEmails.filter(e => !emailRegex.test(e));
     if (invalidTo.length > 0) {
-        alert('Invalid recipient email(s): ' + invalidTo.join(', '));
+        UI.toast('Invalid recipient email(s): ' + invalidTo.join(', '), 'warning');
         return;
     }
     
@@ -1034,7 +1053,7 @@ function confirmSendEmail() {
         ccEmails = ccInput.split(',').map(e => e.trim()).filter(e => e);
         const invalidCc = ccEmails.filter(e => !emailRegex.test(e));
         if (invalidCc.length > 0) {
-            alert('Invalid CC email(s): ' + invalidCc.join(', '));
+            UI.toast('Invalid CC email(s): ' + invalidCc.join(', '), 'warning');
             return;
         }
     }
@@ -1067,16 +1086,16 @@ function confirmSendEmail() {
         
         if (data.success) {
             closeSendEmailModal();
-            alert(`Invoice sent to ${toEmails.join(', ')}`);
+            UI.flash(`Invoice sent to ${toEmails.join(', ')}`, 'success');
             window.location.reload();
         } else {
-            alert(data.error || 'Failed to send email');
+            UI.toast(data.error || 'Failed to send email', 'error');
         }
     })
     .catch(err => {
         btn.innerHTML = originalText;
         btn.disabled = false;
-        alert('Error: ' + err.message);
+        UI.toast('Error: ' + err.message, 'error');
     });
 }
 
@@ -1133,13 +1152,13 @@ function submitInvoiceForSend(serviceIds) {
                     );
                 });
         } else {
-            alert(data.error || 'Failed to create invoice');
+            UI.toast(data.error || 'Failed to create invoice', 'error');
         }
     })
     .catch(err => {
         btnSend.innerHTML = originalText;
         btnSend.disabled = false;
-        alert('Error: ' + err.message);
+        UI.toast('Error: ' + err.message, 'error');
     });
 }
 </script>

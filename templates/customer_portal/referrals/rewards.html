@@ -80,7 +80,9 @@
                 </button>
                 {% else %}
                 {# Monetary reward — simple confirm #}
-                <form action="{% url 'redeem_reward' %}" method="post" class="redeem-confirm-form">
+                <form action="{% url 'redeem_reward' %}" method="post" class="redeem-confirm-form"
+                      data-confirm="Redeem this reward? This action cannot be undone."
+                      data-confirm-title="Redeem reward" data-confirm-label="Redeem">
                     {% csrf_token %}
                     <input type="hidden" name="option_id" value="{{ option.id }}">
                     <button type="submit" class="w-full py-3 bg-brand-500 text-white text-sm font-bold rounded-lg hover:bg-brand-600 transition-colors shadow-sm">
@@ -211,17 +213,6 @@
 
 {% block extra_js %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Confirm for monetary rewards
-    document.querySelectorAll('.redeem-confirm-form').forEach(form => {
-        form.addEventListener('submit', function(e) {
-            if (!confirm('Redeem this reward? This action cannot be undone.')) {
-                e.preventDefault();
-            }
-        });
-    });
-});
-
 function openScheduleModal(optionId, optionName) {
     document.getElementById('scheduleOptionId').value = optionId;
     document.getElementById('scheduleModalTitle').textContent = 'Redeem: ' + optionName;

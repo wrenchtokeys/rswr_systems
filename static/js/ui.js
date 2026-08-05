@@ -122,14 +122,190 @@
         }
     });
 
+    // --- Toasts ---------------------------------------------------------------
+    var TOAST_ICONS = {
+        success: 'fas fa-check-circle toast-icon-success',
+        error: 'fas fa-exclamation-circle toast-icon-error',
+        warning: 'fas fa-exclamation-triangle toast-icon-warning',
+        info: 'fas fa-info-circle toast-icon-info'
+    };
+    var TOAST_TIMEOUTS = { success: 4000, info: 4000, warning: 6000, error: 8000 };
+
+    function getToastStack() {
+        var stack = document.getElementById('toast-stack');
+        if (!stack) {
+            stack = document.createElement('div');
+            stack.id = 'toast-stack';
+            stack.className = 'toast-stack';
+            stack.setAttribute('aria-live', 'polite');
+            document.body.appendChild(stack);
+        }
+        return stack;
+    }
+
+    function toast(message, type) {
+        type = TOAST_ICONS[type] ? type : 'info';
+
+        var el = document.createElement('div');
+        el.className = 'toast';
+        el.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+        var icon = document.createElement('i');
+        icon.className = TOAST_ICONS[type] + ' mt-0.5';
+        el.appendChild(icon);
+
+        var text = document.createElement('div');
+        text.className = 'flex-1 whitespace-pre-line';
+        text.textContent = String(message);
+        el.appendChild(text);
+
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'text-gray-400 hover:text-gray-600 transition-colors';
+        close.setAttribute('aria-label', 'Dismiss');
+        close.innerHTML = '<i class="fas fa-times"></i>';
+        el.appendChild(close);
+
+        getToastStack().appendChild(el);
+        // Force a style flush so the enter transition animates. (Not rAF: Chrome
+        // throttles rAF in occluded windows, which would leave the toast at
+        // opacity 0 forever.)
+        void el.offsetWidth;
+        el.classList.add('toast-show');
+
+        function dismiss() {
+            el.classList.remove('toast-show');
+            setTimeout(function () { el.remove(); }, 300);
+        }
+        var timer = setTimeout(dismiss, TOAST_TIMEOUTS[type]);
+        close.addEventListener('click', function () {
+            clearTimeout(timer);
+            dismiss();
+        });
+        return el;
+    }
+
+    // Toast that survives a reload/navigation — call right before location.reload().
+    function flash(message, type) {
+        try {
+            sessionStorage.setItem('ui-flash', JSON.stringify({ m: String(message), t: type }));
+        } catch (e) {
+            /* storage unavailable — the reload just won't show a toast */
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        var raw = null;
+        try {
+            raw = sessionStorage.getItem('ui-flash');
+            if (raw) sessionStorage.removeItem('ui-flash');
+        } catch (e) { /* ignore */ }
+        if (!raw) return;
+        try {
+            var f = JSON.parse(raw);
+            toast(f.m, f.t);
+        } catch (e) { /* ignore malformed payload */ }
+    });
+
+    // --- Confirm dialog -------------------------------------------------------
+    function confirmDialog(options) {
+        if (typeof options === 'string') options = { message: options };
+        options = options || {};
+        return new Promise(function (resolve) {
+            var overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
+
+            var panel = document.createElement('div');
+            panel.className = 'modal-panel max-w-md p-6';
+
+            var title = document.createElement('h3');
+            title.className = 'text-lg font-semibold text-gray-900 mb-2';
+            title.textContent = options.title || 'Please confirm';
+            panel.appendChild(title);
+
+            var body = document.createElement('p');
+            body.className = 'text-sm text-gray-600 whitespace-pre-line mb-6';
+            body.textContent = options.message || 'Are you sure?';
+            panel.appendChild(body);
+
+            var actions = document.createElement('div');
+            actions.className = 'flex justify-end gap-3';
+
+            var cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.className = 'btn-secondary';
+            cancelBtn.textContent = options.cancelLabel || 'Cancel';
+            actions.appendChild(cancelBtn);
+
+            var confirmBtn = document.createElement('button');
+            confirmBtn.type = 'button';
+            confirmBtn.className = options.danger ? 'btn-danger' : 'btn-primary';
+            confirmBtn.textContent = options.confirmLabel || 'Confirm';
+            actions.appendChild(confirmBtn);
+
+            panel.appendChild(actions);
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+            document.body.classList.add('overflow-hidden');
+
+            function done(result) {
+                document.removeEventListener('keydown', onKey, true);
+                overlay.remove();
+                document.body.classList.remove('overflow-hidden');
+                resolve(result);
+            }
+            // Capture phase so the global Escape handler (which force-hides
+            // .modal-overlay without resolving) never sees this keypress.
+            function onKey(e) {
+                if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    done(false);
+                }
+            }
+            document.addEventListener('keydown', onKey, true);
+            cancelBtn.addEventListener('click', function () { done(false); });
+            confirmBtn.addEventListener('click', function () { done(true); });
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) done(false);
+            });
+
+            confirmBtn.focus();
+        });
+    }
+
     // --- Confirm-before-submit ----------------------------------------------
     document.addEventListener('submit', function (e) {
         var form = e.target.closest('form[data-confirm]');
-        if (form && !window.confirm(form.getAttribute('data-confirm'))) {
-            e.preventDefault();
+        if (!form || form.dataset.confirmAccepted === 'true') {
+            if (form) delete form.dataset.confirmAccepted;
+            return;
         }
+        e.preventDefault();
+        var submitter = e.submitter || null;
+        confirmDialog({
+            title: form.getAttribute('data-confirm-title') || undefined,
+            message: form.getAttribute('data-confirm'),
+            confirmLabel: form.getAttribute('data-confirm-label') || undefined,
+            danger: form.hasAttribute('data-confirm-danger')
+        }).then(function (ok) {
+            if (!ok) return;
+            form.dataset.confirmAccepted = 'true';
+            if (form.requestSubmit) {
+                form.requestSubmit(submitter && form.contains(submitter) ? submitter : undefined);
+            } else {
+                form.submit();
+            }
+        });
     });
 
     // Expose for programmatic use
-    window.UI = { openModal: openModal, closeModal: closeModal };
+    window.UI = {
+        openModal: openModal,
+        closeModal: closeModal,
+        toast: toast,
+        flash: flash,
+        confirm: confirmDialog
+    };
 })();

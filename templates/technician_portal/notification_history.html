@@ -270,8 +270,6 @@ document.querySelectorAll('.mark-read-btn').forEach(btn => {
 const markAllBtn = document.getElementById('mark-all-read-btn');
 if (markAllBtn) {
     markAllBtn.addEventListener('click', function() {
-        if (!confirm('Mark all notifications as read?')) return;
-
         // Disable button during request
         markAllBtn.disabled = true;
         markAllBtn.textContent = 'Marking...';
@@ -292,10 +290,11 @@ if (markAllBtn) {
         .then(data => {
             if (data.success) {
                 // Reload page to show updated list
+                UI.flash('All notifications marked as read', 'success');
                 window.location.reload();
             } else {
                 // Show error message
-                alert(`Failed to mark notifications as read: ${data.error || 'Unknown error'}`);
+                UI.toast(`Failed to mark notifications as read: ${data.error || 'Unknown error'}`, 'error');
                 // Re-enable button
                 markAllBtn.disabled = false;
                 markAllBtn.textContent = 'Mark All Read';
@@ -303,7 +302,7 @@ if (markAllBtn) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert(`Error marking notifications as read: ${error.message}`);
+            UI.toast(`Error marking notifications as read: ${error.message}`, 'error');
             // Re-enable button
             markAllBtn.disabled = false;
             markAllBtn.textContent = 'Mark All Read';

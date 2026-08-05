@@ -177,9 +177,13 @@ async function saveRule(event) {
 }
 
 async function deleteRule(ruleId, ruleName) {
-    if (!confirm(`Are you sure you want to delete the rule "${ruleName}"?\n\nThis action cannot be undone.`)) {
-        return;
-    }
+    const ok = await UI.confirm({
+        title: 'Delete rule',
+        message: `Delete the rule "${ruleName}"?\n\nThis action cannot be undone.`,
+        confirmLabel: 'Delete',
+        danger: true,
+    });
+    if (!ok) return;
 
     try {
         const response = await fetch(`/tech/settings/api/viscosity/${ruleId}/delete/`, {
