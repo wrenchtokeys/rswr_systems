@@ -85,6 +85,13 @@ To test without touching reputation, use the SES mailbox simulator:
 
 ## Deliverability Status & Verification Log
 
+- **2026-08-05 — loyalty balance line added to invoice + review emails:**
+  one short factual sentence ("Rewards balance: N points") under the totals /
+  in the detail box. Deliberately transactional in tone — no CTA, no
+  promotional copy, no extra links — so invoice email keeps its transactional
+  classification (still no List-Unsubscribe on invoices). Gated per shop by
+  Loyalty → "Show Balance in Emails" and suppressed at zero balance; renders
+  as empty `{points_balance}` in custom templates when off.
 - **2026-07-31 — overhaul deployed and verified:**
   - Custom MAIL FROM `mail.rssystems.io` verified (aligned SPF); DKIM 2048-bit SUCCESS;
     config set `rs-systems-default` publishing events; SNS → webhook confirmed live.

@@ -507,6 +507,33 @@ Regular technicians without the manager flag do not see the Settings link. If yo
 
 ---
 
+## Customer Rewards (Loyalty)
+
+Points belong to the **customer (company)** — one shared balance, earned
+automatically when jobs complete. Customers do NOT need a portal account
+to earn.
+
+### Seeing a customer's balance
+
+Open the customer's page — the **Rewards card** shows their current
+balance, recent point activity, and any redemptions waiting to be used.
+(The card only appears when the shop's loyalty program is turned on.)
+
+### Redeeming for a customer (managers/owners only)
+
+- **From the customer page:** pick an affordable reward in the Rewards
+  card and click Redeem — good for merchandise-type rewards or banking a
+  discount for their next job.
+- **From a repair:** open the repair's **Apply Reward** page and use
+  "Redeem & Apply" to spend points and put the discount on that repair in
+  one step. The discount flows through to the invoice automatically.
+
+Any technician can still **apply** a redemption the customer (or a
+manager) already created; only managers/owners can **create** one —
+same rule as price overrides.
+
+---
+
 ## Notifications
 
 ### Types

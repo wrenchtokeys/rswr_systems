@@ -178,7 +178,9 @@ Customers access the portal to track repairs, approve work orders, and view invo
    - Pick the vehicle/unit, which glass (windshield, side, rear, sunroof, …), describe what happened, optionally attach a photo
    - No pricing at request time  the shop confirms the exact glass and price, which then comes back to you for approval
    - The shop is notified in-app and by email
-10. **Rewards**  view referral codes, earned points, available rewards
+10. **Rewards**  view your company's shared points balance, referral code, and available rewards
+   - Points belong to the company — every portal user sees the same balance, and jobs earn points even before anyone has a portal login
+   - Share your referral link (`/join/<shop>/?ref=YOURCODE`) — you and the referred business both earn bonus points after their first completed service
 11. **Account Settings** at `/app/account/settings/`  update profile, change password, notification preferences
 
 ### Login

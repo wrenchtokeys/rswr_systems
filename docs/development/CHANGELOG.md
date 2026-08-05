@@ -14,6 +14,64 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-08-05 — Customer-anchored loyalty (PR #139)
+
+### Added
+- **Points without portal accounts** — the loyalty ledger anchors on the
+  Customer (company) record: one shared balance per company, and customers
+  with no portal login (walk-ins, retail) earn points on completed jobs.
+  Existing per-portal-user balances were merged (summed) per company.
+- **In-shop redemption** — Rewards card on the technician portal's customer
+  page (balance, activity, pending redemptions); managers/owners can redeem
+  a customer's points at the counter, including one-step "redeem & apply"
+  on a repair's Apply Reward page (atomic).
+- **Deferred referral payout** — referral codes are entered (or prefilled
+  via `/join/<shop>/?ref=CODE` — the link the referral dashboard now shares)
+  at signup, recorded PENDING, and pay out when the referred customer's
+  first job completes. Owner gets an email + in-app notification for every
+  portal self-signup.
+- **Balance line in emails** — invoice and review emails carry a factual
+  "Rewards balance: N points" line, gated by a new Loyalty setting
+  ("Show Balance in Emails") plus program-active and positive balance;
+  `{points_balance}` placeholder available in custom invoice templates.
+
+### Changed
+- Owner Loyalty dashboard lists points per **customer** (companies with no
+  portal users now appear); manual adjustments are keyed by customer.
+- Turning the loyalty program off now also hides the customer portal's
+  points badge and the email balance lines.
+- Same-company referrals (two portal users of one company) are rejected.
+
+### Fixed
+- Purging a deactivated portal user no longer cascade-deletes the
+  company's entire point ledger (`PointTransaction.customer_user` is now
+  nullable attribution).
+- `/app/register/` can no longer create an orphaned company with no shop
+  when tenant context is missing.
+
+### Technical
+- Migrations `rewards_referrals 0016–0019` (schema, backfill/merge,
+  constraints, referral payout status). **Deploy order:** run
+  `reconcile_loyalty_balances --fix` in prod BEFORE migrating.
+- Deprecated `Repair.award_completion_points` and legacy
+  `ReferralService.track_referral`/`generate_referral_code` removed;
+  `process_referral` split into `record_referral` + `award_referral_bonuses`.
+
+## 2026-08-04 — Invoices & dashboard cleanup (PR #138)
+
+### Changed
+- Invoices page: calm "Owed to you" AR aging card (server-rendered, only
+  non-empty buckets), status pill filters, dashboard de-clutter.
+
+## 2026-08-03 — Payments & custom invoice lines (PR #137)
+
+### Added
+- Receive Payment screen: apply one customer payment across open invoices.
+- Free-form invoice line items (trip charges, service fees) and job-level
+  extra charges with saved fee presets (repairs and replacements).
+
+---
+
 ## 2026-08-02 — Simplicity pass + bidirectional price sync
 
 PR #135 deployed to production 2026-08-02; the job→invoice sync (direct
