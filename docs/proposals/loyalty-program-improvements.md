@@ -41,19 +41,25 @@ REJECTED in Django admin did not refund.
   (`/tech/reward-fulfillment/<id>/`, endpoint `cancel_redemption`).
 - Tests: `tests/test_loyalty_management.py` (21 tests).
 
+### 3. Silent auto-apply of pending redemptions — DONE (PR #142)
+Auto-apply is now **opt-in per shop**: `LoyaltyConfig.auto_apply_rewards`
+(default off, migration 0021, toggle in `/owner/loyalty/` Program Settings
+as "Auto-Use Waiting Rewards"). With it off, the job edit form shows a
+"customer has a reward waiting" prompt (radio list, default "don't use");
+picking one applies it before save so a completion in the same save fulfills
+it and the invoice picks up the discount. Completing a job while a waiting
+reward goes unused shows an info message ("stays available for a future
+job"). Redemptions someone *explicitly* applied (form prompt or Apply Reward
+page) are still finalized — marked FULFILLED — when the job completes,
+regardless of the toggle (previously these leaked, staying PENDING forever).
+
+Still open from the original note: `RewardFulfillmentService.assign_technician`
+auto-assigns the least-loaded tech to every redemption (including
+merchandise) — mostly notification noise. And the prompt lives on the repair
+edit form only; quick-job/batch completion paths rely on the toggle default
+plus the Apply Reward page.
+
 ## Not done — future work
-
-### 3. Silent auto-apply of pending redemptions (surprise factor)
-`Repair.apply_available_rewards()` (`apps/technician_portal/models.py`)
-consumes the customer's **oldest** pending discount redemption on any repair
-completion and auto-fulfills it — a customer saving "50% off" for a big
-replacement loses it on a $30 chip repair. Also
-`RewardFulfillmentService.assign_technician` auto-assigns the least-loaded
-tech to every redemption (including merchandise), which is mostly noise.
-
-Proposal: replace silent auto-apply with a prompt on the completion form
-("This customer has a pending 50%-off reward — apply it?"), or an opt-in shop
-setting. Drop or simplify auto tech assignment.
 
 ### 4. Dead loyalty config / unawarded transaction types
 `points_for_review`, `points_for_early_payment`, `tier_bonus`,

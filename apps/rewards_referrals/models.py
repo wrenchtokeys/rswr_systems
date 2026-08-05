@@ -327,6 +327,11 @@ class LoyaltyConfig(TenantConfig):
         default=True,
         help_text='Include the customer point balance in invoice and review emails',
     )
+    auto_apply_rewards = models.BooleanField(
+        default=False,
+        help_text='Automatically use the oldest waiting discount reward when a '
+                  'job is completed. When off, the job form asks instead.',
+    )
     expiry_warning_days = models.PositiveIntegerField(default=30)
     program_name = models.CharField(max_length=100, default='Rewards')
     is_active = models.BooleanField(default=True)

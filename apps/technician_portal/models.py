@@ -977,19 +977,39 @@ class Repair(GlassService):
 
     def apply_available_rewards(self):
         """
-        Automatically apply any available rewards to this repair.
-        
-        Searches for pending reward redemptions associated with the repair's customer
-        and automatically applies the oldest redemption to this repair. If the repair
-        is being completed, the reward is also automatically fulfilled.
-        
-        This method is called during the repair save process when status changes to COMPLETED.
+        Reward handling on completion.
+
+        1. A redemption someone explicitly applied to this repair (job form,
+           Apply Reward page) is finalized: marked FULFILLED so the ledger
+           and history agree with the invoice discount.
+        2. Auto-applying a waiting redemption the shop never chose is
+           OPT-IN per shop (LoyaltyConfig.auto_apply_rewards, default off) —
+           silently consuming a customer's saved "50% off" on a $30 chip
+           repair surprised everyone. When off, the job form asks instead.
+
+        Called during the repair save process when status changes to COMPLETED.
         """
         try:
-            from apps.rewards_referrals.models import RewardRedemption
+            from apps.rewards_referrals.models import LoyaltyConfig, RewardRedemption
+            from apps.rewards_referrals.services import RewardFulfillmentService
 
-            # Check if there's already a reward applied to this repair
+            # Finalize explicitly-applied redemptions — that decision was
+            # already made deliberately.
             if self.applied_rewards.exists():
+                if self.queue_status == 'COMPLETED':
+                    for redemption in self.applied_rewards.filter(status='PENDING'):
+                        RewardFulfillmentService.mark_as_fulfilled(
+                            redemption,
+                            self.technician,
+                            "Fulfilled when repair was completed",
+                        )
+                return
+
+            # Auto-apply is opt-in.
+            if self.tenant is None:
+                return
+            config = LoyaltyConfig.get_for_tenant(self.tenant)
+            if not (config.is_active and config.auto_apply_rewards):
                 return
 
             # Check for pending reward redemptions that can be applied to repairs
@@ -999,28 +1019,27 @@ class Repair(GlassService):
                 status='PENDING',
                 applied_to_repair__isnull=True,  # Not already applied to another repair
                 reward_option__reward_type__category__in=[
-                    'REPAIR_DISCOUNT', 
+                    'REPAIR_DISCOUNT',
                     'FREE_SERVICE'
                 ]  # Only auto-apply repair-related rewards, NOT merchandise like donuts/pizza
             ).order_by('created_at')
-            
+
             # Apply the oldest pending redemption to this repair
             if pending_redemptions.exists():
                 redemption = pending_redemptions.first()
                 redemption.applied_to_repair = self
-                
+
                 # If there's a technician on the repair, assign them
                 if not redemption.assigned_technician and hasattr(self, 'technician'):
                     redemption.assigned_technician = self.technician
-                
+
                 redemption.save()
-                
+
                 # Automatically mark as fulfilled if completing the repair
                 if self.queue_status == 'COMPLETED':
-                    from apps.rewards_referrals.services import RewardFulfillmentService
                     RewardFulfillmentService.mark_as_fulfilled(
-                        redemption, 
-                        self.technician, 
+                        redemption,
+                        self.technician,
                         "Automatically applied when repair was completed"
                     )
         except Exception as e:
