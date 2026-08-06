@@ -118,6 +118,30 @@ export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
 python manage.py test tests.test_step3_signup tests.test_signup_ux tests.test_referral_signup_flow -v 2
 ```
 
+## Help Center Improvement Backlog (proposed 2026-08-05, not yet scheduled)
+
+Assessment after Phase 2 round 2 shipped 14 guides. Ordered by impact; none started.
+
+**Bundle 1 — high value, one round of work:**
+- [ ] **Troubleshooting/FAQ section** — symptom-first entries ("Why didn't my customer get the invoice email?", "Why is there no tax on my invoice?", "Why can't my tech see replacements?"). People open help when something looks wrong, not to learn workflows; every FAQ is one support email avoided post-ads.
+- [ ] **Search on /help/** — client-side filter-as-you-type over titles/blurbs/keywords (14 cards already past scanning comfort). Stretch: surface guide matches in the top-nav global search.
+- [ ] **Role-aware index** — techs currently see owner-only guides (card payments, team & roles) that link to settings they can't open. Add a `roles` field to the HELP_TOPICS registry; filter or badge by role.
+- [ ] **Two missing guides**: "What happens when my trial ends" (grace period, per-role views — documented internally in USER_FLOWS, never shown to users) and "How progressive pricing works" (signature feature, only explained in passing).
+
+**After that:**
+- [ ] Customer-portal help page under /app/ (approving work, requesting repairs, rewards) — completes the deferred Phase 2 stretch item.
+- [ ] "Was this helpful? 👍👎" per guide — one endpoint; tells Drake which guides fail people; pairs with Phase 3's SupportMessage.
+- [ ] Guide-to-guide "Next up →" flow within each section (read a section like a course).
+- [ ] More contextual entry points: job form, invoices page, Loyalty page get the same "Guides:" one-liners Settings tabs have.
+- [ ] **Videos** — the placeholder slots are built; each page auto-upgrades to a player when its recording exists. ~90 sec each, Drake records (or Amelia scripts + Drake narrates). Biggest single "magic" upgrade available.
+
+**Further out / flashier:**
+- [ ] Floating "?" help beacon opening guides in a slide-over panel (never lose your place).
+- [ ] "Ask a question" box powered by Claude over guide content — only after real support email (Phase 3) shows what people actually ask.
+- [ ] Link Statement of Account into the UI, then document it (currently URL-only, kept out of guides per charter).
+
+Contact form deliberately stays in Phase 3 where it's planned — the mailto: "Still stuck?" box silently fails for users without a mail app, which is the strongest argument for starting Phase 3 soon.
+
 ## Pre-Marketing Checklist (execute in Phase 3, before ads)
 
 - [ ] `eb printenv` shows `SENTRY_DSN` set (without it, 500s reach no one)
