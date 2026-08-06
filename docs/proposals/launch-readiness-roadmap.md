@@ -55,6 +55,12 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - Tests: `tests/test_first_run.py` (22 tests) all green; regression run green (test_step3_signup, test_e2e_today, test_primary_contact, test_owner_setup, test_code110, test_signup_ux — 131 tests).
 - Verified in browser (fresh tenant): tour auto-starts → skip → never returns; both dismissals survive reload; resume banner correct; help pages render; Settings/dashboard checklists identical. `build_css.sh` run, app.css committed.
 
+### Phase 2 round 2 (same day, Drake feedback)
+- **Bug fixed:** tours re-appeared on every refresh — completion was only recorded on close, so a mid-tour refresh recorded nothing. Now "shown = seen": tours.js POSTs completion the moment the tour starts. Deliberate replays via `?tour=1` (dashboard + job form), linked as "Interactive tours" cards on /help/.
+- **Help center expanded 5 → 14 guides**, grouped into sections (Getting started / Billing & getting paid / Your team / Your customers / Grow your business). New: card-payments, sales-tax, paid-on-time, team-roles, for-technicians, customer-portal, loyalty-referrals, review-requests, warranty. Registry (`HELP_TOPICS` + `HELP_SECTIONS`) drives index, routing, AND the tests (all slugs auto-covered).
+- **Contextual help from Settings:** each tab panel (general/team/billing/payments/reviews/warranty) opens with a small "Guides: …" link line to the relevant help pages.
+- Statements of account deliberately NOT mentioned in guides — the page exists but isn't linked from any UI (charter: never promise what doesn't exist). Candidate for a future nav link.
+
 ### Phase 2 deferred (stretch items not built)
 - Invoice-send + settings tours (only the two priority tours shipped).
 - Customer-portal help variant; contextual "?" links from settings sections.

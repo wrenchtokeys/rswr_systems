@@ -224,6 +224,13 @@ class TourEndpointTests(TestCase):
         self.assertEqual(r.context['tour_slug'], '')
         self.assertNotContains(r, 'data-tour="owner-dashboard"')
 
+    def test_tour_replay_via_query_param(self):
+        """?tour=1 (linked from the help pages) forces a replay even after completion."""
+        self.client.post('/owner/tours/owner-dashboard/complete/')
+        r = self.client.get('/owner/?tour=1')
+        self.assertEqual(r.context['tour_slug'], 'owner-dashboard')
+        self.assertContains(r, 'data-tour="owner-dashboard"')
+
 
 @override_settings(**TEST_SETTINGS)
 class HelpPagesTests(TestCase):
@@ -249,15 +256,21 @@ class HelpPagesTests(TestCase):
         return client
 
     def test_help_home_and_topics_200_for_owner(self):
+        from apps.support.views import HELP_TOPICS, HELP_SECTIONS
         client = self._login(self.owner)
         r = client.get('/help/')
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Create your first job')
-        for slug in ('first-job', 'send-invoice', 'invite-customers',
-                     'multi-break', 'settings-explained'):
+        # Every registered topic renders (registry-driven, so new guides are
+        # covered automatically) and carries its video slot.
+        for slug in HELP_TOPICS:
             r = client.get(f'/help/{slug}/')
             self.assertEqual(r.status_code, 200, f'/help/{slug}/ failed')
             self.assertContains(r, 'Video coming soon')
+        # Every topic's section exists in the section list
+        section_keys = {key for key, _ in HELP_SECTIONS}
+        for slug, topic in HELP_TOPICS.items():
+            self.assertIn(topic['section'], section_keys, f'{slug} has unknown section')
 
     def test_help_pages_200_for_technician(self):
         client = self._login(self.tech_user)

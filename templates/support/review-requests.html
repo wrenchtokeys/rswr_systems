@@ -1,0 +1,34 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Paste your Google review link</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">In <strong>Settings → Reviews</strong>, switch review requests on and paste your Google review link (Google Business Profile → "Ask for reviews" gives it to you). That's the whole setup.</p>
+            <a href="{% url 'owner_settings' %}?tab=reviews" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open Reviews settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">It asks at the right moment</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">After a job completes, a short branded email goes out — delayed a few hours and only during business hours, so it lands while the good experience is fresh, not at 2am. You can tweak the subject and message.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">It never pesters</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Cooldowns stop repeat asks to the same customer, and fleet accounts are left alone by default (a fleet manager seeing ten review emails a week would not love you) — flip "include fleet accounts" if you want them too.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

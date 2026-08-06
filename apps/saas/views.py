@@ -790,9 +790,12 @@ def owner_dashboard(request):
         'checklist_dismissed': onboarding_state.checklist_dismissed_at is not None,
         'trial_banner_dismissed': onboarding_state.trial_banner_dismissed_at is not None,
         'wizard_resume_step': wizard_resume_step,
+        # ?tour=1 forces a replay (help pages link it); otherwise only on
+        # first visit.
         'tour_slug': (
             'owner-dashboard'
-            if not onboarding_state.has_completed_tour('owner-dashboard')
+            if (request.GET.get('tour') == '1'
+                or not onboarding_state.has_completed_tour('owner-dashboard'))
             else ''
         ),
         'intended_plan': tenant.intended_plan,

@@ -1,0 +1,39 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-blue-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Connect your bank once</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Go to <strong>Settings → Card Payments</strong> and click <strong>Set up payments</strong>. You'll answer a few identity questions from Stripe (the payments company behind millions of businesses) and link your bank account. Takes about five minutes.</p>
+            <a href="{% url 'owner_settings' %}?tab=payments" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open Card Payments settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-blue-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Every invoice grows a Pay Now button</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Once connected, invoice emails and the online invoice page show <strong>Pay Now</strong>. Customers pay by card without creating an account or calling you back.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-blue-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Money goes straight to you</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Payments land in <em>your</em> Stripe account and pay out to <em>your</em> bank on Stripe's normal schedule — RS Systems never holds your money. Paid invoices are marked automatically, so your "Owed to you" number stays honest.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Prefer cash and checks?</strong> Card payments are optional. You can always record manual payments on any invoice — see <a href="{% url 'help_topic' 'send-invoice' %}" class="text-blue-600 hover:text-blue-800 font-medium">Send an invoice</a>.</p>
+</div>
+{% endblock %}

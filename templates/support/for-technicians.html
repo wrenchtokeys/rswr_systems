@@ -1,0 +1,48 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Your dashboard is your queue</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Log in and you'll see the jobs assigned to you. The bell shows new assignments. <strong>Jobs</strong> in the top nav lists everything you can work on.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Log work from the truck</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">The job form works great on your phone: the <strong>+</strong> button starts a job, photo fields open your camera directly, and the form autosaves as you type — losing signal in a parking garage won't lose your work.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Photos tell the story</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Before and after shots protect you and the shop. Mark the damage location by tapping the windshield diagram. Forgot a photo? Add it later from the job's page.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Resin suggestions, if your shop uses them</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Type the windshield temperature and (when your shop has resin rules on) a colored badge suggests the viscosity — like "🟢 Medium — ideal conditions." Follow it or use your judgment.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Multiple chips on one windshield?</strong> Use <a href="{% url 'help_topic' 'multi-break' %}" class="text-blue-600 hover:text-blue-800 font-medium">multi-break entry</a> — shared info once, one card per break, priced automatically.</p>
+</div>
+{% endblock %}

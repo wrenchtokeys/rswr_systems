@@ -9,8 +9,10 @@
         <p class="text-gray-500">Short, plain-language guides for everything you'll do in RS Systems.</p>
     </div>
 
+    {% for section in sections %}
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 {% if not forloop.first %}mt-8{% endif %}">{{ section.label }}</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {% for t in topics %}
+        {% for t in section.topics %}
         <a href="{% url 'help_topic' t.slug %}" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
             <div class="flex items-start gap-3.5">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
@@ -27,13 +29,42 @@
                         {% else %}text-gray-600{% endif %}"></i>
                 </div>
                 <div class="min-w-0">
-                    <h2 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">{{ t.title }}</h2>
+                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">{{ t.title }}</h3>
                     <p class="text-xs text-gray-500 mt-1 leading-relaxed">{{ t.blurb }}</p>
                 </div>
             </div>
         </a>
         {% endfor %}
     </div>
+    {% endfor %}
+
+    {% if is_owner_or_manager %}
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 mt-8">Interactive tours</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <a href="{% url 'owner_dashboard' %}?tour=1" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-route text-blue-600 text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Replay the dashboard tour</h3>
+                    <p class="text-xs text-gray-500 mt-1 leading-relaxed">A 30-second walk around your home base.</p>
+                </div>
+            </div>
+        </a>
+        <a href="{% url 'job_create' %}?tour=1" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-route text-green-600 text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Replay the job-form tour</h3>
+                    <p class="text-xs text-gray-500 mt-1 leading-relaxed">The 20-second version of logging a job.</p>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endif %}
 
     <div class="mt-8 rounded-xl bg-blue-50 border border-blue-200 p-5 flex items-start gap-3">
         <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">

@@ -154,11 +154,17 @@
             nextBtnText: 'Next',
             prevBtnText: 'Back',
             doneBtnText: 'Done',
-            steps: steps,
-            onDestroyed: markComplete
+            steps: steps
         });
 
         // Small delay so layout/fonts settle before the first highlight.
-        window.setTimeout(function () { tour.drive(); }, 500);
+        window.setTimeout(function () {
+            tour.drive();
+            // Shown = seen. Record completion the moment the tour appears —
+            // if we only recorded on close, a mid-tour refresh would re-show
+            // it forever (and it did). Users who want it back can get a
+            // "Restart the tour" link from the help pages later.
+            markComplete();
+        }, 500);
     });
 })();
