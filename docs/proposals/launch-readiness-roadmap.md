@@ -17,7 +17,7 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 
 | Phase | Scope | Status | Session date | Commits/PR |
 |-------|-------|--------|--------------|------------|
-| 1 | Conversion funnel & plans surfaces (landing, /pricing/, signup, login, My Plan) | built — PR open, awaiting Drake review + deploy | 2026-08-05 | branch `feature/funnel-plans-overhaul` |
+| 1 | Conversion funnel & plans surfaces (landing, /pricing/, signup, login, My Plan) | **DEPLOYED to prod 2026-08-05** (PR #143 merged; prod plans re-seeded; live pricing + My Plan verified) | 2026-08-05 | PR #143 |
 | 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | not started | | |
 | 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | not started | | |
 
@@ -58,11 +58,15 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - Login page redesign — already matches the two-panel design language; skipped deliberately.
 - Confirm-email celebration is message-copy only (no confetti/interstitial).
 - Landing trust-bar stats ("500+ Jobs Tracked", "$50K+ Invoiced") left as-is — Drake should confirm they're accurate before ads.
-- PR NOT merged/deployed — Drake reviews visuals first. After deploy: `seed_plans --force` in prod, then re-check live /pricing/ matrix + My Plan on rsadmin.
+- ~~PR NOT merged/deployed~~ → **PR #143 MERGED + DEPLOYED 2026-08-05**; prod `seed_plans --force` run (twice — first attempt hit the SQLite-fallback gotcha above); live /pricing/ + My Plan (rsadmin) verified in browser.
+- Landing trust-bar stats ("500+ Jobs Tracked", "$50K+ Invoiced") still need Drake's accuracy confirmation before ads.
 
 ### Gotchas discovered
 - `rsadmin` (Rockstar Windshield Repair) is the platform-owner tenant in prod — its My Plan page is the worst-case rendering; test platform-owner display with it.
-- After deploying Phase 1, run `python manage.py seed_plans --force` in prod to pick up the new `features` keys, then re-check the live pricing matrix.
+- **eb ssh prod-command recipe MUST export the EB env first** — `sudo bash -c 'source /var/app/venv/*/bin/activate && …'` silently runs with `DJANGO_SETTINGS_MODULE=rs_systems.settings.development` → SQLite fallback at `/var/app/current/db.sqlite3`, and management commands report success while touching a throwaway DB. Working recipe:
+  `eb ssh rs-systems-production --command "sudo bash -c 'export \$(cat /opt/elasticbeanstalk/deployment/env | xargs) && source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py <cmd>'"`
+- Drake removed the Stripe Connect "Payment Processing" card from My Plan mid-review — My Plan is subscription-only; Connect lives in Settings → Card Payments.
+- Phase 1 changes are invisible to a signed-in localhost user on `/` (redirects to dashboard) — view landing/signup logged-out; also re-seed the local DB (`seed_plans --force`) or cards render without the new feature keys.
 
 ### Exact test commands that must pass
 ```bash
