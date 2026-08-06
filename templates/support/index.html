@@ -4,16 +4,24 @@
 
 {% block content %}
 <div class="max-w-3xl mx-auto">
-    <div class="mb-8">
+    <div class="mb-6">
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">How can we help?</h1>
         <p class="text-gray-500">Short, plain-language guides for everything you'll do in RS Systems.</p>
     </div>
 
+    <div class="relative mb-8">
+        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
+        <input type="search" id="help-search" autocomplete="off"
+               class="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none"
+               placeholder="Search guides — try &quot;tax&quot;, &quot;invoice&quot;, or &quot;points&quot;">
+    </div>
+
     {% for section in sections %}
-    <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 {% if not forloop.first %}mt-8{% endif %}">{{ section.label }}</h2>
+    <div class="{% if not forloop.first %}mt-8{% endif %}" data-help-section>
+    <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">{{ section.label }}</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {% for t in section.topics %}
-        <a href="{% url 'help_topic' t.slug %}" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
+        <a href="{% url 'help_topic' t.slug %}" data-help-card data-search="{{ t.title|lower }} {{ t.blurb|lower }} {{ t.keywords|default:''|lower }}" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
             <div class="flex items-start gap-3.5">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
                     {% if t.color == 'green' %}bg-green-100
@@ -36,9 +44,16 @@
         </a>
         {% endfor %}
     </div>
+    </div>
     {% endfor %}
 
+    <div id="help-no-results" class="hidden rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 p-8 text-center">
+        <p class="text-sm font-semibold text-gray-700">No guides match "<span id="help-no-results-q"></span>"</p>
+        <p class="text-sm text-gray-500 mt-1">Can't find what you need? Email <a href="mailto:contact@rssystems.io" class="text-blue-600 hover:text-blue-800 font-medium">contact@rssystems.io</a> and a real person will help.</p>
+    </div>
+
     {% if is_owner_or_manager %}
+    <div data-help-extra>
     <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3 mt-8">Interactive tours</h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <a href="{% url 'owner_dashboard' %}?tour=1" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
@@ -64,6 +79,7 @@
             </div>
         </a>
     </div>
+    </div>
     {% endif %}
 
     <div class="mt-8 rounded-xl bg-blue-50 border border-blue-200 p-5 flex items-start gap-3">
@@ -76,4 +92,38 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    var input = document.getElementById('help-search');
+    if (!input) return;
+    var cards = Array.prototype.slice.call(document.querySelectorAll('[data-help-card]'));
+    var sections = Array.prototype.slice.call(document.querySelectorAll('[data-help-section]'));
+    var extras = Array.prototype.slice.call(document.querySelectorAll('[data-help-extra]'));
+    var empty = document.getElementById('help-no-results');
+    var emptyQ = document.getElementById('help-no-results-q');
+
+    function apply() {
+        var words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        var anyVisible = false;
+        cards.forEach(function (card) {
+            var haystack = card.getAttribute('data-search') || '';
+            var show = words.every(function (w) { return haystack.indexOf(w) !== -1; });
+            card.classList.toggle('hidden', !show);
+            if (show) anyVisible = true;
+        });
+        sections.forEach(function (section) {
+            var hasCard = section.querySelector('[data-help-card]:not(.hidden)');
+            section.classList.toggle('hidden', !hasCard);
+        });
+        // Tours aren't searchable — tuck them away while a search is active.
+        extras.forEach(function (el) { el.classList.toggle('hidden', words.length > 0); });
+        empty.classList.toggle('hidden', anyVisible || words.length === 0);
+        if (emptyQ) emptyQ.textContent = input.value.trim();
+    }
+
+    input.addEventListener('input', apply);
+    input.addEventListener('search', apply);
+})();
+</script>
 {% endblock %}

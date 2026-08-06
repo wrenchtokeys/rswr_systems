@@ -96,6 +96,9 @@
                             <a href="{% url 'customer_account_settings' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                                 <i class="fas fa-cog mr-3 w-4 text-gray-400"></i>Account Settings
                             </a>
+                            <a href="{% url 'customer_help' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                                <i class="far fa-question-circle mr-3 w-4 text-gray-400"></i>Help
+                            </a>
                             <a href="{% url 'customer_dashboard' %}" class="flex items-center px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                                 <i class="fas fa-tachometer-alt mr-3 w-4 text-gray-400"></i>Dashboard
                             </a>
@@ -277,6 +280,10 @@
                 <a href="{% url 'customer_account_settings' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
                     <i class="fas fa-cog w-6 text-gray-400"></i>
                     <span class="ml-3">Account Settings</span>
+                </a>
+                <a href="{% url 'customer_help' %}" class="flex items-center px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    <i class="far fa-question-circle w-6 text-gray-400"></i>
+                    <span class="ml-3">Help</span>
                 </a>
                 <div class="border-t border-gray-100 my-2"></div>
                 <form method="post" action="{% url 'logout' %}">

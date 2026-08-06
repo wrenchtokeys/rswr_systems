@@ -118,24 +118,25 @@ export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
 python manage.py test tests.test_step3_signup tests.test_signup_ux tests.test_referral_signup_flow -v 2
 ```
 
-## Help Center Improvement Backlog (proposed 2026-08-05, not yet scheduled)
+## Help Center Improvement Backlog (proposed 2026-08-05; built 2026-08-06)
 
-Assessment after Phase 2 round 2 shipped 14 guides. Ordered by impact; none started.
+Assessment after Phase 2 round 2 shipped 14 guides. Everything code-doable shipped
+2026-08-06 (round 3 of PR #144); only the items gated on Drake or Phase 3 remain.
 
 **Bundle 1 — high value, one round of work:**
-- [ ] **Troubleshooting/FAQ section** — symptom-first entries ("Why didn't my customer get the invoice email?", "Why is there no tax on my invoice?", "Why can't my tech see replacements?"). People open help when something looks wrong, not to learn workflows; every FAQ is one support email avoided post-ads.
-- [ ] **Search on /help/** — client-side filter-as-you-type over titles/blurbs/keywords (14 cards already past scanning comfort). Stretch: surface guide matches in the top-nav global search.
-- [ ] **Role-aware index** — techs currently see owner-only guides (card payments, team & roles) that link to settings they can't open. Add a `roles` field to the HELP_TOPICS registry; filter or badge by role.
-- [ ] **Two missing guides**: "What happens when my trial ends" (grace period, per-role views — documented internally in USER_FLOWS, never shown to users) and "How progressive pricing works" (signature feature, only explained in passing).
+- [x] **Troubleshooting/FAQ section** — `/help/troubleshooting/`: 10 symptom-first entries (invoice email, missing tax, tech can't see replacements, price ladder surprise, locked price, unpaid-after-payment, review requests, points, undelete, portal login). Own index section "When something looks wrong".
+- [x] **Search on /help/** — filter-as-you-type over title/blurb/`keywords` (new registry field), hides empty sections, no-results state with the support mailto. Stretch item (guide matches in top-nav global search) still open.
+- [x] **Role-aware index** — `owner_only` flag on HELP_TOPICS (simpler than a roles list: the only split that exists today is owner/manager vs tech); index filters, direct links still work for everyone, "Next up" respects the filter.
+- [x] **Two missing guides**: `/help/trial-ending/` and `/help/progressive-pricing/`.
 
 **After that:**
-- [ ] Customer-portal help page under /app/ (approving work, requesting repairs, rewards) — completes the deferred Phase 2 stretch item.
-- [ ] "Was this helpful? 👍👎" per guide — one endpoint; tells Drake which guides fail people; pairs with Phase 3's SupportMessage.
-- [ ] Guide-to-guide "Next up →" flow within each section (read a section like a course).
-- [ ] More contextual entry points: job form, invoices page, Loyalty page get the same "Guides:" one-liners Settings tabs have.
-- [ ] **Videos** — the placeholder slots are built; each page auto-upgrades to a player when its recording exists. ~90 sec each, Drake records (or Amelia scripts + Drake narrates). Biggest single "magic" upgrade available.
+- [x] Customer-portal help page — `/app/help/` (approve, request, invoices, rewards when active, team/notifications), linked from both portal menus.
+- [x] "Was this helpful? 👍👎" per guide — `GuideFeedback` model (support migration 0001, one vote per user per guide, re-vote overwrites) + POST `/help/<slug>/feedback/`; thumbs-down reply points at support email. Phase 3 admin surface can read it alongside SupportMessage.
+- [x] Guide-to-guide "Next up →" flow within each section.
+- [x] More contextual entry points: job form, Invoices page, Loyalty page now carry "Guides:" one-liners.
+- [ ] **Videos** — the placeholder slots are built; each page auto-upgrades to a player when its recording exists. ~90 sec each, Drake records (or Amelia scripts + Drake narrates). Biggest single "magic" upgrade available. **Blocked on Drake.**
 
-**Further out / flashier:**
+**Further out / flashier (all still open by design):**
 - [ ] Floating "?" help beacon opening guides in a slide-over panel (never lose your place).
 - [ ] "Ask a question" box powered by Claude over guide content — only after real support email (Phase 3) shows what people actually ask.
 - [ ] Link Statement of Account into the UI, then document it (currently URL-only, kept out of guides per charter).

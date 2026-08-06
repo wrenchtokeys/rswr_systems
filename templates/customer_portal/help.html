@@ -1,0 +1,97 @@
+{% extends "customer_portal/base_customer.html" %}
+
+{% block title %}Help{% if request.tenant %} | {{ request.tenant.name }}{% else %} | Customer Portal{% endif %}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">How your portal works</h1>
+        <p class="text-gray-500">Everything you can do here, in plain words — two minutes to read.</p>
+    </div>
+
+    <div class="space-y-6">
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-check-double text-brand-600 text-sm"></i>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900 mb-1">Approving work</h2>
+                    <p class="text-sm text-gray-600 leading-relaxed">When {{ tenant.name|default:"the shop" }} needs your OK before starting a job, it shows up on your dashboard under <strong>Needs approval</strong> — and you'll get an email with one-click approve and deny links. Open the job to see the vehicle, the work, and the price, then approve or deny. Nothing is ever done to your vehicles without the price in front of you first.</p>
+                    <a href="{% url 'customer_services' %}?type=approval" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-700 mt-2">See what's waiting <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-plus-circle text-brand-600 text-sm"></i>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900 mb-1">Requesting service</h2>
+                    <p class="text-sm text-gray-600 leading-relaxed">Chip in a windshield? Request a repair or a replacement right from the portal — tell us the vehicle and what happened, and the shop takes it from there. For replacements, the shop prices the job first and sends it back for your approval, so there are no surprise numbers.</p>
+                    <div class="flex flex-wrap gap-x-4 mt-2">
+                        <a href="{% url 'customer_request_repair' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-700">Request a repair <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+                        <a href="{% url 'customer_request_replacement' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-700">Request a replacement <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-file-invoice-dollar text-brand-600 text-sm"></i>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900 mb-1">Invoices &amp; paying online</h2>
+                    <p class="text-sm text-gray-600 leading-relaxed">Every invoice lives under <strong>Invoices</strong> — view it, download the PDF, and if the shop takes card payments, pay it right there with the <strong>Pay</strong> button. The links in invoice emails work too, no login needed, so your bookkeeper can pay without an account.</p>
+                    <a href="{% url 'customer_invoices' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-700 mt-2">Open invoices <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+                </div>
+            </div>
+        </div>
+
+        {% if loyalty_active %}
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-gift text-brand-600 text-sm"></i>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900 mb-1">Rewards &amp; referrals</h2>
+                    <p class="text-sm text-gray-600 leading-relaxed">Every completed job earns your company points — one shared balance for your whole team. Spend them on the rewards the shop offers, and share your referral link to earn a bonus when someone you send in gets their first job done.</p>
+                    <a href="{% url 'customer_rewards' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-700 mt-2">See your points <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-users text-brand-600 text-sm"></i>
+                </div>
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900 mb-1">Your team &amp; notifications</h2>
+                    <p class="text-sm text-gray-600 leading-relaxed">Invite coworkers from the <strong>Team</strong> page so they can approve work and see invoices too — everyone shares the same company view. Getting too much or too little email? Tune what we send you in notification preferences.</p>
+                    <div class="flex flex-wrap gap-x-4 mt-2">
+                        <a href="{% url 'customer_team' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-700">Invite your team <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+                        <a href="{% url 'customer_notification_preferences' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-700">Notification preferences <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-8 rounded-xl bg-brand-50 border border-gray-200 p-5 flex items-start gap-3">
+        <div class="w-9 h-9 bg-white rounded-lg flex items-center justify-center flex-shrink-0 border border-gray-200">
+            <i class="fas fa-phone text-brand-600 text-sm"></i>
+        </div>
+        <div>
+            <p class="text-sm font-semibold text-gray-900">Questions about your vehicles or a bill?</p>
+            <p class="text-sm text-gray-600 mt-0.5">{{ tenant.name|default:"Your shop" }} is the right place to ask{% if tenant.business_phone %} — call <a href="tel:{{ tenant.business_phone }}" class="text-brand-600 hover:text-brand-700 font-medium">{{ tenant.business_phone }}</a>{% endif %}{% if tenant.business_email %}{% if tenant.business_phone %} or{% else %} —{% endif %} email <a href="mailto:{{ tenant.business_email }}" class="text-brand-600 hover:text-brand-700 font-medium">{{ tenant.business_email }}</a>{% endif %}.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

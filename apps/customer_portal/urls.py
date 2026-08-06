@@ -44,6 +44,9 @@ urlpatterns = [
     path('invoices/<int:invoice_id>/pdf/', views.customer_invoice_pdf, name='customer_invoice_pdf'),
     path('invoices/<int:invoice_id>/pay/', views.customer_invoice_pay, name='customer_invoice_pay'),
 
+    # Help
+    path('help/', views.customer_help, name='customer_help'),
+
     # Company and account management
     path('company/edit/', views.edit_company, name='edit_company'),
     path('account/settings/', views.account_settings, name='customer_account_settings'),

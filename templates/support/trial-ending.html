@@ -1,0 +1,51 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-blue-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Your 30 days, no strings</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">The trial is the full product — every feature, no card required. When the last week starts you'll see a countdown banner, and we email you at 7 days and 1 day out so the end never sneaks up on you.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-blue-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Then a 30-day soft landing</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">If the trial ends before you've picked a plan, nothing is deleted. You get a 30-day grace period where everything is still there to view — jobs, customers, invoices — you just can't add new work until you subscribe. Think of it as pause, not erase.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-blue-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Pick a plan whenever you're ready</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Subscribe on <strong>My Plan</strong> and everything unlocks instantly, exactly where you left off — during the trial, during grace, even after grace ends. Your data waits for you.</p>
+            {% if is_owner_or_manager %}
+            <a href="{% url 'billing_settings' %}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open My Plan <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-blue-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">What your team and customers see</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Only the owner can subscribe, so everyone else gets a calm, role-appropriate message: technicians are told to check with the shop owner, and portal customers see your shop's contact info. Nobody hits an error page, and nobody is asked for money except you.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>The short version:</strong> your data is never the hostage. The only thing that stops working when a trial lapses is adding new work — and one subscription click turns it all back on.</p>
+</div>
+{% endblock %}

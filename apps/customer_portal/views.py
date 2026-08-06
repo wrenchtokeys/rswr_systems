@@ -4210,3 +4210,25 @@ def quick_deny_repair(request, token):
         'repair': repair,
         'token': token,
     })
+
+
+@customer_required
+def customer_help(request):
+    """GET /app/help/ — plain-language help for portal customers.
+
+    Mirrors the shop-side /help/ hub (apps/support) in tone; single page
+    because customers have four things to do, not fourteen.
+    """
+    customer_user = _get_customer_user_for_tenant(request)
+    tenant = customer_user.customer.tenant
+    loyalty_active = False
+    try:
+        from apps.rewards_referrals.models import LoyaltyConfig
+        loyalty_active = LoyaltyConfig.get_for_tenant(tenant).is_active
+    except Exception:
+        pass
+    return render(request, 'customer_portal/help.html', {
+        'customer': customer_user.customer,
+        'tenant': tenant,
+        'loyalty_active': loyalty_active,
+    })

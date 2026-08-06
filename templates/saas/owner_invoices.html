@@ -9,6 +9,7 @@
     <div>
         <h1 class="text-2xl font-bold text-gray-900">Invoices</h1>
         <p class="text-sm text-gray-500 mt-1">Manage invoices across all customers</p>
+        <p class="mt-2 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>Guides: <a href="{% url 'help_topic' 'send-invoice' %}" class="text-blue-500 hover:text-blue-700 font-medium">Send an invoice</a> · <a href="{% url 'help_topic' 'paid-on-time' %}" class="text-blue-500 hover:text-blue-700 font-medium">Get paid on time</a> · <a href="{% url 'help_topic' 'troubleshooting' %}" class="text-blue-500 hover:text-blue-700 font-medium">Troubleshooting</a></p>
     </div>
     <div class="flex items-center gap-4">
         <a href="{% url 'archived_repairs' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900" title="Restore deleted invoices and jobs">

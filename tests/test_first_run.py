@@ -262,11 +262,14 @@ class HelpPagesTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'Create your first job')
         # Every registered topic renders (registry-driven, so new guides are
-        # covered automatically) and carries its video slot.
-        for slug in HELP_TOPICS:
+        # covered automatically) and carries its video slot when it has one.
+        for slug, topic in HELP_TOPICS.items():
             r = client.get(f'/help/{slug}/')
             self.assertEqual(r.status_code, 200, f'/help/{slug}/ failed')
-            self.assertContains(r, 'Video coming soon')
+            if topic.get('video_label'):
+                self.assertContains(r, 'Video coming soon')
+            else:
+                self.assertNotContains(r, 'Video coming soon')
         # Every topic's section exists in the section list
         section_keys = {key for key, _ in HELP_SECTIONS}
         for slug, topic in HELP_TOPICS.items():
@@ -289,6 +292,127 @@ class HelpPagesTests(TestCase):
         client = self._login(self.owner)
         r = client.get('/help/not-a-real-page/')
         self.assertEqual(r.status_code, 404)
+
+    def test_index_is_role_aware(self):
+        # Owner sees everything, including owner-only guides.
+        owner_client = self._login(self.owner)
+        r = owner_client.get('/help/')
+        self.assertContains(r, 'Take card payments online')
+        self.assertContains(r, 'Add your team &amp; roles')
+        # A technician's index hides guides that live behind Settings…
+        tech_client = self._login(self.tech_user)
+        r = tech_client.get('/help/')
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, 'Take card payments online')
+        self.assertNotContains(r, 'Add your team &amp; roles')
+        # …but still shows the field guides and troubleshooting.
+        self.assertContains(r, 'Create your first job')
+        self.assertContains(r, 'Troubleshooting &amp; FAQ')
+
+    def test_owner_only_guide_still_opens_via_direct_link(self):
+        # Hidden from the tech's index, but a shared link must not 404.
+        client = self._login(self.tech_user)
+        r = client.get('/help/card-payments/')
+        self.assertEqual(r.status_code, 200)
+
+    def test_index_has_search(self):
+        client = self._login(self.owner)
+        r = client.get('/help/')
+        self.assertContains(r, 'help-search')
+        self.assertContains(r, 'data-search=')
+
+    def test_next_up_flows_within_section_and_respects_role(self):
+        owner_client = self._login(self.owner)
+        # first-job → multi-break for everyone.
+        r = owner_client.get('/help/first-job/')
+        self.assertContains(r, 'Next up:')
+        self.assertContains(r, '/help/multi-break/')
+        # Owner: multi-break → settings-explained.
+        r = owner_client.get('/help/multi-break/')
+        self.assertContains(r, '/help/settings-explained/')
+        # Technician: settings-explained is hidden, so multi-break skips to
+        # trial-ending.
+        tech_client = self._login(self.tech_user)
+        r = tech_client.get('/help/multi-break/')
+        self.assertNotContains(r, '/help/settings-explained/')
+        self.assertContains(r, '/help/trial-ending/')
+        # Last guide in its section has no Next up.
+        r = owner_client.get('/help/trial-ending/')
+        self.assertNotContains(r, 'Next up:')
+
+
+@override_settings(**TEST_SETTINGS)
+class GuideFeedbackTests(TestCase):
+    def setUp(self):
+        self.owner, self.tenant = make_tenant('Feedback Shop', 'feedback_owner')
+        self.client = Client()
+        self.client.force_login(self.owner)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+    def test_vote_persists_and_revote_overwrites(self):
+        from apps.support.models import GuideFeedback
+        r = self.client.post('/help/first-job/feedback/', {'helpful': 'yes'})
+        self.assertEqual(r.status_code, 200)
+        vote = GuideFeedback.objects.get(user=self.owner, slug='first-job')
+        self.assertTrue(vote.helpful)
+        self.assertEqual(vote.tenant, self.tenant)
+        # Change of heart — same row, flipped answer.
+        self.client.post('/help/first-job/feedback/', {'helpful': 'no'})
+        self.assertEqual(GuideFeedback.objects.filter(user=self.owner, slug='first-job').count(), 1)
+        vote.refresh_from_db()
+        self.assertFalse(vote.helpful)
+
+    def test_bad_answer_and_unknown_slug_rejected(self):
+        r = self.client.post('/help/first-job/feedback/', {'helpful': 'maybe'})
+        self.assertEqual(r.status_code, 400)
+        r = self.client.post('/help/not-a-guide/feedback/', {'helpful': 'yes'})
+        self.assertEqual(r.status_code, 404)
+
+    def test_get_not_allowed(self):
+        r = self.client.get('/help/first-job/feedback/')
+        self.assertEqual(r.status_code, 405)
+
+    def test_anonymous_redirected(self):
+        anon = Client()
+        r = anon.post('/help/first-job/feedback/', {'helpful': 'yes'})
+        self.assertEqual(r.status_code, 302)
+
+    def test_guide_page_renders_feedback_widget(self):
+        r = self.client.get('/help/first-job/')
+        self.assertContains(r, 'Was this helpful?')
+
+
+@override_settings(**TEST_SETTINGS)
+class CustomerHelpPageTests(TestCase):
+    def setUp(self):
+        from core.models import Customer
+        from apps.customer_portal.models import CustomerUser
+
+        self.owner, self.tenant = make_tenant('Portal Help Shop', 'portal_help_owner')
+        self.customer = Customer.objects.create(tenant=self.tenant, name='Fleet Co')
+        self.portal_user = User.objects.create_user(
+            'portal_help_user', 'portal_help@test.com', 'testpass123',
+        )
+        CustomerUser.objects.create(user=self.portal_user, customer=self.customer)
+        self.client = Client()
+        self.client.force_login(self.portal_user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+
+    def test_customer_help_renders(self):
+        r = self.client.get('/app/help/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'How your portal works')
+        self.assertContains(r, 'Approving work')
+        self.assertContains(r, 'Invoices')
+
+    def test_anonymous_redirected(self):
+        anon = Client()
+        r = anon.get('/app/help/')
+        self.assertEqual(r.status_code, 302)
 
 
 @override_settings(**TEST_SETTINGS)
