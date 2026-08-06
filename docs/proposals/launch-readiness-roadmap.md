@@ -61,6 +61,12 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - **Contextual help from Settings:** each tab panel (general/team/billing/payments/reviews/warranty) opens with a small "Guides: …" link line to the relevant help pages.
 - Statements of account deliberately NOT mentioned in guides — the page exists but isn't linked from any UI (charter: never promise what doesn't exist). Candidate for a future nav link.
 
+### Phase 2 round 3 (Drake: "dismissed card came back on refresh — not the magic feel")
+- Root cause of the reappearing cards on Drake's machine: **stale browser-cached JS** — dev static files have no cache-busting, so his Chrome kept running the old ui.js/tours.js whose dismissals were cosmetic. (Reproduced exactly: a `--noreload` dev server ALSO serves stale templates — Django ≥4.1's cached template loader only invalidates via the autoreloader.)
+- Fix, three layers so a dismissal can NEVER visibly fail: (1) server record (cross-device), (2) **localStorage** in the browser (`rs-dismissed:<tenant>:<id>`, `rs-tour-seen:<slug>`) written at click/show time — a failed POST, stale script, or dropped network can't resurrect the element, (3) **resync on page load**: if the server renders something this browser already dismissed, it's removed instantly and the POST is re-sent until the server record heals.
+- `?v=N` cache-buster on ui.js/tours.js script tags (bump on behavior change; prod is already content-hashed via manifest storage).
+- Verified by sabotage test: dismiss all three, wipe the server records, refresh — nothing reappears, and the server records self-heal from the resync POSTs.
+
 ### Phase 2 deferred (stretch items not built)
 - Invoice-send + settings tours (only the two priority tours shipped).
 - Customer-portal help variant; contextual "?" links from settings sections.

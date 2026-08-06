@@ -44,6 +44,7 @@
             {% if intended_plan_name %}Upgrade to {{ intended_plan_name }}{% else %}Upgrade{% endif %}
         </a>
         <button type="button" data-dismiss-post="{% url 'dismiss_trial_banner' %}" data-dismiss-target="trialBanner"
+                data-dismiss-scope="{{ tenant.id }}"
                 class="text-gray-400 hover:text-gray-600 p-1" aria-label="Dismiss trial banner">
             <i class="fas fa-times text-xs"></i>
         </button>
@@ -216,6 +217,7 @@
                 </div>
             </div>
             <button type="button" data-dismiss-post="{% url 'dismiss_checklist' %}" data-dismiss-target="setupChecklist"
+                    data-dismiss-scope="{{ tenant.id }}"
                     class="text-gray-400 hover:text-gray-600 p-1" aria-label="Dismiss setup checklist" title="Hide this checklist">
                 <i class="fas fa-times text-xs"></i>
             </button>

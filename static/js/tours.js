@@ -125,6 +125,16 @@
         var def = TOURS[slug];
         if (!def || typeof window.driver === 'undefined' || !window.driver.js) return;
 
+        // Belt and braces: besides the server-side completion record, this
+        // browser remembers having shown the tour. If the completion POST
+        // ever fails, the tour still won't re-appear here — and we re-send
+        // the POST to heal the server record. ?tour=1 is a deliberate
+        // replay (from the help pages) and bypasses both records.
+        var seenKey = 'rs-tour-seen:' + slug;
+        var forced = new URLSearchParams(window.location.search).get('tour') === '1';
+        var seenHere = false;
+        try { seenHere = !!localStorage.getItem(seenKey); } catch (err) { /* private mode */ }
+
         // Drop steps whose target is missing or hidden (mobile hides some
         // desktop-only sections) — a popover pointing at nothing is worse
         // than a shorter tour.
@@ -138,11 +148,19 @@
         function markComplete() {
             if (reported) return;
             reported = true;
+            try { localStorage.setItem(seenKey, '1'); } catch (err) { /* private mode */ }
             fetch('/owner/tours/' + encodeURIComponent(slug) + '/complete/', {
                 method: 'POST',
                 headers: { 'X-CSRFToken': window.UI ? window.UI.csrfToken() : '' },
                 credentials: 'same-origin'
-            }).catch(function () { /* tour may re-offer next visit — harmless */ });
+            }).catch(function () { /* localStorage still suppresses it here */ });
+        }
+
+        if (seenHere && !forced) {
+            // Server rendered the tour but this browser already saw it —
+            // suppress and re-sync the server record.
+            markComplete();
+            return;
         }
 
         var tour = window.driver.js.driver({
