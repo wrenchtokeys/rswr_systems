@@ -1,0 +1,48 @@
+{% extends "base_app.html" %}
+
+{% block title %}Help | RS Systems{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">How can we help?</h1>
+        <p class="text-gray-500">Short, plain-language guides for everything you'll do in RS Systems.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {% for t in topics %}
+        <a href="{% url 'help_topic' t.slug %}" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
+            <div class="flex items-start gap-3.5">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
+                    {% if t.color == 'green' %}bg-green-100
+                    {% elif t.color == 'blue' %}bg-blue-100
+                    {% elif t.color == 'purple' %}bg-purple-100
+                    {% elif t.color == 'amber' %}bg-amber-100
+                    {% else %}bg-gray-100{% endif %}">
+                    <i class="{{ t.icon }} text-sm
+                        {% if t.color == 'green' %}text-green-600
+                        {% elif t.color == 'blue' %}text-blue-600
+                        {% elif t.color == 'purple' %}text-purple-600
+                        {% elif t.color == 'amber' %}text-amber-600
+                        {% else %}text-gray-600{% endif %}"></i>
+                </div>
+                <div class="min-w-0">
+                    <h2 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">{{ t.title }}</h2>
+                    <p class="text-xs text-gray-500 mt-1 leading-relaxed">{{ t.blurb }}</p>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="mt-8 rounded-xl bg-blue-50 border border-blue-200 p-5 flex items-start gap-3">
+        <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-envelope text-blue-600 text-sm"></i>
+        </div>
+        <div>
+            <p class="text-sm font-semibold text-gray-900">Still stuck?</p>
+            <p class="text-sm text-gray-600 mt-0.5">Email us at <a href="mailto:contact@rssystems.io" class="text-blue-600 hover:text-blue-800 font-medium">contact@rssystems.io</a> — a real person reads every message.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

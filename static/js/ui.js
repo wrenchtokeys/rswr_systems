@@ -19,6 +19,9 @@
  *             (.tab-btn); panels [data-tab-panel="name"]. Active button gets
  *             .tab-btn-active, other panels get `.hidden`; ?tab= is kept in the URL
  *             so server-side active_tab deep links keep working.
+ *   Dismiss:  <button data-dismiss-post="/url/" data-dismiss-target="elementId">
+ *             hides #elementId immediately and POSTs the URL so the dismissal
+ *             persists across page loads (trial banner, setup checklist).
  */
 (function () {
     'use strict';
@@ -300,12 +303,36 @@
         });
     });
 
+    // --- CSRF + persisted dismissals ------------------------------------------
+    function csrfToken() {
+        // Prefer the form input (always present via the logout form) — the
+        // csrftoken cookie is HttpOnly in production.
+        var input = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (input) return input.value;
+        var match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        return match ? match[1] : '';
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-dismiss-post]');
+        if (!btn) return;
+        e.preventDefault();
+        var target = document.getElementById(btn.getAttribute('data-dismiss-target'));
+        if (target) target.remove();
+        fetch(btn.getAttribute('data-dismiss-post'), {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken() },
+            credentials: 'same-origin'
+        }).catch(function () { /* dismissal just won't persist */ });
+    });
+
     // Expose for programmatic use
     window.UI = {
         openModal: openModal,
         closeModal: closeModal,
         toast: toast,
         flash: flash,
-        confirm: confirmDialog
+        confirm: confirmDialog,
+        csrfToken: csrfToken
     };
 })();

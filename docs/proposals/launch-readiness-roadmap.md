@@ -18,7 +18,7 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 | Phase | Scope | Status | Session date | Commits/PR |
 |-------|-------|--------|--------------|------------|
 | 1 | Conversion funnel & plans surfaces (landing, /pricing/, signup, login, My Plan) | **DEPLOYED to prod 2026-08-05** (PR #143 merged; prod plans re-seeded; live pricing + My Plan verified) | 2026-08-05 | PR #143 |
-| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | not started | | |
+| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | **BUILT 2026-08-05** — branch `feature/first-run-experience`, PR pending merge/deploy | 2026-08-05 | |
 | 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | not started | | |
 
 ## Decisions Log
@@ -31,6 +31,10 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - 2026-08-05: `/pricing/` kept as a standalone page (better ads landing target) and linked from landing nav.
 - 2026-08-05: Phase 2 will vendor driver.js v1.x (MIT, ~5 kB) for tours rather than hand-rolling.
 - 2026-08-05: Phase 2 creates `apps/support` (help pages Phase 2, contact model Phase 3) — keeps saas/views.py from growing.
+- 2026-08-05 (P2): "Your First Customer" added as a checklist item (`_setup_completion` gained `customers`; counts are now 7, or 8 with resin rules) — replaces the old dashboard-only `setup_steps` card so dashboard and Settings can never disagree.
+- 2026-08-05 (P2): Trial-banner dismissal is persisted BUT urgent states (expired / ≤7 days) re-surface the banner regardless — losing "trial ends Friday" to a week-old dismissal is worse than the nag.
+- 2026-08-05 (P2): Tours are owner/manager-gated and per-TENANT (tours_completed lives on OnboardingState); skip = complete, never re-nag. Two tours shipped: owner-dashboard, job-form.
+- 2026-08-05 (P2): Help pages live at /help/ (login required, owner + tech). "Still stuck?" box emails contact@rssystems.io — becomes the /help/contact/ form in Phase 3.
 
 ## Known Defects Being Fixed in Phase 1
 
@@ -40,6 +44,33 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - Signup: `novalidate` + only first error shown; no password rules up front; no phone; decorative plan choice (duplicate "undecided" options, no `?plan=` passthrough); render-not-redirect on success (refresh re-POSTs); `fail_silently=True` confirmation email; raw exception leak via SignupError; sitemap advertises `/register/` (404).
 
 ## State for Next Session
+
+### What's done (Phase 2, 2026-08-05 — branch `feature/first-run-experience`)
+- `OnboardingState` model (tenants migration 0022): OneToOne on Tenant, `get_for_tenant` lazy-create; `wizard_step`, `wizard_completed_at`, `checklist_dismissed_at`, `trial_banner_dismissed_at`, `tours_completed` JSONField.
+- Wizard persisted: `onboarding_view` reads/writes the model (session state removed); dashboard shows "Finish setting up (step N of 4) → Resume" only when started-and-abandoned (step 1–3, not completed) — existing shops at step 0 never see it. Progress bar got transition/scale polish.
+- Unified checklist: `_setup_checklist_items()` + `templates/components/setup_checklist_items.html` render the SAME item grid on dashboard and Settings; dashboard card has progress bar + persisted Dismiss. Old `setup_steps` context kept but always empty (CODE-110 tests still pass, one updated to the new mechanism).
+- Persisted dismiss endpoints: `/owner/checklist/dismiss/`, `/owner/trial-banner/dismiss/`, `/owner/tours/<slug>/complete/` (unknown slug 404s, slugs listed in `TOUR_SLUGS`). Generic `data-dismiss-post`/`data-dismiss-target` handler + `UI.csrfToken()` added to ui.js (reads the form input — csrftoken cookie is HttpOnly in prod).
+- Tours: driver.js v1.3.6 vendored (`static/js/vendor/driver.iife.js`, CSS in a marked block in input.css + brand overrides); `static/js/tours.js` auto-starts off server-injected `data-tour` attr, filters hidden/missing anchors, POSTs completion on destroy. Tours: owner-dashboard (7 steps), job-form (6 steps).
+- `apps/support`: registered in base.py, `/help/` URLs; 5 guide pages from USER_FLOWS/MULTI_BREAK content + index; `components/video_slot.html` "coming soon" placeholders; Help link in #app-dropdown + mobile nav (owners AND techs).
+- Tests: `tests/test_first_run.py` (22 tests) all green; regression run green (test_step3_signup, test_e2e_today, test_primary_contact, test_owner_setup, test_code110, test_signup_ux — 131 tests).
+- Verified in browser (fresh tenant): tour auto-starts → skip → never returns; both dismissals survive reload; resume banner correct; help pages render; Settings/dashboard checklists identical. `build_css.sh` run, app.css committed.
+
+### Phase 2 deferred (stretch items not built)
+- Invoice-send + settings tours (only the two priority tours shipped).
+- Customer-portal help variant; contextual "?" links from settings sections.
+- Empty-state component rollout + first-job/first-invoice celebration moments.
+
+### Phase 2 gotchas
+- `_setup_completion` gained a `customers` key and the counts changed (6 → 7/8). Anything hardcoding "/6" is wrong (dashboard template updated).
+- Owner-dashboard trial banner id stays `trialBanner`; dismissal is server-persisted now — don't reintroduce `display:none`.
+- Local Postgres was down again — scratch cluster recipe (memory `test-suite-debt-and-local-postgres`) works; cluster left running on 5432 from this session's scratchpad dir.
+
+### Phase 2 test command
+```bash
+export LOCAL_DATABASE_URL="postgresql://amelia_test:AmeliaTest2026!@localhost:5432/rs_systems_test"
+export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
+python manage.py test tests.test_first_run tests.test_step3_signup tests.test_e2e_today -v 1 --noinput
+```
 
 ### What's done (Phase 1, 2026-08-05)
 - `templates/components/plan_card.html` — the ONLY plan-card renderer; consumed by landing #pricing, /pricing/, and My Plan. Benefit-first copy, no MB/API jargon, consistent CTAs ("Start Free Trial" public / "Choose <Plan>" signed in), hover-lift polish.

@@ -146,8 +146,12 @@ class SetupBannerDefaultPricingTest(TestCase):
 
     def test_business_info_step_still_shows_when_missing(self):
         """
-        If business_phone or business_email is blank, the banner should still show
-        the 'Add your business info' step — this must not be broken by the fix.
+        If business_phone or business_email is blank, the dashboard must still
+        nag about business info — this must not be broken by the fix.
+
+        (Phase 2, launch readiness: the old setup_steps card was replaced by
+        the unified checklist_items list shared with Settings, so the nag now
+        lives there as a 'Business Info' item in 'todo' state.)
         """
         self.tenant.business_phone = ''
         self.tenant.save(update_fields=['business_phone'])
@@ -155,10 +159,9 @@ class SetupBannerDefaultPricingTest(TestCase):
         response = self.client.get('/owner/')
         self.assertEqual(response.status_code, 200)
 
-        setup_steps = response.context.get('setup_steps', [])
-        labels = [s.get('label', '') for s in setup_steps]
-        self.assertIn(
-            'Add your business info',
-            labels,
-            msg=f'Business info step should appear when phone is blank. Got steps: {labels}',
+        items = {i['label']: i['status'] for i in response.context['checklist_items']}
+        self.assertEqual(
+            items.get('Business Info'),
+            'todo',
+            msg=f'Business Info item should be todo when phone is blank. Got items: {items}',
         )

@@ -29,38 +29,7 @@
             <i class="fas fa-chevron-down text-xs text-gray-400"></i>
         </span>
     </summary>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 divide-gray-100">
-        <a href="?tab=general" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Business Info</span>
-            {% if completion.business_info %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
-        </a>
-        <a href="?tab=team&amp;invite=1" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Your Team</span>
-            {% if completion.team %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Just you so far</span>{% endif %}
-        </a>
-        <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Job Prices</span>
-            {% if completion.pricing_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
-        </a>
-        <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Sales Tax</span>
-            {% if completion.tax %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
-        </a>
-        <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Invoicing</span>
-            {% if completion.billing_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
-        </a>
-        {% if tenant.offers_repairs %}
-        <a href="{% url 'manage_viscosity_rules' %}" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Repair Resin Rules</span>
-            {% if completion.viscosity %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
-        </a>
-        {% endif %}
-        <a href="?tab=general" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Job Assignment</span>
-            {% if completion.assignment_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
-        </a>
-    </div>
+    {% include "components/setup_checklist_items.html" %}
 </details>
 
 <!-- Tabs -->

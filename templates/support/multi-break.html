@@ -1,0 +1,49 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">When to use it</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">One windshield, more than one break — three chips on unit 1001, a crack plus a star break, damage found walking a lot. (Different vehicles? Log separate jobs instead.)</p>
+            <a href="{% url 'create_multi_break_repair' %}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open multi-break entry <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Fill in the shared info once</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Customer, unit number, date — entered once for the whole session. A pricing preview appears as soon as customer and unit are set, so you can quote the total before you start.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Add each break</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Tap <strong>Add Break</strong> for every damage point: damage type, optional photos (your phone camera works right in the form), temperature and resin notes if you track them. Each break shows as a card you can review before saving.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Pricing steps down automatically</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">With progressive pricing on, break #1 bills at your first-repair price, #2 at your second, and so on — the same discount your fleet customers expect, applied without any math. All breaks save together and invoice as one line-itemed job.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Photos can wait.</strong> Missing before/after photos are flagged on each break's card — you can add them later from the job's detail page.</p>
+</div>
+{% endblock %}

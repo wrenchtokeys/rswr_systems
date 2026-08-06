@@ -20,7 +20,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import models, transaction
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.encoding import force_bytes
@@ -32,7 +32,7 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
-from apps.tenants.models import InviteToken, SubscriptionPlan, Tenant, TenantMembership
+from apps.tenants.models import InviteToken, OnboardingState, SubscriptionPlan, Tenant, TenantMembership
 from apps.tenants.services.usage_service import UsageService
 from apps.tenants.services.subscription_service import SubscriptionService, SubscriptionError
 from apps.tenants.services.signup_service import create_tenant_with_owner, SignupError
@@ -373,6 +373,14 @@ def privacy_policy(request):
 # 3. Onboarding wizard
 # ------------------------------------------------------------------
 
+def _mark_wizard_complete(state):
+    """Mark the onboarding wizard finished (idempotent)."""
+    state.wizard_step = 4
+    if state.wizard_completed_at is None:
+        state.wizard_completed_at = timezone.now()
+    state.save(update_fields=['wizard_step', 'wizard_completed_at', 'updated_at'])
+
+
 @login_required
 def onboarding_view(request):
     """Multi-step onboarding wizard."""
@@ -382,16 +390,33 @@ def onboarding_view(request):
         from common.auth import redirect_to_portal
         return redirect_to_portal(request.user)
 
-    # Determine current step from GET param or session
-    step = request.GET.get('step', request.session.get('onboarding_step', '1'))
-    step = str(step)
+    # Wizard progress lives on OnboardingState (not the session) so an owner
+    # who bails at step 2 can resume from any device/login. (Phase 2, launch
+    # readiness roadmap.)
+    state = OnboardingState.get_for_tenant(tenant)
+
+    def _persist_step(n):
+        state.wizard_step = n
+        state.save(update_fields=['wizard_step', 'updated_at'])
+
+    # Determine current step: explicit GET param wins, else resume where the
+    # wizard left off. wizard_step=0 means never started → step 1.
+    default_step = str(state.wizard_step) if 1 <= state.wizard_step <= 4 else '1'
+    step = str(request.GET.get('step', default_step))
+    if step not in ('1', '2', '3', '4'):
+        step = '1'
+
+    # Record that the wizard has been started (0 → 1) so the dashboard can
+    # offer a "finish setting up" resume link if the owner bails.
+    if state.wizard_step < 1:
+        _persist_step(1)
 
     if request.method == 'POST':
         action = request.POST.get('action', '')
 
         if action == 'skip':
             next_step = str(int(step) + 1)
-            request.session['onboarding_step'] = next_step
+            _persist_step(int(next_step))
             return redirect(f'/onboarding/?step={next_step}')
 
         if step == '1':
@@ -408,7 +433,7 @@ def onboarding_view(request):
                     tenant.logo = cd['logo']
                 tenant.save()
                 messages.success(request, 'Business info saved!')
-                request.session['onboarding_step'] = '2'
+                _persist_step(2)
                 return redirect('/onboarding/?step=2')
 
         elif step == '2':
@@ -511,7 +536,7 @@ def onboarding_view(request):
                     messages.error(request, f'Could not add technician: {e}')
 
                 # Only advance on valid form
-                request.session['onboarding_step'] = '3'
+                _persist_step(3)
                 return redirect('/onboarding/?step=3')
             # Invalid form — stay on step 2 (fall through to GET handler)
 
@@ -538,18 +563,18 @@ def onboarding_view(request):
                     messages.error(request, f'Could not add customer: {e}')
 
                 # Only advance on valid form
-                request.session['onboarding_step'] = '4'
+                _persist_step(4)
                 return redirect('/onboarding/?step=4')
             # Invalid form — stay on step 3 (fall through to GET handler)
 
         elif step == '4':
-            # Done — clear onboarding state
-            request.session.pop('onboarding_step', None)
+            # Done
+            _mark_wizard_complete(state)
             return redirect('owner_dashboard')
 
     # Step 4 GET = onboarding complete — redirect straight to dashboard
     if step == '4':
-        request.session.pop('onboarding_step', None)
+        _mark_wizard_complete(state)
         messages.success(request, "Setup complete! Welcome to your dashboard.")
         return redirect('owner_dashboard')
 
@@ -723,37 +748,18 @@ def owner_dashboard(request):
     # Billing summary
     billing_context = _get_billing_context(tenant)
 
-    # Setup checklist for new users
+    # Setup checklist — one shared item list drives this card and the
+    # settings-page card (Phase 2, launch readiness roadmap). The old
+    # setup_steps context is kept (empty) for template/test compatibility.
     setup_steps = []
-    has_customers = Customer.objects.filter(tenant=tenant).exists()
-    has_business_info = bool(tenant.business_phone and tenant.business_email)
-
-    if not has_business_info:
-        setup_steps.append({
-            'label': 'Add your business details',
-            'desc': 'Contact info shown on your invoices',
-            'url': '/owner/settings/?tab=general',
-            'icon': 'fas fa-building',
-        })
-    # NOTE: Pricing step intentionally removed. _setup_completion() treats pricing
-    # as always configured (sensible defaults exist), and checking for default values
-    # is ambiguous — a shop owner may legitimately charge $50 per repair.
-    # The "Finish setting up your shop" banner was persisting even after full setup
-    # because pricing_is_default was True even for correctly configured shops. (CODE-110)
-    # Tax step intentionally removed from setup checklist — tax is optional
-    # and many shops don't charge tax. Owners can configure it in Settings → Billing.
-    if not has_customers:
-        setup_steps.append({
-            'label': 'Add your first customer',
-            'desc': 'Fleet accounts, retail, or walk-in',
-            'url': '/tech/customers/create/',
-            'icon': 'fas fa-users',
-        })
-    # NOTE: "Add a technician" step removed — signup auto-creates the owner as
-    # an active technician, so the step could never fire. (Phase 1, launch
-    # readiness roadmap.)
-
     setup_completion = _setup_completion(tenant)
+    checklist_items = _setup_checklist_items(tenant, setup_completion)
+
+    # First-run state: wizard resume link, persisted dismissals, tours.
+    onboarding_state = OnboardingState.get_for_tenant(tenant)
+    wizard_resume_step = None
+    if not onboarding_state.wizard_completed and 1 <= onboarding_state.wizard_step <= 3:
+        wizard_resume_step = onboarding_state.wizard_step
 
     # Tax setup banner: shown until the owner explicitly answers the
     # sales-tax question (billing_config.tax_configured).
@@ -780,12 +786,74 @@ def owner_dashboard(request):
         'is_trial_expired': tenant.is_trial_expired,
         'setup_steps': setup_steps,
         'setup_completion': setup_completion,
+        'checklist_items': checklist_items,
+        'checklist_dismissed': onboarding_state.checklist_dismissed_at is not None,
+        'trial_banner_dismissed': onboarding_state.trial_banner_dismissed_at is not None,
+        'wizard_resume_step': wizard_resume_step,
+        'tour_slug': (
+            'owner-dashboard'
+            if not onboarding_state.has_completed_tour('owner-dashboard')
+            else ''
+        ),
         'intended_plan': tenant.intended_plan,
         'intended_plan_name': intended_plan_name,
         'billing_config': billing_config,
     }
     context.update(billing_context)
     return render(request, 'saas/owner_dashboard.html', context)
+
+
+# ------------------------------------------------------------------
+# 4b. First-run state endpoints (Phase 2, launch readiness roadmap)
+# ------------------------------------------------------------------
+
+# Tours that exist in static/js/tours.js. Slugs not listed here 404 —
+# adding a tour means adding it in both places.
+TOUR_SLUGS = ('owner-dashboard', 'job-form')
+
+
+@owner_or_manager_required
+@require_POST
+def dismiss_checklist(request):
+    """POST /owner/checklist/dismiss/ — permanently hide the dashboard setup checklist."""
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+    state = OnboardingState.get_for_tenant(tenant)
+    state.checklist_dismissed_at = timezone.now()
+    state.save(update_fields=['checklist_dismissed_at', 'updated_at'])
+    return JsonResponse({'success': True})
+
+
+@owner_or_manager_required
+@require_POST
+def dismiss_trial_banner(request):
+    """POST /owner/trial-banner/dismiss/ — hide the informational trial banner.
+
+    Urgent states (trial expired / ≤7 days left) re-surface it regardless —
+    see the template condition in owner_dashboard.html.
+    """
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+    state = OnboardingState.get_for_tenant(tenant)
+    state.trial_banner_dismissed_at = timezone.now()
+    state.save(update_fields=['trial_banner_dismissed_at', 'updated_at'])
+    return JsonResponse({'success': True})
+
+
+@owner_or_manager_required
+@require_POST
+def complete_tour(request, slug):
+    """POST /owner/tours/<slug>/complete/ — mark a tour done (skip = done, never re-nag)."""
+    if slug not in TOUR_SLUGS:
+        raise Http404('Unknown tour')
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop found.'}, status=403)
+    state = OnboardingState.get_for_tenant(tenant)
+    state.mark_tour_completed(slug)
+    return JsonResponse({'success': True})
 
 
 # ------------------------------------------------------------------
@@ -2015,6 +2083,8 @@ def owner_settings_view(request):
         .order_by('applies_to', 'name')
     )
 
+    completion = _setup_completion(tenant)
+
     # Whether the logged-in owner/manager is themselves an active technician
     # for THIS tenant — drives the "Add myself as a technician" callout.
     # Cross-tenant records don't count, but block creating a second one
@@ -2055,7 +2125,8 @@ def owner_settings_view(request):
         'warranty_policies': warranty_policies,
         'warranty_applies_to_choices': WarrantyPolicy.APPLIES_TO_CHOICES,
         'warranty_duration_type_choices': WarrantyPolicy.WARRANTY_DURATION_CHOICES,
-        'completion': _setup_completion(tenant),
+        'completion': completion,
+        'checklist_items': _setup_checklist_items(tenant, completion),
         'fee_presets': fee_presets,
     }
 
@@ -3968,6 +4039,7 @@ def _setup_completion(tenant):
         billing_config = None
 
     has_business_info = bool(tenant.business_phone and tenant.business_email)
+    has_customers = Customer.objects.filter(tenant=tenant).exists()
     # "Set up" means the owner explicitly answered the sales-tax question —
     # charging nothing is a perfectly valid answer.
     has_tax = bool(billing_config and billing_config.tax_configured)
@@ -3987,7 +4059,7 @@ def _setup_completion(tenant):
 
     # Items shown in the checklist card; resin rules hidden for shops
     # that don't do repairs.
-    items = [has_business_info, True, has_tax, has_billing, True, has_team]
+    items = [has_business_info, has_customers, True, has_tax, has_billing, True, has_team]
     if tenant.offers_repairs:
         items.append(has_viscosity)
 
@@ -4011,6 +4083,7 @@ def _setup_completion(tenant):
 
     return {
         'business_info': has_business_info,
+        'customers': has_customers,
         'pricing': True,  # always has defaults
         'pricing_defaulted': pricing_defaulted,
         'tax': has_tax,
@@ -4027,6 +4100,43 @@ def _setup_completion(tenant):
         'configured_count': sum(items),
         'total_count': len(items),
     }
+
+
+def _setup_checklist_items(tenant, completion):
+    """
+    The ONE itemized setup checklist, rendered on both the owner dashboard
+    and the settings page (components/setup_checklist_items.html) so the two
+    surfaces can never disagree.
+
+    Each item: label, url, status ('done' | 'defaulted' | 'todo'), todo_label.
+    """
+    settings_url = reverse('owner_settings')
+
+    def item(label, url, status, todo_label='Not set up'):
+        return {'label': label, 'url': url, 'status': status, 'todo_label': todo_label}
+
+    items = [
+        item('Business Info', f'{settings_url}?tab=general',
+             'done' if completion['business_info'] else 'todo'),
+        item('Your First Customer', reverse('create_customer'),
+             'done' if completion['customers'] else 'todo',
+             'Add one to get started'),
+        item('Your Team', f'{settings_url}?tab=team&invite=1',
+             'done' if completion['team'] else 'todo',
+             'Just you so far'),
+        item('Job Prices', f'{settings_url}?tab=billing',
+             'defaulted' if completion['pricing_defaulted'] else 'done'),
+        item('Sales Tax', f'{settings_url}?tab=billing',
+             'done' if completion['tax'] else 'todo'),
+        item('Invoicing', f'{settings_url}?tab=billing',
+             'defaulted' if completion['billing_defaulted'] else 'done'),
+    ]
+    if tenant.offers_repairs:
+        items.append(item('Repair Resin Rules', reverse('manage_viscosity_rules'),
+                          'done' if completion['viscosity'] else 'todo'))
+    items.append(item('Job Assignment', f'{settings_url}?tab=general',
+                      'defaulted' if completion['assignment_defaulted'] else 'done'))
+    return items
 
 
 @owner_or_manager_required

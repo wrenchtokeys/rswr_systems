@@ -9,8 +9,8 @@
         <div class="flex items-center justify-between mb-2">
             {% for s in "1234" %}
             <div class="flex items-center {% if not forloop.last %}flex-1{% endif %}">
-                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
-                    {% if s == step %}bg-blue-600 text-white ring-4 ring-blue-100
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300
+                    {% if s == step %}bg-blue-600 text-white ring-4 ring-blue-100 scale-110
                     {% elif s < step %}bg-green-500 text-white
                     {% else %}bg-gray-200 text-gray-500{% endif %}">
                     {% if s < step %}
@@ -20,7 +20,7 @@
                     {% endif %}
                 </div>
                 {% if not forloop.last %}
-                <div class="flex-1 h-1 mx-2 rounded {% if s < step %}bg-green-500{% else %}bg-gray-200{% endif %}"></div>
+                <div class="flex-1 h-1 mx-2 rounded transition-colors duration-500 {% if s < step %}bg-green-500{% else %}bg-gray-200{% endif %}"></div>
                 {% endif %}
             </div>
             {% endfor %}

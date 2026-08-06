@@ -503,3 +503,54 @@ class InviteToken(models.Model):
         if not self.expires_at:
             self.expires_at = timezone.now() + timedelta(days=7)
         super().save(*args, **kwargs)
+
+
+class OnboardingState(models.Model):
+    """
+    Per-tenant first-run state: wizard progress, checklist/banner dismissals,
+    and which interactive tours have been completed.
+
+    Fetch via OnboardingState.get_for_tenant(tenant) — lazy-created like
+    BillingConfig. Session state is deliberately NOT used here: the wizard
+    must be resumable across logins and devices.
+    """
+
+    tenant = models.OneToOneField(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name='onboarding_state',
+    )
+    # 1-based wizard step the owner should resume at; 0 means never started.
+    wizard_step = models.PositiveSmallIntegerField(default=0)
+    wizard_completed_at = models.DateTimeField(null=True, blank=True)
+    checklist_dismissed_at = models.DateTimeField(null=True, blank=True)
+    trial_banner_dismissed_at = models.DateTimeField(null=True, blank=True)
+    # {"<tour-slug>": "<ISO timestamp>"} — skipping counts as completing,
+    # so a tour never re-nags. New tours need no migration.
+    tours_completed = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Onboarding State'
+        verbose_name_plural = 'Onboarding States'
+
+    def __str__(self):
+        return f"Onboarding state for {self.tenant.name}"
+
+    @classmethod
+    def get_for_tenant(cls, tenant):
+        """Get (or create with defaults) the OnboardingState for this tenant."""
+        instance, _ = cls.objects.get_or_create(tenant=tenant)
+        return instance
+
+    @property
+    def wizard_completed(self):
+        return self.wizard_completed_at is not None
+
+    def mark_tour_completed(self, slug):
+        self.tours_completed[slug] = timezone.now().isoformat()
+        self.save(update_fields=['tours_completed', 'updated_at'])
+
+    def has_completed_tour(self, slug):
+        return slug in self.tours_completed

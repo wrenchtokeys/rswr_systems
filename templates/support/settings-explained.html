@@ -1,0 +1,38 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <h2 class="text-sm font-semibold text-gray-900 mb-1"><i class="fas fa-store text-gray-400 mr-2"></i>My Shop</h2>
+    <p class="text-sm text-gray-600 leading-relaxed">Your business name, phone, email, address, logo, and brand color — this is what customers see on invoices, emails, and their portal. It's also where job assignment lives: who gets new work automatically (primary tech first, balanced, round-robin, or manual).</p>
+</div>
+
+<div class="card p-5">
+    <h2 class="text-sm font-semibold text-gray-900 mb-1"><i class="fas fa-users text-gray-400 mr-2"></i>My Team</h2>
+    <p class="text-sm text-gray-600 leading-relaxed">Invite technicians and managers by email. Each tech has two switches — <strong>does repairs</strong> and <strong>does replacements</strong> — that control which jobs they can be assigned. Managers can run the day-to-day but can't touch billing.</p>
+</div>
+
+<div class="card p-5">
+    <h2 class="text-sm font-semibold text-gray-900 mb-1"><i class="fas fa-file-invoice-dollar text-gray-400 mr-2"></i>Pricing &amp; Invoicing</h2>
+    <p class="text-sm text-gray-600 leading-relaxed">Set your repair prices — one flat price, or progressive pricing that steps down for multiple repairs on the same unit ($50 → $40 → $35…). Answer the sales-tax question once and every job calculates it for you. Invoice numbering, payment terms, overdue reminders, and batch invoicing for fleets all live here too.</p>
+</div>
+
+<div class="card p-5">
+    <h2 class="text-sm font-semibold text-gray-900 mb-1"><i class="fas fa-credit-card text-gray-400 mr-2"></i>Card Payments</h2>
+    <p class="text-sm text-gray-600 leading-relaxed">Connect a Stripe account and every invoice email gets a <strong>Pay Now</strong> button. Money goes straight to your bank — RS Systems never holds your funds.</p>
+</div>
+
+<div class="card p-5">
+    <h2 class="text-sm font-semibold text-gray-900 mb-1"><i class="fas fa-shield-alt text-gray-400 mr-2"></i>Warranty &amp; Reviews</h2>
+    <p class="text-sm text-gray-600 leading-relaxed">Warranty sets the promise printed on invoices for repairs and replacements. Reviews sends a polite "how'd we do?" email with your Google review link after completed jobs — set it and forget it.</p>
+</div>
+
+<div class="card p-5">
+    <h2 class="text-sm font-semibold text-gray-900 mb-1"><i class="fas fa-gift text-gray-400 mr-2"></i>Loyalty</h2>
+    <p class="text-sm text-gray-600 leading-relaxed">The Loyalty page (top nav) runs your points program: earning rate, reward options, and referral bonuses. Points belong to the customer's company, so everyone there sees one shared balance.</p>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Defaults are safe.</strong> Anything marked "Using standard defaults" on the checklist works out of the box — you're never blocked on a setting to start logging jobs.</p>
+</div>
+{% endblock %}

@@ -33,6 +33,11 @@ urlpatterns = [
 
     # Owner dashboard & billing
     path('owner/', views.owner_dashboard, name='owner_dashboard'),
+
+    # First-run state (Phase 2, launch readiness roadmap)
+    path('owner/checklist/dismiss/', views.dismiss_checklist, name='dismiss_checklist'),
+    path('owner/trial-banner/dismiss/', views.dismiss_trial_banner, name='dismiss_trial_banner'),
+    path('owner/tours/<slug:slug>/complete/', views.complete_tour, name='complete_tour'),
     path('owner/billing/', views.billing_view, name='billing_settings'),
     path('owner/billing/update/', views.billing_update_plan, name='billing_update_plan'),
     path('owner/billing/cancel/', views.billing_cancel, name='billing_cancel'),

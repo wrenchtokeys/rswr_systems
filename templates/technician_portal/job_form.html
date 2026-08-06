@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50 pb-24 md:pb-8">
+<div class="min-h-screen bg-gray-50 pb-24 md:pb-8"{% if tour_slug %} data-tour="{{ tour_slug }}"{% endif %}>
     <div class="max-w-xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
 
         <div class="mb-6">

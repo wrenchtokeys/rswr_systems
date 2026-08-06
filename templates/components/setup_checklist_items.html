@@ -1,0 +1,19 @@
+{% comment %}
+Shared setup-checklist item grid — the ONE renderer for the setup checklist,
+used by both the owner dashboard card and Settings → "Configure Your Shop".
+Context: checklist_items — list from apps.saas.views._setup_checklist_items.
+{% endcomment %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 divide-gray-100">
+    {% for item in checklist_items %}
+    <a href="{{ item.url }}" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
+        <span class="text-sm text-gray-700">{{ item.label }}</span>
+        {% if item.status == 'done' %}
+        <span class="badge-green">Configured</span>
+        {% elif item.status == 'defaulted' %}
+        <span class="badge-gray">Using standard defaults</span>
+        {% else %}
+        <span class="badge-gray">{{ item.todo_label }}</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
