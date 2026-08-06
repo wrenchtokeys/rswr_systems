@@ -1688,7 +1688,7 @@ def request_replacement(request):
 
     Replacements are one-vehicle jobs, so this is a simple single-form flow
     (no multi-unit batching like repairs). The customer supplies the vehicle,
-    which glass, and what happened; the shop confirms the exact glass and
+    and which glass; the shop confirms the exact glass and
     sets parts/labor pricing after reviewing the request.
     """
     try:
