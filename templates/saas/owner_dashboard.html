@@ -3,12 +3,14 @@
 {% block title %}Dashboard | {{ tenant.name }} | RS Systems{% endblock %}
 
 {% block content %}
-<div class="pb-24 sm:pb-8">
+<div class="pb-24 sm:pb-8"{% if tour_slug %} data-tour="{{ tour_slug }}"{% endif %}>
 
 {% include "includes/tax_setup_banner.html" %}
 
-<!-- Trial Banner -->
-{% if is_trial %}
+<!-- Trial Banner. Dismissal persists on OnboardingState, but urgent states
+     (expired / final week) re-surface it — losing "your trial ends Friday"
+     to a week-old dismissal would be worse than the nag. -->
+{% if is_trial and not trial_banner_dismissed or is_trial and is_trial_expired or is_trial and trial_days_remaining <= 7 %}
 <div class="mb-5 p-3.5 rounded-xl flex items-center justify-between gap-3
     {% if is_trial_expired %}bg-red-50 border border-red-200
     {% elif trial_days_remaining <= 7 %}bg-amber-50 border border-amber-200
@@ -41,7 +43,9 @@
         <a href="{% url 'billing_settings' %}{% if intended_plan %}?plan={{ intended_plan }}{% endif %}" class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
             {% if intended_plan_name %}Upgrade to {{ intended_plan_name }}{% else %}Upgrade{% endif %}
         </a>
-        <button onclick="document.getElementById('trialBanner').style.display='none'" class="text-gray-400 hover:text-gray-600 p-1">
+        <button type="button" data-dismiss-post="{% url 'dismiss_trial_banner' %}" data-dismiss-target="trialBanner"
+                data-dismiss-scope="{{ tenant.id }}"
+                class="text-gray-400 hover:text-gray-600 p-1" aria-label="Dismiss trial banner">
             <i class="fas fa-times text-xs"></i>
         </button>
     </div>
@@ -55,7 +59,7 @@
 </div>
 
 <!-- Revenue Card — BIG number -->
-<div class="bg-gradient-to-br from-green-600 to-green-800 rounded-2xl p-5 sm:p-6 text-white mb-6 shadow-lg">
+<div class="bg-gradient-to-br from-green-600 to-green-800 rounded-2xl p-5 sm:p-6 text-white mb-6 shadow-lg" data-tour-step="revenue">
     <div class="text-green-200 text-sm font-medium mb-1">Revenue This Month</div>
     <div class="text-4xl sm:text-5xl font-extrabold tracking-tight">${{ total_revenue|floatformat:2 }}</div>
     {% if shop_offers_repairs and shop_offers_replacements %}
@@ -91,7 +95,7 @@
 {% endif %}
 
 <!-- Stats + Billing — Combined compact grid -->
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" data-tour-step="stats">
     <!-- Jobs (usage counts repairs + replacements this month).
          Plan-limit bars only appear when a limit is actually getting close
          (>=70%) — a green quota bar on every tile was noise. -->
@@ -157,7 +161,7 @@
 </div>
 
 <!-- Desktop Quick Actions — up top where they're reachable (mobile uses the FAB) -->
-<div class="hidden sm:flex items-center gap-3 mb-6">
+<div class="hidden sm:flex items-center gap-3 mb-6" data-tour-step="quick-actions">
     {% if shop_offers_repairs %}
     <a href="{% url 'job_create' %}?type=repair" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-green-300 hover:shadow-md transition-all">
         <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-green-600 text-xs"></i></div>
@@ -180,54 +184,54 @@
     </a>
 </div>
 
-<!-- Setup Progress (only if incomplete) -->
-{% if setup_completion and not setup_completion.critical_complete %}
-<div class="mb-6 bg-white border border-blue-200 rounded-xl p-4">
-    <div class="flex items-center justify-between gap-3 mb-3">
-        <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <i class="fas fa-wrench text-blue-600 text-sm"></i>
-            </div>
-            <div>
-                <span class="text-sm font-semibold text-gray-900">{{ setup_completion.configured_count }}/6 configured</span>
-                <span class="text-xs text-gray-500 ml-1.5 hidden sm:inline">— Finish setting up your shop</span>
-            </div>
+<!-- Resume the setup wizard (only if started and abandoned) -->
+{% if wizard_resume_step %}
+<div class="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-3" id="wizardResumeBanner">
+    <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-magic text-blue-600 text-sm"></i>
         </div>
-        <a href="{% url 'owner_settings' %}" class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-            Continue <i class="fas fa-arrow-right text-xs ml-1"></i>
-        </a>
+        <div class="min-w-0">
+            <span class="text-sm font-semibold text-gray-900">Finish setting up (step {{ wizard_resume_step }} of 4)</span>
+            <span class="text-xs text-gray-500 ml-1.5 hidden sm:inline">— pick up right where you left off</span>
+        </div>
     </div>
-    <div class="w-full bg-gray-100 rounded-full h-2">
-        <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: {% widthratio setup_completion.configured_count 6 100 %}%"></div>
-    </div>
+    <a href="/onboarding/?step={{ wizard_resume_step }}" class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0">
+        Resume <i class="fas fa-arrow-right text-xs ml-1"></i>
+    </a>
 </div>
-{% elif setup_steps %}
-<div class="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-    <div class="flex items-center gap-2.5 mb-3">
-        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-            <i class="fas fa-clipboard-check text-blue-600 text-sm"></i>
+{% endif %}
+
+<!-- Setup checklist (shared items with Settings; hidden once complete or dismissed) -->
+{% if setup_completion and not setup_completion.all_complete and not checklist_dismissed %}
+<div class="mb-6 bg-white border border-blue-200 rounded-xl overflow-hidden" id="setupChecklist" data-tour-step="checklist">
+    <div class="p-4 pb-0">
+        <div class="flex items-center justify-between gap-3 mb-3">
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-wrench text-blue-600 text-sm"></i>
+                </div>
+                <div>
+                    <span class="text-sm font-semibold text-gray-900">{{ setup_completion.configured_count }}/{{ setup_completion.total_count }} configured</span>
+                    <span class="text-xs text-gray-500 ml-1.5 hidden sm:inline">— Finish setting up your shop</span>
+                </div>
+            </div>
+            <button type="button" data-dismiss-post="{% url 'dismiss_checklist' %}" data-dismiss-target="setupChecklist"
+                    data-dismiss-scope="{{ tenant.id }}"
+                    class="text-gray-400 hover:text-gray-600 p-1" aria-label="Dismiss setup checklist" title="Hide this checklist">
+                <i class="fas fa-times text-xs"></i>
+            </button>
         </div>
-        <span class="text-sm font-semibold text-gray-900">Finish setting up your shop</span>
+        <div class="w-full bg-gray-100 rounded-full h-2">
+            <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: {% widthratio setup_completion.configured_count setup_completion.total_count 100 %}%"></div>
+        </div>
     </div>
-    <div class="space-y-2">
-        {% for step in setup_steps %}
-        <a href="{{ step.url }}" class="flex items-center gap-3 p-2.5 bg-white rounded-lg border border-blue-100 hover:border-blue-300 hover:shadow-sm transition-all group">
-            <div class="w-7 h-7 bg-blue-50 rounded-full flex items-center justify-center group-hover:bg-blue-100 transition-colors flex-shrink-0">
-                <i class="{{ step.icon }} text-blue-500 text-xs"></i>
-            </div>
-            <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-900">{{ step.label }}</p>
-                <p class="text-xs text-gray-500 truncate">{{ step.desc }}</p>
-            </div>
-            <i class="fas fa-chevron-right text-gray-300 group-hover:text-blue-400 text-xs transition-colors"></i>
-        </a>
-        {% endfor %}
-    </div>
+    {% include "components/setup_checklist_items.html" %}
 </div>
 {% endif %}
 
 <!-- Recent Activity Timeline -->
-<div class="bg-white rounded-xl border border-gray-200">
+<div class="bg-white rounded-xl border border-gray-200" data-tour-step="recent-activity">
     <div class="px-4 sm:px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
         <h2 class="text-sm font-semibold text-gray-900">Recent Activity</h2>
         <a href="{% url 'job_list' %}" class="text-xs font-medium text-blue-600 hover:text-blue-800">View all →</a>

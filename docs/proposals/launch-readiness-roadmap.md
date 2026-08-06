@@ -18,7 +18,7 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 | Phase | Scope | Status | Session date | Commits/PR |
 |-------|-------|--------|--------------|------------|
 | 1 | Conversion funnel & plans surfaces (landing, /pricing/, signup, login, My Plan) | **DEPLOYED to prod 2026-08-05** (PR #143 merged; prod plans re-seeded; live pricing + My Plan verified) | 2026-08-05 | PR #143 |
-| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | not started | | |
+| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | **BUILT 2026-08-05** — PR #144 open, pending merge/deploy | 2026-08-05 | PR #144 |
 | 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | not started | | |
 
 ## Decisions Log
@@ -31,6 +31,10 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - 2026-08-05: `/pricing/` kept as a standalone page (better ads landing target) and linked from landing nav.
 - 2026-08-05: Phase 2 will vendor driver.js v1.x (MIT, ~5 kB) for tours rather than hand-rolling.
 - 2026-08-05: Phase 2 creates `apps/support` (help pages Phase 2, contact model Phase 3) — keeps saas/views.py from growing.
+- 2026-08-05 (P2): "Your First Customer" added as a checklist item (`_setup_completion` gained `customers`; counts are now 7, or 8 with resin rules) — replaces the old dashboard-only `setup_steps` card so dashboard and Settings can never disagree.
+- 2026-08-05 (P2): Trial-banner dismissal is persisted BUT urgent states (expired / ≤7 days) re-surface the banner regardless — losing "trial ends Friday" to a week-old dismissal is worse than the nag.
+- 2026-08-05 (P2): Tours are owner/manager-gated and per-TENANT (tours_completed lives on OnboardingState); skip = complete, never re-nag. Two tours shipped: owner-dashboard, job-form.
+- 2026-08-05 (P2): Help pages live at /help/ (login required, owner + tech). "Still stuck?" box emails contact@rssystems.io — becomes the /help/contact/ form in Phase 3.
 
 ## Known Defects Being Fixed in Phase 1
 
@@ -40,6 +44,45 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - Signup: `novalidate` + only first error shown; no password rules up front; no phone; decorative plan choice (duplicate "undecided" options, no `?plan=` passthrough); render-not-redirect on success (refresh re-POSTs); `fail_silently=True` confirmation email; raw exception leak via SignupError; sitemap advertises `/register/` (404).
 
 ## State for Next Session
+
+### What's done (Phase 2, 2026-08-05 — branch `feature/first-run-experience`)
+- `OnboardingState` model (tenants migration 0022): OneToOne on Tenant, `get_for_tenant` lazy-create; `wizard_step`, `wizard_completed_at`, `checklist_dismissed_at`, `trial_banner_dismissed_at`, `tours_completed` JSONField.
+- Wizard persisted: `onboarding_view` reads/writes the model (session state removed); dashboard shows "Finish setting up (step N of 4) → Resume" only when started-and-abandoned (step 1–3, not completed) — existing shops at step 0 never see it. Progress bar got transition/scale polish.
+- Unified checklist: `_setup_checklist_items()` + `templates/components/setup_checklist_items.html` render the SAME item grid on dashboard and Settings; dashboard card has progress bar + persisted Dismiss. Old `setup_steps` context kept but always empty (CODE-110 tests still pass, one updated to the new mechanism).
+- Persisted dismiss endpoints: `/owner/checklist/dismiss/`, `/owner/trial-banner/dismiss/`, `/owner/tours/<slug>/complete/` (unknown slug 404s, slugs listed in `TOUR_SLUGS`). Generic `data-dismiss-post`/`data-dismiss-target` handler + `UI.csrfToken()` added to ui.js (reads the form input — csrftoken cookie is HttpOnly in prod).
+- Tours: driver.js v1.3.6 vendored (`static/js/vendor/driver.iife.js`, CSS in a marked block in input.css + brand overrides); `static/js/tours.js` auto-starts off server-injected `data-tour` attr, filters hidden/missing anchors, POSTs completion on destroy. Tours: owner-dashboard (7 steps), job-form (6 steps).
+- `apps/support`: registered in base.py, `/help/` URLs; 5 guide pages from USER_FLOWS/MULTI_BREAK content + index; `components/video_slot.html` "coming soon" placeholders; Help link in #app-dropdown + mobile nav (owners AND techs).
+- Tests: `tests/test_first_run.py` (22 tests) all green; regression run green (test_step3_signup, test_e2e_today, test_primary_contact, test_owner_setup, test_code110, test_signup_ux — 131 tests).
+- Verified in browser (fresh tenant): tour auto-starts → skip → never returns; both dismissals survive reload; resume banner correct; help pages render; Settings/dashboard checklists identical. `build_css.sh` run, app.css committed.
+
+### Phase 2 round 2 (same day, Drake feedback)
+- **Bug fixed:** tours re-appeared on every refresh — completion was only recorded on close, so a mid-tour refresh recorded nothing. Now "shown = seen": tours.js POSTs completion the moment the tour starts. Deliberate replays via `?tour=1` (dashboard + job form), linked as "Interactive tours" cards on /help/.
+- **Help center expanded 5 → 14 guides**, grouped into sections (Getting started / Billing & getting paid / Your team / Your customers / Grow your business). New: card-payments, sales-tax, paid-on-time, team-roles, for-technicians, customer-portal, loyalty-referrals, review-requests, warranty. Registry (`HELP_TOPICS` + `HELP_SECTIONS`) drives index, routing, AND the tests (all slugs auto-covered).
+- **Contextual help from Settings:** each tab panel (general/team/billing/payments/reviews/warranty) opens with a small "Guides: …" link line to the relevant help pages.
+- Statements of account deliberately NOT mentioned in guides — the page exists but isn't linked from any UI (charter: never promise what doesn't exist). Candidate for a future nav link.
+
+### Phase 2 round 3 (Drake: "dismissed card came back on refresh — not the magic feel")
+- Root cause of the reappearing cards on Drake's machine: **stale browser-cached JS** — dev static files have no cache-busting, so his Chrome kept running the old ui.js/tours.js whose dismissals were cosmetic. (Reproduced exactly: a `--noreload` dev server ALSO serves stale templates — Django ≥4.1's cached template loader only invalidates via the autoreloader.)
+- Fix, three layers so a dismissal can NEVER visibly fail: (1) server record (cross-device), (2) **localStorage** in the browser (`rs-dismissed:<tenant>:<id>`, `rs-tour-seen:<slug>`) written at click/show time — a failed POST, stale script, or dropped network can't resurrect the element, (3) **resync on page load**: if the server renders something this browser already dismissed, it's removed instantly and the POST is re-sent until the server record heals.
+- `?v=N` cache-buster on ui.js/tours.js script tags (bump on behavior change; prod is already content-hashed via manifest storage).
+- Verified by sabotage test: dismiss all three, wipe the server records, refresh — nothing reappears, and the server records self-heal from the resync POSTs.
+
+### Phase 2 deferred (stretch items not built)
+- Invoice-send + settings tours (only the two priority tours shipped).
+- Customer-portal help variant; contextual "?" links from settings sections.
+- Empty-state component rollout + first-job/first-invoice celebration moments.
+
+### Phase 2 gotchas
+- `_setup_completion` gained a `customers` key and the counts changed (6 → 7/8). Anything hardcoding "/6" is wrong (dashboard template updated).
+- Owner-dashboard trial banner id stays `trialBanner`; dismissal is server-persisted now — don't reintroduce `display:none`.
+- Local Postgres was down again — scratch cluster recipe (memory `test-suite-debt-and-local-postgres`) works; cluster left running on 5432 from this session's scratchpad dir.
+
+### Phase 2 test command
+```bash
+export LOCAL_DATABASE_URL="postgresql://amelia_test:AmeliaTest2026!@localhost:5432/rs_systems_test"
+export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
+python manage.py test tests.test_first_run tests.test_step3_signup tests.test_e2e_today -v 1 --noinput
+```
 
 ### What's done (Phase 1, 2026-08-05)
 - `templates/components/plan_card.html` — the ONLY plan-card renderer; consumed by landing #pricing, /pricing/, and My Plan. Benefit-first copy, no MB/API jargon, consistent CTAs ("Start Free Trial" public / "Choose <Plan>" signed in), hover-lift polish.
@@ -74,6 +117,31 @@ export LOCAL_DATABASE_URL="postgresql://amelia_test:AmeliaTest2026!@localhost:54
 export DJANGO_SETTINGS_MODULE=rs_systems.settings.development
 python manage.py test tests.test_step3_signup tests.test_signup_ux tests.test_referral_signup_flow -v 2
 ```
+
+## Help Center Improvement Backlog (proposed 2026-08-05; built 2026-08-06)
+
+Assessment after Phase 2 round 2 shipped 14 guides. Everything code-doable shipped
+2026-08-06 (round 3 of PR #144); only the items gated on Drake or Phase 3 remain.
+
+**Bundle 1 — high value, one round of work:**
+- [x] **Troubleshooting/FAQ section** — `/help/troubleshooting/`: 10 symptom-first entries (invoice email, missing tax, tech can't see replacements, price ladder surprise, locked price, unpaid-after-payment, review requests, points, undelete, portal login). Own index section "When something looks wrong".
+- [x] **Search on /help/** — filter-as-you-type over title/blurb/`keywords` (new registry field), hides empty sections, no-results state with the support mailto. Stretch item (guide matches in top-nav global search) still open.
+- [x] **Role-aware index** — `owner_only` flag on HELP_TOPICS (simpler than a roles list: the only split that exists today is owner/manager vs tech); index filters, direct links still work for everyone, "Next up" respects the filter.
+- [x] **Two missing guides**: `/help/trial-ending/` and `/help/progressive-pricing/`.
+
+**After that:**
+- [x] Customer-portal help page — `/app/help/` (approve, request, invoices, rewards when active, team/notifications), linked from both portal menus.
+- [x] "Was this helpful? 👍👎" per guide — `GuideFeedback` model (support migration 0001, one vote per user per guide, re-vote overwrites) + POST `/help/<slug>/feedback/`; thumbs-down reply points at support email. Phase 3 admin surface can read it alongside SupportMessage.
+- [x] Guide-to-guide "Next up →" flow within each section.
+- [x] More contextual entry points: job form, Invoices page, Loyalty page now carry "Guides:" one-liners.
+- [ ] **Videos** — the placeholder slots are built; each page auto-upgrades to a player when its recording exists. ~90 sec each, Drake records (or Amelia scripts + Drake narrates). Biggest single "magic" upgrade available. **Blocked on Drake.**
+
+**Further out / flashier (all still open by design):**
+- [ ] Floating "?" help beacon opening guides in a slide-over panel (never lose your place).
+- [ ] "Ask a question" box powered by Claude over guide content — only after real support email (Phase 3) shows what people actually ask.
+- [ ] Link Statement of Account into the UI, then document it (currently URL-only, kept out of guides per charter).
+
+Contact form deliberately stays in Phase 3 where it's planned — the mailto: "Still stuck?" box silently fails for users without a mail app, which is the strongest argument for starting Phase 3 soon.
 
 ## Pre-Marketing Checklist (execute in Phase 3, before ads)
 

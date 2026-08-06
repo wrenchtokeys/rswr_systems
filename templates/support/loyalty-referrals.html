@@ -1,0 +1,49 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Turn it on, set the earn rate</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Open <strong>Loyalty</strong> in the top nav. Switch the program on, choose how many points a dollar of completed work earns, and create your reward options ("$25 off", "free chip repair" — whatever fits your shop).</p>
+            <a href="{% url 'owner_loyalty_dashboard' %}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open Loyalty <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Points belong to the company</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Balances are per customer company, not per person — the whole fleet office sees one number, and customers earn even before anyone has a portal login. Every completed job adds points automatically.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Redeem at the counter</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">When a customer has enough points, the job form prompts you; you (or a manager) can also apply a reward from the customer's page. Changed your mind? Redemptions can be cancelled and refunded from Loyalty.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Referrals pay both sides</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Every customer gets a referral link. When a business they refer signs up and completes its first job, both companies earn bonus points — automatically, no tracking spreadsheet.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Quiet marketing:</strong> flip on "show balance in emails" and invoices mention the customer's points — a little reminder that loyalty pays, on every bill.</p>
+</div>
+{% endblock %}

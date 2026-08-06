@@ -1,0 +1,57 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">The ladder</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">RS Systems remembers how many repairs each vehicle has had, and each one steps down a price ladder — out of the box that's <strong>$50 → $40 → $35 → $30 → $25</strong>, then it stays at the bottom rung. First chip on a windshield costs $50; the third chip on that same windshield costs $35. It happens automatically on every job — no mental math in the field.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why shops price this way</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Fleet managers love it: the more they bring you, the better each repair gets. It rewards the customer who hands you the whole windshield instead of shopping each chip around — and it's a selling point you can say out loud.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Make the ladder yours — or turn it off</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">In <strong>Settings → Pricing &amp; Invoicing</strong> you can set your own numbers for each rung, or switch progressive pricing off entirely and charge one flat price per repair. Both are honest ways to run a shop; pick the one that matches how you quote.</p>
+            {% if is_owner_or_manager %}
+            <a href="{% url 'owner_settings' %}?tab=billing" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open pricing settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Multi-break visits ride the same ladder</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Three chips in one visit? Log them together and each break is priced as the next rung — the vehicle's history plus break one, break two, break three. One session, one ticket, correct price on every line.</p>
+            <a href="{% url 'help_topic' 'multi-break' %}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Multi-break repairs <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-green-700">5</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Special deals still fit</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">A fleet with negotiated rates can have its own pricing on its customer page, and managers can type a custom price on any single job when the situation calls for it. The ladder is the default, never a cage.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

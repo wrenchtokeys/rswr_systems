@@ -559,6 +559,17 @@ def job_create(request):
             if d.strip() or a.strip()
         ]
 
+    # First-run tour (owner/manager only — completion is per-tenant and the
+    # completion endpoint is owner-gated). Never on a bounced POST: a coach
+    # popover over a validation error would bury the error. ?tour=1 forces
+    # a replay (linked from the help pages).
+    tour_slug = ''
+    if request.method == 'GET' and is_tenant_admin(request.user, tenant=tenant):
+        from apps.tenants.models import OnboardingState
+        if (request.GET.get('tour') == '1'
+                or not OnboardingState.get_for_tenant(tenant).has_completed_tour('job-form')):
+            tour_slug = 'job-form'
+
     return render(request, 'technician_portal/job_form.html', {
         'form': form,
         'allowed_types': allowed_types,
@@ -568,6 +579,7 @@ def job_create(request):
         'shop_tax_rate': shop_tax_rate,
         'fee_presets': fee_presets,
         'charge_rows': charge_rows,
+        'tour_slug': tour_slug,
     })
 
 

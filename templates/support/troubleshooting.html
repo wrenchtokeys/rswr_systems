@@ -1,0 +1,119 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why didn't my customer get the invoice email?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Open the invoice — under its status you'll see whether the email was delivered and opened. If it says delivered, ask them to check spam. If it never sent, double-check the email address on their customer page (one typo is the usual culprit), fix it, and send again. Customers can also open the invoice from the link in any earlier email — no login needed.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why is there no tax on my invoice?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Three possibilities: the shop's tax question hasn't been answered yet in <strong>Settings → Pricing &amp; Invoicing</strong>, this customer is marked tax-exempt on their customer page, or <strong>Charge sales tax</strong> was unticked on that job. Fix the one that applies and future invoices come out right.</p>
+            {% if is_owner_or_manager %}
+            <a href="{% url 'owner_settings' %}?tab=billing" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open tax settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why can't my tech see replacements?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Replacement access is a per-tech permission. In <strong>Settings → Team</strong>, open that technician and turn on replacements — they'll see replacement jobs immediately.</p>
+            {% if is_owner_or_manager %}
+            <a href="{% url 'owner_settings' %}?tab=team" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open Team settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why is this repair priced lower than my usual rate?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">That's progressive pricing doing its job — repeat repairs on the same vehicle step down the price ladder automatically. If you'd rather charge one flat rate every time, that's a single toggle.</p>
+            <a href="{% url 'help_topic' 'progressive-pricing' %}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">How progressive pricing works <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why can't I edit the price on this job?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">The job is on an invoice that's already been paid, so its price is locked to keep your books consistent — the note on the job names the invoice. Need to correct it anyway? Adjust the paid invoice from the invoices page rather than the job.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">My customer paid, but the invoice still shows unpaid</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Online card payments mark the invoice paid by themselves. Cash, check, or a bank transfer you took outside RS Systems won't — open the invoice and use <strong>Record payment</strong> so your books match reality.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why didn't my customer get a review request?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Review requests go out a little while after a job completes, so give it half an hour first. Then check <strong>Settings → Reviews</strong>: the program has to be on, and fleet accounts are skipped unless you've enabled <strong>Include Fleet Accounts</strong> — most shops only ask individual customers for Google reviews.</p>
+            {% if is_owner_or_manager %}
+            <a href="{% url 'owner_settings' %}?tab=reviews" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open Review settings <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Why didn't my customer earn points on that job?</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Points are awarded the moment a job is marked <strong>Completed</strong> — jobs still in progress haven't earned yet. If the job is done and there are still no points, the loyalty program is probably switched off on the Loyalty page.</p>
+            <a href="{% url 'help_topic' 'loyalty-referrals' %}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">How loyalty works <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">I deleted something by mistake</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Nothing is gone forever right away. Deleted jobs, customers, and invoices sit in <strong>Recently Deleted</strong> for 30 days — open it from Settings, find the item, and restore it with one click.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-amber-700">?</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">My customer can't log in to their portal</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">Most often the invitation was never accepted — resend it from their customer page and have them use the link in the fresh email. And remember: customers don't need a login to see or pay an invoice; the link in the invoice email works on its own.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-blue-50 border border-blue-200 p-4 flex items-start gap-3">
+    <i class="fas fa-envelope text-blue-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Not covered here?</strong> Email <a href="mailto:contact@rssystems.io" class="text-blue-600 hover:text-blue-800 font-medium">contact@rssystems.io</a> with what you expected and what happened instead — a real person reads every message.</p>
+</div>
+{% endblock %}

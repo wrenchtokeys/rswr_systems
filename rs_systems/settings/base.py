@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'apps.rewards_referrals',
     'apps.security',
     'apps.clawdbot',
+    'apps.support',
     'apps.billing',
     'apps.tenants',
     'apps.saas',

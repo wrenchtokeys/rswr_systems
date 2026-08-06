@@ -29,38 +29,7 @@
             <i class="fas fa-chevron-down text-xs text-gray-400"></i>
         </span>
     </summary>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 divide-y sm:divide-y-0 divide-gray-100">
-        <a href="?tab=general" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Business Info</span>
-            {% if completion.business_info %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
-        </a>
-        <a href="?tab=team&amp;invite=1" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Your Team</span>
-            {% if completion.team %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Just you so far</span>{% endif %}
-        </a>
-        <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Job Prices</span>
-            {% if completion.pricing_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
-        </a>
-        <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Sales Tax</span>
-            {% if completion.tax %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
-        </a>
-        <a href="?tab=billing" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Invoicing</span>
-            {% if completion.billing_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
-        </a>
-        {% if tenant.offers_repairs %}
-        <a href="{% url 'manage_viscosity_rules' %}" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Repair Resin Rules</span>
-            {% if completion.viscosity %}<span class="badge-green">Configured</span>{% else %}<span class="badge-gray">Not set up</span>{% endif %}
-        </a>
-        {% endif %}
-        <a href="?tab=general" class="flex items-center justify-between gap-2 px-5 py-3 hover:bg-gray-50 transition-colors">
-            <span class="text-sm text-gray-700">Job Assignment</span>
-            {% if completion.assignment_defaulted %}<span class="badge-gray">Using standard defaults</span>{% else %}<span class="badge-green">Configured</span>{% endif %}
-        </a>
-    </div>
+    {% include "components/setup_checklist_items.html" %}
 </details>
 
 <!-- Tabs -->
@@ -89,6 +58,8 @@
 
 <!-- ======================= GENERAL TAB ======================= -->
 <div id="panel-general" data-tab-panel="general">
+
+    <p class="mb-4 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>Not sure what a setting does? <a href="{% url 'help_topic' 'settings-explained' %}" class="text-blue-500 hover:text-blue-700 font-medium">Settings, explained →</a></p>
 
     <!-- Business Information -->
     <div class="card mb-6">
@@ -374,6 +345,7 @@
 
 <!-- ======================= TEAM TAB ======================= -->
 <div id="panel-team" data-tab-panel="team" class="hidden">
+    <p class="mb-4 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>What can managers and techs each do? <a href="{% url 'help_topic' 'team-roles' %}" class="text-blue-500 hover:text-blue-700 font-medium">Roles &amp; abilities, explained →</a></p>
     {% if can_add_self_as_tech %}
     <!-- Add myself as a technician -->
     <div class="card mb-6 border-blue-200 bg-blue-50">
@@ -601,6 +573,8 @@
 
 <!-- ======================= BILLING & TAX TAB ======================= -->
 <div id="panel-billing" data-tab-panel="billing" class="hidden">
+
+    <p class="mb-4 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>Guides: <a href="{% url 'help_topic' 'sales-tax' %}" class="text-blue-500 hover:text-blue-700 font-medium">Sales tax</a> · <a href="{% url 'help_topic' 'paid-on-time' %}" class="text-blue-500 hover:text-blue-700 font-medium">Get paid on time</a> · <a href="{% url 'help_topic' 'send-invoice' %}" class="text-blue-500 hover:text-blue-700 font-medium">Send an invoice</a></p>
 
     <!-- Auto Invoice Toggle -->
     <div class="card mb-6">
@@ -1369,6 +1343,8 @@ Thank you,
 <!-- ======================= PAYMENT PROCESSING TAB ======================= -->
 <div id="panel-payments" data-tab-panel="payments" class="hidden">
 
+    <p class="mb-4 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>How this works and where the money goes: <a href="{% url 'help_topic' 'card-payments' %}" class="text-blue-500 hover:text-blue-700 font-medium">Take card payments online →</a></p>
+
     <!-- Status badge colors: not_started=gray, pending/in_review=yellow, active=green, restricted/disabled=red -->
     {% with status=tenant.stripe_onboarding_status %}
     <div class="card mb-6">
@@ -1464,6 +1440,8 @@ Thank you,
 
 <!-- ======================= REVIEWS TAB ======================= -->
 <div id="panel-reviews" data-tab-panel="reviews" class="hidden">
+
+    <p class="mb-4 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>When emails go out and why fleets are skipped: <a href="{% url 'help_topic' 'review-requests' %}" class="text-blue-500 hover:text-blue-700 font-medium">Review requests, explained →</a></p>
 
     <!-- Enable/Disable + Google URL -->
     <div class="card mb-6">
@@ -1597,6 +1575,8 @@ Thank you,
 
 <!-- ======================= WARRANTY TAB ======================= -->
 <div id="panel-warranty" data-tab-panel="warranty" class="hidden">
+
+    <p class="mb-4 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>What shows on invoices: <a href="{% url 'help_topic' 'warranty' %}" class="text-blue-500 hover:text-blue-700 font-medium">Warranty, explained →</a></p>
 
     <div class="card">
         <div class="card-header">

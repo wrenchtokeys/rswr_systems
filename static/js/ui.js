@@ -19,6 +19,9 @@
  *             (.tab-btn); panels [data-tab-panel="name"]. Active button gets
  *             .tab-btn-active, other panels get `.hidden`; ?tab= is kept in the URL
  *             so server-side active_tab deep links keep working.
+ *   Dismiss:  <button data-dismiss-post="/url/" data-dismiss-target="elementId">
+ *             hides #elementId immediately and POSTs the URL so the dismissal
+ *             persists across page loads (trial banner, setup checklist).
  */
 (function () {
     'use strict';
@@ -300,12 +303,64 @@
         });
     });
 
+    // --- CSRF + persisted dismissals ------------------------------------------
+    function csrfToken() {
+        // Prefer the form input (always present via the logout form) — the
+        // csrftoken cookie is HttpOnly in production.
+        var input = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (input) return input.value;
+        var match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+        return match ? match[1] : '';
+    }
+
+    // Dismissals are double-recorded: the POST persists them server-side
+    // (cross-device), and localStorage remembers them in THIS browser so a
+    // failed request, stale cached script, or slow network can never make a
+    // dismissed element reappear on refresh. Keys are tenant-scoped via
+    // data-dismiss-scope so switching shops in one browser stays correct.
+    function dismissStorageKey(btn) {
+        var scope = btn.getAttribute('data-dismiss-scope') || '';
+        return 'rs-dismissed:' + scope + ':' + btn.getAttribute('data-dismiss-target');
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-dismiss-post]');
+        if (!btn) return;
+        e.preventDefault();
+        var target = document.getElementById(btn.getAttribute('data-dismiss-target'));
+        if (target) target.remove();
+        try { localStorage.setItem(dismissStorageKey(btn), '1'); } catch (err) { /* private mode */ }
+        fetch(btn.getAttribute('data-dismiss-post'), {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken() },
+            credentials: 'same-origin'
+        }).catch(function () { /* localStorage still hides it in this browser */ });
+    });
+
+    // If this browser already dismissed something the server still rendered
+    // (e.g. the POST never landed), hide it immediately and re-sync.
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('[data-dismiss-post]').forEach(function (btn) {
+            var dismissed = false;
+            try { dismissed = !!localStorage.getItem(dismissStorageKey(btn)); } catch (err) { /* ignore */ }
+            if (!dismissed) return;
+            var target = document.getElementById(btn.getAttribute('data-dismiss-target'));
+            if (target) target.remove();
+            fetch(btn.getAttribute('data-dismiss-post'), {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken() },
+                credentials: 'same-origin'
+            }).catch(function () { /* try again next load */ });
+        });
+    });
+
     // Expose for programmatic use
     window.UI = {
         openModal: openModal,
         closeModal: closeModal,
         toast: toast,
         flash: flash,
-        confirm: confirmDialog
+        confirm: confirmDialog,
+        csrfToken: csrfToken
     };
 })();

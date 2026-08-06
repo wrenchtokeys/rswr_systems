@@ -89,6 +89,7 @@ urlpatterns = [
 
     # Clawdbot endpoint (Amelia's experimental namespace)
     path('clawdbot/', include('apps.clawdbot.urls')),
+    path('help/', include('apps.support.urls')),
 
     # SaaS UI (signup, onboarding, owner dashboard, pricing, billing, replacement)
     path('', include('apps.saas.urls')),

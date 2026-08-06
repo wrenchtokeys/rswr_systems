@@ -1,0 +1,49 @@
+{% extends "support/base_topic.html" %}
+
+{% block guide %}
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">1</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Invite by email</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">In <strong>Settings → My Team</strong>, click <strong>Invite Member</strong> — name, email, role. They get a link (good for 7 days) to set a password and they're in. If their email bounces, copy the invite link and text it to them instead.</p>
+            <a href="{% url 'owner_settings' %}?tab=team" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open My Team <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">2</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Pick the right role</h2>
+            <p class="text-sm text-gray-600 leading-relaxed"><strong>Technician</strong> — does the work: their own queue, logging jobs, photos. <strong>Manager</strong> — runs the day-to-day: everything you see except billing and plan changes, and they can invite techs. <strong>Owner</strong> — that's you: everything, including the subscription.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">3</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Two switches per tech</h2>
+            <p class="text-sm text-gray-600 leading-relaxed"><strong>Does repairs</strong> and <strong>does replacements</strong> control what work each tech can take. A repair-only tech never sees replacement forms, and auto-assignment only routes them jobs they can do.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card p-5">
+    <div class="flex items-start gap-3.5">
+        <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-purple-700">4</div>
+        <div>
+            <h2 class="text-sm font-semibold text-gray-900 mb-1">Choose how jobs get assigned</h2>
+            <p class="text-sm text-gray-600 leading-relaxed">In <strong>Settings → My Shop</strong>, pick an assignment style: manual, primary-tech-first (default — customers can have a go-to tech), balanced (fewest active jobs wins), or round-robin. Techs get an in-app notification when work lands on them.</p>
+        </div>
+    </div>
+</div>
+
+<div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
+    <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Working solo?</strong> You're already set up as a technician — nothing to configure. Add people when you're ready.</p>
+</div>
+{% endblock %}
