@@ -54,7 +54,7 @@ def _visible_jobs(model, tenant, technician, user_is_admin):
 # "please correct the errors" with every visible field looking fine.
 _ADVANCED_JOB_FIELDS = frozenset({
     'technician', 'vehicle_year', 'vehicle_make', 'vehicle_model',
-    'damage_photo_before', 'damage_photo_after', 'customer_notes',
+    'damage_photo_before', 'damage_photo_after', 'customer_notes', 'internal_notes',
     'windshield_temperature', 'resin_viscosity', 'drilled_before_repair',
     'requires_adas_calibration', 'adas_calibration_cost',
     'insurance_claim', 'insurance_company', 'claim_number', 'deductible',
@@ -478,6 +478,7 @@ def job_create(request):
                 vehicle_make=data.get('vehicle_make') or '',
                 vehicle_model=data.get('vehicle_model') or '',
                 customer_notes=data.get('customer_notes') or '',
+                internal_notes=data.get('internal_notes') or '',
                 damage_photo_before=data.get('damage_photo_before'),
                 damage_photo_after=data.get('damage_photo_after'),
                 insurance_claim=data.get('insurance_claim') or False,

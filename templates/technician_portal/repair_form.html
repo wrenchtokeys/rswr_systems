@@ -610,21 +610,45 @@
                         <div class="field-group mb-6">
                             <label class="icon-field-label">
                                 <i class="fas fa-user-cog"></i>
-                                Technician Notes
+                                Work Notes
                             </label>
                             <textarea name="technician_notes"
                                       id="id_technician_notes"
                                       rows="4"
                                       class="icon-field-input"
-                                      placeholder="Add any internal notes about the repair process, challenges encountered, or follow-up needed...">{{ form.technician_notes.value|default:'' }}</textarea>
+                                      placeholder="Describe the work performed — this text appears on the invoice...">{{ form.technician_notes.value|default:'' }}</textarea>
                             <p class="icon-field-helper">
                                 <i class="fas fa-info-circle"></i>
-                                Internal notes for repair documentation and team communication
+                                Describes the work done — included on the customer's invoice
                             </p>
                             {% if form.technician_notes.errors %}
                                 <div class="field-error">
                                     <i class="fas fa-exclamation-circle"></i>
                                     {{ form.technician_notes.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Internal Notes (never shown to the customer) -->
+                        <div class="field-group mb-6">
+                            <label class="icon-field-label">
+                                <i class="fas fa-lock"></i>
+                                Internal Notes
+                                <span class="field-badge field-badge-optional">Not visible to customer</span>
+                            </label>
+                            <textarea name="internal_notes"
+                                      id="id_internal_notes"
+                                      rows="3"
+                                      class="icon-field-input"
+                                      placeholder="Private notes for your team only — never shown to the customer...">{{ form.internal_notes.value|default:'' }}</textarea>
+                            <p class="icon-field-helper">
+                                <i class="fas fa-info-circle"></i>
+                                Only your team sees these — never on invoices, emails, or the customer portal
+                            </p>
+                            {% if form.internal_notes.errors %}
+                                <div class="field-error">
+                                    <i class="fas fa-exclamation-circle"></i>
+                                    {{ form.internal_notes.errors.0 }}
                                 </div>
                             {% endif %}
                         </div>

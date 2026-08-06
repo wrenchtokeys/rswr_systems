@@ -443,6 +443,7 @@ class RepairForm(forms.ModelForm):
                   'queue_status', 'damage_type', 'damage_location_x', 'damage_location_y',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
+                  'internal_notes',
                   'cost_override', 'override_reason', 'no_tax',
                   'repair_batch_id', 'break_number', 'total_breaks_in_batch']
         labels = {
@@ -545,7 +546,13 @@ class RepairForm(forms.ModelForm):
 
         # Add helpful labels for the note fields
         if 'technician_notes' in self.fields:
-            self.fields['technician_notes'].help_text = "Add your internal notes about the repair process"
+            self.fields['technician_notes'].help_text = (
+                "Describe the work done — this appears on the customer's invoice"
+            )
+        if 'internal_notes' in self.fields:
+            self.fields['internal_notes'].help_text = (
+                "Private shop notes — the customer never sees these"
+            )
 
         # Unit number is not always required (depends on customer type)
         self.fields['unit_number'].required = False
@@ -570,8 +577,15 @@ class RepairForm(forms.ModelForm):
 
         if 'technician_notes' in self.fields:
             self.fields['technician_notes'].widget.attrs.update({
-                'placeholder': 'Add any internal notes about the repair process, challenges encountered, or follow-up needed...',
+                'placeholder': 'Describe the work performed — this text appears on the invoice...',
                 'rows': '4',
+                'class': 'icon-field-input'
+            })
+
+        if 'internal_notes' in self.fields:
+            self.fields['internal_notes'].widget.attrs.update({
+                'placeholder': 'Private notes for your team only — never shown to the customer...',
+                'rows': '3',
                 'class': 'icon-field-input'
             })
 
@@ -993,6 +1007,13 @@ class QuickJobForm(forms.Form):
         widget=forms.Textarea(attrs={
             'class': _INPUT, 'rows': 2,
             'placeholder': 'Anything the customer asked for or should see',
+        }),
+    )
+    internal_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'class': _INPUT, 'rows': 2,
+            'placeholder': 'Private notes for your team — never shown to the customer',
         }),
     )
 
