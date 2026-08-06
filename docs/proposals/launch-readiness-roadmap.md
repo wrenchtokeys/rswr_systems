@@ -18,7 +18,7 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 | Phase | Scope | Status | Session date | Commits/PR |
 |-------|-------|--------|--------------|------------|
 | 1 | Conversion funnel & plans surfaces (landing, /pricing/, signup, login, My Plan) | **DEPLOYED to prod 2026-08-05** (PR #143 merged; prod plans re-seeded; live pricing + My Plan verified) | 2026-08-05 | PR #143 |
-| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | **BUILT 2026-08-05** — branch `feature/first-run-experience`, PR pending merge/deploy | 2026-08-05 | |
+| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | **BUILT 2026-08-05** — PR #144 open, pending merge/deploy | 2026-08-05 | PR #144 |
 | 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | not started | | |
 
 ## Decisions Log
