@@ -766,8 +766,9 @@ def sitemap_xml(request):
     """Basic XML sitemap for search engines."""
     urls = [
         ('https://rssystems.io/', '1.0', 'weekly'),
+        ('https://rssystems.io/pricing/', '0.8', 'monthly'),
+        ('https://rssystems.io/signup/', '0.8', 'monthly'),
         ('https://rssystems.io/login/', '0.5', 'monthly'),
-        ('https://rssystems.io/register/', '0.8', 'monthly'),
     ]
     xml_lines = ['<?xml version="1.0" encoding="UTF-8"?>']
     xml_lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')

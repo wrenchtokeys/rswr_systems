@@ -76,16 +76,28 @@
                 <h2 class="text-2xl font-bold text-gray-900 mb-1">Create your account</h2>
                 <p class="text-gray-500 mb-6">Start your free 30-day trial. No credit card required.</p>
 
-                <form method="post" class="space-y-5" novalidate>
+                {% if form.errors %}
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded mb-5" data-error-summary>
+                    <p class="text-sm font-medium text-red-800">
+                        <i class="fas fa-circle-exclamation mr-1"></i>
+                        Almost there — please fix the highlighted field{{ form.errors|length|pluralize }} below.
+                    </p>
+                    {% for error in form.non_field_errors %}
+                    <p class="text-sm text-red-700 mt-1">{{ error }}</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <form method="post" class="space-y-5">
                     {% csrf_token %}
 
                     <!-- Business name -->
                     <div>
                         <label for="id_business_name" class="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
                         {{ form.business_name }}
-                        {% if form.business_name.errors %}
-                            <p class="mt-1 text-sm text-red-600">{{ form.business_name.errors.0 }}</p>
-                        {% endif %}
+                        {% for error in form.business_name.errors %}
+                            <p class="mt-1 text-sm text-red-600 field-error">{{ error }}</p>
+                        {% endfor %}
                     </div>
 
                     <!-- Owner name (side by side) -->
@@ -93,16 +105,16 @@
                         <div>
                             <label for="id_first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
                             {{ form.first_name }}
-                            {% if form.first_name.errors %}
-                                <p class="mt-1 text-sm text-red-600">{{ form.first_name.errors.0 }}</p>
-                            {% endif %}
+                            {% for error in form.first_name.errors %}
+                                <p class="mt-1 text-sm text-red-600 field-error">{{ error }}</p>
+                            {% endfor %}
                         </div>
                         <div>
                             <label for="id_last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
                             {{ form.last_name }}
-                            {% if form.last_name.errors %}
-                                <p class="mt-1 text-sm text-red-600">{{ form.last_name.errors.0 }}</p>
-                            {% endif %}
+                            {% for error in form.last_name.errors %}
+                                <p class="mt-1 text-sm text-red-600 field-error">{{ error }}</p>
+                            {% endfor %}
                         </div>
                     </div>
 
@@ -110,29 +122,40 @@
                     <div>
                         <label for="id_email" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                         {{ form.email }}
-                        {% if form.email.errors %}
-                            <p class="mt-1 text-sm text-red-600">{{ form.email.errors.0 }}</p>
-                        {% endif %}
+                        {% for error in form.email.errors %}
+                            <p class="mt-1 text-sm text-red-600 field-error">{{ error }}</p>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Business phone (optional) -->
+                    <div>
+                        <label for="id_phone" class="block text-sm font-medium text-gray-700 mb-1">
+                            Business Phone <span class="font-normal text-gray-400">(optional)</span>
+                        </label>
+                        {{ form.phone }}
+                        <p class="mt-1 text-xs text-gray-500">{{ form.phone.help_text }}</p>
+                        {% for error in form.phone.errors %}
+                            <p class="mt-1 text-sm text-red-600 field-error">{{ error }}</p>
+                        {% endfor %}
                     </div>
 
                     <!-- Password -->
                     <div>
                         <label for="id_password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
                         {{ form.password }}
-                        {% if form.password.errors %}
-                            {% for error in form.password.errors %}
-                            <p class="mt-1 text-sm text-red-600">{{ error }}</p>
-                            {% endfor %}
-                        {% endif %}
+                        <p class="mt-1 text-xs text-gray-500">{{ form.password.help_text }}</p>
+                        {% for error in form.password.errors %}
+                            <p class="mt-1 text-sm text-red-600 field-error">{{ error }}</p>
+                        {% endfor %}
                     </div>
 
                     <!-- Confirm password -->
                     <div>
                         <label for="id_password_confirm" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
                         {{ form.password_confirm }}
-                        {% if form.password_confirm.errors %}
-                            <p class="mt-1 text-sm text-red-600">{{ form.password_confirm.errors.0 }}</p>
-                        {% endif %}
+                        {% for error in form.password_confirm.errors %}
+                            <p class="mt-1 text-sm text-red-600 field-error">{{ error }}</p>
+                        {% endfor %}
                     </div>
 
                     <!-- What does your shop do? -->
@@ -178,14 +201,6 @@
                         <p class="mt-1 text-xs text-gray-500">Just curious — every account starts with a free 30-day trial, no credit card required. You won't be charged or committed to anything here.</p>
                     </div>
 
-                    {% if form.non_field_errors %}
-                    <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
-                        {% for error in form.non_field_errors %}
-                        <p class="text-sm text-red-700">{{ error }}</p>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-
                     {% if turnstile_site_key %}
                     <!-- Cloudflare Turnstile CAPTCHA -->
                     <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
@@ -211,4 +226,15 @@
         </div>
     </div>
 </div>
+
+<script>
+// After a failed submit, bring the first problem into view instead of leaving
+// the user staring at the submit button (matters most on mobile).
+(function () {
+    var firstError = document.querySelector('[data-error-summary], .field-error');
+    if (firstError) {
+        firstError.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+})();
+</script>
 {% endblock %}

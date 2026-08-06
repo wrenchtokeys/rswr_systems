@@ -55,13 +55,27 @@ class SignupForm(forms.Form):
             'autocomplete': 'email',
         }),
     )
+    phone = forms.CharField(
+        required=False,
+        max_length=20,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
+            'placeholder': '(555) 555-1234',
+            'autocomplete': 'tel',
+            'inputmode': 'tel',
+        }),
+        label='Business phone (optional)',
+        help_text='Shown on your invoices — you can add it later.',
+    )
     password = forms.CharField(
         min_length=8,
         widget=forms.PasswordInput(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
             'placeholder': '••••••••',
             'autocomplete': 'new-password',
+            'minlength': '8',
         }),
+        help_text="At least 8 characters. Can't be all numbers or too similar to your name or email.",
     )
     password_confirm = forms.CharField(
         widget=forms.PasswordInput(attrs={
@@ -84,7 +98,9 @@ class SignupForm(forms.Form):
         label='What does your shop do?',
     )
 
-    plan = forms.ChoiceField(
+    # CharField (not ChoiceField) so retired options from stale cached pages
+    # degrade to "undecided" in clean_plan instead of a validation error.
+    plan = forms.CharField(
         required=False,
         widget=forms.Select(attrs={
             'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white',
@@ -94,14 +110,19 @@ class SignupForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        plan_choices = [('', "I'll decide during my trial")]
-        plan_choices += [
-            (p.slug, p.name)
-            for p in SubscriptionPlan.objects.filter(is_active=True).exclude(slug='trial').order_by('display_order')
-        ]
-        plan_choices.append(('not_sure', "Not sure yet"))
+        self._plan_slugs = list(
+            SubscriptionPlan.objects.filter(is_active=True)
+            .exclude(slug='trial')
+            .order_by('display_order')
+            .values_list('slug', 'name')
+        )
+        self.fields['plan'].widget.choices = [('', "I'll decide during my trial")] + self._plan_slugs
 
-        self.fields['plan'].choices = plan_choices
+    def clean_plan(self):
+        # Unknown values (e.g. the retired 'not_sure' option on a stale cached
+        # page) degrade to "undecided" instead of erroring.
+        plan = self.cleaned_data.get('plan') or ''
+        return plan if plan in dict(self._plan_slugs) else ''
 
     def clean_services_offered(self):
         # Blank (e.g. API callers or old cached forms) means "both".

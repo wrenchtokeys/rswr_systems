@@ -1,0 +1,137 @@
+{% comment %}
+Shared plan card — the ONLY place plan facts are rendered as a card.
+Used by: landing.html (#pricing), saas/pricing.html, saas/billing.html.
+
+Params (via {% include ... with %}):
+  plan               SubscriptionPlan (required)
+  mode               "public" (default) → CTA links to /signup/?plan=slug
+                     "billing"          → CTA posts to billing_update_plan
+  current_plan_slug  billing mode: slug of the tenant's active plan
+  intended_plan      billing mode: slug the owner picked at signup (optional)
+  hide_cta           truthy to render no CTA at all (platform owner)
+
+Copy rules (docs/proposals/launch-readiness-roadmap.md design charter):
+benefit-first lines, no MB/API jargon, never promise nonexistent features.
+{% endcomment %}
+
+<div class="group relative flex flex-col bg-white rounded-2xl p-8 transition-all duration-300 hover:-translate-y-1
+    {% if plan.slug == 'pro' %}border-2 border-brand-600 shadow-lg hover:shadow-2xl
+    {% elif mode == 'billing' and plan.slug == current_plan_slug %}border-2 border-brand-500 shadow-md hover:shadow-xl
+    {% else %}border border-gray-200 shadow-sm hover:shadow-xl{% endif %}">
+
+    {% if mode == 'billing' and plan.slug == current_plan_slug %}
+    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
+        <span class="inline-flex items-center gap-1.5 px-4 py-1 rounded-full text-xs font-bold bg-brand-600 text-white shadow-md whitespace-nowrap">
+            <i class="fas fa-check text-[10px]"></i> Your Plan
+        </span>
+    </div>
+    {% elif plan.slug == 'pro' %}
+    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
+        <span class="inline-flex items-center gap-1.5 px-4 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-brand-600 to-brand-700 text-white shadow-md whitespace-nowrap">
+            <i class="fas fa-star text-[10px]"></i> Most Popular
+        </span>
+    </div>
+    {% elif mode == 'billing' and intended_plan and plan.slug == intended_plan %}
+    <div class="absolute -top-3.5 left-1/2 -translate-x-1/2">
+        <span class="inline-flex items-center px-4 py-1 rounded-full text-xs font-bold bg-purple-600 text-white shadow-md whitespace-nowrap">
+            Picked at signup
+        </span>
+    </div>
+    {% endif %}
+
+    <div class="text-center mb-6 mt-1">
+        <h3 class="text-lg font-bold text-gray-900">{{ plan.name }}</h3>
+        <p class="text-sm text-gray-500 mt-0.5">
+            {% if plan.slug == 'starter' %}For shops just getting started
+            {% elif plan.slug == 'pro' %}For busy, growing shops
+            {% elif plan.slug == 'enterprise' %}For multi-crew operations
+            {% else %}Try everything free{% endif %}
+        </p>
+        <div class="mt-5 flex items-baseline justify-center gap-1">
+            {% if plan.is_free %}
+            <span class="text-5xl font-extrabold tracking-tight text-gray-900">Free</span>
+            {% else %}
+            <span class="text-5xl font-extrabold tracking-tight text-gray-900">${{ plan.monthly_price|floatformat:0 }}</span>
+            <span class="text-gray-500 font-medium">/month</span>
+            {% endif %}
+        </div>
+        {% if plan.is_free %}
+        <p class="text-sm text-gray-500 mt-1.5">{{ plan.trial_days }} days, no card needed</p>
+        {% elif plan.annual_price %}
+        <p class="text-sm text-emerald-600 font-medium mt-1.5">${{ plan.annual_price|floatformat:0 }}/year — save 20%</p>
+        {% endif %}
+    </div>
+
+    <ul class="space-y-3 mb-8 flex-1 text-sm">
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">{% if plan.max_repairs_per_month %}{{ plan.max_repairs_per_month }} jobs a month{% else %}<strong class="font-semibold">Unlimited</strong>&nbsp;jobs{% endif %}</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">{% if plan.max_technicians %}Up to {{ plan.max_technicians }} technician{{ plan.max_technicians|pluralize }}{% else %}<strong class="font-semibold">Unlimited</strong>&nbsp;technicians{% endif %}</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">{% if plan.max_customers %}Up to {{ plan.max_customers }} customers{% else %}<strong class="font-semibold">Unlimited</strong>&nbsp;customers{% endif %}</span>
+        </li>
+        {% if plan.features.customer_portal %}
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">Customers approve &amp; pay online</span>
+        </li>
+        {% endif %}
+        {% if plan.features.invoicing %}
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">Professional invoices in one click</span>
+        </li>
+        {% endif %}
+        {% if plan.features.rewards %}
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">Loyalty rewards &amp; referrals</span>
+        </li>
+        {% endif %}
+        {% if plan.features.custom_branding %}
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">Your logo &amp; colors on everything</span>
+        </li>
+        {% endif %}
+        <li class="flex items-start gap-2.5">
+            <i class="fas fa-check text-emerald-500 mt-0.5 text-xs flex-shrink-0"></i>
+            <span class="text-gray-700">{{ plan.features.support|default:"Email support" }}</span>
+        </li>
+    </ul>
+
+    {% if hide_cta %}
+        {% if mode == 'billing' and plan.slug == current_plan_slug %}
+        <div class="w-full text-center py-3 text-sm font-semibold text-brand-700 bg-brand-50 rounded-xl">
+            <i class="fas fa-check mr-1"></i> Active
+        </div>
+        {% endif %}
+    {% elif mode == 'billing' %}
+        {% if plan.slug == current_plan_slug %}
+        <div class="w-full text-center py-3 text-sm font-semibold text-brand-700 bg-brand-50 rounded-xl">
+            <i class="fas fa-check mr-1"></i> Active
+        </div>
+        {% else %}
+        <form method="post" action="{% url 'billing_update_plan' %}">
+            {% csrf_token %}
+            <input type="hidden" name="plan" value="{{ plan.slug }}">
+            <button type="submit" class="w-full inline-flex items-center justify-center py-3 text-sm font-semibold rounded-xl transition-all
+                {% if plan.slug == 'pro' %}bg-brand-600 text-white hover:bg-brand-700 shadow-lg shadow-brand-200
+                {% else %}border-2 border-gray-300 text-gray-700 hover:border-brand-600 hover:text-brand-600{% endif %}">
+                Choose {{ plan.name }}
+            </button>
+        </form>
+        {% endif %}
+    {% else %}
+        <a href="/signup/?plan={{ plan.slug }}" class="w-full inline-flex items-center justify-center py-3 text-sm font-semibold rounded-xl transition-all
+            {% if plan.slug == 'pro' %}bg-brand-600 text-white hover:bg-brand-700 shadow-lg shadow-brand-200
+            {% else %}border-2 border-gray-300 text-gray-700 hover:border-brand-600 hover:text-brand-600{% endif %}">
+            Start Free Trial
+        </a>
+    {% endif %}
+</div>
