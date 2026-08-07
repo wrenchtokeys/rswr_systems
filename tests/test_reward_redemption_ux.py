@@ -253,7 +253,10 @@ class DenyThenReRequestTest(RewardRedemptionUXTestMixin, TestCase):
 
     def test_deny_then_rerequest_with_same_reward(self):
         """After denial, the reward can be applied to a new repair request."""
-        # Step 1: Create repair with applied reward
+        # Step 1: Create repair with applied reward. Customer requests are
+        # auto-accepted (APPROVED) now, so the customer can no longer deny
+        # their own submission; put the job back into the approval flow the
+        # way a shop would (APPROVED -> PENDING is a legal transition).
         resp = self.client.post(reverse('customer_request_repair'), {
             'unit_number': 'UNIT-1',
             'damage_type': 'Chip',
@@ -264,6 +267,9 @@ class DenyThenReRequestTest(RewardRedemptionUXTestMixin, TestCase):
         self.redemption.refresh_from_db()
         first_repair = self.redemption.applied_to_repair
         self.assertIsNotNone(first_repair)
+        self.assertEqual(first_repair.queue_status, 'APPROVED')
+        first_repair.queue_status = 'PENDING'
+        first_repair.save()
 
         # Step 2: Deny that repair
         resp = self.client.post(

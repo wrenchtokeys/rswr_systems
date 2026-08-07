@@ -82,10 +82,19 @@
             </form>
             {% endif %}
             {% if can_generate_invoice %}
-            <form method="post" action="{% url 'owner_generate_invoice_from_repair' repairs.0.id %}">
+            {% if user_can_invoices %}
+            <form method="post" action="{% url 'repair_complete_and_invoice' repairs.0.id %}" class="js-confirm-send"
+                  data-customer-name="{{ batch_summary.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
                 {% csrf_token %}
                 <button type="submit" class="btn-primary">
-                    <i class="fas fa-file-invoice-dollar"></i> Generate Invoice for Batch
+                    <i class="fas fa-paper-plane"></i> Send Invoice
+                </button>
+            </form>
+            {% endif %}
+            <form method="post" action="{% url 'owner_generate_invoice_from_repair' repairs.0.id %}">
+                {% csrf_token %}
+                <button type="submit" class="{% if user_can_invoices %}btn-secondary{% else %}btn-primary{% endif %}">
+                    <i class="fas fa-file-invoice-dollar"></i> Draft Invoice
                 </button>
             </form>
             {% endif %}
@@ -170,15 +179,22 @@
                 {% if repair.queue_status == 'APPROVED' and repair.technician.id == technician.id %}
                 <form method="post" action="{% url 'update_queue_status' repair.id %}" class="inline">
                     {% csrf_token %}
-                    <input type="hidden" name="new_status" value="IN_PROGRESS">
+                    <input type="hidden" name="status" value="IN_PROGRESS">
                     <button type="submit" class="btn-primary btn-sm">
                         <i class="fas fa-play"></i> Start This Break
                     </button>
                 </form>
                 {% endif %}
                 {% if repair.queue_status == 'IN_PROGRESS' and repair.technician.id == technician.id %}
-                <a href="{% url 'update_repair' repair.id %}?batch_id={{ batch_summary.batch_id }}" class="btn-primary btn-sm">
-                    <i class="fas fa-edit"></i> Complete This Break
+                <form method="post" action="{% url 'update_queue_status' repair.id %}" class="inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="COMPLETED">
+                    <button type="submit" class="btn-primary btn-sm">
+                        <i class="fas fa-check"></i> Complete This Break
+                    </button>
+                </form>
+                <a href="{% url 'update_repair' repair.id %}?batch_id={{ batch_summary.batch_id }}" class="btn-secondary btn-sm">
+                    <i class="fas fa-camera"></i> Add photos &amp; complete
                 </a>
                 {% endif %}
             </div>
@@ -186,4 +202,8 @@
     </div>
     {% endfor %}
 </div>
+
+{% if user_can_invoices %}
+{% include "includes/invoice_send_confirm_modal.html" %}
+{% endif %}
 {% endblock %}

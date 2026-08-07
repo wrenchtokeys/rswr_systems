@@ -96,14 +96,15 @@ class ReplacementApproveAtomicityTests(TestCase):
         replacement.refresh_from_db()
         self.assertEqual(replacement.queue_status, 'APPROVED')
 
-    def test_approve_requested_replacement_succeeds(self):
-        """A REQUESTED replacement can be approved via POST."""
+    def test_approve_requested_replacement_refused(self):
+        """A REQUESTED replacement must NOT be customer-approvable — the shop
+        has to confirm the glass and price it first (cost is still $0)."""
         replacement = self._make_replacement('REQUESTED')
         url = f'/app/replacements/{replacement.id}/approve/'
         resp = self.client.post(url, {'notes': ''})
         self.assertEqual(resp.status_code, 302)
         replacement.refresh_from_db()
-        self.assertEqual(replacement.queue_status, 'APPROVED')
+        self.assertEqual(replacement.queue_status, 'REQUESTED')
 
     def test_approve_completed_replacement_rejected(self):
         """A COMPLETED replacement cannot be re-approved (guard)."""
@@ -159,14 +160,15 @@ class ReplacementApproveAtomicityTests(TestCase):
         replacement.refresh_from_db()
         self.assertEqual(replacement.queue_status, 'DENIED')
 
-    def test_deny_requested_replacement_succeeds(self):
-        """A REQUESTED replacement can be denied via POST."""
+    def test_deny_requested_replacement_refused(self):
+        """A REQUESTED replacement must NOT be customer-deniable — it hasn't
+        entered the approval flow yet."""
         replacement = self._make_replacement('REQUESTED')
         url = f'/app/replacements/{replacement.id}/deny/'
         resp = self.client.post(url, {'reason': ''})
         self.assertEqual(resp.status_code, 302)
         replacement.refresh_from_db()
-        self.assertEqual(replacement.queue_status, 'DENIED')
+        self.assertEqual(replacement.queue_status, 'REQUESTED')
 
     def test_deny_completed_replacement_rejected(self):
         """A COMPLETED replacement cannot be denied (guard)."""

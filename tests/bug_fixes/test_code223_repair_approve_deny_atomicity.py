@@ -244,8 +244,9 @@ class RepairApproveAtomicityTests(TestCase):
         self.assertIsNotNone(approval)
         self.assertFalse(approval.approved)
 
-    def test_approve_requested_repair(self):
-        """REQUESTED repairs (customer self-submitted) can also be approved."""
+    def test_approve_requested_repair_refused(self):
+        """REQUESTED repairs (customer self-submitted) must NOT be
+        self-approvable — the shop reviews/prices them; only PENDING is."""
         # Queryset update: PENDING -> REQUESTED is not a legal runtime
         # transition (D1); real REQUESTED repairs are created that way.
         Repair.objects.filter(pk=self.repair.pk).update(queue_status='REQUESTED')
@@ -255,11 +256,11 @@ class RepairApproveAtomicityTests(TestCase):
             {'notes': 'approved from requested'},
         )
         self.repair.refresh_from_db()
-        self.assertEqual(self.repair.queue_status, 'APPROVED')
+        self.assertEqual(self.repair.queue_status, 'REQUESTED')
 
-    def test_deny_requested_repair(self):
-        """REQUESTED repairs can also be denied."""
-        # Queryset update — see test_approve_requested_repair.
+    def test_deny_requested_repair_refused(self):
+        """REQUESTED repairs must NOT be customer-deniable either."""
+        # Queryset update — see test_approve_requested_repair_refused.
         Repair.objects.filter(pk=self.repair.pk).update(queue_status='REQUESTED')
         self.repair.refresh_from_db()
         self.client.post(
@@ -267,7 +268,7 @@ class RepairApproveAtomicityTests(TestCase):
             {'reason': 'denied from requested'},
         )
         self.repair.refresh_from_db()
-        self.assertEqual(self.repair.queue_status, 'DENIED')
+        self.assertEqual(self.repair.queue_status, 'REQUESTED')
 
     def test_cross_tenant_repair_denied(self):
         """Customer cannot approve a repair belonging to a different tenant."""

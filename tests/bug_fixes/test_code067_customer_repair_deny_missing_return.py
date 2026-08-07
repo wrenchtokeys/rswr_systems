@@ -184,8 +184,9 @@ class CustomerRepairDenyMissingReturnTest(TestCase):
         self.repair.refresh_from_db()
         self.assertEqual(self.repair.queue_status, "DENIED")
 
-    def test_post_deny_requested_repair(self):
-        """POST also denies a REQUESTED (customer-initiated) repair."""
+    def test_post_deny_requested_repair_refused(self):
+        """POST must NOT deny a REQUESTED repair — customers can't act on
+        their own submissions; only PENDING is in the approval flow."""
         # Set up state via queryset update: PENDING -> REQUESTED is not a
         # legal runtime transition (D1 state machine); real REQUESTED
         # repairs are CREATED in that status.
@@ -195,7 +196,7 @@ class CustomerRepairDenyMissingReturnTest(TestCase):
         response = self.client.post(self._url(), {"reason": "Not needed anymore"})
         self.assertEqual(response.status_code, 302)
         self.repair.refresh_from_db()
-        self.assertEqual(self.repair.queue_status, "DENIED")
+        self.assertEqual(self.repair.queue_status, "REQUESTED")
 
     # ------------------------------------------------------------------
     # Guard: cannot deny already-processed repairs

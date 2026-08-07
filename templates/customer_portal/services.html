@@ -71,7 +71,7 @@
                         {% if item.kind == 'batch' %}{{ item.unit_number }}{% elif item.kind == 'repair' %}{{ item.repair.unit_number }}{% else %}{{ item.replacement.unit_number }}{% endif %}
                     </td>
                     <td class="px-4 py-3">
-                        {% if item.kind == 'batch' %}{% status_badge item.overall_status %}{% elif item.kind == 'repair' %}{% status_badge item.repair.queue_status %}{% else %}{% status_badge item.replacement.queue_status %}{% endif %}
+                        {% if item.kind == 'batch' %}{% status_badge item.overall_status variant='customer' %}{% elif item.kind == 'repair' %}{% status_badge item.repair.queue_status variant='customer' %}{% else %}{% status_badge item.replacement.queue_status variant='customer' %}{% endif %}
                     </td>
                     <td class="px-4 py-3 text-sm text-right font-semibold text-gray-900 whitespace-nowrap">
                         {% if item.kind == 'batch' %}${{ item.total_cost|floatformat:2 }}
@@ -130,7 +130,7 @@
                 <p class="text-xs text-gray-500 mt-0.5">{{ item.service_date|date:"M j, Y" }}</p>
             </div>
             <div class="flex items-center gap-2 flex-shrink-0 ml-3">
-                {% if item.kind == 'batch' %}{% status_badge item.overall_status %}{% elif item.kind == 'repair' %}{% status_badge item.repair.queue_status %}{% else %}{% status_badge item.replacement.queue_status %}{% endif %}
+                {% if item.kind == 'batch' %}{% status_badge item.overall_status variant='customer' %}{% elif item.kind == 'repair' %}{% status_badge item.repair.queue_status variant='customer' %}{% else %}{% status_badge item.replacement.queue_status variant='customer' %}{% endif %}
                 <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
             </div>
         </a>
