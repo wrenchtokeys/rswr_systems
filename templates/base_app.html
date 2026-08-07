@@ -243,9 +243,11 @@
         });
     </script>
 
-    {# ?v= busts dev-server browser caches on behavior changes (production
-       already gets content-hashed filenames from manifest storage). Bump it
-       whenever ui.js/tours.js behavior changes. #}
+    {% comment %}?v= busts dev-server browser caches on behavior changes
+       (production already gets content-hashed filenames from manifest
+       storage). Bump it whenever ui.js/tours.js behavior changes.
+       NOTE: {# #} comments are single-line only — a multi-line one renders
+       as visible page text, which is exactly what happened here.{% endcomment %}
     <script src="{% static 'js/ui.js' %}?v=3"></script>
     <script src="{% static 'js/vendor/driver.iife.js' %}?v=1"></script>
     <script src="{% static 'js/tours.js' %}?v=3"></script>

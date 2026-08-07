@@ -78,6 +78,9 @@ class ContactFormRenderTests(TestCase):
         self.assertContains(resp, 'Talk to a real person')
         # Reply email prefilled from the account
         self.assertContains(resp, 'render_owner@test.com')
+        # Regression: a multi-line {# #} in base_app.html isn't a comment to
+        # Django — it rendered as visible text at the bottom of every page.
+        self.assertNotContains(resp, '?v= busts')
 
     def test_anonymous_redirected_to_login(self):
         self.client.logout()
