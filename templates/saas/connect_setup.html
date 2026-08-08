@@ -9,7 +9,10 @@
         <p class="text-gray-500 mt-1">Set up online payment processing so your customers can pay invoices directly</p>
     </div>
 
-    {% if tenant.stripe_connect_onboarding_complete and tenant.stripe_connect_charges_enabled %}
+    {# The green banner must key off can_accept_payments — the exact property #}
+    {# that gates the customer-facing Pay Now button. Any weaker condition #}
+    {# lets this page claim you're live while customers see no way to pay. #}
+    {% if tenant.can_accept_payments %}
     <!-- Fully Set Up -->
     <div class="bg-green-50 border border-green-200 rounded-xl p-6 mb-6">
         <div class="flex items-start gap-4">
@@ -17,7 +20,7 @@
                 <i class="fas fa-check-circle text-green-600 text-xl"></i>
             </div>
             <div>
-                <h2 class="text-lg font-semibold text-green-900">Payment Processing Active</h2>
+                <h2 class="text-lg font-semibold text-green-900">Payments Active</h2>
                 <p class="text-green-700 mt-1">
                     Your account is fully set up. Customer invoice payments are routed directly to your bank account.
                 </p>
@@ -29,20 +32,88 @@
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         <i class="fas fa-check mr-1"></i> Payouts enabled
                     </span>
+                    {% else %}
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                        <i class="fas fa-exclamation-circle mr-1"></i> Payouts not enabled yet
+                    </span>
                     {% endif %}
-                    {% if tenant.platform_fee_percent > 0 %}
+                    {% if tenant.platform_fee_percent %}
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                         Platform fee: {{ tenant.platform_fee_percent }}%
                     </span>
                     {% endif %}
                 </div>
+
+                {% if not tenant.stripe_connect_payouts_enabled %}
+                <p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-4">
+                    You can take payments, but Stripe is still holding your payouts. Add or verify your
+                    bank details in the Stripe dashboard to start receiving deposits.
+                </p>
+                {% endif %}
+
+                {% if requirements.currently_due %}
                 <div class="mt-4">
-                    <form method="post" action="{% url 'connect_dashboard' %}">
+                    <p class="text-sm font-semibold text-amber-900">Stripe still needs from you:</p>
+                    <ul class="mt-1 text-sm text-amber-800 list-disc list-inside">
+                        {% for item in requirements.currently_due %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors">
+                        <i class="fas fa-external-link-alt mr-2"></i> View Stripe Dashboard
+                    </a>
+                    <a href="{% url 'connect_setup' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">
+                        <i class="fas fa-sync mr-2"></i> Refresh Status
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% elif tenant.stripe_onboarding_status == 'restricted' or tenant.stripe_onboarding_status == 'disabled' %}
+    <!-- Stripe has restricted the account — charges may be off -->
+    <div class="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start gap-4">
+            <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-exclamation-circle text-red-600 text-xl"></i>
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-red-900">Action Needed — Payments Paused</h2>
+                <p class="text-red-700 mt-1">
+                    Stripe needs more information before your shop can accept payments. Until this is
+                    resolved, the "Pay Now" button is hidden from your customers' invoices.
+                </p>
+
+                {% if requirements.disabled_reason %}
+                <p class="text-sm text-red-800 mt-3">
+                    <span class="font-semibold">Reason:</span> {{ requirements.disabled_reason }}
+                </p>
+                {% endif %}
+
+                {% if requirements.past_due or requirements.currently_due %}
+                <div class="mt-3">
+                    <p class="text-sm font-semibold text-red-900">Stripe needs:</p>
+                    <ul class="mt-1 text-sm text-red-800 list-disc list-inside">
+                        {% for item in requirements.past_due %}<li>{{ item }}</li>{% endfor %}
+                        {% for item in requirements.currently_due %}<li>{{ item }}</li>{% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="mt-4 flex flex-wrap gap-3">
+                    <form method="post" action="{% url 'connect_setup' %}">
                         {% csrf_token %}
-                        <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors">
-                            <i class="fas fa-external-link-alt mr-2"></i> View Stripe Dashboard
-                        </a>
+                        <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors">
+                            <i class="fas fa-arrow-right mr-2"></i> Resolve with Stripe
+                        </button>
                     </form>
+                    <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors">
+                        <i class="fas fa-external-link-alt mr-2"></i> View Stripe Dashboard
+                    </a>
                 </div>
             </div>
         </div>
@@ -61,13 +132,32 @@
                     Your information has been submitted to Stripe. Verification usually takes 1-2 business days.
                     We'll update your status automatically.
                 </p>
-                <div class="mt-4">
+
+                {% if requirements.currently_due %}
+                <div class="mt-3">
+                    <p class="text-sm font-semibold text-amber-900">Stripe still needs:</p>
+                    <ul class="mt-1 text-sm text-amber-800 list-disc list-inside">
+                        {% for item in requirements.currently_due %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div class="mt-4 flex flex-wrap gap-3">
+                    {# A plain GET back to this page re-syncs from Stripe — the #}
+                    {# view refreshes status on every GET. #}
+                    <a href="{% url 'connect_setup' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors">
+                        <i class="fas fa-redo mr-2"></i> Check Status
+                    </a>
+                    {% if requirements.currently_due %}
                     <form method="post" action="{% url 'connect_setup' %}">
                         {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium text-amber-700 bg-amber-100 rounded-lg hover:bg-amber-200 transition-colors">
-                            <i class="fas fa-redo mr-2"></i> Check Status
+                        <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-md hover:bg-amber-700 transition-colors">
+                            <i class="fas fa-arrow-right mr-2"></i> Provide Information
                         </button>
                     </form>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -151,7 +241,7 @@
                 <ol class="space-y-2 text-sm text-gray-600">
                     <li class="flex items-start gap-2">
                         <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
-                        <span>Click "Set Up Payments" — you'll be taken to Stripe to verify your identity and connect your bank account</span>
+                        <span>Click "Connect with Stripe" — you'll be taken to Stripe to verify your identity and connect your bank account</span>
                     </li>
                     <li class="flex items-start gap-2">
                         <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
@@ -168,7 +258,7 @@
             <form method="post" action="{% url 'connect_setup' %}">
                 {% csrf_token %}
                 <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                    <i class="fas fa-credit-card mr-2"></i> Set Up Payments
+                    <i class="fas fa-credit-card mr-2"></i> Connect with Stripe
                 </button>
             </form>
 

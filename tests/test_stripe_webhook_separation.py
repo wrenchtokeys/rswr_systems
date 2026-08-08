@@ -649,7 +649,10 @@ class SubscriptionEventHandlerTests(WebhookEndpointTestBase):
         })
 
         self.tenant.refresh_from_db()
-        self.assertEqual(self.tenant.subscription_status, 'incomplete')
+        # CODE-228: 'incomplete' is not a valid Tenant.subscription_status choice,
+        # so it maps to 'trialing' — access is unchanged while payment clears.
+        # 'active' arrives later via the invoice.paid webhook.
+        self.assertEqual(self.tenant.subscription_status, 'trialing')
         self.assertEqual(self.tenant.plan, 'trial')  # NOT upgraded — payment not confirmed
 
     def test_subscription_updated_cancel_at_period_end(self):

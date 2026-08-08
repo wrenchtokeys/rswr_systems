@@ -120,9 +120,20 @@ Connect secret.
 ## Operational checklist
 
 - After any deploy touching billing: `python manage.py set_stripe_prices --verify`.
-- New shop can't take payments? Check Owner Settings → Payments status,
-  then the account in **Stripe dashboard → Connect → Accounts** —
-  `charges_enabled`/`details_submitted` tell you whether onboarding is
-  incomplete or Stripe wants more KYC info.
+- "Can my shop take payments right now?" —
+  `python manage.py check_connect_status --tenant <slug>` (omit `--tenant`
+  for every active shop). It syncs live state from Stripe, then reports the
+  verdict against `Tenant.can_accept_payments` — the same property that gates
+  the customer-facing Pay button — plus Stripe's outstanding `requirements`
+  and whether payouts are being held. `--no-sync` reports stored columns only.
+- New shop can't take payments? Run the command above first; if you need the
+  Stripe-side view, check the account in **Stripe dashboard → Connect →
+  Accounts** — `charges_enabled`/`details_submitted` tell you whether
+  onboarding is incomplete or Stripe wants more KYC info.
+- **Readiness must key off `can_accept_payments`, never off
+  `charges_enabled` alone.** Stripe leaves `charges_enabled` true on a
+  *restricted* account, so the weaker check reports a shop as live while
+  every Pay button stays hidden. Owner Settings → Payments got this wrong
+  until it was switched to the property.
 - Never run one-off scripts that write Stripe IDs without confirming the
   account suffix matches `0zbBWahwkN`.

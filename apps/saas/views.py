@@ -1450,21 +1450,45 @@ def billing_portal_redirect(request):
 
 @owner_required
 def connect_setup(request):
-    """POST /owner/payments/setup/ — start Stripe Connect onboarding."""
+    """GET/POST /owner/payments/setup/ — Stripe Connect status + onboarding."""
     tenant, membership = _get_owner_tenant(request)
     if not tenant or not membership or membership.role != 'owner':
         messages.error(request, 'Only the shop owner can set up payment processing.')
         return redirect('owner_dashboard')
 
+    from apps.tenants.services.connect_service import ConnectService, ConnectError
+    svc = ConnectService()
+
     if request.method != 'POST':
-        # GET — show the setup page with current status
+        # GET — pull live status from Stripe before rendering. The tenant's
+        # stored flags go stale whenever an account.updated webhook is missed,
+        # and a stale row here tells an owner they can take payments when
+        # customers are actually being shown no Pay button at all. Fail soft:
+        # a Stripe outage must not 500 the page, so fall back to stored values.
+        connect_status = None
+        if tenant.stripe_connect_account_id and svc.is_enabled():
+            try:
+                connect_status = svc.sync_account_status(tenant)
+                tenant.refresh_from_db()
+            except Exception as e:
+                # Broad by design: this page's only job is reporting status, so
+                # any Stripe-side failure must degrade to "last known state"
+                # rather than 500 the owner out of their own settings.
+                logger.warning(
+                    f"connect_setup: could not refresh status for {tenant.slug}: {e}",
+                    exc_info=True,
+                )
+                messages.warning(
+                    request,
+                    "We couldn't reach Stripe to refresh your payment status — "
+                    "showing the last known state.",
+                )
         return render(request, 'saas/connect_setup.html', {
             'tenant': tenant,
             'membership': membership,
+            'connect_status': connect_status,
+            'requirements': (connect_status or {}).get('requirements') or {},
         })
-
-    from apps.tenants.services.connect_service import ConnectService, ConnectError
-    svc = ConnectService()
 
     if not svc.is_enabled():
         messages.error(request, 'Payment processing is not available at this time.')

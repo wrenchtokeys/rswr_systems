@@ -46,18 +46,30 @@ class TenantConnectFieldsTest(BaseConnectTestCase):
         self.assertFalse(self.tenant.stripe_connect_onboarding_complete)
         self.assertFalse(self.tenant.stripe_connect_charges_enabled)
         self.assertFalse(self.tenant.stripe_connect_payouts_enabled)
-        self.assertEqual(self.tenant.platform_fee_percent, Decimal('0'))
+        # NULL, not 0.00 — NULL means "fall back to PlatformConfig.default_fee_percent",
+        # whereas 0.00 is an explicit per-tenant "charge no platform fee" override.
+        self.assertIsNone(self.tenant.platform_fee_percent)
 
     def test_can_accept_payments_false_by_default(self):
         """can_accept_payments is False without Connect setup."""
         self.assertFalse(self.tenant.can_accept_payments)
 
     def test_can_accept_payments_true_when_enabled(self):
-        """can_accept_payments is True when charges enabled."""
+        """can_accept_payments is True when onboarding is active and charges enabled."""
         self.tenant.stripe_connect_account_id = 'acct_test123'
+        self.tenant.stripe_onboarding_status = 'active'
         self.tenant.stripe_connect_charges_enabled = True
         self.tenant.save()
         self.assertTrue(self.tenant.can_accept_payments)
+
+    def test_can_accept_payments_false_when_restricted(self):
+        """Stripe can leave charges_enabled true while restricting the account;
+        we must not advertise online payment in that state."""
+        self.tenant.stripe_connect_account_id = 'acct_test123'
+        self.tenant.stripe_onboarding_status = 'restricted'
+        self.tenant.stripe_connect_charges_enabled = True
+        self.tenant.save()
+        self.assertFalse(self.tenant.can_accept_payments)
 
     def test_can_accept_payments_false_without_account_id(self):
         """can_accept_payments requires account_id even if charges_enabled."""
@@ -96,28 +108,33 @@ class ConnectServiceTest(BaseConnectTestCase):
             svc = ConnectService()
             self.assertFalse(svc.is_enabled())
 
+    # ConnectService.calculate_platform_fee returns (fee_cents, fee_percent) —
+    # create_connected_checkout_session unpacks both, and the percent is written
+    # into PaymentIntent metadata as rs_fee_percent.
     def test_calculate_platform_fee_zero(self):
         """No fee when platform_fee_percent is 0."""
         svc = ConnectService()
         self.tenant.platform_fee_percent = Decimal('0')
-        fee = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
-        self.assertEqual(fee, 0)
+        fee_cents, fee_percent = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
+        self.assertEqual(fee_cents, 0)
+        self.assertEqual(fee_percent, Decimal('0'))
 
     def test_calculate_platform_fee_percentage(self):
         """Fee calculated correctly from percentage."""
         svc = ConnectService()
         self.tenant.platform_fee_percent = Decimal('2.50')
         # $100 * 2.5% = $2.50 = 250 cents
-        fee = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
-        self.assertEqual(fee, 250)
+        fee_cents, fee_percent = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
+        self.assertEqual(fee_cents, 250)
+        self.assertEqual(fee_percent, Decimal('2.50'))
 
     def test_calculate_platform_fee_rounds_down(self):
         """Fee converts to cents (int truncation)."""
         svc = ConnectService()
         self.tenant.platform_fee_percent = Decimal('3.00')
         # $33.33 * 3% = $0.9999 = 99 cents (int truncation)
-        fee = svc.calculate_platform_fee(Decimal('33.33'), self.tenant)
-        self.assertEqual(fee, 99)
+        fee_cents, _ = svc.calculate_platform_fee(Decimal('33.33'), self.tenant)
+        self.assertEqual(fee_cents, 99)
 
     @patch('apps.tenants.services.connect_service.stripe')
     def test_create_connect_account(self, mock_stripe):

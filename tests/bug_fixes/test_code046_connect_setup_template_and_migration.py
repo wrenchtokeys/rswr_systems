@@ -21,7 +21,7 @@ Tests verify:
 - can_receive_payouts property works correctly
 """
 
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.contrib.auth.models import User
 
@@ -53,6 +53,10 @@ def _make_owner(username='owner_c046'):
     return user, tenant
 
 
+# Blank key ⇒ ConnectService.is_enabled() is False ⇒ the GET view skips its
+# live Stripe sync. Keeps these template tests off the network regardless of
+# what the developer has exported.
+@override_settings(STRIPE_SECRET_KEY='')
 class ConnectSetupTemplateTest(TestCase):
     """GET /owner/payments/setup/ must render without TemplateDoesNotExist."""
 
@@ -97,7 +101,9 @@ class StripeConnectFieldsTest(TestCase):
         self.assertFalse(tenant.stripe_connect_charges_enabled)
         self.assertFalse(tenant.stripe_connect_payouts_enabled)
         self.assertFalse(tenant.stripe_connect_onboarding_complete)
-        self.assertEqual(tenant.platform_fee_percent, 0)
+        # NULL, not 0.00 — NULL means "fall back to PlatformConfig.default_fee_percent",
+        # whereas 0.00 is an explicit per-tenant "charge no platform fee" override.
+        self.assertIsNone(tenant.platform_fee_percent)
 
     def test_can_write_stripe_connect_fields(self):
         """Should be able to write Stripe Connect fields without error."""
@@ -114,6 +120,7 @@ class StripeConnectFieldsTest(TestCase):
         self.assertTrue(refreshed.stripe_connect_onboarding_complete)
 
 
+@override_settings(STRIPE_SECRET_KEY='')
 class CanAcceptPaymentsPropertyTest(TestCase):
     """Tenant.can_accept_payments property logic must be correct."""
 
@@ -128,26 +135,36 @@ class CanAcceptPaymentsPropertyTest(TestCase):
         """Account ID present but charges not enabled → cannot accept payments."""
         Tenant.objects.filter(pk=self.tenant.pk).update(
             stripe_connect_account_id='acct_test456',
+            stripe_onboarding_status='active',
             stripe_connect_charges_enabled=False,
         )
         refreshed = Tenant.objects.get(pk=self.tenant.pk)
         self.assertFalse(refreshed.can_accept_payments)
 
+    def test_can_accept_payments_false_when_restricted(self):
+        """Stripe restricted the account → charges may be on, but we must not
+        advertise online payment. Guards the case where Stripe sets a
+        disabled_reason while charges_enabled is still true."""
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            stripe_connect_account_id='acct_restricted',
+            stripe_onboarding_status='restricted',
+            stripe_connect_charges_enabled=True,
+            stripe_connect_onboarding_complete=True,
+        )
+        refreshed = Tenant.objects.get(pk=self.tenant.pk)
+        self.assertFalse(refreshed.can_accept_payments)
+
     def test_can_accept_payments_true_when_fully_enabled(self):
-        """Account ID + charges enabled → can accept payments."""
+        """Account ID + active onboarding + charges enabled → can accept payments."""
         Tenant.objects.filter(pk=self.tenant.pk).update(
             stripe_connect_account_id='acct_test789',
+            stripe_onboarding_status='active',
             stripe_connect_charges_enabled=True,
         )
         refreshed = Tenant.objects.get(pk=self.tenant.pk)
         self.assertTrue(refreshed.can_accept_payments)
 
-    def test_connect_setup_shows_active_status_when_connected(self):
-        """When tenant can_accept_payments, setup page should show 'Payments Active'."""
-        Tenant.objects.filter(pk=self.tenant.pk).update(
-            stripe_connect_account_id='acct_active',
-            stripe_connect_charges_enabled=True,
-        )
+    def _owner_client(self):
         user = User.objects.get(
             tenant_memberships__tenant=self.tenant,
             tenant_memberships__role='owner',
@@ -157,7 +174,31 @@ class CanAcceptPaymentsPropertyTest(TestCase):
         session = c.session
         session['tenant_id'] = self.tenant.id
         session.save()
+        return c
 
-        response = c.get('/owner/payments/setup/')
+    def test_connect_setup_shows_active_status_when_connected(self):
+        """When tenant can_accept_payments, setup page should show 'Payments Active'."""
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            stripe_connect_account_id='acct_active',
+            stripe_onboarding_status='active',
+            stripe_connect_charges_enabled=True,
+            stripe_connect_onboarding_complete=True,
+        )
+        response = self._owner_client().get('/owner/payments/setup/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Payments Active')
+
+    def test_connect_setup_does_not_claim_active_when_restricted(self):
+        """A restricted account must NOT render the green 'Payments Active'
+        banner — customers see no Pay button in that state, so telling the
+        owner they are live is the exact bug this guards."""
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            stripe_connect_account_id='acct_restricted2',
+            stripe_onboarding_status='restricted',
+            stripe_connect_charges_enabled=True,
+            stripe_connect_onboarding_complete=True,
+        )
+        response = self._owner_client().get('/owner/payments/setup/')
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Payments Active')
+        self.assertContains(response, 'Action Needed')
