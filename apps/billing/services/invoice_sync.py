@@ -15,6 +15,32 @@ RepairForm locks the job's price fields instead (see forms.py).
 from decimal import Decimal
 
 
+def tax_fields_for_service(service, cost):
+    """Recompute a job's tax fields for a new cost, mirroring Repair/Replacement.save().
+
+    The invoice→job write-back paths (owner line-item editor,
+    sync_job_prices_from_invoices) update via queryset .update() to skip
+    save() side effects — but that also skipped the tax recalculation inside
+    save(), leaving tax_rate/tax_amount frozen at the job's original price
+    (e.g. a $50 repair edited down to $1 kept its $4.88 tax). Include this
+    dict in the .update() so the tax fields follow the cost.
+
+    Returns {'tax_rate': ..., 'tax_amount': ...}, or {} if tax can't be
+    computed (billing config unavailable) — same keep-existing fallback as
+    save().
+    """
+    if service.no_tax or not cost or cost <= 0:
+        return {'tax_rate': Decimal('0.000'), 'tax_amount': Decimal('0.00')}
+    try:
+        from apps.billing.services.tax_service import TaxService
+        tax_result = TaxService(tenant=service.tenant).calculate_tax(
+            subtotal=cost, customer=service.customer
+        )
+        return {'tax_rate': tax_result['rate'], 'tax_amount': tax_result['amount']}
+    except Exception:
+        return {}
+
+
 def recalculate_invoice_totals(invoice):
     """Recompute subtotal/discount/tax/total from the invoice's line items.
 
