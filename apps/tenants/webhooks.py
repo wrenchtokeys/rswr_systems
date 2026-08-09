@@ -570,7 +570,7 @@ def _notify_owners_and_managers(tenant, event_type, context):
                 "your payment method now to avoid service interruption."
             )
             send_branded_email(
-                subject=f'⚠️ Payment failed for {tenant.name}',
+                subject=f'Payment failed for {tenant.name}',
                 recipient_list=recipient_list,
                 headline='Payment Failed',
                 body_paragraphs=[
@@ -578,14 +578,14 @@ def _notify_owners_and_managers(tenant, event_type, context):
                     f"We were unable to process your payment for {tenant.name} (attempt #{attempt_count}).",
                     retry_text,
                 ],
-                button_text='💳 Update Payment Method',
+                button_text='Update Payment Method',
                 button_url=f'{base_url}/owner/update-payment-method/',
                 tenant=tenant,
                 fail_silently=True,
             )
         elif event_type == 'payment_recovered':
             send_branded_email(
-                subject=f'✅ Payment successful for {tenant.name}',
+                subject=f'Payment successful for {tenant.name}',
                 recipient_list=recipient_list,
                 headline='Good news!',
                 body_paragraphs=[
@@ -610,7 +610,7 @@ def _notify_owners_and_managers(tenant, event_type, context):
                     "Your account has been moved to read-only mode for 30 days. During this time you can view your data but cannot make changes.",
                     "Resubscribe anytime to restore full access.",
                 ],
-                button_text='🔄 Resubscribe Now',
+                button_text='Resubscribe Now',
                 button_url=f'{base_url}/owner/billing/',
                 tenant=tenant,
                 fail_silently=True,

@@ -180,7 +180,7 @@ class Command(BaseCommand):
                         f"Your free trial for {tenant.name} ends in 7 days ({tenant.trial_expiry.strftime('%B %d, %Y')}).",
                         "Upgrade now to keep your data and avoid any service interruption.",
                     ],
-                    button_text='⬆️ Upgrade Now',
+                    button_text='Upgrade Now',
                     button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
@@ -197,7 +197,7 @@ class Command(BaseCommand):
                         f"Your free trial for {tenant.name} expires tomorrow ({tenant.trial_expiry.strftime('%B %d, %Y')}).",
                         "Don't lose access to your shop data! Upgrade today.",
                     ],
-                    button_text='⬆️ Upgrade Today',
+                    button_text='Upgrade Today',
                     button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
@@ -218,7 +218,7 @@ class Command(BaseCommand):
                         f"Your trial has {days_until_expiry} day{'s' if days_until_expiry != 1 else ''} left.",
                         "We have options for shops of all sizes — from solo techs to large fleets. Browse our plans to find the right fit for your shop.",
                     ],
-                    button_text='📋 View Plans',
+                    button_text='View Plans',
                     button_url='https://rssystems.io/pricing/',
                 ):
                     sent += 1
@@ -249,7 +249,7 @@ class Command(BaseCommand):
                 ]
             if _send_alert(tenant, alert_key, subject=subject, body='', dry_run=dry_run,
                            headline=headline, paragraphs=paragraphs,
-                           button_text='🔄 Reactivate Now',
+                           button_text='Reactivate Now',
                            button_url='https://rssystems.io/owner/billing/'):
                 sent += 1
 
@@ -266,7 +266,7 @@ class Command(BaseCommand):
                     f"Your RS Systems subscription for {tenant.name} has expired.",
                     "You have 30 days of read-only access to your data. Reactivate now to restore full access.",
                 ],
-                button_text='🔄 Reactivate Now',
+                button_text='Reactivate Now',
                 button_url='https://rssystems.io/owner/billing/',
             ):
                 sent += 1
@@ -288,7 +288,7 @@ class Command(BaseCommand):
                         f"You have 15 days of read-only access remaining for {tenant.name}.",
                         f"After {grace_end.strftime('%B %d, %Y')}, your account will be fully locked and you'll need to contact support to recover your data.",
                     ],
-                    button_text='🔄 Reactivate Now',
+                    button_text='Reactivate Now',
                     button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
@@ -296,16 +296,16 @@ class Command(BaseCommand):
             if days_remaining <= 5:
                 if _send_alert(
                     tenant, ALERT_GRACE_5_DAYS,
-                    subject=f"⚠️ Your read-only access ends in {days_remaining} days — {tenant.name}",
+                    subject=f"Your read-only access ends in {days_remaining} days — {tenant.name}",
                     body='',
                     dry_run=dry_run,
-                    headline=f'⚠️ {days_remaining} Days Left',
+                    headline=f'{days_remaining} Days Left',
                     paragraphs=[
                         f"Hi {_owner_name(tenant)},",
                         f"Your read-only access for {tenant.name} ends in {days_remaining} day{'s' if days_remaining != 1 else ''}.",
                         f"After {grace_end.strftime('%B %d, %Y')}, you will lose access to your shop's data entirely.",
                     ],
-                    button_text='⬆️ Upgrade Now',
+                    button_text='Upgrade Now',
                     button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
@@ -329,7 +329,7 @@ class Command(BaseCommand):
                         "You no longer have access to your shop's data in RS Systems. Upgrade your subscription to regain access.",
                         "If you need help recovering your data, contact us at contact@rssystems.io",
                     ],
-                    button_text='🔄 Reactivate',
+                    button_text='Reactivate',
                     button_url='https://rssystems.io/owner/billing/',
                 ):
                     sent += 1
