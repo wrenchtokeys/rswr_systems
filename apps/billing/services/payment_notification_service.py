@@ -104,9 +104,11 @@ class PaymentNotificationService:
                 'pay_url': public_pay_url(invoice),
             }
 
+            # Plain transactional subject — no bracketed prefix, no emoji
+            # (spam heuristics; see docs/operations/SES_OPERATIONS.md).
             subject = (
-                f"[{branding.get('company_name', 'RS Systems')}] "
-                f"Payment Received — Invoice {invoice.invoice_number}"
+                f"Your receipt from {branding.get('company_name', 'RS Systems')} "
+                f"— Invoice {invoice.invoice_number}"
             )
 
             html_body = render_to_string(
@@ -184,7 +186,7 @@ class PaymentNotificationService:
             status_text = 'PAID IN FULL' if invoice.status == 'PAID' else f'${invoice.amount_due:.2f} remaining'
 
             subject = (
-                f"💰 Payment: ${payment.amount:.2f} from {customer.name} "
+                f"Payment: ${payment.amount:.2f} from {customer.name} "
                 f"({status_text})"
             )
 
@@ -317,7 +319,7 @@ class PaymentNotificationService:
                 from_email, _ = shop_sender(shop_name=tenant.name if tenant else None)
                 shop_name = tenant.name if tenant else 'RS Systems'
                 send_branded_email(
-                    subject=f'[{shop_name}] Payment Received — ${total:.2f} across {len(payments)} invoices',
+                    subject=f'Your receipt from {shop_name} — ${total:.2f} across {len(payments)} invoices',
                     recipient_list=[recipient],
                     headline=f'Payment Received — ${total:.2f}',
                     body_paragraphs=[
