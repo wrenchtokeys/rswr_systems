@@ -17,6 +17,7 @@ Flow:
 Author: Amelia (Clawdbot AI)
 """
 
+import json
 import logging
 from decimal import Decimal
 from django.conf import settings
@@ -272,7 +273,14 @@ class StripeService:
 
         if event is None:
             return {'success': False, 'error': 'Invalid signature'}
-        
+
+        # stripe-python v15 removed dict inheritance from StripeObject, so
+        # event.get(...) / data.get(...) raise AttributeError on real events.
+        # The signature is already verified above — re-parse the raw payload
+        # so every handler works on plain dicts regardless of SDK version.
+        if not isinstance(event, dict):
+            event = json.loads(payload)
+
         event_type = event['type']
         data = event['data']['object']
         # Present only on events that originate from a connected account —
