@@ -26,21 +26,19 @@ noticed for 4 days because Sentry is not wired up in production.
 | 5 | Payment-complete page — now verifies the session with Stripe on landing and records the payment immediately (recovery path #2), shows the SHOP's name/contact and the invoice's real status instead of an unverified platform-branded claim | `rs_systems/views.payment_complete` | built |
 | 6 | In-portal notification — managers get a bell notification for every online payment (fires from the shared recording path: webhook, sweep, or landing page) | `StripeService._record_stripe_payment` | built |
 | 7 | Copy pay link — invoice detail page shows the tokened `/pay/` link with a copy button (no more emailing yourself an invoice to harvest the link) | owner invoice detail | built |
+| 8 | Already-paid safeguard — a Stripe payment arriving for a fully-paid invoice is never recorded again and never emails the customer; the shop gets an in-portal + email alert to review a possible duplicate charge | `StripeService._record_stripe_payment` | built |
 
 ## Deploy order
 
-1. **Merge + deploy PR #148 (hotfix) immediately.** Stripe retries failed
-   webhooks for ~72h — deploying before ~Aug 11 lets the pending retry
-   mark the $137.19 invoice paid and send both receipts automatically.
-   Do not manually record that payment; after this PR the guard enforces
-   that, but until it's deployed, hands off.
-2. Merge + deploy the payment-reliability PR (includes migration
-   `billing/0031` — run `python manage.py migrate` via the normal deploy).
-3. After deploy: `python manage.py reconcile_stripe_payments --dry-run`
+1. Merge PR #148 (hotfix), then PR #149 (reliability, includes migration
+   `billing/0031`), deploy once.
+2. After deploy: `python manage.py reconcile_stripe_payments --dry-run`
    once to sanity-check, then let cron run it.
-4. In Stripe Dashboard → Developers → Webhooks: check failed deliveries
-   since Aug 5 and **Resend** anything older than the 72h retry window
-   (e.g. Robert's shop events from Aug 5–6).
+3. Do **not** resend old failed deliveries from the Stripe dashboard —
+   Drake reconciled all outstanding invoices by hand on 2026-08-09.
+   Stripe's own pending retries will land after deploy; the already-paid
+   safeguard absorbs them: no double credit, no customer email, shop-only
+   alert if anything looks like a genuine duplicate charge.
 
 ## Still to do (in order)
 

@@ -385,6 +385,12 @@ class StripeService:
         if result.get('flagged') == 'account_mismatch':
             return result
 
+        # A skipped payment (invoice already fully paid — duplicate money)
+        # must not create a fee record: the charge should be reviewed and
+        # refunded, not booked.
+        if result.get('skipped') == 'already_paid':
+            return result
+
         # Record platform fee if this was a direct charge with an application fee
         application_fee_amount = payment_intent.get('application_fee_amount')
         if application_fee_amount and application_fee_amount > 0:
@@ -473,6 +479,27 @@ class StripeService:
             logger.info(f"Payment {stripe_payment_id} already recorded")
             return {'success': True, 'duplicate': True}
 
+        # An unseen Stripe payment for an invoice that is ALREADY fully
+        # paid is either the same money recorded manually before the
+        # webhook arrived (e.g. late retries after the Aug 2026 webhook
+        # outage, reconciled by hand), or a genuine double charge. Never
+        # credit it again and never email the customer a receipt — alert
+        # the shop only, so a real double charge gets reviewed/refunded.
+        if invoice.status == 'PAID' or invoice.amount_due <= 0:
+            logger.warning(
+                f"Stripe payment {stripe_payment_id or '(no pi)'} arrived for "
+                f"already-paid invoice {invoice.invoice_number} — NOT recorded. "
+                f"Possible duplicate charge; shop alerted."
+            )
+            self._alert_shop_payment_for_paid_invoice(
+                invoice, amount, stripe_payment_id,
+            )
+            return {
+                'success': True,
+                'skipped': 'already_paid',
+                'invoice_id': invoice.id,
+            }
+
         from django.db import IntegrityError, transaction as db_transaction
         tracking = InvoiceTrackingService(tenant=invoice.tenant)
         try:
@@ -533,3 +560,71 @@ class StripeService:
             'invoice_number': invoice.invoice_number,
             'amount': float(amount),
         }
+
+    def _alert_shop_payment_for_paid_invoice(self, invoice, amount,
+                                             stripe_payment_id):
+        """Shop-only alert (in-portal + owner email, NEVER the customer)
+        when a Stripe payment arrives for an invoice that is already paid."""
+        summary = (
+            f"⚠️ Stripe reported a ${amount} payment for invoice "
+            f"{invoice.invoice_number} ({invoice.customer.name}), but that "
+            f"invoice is already fully paid. It was NOT recorded again. If "
+            f"this isn't a payment you already entered manually, the customer "
+            f"may have been charged twice — check Stripe and refund if needed."
+        )
+        try:
+            from apps.technician_portal.models import Technician, TechnicianNotification
+            managers = Technician.objects.filter(
+                tenant=invoice.tenant, is_active=True, is_manager=True,
+            )
+            for tech in managers:
+                TechnicianNotification.objects.create(
+                    technician=tech, message=summary, read=False,
+                )
+        except Exception:
+            logger.warning(
+                "Could not create already-paid alert notification", exc_info=True,
+            )
+
+        try:
+            from core.email_utils import send_branded_email
+            tenant = invoice.tenant
+            recipients = []
+            if tenant and tenant.business_email:
+                recipients.append(tenant.business_email)
+            owner_email = getattr(getattr(tenant, 'owner', None), 'email', '')
+            if owner_email and owner_email not in recipients:
+                recipients.append(owner_email)
+            if not recipients:
+                return
+            send_branded_email(
+                subject=(
+                    f"Review needed: Stripe payment for already-paid "
+                    f"invoice {invoice.invoice_number}"
+                ),
+                recipient_list=recipients,
+                headline="Stripe Payment Not Recorded",
+                body_paragraphs=[
+                    f"Stripe reported a ${amount} payment for invoice "
+                    f"{invoice.invoice_number} ({invoice.customer.name}), "
+                    f"but that invoice is already fully paid in RS Systems.",
+                    "The payment was NOT recorded again and the customer was "
+                    "not emailed.",
+                    "If you already entered this payment manually, no action "
+                    "is needed. If not, the customer may have been charged "
+                    "twice — check your Stripe payments and refund the "
+                    "duplicate.",
+                ],
+                detail_rows=[
+                    ('Invoice', invoice.invoice_number),
+                    ('Customer', invoice.customer.name),
+                    ('Stripe amount', f"${amount}"),
+                    ('Stripe payment ID', stripe_payment_id or '(none)'),
+                ],
+                tenant=tenant,
+                fail_silently=True,
+            )
+        except Exception:
+            logger.warning(
+                "Could not send already-paid alert email", exc_info=True,
+            )

@@ -317,3 +317,89 @@ class CheckoutAttemptCreationTests(StripeReconcileBase):
         self.assertEqual(attempt.invoice, self.invoice)
         self.assertEqual(attempt.stripe_account_id, 'acct_recon')
         self.assertEqual(attempt.status, 'OPEN')
+
+
+class LateWebhookAfterManualPaymentTests(StripeReconcileBase):
+    """The Aug 2026 recovery scenario: invoices were manually caught up
+    while webhook retries were still queued at Stripe. A late retry must
+    not double-credit the invoice and must NOT email the customer —
+    shop-only alert."""
+
+    def _manually_pay_in_full(self):
+        Payment.objects.create(
+            invoice=self.invoice,
+            amount=Decimal('137.19'),
+            payment_date=timezone.now().date(),
+            payment_method='CASH',
+            notes='caught up by hand during webhook outage',
+        )
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, 'PAID')
+
+    def test_late_retry_not_recorded_and_customer_not_emailed(self):
+        from django.core import mail
+        from apps.billing.models import PlatformFeeRecord
+        from apps.billing.services.stripe_service import StripeService
+        from apps.technician_portal.models import Technician, TechnicianNotification
+
+        manager = Technician.objects.create(
+            tenant=self.tenant, user=self.owner, is_manager=True, is_active=True,
+        )
+        self._manually_pay_in_full()
+        mail.outbox = []
+
+        result = StripeService()._handle_payment_succeeded(
+            {
+                'id': 'pi_late_retry',
+                'amount_received': 13719,
+                'application_fee_amount': 686,
+                'metadata': {'rs_invoice_id': str(self.invoice.id)},
+            },
+            event_account='acct_recon',
+        )
+
+        self.assertEqual(result.get('skipped'), 'already_paid')
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.payments.count(), 1)  # only the manual one
+        self.assertEqual(self.invoice.amount_paid, Decimal('137.19'))
+        self.assertFalse(
+            PlatformFeeRecord.objects.filter(payment_intent_id='pi_late_retry').exists()
+        )
+
+        # Shop is alerted in-portal...
+        notes = TechnicianNotification.objects.filter(technician=manager)
+        self.assertEqual(notes.count(), 1)
+        self.assertIn('already fully paid', notes.first().message)
+
+        # ...and by email — but the CUSTOMER is never emailed.
+        all_recipients = [r for m in mail.outbox for r in m.to]
+        self.assertNotIn('fleet@recon.test', all_recipients)
+        self.assertIn('recon@test.com', all_recipients)
+
+    def test_late_retry_idempotent_when_pi_already_recorded(self):
+        """If the Stripe payment itself was recorded (with its pi id), a
+        retry is a plain duplicate — no alert spam."""
+        from django.core import mail
+        from apps.billing.services.stripe_service import StripeService
+
+        Payment.objects.create(
+            invoice=self.invoice,
+            amount=Decimal('137.19'),
+            payment_date=timezone.now().date(),
+            payment_method='STRIPE',
+            stripe_payment_id='pi_known',
+        )
+        mail.outbox = []
+
+        result = StripeService()._handle_payment_succeeded(
+            {
+                'id': 'pi_known',
+                'amount_received': 13719,
+                'metadata': {'rs_invoice_id': str(self.invoice.id)},
+            },
+            event_account='acct_recon',
+        )
+
+        self.assertTrue(result.get('duplicate'))
+        self.assertEqual(self.invoice.payments.count(), 1)
+        self.assertEqual(len(mail.outbox), 0)
