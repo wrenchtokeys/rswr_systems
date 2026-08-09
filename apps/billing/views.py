@@ -602,6 +602,23 @@ def record_payment(request, invoice_id):
                 status=400,
             )
 
+        # Guard: an online payment may be in flight (open Stripe checkout).
+        # Verify with Stripe first — paid sessions get recorded as Stripe
+        # payments, open sessions are expired, and verification failure
+        # blocks the manual record to rule out double payment.
+        from apps.billing.services.stripe_reconcile import guard_manual_payment
+        allow, guard_info = guard_manual_payment(invoice)
+        if not allow:
+            return JsonResponse({'error': guard_info['message']}, status=409)
+        if guard_info['recorded']:
+            invoice.refresh_from_db()
+            if invoice.status == 'PAID' or invoice.amount_due <= 0:
+                return JsonResponse({
+                    'error': 'This invoice was already paid online — the Stripe '
+                             'payment has been recorded. No manual payment is needed.',
+                    'stripe_payment_recorded': True,
+                }, status=409)
+
         # Use a row-level lock (SELECT FOR UPDATE) to prevent a TOCTOU race
         # where two concurrent API requests both read the same stale amount_due
         # and both pass the overpayment check, resulting in amount_paid > total.

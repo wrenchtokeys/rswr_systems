@@ -340,6 +340,23 @@ class ConnectService:
 
             session = stripe.checkout.Session.create(**session_params)
 
+            # Record the attempt so manual payment recording can guard
+            # against an in-flight online payment, and so the reconcile
+            # sweep can verify this session even if the webhook is lost.
+            try:
+                from apps.billing.models import StripeCheckoutAttempt
+                StripeCheckoutAttempt.objects.create(
+                    invoice=invoice,
+                    tenant=tenant,
+                    session_id=session.id,
+                    stripe_account_id=tenant.stripe_connect_account_id,
+                )
+            except Exception:
+                logger.warning(
+                    f"Could not record checkout attempt for "
+                    f"{invoice.invoice_number}", exc_info=True,
+                )
+
             logger.info(
                 f"Direct charge checkout for {invoice.invoice_number}: "
                 f"${invoice.amount_due} on {tenant.stripe_connect_account_id} "

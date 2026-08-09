@@ -413,6 +413,49 @@
 
     <!-- Right Column: Record Payment Form -->
     <div class="space-y-6">
+        {% if public_pay_link %}
+        <!-- Online Payment Link: copy & text/hand to the customer -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100">
+                <h2 class="text-sm font-semibold text-green-900 uppercase tracking-wider">
+                    <i class="fas fa-link mr-1.5"></i>Online Payment Link
+                </h2>
+            </div>
+            <div class="p-6 space-y-3">
+                <p class="text-sm text-gray-600">
+                    Send this link by text or email — your customer can pay
+                    ${{ invoice.amount_due }} by card, Apple&nbsp;Pay, or Google&nbsp;Pay.
+                    The money goes straight to your Stripe account.
+                </p>
+                <div class="flex items-center gap-2">
+                    <input type="text" readonly value="{{ public_pay_link }}" id="public-pay-link"
+                           class="flex-1 min-w-0 px-3 py-2 text-xs text-gray-600 bg-gray-50 border border-gray-300 rounded-lg truncate"
+                           onclick="this.select()">
+                    <button type="button" onclick="copyPayLink()" id="copy-pay-link-btn"
+                            class="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors whitespace-nowrap">
+                        <i class="fas fa-copy mr-1.5"></i>Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+        <script>
+        function copyPayLink() {
+            const input = document.getElementById('public-pay-link');
+            const btn = document.getElementById('copy-pay-link-btn');
+            const done = () => {
+                btn.innerHTML = '<i class="fas fa-check mr-1.5"></i>Copied!';
+                setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy mr-1.5"></i>Copy'; }, 2000);
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(input.value).then(done);
+            } else {
+                input.select();
+                document.execCommand('copy');
+                done();
+            }
+        }
+        </script>
+        {% endif %}
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
         <div class="bg-white rounded-xl shadow-sm border border-gray-200" id="record-payment">
             <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">

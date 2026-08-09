@@ -2,12 +2,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Payment Complete | RS Systems</title>
+    <title>{% if state == 'paid' %}Payment Received{% else %}Payment{% endif %} | {{ company_name }}</title>
     {% include "includes/head_assets.html" %}
 </head>
 <body class="bg-gray-50 min-h-screen flex items-center justify-center font-sans">
     <div class="max-w-md w-full mx-4">
         <div class="bg-white rounded-2xl shadow-lg p-8 text-center">
+            {% if state == 'paid' %}
             <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
                 <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -15,19 +16,43 @@
             </div>
             <h1 class="text-2xl font-bold text-gray-900 mb-2">Payment Received!</h1>
             <p class="text-gray-600 mb-6">
-                Thank you for your payment. A confirmation email has been sent to you with the details.
+                {% if invoice %}Invoice {{ invoice.invoice_number }} is paid in full.{% endif %}
+                Thank you for your payment to {{ company_name }}. A receipt is on its way to your email.
             </p>
+            {% elif state == 'processing' %}
+            <div class="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">Payment Processing</h1>
+            <p class="text-gray-600 mb-6">
+                {% if invoice %}Your payment for invoice {{ invoice.invoice_number }} is being confirmed.{% else %}Your payment is being confirmed.{% endif %}
+                You'll receive an email receipt from {{ company_name }} as soon as it clears — usually within a few minutes.
+            </p>
+            {% else %}
+            <div class="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">Thank You</h1>
+            <p class="text-gray-600 mb-6">
+                Your checkout with {{ company_name }} is complete. If you paid, a receipt
+                will arrive by email once the payment is confirmed.
+            </p>
+            {% endif %}
+            {% if company_email or company_phone %}
             <div class="bg-gray-50 rounded-lg p-4 mb-6">
                 <p class="text-sm text-gray-500">
-                    If you have any questions about your invoice, please contact us at
-                    <a href="mailto:contact@rssystems.io" class="text-blue-600 hover:underline">contact@rssystems.io</a>
+                    Questions about your invoice? Contact {{ company_name }}
+                    {% if company_email %}at <a href="mailto:{{ company_email }}" class="text-blue-600 hover:underline">{{ company_email }}</a>{% endif %}
+                    {% if company_phone %}{% if company_email %} or{% endif %} call {{ company_phone }}{% endif %}.
                 </p>
             </div>
-            <a href="/" class="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                Return Home
-            </a>
+            {% endif %}
         </div>
-        <p class="text-center text-gray-400 text-sm mt-6">RS Systems</p>
+        <p class="text-center text-gray-400 text-sm mt-6">Powered by RS Systems</p>
     </div>
 </body>
 </html>

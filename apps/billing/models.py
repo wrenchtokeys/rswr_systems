@@ -1138,3 +1138,60 @@ class PlatformFeeRecord(models.Model):
             f"Fee ${self.fee_amount} ({self.fee_percent}%) on "
             f"{self.invoice.invoice_number} → {self.stripe_account_id}"
         )
+
+
+class StripeCheckoutAttempt(models.Model):
+    """
+    One row per Stripe Checkout Session created for an invoice.
+
+    This is the app's own record of "a customer may be paying this invoice
+    online right now". It exists so that:
+      1. Manual payment recording can be guarded — before a cash/check
+         payment is recorded, open sessions are checked against Stripe
+         (already paid → record the Stripe payment instead; still open →
+         expire it so the customer cannot pay a second time).
+      2. Missed webhooks are recoverable — the reconcile sweep and the
+         payment-complete page can ask Stripe directly whether a session
+         was paid, instead of trusting webhook delivery alone.
+    """
+
+    STATUS_CHOICES = [
+        ('OPEN', 'Open'),
+        ('COMPLETE', 'Complete'),
+        ('EXPIRED', 'Expired'),
+    ]
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name='checkout_attempts',
+    )
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='checkout_attempts',
+        null=True,
+        blank=True,
+    )
+    session_id = models.CharField(max_length=100, unique=True)
+    stripe_account_id = models.CharField(
+        max_length=50,
+        help_text="Connect account the session was created on (acct_...)",
+    )
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default='OPEN',
+        help_text="Last status seen from Stripe; OPEN until confirmed otherwise",
+    )
+    payment_intent_id = models.CharField(max_length=100, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['invoice', 'status']),
+            models.Index(fields=['status', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.session_id} ({self.status}) → {self.invoice.invoice_number}"
