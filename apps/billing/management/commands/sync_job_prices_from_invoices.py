@@ -67,19 +67,30 @@ class Command(BaseCommand):
                 ))
             by_service[key] = li
 
+        from apps.billing.services.invoice_sync import tax_fields_for_service
+
         drifted, synced = [], 0
         for (model_name, pk), li in sorted(by_service.items()):
             if not li.quantity:
                 continue
             service = li.repair or li.replacement
             per_unit = (Decimal(li.amount) / li.quantity).quantize(Decimal('0.01'))
-            if service.cost == per_unit:
+            # Tax drift: the write-back used to skip tax recalc, so a job can
+            # match its invoiced price yet keep tax computed from its old cost.
+            tax_fields = tax_fields_for_service(service, per_unit)
+            tax_stale = bool(tax_fields) and (
+                service.tax_rate != tax_fields['tax_rate']
+                or service.tax_amount != tax_fields['tax_amount']
+            )
+            if service.cost == per_unit and not tax_stale:
                 continue
-            drifted.append((model_name, service, li, per_unit))
+            drifted.append((model_name, service, li, per_unit, tax_fields))
+            detail = f"job cost {service.cost} -> invoiced {per_unit}"
+            if tax_stale:
+                detail += f", tax {service.tax_amount} -> {tax_fields['tax_amount']}"
             self.stdout.write(
                 f"  {model_name} #{pk} ({service.customer.name}, unit {service.unit_number or '-'}): "
-                f"job cost {service.cost} -> invoiced {per_unit} "
-                f"[invoice {li.invoice.invoice_number}]"
+                f"{detail} [invoice {li.invoice.invoice_number}]"
             )
 
         if not drifted:
@@ -92,17 +103,19 @@ class Command(BaseCommand):
             ))
             return
 
-        for model_name, service, li, per_unit in drifted:
+        for model_name, service, li, per_unit, tax_fields in drifted:
             override = per_unit
             pct = service.customer.get_effective_discount_percentage() if service.customer else 0
             if pct and 0 < pct < 100:
                 override = (per_unit * Decimal('100') / (Decimal('100') - pct)).quantize(Decimal('0.01'))
-            # queryset .update() skips save() side effects (tax recalc, hooks),
-            # exactly like the line-item editor's write-back.
+            # queryset .update() skips save() side effects (hooks), exactly
+            # like the line-item editor's write-back — so tax fields are
+            # written explicitly alongside the cost.
             type(service).objects.filter(pk=service.pk).update(
                 cost=per_unit,
                 cost_override=override,
                 override_reason=f'Priced on invoice {li.invoice.invoice_number}',
+                **tax_fields,
             )
             synced += 1
 

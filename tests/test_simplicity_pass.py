@@ -317,6 +317,57 @@ class LineItemRepairSyncTests(OwnerClientMixin, TestCase):
         self.repair.refresh_from_db()
         self.assertEqual(self.repair.cost, Decimal('72.50'))
 
+    def test_price_edit_recomputes_repair_tax(self):
+        """The write-back updates tax too — not just cost (repair 182 bug:
+        a $50 repair edited to $1 on the invoice kept its $4.88 tax)."""
+        from apps.billing.models import BillingConfig
+        cfg = BillingConfig.get_for_tenant(self.tenant)
+        cfg.tax_enabled = True
+        cfg.default_tax_rate = Decimal('9.750')
+        cfg.save()
+
+        inv, li = self._make_invoice_line(
+            unit_price=Decimal('50.00'), discount=Decimal('0.00'),
+            amount=Decimal('50.00'),
+        )
+        self.repair.save()  # compute tax at the original $50 price
+        self.repair.refresh_from_db()
+        self.assertEqual(self.repair.tax_amount, Decimal('4.88'))
+
+        resp = self.client.post(
+            f'/api/billing/invoices/{inv.id}/line-items/{li.id}/update/',
+            data=json.dumps({'unit_price': 1.00, 'discount': 0}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.repair.refresh_from_db()
+        self.assertEqual(self.repair.cost, Decimal('1.00'))
+        self.assertEqual(self.repair.tax_rate, Decimal('9.750'))
+        self.assertEqual(self.repair.tax_amount, Decimal('0.10'))
+
+    def test_price_edit_zeroes_tax_for_no_tax_job(self):
+        """A no_tax job never picks up tax from the write-back."""
+        from apps.billing.models import BillingConfig
+        from apps.technician_portal.models import Repair
+        cfg = BillingConfig.get_for_tenant(self.tenant)
+        cfg.tax_enabled = True
+        cfg.default_tax_rate = Decimal('9.750')
+        cfg.save()
+        Repair.objects.filter(pk=self.repair.pk).update(no_tax=True)
+
+        inv, li = self._make_invoice_line(
+            unit_price=Decimal('50.00'), discount=Decimal('0.00'),
+            amount=Decimal('50.00'),
+        )
+        self.client.post(
+            f'/api/billing/invoices/{inv.id}/line-items/{li.id}/update/',
+            data=json.dumps({'unit_price': 60.00, 'discount': 0}),
+            content_type='application/json',
+        )
+        self.repair.refresh_from_db()
+        self.assertEqual(self.repair.cost, Decimal('60.00'))
+        self.assertEqual(self.repair.tax_amount, Decimal('0.00'))
+
     def test_description_only_edit_does_not_touch_repair(self):
         inv, li = self._make_invoice_line(
             unit_price=Decimal('50.00'), discount=Decimal('0.00'),
