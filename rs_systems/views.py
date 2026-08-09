@@ -762,12 +762,17 @@ def payment_complete(request):
 
 def _payment_complete_context(invoice, state):
     tenant = getattr(invoice, 'tenant', None)
+    receipt_pdf_url = None
+    if invoice is not None:
+        from apps.billing.pay_links import public_invoice_pdf_url
+        receipt_pdf_url = public_invoice_pdf_url(invoice)
     return {
         'invoice': invoice,
         'state': state,  # 'paid' | 'processing' | 'unknown'
         'company_name': tenant.name if tenant else 'RS Systems',
         'company_phone': (tenant.business_phone or '') if tenant else '',
         'company_email': (tenant.business_email or '') if tenant else 'contact@rssystems.io',
+        'receipt_pdf_url': receipt_pdf_url,
     }
 
 

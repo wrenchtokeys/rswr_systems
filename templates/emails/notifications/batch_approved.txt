@@ -23,7 +23,7 @@ Description:        {{ repair.break_description }}
 Cost:               ${{ repair.total_cost }}
 
 {% endfor %}{% if pricing_note %}================================================
-💡 PRICING NOTE
+PRICING NOTE
 ================================================
 
 {{ pricing_note }}

@@ -3052,7 +3052,7 @@ def customer_verify_email(request):
                 'Please verify your email address by clicking the button below so you can receive invoices and notifications.',
                 'This link will expire in 24 hours.',
             ],
-            button_text='✅ Verify Email',
+            button_text='Verify Email',
             button_url=verification_url,
         )
         messages.success(request, f"Verification email sent to {request.user.email}")

@@ -19,6 +19,7 @@ Remaining Balance: {% if invoice.amount_due > 0 %}${{ invoice.amount_due }}{% el
 Status:            {{ invoice.get_status_display }}
 
 {% if invoice.amount_due > 0 and pay_url %}Pay remaining balance online: {{ pay_url }}
+{% endif %}{% if receipt_pdf_url %}Download your {% if invoice.status == 'PAID' %}receipt{% else %}invoice{% endif %} (PDF): {{ receipt_pdf_url }}
 {% endif %}
 Thank you for your prompt payment!
 

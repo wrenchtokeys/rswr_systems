@@ -162,6 +162,19 @@
 </table>
 {% endif %}
 
+<!-- Downloadable receipt (PDF carries the PAID stamp once paid) -->
+{% if receipt_pdf_url %}
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 20px;">
+    <tr>
+        <td style="text-align: center; padding: 10px 0;">
+            <a href="{{ receipt_pdf_url }}" style="background-color: #ffffff; color: {{ branding.primary_color }}; border: 2px solid {{ branding.primary_color }}; text-decoration: none; padding: 12px 30px; border-radius: {{ branding.button_border_radius }}px; font-family: {{ branding.heading_font }}; font-size: 14px; font-weight: bold; display: inline-block;">
+                {% if invoice.status == 'PAID' %}Download Receipt (PDF){% else %}Download Invoice (PDF){% endif %}
+            </a>
+        </td>
+    </tr>
+</table>
+{% endif %}
+
 <!-- Thank You Note -->
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
     <tr>
