@@ -243,9 +243,9 @@
         });
     </script>
 
-    {# ?v= busts dev-server browser caches on behavior changes (production
+    {% comment %}?v= busts dev-server browser caches on behavior changes (production
        already gets content-hashed filenames from manifest storage). Bump it
-       whenever ui.js/tours.js behavior changes. #}
+       whenever ui.js/tours.js behavior changes.{% endcomment %}
     <script src="{% static 'js/ui.js' %}?v=3"></script>
     <script src="{% static 'js/vendor/driver.iife.js' %}?v=1"></script>
     <script src="{% static 'js/tours.js' %}?v=3"></script>

@@ -331,3 +331,25 @@ class TechnicianReplacementAccessTests(TestCase):
         login(self.client, self.user, self.tenant)
         resp = self.client.get(reverse('replacement_detail', args=[self.replacement.pk]))
         self.assertEqual(resp.status_code, 200)
+
+
+@override_settings(**TEST_SETTINGS)
+class FabReceivePaymentTests(TestCase):
+    """Receive Payment in the /tech/jobs/ FAB is manager/owner-only —
+    it must match the @owner_or_manager_required gate on the view."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user, self.tenant = make_shop('Fab Shop', 'fab-owner@test.com', 'both')
+
+    def test_owner_sees_receive_payment_in_fab(self):
+        login(self.client, self.user, self.tenant)
+        resp = self.client.get(reverse('job_list'))
+        self.assertContains(resp, 'Receive Payment')
+        self.assertContains(resp, reverse('owner_receive_payment'))
+
+    def test_plain_tech_does_not_see_receive_payment(self):
+        tech_user, _ = make_plain_tech(self.tenant, 'fabtech')
+        login(self.client, tech_user, self.tenant)
+        resp = self.client.get(reverse('job_list'))
+        self.assertNotContains(resp, 'Receive Payment')
