@@ -854,7 +854,7 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
     # along explicitly — skipping save() skips its tax recalc too.
     service = line_item.repair or line_item.replacement
     if service and ('unit_price' in data or 'discount' in data or 'amount' in data):
-        from apps.billing.services.invoice_sync import tax_fields_for_service
+        from apps.billing.services.invoice_sync import tax_fields_for_line
         per_unit = (line_item.amount / line_item.quantity).quantize(Decimal('0.01')) \
             if line_item.quantity else line_item.amount
         override = per_unit
@@ -865,7 +865,7 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
             cost=per_unit,
             cost_override=override,
             override_reason=f'Priced on invoice {invoice.invoice_number}',
-            **tax_fields_for_service(service, per_unit),
+            **tax_fields_for_line(line_item, per_unit),
         )
 
     from apps.billing.services.invoice_sync import recalculate_invoice_totals

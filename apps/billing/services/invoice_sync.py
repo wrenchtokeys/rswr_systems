@@ -12,11 +12,12 @@ Paid and cancelled invoices are financial history and are never touched;
 RepairForm locks the job's price fields instead (see forms.py).
 """
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 
-def tax_fields_for_service(service, cost):
-    """Recompute a job's tax fields for a new cost, mirroring Repair/Replacement.save().
+def tax_fields_for_line(line_item, per_unit):
+    """The job tax fields implied by its invoice line: the invoice's own tax
+    rate applied to the per-unit price for taxable lines, zero otherwise.
 
     The invoice→job write-back paths (owner line-item editor,
     sync_job_prices_from_invoices) update via queryset .update() to skip
@@ -25,20 +26,25 @@ def tax_fields_for_service(service, cost):
     (e.g. a $50 repair edited down to $1 kept its $4.88 tax). Include this
     dict in the .update() so the tax fields follow the cost.
 
-    Returns {'tax_rate': ..., 'tax_amount': ...}, or {} if tax can't be
-    computed (billing config unavailable) — same keep-existing fallback as
-    save().
+    The rate deliberately comes from the INVOICE, not the shop's current
+    TaxService config: the invoice is what the customer was actually
+    charged, and jobs billed before the shop configured tax (invoice
+    tax_rate 0) must not sprout tax retroactively.
     """
-    if service.no_tax or not cost or cost <= 0:
+    service = line_item.repair or line_item.replacement
+    rate = line_item.invoice.tax_rate or Decimal('0.000')
+    if (
+        not line_item.taxable
+        or (service is not None and service.no_tax)
+        or rate <= 0
+        or not per_unit
+        or per_unit <= 0
+    ):
         return {'tax_rate': Decimal('0.000'), 'tax_amount': Decimal('0.00')}
-    try:
-        from apps.billing.services.tax_service import TaxService
-        tax_result = TaxService(tenant=service.tenant).calculate_tax(
-            subtotal=cost, customer=service.customer
-        )
-        return {'tax_rate': tax_result['rate'], 'tax_amount': tax_result['amount']}
-    except Exception:
-        return {}
+    amount = (per_unit * rate / Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP
+    )
+    return {'tax_rate': rate, 'tax_amount': amount}
 
 
 def recalculate_invoice_totals(invoice):

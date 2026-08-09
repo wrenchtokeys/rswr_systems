@@ -67,7 +67,7 @@ class Command(BaseCommand):
                 ))
             by_service[key] = li
 
-        from apps.billing.services.invoice_sync import tax_fields_for_service
+        from apps.billing.services.invoice_sync import tax_fields_for_line
 
         drifted, synced = [], 0
         for (model_name, pk), li in sorted(by_service.items()):
@@ -76,9 +76,12 @@ class Command(BaseCommand):
             service = li.repair or li.replacement
             per_unit = (Decimal(li.amount) / li.quantity).quantize(Decimal('0.01'))
             # Tax drift: the write-back used to skip tax recalc, so a job can
-            # match its invoiced price yet keep tax computed from its old cost.
-            tax_fields = tax_fields_for_service(service, per_unit)
-            tax_stale = bool(tax_fields) and (
+            # match its invoiced price yet keep tax computed from its old
+            # cost. Expected tax comes from the invoice's own rate — jobs on
+            # a no-tax invoice stay at zero tax, whatever the shop's current
+            # tax settings are.
+            tax_fields = tax_fields_for_line(li, per_unit)
+            tax_stale = (
                 service.tax_rate != tax_fields['tax_rate']
                 or service.tax_amount != tax_fields['tax_amount']
             )
