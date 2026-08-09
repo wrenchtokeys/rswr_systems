@@ -516,11 +516,11 @@ def public_pay_invoice(request, invoice_id, token):
     if invoice is None:
         return render(request, '404.html', status=404)
 
-    if invoice.status == 'PAID':
-        return render(request, 'billing/payment_complete.html')
-
-    if invoice.amount_due <= 0:
-        return render(request, 'billing/payment_complete.html')
+    if invoice.status == 'PAID' or invoice.amount_due <= 0:
+        return render(
+            request, 'billing/payment_complete.html',
+            _payment_complete_context(invoice, 'paid'),
+        )
 
     tenant = invoice.tenant
 
@@ -732,11 +732,43 @@ def public_invoice_open_pixel(request, invoice_id, token):
 
 
 def payment_complete(request):
-    """Landing page after successful Stripe checkout."""
-    session_id = request.GET.get('session')
+    """Landing page after successful Stripe checkout.
+
+    This page is a recovery path, not just a thank-you: when the customer
+    lands here we verify the checkout session with Stripe and record the
+    payment immediately if the webhook hasn't already — so the invoice
+    flips to PAID even if webhook delivery is broken. The page then shows
+    the SHOP's identity and the invoice's real status, never an unverified
+    platform-branded "payment received" claim.
+    """
+    session_id = request.GET.get('session', '')
+    invoice, state = None, 'unknown'
     if session_id:
         logger.info(f"Payment complete landing — Stripe session: {session_id}")
-    return render(request, 'billing/payment_complete.html')
+        try:
+            from apps.billing.services.stripe_reconcile import resolve_session
+            invoice, state = resolve_session(session_id)
+        except Exception:
+            logger.warning(
+                f"payment_complete could not resolve session {session_id}",
+                exc_info=True,
+            )
+
+    return render(
+        request, 'billing/payment_complete.html',
+        _payment_complete_context(invoice, state),
+    )
+
+
+def _payment_complete_context(invoice, state):
+    tenant = getattr(invoice, 'tenant', None)
+    return {
+        'invoice': invoice,
+        'state': state,  # 'paid' | 'processing' | 'unknown'
+        'company_name': tenant.name if tenant else 'RS Systems',
+        'company_phone': (tenant.business_phone or '') if tenant else '',
+        'company_email': (tenant.business_email or '') if tenant else 'contact@rssystems.io',
+    }
 
 
 def payment_cancelled(request):

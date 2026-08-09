@@ -502,6 +502,30 @@ class StripeService:
             logger.info(f"Payment notifications: customer={notif_result['customer_sent']}, owner={notif_result['owner_sent']}")
         except Exception as e:
             logger.warning(f"Payment notification failed (non-fatal): {e}")
+
+        # In-portal notification: online payments arrive while nobody is
+        # looking at their inbox — every manager gets a bell notification,
+        # so the shop never has to guess whether a payment went through.
+        try:
+            from apps.technician_portal.models import Technician, TechnicianNotification
+            status_note = (
+                'paid in full'
+                if invoice.status == 'PAID'
+                else f'${invoice.amount_due} remaining'
+            )
+            summary = (
+                f"💰 {invoice.customer.name} paid ${amount} online — "
+                f"invoice {invoice.invoice_number} ({status_note})."
+            )
+            managers = Technician.objects.filter(
+                tenant=invoice.tenant, is_active=True, is_manager=True,
+            )
+            for tech in managers:
+                TechnicianNotification.objects.create(
+                    technician=tech, message=summary, read=False,
+                )
+        except Exception as e:
+            logger.warning(f"In-portal payment notification failed (non-fatal): {e}")
         
         return {
             'success': True,

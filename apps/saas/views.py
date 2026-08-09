@@ -3201,6 +3201,15 @@ def owner_invoice_detail(request, invoice_id):
     except Exception:
         pass
 
+    # Shareable pay link (tokened /pay/ URL on the shop's own Stripe
+    # account) — shown with a copy button so the owner can text/hand it to
+    # a customer without emailing themselves an invoice first. None when
+    # the shop can't take online payments or there's nothing due.
+    public_pay_link = None
+    if invoice.status not in ('PAID', 'CANCELLED') and invoice.amount_due > 0:
+        from apps.billing.pay_links import public_pay_url
+        public_pay_link = public_pay_url(invoice)
+
     context = {
         'tenant': tenant,
         'invoice': invoice,
@@ -3212,6 +3221,7 @@ def owner_invoice_detail(request, invoice_id):
         'recipient_email': recipient_email,
         'rendered_reminder_default': rendered_reminder_default,
         'today': timezone.now().date(),
+        'public_pay_link': public_pay_link,
     }
     return render(request, 'saas/owner_invoice_detail.html', context)
 
@@ -3277,6 +3287,38 @@ def owner_record_payment(request, invoice_id):
         except ValueError:
             messages.error(request, 'Invalid payment date.')
             return _done()
+
+    # GUARD: an online payment may be in flight for this invoice (the
+    # customer opened the Stripe pay page). Verify with Stripe before
+    # recording anything manually: an already-paid session gets recorded
+    # as the real Stripe payment; a still-open session is expired so the
+    # customer can't also pay online; verification failure blocks the
+    # manual record — double payment must never be left to chance.
+    from apps.billing.services.stripe_reconcile import guard_manual_payment
+    allow, guard_info = guard_manual_payment(invoice)
+    if not allow:
+        messages.error(request, guard_info['message'])
+        return _done()
+    if guard_info['recorded']:
+        invoice.refresh_from_db()
+        if invoice.status == 'PAID' or invoice.amount_due <= 0:
+            messages.success(
+                request,
+                'Good news — this invoice was already paid online. The Stripe '
+                'payment has been recorded; no manual payment is needed.',
+            )
+            return _done()
+        messages.info(
+            request,
+            f'An online Stripe payment was found and recorded first. '
+            f'Remaining balance is ${invoice.amount_due}.',
+        )
+    if guard_info['expired']:
+        messages.info(
+            request,
+            "The customer's open online payment page was cancelled so this "
+            "invoice can't be paid twice.",
+        )
 
     # Create the Payment record
     # NOTE: The amount_due check must happen INSIDE the transaction with a row-level
