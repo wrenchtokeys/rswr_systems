@@ -57,9 +57,7 @@ def stripe_subscription_webhook(request):
         else:
             # Development only: allow without verification (with warning)
             try:
-                event = stripe.Event.construct_from(
-                    json.loads(payload), stripe.api_key
-                )
+                event = json.loads(payload)
             except (ValueError, json.JSONDecodeError):
                 logger.error("Stripe webhook: could not parse payload")
                 return HttpResponse("Invalid payload", status=400)
@@ -79,7 +77,14 @@ def stripe_subscription_webhook(request):
         except stripe.error.SignatureVerificationError:
             logger.error("Stripe webhook: invalid signature")
             return HttpResponse("Invalid signature", status=400)
-    
+
+    # stripe-python v15 removed dict inheritance from StripeObject, so
+    # session.get(...) in the handlers raises AttributeError on real events.
+    # The signature is already verified — re-parse the raw payload so the
+    # handlers work on plain dicts regardless of SDK version.
+    if not isinstance(event, dict):
+        event = json.loads(payload)
+
     event_type = event['type']
     data_object = event['data']['object']
     
