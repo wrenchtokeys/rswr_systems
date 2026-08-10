@@ -1307,6 +1307,35 @@ class OwnerOnlyTest(BaseTestCase):
 # 11. Subscription Upgrade/Downgrade Tests
 # ======================================================================
 
+def stripe_subscription_mock(item_id, period_end=1735689600,
+                             period_start=1733011200, status='active',
+                             price_id='price_current', interval='month'):
+    """A test double that behaves like a real Stripe Subscription.
+
+    The previous inline mocks set current_period_end as an *attribute* while
+    their __getitem__ returned None for it. A real StripeObject resolves the
+    same field either way, so the doubles quietly disagreed with production
+    and hid the fact that Basil (2025-03-31) moved current_period_end onto
+    the items. Keep both access paths consistent here.
+    """
+    data = {
+        'id': 'sub_mock',
+        'status': status,
+        'current_period_end': period_end,
+        'current_period_start': period_start,
+        'items': {'data': [{
+            'id': item_id,
+            'current_period_end': period_end,
+            'current_period_start': period_start,
+            'price': {'id': price_id, 'recurring': {'interval': interval}},
+        }]},
+    }
+    mock = MagicMock(**{k: v for k, v in data.items() if k != 'items'})
+    mock.__getitem__ = lambda _self, key: data[key]
+    mock.__contains__ = lambda _self, key: key in data
+    return mock
+
+
 class SubscriptionUpgradeDowngradeTest(BaseTestCase):
     """
     Tests for upgrade/downgrade detection and security handling.
@@ -1410,14 +1439,7 @@ class SubscriptionUpgradeDowngradeTest(BaseTestCase):
         self.tenant.save()
         
         # Mock Stripe responses
-        mock_retrieve.return_value = MagicMock(
-            status='active',
-            current_period_end=1735689600,
-            current_period_start=1733011200,
-        )
-        mock_retrieve.return_value.__getitem__ = lambda s, k: {
-            'items': {'data': [MagicMock(id='si_item123')]}
-        }.get(k)
+        mock_retrieve.return_value = stripe_subscription_mock('si_item123')
         mock_modify.return_value = {'id': 'sub_test123'}
         
         # Attempt upgrade to Pro
@@ -1447,15 +1469,7 @@ class SubscriptionUpgradeDowngradeTest(BaseTestCase):
         self.tenant.save()
         
         # Mock Stripe responses
-        mock_sub = MagicMock(
-            status='active',
-            current_period_end=1735689600,
-            current_period_start=1733011200,
-        )
-        mock_sub.__getitem__ = lambda s, k: {
-            'items': {'data': [MagicMock(id='si_item456')]}
-        }.get(k)
-        mock_retrieve.return_value = mock_sub
+        mock_retrieve.return_value = stripe_subscription_mock('si_item456')
         
         mock_schedule_create.return_value = MagicMock(id='sub_sched_789')
         mock_schedule_modify.return_value = {}
@@ -1487,13 +1501,7 @@ class SubscriptionUpgradeDowngradeTest(BaseTestCase):
         self.tenant.stripe_subscription_id = 'sub_test789'
         self.tenant.save()
         
-        mock_retrieve.return_value = MagicMock(
-            status='active',
-            current_period_end=1735689600,
-        )
-        mock_retrieve.return_value.__getitem__ = lambda s, k: {
-            'items': {'data': [MagicMock(id='si_item789')]}
-        }.get(k)
+        mock_retrieve.return_value = stripe_subscription_mock('si_item789')
         
         with patch('stripe.Subscription.modify') as mock_modify:
             mock_modify.return_value = {'id': 'sub_test789'}
@@ -1518,13 +1526,7 @@ class SubscriptionUpgradeDowngradeTest(BaseTestCase):
         self.tenant.save()
         
         with patch('stripe.Subscription.retrieve') as mock_retrieve:
-            mock_retrieve.return_value = MagicMock(
-                status='active',
-                current_period_end=1735689600,
-            )
-            mock_retrieve.return_value.__getitem__ = lambda s, k: {
-                'items': {'data': [MagicMock(id='si_item999')]}
-            }.get(k)
+            mock_retrieve.return_value = stripe_subscription_mock('si_item999')
             
             with self.assertRaises(SubscriptionError) as ctx:
                 self.svc.update_subscription(self.tenant, 'starter')

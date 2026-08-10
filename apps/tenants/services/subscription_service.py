@@ -13,11 +13,16 @@ from django.conf import settings
 from django.utils import timezone
 
 from apps.tenants.models import Tenant, SubscriptionPlan
+from apps.billing.services.stripe_compat import (
+    subscription_item_id,
+    subscription_period_end,
+)
 
 logger = logging.getLogger(__name__)
 
 # Configure Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
+stripe.api_version = getattr(settings, 'STRIPE_API_VERSION', '') or stripe.api_version
 
 
 class SubscriptionError(Exception):
@@ -260,7 +265,7 @@ class SubscriptionService:
                 stripe.Subscription.modify(
                     tenant.stripe_subscription_id,
                     items=[{
-                        'id': subscription['items']['data'][0].id,
+                        'id': subscription_item_id(subscription),
                         'price': new_plan.stripe_price_id,
                     }],
                     proration_behavior='create_prorations',
@@ -298,8 +303,16 @@ class SubscriptionService:
                     from_subscription=tenant.stripe_subscription_id,
                 )
                 
-                # Configure schedule: current plan now, new plan at period end
-                current_period_end = subscription.current_period_end
+                # Configure schedule: current plan now, new plan at period end.
+                # Basil removed current_period_end from Subscription and put
+                # it on each item, so reading the attribute directly raised
+                # AttributeError and every downgrade failed.
+                current_period_end = subscription_period_end(subscription)
+                if not current_period_end:
+                    raise SubscriptionError(
+                        "Could not determine your current billing period. "
+                        "Please contact support."
+                    )
                 stripe.SubscriptionSchedule.modify(
                     schedule.id,
                     end_behavior='release',  # Release back to regular subscription after
@@ -377,7 +390,7 @@ class SubscriptionService:
                 'subscription_id': subscription.id,
                 'status': 'canceling',
                 'cancel_at': subscription.cancel_at,
-                'current_period_end': subscription.current_period_end,
+                'current_period_end': subscription_period_end(subscription),
                 'message': (
                     'Your subscription will be canceled at the end of the current '
                     'billing period. You retain full access until then.'
