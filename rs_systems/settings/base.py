@@ -205,11 +205,20 @@ ADMINS = [
 MANAGERS = ADMINS
 
 # =========================================
-# SMS CONFIGURATION (AWS SNS)
+# SMS CONFIGURATION (AWS End User Messaging)
 # =========================================
 
-AWS_SNS_REGION_NAME = os.environ.get('AWS_SNS_REGION', 'us-east-1')
+AWS_SNS_REGION_NAME = os.environ.get('AWS_SNS_REGION', 'us-east-1')  # legacy name, kept for old callers
+AWS_SMS_REGION_NAME = os.environ.get('AWS_SMS_REGION', os.environ.get('AWS_SNS_REGION', 'us-east-1'))
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'False').lower() == 'true'
+
+# Master switch for all SMS features: the registered toll-free number (E.164)
+# or pool ARN that texts are sent from. Empty = SMS disabled everywhere,
+# regardless of SMS_ENABLED. Set via EB env once the number is verified.
+SMS_ORIGINATION_IDENTITY = os.environ.get('SMS_ORIGINATION_IDENTITY', '')
+
+# Optional End User Messaging configuration set (delivery-event tracking)
+SMS_CONFIGURATION_SET = os.environ.get('SMS_CONFIGURATION_SET', '')
 
 # =========================================
 # STRIPE CONFIGURATION

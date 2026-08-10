@@ -176,8 +176,9 @@ EMAIL_RATE_LIMIT = int(os.environ.get('EMAIL_RATE_LIMIT', 14))
 # SMS (Production overrides)
 # =========================================
 
+# SMS_ENABLED is the kill-switch; the real gate is SMS_ORIGINATION_IDENTITY
+# (base.py) — sends no-op until the toll-free number is set in the EB env.
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'True').lower() == 'true'
-SMS_DEFAULT_SENDER_ID = os.environ.get('SMS_SENDER_ID', 'RS Systems')
 SMS_MAX_PRICE_USD = float(os.environ.get('SMS_MAX_PRICE_USD', '0.50'))
 SMS_RATE_LIMIT = int(os.environ.get('SMS_RATE_LIMIT', 10))
 

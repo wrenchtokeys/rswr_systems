@@ -182,7 +182,7 @@
                                 </form>
                                 {% if user_can_invoices %}
                                 <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline js-confirm-send"
-                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
+                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
                                     {% csrf_token %}
                                     <button type="submit" class="btn-primary btn-sm">
                                         <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
@@ -226,7 +226,7 @@
                                 {% endif %}
                                 {% if user_can_invoices %}
                                 <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline js-confirm-send"
-                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
+                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
                                     {% csrf_token %}
                                     <button type="submit" class="btn-primary btn-sm">
                                         <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
@@ -246,7 +246,7 @@
                                 {% endif %}
                                 {% if user_can_invoices %}
                                 <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline js-confirm-send"
-                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
+                                      data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
                                     {% csrf_token %}
                                     <button type="submit" class="btn-primary btn-sm">
                                         <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
