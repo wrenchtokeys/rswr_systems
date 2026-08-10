@@ -10,16 +10,8 @@
     <div class="max-w-5xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <!-- Header -->
-            <div class="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-600 to-green-500 text-white rounded-t-lg">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h1 class="text-2xl font-bold">{% if repair %}Edit{% else %}Create New{% endif %} Repair</h1>
-                        <p class="text-green-100 text-sm mt-1">Document windshield repair with professional-grade tracking</p>
-                    </div>
-                    <div class="hidden md:block">
-                        <i class="fas fa-tools text-4xl text-green-200 opacity-50"></i>
-                    </div>
-                </div>
+            <div class="px-4 sm:px-6 py-5 border-b border-gray-200">
+                <h1 class="t-h2 text-gray-900">{% if repair %}Edit{% else %}New{% endif %} Repair</h1>
             </div>
 
             <div class="p-3 sm:p-6">
@@ -130,9 +122,6 @@
                     <!-- SECTION 1: Customer & Unit Information -->
                     <div class="form-section fade-in">
                         <div class="form-section-header">
-                            <div class="form-section-icon">
-                                <i class="fas fa-building"></i>
-                            </div>
                             <div>
                                 <h2 class="form-section-title">Customer & Unit Information</h2>
                                 <p class="form-section-subtitle">Identify the customer and vehicle unit for this repair</p>
@@ -303,9 +292,6 @@
                     <!-- SECTION 2: Damage Assessment -->
                     <div class="form-section fade-in">
                         <div class="form-section-header">
-                            <div class="form-section-icon">
-                                <i class="fas fa-car-crash"></i>
-                            </div>
                             <div>
                                 <h2 class="form-section-title">Damage Assessment</h2>
                                 <p class="form-section-subtitle">Classify the type and location of windshield damage</p>
@@ -392,9 +378,6 @@
                     <!-- SECTION 3: Technical Conditions -->
                     <div class="form-section fade-in">
                         <div class="form-section-header">
-                            <div class="form-section-icon">
-                                <i class="fas fa-flask"></i>
-                            </div>
                             <div>
                                 <h2 class="form-section-title">Technical Conditions</h2>
                                 <p class="form-section-subtitle">Record environmental and material specifications</p>
@@ -458,9 +441,6 @@
                     <!-- SECTION 4: Photo Documentation -->
                     <div class="form-section fade-in">
                         <div class="form-section-header">
-                            <div class="form-section-icon">
-                                <i class="fas fa-camera"></i>
-                            </div>
                             <div>
                                 <h2 class="form-section-title">Photo Documentation</h2>
                                 <p class="form-section-subtitle">Capture visual evidence of damage and repair progress</p>
@@ -579,9 +559,6 @@
                     <!-- SECTION 5: Additional Details -->
                     <div class="form-section fade-in">
                         <div class="form-section-header">
-                            <div class="form-section-icon">
-                                <i class="fas fa-clipboard"></i>
-                            </div>
                             <div>
                                 <h2 class="form-section-title">Additional Details</h2>
                                 <p class="form-section-subtitle">Notes, status, and scheduling information</p>

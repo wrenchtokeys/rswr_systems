@@ -14,7 +14,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 1 | S4 · Tabular figures on money | **DONE** 2026-08-09 (partial — see S4 notes) |
 | 2 | S5 · Owner dashboard: kill the green slab, give revenue meaning | **DONE** 2026-08-09 |
 | 2 | S6 · Jobs page: 25 controls → 3 | **DONE** 2026-08-09 |
-| 2 | S7 · Job/repair form: drop the green header and ALL-CAPS section tiles | TODO |
+| 2 | S7 · Job/repair form: drop the green header and ALL-CAPS section tiles | **DONE** 2026-08-10 |
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | TODO |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | TODO |
 | 3 | S10 · View Transitions for list → detail continuity | TODO |
@@ -181,6 +181,11 @@ customer portal, while the Pro plan sells *"Your logo & colors on everything."*
 - The platform admin console (`templates/admin/**`) was excluded for the same reason.
 - Inline status badges should migrate to the existing `{% status_badge %}` tag (the real
   single source of truth) rather than hand-rolled conditionals. Good work for S8.
+- **Addendum (S7 branch, 2026-08-10):** colors alone weren't the whole promise —
+  `base_app.html` still hard-coded the RS mark + "RS Systems" wordmark, so owners and
+  techs never saw their logo (the customer portal already showed it). The navbar now
+  renders `request.tenant.logo` + tenant name with the RS mark as fallback, same
+  pattern as `base_customer.html`.
 
 ## S4 · Tabular figures on money — DONE (partial)
 
@@ -282,18 +287,45 @@ to a kebab; the FAB is gone from this page.
   text, and warranty/goodwill chips are still hand-coloured; the bulk toolbar is still
   `bg-gray-900` (kept — it's a fixed mode bar, not a pill).
 
-## S7 · Job/repair form: drop the green header and ALL-CAPS section tiles
+## S7 · Job/repair form: drop the green header and ALL-CAPS section tiles — DONE
 
-**Files:** `templates/technician_portal/repair_form.html`, `replacement_form.html`,
-`static/css/components/form-fields.css`
+Branch `feat/ui-s7-repair-form`. The green gradient header, the green icon squares,
+the tinted section boxes and the ALL-CAPS titles are gone from the full repair form;
+the multi-break form and the quick job form lost their green (and purple) accents too.
 
-- The green gradient page header and green rounded-square section icons are the app's
-  second accent. Remove both — quiet section headings on the `t-*` scale.
-- "Document windshield repair with professional-grade tracking" is filler; cut it.
-- Group fields with whitespace and hairlines, not tinted boxes.
+**Notes**
 
-**Care:** this form has autosave (`static/js/form_autosave.js`) and multi-break logic
-(`static/js/multi_break.js`) keyed to element IDs. Change classes, not IDs.
+- **The session's file list was stale.** `technician_portal/replacement_form.html`
+  doesn't exist — replacements go through the unified quick job form
+  (`job_form.html`). The real surfaces were `repair_form.html`,
+  `multi_break_repair_form.html`, `job_form.html` and
+  `static/css/components/form-fields.css` (loaded *only* by `repair_form.html`).
+- **`form-fields.css` was overriding the shared `.btn-primary` with a green
+  gradient** — it loads after `app.css`, so the whole repair form's primary button
+  ignored the brand. The local button rules are deleted, not restyled; a comment in
+  the file now warns against re-adding them. Same lesson as the autosave styles:
+  app.css is the single source of truth for shared components.
+- Plain CSS files can use the brand palette directly:
+  `rgb(var(--brand-500))` / `rgb(var(--brand-500) / 0.1)` — the channels are
+  space-separated RGB precisely so alpha composition works outside Tailwind.
+- Section grouping is now whitespace + `.form-section + .form-section` hairlines
+  (adjacent-sibling, so no `:first-child` edge cases with the form's hidden inputs).
+- **Money greens were kept on purpose**: the multi-break "Total Cost" figures stay
+  green (green means money), and the success modal keeps a green *check icon* — but
+  its green header slab became a quiet white header (green is not a surface).
+- The multi-break Add Break button and the success modal's "View Batch Details"
+  demoted to outlined secondary — each view keeps exactly one solid brand action.
+- The manager-only Custom Price box in the break modal was a *purple* tinted box
+  with an ALL-CAPS purple title — a third accent. Now neutral, hairline-separated.
+- Element IDs untouched throughout (autosave + `multi_break.js` + `repair_form.js`
+  are keyed to them); classes only. Verified in-browser against the violet tenant:
+  repair form, multi-break form + Add Break modal, quick job form all retheme.
+- Same branch, related fix: `base_app.html` now renders `request.tenant.logo` +
+  tenant name in the navbar (see S3 notes addendum).
+
+**Leftovers for S8:** `technician_portal/dashboard.html:40` still has a green
+gradient header; `job_form.html` keeps its teal "picked individual" state; the
+`icon-field-helper.helper-success` green in form-fields.css is semantic and stays.
 
 ## S8 · Retire the second accent everywhere else
 
