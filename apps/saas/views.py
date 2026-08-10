@@ -137,7 +137,7 @@ def _send_verification_email(request, user):
                 'Please verify your email address by clicking the button below. This link will expire in 24 hours.',
                 "If you didn't create an account, you can safely ignore this email.",
             ],
-            button_text='✅ Verify Email',
+            button_text='Verify Email',
             button_url=verification_url,
             fail_silently=True,
         )
@@ -2304,7 +2304,7 @@ def invite_member(request):
                         f"{inviter_name} has re-added you to {tenant.name} as a {role}.",
                         "Click the button below to set your password and get back in. This link expires in 7 days.",
                     ],
-                    button_text='🔑 Set Password & Log In',
+                    button_text='Set Password & Log In',
                     button_url=invite_url,
                     tenant=tenant,
                 )
@@ -2947,7 +2947,7 @@ def resend_invite(request, membership_id):
                 f"{inviter_name} has re-sent your invitation to join {tenant.name} as a {target.get_role_display()}.",
                 "Click the button below to set your password and get started. This link expires in 7 days.",
             ],
-            button_text='🚀 Accept Invitation',
+            button_text='Accept Invitation',
             button_url=invite_url,
             tenant=tenant,
         )

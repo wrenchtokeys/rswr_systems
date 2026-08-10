@@ -1,6 +1,6 @@
 ================================================
 {{ branding.company_name }}
-⚠ REPAIR REQUIRES ATTENTION
+REPAIR REQUIRES ATTENTION
 ================================================
 
 Your windshield repair request needs additional information or review before we can proceed.
