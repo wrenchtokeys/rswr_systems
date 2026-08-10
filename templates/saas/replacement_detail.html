@@ -70,7 +70,7 @@
                     </form>
                     {% if user_can_invoices %}
                     <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline js-confirm-send"
-                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
+                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
                         {% csrf_token %}
                         <button type="submit" class="btn-primary btn-sm">
                             <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
@@ -86,7 +86,7 @@
             <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700">Done with this job?</span>
                 <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline js-confirm-send"
-                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
+                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
                     {% csrf_token %}
                     <button type="submit" class="btn-primary btn-sm">
                         <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice

@@ -961,6 +961,48 @@
         </form>
     </div>
 
+    <!-- Text Invoices (SMS) -->
+    <div class="card mb-6">
+        <div class="px-6 py-4 {% if billing_config.sms_invoicing_enabled and not sms_platform_ready %}border-b border-gray-200{% endif %}">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-sky-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-sms text-sky-600 text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Text Invoices</h3>
+                        <p class="text-sm text-gray-500">Adds an "Also text it" option when you send an invoice — the customer gets a text with a secure link to view and pay</p>
+                        <p class="text-xs text-gray-400 mt-0.5">The email still goes out either way; the text is an extra copy for customers who live on their phone. Works for customers with a mobile number on file who've agreed to receive texts.</p>
+                    </div>
+                </div>
+                <form method="post" action="{% url 'owner_settings' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="form_type" value="toggle_sms_invoicing">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg border transition-colors
+                        {% if billing_config.sms_invoicing_enabled %}bg-green-50 text-green-700 border-green-200 hover:bg-green-100
+                        {% else %}bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100{% endif %}">
+                        {% if billing_config.sms_invoicing_enabled %}
+                            <i class="fas fa-check-circle mr-2"></i> Enabled
+                        {% else %}
+                            <i class="fas fa-times-circle mr-2"></i> Disabled
+                        {% endif %}
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% if billing_config.sms_invoicing_enabled and not sms_platform_ready %}
+        <div class="px-6 py-4">
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p class="text-sm text-amber-800">
+                    <i class="fas fa-hourglass-half mr-1"></i>
+                    Texting is turned on for your shop, but the platform's texting number isn't live yet.
+                    The "Also text it" option will appear automatically once it is.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
     <!-- Overdue Reminders -->
     <div class="card mb-6">
         <div class="px-6 py-4 border-b border-gray-200">

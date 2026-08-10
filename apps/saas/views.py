@@ -1132,6 +1132,9 @@ def replacement_detail(request, pk):
         'existing_invoice': invoice_line_item.invoice if invoice_line_item else None,
         'invoice_recipient_email': InvoiceSendService.resolve_recipient(replacement.customer)
                                    if replacement.customer else '',
+        'invoice_sms_ready': InvoiceSendService.sms_ready(tenant),
+        'invoice_sms_phone': InvoiceSendService.resolve_recipient_phone(replacement.customer)
+                             if replacement.customer else '',
     })
 
 
@@ -1323,7 +1326,8 @@ def replacement_complete_and_invoice(request, pk):
 
     try:
         invoice, created, result, excluded = invoice_and_send(
-            replacement, tenant, copy_to_email=_copy_to_email(request))
+            replacement, tenant, copy_to_email=_copy_to_email(request),
+            send_sms=bool(request.POST.get('send_sms')))
     except ValueError as e:
         messages.error(request, str(e))
         return redirect('replacement_detail', pk=pk)
@@ -1562,6 +1566,12 @@ def connect_dashboard(request):
 # ------------------------------------------------------------------
 # 10. Owner Settings
 # ------------------------------------------------------------------
+
+def _sms_platform_ready():
+    """Whether platform SMS is configured (toll-free number live)."""
+    from core.services.sms_service import SMSService
+    return SMSService.is_enabled()
+
 
 @owner_or_manager_required
 def owner_settings_view(request):
@@ -1812,6 +1822,24 @@ def owner_settings_view(request):
             except Exception as e:
                 logger.error(f"Error toggling overdue reminders: {e}")
                 messages.error(request, 'Could not update reminder settings.')
+            return redirect('/owner/settings/?tab=billing')
+
+        if form_type == 'toggle_sms_invoicing':
+            # Toggle the "Text the invoice" option on send dialogs
+            try:
+                config = BillingConfig.get_for_tenant(tenant)
+                config.sms_invoicing_enabled = not config.sms_invoicing_enabled
+                config.save(update_fields=['sms_invoicing_enabled'])
+                if config.sms_invoicing_enabled:
+                    messages.success(
+                        request,
+                        'Invoice texting enabled. Sending an invoice now offers '
+                        '"Also text it" for customers with a mobile number.')
+                else:
+                    messages.success(request, 'Invoice texting disabled.')
+            except Exception as e:
+                logger.error(f"Error toggling SMS invoicing: {e}")
+                messages.error(request, 'Could not update text settings.')
             return redirect('/owner/settings/?tab=billing')
 
         if form_type == 'overdue_reminder_settings':
@@ -2136,6 +2164,7 @@ def owner_settings_view(request):
         'completion': completion,
         'checklist_items': _setup_checklist_items(tenant, completion),
         'fee_presets': fee_presets,
+        'sms_platform_ready': _sms_platform_ready(),
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -3166,6 +3195,8 @@ def owner_invoice_list(request):
 @owner_or_manager_required
 def owner_invoice_detail(request, invoice_id):
     """GET /owner/invoices/<id>/ — invoice detail with payment history."""
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
         messages.error(request, 'No shop found.')
@@ -3227,6 +3258,9 @@ def owner_invoice_detail(request, invoice_id):
         'rendered_reminder_default': rendered_reminder_default,
         'today': timezone.now().date(),
         'public_pay_link': public_pay_link,
+        'invoice_sms_ready': InvoiceSendService.sms_ready(tenant),
+        'invoice_sms_available': InvoiceSendService.sms_available(invoice, tenant),
+        'invoice_sms_phone': InvoiceSendService.resolve_recipient_phone(invoice.customer),
     }
     return render(request, 'saas/owner_invoice_detail.html', context)
 
@@ -3615,6 +3649,9 @@ def owner_send_invoice(request, invoice_id):
     )
     if result.sent:
         messages.success(request, result.message)
+        if request.POST.get('send_sms'):
+            sms_ok, sms_msg = InvoiceSendService.send_sms(invoice, tenant)
+            (messages.success if sms_ok else messages.warning)(request, sms_msg)
     else:
         messages.error(request, result.message)
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
@@ -3672,6 +3709,10 @@ def owner_email_invoice(request, invoice_id):
         if success:
             invoice.record_email_sent(recipient)
             messages.success(request, f'Invoice emailed to {recipient}.')
+            if request.POST.get('send_sms'):
+                from apps.billing.services.invoice_send_service import InvoiceSendService
+                sms_ok, sms_msg = InvoiceSendService.send_sms(invoice, tenant)
+                (messages.success if sms_ok else messages.warning)(request, sms_msg)
         else:
             messages.error(request, f'Failed to email invoice: {msg}')
             

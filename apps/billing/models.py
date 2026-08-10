@@ -213,6 +213,12 @@ class BillingConfig(AutoUpdateTimestampMixin, models.Model):
         help_text='Automatically send batch invoices via email (otherwise creates as DRAFT)',
     )
 
+    # === SMS INVOICING ===
+    sms_invoicing_enabled = models.BooleanField(
+        default=False,
+        help_text='Offer "Text the invoice" when sending to customers with a mobile number on file',
+    )
+
     # === METADATA ===
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -503,6 +509,17 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
         help_text="Short diagnostic from the mail server (e.g. bounce reason)",
     )
 
+    # SMS delivery tracking — who the invoice link was last texted to.
+    # Email stays the status-driving channel; a text never promotes DRAFT.
+    last_sms_to = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text="Phone number the invoice link was last texted to",
+    )
+    last_sms_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the most recent invoice text went out",
+    )
+
     # View tracking — set when a human opens the invoice's public link
     # (view page, PDF, or pay page) from the email. Mail-gateway scanner
     # fetches are filtered out before this is recorded.
@@ -674,6 +691,15 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
             'status', 'sent_at', 'last_sent_at', 'last_sent_to',
             'email_delivery_status', 'email_delivery_status_at', 'email_delivery_detail',
         ])
+
+    def record_sms_sent(self, phone=''):
+        """Stamp SMS tracking after a confirmed text send. Unlike
+        record_email_sent this never changes invoice status — email remains
+        the channel that promotes DRAFT → SENT."""
+        self.last_sms_at = timezone.now()
+        if phone:
+            self.last_sms_to = phone
+        self.save(update_fields=['last_sms_at', 'last_sms_to'])
 
     def mark_viewed(self):
         """Record that the customer opened this invoice's public link.
