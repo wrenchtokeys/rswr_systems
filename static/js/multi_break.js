@@ -686,6 +686,11 @@ function submitForm() {
     formData.append('repair_date', repairDate);
     formData.append('breaks_count', breaks.length);
 
+    const markCompleted = document.getElementById('markCompletedCheckbox');
+    if (markCompleted && markCompleted.checked) {
+        formData.append('mark_completed', '1');
+    }
+
     // Add each break's data
     breaks.forEach((breakData, index) => {
         formData.append(`breaks[${index}][damage_type]`, breakData.damage_type);
@@ -904,12 +909,21 @@ function showSuccessModal(batchData) {
 
     // Set status badge with appropriate styling
     const statusBadge = document.getElementById('success_status');
-    if (batchData.is_auto_approved) {
+    if (batchData.is_completed) {
+        statusBadge.textContent = 'Completed';
+        statusBadge.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800';
+    } else if (batchData.is_auto_approved) {
         statusBadge.textContent = 'Auto-Approved';
         statusBadge.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800';
     } else {
         statusBadge.textContent = 'Pending Approval';
         statusBadge.className = 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800';
+    }
+
+    // "Start Work Now" makes no sense on an already-completed batch
+    const startWorkBtn = document.getElementById('startWorkNowBtn');
+    if (startWorkBtn) {
+        startWorkBtn.style.display = batchData.is_completed ? 'none' : '';
     }
 
     // Store batch_id for button handlers

@@ -331,7 +331,7 @@ class ReplacementForm(forms.ModelForm):
             'parts_cost', 'labor_cost',
             'requires_adas_calibration', 'adas_calibration_cost',
             'insurance_claim', 'insurance_company', 'claim_number', 'deductible',
-            'description', 'no_tax',
+            'description', 'internal_notes', 'no_tax',
             'damage_photo_before', 'damage_photo_after',
         ]
         labels = {
@@ -405,6 +405,11 @@ class ReplacementForm(forms.ModelForm):
             'description': forms.Textarea(attrs={
                 'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
                 'placeholder': 'Additional notes about this replacement...',
+                'rows': 3,
+            }),
+            'internal_notes': forms.Textarea(attrs={
+                'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
+                'placeholder': 'Private notes for your team — never shown to the customer...',
                 'rows': 3,
             }),
             'damage_photo_before': forms.FileInput(attrs={

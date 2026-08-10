@@ -1,5 +1,5 @@
 {% extends "customer_portal/base_customer.html" %}
-{% load static %}
+{% load static ui %}
 
 {% block title %}Dashboard{% if request.tenant %} | {{ request.tenant.name }}{% else %} | Customer Portal{% endif %}{% endblock %}
 
@@ -244,16 +244,7 @@
                                 {% endif %}
                             </td>
                             <td class="px-5 py-3 whitespace-nowrap">
-                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
-                                    {% if service.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-700
-                                    {% elif service.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
-                                    {% elif service.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
-                                    {% elif service.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
-                                    {% elif service.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
-                                    {% elif service.queue_status == 'DENIED' %}bg-red-100 text-red-700
-                                    {% endif %}">
-                                    {{ service.get_queue_status_display }}
-                                </span>
+                                {% status_badge service.queue_status variant='customer' %}
                             </td>
                             <td class="px-5 py-3 text-right">
                                 <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
@@ -277,16 +268,7 @@
                         </p>
                     </div>
                     <div class="flex items-center ml-3 space-x-2">
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold
-                            {% if service.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-700
-                            {% elif service.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
-                            {% elif service.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
-                            {% elif service.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
-                            {% elif service.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
-                            {% elif service.queue_status == 'DENIED' %}bg-red-100 text-red-700
-                            {% endif %}">
-                            {{ service.get_queue_status_display }}
-                        </span>
+                        {% status_badge service.queue_status variant='customer' %}
                         <i class="fas fa-chevron-right text-gray-300 text-xs"></i>
                     </div>
                 </a>

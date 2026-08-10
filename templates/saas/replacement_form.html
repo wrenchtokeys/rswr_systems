@@ -160,8 +160,15 @@
                     </div>
                 </div>
                 <div>
-                    <label for="id_description" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <label for="id_description" class="block text-sm font-medium text-gray-700 mb-1">Notes <span class="font-normal text-gray-400">— visible to the customer</span></label>
                     {{ form.description }}
+                </div>
+                <div>
+                    <label for="id_internal_notes" class="block text-sm font-medium text-gray-700 mb-1">
+                        <i class="fas fa-lock text-gray-400 mr-1 text-xs"></i>Internal notes
+                        <span class="font-normal text-gray-400">— not visible to the customer</span>
+                    </label>
+                    {{ form.internal_notes }}
                 </div>
                 <label class="flex items-center gap-3 cursor-pointer">
                     {{ form.no_tax }}

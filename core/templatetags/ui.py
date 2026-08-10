@@ -30,17 +30,29 @@ INVOICE_STATUS_STYLES = {
 
 _DEFAULT_STYLE = ('bg-gray-100 text-gray-800', None)
 
+# Label overrides for customer-facing pages. The shop labels describe the queue
+# from the shop's perspective ("Customer Requested"); customers reading their own
+# jobs need the same statuses phrased from theirs.
+CUSTOMER_SERVICE_LABEL_OVERRIDES = {
+    'REQUESTED': 'Submitted',
+    'PENDING': 'Needs Your Approval',
+    'DENIED': 'Declined',
+}
+
 
 @register.inclusion_tag('components/status_badge.html')
-def status_badge(status, label=None, kind='service'):
+def status_badge(status, label=None, kind='service', variant='shop'):
     """Render a status pill.
 
     {% status_badge repair.queue_status %}
     {% status_badge invoice.status kind='invoice' %}
     {% status_badge repair.queue_status label=repair.get_queue_status_display %}
+    {% status_badge repair.queue_status variant='customer' %}  — customer-facing labels
     """
     styles = INVOICE_STATUS_STYLES if kind == 'invoice' else SERVICE_STATUS_STYLES
     classes, default_label = styles.get(status, _DEFAULT_STYLE)
+    if kind != 'invoice' and variant == 'customer':
+        default_label = CUSTOMER_SERVICE_LABEL_OVERRIDES.get(status, default_label)
     return {
         'classes': classes,
         'label': label or default_label or (status or '').replace('_', ' ').title(),

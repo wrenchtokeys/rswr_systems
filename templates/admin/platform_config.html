@@ -1,86 +1,89 @@
 {% extends "admin/base_site.html" %}
+{% load static %}
 {% block title %}{{ title }} | RS Systems Admin{% endblock %}
-{% block content %}
-<div id="content-main">
-  <h1>{{ title }}</h1>
 
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/rs_admin.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="rs-page">
   {% if messages %}
     {% for msg in messages %}
       <p class="{% if msg.tags == 'error' %}errornote{% else %}successnote{% endif %}">{{ msg }}</p>
     {% endfor %}
   {% endif %}
 
-  <p style="color: #666; margin-bottom: 1.5em;">
+  <p class="rs-help">
     Configure global platform fee settings for Stripe Connect invoice payments.
     Individual shops can override the fee percent via their tenant record.
   </p>
 
-  <form method="post" action="/admin/platform-config/">
+  <form method="post" action="{% url 'admin:admin_platform_config' %}">
     {% csrf_token %}
-    <fieldset class="module aligned">
-      <h2>Platform Fee Settings</h2>
+    <div class="rs-form-card">
+      <fieldset class="module aligned" style="border:none;">
+        <h2 class="rs-section-title">Platform Fee</h2>
+        <div class="form-row">
+          <label for="default_fee_percent">Default platform fee %:</label>
+          <input
+            type="number"
+            id="default_fee_percent"
+            name="default_fee_percent"
+            value="{{ config.default_fee_percent }}"
+            step="0.01"
+            min="0"
+            max="100"
+            class="rs-input"
+            style="max-width:120px;"
+          >
+          <p class="rs-help">
+            Percentage taken from each invoice payment (e.g. 2.50 = 2.5%). Set to 0 for no platform fee.
+          </p>
+        </div>
+      </fieldset>
 
-      <div class="form-row">
-        <label for="default_fee_percent">Default platform fee %:</label>
-        <input
-          type="number"
-          id="default_fee_percent"
-          name="default_fee_percent"
-          value="{{ config.default_fee_percent }}"
-          step="0.01"
-          min="0"
-          max="100"
-          style="width: 100px;"
-        >
-        <p class="help" style="font-size: 12px; color: #666; margin-top: 4px;">
-          Percentage taken from each invoice payment (e.g. 2.50 = 2.5%).
-          Set to 0 for no platform fee.
-        </p>
+      <fieldset class="module aligned" style="border:none;">
+        <h2 class="rs-section-title">Competition Pool</h2>
+        <div class="form-row">
+          <label for="competition_pool_enabled">Enable competition pool:</label>
+          <input
+            type="checkbox"
+            id="competition_pool_enabled"
+            name="competition_pool_enabled"
+            {% if config.competition_pool_enabled %}checked{% endif %}
+          >
+        </div>
+        <div class="form-row">
+          <label for="competition_pool_fee_percent">Pool fee %:</label>
+          <input
+            type="number"
+            id="competition_pool_fee_percent"
+            name="competition_pool_fee_percent"
+            value="{{ config.competition_pool_fee_percent }}"
+            step="0.01"
+            min="0"
+            max="100"
+            class="rs-input"
+            style="max-width:120px;"
+          >
+          <p class="rs-help">
+            % of subscription payments routed to the competition pool.
+          </p>
+        </div>
+      </fieldset>
+
+      <div style="margin-top:16px;">
+        <button type="submit" class="rs-btn">Save configuration</button>
       </div>
-    </fieldset>
-
-    <fieldset class="module aligned">
-      <h2>Competition Pool (Phase 4)</h2>
-
-      <div class="form-row">
-        <label for="competition_pool_enabled">Enable competition pool:</label>
-        <input
-          type="checkbox"
-          id="competition_pool_enabled"
-          name="competition_pool_enabled"
-          {% if config.competition_pool_enabled %}checked{% endif %}
-        >
-      </div>
-
-      <div class="form-row">
-        <label for="competition_pool_fee_percent">Pool fee %:</label>
-        <input
-          type="number"
-          id="competition_pool_fee_percent"
-          name="competition_pool_fee_percent"
-          value="{{ config.competition_pool_fee_percent }}"
-          step="0.01"
-          min="0"
-          max="100"
-          style="width: 100px;"
-        >
-        <p class="help" style="font-size: 12px; color: #666; margin-top: 4px;">
-          % of subscription payments routed to competition pool (Phase 4 feature).
-        </p>
-      </div>
-    </fieldset>
-
-    <div class="submit-row">
-      <input type="submit" value="Save Configuration" class="default">
     </div>
   </form>
 
-  <p style="margin-top: 1em; font-size: 12px; color: #666;">
-    Last updated: {{ config.updated_at|date:"Y-m-d H:i" }}
-  </p>
+  <p class="rs-help" style="margin-top:16px;">Last updated: {{ config.updated_at|date:"Y-m-d H:i" }}</p>
 
   <p>
-    <a href="/admin/connect-accounts/">← View Connect Accounts</a>
+    <a href="{% url 'admin:admin_connect_accounts' %}" class="rs-btn-ghost">View Connect accounts</a>
   </p>
 </div>
 {% endblock %}

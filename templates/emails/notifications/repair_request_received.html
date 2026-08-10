@@ -2,7 +2,7 @@
 
 {% block email_title %}Repair Request Received - {{ unit_number }}{% endblock %}
 
-{% block preheader %}Your repair request for unit {{ unit_number }} has been received. We will review it shortly.{% endblock %}
+{% block preheader %}Your repair request for unit {{ unit_number }} has been received and added to the schedule.{% endblock %}
 
 {% block content %}
 <!-- Confirmation Badge -->
@@ -24,7 +24,7 @@
                 We've Received Your Repair Request
             </h1>
             <p style="margin: 10px 0 0 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 16px; line-height: 24px;">
-                Thank you for submitting your windshield repair request. Our team will review it and get back to you shortly.
+                Thank you for submitting your windshield repair request. It's been received and added to the schedule &mdash; no further action is needed from you.
             </p>
         </td>
     </tr>
@@ -66,7 +66,7 @@
                             <tr>
                                 <td style="padding: 8px 0; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 20px;">
                                     <strong style="color: {{ branding.text_color }};">Status:</strong>
-                                    <span style="color: {{ branding.primary_color }}; font-weight: bold;">Pending Review</span>
+                                    <span style="color: {{ branding.primary_color }}; font-weight: bold;">Scheduled</span>
                                 </td>
                             </tr>
                         </table>
@@ -89,9 +89,9 @@
     <tr>
         <td>
             <p style="margin: 0 0 15px 0; color: #666666; font-family: {{ branding.body_font }}; font-size: 14px; line-height: 22px;">
-                1. Our team will review your repair request<br>
-                2. A technician will be assigned to your request<br>
-                3. You'll receive updates as the repair progresses
+                1. A technician has been assigned to your request<br>
+                2. You'll be notified when the work starts<br>
+                3. You'll receive a confirmation when the repair is complete
             </p>
         </td>
     </tr>

@@ -374,7 +374,11 @@ class GlassService(models.Model):
     )
     technician_notes = models.TextField(
         blank=True,
-        help_text="Internal notes added by technicians during repair process"
+        help_text="Work notes added by technicians — included in the invoice line description the customer sees"
+    )
+    internal_notes = models.TextField(
+        blank=True,
+        help_text="Private shop notes — never shown to the customer (not on invoices, emails, or the customer portal)"
     )
     
     # Insurance fields

@@ -855,11 +855,16 @@ def customer_repair_approve(request, repair_id):
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
 
-        # Guard: only PENDING or REQUESTED repairs can be approved by the customer.
+        # Guard: only PENDING repairs can be approved by the customer.
         # The template hides the button for other statuses but there is no server-side
         # check, so a direct POST could corrupt COMPLETED, IN_PROGRESS, or DENIED
         # repairs by overwriting queue_status → 'APPROVED'. (CODE-061)
-        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+        # REQUESTED is excluded: a customer must never approve their own submission
+        # before the shop has reviewed and priced it.
+        if repair.queue_status == 'REQUESTED':
+            messages.info(request, "This request is still being reviewed and priced — you'll be asked to approve once it's ready.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
+        if repair.queue_status != 'PENDING':
             messages.warning(request, "This repair cannot be approved — it is not pending approval.")
             return redirect('customer_repair_detail', repair_id=repair.id)
         
@@ -878,12 +883,12 @@ def customer_repair_approve(request, repair_id):
                         Repair.objects.select_for_update().filter(
                             repair_batch_id=batch_id,
                             tenant=customer.tenant,
-                            queue_status__in=('PENDING', 'REQUESTED'),
+                            queue_status='PENDING',
                         ).select_related('technician')
                     )
                 else:
                     locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
-                    if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    if locked_repair.queue_status != 'PENDING':
                         messages.warning(request, "This repair has already been processed.")
                         return redirect('customer_repair_detail', repair_id=repair.id)
                     repairs_to_approve = [locked_repair]
@@ -950,10 +955,14 @@ def customer_repair_deny(request, repair_id):
         # Get the repair and ensure it belongs to this customer (tenant-scoped)
         repair = get_object_or_404(Repair, id=repair_id, customer=customer, tenant=customer.tenant)
 
-        # Guard: only PENDING or REQUESTED repairs can be denied by the customer.
+        # Guard: only PENDING repairs can be denied by the customer.
         # Without this check, a direct POST could flip a COMPLETED repair to DENIED,
         # breaking invoicing and losing data. (CODE-061)
-        if repair.queue_status not in ('PENDING', 'REQUESTED'):
+        # REQUESTED is excluded: the shop reviews submissions before any approval step.
+        if repair.queue_status == 'REQUESTED':
+            messages.info(request, "This request is still being reviewed and priced — you'll be asked to approve once it's ready.")
+            return redirect('customer_repair_detail', repair_id=repair.id)
+        if repair.queue_status != 'PENDING':
             messages.warning(request, "This repair cannot be denied — it is not pending approval.")
             return redirect('customer_repair_detail', repair_id=repair.id)
         
@@ -971,12 +980,12 @@ def customer_repair_deny(request, repair_id):
                         Repair.objects.select_for_update().filter(
                             repair_batch_id=batch_id,
                             tenant=customer.tenant,
-                            queue_status__in=('PENDING', 'REQUESTED'),
+                            queue_status='PENDING',
                         ).select_related('technician')
                     )
                 else:
                     locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
-                    if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    if locked_repair.queue_status != 'PENDING':
                         messages.warning(request, "This repair has already been processed.")
                         return redirect('customer_repair_detail', repair_id=repair.id)
                     repairs_to_deny = [locked_repair]
@@ -1086,10 +1095,14 @@ def customer_batch_approve(request, batch_id):
         # Guard: batch can only be approved when ALL repairs are pending approval.
         # Without this, a direct POST on a COMPLETED or DENIED batch would overwrite
         # every repair's queue_status back to APPROVED. (CODE-061)
-        approvable_statuses = {'PENDING', 'REQUESTED'}
+        # REQUESTED is not approvable: the shop reviews and prices submissions first.
+        approvable_statuses = {'PENDING'}
         batch_statuses = set(batch_summary.get('statuses', []))
         if not batch_statuses.issubset(approvable_statuses):
-            messages.warning(request, "This batch cannot be approved — not all repairs are pending approval.")
+            if batch_statuses == {'REQUESTED'}:
+                messages.info(request, "This request is still being reviewed and priced — you'll be asked to approve once it's ready.")
+            else:
+                messages.warning(request, "This batch cannot be approved — not all repairs are pending approval.")
             return redirect('customer_dashboard')
 
         if request.method == 'POST':
@@ -1121,7 +1134,7 @@ def customer_batch_approve(request, batch_id):
                 # Re-check ALL statuses inside the lock — a concurrent request
                 # may have already approved/denied some or all repairs.
                 for repair in locked_repairs:
-                    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    if repair.queue_status != 'PENDING':
                         messages.warning(request, "This batch has already been processed.")
                         return redirect('customer_dashboard')
 
@@ -1195,10 +1208,14 @@ def customer_batch_deny(request, batch_id):
         # Guard: only deny batches that are still in a pending state.
         # Without this, a direct POST on a COMPLETED batch would overwrite every
         # repair's queue_status back to DENIED. (CODE-061)
-        deniable_statuses = {'PENDING', 'REQUESTED'}
+        # REQUESTED is not deniable: the shop reviews and prices submissions first.
+        deniable_statuses = {'PENDING'}
         batch_statuses = set(batch_summary.get('statuses', []))
         if not batch_statuses.issubset(deniable_statuses):
-            messages.warning(request, "This batch cannot be denied — not all repairs are pending approval.")
+            if batch_statuses == {'REQUESTED'}:
+                messages.info(request, "This request is still being reviewed and priced — you'll be asked to approve once it's ready.")
+            else:
+                messages.warning(request, "This batch cannot be denied — not all repairs are pending approval.")
             return redirect('customer_dashboard')
 
         if request.method == 'POST':
@@ -1227,7 +1244,7 @@ def customer_batch_deny(request, batch_id):
 
                 # Re-check ALL statuses inside the lock
                 for repair in locked_repairs:
-                    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                    if repair.queue_status != 'PENDING':
                         messages.warning(request, "This batch has already been processed.")
                         return redirect('customer_dashboard')
 
@@ -1352,8 +1369,13 @@ def customer_replacement_approve(request, replacement_id):
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
 
-        # Only allow approval of pending replacements
-        if replacement.queue_status not in ['PENDING', 'REQUESTED']:
+        # Only allow approval of pending replacements. REQUESTED is excluded:
+        # the shop must confirm the glass and price the job before the customer
+        # is asked to approve — a self-approval here would lock in a $0 job.
+        if replacement.queue_status == 'REQUESTED':
+            messages.info(request, "This request is still being reviewed and priced — you'll be asked to approve once it's ready.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+        if replacement.queue_status != 'PENDING':
             messages.warning(request, "This replacement cannot be approved - it's not pending.")
             return redirect('customer_replacement_detail', replacement_id=replacement.id)
 
@@ -1370,7 +1392,7 @@ def customer_replacement_approve(request, replacement_id):
                 # Re-check status inside the lock so a concurrent approval/denial
                 # that committed between the initial get_object_or_404 and here
                 # doesn't get overwritten.
-                if locked_replacement.queue_status not in ['PENDING', 'REQUESTED']:
+                if locked_replacement.queue_status != 'PENDING':
                     messages.warning(request, "This replacement has already been processed.")
                     return redirect('customer_replacement_detail', replacement_id=replacement.id)
 
@@ -1407,8 +1429,12 @@ def customer_replacement_deny(request, replacement_id):
 
         replacement = get_object_or_404(Replacement, id=replacement_id, customer=customer, tenant=customer.tenant)
 
-        # Only allow denial of pending replacements
-        if replacement.queue_status not in ['PENDING', 'REQUESTED']:
+        # Only allow denial of pending replacements. REQUESTED is excluded:
+        # the shop reviews and prices submissions before any approval step.
+        if replacement.queue_status == 'REQUESTED':
+            messages.info(request, "This request is still being reviewed and priced — you'll be asked to approve once it's ready.")
+            return redirect('customer_replacement_detail', replacement_id=replacement.id)
+        if replacement.queue_status != 'PENDING':
             messages.warning(request, "This replacement cannot be denied - it's not pending.")
             return redirect('customer_replacement_detail', replacement_id=replacement.id)
 
@@ -1422,7 +1448,7 @@ def customer_replacement_deny(request, replacement_id):
                 locked_replacement = Replacement.objects.select_for_update().get(pk=replacement.pk)
 
                 # Re-check status inside the lock
-                if locked_replacement.queue_status not in ['PENDING', 'REQUESTED']:
+                if locked_replacement.queue_status != 'PENDING':
                     messages.warning(request, "This replacement has already been processed.")
                     return redirect('customer_replacement_detail', replacement_id=replacement.id)
 
@@ -1688,7 +1714,7 @@ def request_replacement(request):
 
     Replacements are one-vehicle jobs, so this is a simple single-form flow
     (no multi-unit batching like repairs). The customer supplies the vehicle,
-    which glass, and what happened; the shop confirms the exact glass and
+    and which glass; the shop confirms the exact glass and
     sets parts/labor pricing after reviewing the request.
     """
     try:
@@ -1863,6 +1889,40 @@ def _restore_reward_for_repair(repair):
     return restored
 
 
+def _auto_accept_customer_repair(repair, customer_user=None):
+    """Auto-accept a customer-submitted repair: REQUESTED -> APPROVED.
+
+    Repairs are priced from the shop's price book, so there is nothing for the
+    shop to review before work can begin — the request goes straight onto the
+    schedule. Replacements are NOT auto-accepted: the shop must confirm the
+    glass and price them first.
+
+    The transition happens via a second save() (create-time signals have
+    already fired for REQUESTED; REQUESTED -> APPROVED itself notifies no one).
+    The RepairApproval breadcrumb marks the job customer-initiated — the
+    detail pages key off this exact notes string.
+    """
+    approver = customer_user
+    if approver is None:
+        customer_users = CustomerUser.objects.filter(customer=repair.customer)
+        approver = (customer_users.filter(is_primary_contact=True).first()
+                    or customer_users.first())
+
+    if approver:
+        RepairApproval.objects.update_or_create(
+            repair=repair,
+            defaults={
+                'approved': True,
+                'approved_by': approver,
+                'approval_date': timezone.now(),
+                'notes': "Auto-approved as customer initiated the request",
+            }
+        )
+
+    repair.queue_status = 'APPROVED'
+    repair.save()
+
+
 def handle_single_repair_request(request, customer, customer_user=None):
     """Handle traditional single repair request submission"""
     # Plan limit check — customer-submitted repairs count toward the tenant's
@@ -1952,7 +2012,10 @@ def handle_single_repair_request(request, customer, customer_user=None):
         if assigned_tech:
             messages.info(request, f'Your repair has been assigned to {assigned_tech.user.get_full_name()}.')
 
-        messages.success(request, "Repair request submitted successfully! A technician will review your request.")
+        # Auto-accept after assignment so the final technician is settled
+        _auto_accept_customer_repair(repair, customer_user)
+
+        messages.success(request, "Repair request received — you're on the schedule!")
         return redirect('customer_dashboard')
     except Exception as e:
         messages.error(request, f"Error creating repair request: {str(e)}")
@@ -2132,18 +2195,22 @@ def handle_batch_repair_request(request, customer, customer_user=None):
                     f'Repairs have been assigned to {assigned_tech.user.get_full_name()}.'
                 )
 
+        # Auto-accept after assignment so the final technician is settled
+        for repair in created_repairs:
+            _auto_accept_customer_repair(repair, customer_user)
+
         # Success message
         count = len(created_repairs)
         messages.success(
             request,
-            f"Successfully submitted {count} repair request{'s' if count != 1 else ''}! A technician will review your requests."
+            f"Received {count} repair request{'s' if count != 1 else ''} — you're on the schedule!"
         )
 
         # Return JSON for AJAX requests (check if multipart form data from fetch)
         if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JsonResponse({
                 'success': True,
-                'message': f"Successfully submitted {count} repair request{'s' if count != 1 else ''}!",
+                'message': f"Received {count} repair request{'s' if count != 1 else ''} — you're on the schedule!",
                 'repair_count': count,
                 'redirect_url': '/app/'
             })
@@ -2789,17 +2856,15 @@ def customer_bulk_action(request):
 
         with transaction.atomic():
             # Get all repairs and ensure they belong to this customer (tenant-scoped).
-            # Include REQUESTED repairs — customer-initiated repairs start as REQUESTED
-            # and should be approvable via bulk action.  Consistent with single-repair
-            # customer_repair_approve() which also accepts {'PENDING', 'REQUESTED'}.
-            # (CODE-065: previously only 'PENDING', so REQUESTED repairs were silently
-            # dropped from bulk actions without any warning to the user.)
+            # PENDING only — consistent with single-repair customer_repair_approve().
+            # REQUESTED repairs are the customer's own submissions awaiting shop
+            # review/pricing; customers must not self-approve them.
             repairs = list(
                 Repair.objects.select_for_update().filter(
                     id__in=repair_ids,
                     customer=customer,
                     tenant=customer.tenant,
-                    queue_status__in=['PENDING', 'REQUESTED']
+                    queue_status='PENDING'
                 ).select_related('technician')
             )
 
@@ -2812,7 +2877,7 @@ def customer_bulk_action(request):
             for repair in repairs:
                 # Re-check status inside the lock — a concurrent request may have
                 # already transitioned this repair.
-                if repair.queue_status not in ('PENDING', 'REQUESTED'):
+                if repair.queue_status != 'PENDING':
                     continue
 
                 if action == 'approve':
@@ -4040,7 +4105,7 @@ def quick_approve_repair(request, token):
         return render(request, 'customer_portal/quick_action_expired.html', {'reason': reason})
 
     repair = approval_token.repair
-    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+    if repair.queue_status != 'PENDING':
         return render(request, 'customer_portal/quick_action_expired.html', {
             'reason': f'This repair has already been {repair.get_queue_status_display().lower()}.'
         })
@@ -4063,7 +4128,7 @@ def quick_approve_repair(request, token):
 
                 # Re-check repair status inside the lock
                 locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
-                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                if locked_repair.queue_status != 'PENDING':
                     return render(request, 'customer_portal/quick_action_expired.html', {
                         'reason': f'This repair has already been {locked_repair.get_queue_status_display().lower()}.'
                     })
@@ -4133,7 +4198,7 @@ def quick_deny_repair(request, token):
         return render(request, 'customer_portal/quick_action_expired.html', {'reason': reason})
 
     repair = approval_token.repair
-    if repair.queue_status not in ('PENDING', 'REQUESTED'):
+    if repair.queue_status != 'PENDING':
         return render(request, 'customer_portal/quick_action_expired.html', {
             'reason': f'This repair has already been {repair.get_queue_status_display().lower()}.'
         })
@@ -4156,7 +4221,7 @@ def quick_deny_repair(request, token):
 
                 # Re-check repair status inside the lock
                 locked_repair = Repair.objects.select_for_update().get(pk=repair.pk)
-                if locked_repair.queue_status not in ('PENDING', 'REQUESTED'):
+                if locked_repair.queue_status != 'PENDING':
                     return render(request, 'customer_portal/quick_action_expired.html', {
                         'reason': f'This repair has already been {locked_repair.get_queue_status_display().lower()}.'
                     })

@@ -100,6 +100,7 @@ def technician_batch_detail(request, batch_id):
     all_completed = all(r.queue_status == 'COMPLETED' for r in repairs)
     can_generate_invoice = all_completed and user_is_admin and len(repairs) > 0
 
+    from apps.billing.services.invoice_send_service import InvoiceSendService
     return render(request, 'technician_portal/batch_detail.html', {
         'batch_summary': batch_summary,
         'repairs': batch_summary['repairs'],
@@ -108,6 +109,7 @@ def technician_batch_detail(request, batch_id):
         'can_complete_all': can_complete_all,
         'can_generate_invoice': can_generate_invoice,
         'is_admin': user_is_admin,
+        'invoice_recipient_email': InvoiceSendService.resolve_recipient(batch_summary['customer']),
     })
 
 
@@ -470,10 +472,36 @@ def create_multi_break_repair(request):
             total_cost = sum(r.cost for r in created_repairs)
             logger.info(f"[MULTI-BREAK] Transaction complete - {len(created_repairs)} repairs created, total_cost=${total_cost}")
 
+            # "Work already done" — complete every break via the second-save
+            # pattern (completion side effects only fire on a transition INTO
+            # COMPLETED; see job_flow docstring). PENDING breaks (customers who
+            # require approval) are left alone.
+            if request.POST.get('mark_completed'):
+                from apps.technician_portal.services.job_flow import complete_job, JobFlowError
+                skipped_approval = 0
+                for r in created_repairs:
+                    try:
+                        complete_job(r)
+                    except JobFlowError:
+                        skipped_approval += 1
+                if skipped_approval:
+                    messages.warning(
+                        request,
+                        "This customer requires approval before work is marked complete — "
+                        "the breaks were saved and are awaiting approval."
+                    )
+
             status = created_repairs[0].queue_status
             is_auto_approved = status == 'APPROVED'
+            is_completed = status == 'COMPLETED'
 
-            if is_auto_approved:
+            if is_completed:
+                messages.success(
+                    request,
+                    f"Successfully created {len(created_repairs)} repairs for Unit {unit_number} "
+                    f"(${total_cost:.2f} total). Marked completed."
+                )
+            elif is_auto_approved:
                 messages.success(
                     request,
                     f"Successfully created {len(created_repairs)} repairs for Unit {unit_number} "
@@ -495,6 +523,7 @@ def create_multi_break_repair(request):
                     'total_cost': float(total_cost),
                     'status': status,
                     'is_auto_approved': is_auto_approved,
+                    'is_completed': is_completed,
                     'message': f"Successfully created {len(created_repairs)} repairs for Unit {unit_number}",
                 })
 

@@ -242,14 +242,15 @@ class Command(BaseCommand):
                 'default_priority': Notification.PRIORITY_MEDIUM,
                 'title_template': 'Repair Request Received - Unit {{ unit_number }}',
                 'message_template': (
-                    'Your repair request for unit {{ unit_number }} has been received. '
-                    'We will review it and get back to you shortly.'
+                    'Your repair request for unit {{ unit_number }} has been received '
+                    'and added to the schedule.'
                 ),
                 'email_subject_template': 'Repair Request Received - Unit {{ unit_number }}',
                 'email_html_template': 'emails/notifications/repair_request_received.html',
                 'email_text_template': 'emails/notifications/repair_request_received.txt',
                 'sms_template': (
-                    'Your repair request for unit {{ unit_number }} has been received.'
+                    'Your repair request for unit {{ unit_number }} has been received '
+                    'and added to the schedule.'
                 ),
                 'action_url_template': '/app/repairs/{{ repair_id }}/',
                 'required_context': [

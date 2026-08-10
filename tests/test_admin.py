@@ -719,3 +719,166 @@ class GlobalSearchTests(TestCase):
             any(list(v) for v in results.values()),
             "Expected no results for a non-matching query"
         )
+
+# =============================================================================
+# Admin console security hardening tests
+# =============================================================================
+
+class AdminSecurityHardeningTests(TestCase):
+    """
+    Platform-wide admin surfaces must be superuser-only:
+    - Dashboard metrics (cross-tenant revenue, recent repairs/invoices)
+    - User Management page (all users across tenants)
+    - Stripe Connect accounts list
+    - Platform config (fee percentages) — read AND write
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.superuser = User.objects.create_superuser(
+            username='sec_super', email='sec_super@test.com', password='Test1234!'
+        )
+        cls.staff_user = User.objects.create_user(
+            username='sec_staff', email='sec_staff@test.com',
+            password='Test1234!', is_staff=True,
+        )
+
+    def _login(self, user):
+        self.client = Client()
+        self.client.force_login(user)
+
+    # ── Dashboard metrics ────────────────────────────────────────────────
+
+    def test_superuser_sees_platform_metrics(self):
+        self._login(self.superuser)
+        resp = self.client.get(reverse('admin:index'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Subscription Overview')
+        self.assertTrue(resp.context['show_platform_dashboard'])
+
+    def test_staff_does_not_see_platform_metrics(self):
+        self._login(self.staff_user)
+        resp = self.client.get(reverse('admin:index'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'Subscription Overview')
+        self.assertNotContains(resp, 'Outstanding balance')
+        # Metric keys must not be in context at all
+        flat = resp.context.flatten() if hasattr(resp.context, 'flatten') else {}
+        if not flat:
+            for c in resp.context:
+                if hasattr(c, 'flatten'):
+                    flat.update(c.flatten())
+        self.assertNotIn('revenue_this_month', flat)
+        self.assertNotIn('tenant_total', flat)
+
+    # ── User management page ─────────────────────────────────────────────
+
+    def test_user_management_superuser_ok(self):
+        self._login(self.superuser)
+        resp = self.client.get('/admin/auth/user/user-management/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_user_management_staff_forbidden(self):
+        self._login(self.staff_user)
+        resp = self.client.get('/admin/auth/user/user-management/')
+        self.assertEqual(resp.status_code, 403)
+
+    # ── Stripe Connect / platform config pages ───────────────────────────
+
+    def test_connect_accounts_staff_forbidden(self):
+        self._login(self.staff_user)
+        resp = self.client.get('/admin/connect-accounts/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_platform_config_staff_forbidden(self):
+        self._login(self.staff_user)
+        resp = self.client.get('/admin/platform-config/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_platform_config_staff_post_forbidden(self):
+        from apps.billing.models import PlatformConfig
+        config = PlatformConfig.get_solo()
+        original_fee = config.default_fee_percent
+        self._login(self.staff_user)
+        resp = self.client.post('/admin/platform-config/', {
+            'default_fee_percent': '99.00',
+        })
+        self.assertEqual(resp.status_code, 403)
+        config.refresh_from_db()
+        self.assertEqual(config.default_fee_percent, original_fee)
+
+    def test_connect_accounts_superuser_ok(self):
+        self._login(self.superuser)
+        resp = self.client.get('/admin/connect-accounts/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_platform_config_superuser_ok(self):
+        self._login(self.superuser)
+        resp = self.client.get('/admin/platform-config/')
+        self.assertEqual(resp.status_code, 200)
+
+    # ── Deactivate action guardrails ─────────────────────────────────────
+
+    def test_staff_cannot_deactivate_superuser_via_action(self):
+        from django.contrib import admin as dj_admin
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from rs_systems.admin import UserAdmin
+
+        request = RequestFactory().post('/admin/auth/user/')
+        request.user = self.staff_user
+        request.session = self.client.session if hasattr(self, 'client') else {}
+        setattr(request, '_messages', FallbackStorage(request))
+
+        user_admin = UserAdmin(User, dj_admin.site)
+        user_admin.deactivate_users(
+            request, User.objects.filter(pk=self.superuser.pk)
+        )
+        self.superuser.refresh_from_db()
+        self.assertTrue(
+            self.superuser.is_active,
+            "Non-superuser staff must not be able to deactivate a superuser",
+        )
+
+    def test_nobody_can_deactivate_self_via_action(self):
+        from django.contrib import admin as dj_admin
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.test import RequestFactory
+        from rs_systems.admin import UserAdmin
+
+        request = RequestFactory().post('/admin/auth/user/')
+        request.user = self.superuser
+        request.session = {}
+        setattr(request, '_messages', FallbackStorage(request))
+
+        user_admin = UserAdmin(User, dj_admin.site)
+        user_admin.deactivate_users(
+            request, User.objects.filter(pk=self.superuser.pk)
+        )
+        self.superuser.refresh_from_db()
+        self.assertTrue(self.superuser.is_active)
+
+
+class AdminLoginThrottleTests(TestCase):
+    """The admin login form is rate-limited: 10 POSTs per 5 minutes per IP."""
+
+    def test_admin_login_throttled_after_10_posts(self):
+        from django.test import override_settings
+        with override_settings(CACHES={
+            'default': {
+                'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+                'LOCATION': 'admin-login-throttle-test',
+            }
+        }):
+            client = Client()
+            last_status = None
+            for _ in range(11):
+                resp = client.post('/admin/login/', {
+                    'username': 'nobody', 'password': 'wrong',
+                })
+                last_status = resp.status_code
+            self.assertEqual(last_status, 429)
+
+    def test_admin_login_get_never_throttled(self):
+        resp = Client().get('/admin/login/')
+        self.assertEqual(resp.status_code, 200)
