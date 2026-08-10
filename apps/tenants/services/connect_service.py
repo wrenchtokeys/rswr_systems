@@ -41,9 +41,14 @@ class ConnectService:
     """
 
     def __init__(self):
+        from apps.billing.services.stripe_compat import configure_stripe
+
         self.api_key = getattr(settings, 'STRIPE_SECRET_KEY', None)
         if self.api_key:
-            stripe.api_key = self.api_key
+            # Also pins STRIPE_API_VERSION -- services get instantiated
+            # directly by tests and management commands that never run
+            # BillingConfig.ready().
+            configure_stripe()
 
     def is_enabled(self):
         """Check if Stripe is configured."""

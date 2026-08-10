@@ -46,23 +46,15 @@ def _stripe_ready():
     return STRIPE_AVAILABLE and bool(getattr(settings, 'STRIPE_SECRET_KEY', None))
 
 
-def _field(obj, key, default=None):
-    """Version-proof field access on a Stripe object OR plain dict.
-
-    stripe-python 15.x removed dict inheritance from StripeObject, so
-    .get() is not safe; __getitem__ works on every version and on dicts.
-    """
-    try:
-        value = obj[key]
-    except (KeyError, TypeError, IndexError):
-        return default
-    return default if value is None else value
+# Single implementation, shared with the subscription webhook handlers.
+# See apps/billing/services/stripe_compat.py for why this exists.
+from apps.billing.services.stripe_compat import _field  # noqa: E402
 
 
 def _retrieve_session(attempt):
     """Fetch the checkout session for an attempt from the shop's account."""
-    from django.conf import settings
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    from apps.billing.services.stripe_compat import configure_stripe
+    configure_stripe()
     return stripe.checkout.Session.retrieve(
         attempt.session_id,
         stripe_account=attempt.stripe_account_id,
