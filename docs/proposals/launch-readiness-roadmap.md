@@ -18,8 +18,8 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 | Phase | Scope | Status | Session date | Commits/PR |
 |-------|-------|--------|--------------|------------|
 | 1 | Conversion funnel & plans surfaces (landing, /pricing/, signup, login, My Plan) | **DEPLOYED to prod 2026-08-05** (PR #143 merged; prod plans re-seeded; live pricing + My Plan verified) | 2026-08-05 | PR #143 |
-| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) | **BUILT 2026-08-05** — PR #144 open, pending merge/deploy | 2026-08-05 | PR #144 |
-| 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | not started | | |
+| 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) + help-center backlog (FAQ, search, role-aware guides, /app/help/, GuideFeedback) | **MERGED + DEPLOYED 2026-08-06** (PR #144) | 2026-08-05/06 | PR #144 |
+| 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | **BUILT 2026-08-06** — PR #146 open, pending merge/deploy | 2026-08-06 | PR #146 |
 
 ## Decisions Log
 
@@ -35,6 +35,11 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - 2026-08-05 (P2): Trial-banner dismissal is persisted BUT urgent states (expired / ≤7 days) re-surface the banner regardless — losing "trial ends Friday" to a week-old dismissal is worse than the nag.
 - 2026-08-05 (P2): Tours are owner/manager-gated and per-TENANT (tours_completed lives on OnboardingState); skip = complete, never re-nag. Two tours shipped: owner-dashboard, job-form.
 - 2026-08-05 (P2): Help pages live at /help/ (login required, owner + tech). "Still stuck?" box emails contact@rssystems.io — becomes the /help/contact/ form in Phase 3.
+- 2026-08-06 (P3): `/help/` added to the subscription middleware's EXEMPT_PREFIXES — a shop whose trial just expired is exactly who needs guides + the contact form, and grace-period tenants must be able to POST it.
+- 2026-08-06 (P3): SupportMessage is record-first (row saved before the notification email is attempted; `emailed_ok=False` marks mail failures to sweep in admin) — same never-lose-it pattern as auto-invoice.
+- 2026-08-06 (P3): No ticket system, per Drake's earlier call — replies happen from Drake's inbox (notification carries Reply-To: sender), admin just has a New/Replied/Closed status for triage.
+- 2026-08-06 (P3): Success redirect is `?sent=1` + session-stashed reply address — the email never rides in a query string (access logs).
+- 2026-08-06 (P3): Contact POST rate-limited 10/h per user (block=False → friendly 429 copy, not an error page). Login-required, so no Turnstile on this form.
 
 ## Known Defects Being Fixed in Phase 1
 
@@ -44,6 +49,23 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 - Signup: `novalidate` + only first error shown; no password rules up front; no phone; decorative plan choice (duplicate "undecided" options, no `?plan=` passthrough); render-not-redirect on success (refresh re-POSTs); `fail_silently=True` confirmation email; raw exception leak via SignupError; sitemap advertises `/register/` (404).
 
 ## State for Next Session
+
+### What's done (Phase 3, 2026-08-06 — branch `feature/support-contact`)
+- `SupportMessage` model (support migration 0002): tenant/user SET_NULL + name/email snapshots so deletions never orphan a message; topic (question/problem/billing/idea/other), message, page (referrer via hidden input), status (new/replied/closed), `emailed_ok`, created_at.
+- `/help/contact/` (`help_contact`): login-required GET/POST, PRG to `?sent=1` success card; reply email prefilled from the account and overridable; record-first then EmailMessage → `settings.ADMINS` with Reply-To sender and a deep link to the admin change page; failures logged, row kept with `emailed_ok=False`.
+- `templates/support/contact.html`: topic radio pills (peer-checked styling), textarea, reply-email field, success card echoing the address; matches help-center design.
+- Admin: `SupportMessageAdmin` (status editable in the list, everything else read-only, no add) alongside GuideFeedback — that's the whole "support console".
+- Touchpoints now link the form instead of mailto: help index (no-results + "Still stuck?" card, now a full-card link), guide thumbs-down box, troubleshooting footer, subscription-blocked owner card. Public/unauthenticated pages (404/500, landing, terms, payment returns) keep mailto by design.
+- Middleware: `/help/` in EXEMPT_PREFIXES (see decision).
+- Tests: `tests/test_support_contact.py` (13) + regression (test_first_run, test_subscription_expiry, test_code130, test_e2e_today, test_primary_contact — 160 total) all green.
+
+### Phase 3 pre-marketing checklist findings (2026-08-06, read-only prod checks)
+- ❌ `SENTRY_DSN` NOT in `eb printenv` — 500s currently reach no one. **Blocked on Drake**: create the Sentry project (or say the word and Amelia sets it up), then `eb setenv SENTRY_DSN=...` — remember the confighook/static-files gotcha means setenv triggers a redeploy.
+- ✅ Turnstile keys set in EB. Open decision for Drake: flip to fail-closed? (Currently fails open on network error; 5/h ratelimit is the backstop.)
+- ✅ SES: `ProductionAccessEnabled: true`, healthy, 50k/day quota, 14/s send rate — plenty.
+- ✅ Live sitemap serves `/signup/` + `/pricing/` (Phase 1 fix confirmed deployed).
+- ✅ Prod plans re-seeded (done in Phase 1).
+- ◻ ADMINS deliverability: `ADMIN_EMAIL` unset in EB so base.py default (wdrakeduncan@gmail.com) applies — signup notifications have been arriving, and the first real contact-form submission after deploy is the end-to-end proof. (`DJANGO_ADMIN_EMAIL=admin@example.com` in EB is a different, unused-for-ADMINS var — ignore or clean up.)
 
 ### What's done (Phase 2, 2026-08-05 — branch `feature/first-run-experience`)
 - `OnboardingState` model (tenants migration 0022): OneToOne on Tenant, `get_for_tenant` lazy-create; `wizard_step`, `wizard_completed_at`, `checklist_dismissed_at`, `trial_banner_dismissed_at`, `tours_completed` JSONField.
@@ -141,13 +163,13 @@ Assessment after Phase 2 round 2 shipped 14 guides. Everything code-doable shipp
 - [ ] "Ask a question" box powered by Claude over guide content — only after real support email (Phase 3) shows what people actually ask.
 - [ ] Link Statement of Account into the UI, then document it (currently URL-only, kept out of guides per charter).
 
-Contact form deliberately stays in Phase 3 where it's planned — the mailto: "Still stuck?" box silently fails for users without a mail app, which is the strongest argument for starting Phase 3 soon.
+~~Contact form deliberately stays in Phase 3 where it's planned~~ → **built 2026-08-06** (`/help/contact/`, Phase 3); every in-app mailto touchpoint now links the form instead.
 
-## Pre-Marketing Checklist (execute in Phase 3, before ads)
+## Pre-Marketing Checklist (executed 2026-08-06 — see Phase 3 findings above for detail)
 
-- [ ] `eb printenv` shows `SENTRY_DSN` set (without it, 500s reach no one)
-- [ ] `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` set in EB (Turnstile is skipped when unset; fails open on network error — ratelimit 5/h is the backstop). Decide: flip to fail-closed?
-- [ ] SES out of sandbox, quota adequate: `python manage.py test_ses wdrakeduncan@gmail.com`
-- [ ] Live sitemap serves `/signup/` and `/pricing/` (Phase 1 fix deployed)
-- [ ] ADMINS email deliverable (signup + support notifications land in Drake's inbox)
-- [ ] Prod plans re-seeded (`seed_plans --force`) so pricing matrix shows Customer portal ✓
+- [ ] `eb printenv` shows `SENTRY_DSN` set (without it, 500s reach no one) — **NOT SET, blocked on Drake**
+- [x] `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` set in EB. Still open: decide fail-open vs fail-closed (Drake)
+- [x] SES out of sandbox: production access granted, 50k/day quota, healthy
+- [x] Live sitemap serves `/signup/` and `/pricing/` (Phase 1 fix deployed)
+- [ ] ADMINS email deliverable — verify end-to-end with the first contact-form submission after Phase 3 deploys
+- [x] Prod plans re-seeded (`seed_plans --force`) so pricing matrix shows Customer portal ✓ (done in Phase 1)

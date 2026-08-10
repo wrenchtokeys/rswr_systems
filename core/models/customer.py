@@ -102,6 +102,15 @@ class Customer(models.Model):
         blank=True,
         help_text="When phone number was verified"
     )
+    sms_opt_in = models.BooleanField(
+        default=False,
+        help_text="Customer agreed to receive service texts (invoice links, review requests)"
+    )
+    sms_opt_in_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When SMS consent was recorded"
+    )
 
     # Primary technician assignment
     primary_technician = models.ForeignKey(
@@ -175,6 +184,15 @@ class Customer(models.Model):
     def __str__(self):
         return self.name
 
+    def record_sms_consent(self):
+        """Record SMS consent (shop attests the customer agreed to receive
+        texts). Idempotent — keeps the original consent timestamp."""
+        if not self.sms_opt_in:
+            from django.utils import timezone
+            self.sms_opt_in = True
+            self.sms_opt_in_at = timezone.now()
+            self.save(update_fields=['sms_opt_in', 'sms_opt_in_at'])
+
     def get_effective_discount_percentage(self):
         """Flat discount % that applies to this customer's work.
 
@@ -197,6 +215,11 @@ class Customer(models.Model):
         # or "Penske" is incorrect for display
         if self.name:
             self.name = self.name.strip()
+        # Consent bookkeeping: first time sms_opt_in goes on, stamp when.
+        # (Unchecking keeps the timestamp as the last-consent record.)
+        if self.sms_opt_in and not self.sms_opt_in_at:
+            from django.utils import timezone
+            self.sms_opt_in_at = timezone.now()
         # Store "no email" as NULL, never ''. The unique_customer_email_per_tenant
         # constraint only ignores NULL, so a second customer saved with '' raises
         # IntegrityError (500) even though both have "no email".

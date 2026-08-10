@@ -77,13 +77,18 @@ def find_active_invoice(services, tenant):
     return None
 
 
-def invoice_and_send(service, tenant, submitted_email=None, copy_to_email=None):
+def invoice_and_send(service, tenant, submitted_email=None, copy_to_email=None,
+                     send_sms=False):
     """Find-or-create the invoice for a COMPLETED job and email it.
 
     Returns (invoice, created, send_result, excluded_count).
     send_result is an InvoiceSendService.SendResult; when the existing invoice
     is already SENT/PAID, reason is 'not_draft' and nothing is re-sent.
     Reuses any invoice the auto-invoice signal may have already created.
+
+    send_sms, when the email went out, additionally texts the customer the
+    public invoice link (the send dialog's "Also text it" option); the text
+    outcome is appended to send_result.message and never blocks the email.
     """
     from apps.billing.services.invoice_send_service import InvoiceSendService
     from apps.billing.services.invoice_tracking_service import InvoiceTrackingService
@@ -99,4 +104,7 @@ def invoice_and_send(service, tenant, submitted_email=None, copy_to_email=None):
 
     result = InvoiceSendService.send(invoice, tenant, submitted_email=submitted_email,
                                      copy_to_email=copy_to_email)
+    if send_sms and result.sent:
+        _sms_ok, sms_msg = InvoiceSendService.send_sms(invoice, tenant)
+        result.message = f'{result.message} {sms_msg}'
     return invoice, created, result, excluded

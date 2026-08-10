@@ -19,7 +19,7 @@
     <form method="get" class="flex flex-col sm:flex-row sm:items-center gap-3">
         <label class="text-sm font-medium text-gray-700">Who paid?</label>
         <select name="customer" onchange="this.form.submit()"
-            class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 px-3 min-w-[240px]">
+            class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 py-1.5 px-3 min-w-[240px]">
             <option value="">Select a customer…</option>
             {% for row in customer_rows %}
             <option value="{{ row.customer_id }}" {% if selected_customer and selected_customer.id == row.customer_id %}selected{% endif %}>
@@ -49,13 +49,13 @@
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="text-gray-500 text-sm">$</span></div>
                     <input type="number" name="amount" id="rp-amount" step="0.01" min="0.01" required placeholder="0.00"
                         oninput="autoAllocate()"
-                        class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                        class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                 </div>
                 <p class="mt-1 text-xs text-gray-400">Applied to the oldest invoices first — adjust below if needed.</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
-                <select name="payment_method" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                <select name="payment_method" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                     {% for value, label in payment_methods %}
                     <option value="{{ value }}" {% if value == 'CHECK' %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
@@ -64,17 +64,17 @@
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
                 <input type="date" name="payment_date" value="{{ today|date:'Y-m-d' }}"
-                    class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                    class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Check / Reference #</label>
                 <input type="text" name="reference_number" maxlength="100" placeholder="Optional"
-                    class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500">
+                    class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea name="notes" rows="2" placeholder="Optional"
-                    class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-blue-500 focus:border-blue-500"></textarea>
+                    class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500"></textarea>
             </div>
         </div>
 
@@ -98,7 +98,7 @@
                         {% for inv in open_invoices %}
                         <tr>
                             <td class="px-4 sm:px-6 py-3">
-                                <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="text-sm font-semibold text-blue-600 hover:text-blue-800">{{ inv.invoice_number }}</a>
+                                <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="text-sm font-semibold text-brand-600 hover:text-brand-800">{{ inv.invoice_number }}</a>
                                 <div class="text-xs text-gray-500">{{ inv.invoice_date|date:"M d, Y" }}{% if inv.status == 'OVERDUE' %} · <span class="text-red-600 font-medium">Overdue</span>{% endif %}</div>
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-500 hidden sm:table-cell">
@@ -110,14 +110,14 @@
                             <td class="px-4 sm:px-6 py-3 text-right">
                                 <div class="inline-flex items-center gap-2">
                                     <button type="button" onclick="applyFull({{ inv.id }})"
-                                        class="text-xs font-medium text-blue-600 hover:text-blue-800" title="Apply the full balance">Full</button>
+                                        class="text-xs font-medium text-brand-600 hover:text-brand-800" title="Apply the full balance">Full</button>
                                     <div class="relative">
                                         <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><span class="text-gray-400 text-xs">$</span></div>
                                         <input type="number" name="alloc_{{ inv.id }}" id="alloc-{{ inv.id }}"
                                             step="0.01" min="0" max="{{ inv.amount_due }}" placeholder="0.00"
                                             data-due="{{ inv.amount_due }}"
                                             oninput="recomputeApplied()"
-                                            class="alloc-input w-24 pl-5 pr-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right focus:ring-blue-500 focus:border-blue-500">
+                                            class="alloc-input w-24 pl-5 pr-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right focus:ring-brand-500 focus:border-brand-500">
                                     </div>
                                 </div>
                             </td>

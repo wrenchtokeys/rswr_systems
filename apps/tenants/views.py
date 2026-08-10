@@ -119,7 +119,7 @@ def _send_welcome_email(user, tenant, trial_days=30):
         from core.email_utils import send_branded_email
 
         send_branded_email(
-            subject=f"Welcome to RS Systems, {user.first_name}! 🎉",
+            subject=f"Welcome to RS Systems, {user.first_name}!",
             recipient_list=[user.email],
             headline=f'Welcome to RS Systems!',
             body_paragraphs=[
@@ -129,7 +129,7 @@ def _send_welcome_email(user, tenant, trial_days=30):
                 "Quick start: Log in, add your first customer, create a repair record, and generate an invoice in one click.",
                 f"Your trial expires in {trial_days} days. Upgrade anytime to keep your data.",
             ],
-            button_text='🚀 Get Started',
+            button_text='Get Started',
             button_url='https://rssystems.io/login/',
             tenant=tenant,
             fail_silently=True,

@@ -10,6 +10,7 @@ Author: Amelia (Clawdbot AI)
 
 import logging
 import os
+from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -137,7 +138,7 @@ def _send_verification_email(request, user):
                 'Please verify your email address by clicking the button below. This link will expire in 24 hours.',
                 "If you didn't create an account, you can safely ignore this email.",
             ],
-            button_text='✅ Verify Email',
+            button_text='Verify Email',
             button_url=verification_url,
             fail_silently=True,
         )
@@ -367,6 +368,11 @@ def terms_of_service(request):
 def privacy_policy(request):
     """Privacy Policy page."""
     return render(request, 'saas/privacy_policy.html')
+
+
+def sms_program(request):
+    """Public SMS program disclosure page (toll-free registration opt-in evidence)."""
+    return render(request, 'saas/sms_program.html')
 
 
 # ------------------------------------------------------------------
@@ -712,6 +718,188 @@ def _get_billing_context(tenant):
         }
 
 
+# ------------------------------------------------------------------
+# 4a. Revenue hero (UI_MAGIC_SESSIONS S5)
+# ------------------------------------------------------------------
+
+REVENUE_PERIODS = {
+    'month': 'This month',
+    'last_month': 'Last month',
+    '90d': 'Last 90 days',
+}
+
+
+def _revenue_window(period, now):
+    """Resolve (start, end, prev_start, prev_end, compare_label) for a period.
+
+    The current-month window compares against the *same elapsed days* of the
+    previous month, not the whole month. Comparing a 3-days-in month against a
+    full one reads as "revenue down 90%" every time the month turns over, which
+    is worse than showing nothing.
+    """
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = day_start.replace(day=1)
+
+    if period == 'last_month':
+        end = month_start
+        start = (month_start - timedelta(days=1)).replace(day=1)
+        prev_end = start
+        prev_start = (start - timedelta(days=1)).replace(day=1)
+        return start, end, prev_start, prev_end, 'vs the month before'
+
+    if period == '90d':
+        start = day_start - timedelta(days=89)
+        end = now
+        prev_end = start
+        prev_start = start - timedelta(days=90)
+        return start, end, prev_start, prev_end, 'vs the previous 90 days'
+
+    # Default: this month so far, compared to the same elapsed days last month.
+    start = month_start
+    end = now
+    prev_start = (month_start - timedelta(days=1)).replace(day=1)
+    elapsed = now - month_start
+    prev_end = min(prev_start + elapsed, month_start)
+    return start, end, prev_start, prev_end, 'vs the same days last month'
+
+
+def _completed_revenue(tenant, start, end):
+    """Total completed repair + replacement revenue in [start, end)."""
+    from apps.technician_portal.models import Repair, Replacement
+    from django.db.models import Sum
+    from decimal import Decimal
+
+    totals = []
+    for model in (Repair, Replacement):
+        totals.append(
+            model.objects.filter(
+                tenant=tenant,
+                queue_status='COMPLETED',
+                service_date__gte=start,
+                service_date__lt=end,
+            ).aggregate(total=Sum('cost'))['total'] or Decimal('0.00')
+        )
+    return totals[0], totals[1]
+
+
+def _revenue_sparkline(tenant, start, end):
+    """Daily completed-revenue totals for [start, end) as SVG polyline points.
+
+    Two aggregate queries (one per model), bucketed in the DB — never a row
+    walk. Returns '' when the window has no revenue at all, so the template can
+    omit the chart rather than draw a flat line that implies zero is a trend.
+    """
+    from apps.technician_portal.models import Repair, Replacement
+    from django.db.models import Sum
+    from django.db.models.functions import TruncDate
+    from decimal import Decimal
+
+    per_day = {}
+    for model in (Repair, Replacement):
+        rows = (
+            model.objects.filter(
+                tenant=tenant,
+                queue_status='COMPLETED',
+                service_date__gte=start,
+                service_date__lt=end,
+            )
+            .annotate(day=TruncDate('service_date'))
+            .values('day')
+            .annotate(total=Sum('cost'))
+        )
+        for row in rows:
+            if row['day'] is not None:
+                per_day[row['day']] = per_day.get(row['day'], Decimal('0.00')) + (
+                    row['total'] or Decimal('0.00')
+                )
+
+    if not per_day or all(v <= 0 for v in per_day.values()):
+        return {'points': '', 'area': ''}, False
+
+    days = max((end.date() - start.date()).days, 1)
+    series = [
+        float(per_day.get(start.date() + timedelta(days=i), 0) or 0)
+        for i in range(days + 1)
+    ]
+    peak = max(series) or 1.0
+    step = 100.0 / (len(series) - 1) if len(series) > 1 else 100.0
+    # viewBox is 0 0 100 30; y is inverted and inset 2px so the stroke isn't clipped.
+    points = ' '.join(
+        f'{i * step:.2f},{28 - (value / peak) * 26:.2f}'
+        for i, value in enumerate(series)
+    )
+    # Same path closed down to the baseline, so the line can carry a soft area
+    # fill — a bare 1px polyline at this aspect ratio reads as a divider rule,
+    # not a chart.
+    area = f'0,30 {points} 100,30'
+    return {'points': points, 'area': area}, True
+
+
+def _get_revenue_summary(tenant, period):
+    """Revenue hero context: total, split, trend vs the previous window, sparkline.
+
+    Deliberately separate from _get_billing_context() — that function's fallback
+    dict is asserted as an exact key set by
+    tests/bug_fixes/test_code001_exception_logging.py, and revenue trend is its
+    own concern anyway. Never raises: the dashboard must render without it.
+    """
+    from django.utils import timezone
+    from decimal import Decimal
+
+    period = period if period in REVENUE_PERIODS else 'month'
+    empty = {
+        'revenue_period': period,
+        'revenue_period_label': REVENUE_PERIODS[period],
+        'revenue_periods': REVENUE_PERIODS,
+        'revenue_total': Decimal('0.00'),
+        'revenue_repairs': Decimal('0.00'),
+        'revenue_replacements': Decimal('0.00'),
+        'revenue_delta_pct': None,
+        'revenue_delta_dir': '',
+        'revenue_compare_label': '',
+        'revenue_spark_points': '',
+        'revenue_spark_area': '',
+        'revenue_spark_has_data': False,
+    }
+
+    try:
+        now = timezone.now()
+        start, end, prev_start, prev_end, compare_label = _revenue_window(period, now)
+
+        repairs, replacements = _completed_revenue(tenant, start, end)
+        total = repairs + replacements
+        prev_repairs, prev_replacements = _completed_revenue(tenant, prev_start, prev_end)
+        prev_total = prev_repairs + prev_replacements
+
+        # No baseline means no honest percentage — show the comparison as absent
+        # rather than inventing "+100%" out of a division by zero.
+        delta_pct, delta_dir = None, ''
+        if prev_total > 0:
+            change = (total - prev_total) / prev_total * 100
+            delta_pct = int(round(abs(change)))
+            delta_dir = 'up' if change > 0 else ('down' if change < 0 else 'flat')
+            if delta_pct == 0:
+                delta_dir = 'flat'
+
+        spark, has_data = _revenue_sparkline(tenant, start, end)
+
+        return {
+            **empty,
+            'revenue_total': total,
+            'revenue_repairs': repairs,
+            'revenue_replacements': replacements,
+            'revenue_delta_pct': delta_pct,
+            'revenue_delta_dir': delta_dir,
+            'revenue_compare_label': compare_label,
+            'revenue_spark_points': spark['points'],
+            'revenue_spark_area': spark['area'],
+            'revenue_spark_has_data': has_data,
+        }
+    except Exception:
+        logger.exception("Failed to build revenue summary for tenant")
+        return empty
+
+
 @owner_or_manager_required
 def owner_dashboard(request):
     """Owner dashboard with trial banner, usage, quick actions, recent activity."""
@@ -803,6 +991,9 @@ def owner_dashboard(request):
         'billing_config': billing_config,
     }
     context.update(billing_context)
+    # Revenue hero. Layered on top of billing_context, which keeps its own
+    # total_revenue/repair_revenue keys untouched for back-compat.
+    context.update(_get_revenue_summary(tenant, request.GET.get('period', 'month')))
     return render(request, 'saas/owner_dashboard.html', context)
 
 
@@ -1127,6 +1318,9 @@ def replacement_detail(request, pk):
         'existing_invoice': invoice_line_item.invoice if invoice_line_item else None,
         'invoice_recipient_email': InvoiceSendService.resolve_recipient(replacement.customer)
                                    if replacement.customer else '',
+        'invoice_sms_ready': InvoiceSendService.sms_ready(tenant),
+        'invoice_sms_phone': InvoiceSendService.resolve_recipient_phone(replacement.customer)
+                             if replacement.customer else '',
     })
 
 
@@ -1318,7 +1512,8 @@ def replacement_complete_and_invoice(request, pk):
 
     try:
         invoice, created, result, excluded = invoice_and_send(
-            replacement, tenant, copy_to_email=_copy_to_email(request))
+            replacement, tenant, copy_to_email=_copy_to_email(request),
+            send_sms=bool(request.POST.get('send_sms')))
     except ValueError as e:
         messages.error(request, str(e))
         return redirect('replacement_detail', pk=pk)
@@ -1557,6 +1752,12 @@ def connect_dashboard(request):
 # ------------------------------------------------------------------
 # 10. Owner Settings
 # ------------------------------------------------------------------
+
+def _sms_platform_ready():
+    """Whether platform SMS is configured (toll-free number live)."""
+    from core.services.sms_service import SMSService
+    return SMSService.is_enabled()
+
 
 @owner_or_manager_required
 def owner_settings_view(request):
@@ -1809,6 +2010,24 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not update reminder settings.')
             return redirect('/owner/settings/?tab=billing')
 
+        if form_type == 'toggle_sms_invoicing':
+            # Toggle the "Text the invoice" option on send dialogs
+            try:
+                config = BillingConfig.get_for_tenant(tenant)
+                config.sms_invoicing_enabled = not config.sms_invoicing_enabled
+                config.save(update_fields=['sms_invoicing_enabled'])
+                if config.sms_invoicing_enabled:
+                    messages.success(
+                        request,
+                        'Invoice texting enabled. Sending an invoice now offers '
+                        '"Also text it" for customers with a mobile number.')
+                else:
+                    messages.success(request, 'Invoice texting disabled.')
+            except Exception as e:
+                logger.error(f"Error toggling SMS invoicing: {e}")
+                messages.error(request, 'Could not update text settings.')
+            return redirect('/owner/settings/?tab=billing')
+
         if form_type == 'overdue_reminder_settings':
             # Update overdue reminder configuration
             try:
@@ -1922,6 +2141,7 @@ def owner_settings_view(request):
                 review_config = ReviewConfig.get_for_tenant(tenant)
                 review_config.is_enabled = request.POST.get('review_enabled') == 'on'
                 review_config.send_to_fleet = request.POST.get('review_send_to_fleet') == 'on'
+                review_config.sms_enabled = request.POST.get('review_sms_enabled') == 'on'
                 review_config.google_review_url = request.POST.get('google_review_url', '').strip()
                 review_config.email_subject = (
                     request.POST.get('email_subject', '').strip()
@@ -1929,7 +2149,7 @@ def owner_settings_view(request):
                 )
                 review_config.email_body_template = request.POST.get('email_body_template', '').strip()
                 review_config.save(update_fields=[
-                    'is_enabled', 'send_to_fleet', 'google_review_url',
+                    'is_enabled', 'send_to_fleet', 'sms_enabled', 'google_review_url',
                     'email_subject', 'email_body_template',
                 ])
                 messages.success(request, 'Review settings saved.')
@@ -2131,6 +2351,7 @@ def owner_settings_view(request):
         'completion': completion,
         'checklist_items': _setup_checklist_items(tenant, completion),
         'fee_presets': fee_presets,
+        'sms_platform_ready': _sms_platform_ready(),
     }
 
     return render(request, 'saas/owner_settings.html', context)
@@ -2270,7 +2491,7 @@ def invite_member(request):
                         f"{inviter_name} has re-added you to {tenant.name} as a {role}.",
                         "Click the button below to set your password and get back in. This link expires in 7 days.",
                     ],
-                    button_text='🔑 Set Password & Log In',
+                    button_text='Set Password & Log In',
                     button_url=invite_url,
                     tenant=tenant,
                 )
@@ -2913,7 +3134,7 @@ def resend_invite(request, membership_id):
                 f"{inviter_name} has re-sent your invitation to join {tenant.name} as a {target.get_role_display()}.",
                 "Click the button below to set your password and get started. This link expires in 7 days.",
             ],
-            button_text='🚀 Accept Invitation',
+            button_text='Accept Invitation',
             button_url=invite_url,
             tenant=tenant,
         )
@@ -3161,6 +3382,8 @@ def owner_invoice_list(request):
 @owner_or_manager_required
 def owner_invoice_detail(request, invoice_id):
     """GET /owner/invoices/<id>/ — invoice detail with payment history."""
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+
     tenant, membership = _get_owner_tenant(request)
     if not tenant:
         messages.error(request, 'No shop found.')
@@ -3201,6 +3424,15 @@ def owner_invoice_detail(request, invoice_id):
     except Exception:
         pass
 
+    # Shareable pay link (tokened /pay/ URL on the shop's own Stripe
+    # account) — shown with a copy button so the owner can text/hand it to
+    # a customer without emailing themselves an invoice first. None when
+    # the shop can't take online payments or there's nothing due.
+    public_pay_link = None
+    if invoice.status not in ('PAID', 'CANCELLED') and invoice.amount_due > 0:
+        from apps.billing.pay_links import public_pay_url
+        public_pay_link = public_pay_url(invoice)
+
     context = {
         'tenant': tenant,
         'invoice': invoice,
@@ -3212,6 +3444,10 @@ def owner_invoice_detail(request, invoice_id):
         'recipient_email': recipient_email,
         'rendered_reminder_default': rendered_reminder_default,
         'today': timezone.now().date(),
+        'public_pay_link': public_pay_link,
+        'invoice_sms_ready': InvoiceSendService.sms_ready(tenant),
+        'invoice_sms_available': InvoiceSendService.sms_available(invoice, tenant),
+        'invoice_sms_phone': InvoiceSendService.resolve_recipient_phone(invoice.customer),
     }
     return render(request, 'saas/owner_invoice_detail.html', context)
 
@@ -3277,6 +3513,38 @@ def owner_record_payment(request, invoice_id):
         except ValueError:
             messages.error(request, 'Invalid payment date.')
             return _done()
+
+    # GUARD: an online payment may be in flight for this invoice (the
+    # customer opened the Stripe pay page). Verify with Stripe before
+    # recording anything manually: an already-paid session gets recorded
+    # as the real Stripe payment; a still-open session is expired so the
+    # customer can't also pay online; verification failure blocks the
+    # manual record — double payment must never be left to chance.
+    from apps.billing.services.stripe_reconcile import guard_manual_payment
+    allow, guard_info = guard_manual_payment(invoice)
+    if not allow:
+        messages.error(request, guard_info['message'])
+        return _done()
+    if guard_info['recorded']:
+        invoice.refresh_from_db()
+        if invoice.status == 'PAID' or invoice.amount_due <= 0:
+            messages.success(
+                request,
+                'Good news — this invoice was already paid online. The Stripe '
+                'payment has been recorded; no manual payment is needed.',
+            )
+            return _done()
+        messages.info(
+            request,
+            f'An online Stripe payment was found and recorded first. '
+            f'Remaining balance is ${invoice.amount_due}.',
+        )
+    if guard_info['expired']:
+        messages.info(
+            request,
+            "The customer's open online payment page was cancelled so this "
+            "invoice can't be paid twice.",
+        )
 
     # Create the Payment record
     # NOTE: The amount_due check must happen INSIDE the transaction with a row-level
@@ -3568,6 +3836,9 @@ def owner_send_invoice(request, invoice_id):
     )
     if result.sent:
         messages.success(request, result.message)
+        if request.POST.get('send_sms'):
+            sms_ok, sms_msg = InvoiceSendService.send_sms(invoice, tenant)
+            (messages.success if sms_ok else messages.warning)(request, sms_msg)
     else:
         messages.error(request, result.message)
     return redirect('owner_invoice_detail', invoice_id=invoice.id)
@@ -3625,6 +3896,10 @@ def owner_email_invoice(request, invoice_id):
         if success:
             invoice.record_email_sent(recipient)
             messages.success(request, f'Invoice emailed to {recipient}.')
+            if request.POST.get('send_sms'):
+                from apps.billing.services.invoice_send_service import InvoiceSendService
+                sms_ok, sms_msg = InvoiceSendService.send_sms(invoice, tenant)
+                (messages.success if sms_ok else messages.warning)(request, sms_msg)
         else:
             messages.error(request, f'Failed to email invoice: {msg}')
             

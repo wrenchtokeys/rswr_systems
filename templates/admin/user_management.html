@@ -1,236 +1,121 @@
 {% extends "admin/base_site.html" %}
-{% load i18n admin_urls static admin_list %}
+{% load i18n admin_urls static %}
+
+{% block title %}User Management | {{ site_title|default:_('Django site admin') }}{% endblock %}
 
 {% block extrastyle %}
-  {{ block.super }}
-  <link rel="stylesheet" type="text/css" href="{% static "admin/css/changelists.css" %}">
-  <style>
-    .stats-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 20px;
-      margin-bottom: 30px;
-    }
-    .stat-card {
-      flex: 1;
-      min-width: 200px;
-      padding: 20px;
-      background-color: #fff;
-      border-radius: 4px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
-    }
-    .stat-value {
-      font-size: 36px;
-      font-weight: bold;
-      margin: 10px 0;
-      color: #417690;
-    }
-    .stat-label {
-      font-size: 14px;
-      color: #666;
-      text-transform: uppercase;
-    }
-    .quick-actions {
-      margin-bottom: 30px;
-    }
-    .user-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    .user-table th, .user-table td {
-      border: 1px solid #ddd;
-      padding: 8px 15px;
-      text-align: left;
-    }
-    .user-table th {
-      background-color: #f2f2f2;
-      font-weight: bold;
-    }
-    .user-table tr:nth-child(even) {
-      background-color: #f9f9f9;
-    }
-    .role-badge {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: bold;
-      color: white;
-    }
-    .role-admin {
-      background-color: #d35400;
-    }
-    .role-technician {
-      background-color: #2980b9;
-    }
-    .role-customer {
-      background-color: #27ae60;
-    }
-    .role-unassigned {
-      background-color: #7f8c8d;
-    }
-    .role-dual {
-      background-color: #8e44ad;
-    }
-    .filter-controls {
-      margin-bottom: 30px;
-    }
-    .role-filters {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 10px;
-    }
-    .role-filter {
-      display: inline-block;
-      padding: 8px 16px;
-      background-color: #f2f2f2;
-      color: #333;
-      text-decoration: none;
-      border-radius: 4px;
-      transition: all 0.2s;
-    }
-    .role-filter:hover {
-      background-color: #e0e0e0;
-    }
-    .role-filter.active {
-      background-color: #417690;
-      color: white;
-    }
-  </style>
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/rs_admin.css' %}">
 {% endblock %}
 
 {% block breadcrumbs %}
 <div class="breadcrumbs">
 <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
-&rsaquo; <a href="{% url 'admin:app_list' app_label='auth' %}">Authentication and Authorization</a>
 &rsaquo; <a href="{% url 'admin:auth_user_changelist' %}">Users</a>
 &rsaquo; User Management
 </div>
 {% endblock %}
 
 {% block content %}
-<div id="content-main">
-  <div class="module">
-    <h1>User Management Dashboard</h1>
-    
-    <div class="stats-container">
-      <div class="stat-card">
-        <div class="stat-label">Total Users</div>
-        <div class="stat-value">{{ stats.total_users }}</div>
+<div class="rs-page">
+  <section class="rs-section">
+    <div class="rs-cards">
+      <div class="rs-card">
+        <div class="rs-card-label">Total users</div>
+        <div class="rs-card-value">{{ stats.total_users }}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Active Users</div>
-        <div class="stat-value">{{ stats.active_users }}</div>
+      <div class="rs-card accent-good">
+        <div class="rs-card-label">Active</div>
+        <div class="rs-card-value">{{ stats.active_users }}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Technicians</div>
-        <div class="stat-value">{{ stats.technicians }}</div>
+      <div class="rs-card accent-info">
+        <div class="rs-card-label">Technicians</div>
+        <div class="rs-card-value">{{ stats.technicians }}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Customers</div>
-        <div class="stat-value">{{ stats.customers }}</div>
+      <div class="rs-card accent-info">
+        <div class="rs-card-label">Customers</div>
+        <div class="rs-card-value">{{ stats.customers }}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Dual-Role</div>
-        <div class="stat-value">{{ stats.dual_role }}</div>
+      <div class="rs-card">
+        <div class="rs-card-label">Dual-role</div>
+        <div class="rs-card-value">{{ stats.dual_role }}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Administrators</div>
-        <div class="stat-value">{{ stats.admins }}</div>
+      <div class="rs-card">
+        <div class="rs-card-label">Administrators</div>
+        <div class="rs-card-value">{{ stats.admins }}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Unassigned</div>
-        <div class="stat-value">{{ stats.unassigned }}</div>
+      <div class="rs-card accent-warn">
+        <div class="rs-card-label">Unassigned</div>
+        <div class="rs-card-value">{{ stats.unassigned }}</div>
       </div>
     </div>
-    
-    <div class="quick-actions">
-      <h2>Quick Actions</h2>
-      <div class="object-tools">
-        <a href="{% url 'admin:auth_user_add' %}" class="addlink">
-          Add User
-        </a>
-        <a href="{% url 'admin:auth_user_changelist' %}" class="viewlink">
-          View All Users
-        </a>
-        <a href="{% url 'admin:technician_portal_technician_changelist' %}" class="viewlink">
-          Manage Technicians
-        </a>
-        <a href="{% url 'admin:customer_portal_customeruser_changelist' %}" class="viewlink">
-          Manage Customers
-        </a>
-      </div>
+  </section>
+
+  <section class="rs-section">
+    <h2 class="rs-section-title">Quick Actions</h2>
+    <div class="rs-btn-row">
+      <a href="{% url 'admin:auth_user_add' %}" class="rs-btn">Add user</a>
+      <a href="{% url 'admin:auth_user_changelist' %}" class="rs-btn-ghost">All users</a>
+      <a href="{% url 'admin:technician_portal_technician_changelist' %}" class="rs-btn-ghost">Technicians</a>
+      <a href="{% url 'admin:customer_portal_customeruser_changelist' %}" class="rs-btn-ghost">Customer users</a>
     </div>
-    
-    <div class="filter-controls">
-      <h2>Filter Users by Role</h2>
-      <div class="role-filters">
-        <a href="?role=all" class="role-filter {% if role_filter == 'all' %}active{% endif %}">All</a>
-        <a href="?role=technician" class="role-filter {% if role_filter == 'technician' %}active{% endif %}">Technicians</a>
-        <a href="?role=customer" class="role-filter {% if role_filter == 'customer' %}active{% endif %}">Customers</a>
-        <a href="?role=dual" class="role-filter {% if role_filter == 'dual' %}active{% endif %}">Dual-Role</a>
-        <a href="?role=admin" class="role-filter {% if role_filter == 'admin' %}active{% endif %}">Admins</a>
-        <a href="?role=unassigned" class="role-filter {% if role_filter == 'unassigned' %}active{% endif %}">Unassigned</a>
-      </div>
+  </section>
+
+  <section class="rs-section">
+    <h2 class="rs-section-title">Filter by Role</h2>
+    <div class="rs-pills">
+      <a href="?role=all" class="rs-pill {% if role_filter == 'all' %}is-active{% endif %}">All</a>
+      <a href="?role=technician" class="rs-pill {% if role_filter == 'technician' %}is-active{% endif %}">Technicians</a>
+      <a href="?role=customer" class="rs-pill {% if role_filter == 'customer' %}is-active{% endif %}">Customers</a>
+      <a href="?role=dual" class="rs-pill {% if role_filter == 'dual' %}is-active{% endif %}">Dual-role</a>
+      <a href="?role=admin" class="rs-pill {% if role_filter == 'admin' %}is-active{% endif %}">Admins</a>
+      <a href="?role=unassigned" class="rs-pill {% if role_filter == 'unassigned' %}is-active{% endif %}">Unassigned</a>
     </div>
-    
-    <h2>
-      {% if role_filter == 'all' %}
-        Recently Added Users
-      {% elif role_filter == 'technician' %}
-        Technicians
-      {% elif role_filter == 'customer' %}
-        Customers
-      {% elif role_filter == 'dual' %}
-        Users with Dual Roles
-      {% elif role_filter == 'admin' %}
-        Administrators
-      {% elif role_filter == 'unassigned' %}
-        Unassigned Users
-      {% endif %}
+  </section>
+
+  <section class="rs-section">
+    <h2 class="rs-section-title">
+      {% if role_filter == 'all' %}Recently Added Users{% elif role_filter == 'technician' %}Technicians{% elif role_filter == 'customer' %}Customers{% elif role_filter == 'dual' %}Users with Dual Roles{% elif role_filter == 'admin' %}Administrators{% elif role_filter == 'unassigned' %}Unassigned Users{% endif %}
     </h2>
-    <table class="user-table">
-      <thead>
-        <tr>
-          <th>Username</th>
-          <th>Name</th>
-          <th>Email</th>
-          <th>Role</th>
-          <th>Date Joined</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in users %}
-        <tr>
-          <td>{{ user.username }}</td>
-          <td>{{ user.get_full_name }}</td>
-          <td>{{ user.email }}</td>
-          <td>
-            {% if user.is_superuser %}
-              <span class="role-badge role-admin">Admin</span>
-            {% elif user.technician_set.exists and user.customeruser_set.exists %}
-              <span class="role-badge role-dual">Tech & Customer</span>
-            {% elif user.technician_set.exists %}
-              <span class="role-badge role-technician">Technician</span>
-            {% elif user.customeruser_set.exists %}
-              <span class="role-badge role-customer">Customer</span>
-            {% else %}
-              <span class="role-badge role-unassigned">Unassigned</span>
-            {% endif %}
-          </td>
-          <td>{{ user.date_joined|date:"M d, Y" }}</td>
-          <td>{% if user.is_active %}Active{% else %}Inactive{% endif %}</td>
-          <td>
-            <a href="{% url 'admin:auth_user_change' user.pk %}" class="button">Edit</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+    <div class="rs-table-card">
+      <table class="rs-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Joined</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in users %}
+          <tr>
+            <td>{{ row.user.username }}</td>
+            <td>{{ row.user.get_full_name|default:"—" }}</td>
+            <td>{{ row.user.email|default:"—" }}</td>
+            <td>
+              {% if row.role == 'Admin' %}<span class="rs-badge rs-badge-serious">Admin</span>
+              {% elif row.role == 'Tech & Customer' %}<span class="rs-badge rs-badge-info">Tech &amp; Customer</span>
+              {% elif row.role == 'Technician' %}<span class="rs-badge rs-badge-info">Technician</span>
+              {% elif row.role == 'Customer' %}<span class="rs-badge rs-badge-good">Customer</span>
+              {% else %}<span class="rs-badge">Unassigned</span>{% endif %}
+            </td>
+            <td>{{ row.user.date_joined|date:"M d, Y" }}</td>
+            <td>
+              {% if row.user.is_active %}<span class="rs-badge rs-badge-good">Active</span>
+              {% else %}<span class="rs-badge rs-badge-critical">Inactive</span>{% endif %}
+            </td>
+            <td><a href="{% url 'admin:auth_user_change' row.user.pk %}">Edit</a></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="rs-empty">No users match this filter</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
 </div>
-{% endblock %} 
+{% endblock %}

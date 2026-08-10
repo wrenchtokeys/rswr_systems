@@ -57,9 +57,7 @@ def stripe_subscription_webhook(request):
         else:
             # Development only: allow without verification (with warning)
             try:
-                event = stripe.Event.construct_from(
-                    json.loads(payload), stripe.api_key
-                )
+                event = json.loads(payload)
             except (ValueError, json.JSONDecodeError):
                 logger.error("Stripe webhook: could not parse payload")
                 return HttpResponse("Invalid payload", status=400)
@@ -79,7 +77,14 @@ def stripe_subscription_webhook(request):
         except stripe.error.SignatureVerificationError:
             logger.error("Stripe webhook: invalid signature")
             return HttpResponse("Invalid signature", status=400)
-    
+
+    # stripe-python v15 removed dict inheritance from StripeObject, so
+    # session.get(...) in the handlers raises AttributeError on real events.
+    # The signature is already verified — re-parse the raw payload so the
+    # handlers work on plain dicts regardless of SDK version.
+    if not isinstance(event, dict):
+        event = json.loads(payload)
+
     event_type = event['type']
     data_object = event['data']['object']
     
@@ -565,7 +570,7 @@ def _notify_owners_and_managers(tenant, event_type, context):
                 "your payment method now to avoid service interruption."
             )
             send_branded_email(
-                subject=f'⚠️ Payment failed for {tenant.name}',
+                subject=f'Payment failed for {tenant.name}',
                 recipient_list=recipient_list,
                 headline='Payment Failed',
                 body_paragraphs=[
@@ -573,14 +578,14 @@ def _notify_owners_and_managers(tenant, event_type, context):
                     f"We were unable to process your payment for {tenant.name} (attempt #{attempt_count}).",
                     retry_text,
                 ],
-                button_text='💳 Update Payment Method',
+                button_text='Update Payment Method',
                 button_url=f'{base_url}/owner/update-payment-method/',
                 tenant=tenant,
                 fail_silently=True,
             )
         elif event_type == 'payment_recovered':
             send_branded_email(
-                subject=f'✅ Payment successful for {tenant.name}',
+                subject=f'Payment successful for {tenant.name}',
                 recipient_list=recipient_list,
                 headline='Good news!',
                 body_paragraphs=[
@@ -605,7 +610,7 @@ def _notify_owners_and_managers(tenant, event_type, context):
                     "Your account has been moved to read-only mode for 30 days. During this time you can view your data but cannot make changes.",
                     "Resubscribe anytime to restore full access.",
                 ],
-                button_text='🔄 Resubscribe Now',
+                button_text='Resubscribe Now',
                 button_url=f'{base_url}/owner/billing/',
                 tenant=tenant,
                 fail_silently=True,

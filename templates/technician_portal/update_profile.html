@@ -78,13 +78,13 @@
         {% if messages %}
         <div class="mb-6 space-y-4">
             {% for message in messages %}
-            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}blue-50 border-l-4 border-blue-400{% endif %} p-4">
+            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}brand-50 border-l-4 border-brand-400{% endif %} p-4">
                 <div class="flex">
                     <div class="flex-shrink-0">
-                        <i class="fas fa-{% if message.tags == 'error' %}exclamation-circle text-red-400{% elif message.tags == 'success' %}check-circle text-green-400{% else %}info-circle text-blue-400{% endif %}"></i>
+                        <i class="fas fa-{% if message.tags == 'error' %}exclamation-circle text-red-400{% elif message.tags == 'success' %}check-circle text-green-400{% else %}info-circle text-brand-400{% endif %}"></i>
                     </div>
                     <div class="ml-3">
-                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-blue-700{% endif %}">{{ message }}</p>
+                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-brand-700{% endif %}">{{ message }}</p>
                     </div>
                 </div>
             </div>
@@ -201,7 +201,7 @@
                     <!-- Account Information Card -->
                     <div class="bg-white border border-gray-200 rounded-lg p-6">
                         <div class="flex items-center gap-3 mb-6">
-                            <div class="bg-blue-100 text-blue-600 p-2 rounded-lg">
+                            <div class="bg-brand-100 text-brand-600 p-2 rounded-lg">
                                 <i class="fas fa-fingerprint text-xl"></i>
                             </div>
                             <div>
@@ -272,7 +272,7 @@
                             <div>
                                 <div class="flex items-center gap-2">
                                     <h3 class="text-lg font-semibold text-gray-900">Change Password</h3>
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-800">
                                         Optional
                                     </span>
                                 </div>
@@ -280,12 +280,12 @@
                             </div>
                         </div>
 
-                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                        <div class="bg-brand-50 border border-brand-200 rounded-lg p-4 mb-6">
                             <div class="flex gap-3">
-                                <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
-                                <div class="text-sm text-blue-900">
+                                <i class="fas fa-info-circle text-brand-600 mt-0.5"></i>
+                                <div class="text-sm text-brand-900">
                                     <p class="font-medium">Leave password fields blank if you don't want to change your password.</p>
-                                    <p class="mt-1 text-blue-800">Your password must be at least 8 characters long for security.</p>
+                                    <p class="mt-1 text-brand-800">Your password must be at least 8 characters long for security.</p>
                                 </div>
                             </div>
                         </div>

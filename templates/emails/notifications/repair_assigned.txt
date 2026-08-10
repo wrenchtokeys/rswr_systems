@@ -1,6 +1,6 @@
 ================================================
 {{ branding.company_name }}
-📋 NEW REPAIR ASSIGNMENT
+NEW REPAIR ASSIGNMENT
 ================================================
 
 You've been assigned to a new windshield repair. Please review the details below.

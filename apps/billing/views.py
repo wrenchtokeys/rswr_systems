@@ -602,6 +602,23 @@ def record_payment(request, invoice_id):
                 status=400,
             )
 
+        # Guard: an online payment may be in flight (open Stripe checkout).
+        # Verify with Stripe first — paid sessions get recorded as Stripe
+        # payments, open sessions are expired, and verification failure
+        # blocks the manual record to rule out double payment.
+        from apps.billing.services.stripe_reconcile import guard_manual_payment
+        allow, guard_info = guard_manual_payment(invoice)
+        if not allow:
+            return JsonResponse({'error': guard_info['message']}, status=409)
+        if guard_info['recorded']:
+            invoice.refresh_from_db()
+            if invoice.status == 'PAID' or invoice.amount_due <= 0:
+                return JsonResponse({
+                    'error': 'This invoice was already paid online — the Stripe '
+                             'payment has been recorded. No manual payment is needed.',
+                    'stripe_payment_recorded': True,
+                }, status=409)
+
         # Use a row-level lock (SELECT FOR UPDATE) to prevent a TOCTOU race
         # where two concurrent API requests both read the same stale amount_due
         # and both pass the overpayment check, resulting in amount_paid > total.
@@ -833,9 +850,11 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
     # line item left Repair.cost at the old value forever (the drift that
     # audit_remediation_data measures). Write via queryset .update() to skip
     # save() side effects; cost_override is stored pre-account-discount so a
-    # future save() re-derives cost == the invoiced amount.
+    # future save() re-derives cost == the invoiced amount. Tax must ride
+    # along explicitly — skipping save() skips its tax recalc too.
     service = line_item.repair or line_item.replacement
     if service and ('unit_price' in data or 'discount' in data or 'amount' in data):
+        from apps.billing.services.invoice_sync import tax_fields_for_line
         per_unit = (line_item.amount / line_item.quantity).quantize(Decimal('0.01')) \
             if line_item.quantity else line_item.amount
         override = per_unit
@@ -846,6 +865,7 @@ def update_invoice_line_item(request, invoice_id, line_item_id):
             cost=per_unit,
             cost_override=override,
             override_reason=f'Priced on invoice {invoice.invoice_number}',
+            **tax_fields_for_line(line_item, per_unit),
         )
 
     from apps.billing.services.invoice_sync import recalculate_invoice_totals

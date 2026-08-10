@@ -33,13 +33,15 @@ class SyncJobPricesCommandTests(OwnerClientMixin, TestCase):
             service_date=timezone.now(),
         )
 
-    def _make_invoice(self, amount, number='INV-CMD-1', status='SENT', repair=None):
+    def _make_invoice(self, amount, number='INV-CMD-1', status='SENT', repair=None,
+                      tax_rate=Decimal('0.000')):
         from apps.billing.models import Invoice, InvoiceLineItem
         inv = Invoice.objects.create(
             tenant=self.tenant, customer=self.customer,
             invoice_number=number, invoice_date=date.today(),
             due_date=date.today() + timedelta(days=30),
             status=status, subtotal=amount, discount=Decimal('0.00'), total=amount,
+            tax_rate=tax_rate,
         )
         li = InvoiceLineItem.objects.create(
             invoice=inv, repair=repair or self.repair,
@@ -114,6 +116,67 @@ class SyncJobPricesCommandTests(OwnerClientMixin, TestCase):
         other_repair.refresh_from_db()
         self.assertEqual(self.repair.cost, Decimal('60.00'))
         self.assertNotEqual(other_repair.cost, Decimal('90.00'))
+
+    def test_stale_tax_detected_even_when_price_matches(self):
+        """A job whose cost matches the invoice but whose tax was computed
+        from an old price (the pre-fix write-back skipped tax recalc) is
+        drift, and --apply corrects the tax fields from the invoice's rate."""
+        from apps.technician_portal.models import Repair
+        # Simulate the repair-182 state: cost synced to $1, tax stuck at $50-era.
+        Repair.objects.filter(pk=self.repair.pk).update(
+            cost=Decimal('1.00'), cost_override=Decimal('1.00'),
+            tax_rate=Decimal('9.750'), tax_amount=Decimal('4.88'),
+        )
+        self._make_invoice(Decimal('1.00'), tax_rate=Decimal('9.750'))
+
+        out = self._run()
+        self.assertIn('Dry run', out)
+        self.assertIn('tax 4.88 -> 0.10', out)
+
+        out = self._run('--apply')
+        self.assertIn('Synced 1 job', out)
+        self.repair.refresh_from_db()
+        self.assertEqual(self.repair.cost, Decimal('1.00'))
+        self.assertEqual(self.repair.tax_amount, Decimal('0.10'))
+        self.assertEqual(self.repair.tax_rate, Decimal('9.750'))
+
+    def test_price_sync_updates_tax_together(self):
+        """When the cost is back-filled, tax follows the new cost at the
+        invoice's rate."""
+        self._make_invoice(Decimal('60.00'), tax_rate=Decimal('9.750'))
+
+        self._run('--apply')
+        self.repair.refresh_from_db()
+        self.assertEqual(self.repair.cost, Decimal('60.00'))
+        self.assertEqual(self.repair.tax_rate, Decimal('9.750'))
+        self.assertEqual(self.repair.tax_amount, Decimal('5.85'))
+
+    def test_untaxed_invoice_never_adds_tax(self):
+        """Jobs billed on an invoice with no tax stay at zero tax even when
+        the shop's current config would charge tax (pre-tax-era history)."""
+        from apps.billing.models import BillingConfig
+        from apps.technician_portal.models import Repair
+        cfg = BillingConfig.get_for_tenant(self.tenant)
+        cfg.tax_enabled = True
+        cfg.default_tax_rate = Decimal('9.750')
+        cfg.save()
+        Repair.objects.filter(pk=self.repair.pk).update(
+            cost=Decimal('50.00'), tax_rate=Decimal('0.000'), tax_amount=Decimal('0.00'),
+        )
+        self._make_invoice(Decimal('50.00'))  # invoice tax_rate stays 0
+
+        out = self._run()
+        self.assertIn('No drift', out)
+
+    def test_in_sync_tax_and_price_reports_no_drift(self):
+        """Correct cost AND correct tax → nothing to do."""
+        from apps.technician_portal.models import Repair
+        Repair.objects.filter(pk=self.repair.pk).update(
+            cost=Decimal('60.00'), tax_rate=Decimal('9.750'), tax_amount=Decimal('5.85'),
+        )
+        self._make_invoice(Decimal('60.00'), tax_rate=Decimal('9.750'))
+        out = self._run()
+        self.assertIn('No drift', out)
 
     def test_multiple_invoices_last_one_wins(self):
         self._make_invoice(Decimal('50.00'), number='INV-OLD')

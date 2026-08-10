@@ -13,6 +13,11 @@ module.exports = {
     { pattern: /^grid-cols-[1-4]$/, variants: ['sm', 'lg'] },
     // viscosity_rules.html composes badge-{{ rule.badge_color }} (BADGE_COLOR_CHOICES)
     { pattern: /^badge-(gray|blue|green|yellow|orange|red|purple)$/ },
+    // Type scale + material rungs (UI_MAGIC_PLAN R2/R3). Kept alive while pages
+    // are migrated to them one at a time, so a template can adopt `.t-h1` and
+    // have it work immediately instead of silently rendering unstyled.
+    { pattern: /^t-(display|h1|h2|h3|body|sub|caption)$/ },
+    'surface-float',
   ],
   theme: {
     extend: {

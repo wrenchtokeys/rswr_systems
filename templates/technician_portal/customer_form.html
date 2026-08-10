@@ -31,13 +31,13 @@
         {% if messages %}
         <div class="mb-6 space-y-4">
             {% for message in messages %}
-            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}blue-50 border-l-4 border-blue-400{% endif %} p-4">
+            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}brand-50 border-l-4 border-brand-400{% endif %} p-4">
                 <div class="flex">
                     <div class="flex-shrink-0">
-                        <i class="fas fa-{% if message.tags == 'error' %}exclamation-circle text-red-400{% elif message.tags == 'success' %}check-circle text-green-400{% else %}info-circle text-blue-400{% endif %}"></i>
+                        <i class="fas fa-{% if message.tags == 'error' %}exclamation-circle text-red-400{% elif message.tags == 'success' %}check-circle text-green-400{% else %}info-circle text-brand-400{% endif %}"></i>
                     </div>
                     <div class="ml-3">
-                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-blue-700{% endif %}">{{ message }}</p>
+                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-brand-700{% endif %}">{{ message }}</p>
                     </div>
                 </div>
             </div>
@@ -117,6 +117,12 @@
                             {% if form.phone.errors %}
                             <p class="text-xs text-red-600 mt-1">{{ form.phone.errors.0 }}</p>
                             {% endif %}
+                            <label class="flex items-center gap-2 text-sm text-gray-600 mt-2 cursor-pointer">
+                                <input type="checkbox" name="{{ form.sms_opt_in.name }}" value="1"
+                                    {% if form.sms_opt_in.value %}checked{% endif %}
+                                    class="w-4 h-4 text-sky-600 border-gray-300 rounded focus:ring-sky-500">
+                                OK to text this customer (they've agreed to receive service texts)
+                            </label>
                         </div>
                     </div>
 
@@ -179,9 +185,9 @@
                 <div class="cust-fleet-only">
 
                 <!-- Section 2: Portal Invitation -->
-                <div class="p-6 border-t border-b border-gray-200 bg-blue-50">
+                <div class="p-6 border-t border-b border-gray-200 bg-brand-50">
                     <div class="flex items-center gap-3">
-                        <div class="bg-blue-100 text-blue-600 p-2 rounded-lg">
+                        <div class="bg-brand-100 text-brand-600 p-2 rounded-lg">
                             <i class="fas fa-envelope-open-text text-xl"></i>
                         </div>
                         <div>
@@ -201,7 +207,7 @@
                             </label>
                             <input
                                 type="text"
-                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                                 id="{{ form.invite_first_name.id_for_label }}"
                                 name="{{ form.invite_first_name.name }}"
                                 value="{{ form.invite_first_name.value|default:'' }}"
@@ -214,7 +220,7 @@
                             </label>
                             <input
                                 type="text"
-                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                                 id="{{ form.invite_last_name.id_for_label }}"
                                 name="{{ form.invite_last_name.name }}"
                                 value="{{ form.invite_last_name.value|default:'' }}"
@@ -230,7 +236,7 @@
                         </label>
                         <input
                             type="email"
-                            class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                             id="{{ form.invite_email.id_for_label }}"
                             name="{{ form.invite_email.name }}"
                             value="{{ form.invite_email.value|default:'' }}"
@@ -245,7 +251,7 @@
                     <div class="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
                         <input
                             type="checkbox"
-                            class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            class="mt-1 h-4 w-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
                             id="{{ form.send_invitation.id_for_label }}"
                             name="{{ form.send_invitation.name }}"
                             {% if form.send_invitation.value %}checked{% endif %}>
@@ -263,7 +269,7 @@
                     <div class="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-200">
                         <input
                             type="checkbox"
-                            class="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            class="mt-1 h-4 w-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500"
                             id="{{ form.is_primary_contact.id_for_label }}"
                             name="{{ form.is_primary_contact.name }}"
                             {% if form.is_primary_contact.value %}checked{% endif %}>

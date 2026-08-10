@@ -17,7 +17,7 @@
     <div class="mb-2 p-4 rounded-lg text-sm font-medium
         {% if message.tags == 'success' %}bg-green-50 text-green-800 border border-green-200
         {% elif message.tags == 'error' %}bg-red-50 text-red-800 border border-red-200
-        {% else %}bg-blue-50 text-blue-800 border border-blue-200{% endif %}">
+        {% else %}bg-brand-50 text-brand-800 border border-brand-200{% endif %}">
         <div class="flex justify-between items-center">
             <span>{{ message }}</span>
             <button onclick="this.parentElement.parentElement.remove()" class="text-current opacity-50 hover:opacity-100">&times;</button>
@@ -29,7 +29,7 @@
 
 <div class="flex min-h-screen bg-gray-50">
     <!-- Left: Brand panel -->
-    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 to-blue-800 items-center justify-center relative overflow-hidden">
+    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-brand-600 to-brand-800 items-center justify-center relative overflow-hidden">
         <div class="absolute inset-0 opacity-10">
             <div class="absolute top-20 left-20 w-40 h-40 border-2 border-white rounded-full"></div>
             <div class="absolute bottom-32 right-16 w-64 h-64 border-2 border-white rounded-full"></div>
@@ -44,7 +44,7 @@
             </div>
             {% endif %}
             <h1 class="text-3xl font-bold text-white mb-4">{{ tenant.name }}</h1>
-            <p class="text-xl text-blue-100 mb-10">Your windshield repair &amp; replacement portal</p>
+            <p class="text-xl text-brand-100 mb-10">Your windshield repair &amp; replacement portal</p>
 
             <div class="space-y-5 text-left">
                 <div class="flex items-start gap-4">
@@ -53,7 +53,7 @@
                     </div>
                     <div>
                         <p class="font-semibold text-white">Request &amp; Monitor Repairs</p>
-                        <p class="text-blue-200 text-sm">Submit repair requests and track every job from start to finish</p>
+                        <p class="text-brand-200 text-sm">Submit repair requests and track every job from start to finish</p>
                     </div>
                 </div>
                 <div class="flex items-start gap-4">
@@ -62,7 +62,7 @@
                     </div>
                     <div>
                         <p class="font-semibold text-white">Approve Work Orders</p>
-                        <p class="text-blue-200 text-sm">Review and approve field-discovered damage on your vehicles instantly</p>
+                        <p class="text-brand-200 text-sm">Review and approve field-discovered damage on your vehicles instantly</p>
                     </div>
                 </div>
                 <div class="flex items-start gap-4">
@@ -71,7 +71,7 @@
                     </div>
                     <div>
                         <p class="font-semibold text-white">Invoices &amp; History</p>
-                        <p class="text-blue-200 text-sm">Access invoices, payment history, and complete repair records</p>
+                        <p class="text-brand-200 text-sm">Access invoices, payment history, and complete repair records</p>
                     </div>
                 </div>
                 <div class="flex items-start gap-4">
@@ -80,7 +80,7 @@
                     </div>
                     <div>
                         <p class="font-semibold text-white">Earn Rewards</p>
-                        <p class="text-blue-200 text-sm">Refer others and earn loyalty rewards on future services</p>
+                        <p class="text-brand-200 text-sm">Refer others and earn loyalty rewards on future services</p>
                     </div>
                 </div>
             </div>
@@ -124,14 +124,14 @@
                         <label for="first_name" class="block text-sm font-medium text-gray-700 mb-1">First Name</label>
                         <input type="text" id="first_name" name="first_name" required
                             value="{{ form_data.first_name|default:'' }}"
-                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                             placeholder="First name">
                     </div>
                     <div>
                         <label for="last_name" class="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
                         <input type="text" id="last_name" name="last_name" required
                             value="{{ form_data.last_name|default:'' }}"
-                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                             placeholder="Last name">
                     </div>
                 </div>
@@ -140,7 +140,7 @@
                     <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <input type="email" id="email" name="email" required
                         value="{{ form_data.email|default:'' }}"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                         placeholder="you@company.com">
                 </div>
 
@@ -150,7 +150,7 @@
                     </label>
                     <input type="tel" id="phone" name="phone"
                         value="{{ form_data.phone|default:'' }}"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                         placeholder="(555) 123-4567">
                 </div>
 
@@ -160,7 +160,7 @@
                     </label>
                     <input type="text" id="company_name" name="company_name"
                         value="{{ form_data.company_name|default:'' }}"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                         placeholder="Leave blank for personal account">
                     <p class="text-xs text-gray-500 mt-1">Fleet customers: enter your company name. Individuals: leave blank.</p>
                 </div>
@@ -168,14 +168,14 @@
                 <div>
                     <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
                     <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                         placeholder="••••••••">
                 </div>
 
                 <div>
                     <label for="confirm_password" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
                     <input type="password" id="confirm_password" name="confirm_password" required minlength="8" autocomplete="new-password"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition"
                         placeholder="••••••••">
                 </div>
 
@@ -185,7 +185,7 @@
                     </label>
                     <input type="text" id="referral_code" name="referral_code"
                         value="{% firstof form_data.referral_code prefill_referral_code '' %}"
-                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition uppercase"
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition uppercase"
                         placeholder="e.g. AB12CD34">
                     <p class="text-xs text-gray-500 mt-1">Were you referred by another customer? You'll both earn bonus points after your first completed service.</p>
                 </div>
@@ -195,7 +195,7 @@
                 {% endif %}
 
                 <button type="submit"
-                    class="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                    class="w-full py-3 px-4 bg-brand-600 text-white font-semibold rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
                     <i class="fas fa-user-plus mr-2"></i>
                     Create Account
                 </button>
@@ -203,7 +203,7 @@
 
             <p class="text-center text-sm text-gray-500 mt-6">
                 Already have an account?
-                <a href="{% url 'login' %}" class="text-blue-600 font-medium hover:text-blue-700">Log in</a>
+                <a href="{% url 'login' %}" class="text-brand-600 font-medium hover:text-brand-700">Log in</a>
             </p>
         </div>
     </div>

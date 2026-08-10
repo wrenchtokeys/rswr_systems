@@ -5,7 +5,7 @@
 {% block content %}
 <div class="max-w-3xl mx-auto">
     <nav class="mb-6 text-sm" aria-label="Breadcrumb">
-        <a href="{% url 'help_home' %}" class="text-blue-600 hover:text-blue-800 font-medium">
+        <a href="{% url 'help_home' %}" class="text-brand-600 hover:text-brand-800 font-medium">
             <i class="fas fa-arrow-left text-xs mr-1.5"></i>All guides
         </a>
     </nav>
@@ -40,15 +40,15 @@
         <p class="text-sm font-medium text-green-800"><i class="fas fa-check mr-1.5"></i>Thanks — this helps us make the guides better.</p>
     </div>
     <div id="guide-feedback-sorry" class="hidden mt-10 rounded-xl bg-amber-50 border border-amber-200 p-4">
-        <p class="text-sm font-medium text-gray-800"><i class="fas fa-check mr-1.5"></i>Thanks for telling us. If you're stuck right now, email <a href="mailto:contact@rssystems.io" class="text-blue-600 hover:text-blue-800 font-medium">contact@rssystems.io</a> — a real person will help.</p>
+        <p class="text-sm font-medium text-gray-800"><i class="fas fa-check mr-1.5"></i>Thanks for telling us. If you're stuck right now, <a href="{% url 'help_contact' %}" class="text-brand-600 hover:text-brand-800 font-medium">send us a message</a> — a real person will help.</p>
     </div>
 
     <div class="mt-6 pt-6 border-t border-gray-200 flex items-center justify-between gap-4">
-        <a href="{% url 'help_home' %}" class="text-sm font-medium text-blue-600 hover:text-blue-800">
+        <a href="{% url 'help_home' %}" class="text-sm font-medium text-brand-600 hover:text-brand-800">
             <i class="fas fa-book-open text-xs mr-1.5"></i>More guides
         </a>
         {% if next_topic %}
-        <a href="{% url 'help_topic' next_topic.slug %}" class="text-sm font-medium text-blue-600 hover:text-blue-800 text-right">
+        <a href="{% url 'help_topic' next_topic.slug %}" class="text-sm font-medium text-brand-600 hover:text-brand-800 text-right">
             Next up: {{ next_topic.title }} <i class="fas fa-arrow-right text-xs ml-1.5"></i>
         </a>
         {% endif %}

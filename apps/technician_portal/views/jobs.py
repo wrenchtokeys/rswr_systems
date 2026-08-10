@@ -54,7 +54,7 @@ def _visible_jobs(model, tenant, technician, user_is_admin):
 # "please correct the errors" with every visible field looking fine.
 _ADVANCED_JOB_FIELDS = frozenset({
     'technician', 'vehicle_year', 'vehicle_make', 'vehicle_model',
-    'damage_photo_before', 'damage_photo_after', 'customer_notes',
+    'damage_photo_before', 'damage_photo_after', 'customer_notes', 'internal_notes',
     'windshield_temperature', 'resin_viscosity', 'drilled_before_repair',
     'requires_adas_calibration', 'adas_calibration_cost',
     'insurance_claim', 'insurance_company', 'claim_number', 'deductible',
@@ -222,6 +222,17 @@ def job_list(request):
     paginator = Paginator(jobs, page_size)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
+    # Count for the "Filters" button badge — only the filters that live behind
+    # the disclosure, not the always-visible type/status/search controls.
+    active_filter_count = sum([
+        customer_type_filter != 'all',
+        bool(unit_search),
+        damage_type_filter != 'all',
+        bool(date_from),
+        bool(date_to),
+        assignment_filter != 'all',
+    ])
+
     context = {
         'jobs': page_obj,
         'page_obj': page_obj,
@@ -236,6 +247,7 @@ def job_list(request):
         'date_from': date_from,
         'date_to': date_to,
         'assignment_filter': assignment_filter,
+        'active_filter_count': active_filter_count,
         'sort_by': sort_by,
         'page_size': page_size,
         'queue_choices': Repair.QUEUE_CHOICES,
@@ -280,6 +292,12 @@ def _resolve_technician_for_create(request, tenant, service_type):
     ability_qs = qs.filter(
         can_replace=True) if service_type == 'replacement' else qs.filter(can_repair=True)
     return ability_qs.first() or qs.first()
+
+
+def _job_form_sms_ready(tenant):
+    """Whether the send-invoice dialog may offer "Also text it"."""
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+    return InvoiceSendService.sms_ready(tenant)
 
 
 def _copy_to_email(request):
@@ -436,6 +454,7 @@ def job_create(request):
                             'summary': service_summary(m),
                         } for m in matches[:3]]
                         return render(request, 'technician_portal/job_form.html', {
+                            'invoice_sms_ready': _job_form_sms_ready(tenant),
                             'form': form,
                             'allowed_types': allowed_types,
                             'user_can_invoices': user_can_invoices,
@@ -478,6 +497,7 @@ def job_create(request):
                 vehicle_make=data.get('vehicle_make') or '',
                 vehicle_model=data.get('vehicle_model') or '',
                 customer_notes=data.get('customer_notes') or '',
+                internal_notes=data.get('internal_notes') or '',
                 damage_photo_before=data.get('damage_photo_before'),
                 damage_photo_after=data.get('damage_photo_after'),
                 insurance_claim=data.get('insurance_claim') or False,
@@ -528,7 +548,8 @@ def job_create(request):
 
             if send_requested and service.queue_status == 'COMPLETED':
                 invoice, created, result, excluded = invoice_and_send(
-                    service, tenant, copy_to_email=_copy_to_email(request))
+                    service, tenant, copy_to_email=_copy_to_email(request),
+                    send_sms=bool(request.POST.get('send_sms')))
                 notify_invoice_outcome(request, invoice, created, result, excluded)
                 return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
@@ -571,6 +592,7 @@ def job_create(request):
             tour_slug = 'job-form'
 
     return render(request, 'technician_portal/job_form.html', {
+        'invoice_sms_ready': _job_form_sms_ready(tenant),
         'form': form,
         'allowed_types': allowed_types,
         'user_can_invoices': user_can_invoices,
@@ -613,7 +635,8 @@ def repair_complete_and_invoice(request, repair_id):
 
     try:
         invoice, created, result, excluded = invoice_and_send(
-            repair, tenant, copy_to_email=_copy_to_email(request))
+            repair, tenant, copy_to_email=_copy_to_email(request),
+            send_sms=bool(request.POST.get('send_sms')))
     except ValueError as e:
         messages.error(request, str(e))
         return redirect('repair_detail', repair_id=repair.id)

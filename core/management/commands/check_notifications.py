@@ -60,11 +60,11 @@ class Command(BaseCommand):
 
         # 4. Check Recent Repairs
         self.stdout.write(self.style.WARNING('\n4. RECENT REPAIRS (Last 5):'))
-        repairs = Repair.objects.all().order_by('-repair_date')[:5]
+        repairs = Repair.objects.all().order_by('-service_date')[:5]
         for repair in repairs:
             self.stdout.write(
                 f'  Repair #{repair.id}: {repair.queue_status} '
-                f'(date: {repair.repair_date}, customer: {repair.customer.name})'
+                f'(date: {repair.service_date}, customer: {repair.customer.name})'
             )
 
         # 5. Delivery mode

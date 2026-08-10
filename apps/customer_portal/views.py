@@ -1714,7 +1714,7 @@ def request_replacement(request):
 
     Replacements are one-vehicle jobs, so this is a simple single-form flow
     (no multi-unit batching like repairs). The customer supplies the vehicle,
-    which glass, and what happened; the shop confirms the exact glass and
+    and which glass; the shop confirms the exact glass and
     sets parts/labor pricing after reviewing the request.
     """
     try:
@@ -3117,7 +3117,7 @@ def customer_verify_email(request):
                 'Please verify your email address by clicking the button below so you can receive invoices and notifications.',
                 'This link will expire in 24 hours.',
             ],
-            button_text='✅ Verify Email',
+            button_text='Verify Email',
             button_url=verification_url,
         )
         messages.success(request, f"Verification email sent to {request.user.email}")

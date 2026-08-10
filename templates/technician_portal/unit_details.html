@@ -7,11 +7,11 @@
     <!-- Breadcrumb -->
     <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div class="flex items-center space-x-2 text-sm">
-            <a href="{% url 'technician_customers' %}" class="text-blue-600 hover:text-blue-800 font-medium">
+            <a href="{% url 'technician_customers' %}" class="text-brand-600 hover:text-brand-800 font-medium">
                 <i class="fas fa-arrow-left mr-1"></i>Customers
             </a>
             <span class="text-gray-400">/</span>
-            <a href="{% url 'customer_detail' customer.id %}" class="text-blue-600 hover:text-blue-800">{{ customer.name }}</a>
+            <a href="{% url 'customer_detail' customer.id %}" class="text-brand-600 hover:text-brand-800">{{ customer.name }}</a>
             <span class="text-gray-400">/</span>
             <span class="text-gray-600">Unit {{ unit_number }}</span>
         </div>
@@ -25,10 +25,10 @@
 
     <!-- Unit Header Card -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100">
+        <div class="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-brand-50 to-brand-100">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-4">
-                    <div class="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center">
+                    <div class="w-14 h-14 bg-brand-600 rounded-xl flex items-center justify-center">
                         <i class="fas fa-truck text-white text-2xl"></i>
                     </div>
                     <div>
@@ -37,7 +37,7 @@
                     </div>
                 </div>
                 <div class="text-right">
-                    <div class="text-3xl font-bold text-blue-600">{{ repairs|length }}</div>
+                    <div class="text-3xl font-bold text-brand-600">{{ repairs|length }}</div>
                     <div class="text-xs text-gray-500 uppercase tracking-wide">Total Repairs</div>
                 </div>
             </div>

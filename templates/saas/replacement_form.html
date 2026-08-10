@@ -17,7 +17,7 @@
 <div class="max-w-3xl mx-auto">
         <!-- Header -->
         <div class="mb-8">
-            <a href="{% url 'owner_dashboard' %}" class="text-sm text-blue-600 hover:text-blue-800 mb-2 inline-block">
+            <a href="{% url 'owner_dashboard' %}" class="text-sm text-brand-600 hover:text-brand-800 mb-2 inline-block">
                 <i class="fas fa-arrow-left mr-1"></i> Back to Dashboard
             </a>
             <h1 class="text-3xl font-bold text-gray-900">New Glass Replacement</h1>
@@ -49,7 +49,7 @@
             <!-- Vehicle Info -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <h2 class="text-lg font-semibold text-gray-900 mb-4">
-                    <i class="fas fa-car mr-2 text-blue-500"></i>Vehicle Info
+                    <i class="fas fa-car mr-2 text-brand-500"></i>Vehicle Info
                 </h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -106,12 +106,12 @@
                 </div>
 
                 <!-- Total (auto-calculated) -->
-                <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div class="mt-4 p-4 bg-brand-50 rounded-lg border border-brand-200">
                     <div class="flex items-center justify-between">
-                        <span class="text-sm font-semibold text-blue-800">Estimated Total</span>
-                        <span class="text-2xl font-bold text-blue-900" id="total-cost">$0.00</span>
+                        <span class="text-sm font-semibold text-brand-800">Estimated Total</span>
+                        <span class="text-2xl font-bold text-brand-900" id="total-cost">$0.00</span>
                     </div>
-                    <p class="text-xs text-blue-600 mt-1">Auto-calculated from parts + labor + ADAS</p>
+                    <p class="text-xs text-brand-600 mt-1">Auto-calculated from parts + labor + ADAS</p>
                 </div>
             </div>
 
@@ -160,8 +160,15 @@
                     </div>
                 </div>
                 <div>
-                    <label for="id_description" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <label for="id_description" class="block text-sm font-medium text-gray-700 mb-1">Notes <span class="font-normal text-gray-400">— visible to the customer</span></label>
                     {{ form.description }}
+                </div>
+                <div>
+                    <label for="id_internal_notes" class="block text-sm font-medium text-gray-700 mb-1">
+                        <i class="fas fa-lock text-gray-400 mr-1 text-xs"></i>Internal notes
+                        <span class="font-normal text-gray-400">— not visible to the customer</span>
+                    </label>
+                    {{ form.internal_notes }}
                 </div>
                 <label class="flex items-center gap-3 cursor-pointer">
                     {{ form.no_tax }}

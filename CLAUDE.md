@@ -38,8 +38,24 @@ python manage.py collectstatic
 - Tailwind is compiled via the standalone CLI (`scripts/build_css.sh` downloads `bin/tailwindcss`, gitignored). No node/npm anywhere.
 - `tailwind.config.js` is the single source of truth for the brand palette; `static/css/src/input.css` holds design tokens + `@layer components` (`.btn-*`, `.card*`, `.badge-*`, `.modal-*` — see `docs/development/UI_DESIGN_GUIDE.md`).
 - `static/css/app.css` is a build artifact but IS committed (EB deploys unchanged; manifest storage handles cache busting).
-- **Never reintroduce `cdn.tailwindcss.com`** or inline `tailwind.config` blocks in templates.
-- Classes composed dynamically (JS string concat, Django template vars like `grid-cols-{{ n }}`) must be safelisted in `tailwind.config.js` or the purge will drop them.
+- Classes composed dynamically (JS string concat, Django template vars like `grid-cols-{{ n }}`) must be safelisted in `tailwind.config.js` or the purge will drop them. Shared `@layer components` classes that no template uses *yet* are also purged — safelist them.
+
+### No third-party asset hosts (Aug 2026)
+There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are vendored by
+`scripts/vendor_assets.sh` (idempotent, pinned; downloaded files ARE committed).
+- **Never reintroduce** `cdn.tailwindcss.com`, `fonts.googleapis.com`, `cdnjs.cloudflare.com`, or `cdn.jsdelivr.net`. They blocked first paint, leaked visitor IPs, and made a strict CSP impossible for an app that takes card payments. The only remaining third-party script is Cloudflare Turnstile (functional captcha on signup).
+- **Keep `url()` out of `static/css/src/input.css`.** collectstatic collects the Tailwind *source* as well as the built `app.css`, so a relative `url()` resolves differently from each location and manifest storage hard-fails the deploy. Font declarations live inline in `templates/includes/head_assets.html` via `{% static %}`.
+- Verify before deploying: run `collectstatic` under `ForgivingManifestStaticFilesStorage`, not just dev storage — see `docs/strategy/UI_MAGIC_SESSIONS.md` for the settings shim.
+
+### Color rules
+- **Interactive/brand colour → `brand-*` tokens**, never hardcoded `blue-*`. `{% tenant_brand_css %}` is injected in `base_app.html`, `base_auth.html` and `customer_portal/base_customer.html`, so a shop's `Tenant.brand_color` rethemes the whole product.
+- **Semantic status colour stays literal `blue-*`** (`core/templatetags/ui.py` is the source of truth: IN_PROGRESS/SENT are blue alongside green/amber/red). A red-branded shop must not get a red "In Progress" badge next to a red "Denied" one. Prefer `{% status_badge %}` over hand-rolled conditionals.
+- **Platform-owned surfaces keep literal `blue-*`**: `landing.html`, `saas/pricing.html`, `saas/base_public.html`, terms, privacy, `components/plan_card.html`, and `templates/admin/**`. A shop's colour must never leak onto RS Systems' own brand.
+- Green means money (paid/collected/completed) — it is not a surface, header, or button colour. See `docs/strategy/UI_MAGIC_PLAN.md`.
+
+### Multi-line template comments
+`{# … #}` is **single-line only** — a multi-line one renders as visible text on every page.
+Use `{% comment %}…{% endcomment %}`.
 
 ### Running Tests
 ```bash

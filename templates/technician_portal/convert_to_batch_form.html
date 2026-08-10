@@ -74,34 +74,34 @@
             </div>
 
             <!-- Existing Repair Info -->
-            <div class="p-6 bg-blue-50 border-b border-blue-200">
-                <h2 class="text-lg font-semibold text-blue-900 mb-3">
+            <div class="p-6 bg-brand-50 border-b border-brand-200">
+                <h2 class="text-lg font-semibold text-brand-900 mb-3">
                     <i class="fas fa-info-circle mr-2"></i>Existing Repair (Will Become Break #1)
                 </h2>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
-                        <span class="font-medium text-blue-700">Customer:</span>
-                        <span class="text-blue-900">{{ repair.customer.name }}</span>
+                        <span class="font-medium text-brand-700">Customer:</span>
+                        <span class="text-brand-900">{{ repair.customer.name }}</span>
                     </div>
                     <div>
-                        <span class="font-medium text-blue-700">Unit Number:</span>
-                        <span class="text-blue-900">{{ repair.unit_number }}</span>
+                        <span class="font-medium text-brand-700">Unit Number:</span>
+                        <span class="text-brand-900">{{ repair.unit_number }}</span>
                     </div>
                     <div>
-                        <span class="font-medium text-blue-700">Damage Type:</span>
-                        <span class="text-blue-900">{{ repair.get_damage_type_display }}</span>
+                        <span class="font-medium text-brand-700">Damage Type:</span>
+                        <span class="text-brand-900">{{ repair.get_damage_type_display }}</span>
                     </div>
                     <div>
-                        <span class="font-medium text-blue-700">Status:</span>
+                        <span class="font-medium text-brand-700">Status:</span>
                         <span class="text-blue-900">{{ repair.get_queue_status_display }}</span>
                     </div>
                     <div>
-                        <span class="font-medium text-blue-700">Cost:</span>
-                        <span class="text-blue-900 font-bold">${{ repair.cost }}</span>
+                        <span class="font-medium text-brand-700">Cost:</span>
+                        <span class="text-brand-900 font-bold">${{ repair.cost }}</span>
                     </div>
                     <div>
-                        <span class="font-medium text-blue-700">Date:</span>
-                        <span class="text-blue-900">{{ repair.repair_date|date:"M j, Y" }}</span>
+                        <span class="font-medium text-brand-700">Date:</span>
+                        <span class="text-brand-900">{{ repair.repair_date|date:"M j, Y" }}</span>
                     </div>
                 </div>
             </div>

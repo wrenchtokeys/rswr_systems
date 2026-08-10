@@ -1,4 +1,5 @@
 {% extends "saas/base_owner.html" %}
+{% load humanize %}
 
 {% block title %}Dashboard | {{ tenant.name }} | RS Systems{% endblock %}
 
@@ -14,7 +15,7 @@
 <div class="mb-5 p-3.5 rounded-xl flex items-center justify-between gap-3
     {% if is_trial_expired %}bg-red-50 border border-red-200
     {% elif trial_days_remaining <= 7 %}bg-amber-50 border border-amber-200
-    {% else %}bg-blue-50 border border-blue-200{% endif %}" id="trialBanner">
+    {% else %}bg-brand-50 border border-brand-200{% endif %}" id="trialBanner">
     <div class="flex items-center gap-3 min-w-0">
         {% if is_trial_expired %}
         <div class="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -30,17 +31,17 @@
         </div>
         <span class="font-semibold text-amber-800 text-sm">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left</span>
         {% else %}
-        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-gift text-blue-600 text-sm"></i>
+        <div class="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-gift text-brand-600 text-sm"></i>
         </div>
         <div class="min-w-0">
-            <span class="font-medium text-blue-800 text-sm">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left on free trial</span>
-            {% if intended_plan_name %}<span class="text-blue-600 text-xs ml-1 hidden sm:inline">— {{ intended_plan_name }} is the plan you chose at signup</span>{% endif %}
+            <span class="font-medium text-brand-800 text-sm">{{ trial_days_remaining }} day{{ trial_days_remaining|pluralize }} left on free trial</span>
+            {% if intended_plan_name %}<span class="text-brand-600 text-xs ml-1 hidden sm:inline">— {{ intended_plan_name }} is the plan you chose at signup</span>{% endif %}
         </div>
         {% endif %}
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
-        <a href="{% url 'billing_settings' %}{% if intended_plan %}?plan={{ intended_plan }}{% endif %}" class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+        <a href="{% url 'billing_settings' %}{% if intended_plan %}?plan={{ intended_plan }}{% endif %}" class="px-3.5 py-1.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors">
             {% if intended_plan_name %}Upgrade to {{ intended_plan_name }}{% else %}Upgrade{% endif %}
         </a>
         <button type="button" data-dismiss-post="{% url 'dismiss_trial_banner' %}" data-dismiss-target="trialBanner"
@@ -52,22 +53,77 @@
 </div>
 {% endif %}
 
-<!-- Welcome + Revenue Hero -->
+<!-- Welcome -->
 <div class="mb-6">
-    <h1 class="text-xl sm:text-2xl font-bold text-gray-900 mb-1">Hey, {{ request.user.first_name|default:request.user.username }}!</h1>
-    <p class="text-sm text-gray-500">{{ tenant.name }}</p>
+    <h1 class="t-h1 text-gray-900 mb-1">Hey, {{ request.user.first_name|default:request.user.username }}!</h1>
+    <p class="t-sub">{{ tenant.name }}</p>
 </div>
 
-<!-- Revenue Card — BIG number -->
-<div class="bg-gradient-to-br from-green-600 to-green-800 rounded-2xl p-5 sm:p-6 text-white mb-6 shadow-lg" data-tour-step="revenue">
-    <div class="text-green-200 text-sm font-medium mb-1">Revenue This Month</div>
-    <div class="text-4xl sm:text-5xl font-extrabold tracking-tight">${{ total_revenue|floatformat:2 }}</div>
-    {% if shop_offers_repairs and shop_offers_replacements %}
-    <div class="flex items-center gap-4 mt-3 text-green-200 text-sm">
-        <span><i class="fas fa-tools mr-1"></i>${{ repair_revenue|floatformat:2 }} repairs</span>
-        <span><i class="fas fa-car mr-1"></i>${{ replacement_revenue|floatformat:2 }} replacements</span>
+{% comment %}
+Revenue hero. The old version was a flat green gradient slab showing a bare
+number — the app's second accent colour, and a figure with nothing to compare
+it to. Now a card on the material ladder: green/red carry the *trend* (money
+semantics), the figure itself stays neutral, and the sparkline plus the
+period toggle give the number the context an owner actually reads it for.
+See docs/strategy/UI_MAGIC_PLAN.md R1/R6.
+{% endcomment %}
+<div class="card mb-6" data-tour-step="revenue">
+    <div class="card-body">
+        <div class="flex items-start justify-between gap-4 mb-2">
+            <div class="min-w-0">
+                <div class="t-caption font-medium text-gray-500 uppercase">Revenue</div>
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 mt-1">
+                    <span class="num t-display text-3xl sm:text-[2.75rem] text-gray-900">${{ revenue_total|floatformat:2|intcomma }}</span>
+                    {% if revenue_delta_pct is not None %}
+                    <span class="inline-flex items-center gap-1 text-sm font-semibold
+                        {% if revenue_delta_dir == 'up' %}text-green-600
+                        {% elif revenue_delta_dir == 'down' %}text-red-600
+                        {% else %}text-gray-500{% endif %}">
+                        {% if revenue_delta_dir == 'up' %}<i class="fas fa-arrow-up text-xs"></i>
+                        {% elif revenue_delta_dir == 'down' %}<i class="fas fa-arrow-down text-xs"></i>{% endif %}
+                        <span class="num">{{ revenue_delta_pct }}%</span>
+                        <span class="font-normal text-gray-500">{{ revenue_compare_label }}</span>
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# Period toggle. A plain GET form so it works without JS and the #}
+            {# chosen period survives a refresh or a shared link. #}
+            <form method="get" class="shrink-0">
+                <label for="revenue-period" class="sr-only">Revenue period</label>
+                <select name="period" id="revenue-period" onchange="this.form.submit()"
+                        class="text-sm border border-gray-300 rounded-lg py-1.5 pl-2.5 pr-8 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                    {% for value, label in revenue_periods.items %}
+                    <option value="{{ value }}" {% if value == revenue_period %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <noscript><button type="submit" class="btn-secondary btn-sm ml-1">Go</button></noscript>
+            </form>
+        </div>
+
+        {% if revenue_spark_has_data %}
+        {% comment %}
+        preserveAspectRatio=none stretches the box to the card width;
+        non-scaling-stroke keeps the line an even weight despite that stretch.
+        {% endcomment %}
+        <svg viewBox="0 0 100 30" preserveAspectRatio="none" class="w-full h-14 mt-2 text-brand-500 overflow-hidden" aria-hidden="true" focusable="false">
+            <polygon points="{{ revenue_spark_area }}" fill="currentColor" opacity="0.10"></polygon>
+            <polyline points="{{ revenue_spark_points }}" fill="none"
+                      stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"
+                      vector-effect="non-scaling-stroke"></polyline>
+        </svg>
+        <p class="sr-only">Daily completed revenue for {{ revenue_period_label|lower }}.</p>
+        {% endif %}
+
+        {% if shop_offers_repairs and shop_offers_replacements %}
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 t-sub">
+            <span><i class="fas fa-tools mr-1 text-gray-400"></i><span class="num">${{ revenue_repairs|floatformat:2|intcomma }}</span> repairs</span>
+            <span><i class="fas fa-car mr-1 text-gray-400"></i><span class="num">${{ revenue_replacements|floatformat:2|intcomma }}</span> replacements</span>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
 <!-- Outstanding Invoices Alert Bar -->
@@ -86,7 +142,7 @@
                 {% if outstanding_count > overdue_count %}{{ outstanding_count|add:"-0" }} outstanding{% endif %}
             </span>
             <span class="text-sm ml-1.5 {% if overdue_count > 0 %}text-red-600{% else %}text-amber-600{% endif %}">
-                — ${{ outstanding_amount|floatformat:2 }} total
+                — ${{ outstanding_amount|floatformat:2|intcomma }} total
             </span>
         </div>
     </div>
@@ -99,12 +155,12 @@
     <!-- Jobs (usage counts repairs + replacements this month).
          Plan-limit bars only appear when a limit is actually getting close
          (>=70%) — a green quota bar on every tile was noise. -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4">
+    <div class="card p-4">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500">Jobs this month</span>
-            <i class="fas fa-tools text-green-500 text-xs"></i>
+            <i class="fas fa-tools text-gray-400 text-xs"></i>
         </div>
-        <div class="text-2xl font-bold text-gray-900">{{ usage.repairs.used }}</div>
+        <div class="num text-2xl font-bold text-gray-900">{{ usage.repairs.used }}</div>
         {% if usage.repairs.limit and usage.repairs.percent >= 70 %}
         <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
             <div class="h-1.5 rounded-full transition-all
@@ -116,12 +172,12 @@
     </div>
 
     <!-- Technicians -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4">
+    <div class="card p-4">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500">Technicians</span>
-            <i class="fas fa-users text-blue-500 text-xs"></i>
+            <i class="fas fa-users text-gray-400 text-xs"></i>
         </div>
-        <div class="text-2xl font-bold text-gray-900">{{ usage.technicians.used }}</div>
+        <div class="num text-2xl font-bold text-gray-900">{{ usage.technicians.used }}</div>
         {% if usage.technicians.limit and usage.technicians.percent >= 70 %}
         <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
             <div class="h-1.5 rounded-full transition-all
@@ -133,12 +189,12 @@
     </div>
 
     <!-- Customers -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4">
+    <div class="card p-4">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500">Customers</span>
-            <i class="fas fa-building text-purple-500 text-xs"></i>
+            <i class="fas fa-building text-gray-400 text-xs"></i>
         </div>
-        <div class="text-2xl font-bold text-gray-900">{{ usage.customers.used }}</div>
+        <div class="num text-2xl font-bold text-gray-900">{{ usage.customers.used }}</div>
         {% if usage.customers.limit and usage.customers.percent >= 70 %}
         <div class="w-full bg-gray-100 rounded-full h-1.5 mt-2">
             <div class="h-1.5 rounded-full transition-all
@@ -150,53 +206,53 @@
     </div>
 
     <!-- Collected This Month -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4">
+    <div class="card p-4">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium text-gray-500">Collected</span>
-            <i class="fas fa-money-bill-wave text-green-500 text-xs"></i>
+            <i class="fas fa-money-bill-wave text-gray-400 text-xs"></i>
         </div>
-        <div class="text-2xl font-bold text-green-600">${{ collected_this_month|floatformat:0 }}</div>
-        <a href="{% url 'owner_invoice_list' %}" class="text-[11px] text-blue-500 hover:text-blue-700 mt-1 block">View invoices →</a>
+        <div class="num text-2xl font-bold text-gray-900">${{ collected_this_month|floatformat:0|intcomma }}</div>
+        <a href="{% url 'owner_invoice_list' %}" class="text-[11px] text-brand-500 hover:text-brand-700 mt-1 block">View invoices →</a>
     </div>
 </div>
 
 <!-- Desktop Quick Actions — up top where they're reachable (mobile uses the FAB) -->
 <div class="hidden sm:flex items-center gap-3 mb-6" data-tour-step="quick-actions">
     {% if shop_offers_repairs %}
-    <a href="{% url 'job_create' %}?type=repair" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-green-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-green-600 text-xs"></i></div>
+    <a href="{% url 'job_create' %}?type=repair" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-brand-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center"><i class="fas fa-tools text-gray-600 text-xs"></i></div>
         New Repair
     </a>
     {% endif %}
     {% if shop_offers_replacements %}
-    <a href="{% url 'job_create' %}?type=replacement" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-blue-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-car-crash text-blue-600 text-xs"></i></div>
+    <a href="{% url 'job_create' %}?type=replacement" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-brand-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center"><i class="fas fa-car-crash text-gray-600 text-xs"></i></div>
         New Replacement
     </a>
     {% endif %}
-    <a href="{% url 'create_customer' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-purple-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center"><i class="fas fa-user-plus text-purple-600 text-xs"></i></div>
+    <a href="{% url 'create_customer' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-brand-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center"><i class="fas fa-user-plus text-gray-600 text-xs"></i></div>
         New Customer
     </a>
-    <a href="{% url 'job_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-amber-300 hover:shadow-md transition-all">
-        <div class="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-list text-amber-600 text-xs"></i></div>
+    <a href="{% url 'job_list' %}" class="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:border-brand-300 hover:shadow-md transition-all">
+        <div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center"><i class="fas fa-list text-gray-600 text-xs"></i></div>
         View Jobs
     </a>
 </div>
 
 <!-- Resume the setup wizard (only if started and abandoned) -->
 {% if wizard_resume_step %}
-<div class="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-3" id="wizardResumeBanner">
+<div class="mb-6 bg-brand-50 border border-brand-200 rounded-xl p-4 flex items-center justify-between gap-3" id="wizardResumeBanner">
     <div class="flex items-center gap-2.5 min-w-0">
-        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-magic text-blue-600 text-sm"></i>
+        <div class="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-magic text-brand-600 text-sm"></i>
         </div>
         <div class="min-w-0">
             <span class="text-sm font-semibold text-gray-900">Finish setting up (step {{ wizard_resume_step }} of 4)</span>
             <span class="text-xs text-gray-500 ml-1.5 hidden sm:inline">— pick up right where you left off</span>
         </div>
     </div>
-    <a href="/onboarding/?step={{ wizard_resume_step }}" class="px-3.5 py-1.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0">
+    <a href="/onboarding/?step={{ wizard_resume_step }}" class="px-3.5 py-1.5 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors flex-shrink-0">
         Resume <i class="fas fa-arrow-right text-xs ml-1"></i>
     </a>
 </div>
@@ -204,12 +260,12 @@
 
 <!-- Setup checklist (shared items with Settings; hidden once complete or dismissed) -->
 {% if setup_completion and not setup_completion.all_complete and not checklist_dismissed %}
-<div class="mb-6 bg-white border border-blue-200 rounded-xl overflow-hidden" id="setupChecklist" data-tour-step="checklist">
+<div class="mb-6 bg-white border border-brand-200 rounded-xl overflow-hidden" id="setupChecklist" data-tour-step="checklist">
     <div class="p-4 pb-0">
         <div class="flex items-center justify-between gap-3 mb-3">
             <div class="flex items-center gap-2.5">
-                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-wrench text-blue-600 text-sm"></i>
+                <div class="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-wrench text-brand-600 text-sm"></i>
                 </div>
                 <div>
                     <span class="text-sm font-semibold text-gray-900">{{ setup_completion.configured_count }}/{{ setup_completion.total_count }} configured</span>
@@ -223,7 +279,7 @@
             </button>
         </div>
         <div class="w-full bg-gray-100 rounded-full h-2">
-            <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: {% widthratio setup_completion.configured_count setup_completion.total_count 100 %}%"></div>
+            <div class="bg-brand-500 h-2 rounded-full transition-all" style="width: {% widthratio setup_completion.configured_count setup_completion.total_count 100 %}%"></div>
         </div>
     </div>
     {% include "components/setup_checklist_items.html" %}
@@ -234,7 +290,7 @@
 <div class="bg-white rounded-xl border border-gray-200" data-tour-step="recent-activity">
     <div class="px-4 sm:px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
         <h2 class="text-sm font-semibold text-gray-900">Recent Activity</h2>
-        <a href="{% url 'job_list' %}" class="text-xs font-medium text-blue-600 hover:text-blue-800">View all →</a>
+        <a href="{% url 'job_list' %}" class="text-xs font-medium text-brand-600 hover:text-brand-800">View all →</a>
     </div>
     {% if recent_activity %}
     <div class="divide-y divide-gray-50">

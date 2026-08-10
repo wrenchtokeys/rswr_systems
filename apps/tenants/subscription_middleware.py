@@ -37,8 +37,10 @@ EXEMPT_PREFIXES = (
     '/payment-complete',
     '/payment-cancelled',
     '/owner/billing/',    # Must be accessible to upgrade/reactivate
+    '/help/',             # Guides + /help/contact/ — an expired shop is exactly who needs support
     '/app/invite/',       # Customer invitation acceptance (may be unauthenticated)
     '/subscription-blocked/',  # The blocked page itself
+    '/sms/',              # Public SMS program disclosure (carrier registration evidence)
 )
 
 # Paths for static/media

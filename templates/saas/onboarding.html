@@ -10,7 +10,7 @@
             {% for s in "1234" %}
             <div class="flex items-center {% if not forloop.last %}flex-1{% endif %}">
                 <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300
-                    {% if s == step %}bg-blue-600 text-white ring-4 ring-blue-100 scale-110
+                    {% if s == step %}bg-brand-600 text-white ring-4 ring-brand-100 scale-110
                     {% elif s < step %}bg-green-500 text-white
                     {% else %}bg-gray-200 text-gray-500{% endif %}">
                     {% if s < step %}
@@ -37,8 +37,8 @@
         {% if step == "1" %}
         <!-- STEP 1: Business Info -->
         <div class="text-center mb-8">
-            <div class="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <i class="fas fa-store text-blue-600 text-2xl"></i>
+            <div class="w-16 h-16 bg-brand-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-store text-brand-600 text-2xl"></i>
             </div>
             <h2 class="text-2xl font-bold text-gray-900">Tell us about your business</h2>
             <p class="text-gray-500 mt-1">This info appears on invoices and customer communications.</p>
@@ -67,7 +67,7 @@
                 <button type="submit" name="action" value="skip" formnovalidate class="text-gray-500 hover:text-gray-700 text-sm font-medium">
                     Skip for now →
                 </button>
-                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors">
                     Save & Continue <i class="fas fa-arrow-right ml-2"></i>
                 </button>
             </div>
@@ -85,9 +85,9 @@
 
         <form method="post" class="space-y-5">
             {% csrf_token %}
-            <div class="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div class="flex items-center space-x-3 p-4 bg-brand-50 rounded-lg border border-brand-200">
                 {{ form.add_self }}
-                <label for="id_add_self" class="text-sm font-medium text-blue-800 cursor-pointer">
+                <label for="id_add_self" class="text-sm font-medium text-brand-800 cursor-pointer">
                     Add myself as a technician (recommended for small shops)
                 </label>
             </div>
@@ -133,7 +133,7 @@
                 <button type="submit" name="action" value="skip" formnovalidate class="text-gray-500 hover:text-gray-700 text-sm font-medium">
                     Skip for now →
                 </button>
-                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors">
                     Add Technician <i class="fas fa-arrow-right ml-2"></i>
                 </button>
             </div>
@@ -171,7 +171,7 @@
                 <button type="submit" name="action" value="skip" formnovalidate class="text-gray-500 hover:text-gray-700 text-sm font-medium">
                     Skip for now →
                 </button>
-                <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                <button type="submit" class="inline-flex items-center px-6 py-3 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors">
                     Add Customer <i class="fas fa-arrow-right ml-2"></i>
                 </button>
             </div>
@@ -196,8 +196,8 @@
                         <div class="text-xs text-gray-500">Log a chip or crack repair</div>
                     </div>
                 </a>
-                <a href="{% url 'job_create' %}?type=replacement" class="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors">
-                    <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                <a href="{% url 'job_create' %}?type=replacement" class="flex items-center space-x-3 p-4 bg-brand-50 rounded-lg border border-brand-200 hover:bg-brand-100 transition-colors">
+                    <div class="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         <i class="fas fa-car-crash text-white"></i>
                     </div>
                     <div>
@@ -227,7 +227,7 @@
 
             <form method="post">
                 {% csrf_token %}
-                <button type="submit" class="inline-flex items-center px-8 py-3 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                <button type="submit" class="inline-flex items-center px-8 py-3 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors">
                     Go to Dashboard <i class="fas fa-arrow-right ml-2"></i>
                 </button>
             </form>
