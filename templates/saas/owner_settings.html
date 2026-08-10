@@ -1521,6 +1521,19 @@ Thank you,
                 </label>
             </div>
 
+            <!-- SMS channel toggle -->
+            <div class="flex items-center justify-between">
+                <div>
+                    <label class="text-sm font-medium text-gray-700">Send by Text When Possible</label>
+                    <p class="text-xs text-gray-500">Customers who've agreed to texts (and have a mobile number on file) get the review request as a text instead of an email — texts get far more reviews. Everyone else still gets the email.</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="review_sms_enabled" class="sr-only peer"
+                        {% if review_config.sms_enabled %}checked{% endif %}>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+            </div>
+
             <!-- Google Review URL -->
             <div>
                 <label for="google_review_url" class="block text-sm font-medium text-gray-700 mb-1">Google Review URL</label>
