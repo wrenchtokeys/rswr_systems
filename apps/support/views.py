@@ -1,17 +1,26 @@
 """
-In-app help pages (Phase 2, launch readiness roadmap).
+In-app help pages (Phase 2) + contact form (Phase 3, launch readiness roadmap).
 
 Plain-language guides distilled from docs/user-guides/ — template-only views
-plus a tiny GuideFeedback model. Phase 3 adds the contact form
-(SupportMessage model) to this app.
+plus GuideFeedback (thumbs) and SupportMessage (/help/contact/).
 """
 
+import logging
+
 from django.contrib.auth.decorators import login_required
+from django.core.mail import EmailMessage
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from django.conf import settings
 from django.http import Http404, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
 
 from common.auth import get_user_role
+
+logger = logging.getLogger(__name__)
 
 # Section order for the help index.
 HELP_SECTIONS = [
@@ -267,6 +276,94 @@ def help_topic(request, slug):
         'slug': slug,
         'next_topic': next_topic,
     })
+
+
+@login_required
+@ratelimit(key='user', rate='10/h', method='POST', block=False)
+def contact(request):
+    """GET/POST /help/contact/ — write to a real person.
+
+    Record-first: the SupportMessage row is saved BEFORE the notification
+    email is attempted, so an SES outage can't lose a message — it still
+    lands in the admin (emailed_ok=False) and the sender still sees success.
+    The path is subscription-middleware-exempt: a shop whose trial just
+    expired is exactly who needs this form to work.
+    """
+    from .models import SupportMessage
+
+    tenant = getattr(request, 'tenant', None)
+    default_email = (request.user.email or '').strip()
+    ctx = {
+        'topics': SupportMessage.TOPIC_CHOICES,
+        'form_email': default_email,
+        'form_topic': 'question',
+        'form_message': '',
+        'sent': request.GET.get('sent') == '1',
+        # Popped so a bookmark of ?sent=1 shows the generic success line, not
+        # a stale address; the query string never carries the email itself.
+        'sent_to': request.session.pop('support_sent_to', ''),
+    }
+
+    if request.method != 'POST':
+        return render(request, 'support/contact.html', ctx)
+
+    if getattr(request, 'limited', False):
+        ctx['error'] = "You've sent quite a few messages in the last hour — give us a moment to catch up, then try again."
+        return render(request, 'support/contact.html', ctx, status=429)
+
+    topic = request.POST.get('topic', 'question')
+    if topic not in dict(SupportMessage.TOPIC_CHOICES):
+        topic = 'question'
+    message = request.POST.get('message', '').strip()
+    email = request.POST.get('email', '').strip() or default_email
+    page = request.POST.get('page', '').strip()[:500]
+    ctx.update({'form_topic': topic, 'form_message': message, 'form_email': email})
+
+    if not message:
+        ctx['error'] = "Tell us what's going on — the message box is empty."
+        return render(request, 'support/contact.html', ctx, status=400)
+    try:
+        validate_email(email)
+    except ValidationError:
+        ctx['error'] = "That email doesn't look right — double-check it so our reply can reach you."
+        return render(request, 'support/contact.html', ctx, status=400)
+
+    record = SupportMessage.objects.create(
+        tenant=tenant,
+        user=request.user,
+        name=request.user.get_full_name() or request.user.username,
+        email=email,
+        topic=topic,
+        message=message,
+        page=page,
+    )
+
+    role = get_user_role(request.user, tenant)
+    body = (
+        f"From: {record.name} <{email}>\n"
+        f"Shop: {tenant.name if tenant else '(no tenant)'}\n"
+        f"Role: {role or 'unknown'}\n"
+        f"Topic: {record.get_topic_display()}\n"
+        f"Page: {page or '(not recorded)'}\n\n"
+        f"{message}\n\n"
+        f"—\nReply to this email to answer them directly. "
+        f"Admin: {settings.BASE_URL}/admin/support/supportmessage/{record.pk}/change/"
+    )
+    try:
+        EmailMessage(
+            subject=f"Support: {record.get_topic_display()} — {tenant.name if tenant else record.name}",
+            body=body,
+            to=[addr for _name, addr in settings.ADMINS],
+            reply_to=[email],
+        ).send()
+        record.emailed_ok = True
+        record.save(update_fields=['emailed_ok'])
+    except Exception:
+        # Row is already saved — the admin sweep catches emailed_ok=False.
+        logger.exception('Support notification email failed (message #%s)', record.pk)
+
+    request.session['support_sent_to'] = email
+    return redirect(f"{reverse('help_contact')}?sent=1")
 
 
 @require_POST
