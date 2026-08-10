@@ -93,7 +93,7 @@ class PaymentNotificationService:
                 except Exception:
                     pass
 
-            from apps.billing.pay_links import public_pay_url
+            from apps.billing.pay_links import public_invoice_pdf_url, public_pay_url
             context = {
                 'payment': payment,
                 'invoice': invoice,
@@ -102,6 +102,9 @@ class PaymentNotificationService:
                 # Tokened /pay/ URL (shop's Connect account); None when the
                 # shop can't take online payments — template hides the button.
                 'pay_url': public_pay_url(invoice),
+                # Tokened PDF link — carries the PAID stamp once paid, so it
+                # serves as the customer's downloadable receipt.
+                'receipt_pdf_url': public_invoice_pdf_url(invoice),
             }
 
             # Plain transactional subject — no bracketed prefix, no emoji

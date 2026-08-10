@@ -135,7 +135,7 @@ def add_team_member(
                 f"{inviter_name} has invited you to join {tenant.name} as a {role}.",
                 "Click the button below to set your password and get started. This link expires in 7 days.",
             ],
-            button_text='🚀 Accept Invitation',
+            button_text='Accept Invitation',
             button_url=invite_url,
             tenant=tenant,
         )
