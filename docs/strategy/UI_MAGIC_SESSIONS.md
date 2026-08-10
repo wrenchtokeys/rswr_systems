@@ -12,7 +12,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 1 | S2 · Material, type-scale and motion tokens | **DONE** 2026-08-09 |
 | 1 | S3 · `blue-*` → `brand-*` codemod + brand CSS in every shell | **DONE** 2026-08-09 |
 | 1 | S4 · Tabular figures on money | **DONE** 2026-08-09 (partial — see S4 notes) |
-| 2 | S5 · Owner dashboard: kill the green slab, give revenue meaning | TODO |
+| 2 | S5 · Owner dashboard: kill the green slab, give revenue meaning | **DONE** 2026-08-09 |
 | 2 | S6 · Jobs page: 25 controls → 3 | TODO |
 | 2 | S7 · Job/repair form: drop the green header and ALL-CAPS section tiles | TODO |
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | TODO |
@@ -201,22 +201,44 @@ dashboard revenue and stat values.
 Goal: the three screens a shop owner and tech actually live in. Obey R1 (one accent),
 R2 (materials), R5 (stage complexity), R6 (numbers with meaning).
 
-## S5 · Owner dashboard: kill the green slab, give revenue meaning
+## S5 · Owner dashboard: kill the green slab, give revenue meaning — DONE
 
-**Files:** `templates/saas/owner_dashboard.html`, `apps/saas/views.py` (dashboard context)
+Branch `feat/ui-s5-dashboard-revenue`. The green gradient slab is gone; the revenue hero
+is a `.card` with a trend, a sparkline and a period toggle. Stat tiles moved onto the
+material ladder, and the four pastel icon tints are now neutral.
 
-- Replace the flat green gradient revenue hero with a `.card` on the material ladder.
-  Green stays *only* on the money figure itself, per R1.
-- Add `↑/↓ N% vs last month` and a 30-day sparkline. **This is the single highest-impact
-  change in the app** — a big number with nothing to compare it to is the definition of
-  bland, and it's the first thing every owner sees each morning.
-- Add a period toggle (This month / Last month / Last 90 days).
-- Quick-action chips: drop the four different pastel icon tints (green/blue/purple/yellow)
-  for one neutral treatment.
-- Migrate the page's headings to the `t-*` scale.
+**Notes**
 
-**Care:** the dashboard is covered by `tests/test_e2e_today.py`; context keys are asserted.
-Add context, don't rename it.
+- **The delta compares the same elapsed days**, not this-month-so-far against all of last
+  month. Otherwise every 1st of the month reports "revenue down 95%" — technically true,
+  useless, and it trains the owner to ignore the number. `_revenue_window()` clamps the
+  previous window so it can never spill into the current month.
+- **A zero baseline shows no percentage at all**, rather than a fabricated `+100%` from a
+  division by zero. Absent beats invented.
+- Revenue trend lives in its own `_get_revenue_summary()`, *not* in
+  `_get_billing_context()` — the latter's fallback dict is asserted as an **exact key set**
+  by `tests/bug_fixes/test_code001_exception_logging.py`, so adding keys there breaks it.
+  The legacy `total_revenue`/`repair_revenue` keys are untouched for back-compat.
+- `_get_revenue_summary()` never raises; on error it returns the empty shape and logs. The
+  dashboard must render even if revenue can't be computed.
+- Sparkline is two bucketed aggregate queries (`TruncDate` + `Sum`), never a row walk. It
+  returns nothing when the window has no revenue, so the card omits the chart instead of
+  drawing a flat line that implies zero is a trend. The polygon closes to the baseline
+  (`0,30 … 100,30`) so the fill reads as an area, not a blob.
+- The period toggle is a plain GET `<select>` with `onchange` submit — works without JS,
+  and the chosen period survives a refresh or a shared link.
+- **`django.contrib.humanize` was added to `base.py`** for `intcomma`. A four-figure
+  revenue number rendering as `$3700.00` looks unfinished; money now formats as `$3,700.00`.
+- Deviation from the plan, deliberate: the plan said "green stays only on the money
+  figure". In practice a large green number still read as decoration, so the **figure is
+  neutral and the delta chip carries green/red**. Money semantics land on the thing that
+  actually has a direction.
+- New tests: `tests/test_dashboard_revenue.py` (15) covering the elapsed-days comparison,
+  month-length clamping, zero-baseline guard, tenant scoping, COMPLETED-only totals,
+  period validation, and the render path.
+- Also added `tests/test_template_comment_syntax.py` after hitting the multi-line `{# #}`
+  bug a **second** time. It renders explanatory notes as visible text at the top of every
+  page and fails silently — no exception, no 500, nothing red. Now it fails a test.
 
 ## S6 · Jobs page: 25 controls → 3
 
@@ -248,6 +270,10 @@ Today, before the first job row: 4 stat tiles, 17 filter pills across 3 rows,
 (`static/js/multi_break.js`) keyed to element IDs. Change classes, not IDs.
 
 ## S8 · Retire the second accent everywhere else
+
+**Known leftovers after S5:** the dashboard's floating `+` FAB is still green, and the
+`Recent Activity` rows still use hand-rolled status badge conditionals rather than
+`{% status_badge %}`.
 
 Sweep for the remaining green/black accents outside S5–S7: the global FAB, any remaining
 `bg-gray-900` pills, the four-tint icon system. Migrate hand-rolled status badges to

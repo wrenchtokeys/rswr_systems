@@ -25,6 +25,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # intcomma for money figures — "$3,700.00" not "$3700.00". A four-figure
+    # revenue number without a thousands separator reads as unfinished.
+    'django.contrib.humanize',
     'apps.technician_portal',
     'apps.customer_portal',
     'apps.rewards_referrals',
