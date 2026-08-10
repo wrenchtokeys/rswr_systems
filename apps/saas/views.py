@@ -1955,6 +1955,7 @@ def owner_settings_view(request):
                 review_config = ReviewConfig.get_for_tenant(tenant)
                 review_config.is_enabled = request.POST.get('review_enabled') == 'on'
                 review_config.send_to_fleet = request.POST.get('review_send_to_fleet') == 'on'
+                review_config.sms_enabled = request.POST.get('review_sms_enabled') == 'on'
                 review_config.google_review_url = request.POST.get('google_review_url', '').strip()
                 review_config.email_subject = (
                     request.POST.get('email_subject', '').strip()
@@ -1962,7 +1963,7 @@ def owner_settings_view(request):
                 )
                 review_config.email_body_template = request.POST.get('email_body_template', '').strip()
                 review_config.save(update_fields=[
-                    'is_enabled', 'send_to_fleet', 'google_review_url',
+                    'is_enabled', 'send_to_fleet', 'sms_enabled', 'google_review_url',
                     'email_subject', 'email_body_template',
                 ])
                 messages.success(request, 'Review settings saved.')

@@ -59,11 +59,18 @@ class ReviewRequestService:
             is_primary_contact=True,
         ).first()
 
-        if not customer_user or not customer_user.user.email:
-            return None  # No primary contact to email
+        # Channel selection: prefer SMS when the shop turned it on and the
+        # customer agreed to texts (texts convert far better). SMS also
+        # covers customers with no portal contact/email at all — before the
+        # SMS channel those customers never got a review request.
+        sms_phone = _sms_review_phone(config, customer)
+        email_ok = bool(customer_user and customer_user.user.email)
+        if not email_ok and not sms_phone:
+            return None  # No way to reach this customer
+        channel = 'sms' if sms_phone else 'email'
 
         # Check: customer opted out
-        if customer_user.review_opt_out:
+        if customer_user and customer_user.review_opt_out:
             return _create_skipped(
                 repair, config, customer_user, 'customer_opted_out',
             )
@@ -133,6 +140,7 @@ class ReviewRequestService:
             customer_user=customer_user,
             repair=repair,
             status='pending',
+            channel=channel,
             scheduled_at=send_at,
         )
 
@@ -230,8 +238,24 @@ class ReviewRequestService:
                     # determined before we release the lock.  If the process dies
                     # between the send and the save, the worst case is a retry on
                     # the next cron run (row stays 'pending').
+                    # SMS requests re-check texting eligibility at send time
+                    # (consent may have been revoked, the shop may have turned
+                    # the channel off). Fall back to email when possible.
+                    if rr.channel == 'sms' and not _sms_review_phone(config, rr.customer):
+                        if rr.customer_user and rr.customer_user.user.email:
+                            rr.channel = 'email'
+                            rr.save(update_fields=['channel'])
+                        else:
+                            rr.status = 'skipped'
+                            rr.skip_reason = 'sms_unavailable'
+                            rr.save(update_fields=['status', 'skip_reason'])
+                            continue
+
                     try:
-                        success = _send_review_email(rr, config)
+                        if rr.channel == 'sms':
+                            success = _send_review_sms(rr, config)
+                        else:
+                            success = _send_review_email(rr, config)
                     except Exception:
                         logger.exception(
                             "Failed to send review request pk=%s for tenant=%s",
@@ -249,7 +273,8 @@ class ReviewRequestService:
                         sent_count += 1
                     else:
                         logger.warning(
-                            "send_branded_email returned 0 for review request pk=%s", rr.pk,
+                            "review request send returned falsy for pk=%s (channel=%s)",
+                            rr.pk, rr.channel,
                         )
 
             except Exception:
@@ -319,6 +344,66 @@ def _safe_format(template, **kwargs):
         return template.format(**kwargs)
     except (KeyError, ValueError, IndexError):
         return template
+
+
+def _sms_review_phone(config, customer):
+    """E.164 phone a review text for this customer would go to, or None when
+    the SMS channel isn't available (shop toggle off, platform not
+    configured, no consent, no usable number)."""
+    from core.services.sms_service import SMSService
+
+    if not config.sms_enabled or not SMSService.is_enabled():
+        return None
+    if not customer.sms_opt_in:
+        return None
+    return SMSService.normalize_phone(customer.phone)
+
+
+def _send_review_sms(review_request, config):
+    """Send the review request as a text. Returns True on success.
+
+    Wording follows the field-proven Rockstar shape: short, first-name,
+    one link (our click-tracking URL — it records the click then forwards
+    to Google; not a URL shortener, which carriers filter). Opt-out
+    wording rides on the customer's first text only.
+    """
+    from django.conf import settings
+    from core.models.notification_delivery_log import NotificationDeliveryLog
+    from core.services.sms_service import SMSService
+
+    rr = review_request
+    phone = _sms_review_phone(config, rr.customer)
+    if not phone:
+        return False
+
+    base_url = getattr(settings, 'SITE_URL', 'https://rssystems.io')
+    # Compact click-tracking alias — records the click, then forwards to the
+    # shop's Google review page. Not a URL shortener (carriers filter those).
+    click_url = f"{base_url}/r/{rr.token}/"
+
+    first_name = (rr.customer.name or '').strip().split(' ')[0]
+    greeting = f", {first_name}" if first_name else ""
+
+    stop = ''
+    if not NotificationDeliveryLog.objects.filter(
+        channel='sms', recipient_phone=phone, tenant=rr.tenant,
+    ).exists():
+        stop = ' Reply STOP to opt out.'
+
+    # Shop name leads (shrinkable); the link and opt-out wording must
+    # always survive intact within one 160-char segment.
+    shop = (rr.tenant.name or 'your auto glass shop').strip()
+    tail = f": Thanks{greeting}! A quick Google review helps a lot: {click_url}{stop}"
+    room = SMSService.MAX_SMS_LENGTH - len(tail)
+    if len(shop) > room:
+        shop = shop[:max(room, 0)].rstrip()
+    body = f"{shop}{tail}"
+
+    ok, _log = SMSService.send_notification_sms(
+        notification_id=None, recipient_phone=phone, message=body,
+        tenant=rr.tenant,
+    )
+    return ok
 
 
 def _send_review_email(review_request, config):

@@ -39,6 +39,8 @@ urlpatterns = [
 
     # Review request public endpoints (no auth — token-based)
     path('reviews/click/<uuid:token>/', review_click, name='review_click'),
+    # Compact alias for SMS (every character counts in a 160-char text)
+    path('r/<uuid:token>/', review_click, name='review_click_short'),
     path('reviews/opt-out/<uuid:token>/', review_opt_out, name='review_opt_out'),
 
     path('payment-complete', views.payment_complete, name='payment_complete'),
