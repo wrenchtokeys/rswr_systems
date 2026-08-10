@@ -15,7 +15,7 @@ Usage:
 On confirm the modal re-submits the original form with send_me_copy=1
 appended when "Email me a copy" is checked.
 {% endcomment %}
-<div id="send-invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="sim-title">
+<div id="send-invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="sim-title" data-sms-ready="{% if invoice_sms_ready %}1{% endif %}">
     <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75" data-sim-close></div>
         <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6">
@@ -40,11 +40,16 @@ appended when "Email me a copy" is checked.
                 </div>
             </div>
             {% if request.user.email %}
-            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-5" id="sim-copy-row">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-3" id="sim-copy-row">
                 <input type="checkbox" id="sim-copy" class="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500">
                 Email me a copy ({{ request.user.email }})
             </label>
             {% endif %}
+            <label class="hidden items-center gap-2 text-sm text-gray-700 cursor-pointer mb-5" id="sim-sms-row">
+                <input type="checkbox" id="sim-sms" class="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500">
+                <span>Also text it to <span id="sim-sms-phone" class="font-medium"></span>
+                    <span class="text-xs text-gray-400">(confirms they agreed to receive texts)</span></span>
+            </label>
             <div class="flex gap-3">
                 <button type="button" id="sim-confirm"
                     class="flex-1 px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors">
@@ -73,6 +78,17 @@ appended when "Email me a copy" is checked.
         document.getElementById('sim-email').textContent = email;
         const copyRow = document.getElementById('sim-copy-row');
         if (copyRow) copyRow.classList.toggle('hidden', !email);
+        // "Also text it" — only when the shop has invoice texting on, the
+        // customer has a phone, and an email is actually going out.
+        const phone = form.dataset.recipientPhone || '';
+        const smsRow = document.getElementById('sim-sms-row');
+        const showSms = !!(modal.dataset.smsReady && phone && email);
+        smsRow.classList.toggle('hidden', !showSms);
+        smsRow.classList.toggle('flex', showSms);
+        if (showSms) {
+            document.getElementById('sim-sms-phone').textContent = phone;
+            document.getElementById('sim-sms').checked = false;
+        }
         document.getElementById('sim-confirm-label').textContent =
             email ? 'Confirm & Send' : 'Save as Draft';
         modal.classList.remove('hidden');
@@ -98,6 +114,13 @@ appended when "Email me a copy" is checked.
         if (copy && copy.checked && !form.querySelector('input[name="send_me_copy"]')) {
             const inp = document.createElement('input');
             inp.type = 'hidden'; inp.name = 'send_me_copy'; inp.value = '1';
+            form.appendChild(inp);
+        }
+        const sms = document.getElementById('sim-sms');
+        if (sms && sms.checked && !document.getElementById('sim-sms-row').classList.contains('hidden')
+            && !form.querySelector('input[name="send_sms"]')) {
+            const inp = document.createElement('input');
+            inp.type = 'hidden'; inp.name = 'send_sms'; inp.value = '1';
             form.appendChild(inp);
         }
         if (pending.submitName && !form.querySelector('input[name="' + pending.submitName + '"]')) {

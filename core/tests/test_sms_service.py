@@ -2,7 +2,7 @@
 Unit tests for SMSService.
 
 Tests cover:
-- SMS sending via AWS SNS
+- SMS sending via AWS End User Messaging
 - Phone number validation (E.164 format)
 - Message truncation to 160 characters
 - Delivery tracking with cost calculation
@@ -14,7 +14,7 @@ Tests cover:
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch, MagicMock
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 
@@ -26,6 +26,7 @@ from apps.technician_portal.models import Technician
 from django.contrib.auth.models import User
 
 
+@override_settings(SMS_ENABLED=True, SMS_ORIGINATION_IDENTITY='+18885550100')
 class SMSServiceTest(TestCase):
     """Test cases for SMSService."""
 
@@ -113,7 +114,7 @@ class SMSServiceTest(TestCase):
         valid = SMSService._validate_phone('+1555ABC4567')
         self.assertFalse(valid)
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_send_sms_success(self, mock_sns):
         """Test successful SMS sending."""
         mock_sns.return_value = 'test-message-id-123'
@@ -138,7 +139,7 @@ class SMSServiceTest(TestCase):
         self.notification.refresh_from_db()
         self.assertTrue(self.notification.sms_sent)
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_send_sms_failure(self, mock_sns):
         """Test SMS sending failure."""
         mock_sns.side_effect = Exception("SNS error: Throttling")
@@ -180,7 +181,7 @@ class SMSServiceTest(TestCase):
             0
         )
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_send_sms_message_truncation(self, mock_sns):
         """Test that long messages are truncated to 160 characters."""
         mock_sns.return_value = 'test-message-id'
@@ -199,7 +200,7 @@ class SMSServiceTest(TestCase):
         self.assertEqual(len(sent_message), 160)
         self.assertTrue(sent_message.endswith('...'))
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_send_sms_exact_160_chars(self, mock_sns):
         """Test that 160-character message is not truncated."""
         mock_sns.return_value = 'test-message-id'
@@ -218,7 +219,7 @@ class SMSServiceTest(TestCase):
         self.assertEqual(len(sent_message), 160)
         self.assertFalse(sent_message.endswith('...'))
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_send_sms_retry_scheduling(self, mock_sns):
         """Test that retry is scheduled with correct delay."""
         mock_sns.side_effect = Exception("Temporary failure")
@@ -240,7 +241,7 @@ class SMSServiceTest(TestCase):
             delta=10
         )
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_send_sms_max_retries(self, mock_sns):
         """Test that max retries marks as failed_permanent."""
         mock_sns.side_effect = Exception("Permanent failure")
@@ -268,7 +269,7 @@ class SMSServiceTest(TestCase):
         self.assertFalse(success)
         self.assertIsNone(log)
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_send_sms_cost_tracking(self, mock_sns):
         """Test that SMS cost is tracked correctly."""
         mock_sns.return_value = 'test-message-id'
@@ -282,42 +283,43 @@ class SMSServiceTest(TestCase):
         self.assertEqual(log.estimated_cost, Decimal('0.00645'))
 
     @patch('boto3.client')
-    def test_send_via_sns_success(self, mock_boto_client):
-        """Test AWS SNS publish call."""
-        mock_sns_client = MagicMock()
-        mock_boto_client.return_value = mock_sns_client
-        mock_sns_client.publish.return_value = {'MessageId': 'test-id-456'}
+    def test_send_via_aws_success(self, mock_boto_client):
+        """Test AWS End User Messaging send_text_message call."""
+        mock_client = MagicMock()
+        mock_boto_client.return_value = mock_client
+        mock_client.send_text_message.return_value = {'MessageId': 'test-id-456'}
 
-        message_id = SMSService._send_via_sns('+15551234567', 'Test message')
+        message_id = SMSService._send_via_aws('+15551234567', 'Test message')
 
         self.assertEqual(message_id, 'test-id-456')
 
-        # Verify SNS publish was called with correct parameters
-        mock_sns_client.publish.assert_called_once()
-        call_kwargs = mock_sns_client.publish.call_args[1]
-        self.assertEqual(call_kwargs['PhoneNumber'], '+15551234567')
-        self.assertEqual(call_kwargs['Message'], 'Test message')
-        self.assertEqual(
-            call_kwargs['MessageAttributes']['AWS.SNS.SMS.SMSType']['StringValue'],
-            'Transactional'
-        )
+        mock_boto_client.assert_called_once()
+        self.assertEqual(mock_boto_client.call_args[0][0], 'pinpoint-sms-voice-v2')
+        mock_client.send_text_message.assert_called_once()
+        call_kwargs = mock_client.send_text_message.call_args[1]
+        self.assertEqual(call_kwargs['DestinationPhoneNumber'], '+15551234567')
+        self.assertEqual(call_kwargs['OriginationIdentity'], '+18885550100')
+        self.assertEqual(call_kwargs['MessageBody'], 'Test message')
+        self.assertEqual(call_kwargs['MessageType'], 'TRANSACTIONAL')
+        # No configuration set configured → parameter omitted entirely
+        self.assertNotIn('ConfigurationSetName', call_kwargs)
 
     @patch('boto3.client')
-    def test_send_via_sns_client_error(self, mock_boto_client):
-        """Test AWS SNS ClientError handling."""
+    def test_send_via_aws_client_error(self, mock_boto_client):
+        """Test AWS ClientError handling."""
         from botocore.exceptions import ClientError
 
-        mock_sns_client = MagicMock()
-        mock_boto_client.return_value = mock_sns_client
+        mock_client = MagicMock()
+        mock_boto_client.return_value = mock_client
 
         # Simulate ClientError
-        mock_sns_client.publish.side_effect = ClientError(
+        mock_client.send_text_message.side_effect = ClientError(
             {'Error': {'Code': 'InvalidParameter', 'Message': 'Invalid phone'}},
-            'publish'
+            'SendTextMessage'
         )
 
         with self.assertRaises(Exception) as context:
-            SMSService._send_via_sns('+15551234567', 'Test')
+            SMSService._send_via_aws('+15551234567', 'Test')
 
         self.assertIn('InvalidParameter', str(context.exception))
 
@@ -379,7 +381,7 @@ class SMSServiceTest(TestCase):
         self.assertEqual(pending.count(), 1)
         self.assertEqual(pending.first().id, log1.id)
 
-    @patch('core.tasks.send_notification_sms.delay')
+    @patch('core.tasks.send_notification_sms')
     def test_retry_failed_delivery(self, mock_task):
         """Test retrying a failed delivery."""
         # Create failed delivery log
@@ -450,7 +452,7 @@ class SMSServiceTest(TestCase):
 
         self.assertFalse(success)
 
-    @patch('core.services.sms_service.SMSService._send_via_sns')
+    @patch('core.services.sms_service.SMSService._send_via_aws')
     def test_exponential_backoff_delays(self, mock_sns):
         """Test that retry delays follow exponential backoff pattern."""
         mock_sns.side_effect = Exception("Fail")

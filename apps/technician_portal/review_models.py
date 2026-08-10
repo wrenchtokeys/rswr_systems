@@ -39,6 +39,15 @@ class ReviewConfig(TenantConfig):
         help_text="Custom message body. Leave blank for default template.",
     )
 
+    # SMS channel — when on, customers who agreed to texts (and have a
+    # mobile number) get the review request as a text instead of an email.
+    # Texts convert far better and also reach customers with no portal
+    # account or email on file.
+    sms_enabled = models.BooleanField(
+        default=False,
+        help_text="Send review requests by text when the customer has agreed to texts.",
+    )
+
     # Throttling
     retail_cooldown_days = models.PositiveIntegerField(
         default=90,
@@ -99,8 +108,17 @@ class ReviewRequest(models.Model):
         related_name='review_requests',
     )
 
+    CHANNEL_CHOICES = [
+        ('email', 'Email'),
+        ('sms', 'Text message'),
+    ]
+
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     skip_reason = models.CharField(max_length=100, blank=True)
+    channel = models.CharField(
+        max_length=8, choices=CHANNEL_CHOICES, default='email',
+        help_text="How this request goes out (chosen at scheduling time).",
+    )
 
     # Token for opt-out / click-tracking links (unguessable)
     token = models.UUIDField(default=uuid.uuid4, unique=True, db_index=True)

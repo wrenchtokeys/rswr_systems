@@ -251,8 +251,8 @@ class CustomerForm(forms.ModelForm):
 
     class Meta:
         model = Customer
-        fields = ['name', 'customer_type', 'email', 'phone', 'primary_technician',
-                  'parent_account', 'account_discount_percentage']
+        fields = ['name', 'customer_type', 'email', 'phone', 'sms_opt_in',
+                  'primary_technician', 'parent_account', 'account_discount_percentage']
         widgets = {
             'customer_type': forms.Select(attrs={'class': 'form-select'}),
         }
@@ -316,7 +316,7 @@ class CustomerEditForm(forms.ModelForm):
     class Meta:
         model = Customer
         fields = [
-            'name', 'customer_type', 'email', 'phone',
+            'name', 'customer_type', 'email', 'phone', 'sms_opt_in',
             'address', 'city', 'state', 'zip_code',
             'primary_technician', 'tax_exempt', 'tax_exempt_certificate',
             'parent_account', 'account_discount_percentage',

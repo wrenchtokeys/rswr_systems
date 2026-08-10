@@ -43,6 +43,99 @@ class InvoiceSendService:
             return customer.email or ''
 
     @staticmethod
+    def resolve_recipient_phone(customer):
+        """E.164 mobile number an invoice text for this customer would go to,
+        or '' when there is no usable phone on file. Single source of truth —
+        the send pipeline and the confirmation dialogs must show/use the
+        same number."""
+        from core.services.sms_service import SMSService
+        if customer is None:
+            return ''
+        return SMSService.normalize_phone(customer.phone) or ''
+
+    @staticmethod
+    def sms_ready(tenant):
+        """Tenant-level gate for invoice texting: platform SMS configured
+        (toll-free number live) + the shop's Text Invoices toggle on."""
+        from core.services.sms_service import SMSService
+        from apps.billing.models import BillingConfig
+        if not SMSService.is_enabled():
+            return False
+        try:
+            return BillingConfig.get_for_tenant(tenant).sms_invoicing_enabled
+        except Exception:
+            return False
+
+    @staticmethod
+    def sms_available(invoice, tenant):
+        """Whether the 'Text the invoice' option should be offered for this
+        invoice: tenant gate + a usable phone on the customer."""
+        return (
+            InvoiceSendService.sms_ready(tenant)
+            and bool(InvoiceSendService.resolve_recipient_phone(invoice.customer))
+        )
+
+    @staticmethod
+    def send_sms(invoice, tenant):
+        """Text the customer a link to the public invoice page.
+
+        Returns (ok: bool, message: str). Only called after the invoice is
+        SENT (or for resends) — a text never promotes a DRAFT, and a failed
+        text never blocks the email pipeline. Records SMS consent on the
+        customer (the acting shop user attests via the send dialog).
+        """
+        from core.services.sms_service import SMSService
+
+        phone = InvoiceSendService.resolve_recipient_phone(invoice.customer)
+        if not phone:
+            return False, 'No usable mobile number on file for this customer.'
+        if not InvoiceSendService.sms_ready(tenant):
+            return False, 'Text messaging is not enabled for this shop.'
+
+        invoice.customer.record_sms_consent()
+        body = InvoiceSendService._build_sms_body(invoice, tenant, phone)
+        ok, _log = SMSService.send_notification_sms(
+            notification_id=None, recipient_phone=phone, message=body,
+            tenant=tenant,
+        )
+        if ok:
+            invoice.record_sms_sent(phone)
+            return True, f'Invoice link texted to {phone}.'
+        return False, f'Could not text the invoice to {phone} — see the invoice email instead.'
+
+    @staticmethod
+    def _build_sms_body(invoice, tenant, phone):
+        """One-segment invoice text. The public link must never be truncated,
+        so the shop name is what gives way when space runs out. Opt-out
+        wording rides on the customer's first text only (toll-free
+        verification expects it once, not on every message)."""
+        from django.conf import settings
+        from apps.billing.pay_links import public_pay_url
+        from core.models.notification_delivery_log import NotificationDeliveryLog
+        from core.services.sms_service import SMSService
+
+        link = public_pay_url(invoice)
+        verb = 'View & pay' if link else 'View'
+        if not link:
+            from rs_systems.views import generate_payment_token
+            base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+            link = f"{base_url}/invoice/{invoice.id}/{generate_payment_token(invoice.id)}/"
+
+        stop = ''
+        first_text = not NotificationDeliveryLog.objects.filter(
+            channel='sms', recipient_phone=phone, tenant=tenant,
+        ).exists()
+        if first_text:
+            stop = ' Reply STOP to opt out.'
+
+        tail = f": Invoice {invoice.invoice_number} for ${invoice.total} — {verb.lower()}: {link}{stop}"
+        shop = (tenant.name or 'Your auto glass shop').strip()
+        room = SMSService.MAX_SMS_LENGTH - len(tail)
+        if len(shop) > room:
+            shop = shop[:max(room, 0)].rstrip()
+        return f"{shop}{tail}"
+
+    @staticmethod
     def send(invoice, tenant, submitted_email=None, copy_to_email=None):
         """Attempt to send a DRAFT invoice; returns a SendResult.
 
