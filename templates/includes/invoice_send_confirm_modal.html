@@ -20,7 +20,7 @@ appended when "Email me a copy" is checked.
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75" data-sim-close></div>
         <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6">
             <h3 id="sim-title" class="text-lg font-semibold text-gray-900 mb-4">
-                <i class="fas fa-paper-plane text-blue-600 mr-2"></i>Send this invoice?
+                <i class="fas fa-paper-plane text-brand-600 mr-2"></i>Send this invoice?
             </h3>
             <div class="space-y-3 mb-5">
                 <div class="flex justify-between text-sm gap-4">
@@ -41,13 +41,13 @@ appended when "Email me a copy" is checked.
             </div>
             {% if request.user.email %}
             <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer mb-5" id="sim-copy-row">
-                <input type="checkbox" id="sim-copy" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <input type="checkbox" id="sim-copy" class="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500">
                 Email me a copy ({{ request.user.email }})
             </label>
             {% endif %}
             <div class="flex gap-3">
                 <button type="button" id="sim-confirm"
-                    class="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+                    class="flex-1 px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-lg hover:bg-brand-700 transition-colors">
                     <i class="fas fa-paper-plane mr-1"></i><span id="sim-confirm-label">Confirm &amp; Send</span>
                 </button>
                 <button type="button" data-sim-close

@@ -9,7 +9,7 @@
     <div>
         <h1 class="text-2xl font-bold text-gray-900">Invoices</h1>
         <p class="text-sm text-gray-500 mt-1">Manage invoices across all customers</p>
-        <p class="mt-2 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>Guides: <a href="{% url 'help_topic' 'send-invoice' %}" class="text-blue-500 hover:text-blue-700 font-medium">Send an invoice</a> · <a href="{% url 'help_topic' 'paid-on-time' %}" class="text-blue-500 hover:text-blue-700 font-medium">Get paid on time</a> · <a href="{% url 'help_topic' 'troubleshooting' %}" class="text-blue-500 hover:text-blue-700 font-medium">Troubleshooting</a></p>
+        <p class="mt-2 text-xs text-gray-400"><i class="far fa-question-circle mr-1"></i>Guides: <a href="{% url 'help_topic' 'send-invoice' %}" class="text-brand-500 hover:text-brand-700 font-medium">Send an invoice</a> · <a href="{% url 'help_topic' 'paid-on-time' %}" class="text-brand-500 hover:text-brand-700 font-medium">Get paid on time</a> · <a href="{% url 'help_topic' 'troubleshooting' %}" class="text-brand-500 hover:text-brand-700 font-medium">Troubleshooting</a></p>
     </div>
     <div class="flex items-center gap-4">
         <a href="{% url 'archived_repairs' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900" title="Restore deleted invoices and jobs">
@@ -102,7 +102,7 @@
     {% endfor %}
     <form method="get" class="ml-auto flex items-center gap-2">
         <input type="hidden" name="status" value="{{ status_filter }}">
-        <select name="customer" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 py-1.5 pl-3 pr-8">
+        <select name="customer" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 py-1.5 pl-3 pr-8">
             <option value="">All customers</option>
             {% for cust in customers %}
             <option value="{{ cust.id }}" {% if customer_filter == cust.id|stringformat:"d" %}selected{% endif %}>{{ cust.name }}</option>
@@ -147,7 +147,7 @@
                 <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                     <span class="text-sm font-semibold text-gray-900 hidden sm:inline">${{ item.total|floatformat:2 }}</span>
                     <button onclick="openInvoiceModal({{ item.customer.id }}, '{{ item.customer.name|escapejs }}')"
-                        class="inline-flex items-center px-2 sm:px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors">
+                        class="inline-flex items-center px-2 sm:px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded-md hover:bg-brand-700 transition-colors">
                         <i class="fas fa-file-invoice sm:mr-1.5"></i><span class="hidden sm:inline">Create Invoice</span>
                     </button>
                     <button onclick="dismissUninvoiced({{ item.customer.id }}, '{{ item.customer.name|escapejs }}')"
@@ -164,15 +164,15 @@
 {% endif %}
 
 <!-- Batch Actions Bar (hidden until checkboxes selected) -->
-<div id="batch-bar" class="hidden sticky top-16 z-10 bg-blue-600 text-white rounded-xl shadow-lg p-3 mb-4">
+<div id="batch-bar" class="hidden sticky top-16 z-10 bg-brand-600 text-white rounded-xl shadow-lg p-3 mb-4">
     <div class="flex items-center justify-between gap-2 mb-2 sm:mb-0">
         <span class="text-sm font-medium"><span id="selected-count">0</span> selected</span>
-        <button onclick="clearSelection()" class="inline-flex items-center text-blue-200 text-sm hover:text-white transition-colors">
+        <button onclick="clearSelection()" class="inline-flex items-center text-brand-200 text-sm hover:text-white transition-colors">
             <i class="fas fa-times mr-1"></i>Clear
         </button>
     </div>
     <div class="grid grid-cols-4 sm:flex sm:items-center gap-2 sm:gap-2">
-        <button onclick="sendSelectedEmails()" class="inline-flex items-center justify-center sm:justify-start w-full min-h-[36px] px-3 sm:px-3 py-2 sm:py-1.5 bg-white text-blue-700 text-xs sm:text-sm font-medium rounded-md hover:bg-blue-50 transition-colors">
+        <button onclick="sendSelectedEmails()" class="inline-flex items-center justify-center sm:justify-start w-full min-h-[36px] px-3 sm:px-3 py-2 sm:py-1.5 bg-white text-brand-700 text-xs sm:text-sm font-medium rounded-md hover:bg-brand-50 transition-colors">
             <i class="fas fa-envelope text-base sm:text-sm sm:mr-1.5"></i><span class="hidden sm:inline ml-1">Send Email</span>
         </button>
         <button onclick="markSelectedPaid()" class="inline-flex items-center justify-center sm:justify-start w-full min-h-[36px] px-3 sm:px-3 py-2 sm:py-1.5 bg-green-500 text-white text-xs sm:text-sm font-medium rounded-md hover:bg-green-600 transition-colors">
@@ -200,11 +200,11 @@
             <div class="flex items-start gap-3">
                 <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                     onchange="updateBatchBar()"
-                    class="invoice-checkbox mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
+                    class="invoice-checkbox mt-1 rounded border-gray-300 text-brand-600 focus:ring-brand-500 shrink-0">
                 <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="flex-1 min-w-0 block">
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <div class="text-sm font-semibold text-blue-600">{{ inv.invoice_number }}</div>
+                            <div class="text-sm font-semibold text-brand-600">{{ inv.invoice_number }}</div>
                             <div class="text-sm text-gray-700 truncate">{{ inv.customer.name }}</div>
                         </div>
                         <div class="shrink-0 text-right">
@@ -276,7 +276,7 @@
                 <tr>
                     <th class="px-3 py-3 w-10">
                         <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)"
-                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
                     </th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice #</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
@@ -295,10 +295,10 @@
                     <td class="px-3 py-4 no-nav" onclick="event.stopPropagation()">
                         <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                             onchange="updateBatchBar()"
-                            class="invoice-checkbox rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            class="invoice-checkbox rounded border-gray-300 text-brand-600 focus:ring-brand-500">
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="text-sm font-semibold text-blue-600 hover:text-blue-800">{{ inv.invoice_number }}</span>
+                        <span class="text-sm font-semibold text-brand-600 hover:text-brand-800">{{ inv.invoice_number }}</span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ inv.customer.name }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">{{ inv.invoice_date|date:"M d, Y" }}</td>
@@ -361,7 +361,7 @@
         <h3 class="text-sm font-medium text-gray-900 mb-1">No invoices found</h3>
         <p class="text-sm text-gray-500">
             {% if status_filter != 'all' or customer_filter %}
-                No invoices match your filters. <a href="{% url 'owner_invoice_list' %}" class="text-blue-600 hover:text-blue-800">Clear filters</a>
+                No invoices match your filters. <a href="{% url 'owner_invoice_list' %}" class="text-brand-600 hover:text-brand-800">Clear filters</a>
             {% else %}
                 Invoices will appear here once they're generated.
             {% endif %}
@@ -419,7 +419,7 @@
                         Send To <span class="text-gray-400 font-normal">(primary recipient)</span>
                     </label>
                     <input type="text" id="send-modal-emails" 
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                         placeholder="billing@customer.com">
                 </div>
 
@@ -429,7 +429,7 @@
                         CC <span class="text-gray-400 font-normal">(optional, separate multiple with commas)</span>
                     </label>
                     <input type="text" id="send-modal-cc" 
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                         placeholder="manager@customer.com, accounting@customer.com">
                 </div>
             </div>
@@ -439,7 +439,7 @@
                 <button onclick="closeSendEmailModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                     Cancel
                 </button>
-                <button onclick="confirmSendEmail()" id="send-modal-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                <button onclick="confirmSendEmail()" id="send-modal-btn" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
                     <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
                 </button>
             </div>
@@ -473,7 +473,7 @@
                 <div class="px-6 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                     <label class="flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" id="modal-select-all" onchange="toggleModalSelectAll()"
-                            class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                            class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
                         Select All
                     </label>
                     <span class="text-sm text-gray-500"><span id="modal-selected-count">0</span> selected</span>
@@ -489,7 +489,7 @@
                 <!-- Payment Terms Override (CODE-153) -->
                 <div class="px-6 py-3 border-t border-gray-100">
                     <label for="modal-payment-terms" class="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
-                    <select id="modal-payment-terms" class="w-full rounded-lg border-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500">
+                    <select id="modal-payment-terms" class="w-full rounded-lg border-gray-300 text-sm focus:ring-brand-500 focus:border-brand-500">
                         <option value="COD"{% if default_payment_terms == 'COD' %} selected{% endif %}>Cash on Delivery (COD)</option>
                         <option value="DUE_ON_RECEIPT"{% if default_payment_terms == 'DUE_ON_RECEIPT' %} selected{% endif %}>Due on Receipt</option>
                         <option value="NET15"{% if default_payment_terms == 'NET15' %} selected{% endif %}>Net 15</option>
@@ -515,7 +515,7 @@
                 <button onclick="createInvoiceDraft()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                     <i class="fas fa-save mr-1.5"></i>Save Draft
                 </button>
-                <button onclick="createInvoiceAndSend()" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                <button onclick="createInvoiceAndSend()" class="px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
                     <i class="fas fa-paper-plane mr-1.5"></i>Create & Send
                 </button>
             </div>
@@ -693,7 +693,7 @@ function renderModalRepairs() {
     const list = document.getElementById('modal-repairs-list');
     list.innerHTML = modalRepairs.map(r => `
         <label class="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 cursor-pointer">
-            <input type="checkbox" class="modal-repair-cb rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            <input type="checkbox" class="modal-repair-cb rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                 data-id="${r.id}" data-type="${r.service_type || 'repair'}" data-cost="${r.cost}" checked onchange="updateModalSelection()">
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium text-gray-900">${r.unit_number}</div>

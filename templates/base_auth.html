@@ -1,9 +1,15 @@
+{% load branding_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <title>{% block title %}RS Systems{% endblock %}</title>
     {% include "includes/head_assets.html" %}
     {% block extra_head %}{% endblock %}
+    {% comment %}
+    Renders nothing until a tenant is resolved (e.g. a shop-scoped invite or
+    customer login), so the platform signup/login keep the RS Systems blue.
+    {% endcomment %}
+    {% tenant_brand_css %}
 </head>
 <body class="bg-gray-50">
     {% block content %}{% endblock %}

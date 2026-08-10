@@ -23,8 +23,8 @@ Expects `repair` in context. Shows invoice status if the repair has been invoice
             <i class="fas fa-clock text-yellow-600"></i>
             <span class="text-sm font-medium text-yellow-800">Partially Paid</span>
             {% elif inv_status.status == 'SENT' %}
-            <i class="fas fa-paper-plane text-blue-600"></i>
-            <span class="text-sm font-medium text-blue-800">Invoice Sent</span>
+            <i class="fas fa-paper-plane text-brand-600"></i>
+            <span class="text-sm font-medium text-brand-800">Invoice Sent</span>
             {% elif inv_status.status == 'DRAFT' %}
             <i class="fas fa-file text-gray-600"></i>
             <span class="text-sm font-medium text-gray-800">Invoice Draft</span>
@@ -44,7 +44,7 @@ Expects `repair` in context. Shows invoice status if the repair has been invoice
     </div>
     {% if inv_status.stripe_url and inv_status.amount_due > 0 %}
     <div class="mt-2">
-        <a href="{{ inv_status.stripe_url }}" target="_blank" class="inline-flex items-center text-xs font-medium text-blue-600 hover:text-blue-800">
+        <a href="{{ inv_status.stripe_url }}" target="_blank" class="inline-flex items-center text-xs font-medium text-brand-600 hover:text-brand-800">
             <i class="fas fa-credit-card mr-1"></i> Pay Online
         </a>
     </div>

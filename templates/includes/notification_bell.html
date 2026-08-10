@@ -8,7 +8,7 @@ Expects `unread_count` and `recent_notifications` in context.
 <div class="relative inline-block" id="notification-dropdown">
     <button type="button"
             id="notificationDropdown"
-            class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 {% if bell_role == 'customer' %}focus:ring-blue-500{% else %}focus:ring-green-500{% endif %} rounded-full"
+            class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 {% if bell_role == 'customer' %}focus:ring-brand-500{% else %}focus:ring-green-500{% endif %} rounded-full"
             aria-expanded="false"
             aria-haspopup="true">
         <span class="sr-only">View notifications</span>
@@ -33,7 +33,7 @@ Expects `unread_count` and `recent_notifications` in context.
         <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <h3 class="text-sm font-semibold text-gray-900">Notifications</h3>
             <button id="mark-all-read"
-                    class="text-xs text-blue-600 hover:text-blue-800 font-medium focus:outline-none">
+                    class="text-xs text-brand-600 hover:text-brand-800 font-medium focus:outline-none">
                 Mark all read
             </button>
         </div>
@@ -44,7 +44,7 @@ Expects `unread_count` and `recent_notifications` in context.
             {% if recent_notifications %}
                 {% for notification in recent_notifications %}
                     <a href="{{ notification.action_url|default:'#' }}"
-                       class="block px-4 py-3 hover:bg-gray-50 border-b border-gray-100 notification-item {% if not notification.read %}bg-blue-50{% endif %}"
+                       class="block px-4 py-3 hover:bg-gray-50 border-b border-gray-100 notification-item {% if not notification.read %}bg-brand-50{% endif %}"
                        data-notification-id="{{ notification.id }}"
                        role="menuitem">
                         <div class="flex items-start justify-between">
@@ -60,7 +60,7 @@ Expects `unread_count` and `recent_notifications` in context.
                                 </p>
                             </div>
                             {% if not notification.read %}
-                                <span class="ml-2 flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-600 text-white">
+                                <span class="ml-2 flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-600 text-white">
                                     New
                                 </span>
                             {% endif %}
@@ -80,7 +80,7 @@ Expects `unread_count` and `recent_notifications` in context.
         <!-- Footer -->
         <div class="border-t border-gray-200">
             <a href="{% if bell_role == 'customer' %}{% url 'customer_notification_history' %}{% else %}{% url 'notification_history' %}{% endif %}"
-               class="block px-4 py-3 text-center text-sm text-blue-600 hover:text-blue-800 hover:bg-gray-50 font-medium"
+               class="block px-4 py-3 text-center text-sm text-brand-600 hover:text-brand-800 hover:bg-gray-50 font-medium"
                role="menuitem">
                 View All Notifications
             </a>
@@ -89,7 +89,7 @@ Expects `unread_count` and `recent_notifications` in context.
 </div>
 
 <style>
-.notification-item.bg-blue-50:hover {
+.notification-item.bg-brand-50:hover {
     background-color: #dbeafe;
 }
 
@@ -144,7 +144,7 @@ Expects `unread_count` and `recent_notifications` in context.
     document.querySelectorAll('.notification-item').forEach(item => {
         item.addEventListener('click', function(e) {
             const notificationId = this.dataset.notificationId;
-            if (notificationId && this.classList.contains('bg-blue-50')) {
+            if (notificationId && this.classList.contains('bg-brand-50')) {
                 fetch(`${NOTIFY_BASE}/${notificationId}/mark-read/`, {
                     method: 'POST',
                     headers: {
@@ -155,8 +155,8 @@ Expects `unread_count` and `recent_notifications` in context.
                   .then(data => {
                       if (data.success) {
                           updateUnreadCount(-1);
-                          this.classList.remove('bg-blue-50');
-                          const badge = this.querySelector('.bg-blue-600');
+                          this.classList.remove('bg-brand-50');
+                          const badge = this.querySelector('.bg-brand-600');
                           if (badge) badge.remove();
                       }
                   });
@@ -194,9 +194,9 @@ Expects `unread_count` and `recent_notifications` in context.
                 if (data.success) {
                     updateUnreadCount(-data.count);
                     // Remove "unread" styling from all items
-                    document.querySelectorAll('.notification-item.bg-blue-50').forEach(item => {
-                        item.classList.remove('bg-blue-50');
-                        const badge = item.querySelector('.bg-blue-600');
+                    document.querySelectorAll('.notification-item.bg-brand-50').forEach(item => {
+                        item.classList.remove('bg-brand-50');
+                        const badge = item.querySelector('.bg-brand-600');
                         if (badge) badge.remove();
                     });
                 } else {
@@ -273,7 +273,7 @@ Expects `unread_count` and `recent_notifications` in context.
 
             html += `
                 <a href="${notification.action_url || '#'}"
-                   class="block px-4 py-3 hover:bg-gray-50 border-b border-gray-100 notification-item ${!notification.read ? 'bg-blue-50' : ''}"
+                   class="block px-4 py-3 hover:bg-gray-50 border-b border-gray-100 notification-item ${!notification.read ? 'bg-brand-50' : ''}"
                    data-notification-id="${notification.id}"
                    role="menuitem">
                     <div class="flex items-start justify-between">
@@ -289,7 +289,7 @@ Expects `unread_count` and `recent_notifications` in context.
                             </p>
                         </div>
                         ${!notification.read ? `
-                            <span class="ml-2 flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-600 text-white">
+                            <span class="ml-2 flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-brand-600 text-white">
                                 New
                             </span>
                         ` : ''}

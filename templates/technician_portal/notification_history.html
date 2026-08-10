@@ -71,7 +71,7 @@
                     {% if notifications.object_list %}
                         <button type="button"
                                 id="mark-all-read-btn"
-                                class="ml-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">
+                                class="ml-auto px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700">
                             Mark All Read
                         </button>
                     {% endif %}
@@ -93,7 +93,7 @@
                                             {{ notification.title }}
                                         </h3>
                                         {% if not notification.read %}
-                                            <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                            <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 text-brand-800">
                                                 New
                                             </span>
                                         {% endif %}
@@ -256,7 +256,7 @@ document.querySelectorAll('.mark-read-btn').forEach(btn => {
                 // Remove unread styling
                 notificationItem.classList.remove('unread');
                 // Remove the "New" badge
-                const badge = notificationItem.querySelector('.bg-blue-100');
+                const badge = notificationItem.querySelector('.bg-brand-100');
                 if (badge) badge.remove();
                 // Remove the button
                 this.remove();

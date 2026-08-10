@@ -3,9 +3,31 @@
 Shared head assets for all portal shells. Tailwind is COMPILED — run
 scripts/build_css.sh after changing template/JS classes. Do not add
 cdn.tailwindcss.com or inline tailwind.config blocks.
+
+Fonts and Font Awesome are SELF-HOSTED (scripts/vendor_assets.sh). Never
+reintroduce fonts.googleapis.com, cdnjs, or jsdelivr: third-party requests here
+blocked first paint, leaked visitor IPs, and made a strict CSP impossible for an
+app that takes card payments.
 {% endcomment %}
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+{# Preload the one font that blocks first paint. Self-hosted = same origin, so #}
+{# the browser can start it during HTML parse instead of after a DNS+TLS hop. #}
+<link rel="preload" href="{% static 'fonts/inter-variable-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
+
+{# Declared here rather than in input.css: collectstatic collects the Tailwind #}
+{# source as well as the built app.css, and a relative url() would resolve to  #}
+{# a different path from each location. {% static %} always resolves correctly.#}
+<style>
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 300 800;
+    font-display: swap;
+    src: url("{% static 'fonts/inter-variable-latin.woff2' %}") format('woff2');
+  }
+</style>
+
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="{% static 'css/vendor/fontawesome.min.css' %}">

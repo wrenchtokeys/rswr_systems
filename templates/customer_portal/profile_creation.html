@@ -46,7 +46,7 @@
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Page Header -->
         <div class="mb-8 text-center">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 text-blue-600 rounded-full mb-4">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-brand-100 text-brand-600 rounded-full mb-4">
                 <i class="fas fa-user-plus text-2xl"></i>
             </div>
             <h1 class="text-3xl font-bold text-gray-900">Complete Your Profile</h1>
@@ -62,12 +62,12 @@
                     </div>
                     <span class="ml-3 text-sm font-medium text-green-600">Account Created</span>
                 </div>
-                <div class="w-24 h-1 bg-blue-600 mx-4"></div>
+                <div class="w-24 h-1 bg-brand-600 mx-4"></div>
                 <div class="flex items-center">
-                    <div class="flex items-center justify-center w-10 h-10 bg-blue-600 text-white rounded-full">
+                    <div class="flex items-center justify-center w-10 h-10 bg-brand-600 text-white rounded-full">
                         <span class="text-sm font-medium">2</span>
                     </div>
-                    <span class="ml-3 text-sm font-medium text-blue-600">Company Setup</span>
+                    <span class="ml-3 text-sm font-medium text-brand-600">Company Setup</span>
                 </div>
             </div>
         </div>
@@ -76,13 +76,13 @@
         {% if messages %}
         <div class="mb-6 space-y-4">
             {% for message in messages %}
-            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}blue-50 border-l-4 border-blue-400{% endif %} p-4">
+            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}brand-50 border-l-4 border-brand-400{% endif %} p-4">
                 <div class="flex">
                     <div class="flex-shrink-0">
-                        <i class="fas fa-{% if message.tags == 'error' %}exclamation-circle text-red-400{% elif message.tags == 'success' %}check-circle text-green-400{% else %}info-circle text-blue-400{% endif %}"></i>
+                        <i class="fas fa-{% if message.tags == 'error' %}exclamation-circle text-red-400{% elif message.tags == 'success' %}check-circle text-green-400{% else %}info-circle text-brand-400{% endif %}"></i>
                     </div>
                     <div class="ml-3">
-                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-blue-700{% endif %}">{{ message }}</p>
+                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-brand-700{% endif %}">{{ message }}</p>
                     </div>
                 </div>
             </div>
@@ -99,7 +99,7 @@
                     <!-- Company Selection Section -->
                     <div class="mb-8">
                         <div class="flex items-center gap-3 mb-6">
-                            <div class="bg-blue-100 text-blue-600 p-2 rounded-lg">
+                            <div class="bg-brand-100 text-brand-600 p-2 rounded-lg">
                                 <i class="fas fa-building text-xl"></i>
                             </div>
                             <div>
@@ -113,11 +113,11 @@
                             <!-- Join Existing Company -->
                             <label class="radio-card block">
                                 <input type="radio" name="is_new_company" id="existing_company" value="no" checked class="sr-only" onchange="toggleCompanyForm()">
-                                <div class="border-2 border-gray-200 rounded-lg p-6 bg-blue-50 border-blue-500">
+                                <div class="border-2 border-gray-200 rounded-lg p-6 bg-brand-50 border-brand-500">
                                     <div class="flex items-start">
                                         <div class="flex-shrink-0">
-                                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                                                <i class="fas fa-users text-blue-600 text-xl"></i>
+                                            <div class="w-12 h-12 bg-brand-100 rounded-full flex items-center justify-center">
+                                                <i class="fas fa-users text-brand-600 text-xl"></i>
                                             </div>
                                         </div>
                                         <div class="ml-4">
@@ -149,13 +149,13 @@
 
                         <!-- Existing Company Form -->
                         <div id="existing_company_form" class="conditional-section visible">
-                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                            <div class="bg-brand-50 border border-brand-200 rounded-lg p-6">
                                 <div class="mb-4">
                                     <label for="customer" class="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                                         <i class="fas fa-search text-gray-400"></i>
                                         Select Your Company
                                     </label>
-                                    <select class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" id="customer" name="customer" required>
+                                    <select class="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100" id="customer" name="customer" required>
                                         <option value="">-- Select a company --</option>
                                         {% for customer in customers %}
                                         <option value="{{ customer.id }}">{{ customer.name|title }}</option>
@@ -241,7 +241,7 @@
                             <i class="fas fa-shield-alt text-gray-400 mr-1"></i>
                             Your information is secure and will not be shared
                         </p>
-                        <button type="submit" class="inline-flex items-center px-6 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm">
+                        <button type="submit" class="inline-flex items-center px-6 py-3 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors shadow-sm">
                             <i class="fas fa-check mr-2"></i>
                             Complete Profile
                         </button>
@@ -254,7 +254,7 @@
         <div class="mt-6 text-center">
             <p class="text-sm text-gray-600">
                 {% if request.tenant.business_email %}
-                Need help? <a href="mailto:{{ request.tenant.business_email }}" class="text-blue-600 hover:text-blue-700 font-medium">Contact {{ request.tenant.name }}</a>
+                Need help? <a href="mailto:{{ request.tenant.business_email }}" class="text-brand-600 hover:text-brand-700 font-medium">Contact {{ request.tenant.name }}</a>
                 {% else %}
                 Need help? Contact your glass shop directly.
                 {% endif %}

@@ -25,24 +25,24 @@
             <div class="p-3 sm:p-6">
                 <!-- Batch Context Banner -->
                 {% if repair.repair_batch_id %}
-                <div class="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg fade-in">
+                <div class="bg-brand-50 border-l-4 border-brand-500 p-4 mb-6 rounded-r-lg fade-in">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center flex-1">
                             <div class="flex-shrink-0">
-                                <i class="fas fa-layer-group text-blue-500 text-xl"></i>
+                                <i class="fas fa-layer-group text-brand-500 text-xl"></i>
                             </div>
                             <div class="ml-3">
-                                <p class="text-sm font-medium text-blue-900">
+                                <p class="text-sm font-medium text-brand-900">
                                     Editing Break {{ repair.break_number }} of {{ repair.total_breaks_in_batch }} for Unit {{ repair.unit_number }}
                                 </p>
-                                <p class="text-xs text-blue-700 mt-1">
+                                <p class="text-xs text-brand-700 mt-1">
                                     <i class="fas fa-info-circle"></i> You are working on a repair that is part of a multi-break batch
                                 </p>
                             </div>
                         </div>
                         <div class="ml-4">
                             <a href="{% url 'technician_batch_detail' repair.repair_batch_id %}"
-                               class="inline-flex items-center px-4 py-2 border border-blue-300 shadow-sm text-sm font-medium rounded-lg text-blue-700 bg-white hover:bg-blue-50 transition-all">
+                               class="inline-flex items-center px-4 py-2 border border-brand-300 shadow-sm text-sm font-medium rounded-lg text-brand-700 bg-white hover:bg-brand-50 transition-all">
                                 <i class="fas fa-th-list mr-2"></i>
                                 View All Breaks
                             </a>
@@ -68,16 +68,16 @@
                 <div id="warningDiv" class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded-r-lg hidden fade-in"></div>
 
                 <!-- Photo requirement warning -->
-                <div id="photoRequirementWarning" class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6 rounded-r-lg hidden fade-in">
+                <div id="photoRequirementWarning" class="bg-brand-50 border-l-4 border-brand-400 p-4 mb-6 rounded-r-lg hidden fade-in">
                     <div class="flex">
                         <div class="flex-shrink-0">
-                            <i class="fas fa-camera text-blue-400 text-lg"></i>
+                            <i class="fas fa-camera text-brand-400 text-lg"></i>
                         </div>
                         <div class="ml-3">
-                            <p class="text-sm text-blue-700 font-medium">Photo Requirements for Completed Repairs:</p>
-                            <ul class="mt-2 text-sm text-blue-700 space-y-1">
-                                <li><i class="fas fa-check-circle text-blue-500 mr-1"></i> <strong>After photo is REQUIRED</strong> to complete a repair{% if not user.is_staff and not is_admin and not current_technician.is_manager %} (managers can override){% endif %}</li>
-                                <li><i class="fas fa-info-circle text-blue-500 mr-1"></i> <strong>Before photo is recommended</strong> for documentation purposes</li>
+                            <p class="text-sm text-brand-700 font-medium">Photo Requirements for Completed Repairs:</p>
+                            <ul class="mt-2 text-sm text-brand-700 space-y-1">
+                                <li><i class="fas fa-check-circle text-brand-500 mr-1"></i> <strong>After photo is REQUIRED</strong> to complete a repair{% if not user.is_staff and not is_admin and not current_technician.is_manager %} (managers can override){% endif %}</li>
+                                <li><i class="fas fa-info-circle text-brand-500 mr-1"></i> <strong>Before photo is recommended</strong> for documentation purposes</li>
                             </ul>
                         </div>
                     </div>
@@ -686,13 +686,13 @@
                             </p>
                             <label class="flex items-center gap-2 py-1 text-sm text-gray-700 cursor-pointer">
                                 <input type="radio" name="apply_redemption_id" value="" checked
-                                       class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                                       class="h-4 w-4 text-brand-600 border-gray-300 focus:ring-brand-500">
                                 Don't use a reward on this job
                             </label>
                             {% for redemption in pending_reward_redemptions %}
                             <label class="flex items-center gap-2 py-1 text-sm text-gray-900 cursor-pointer">
                                 <input type="radio" name="apply_redemption_id" value="{{ redemption.id }}"
-                                       class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                                       class="h-4 w-4 text-brand-600 border-gray-300 focus:ring-brand-500">
                                 {{ redemption.reward_option.name }}
                                 <span class="text-xs text-gray-500">(redeemed {{ redemption.created_at|date:"M j" }})</span>
                             </label>
