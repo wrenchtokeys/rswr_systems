@@ -25,6 +25,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # intcomma for money figures — "$3,700.00" not "$3700.00". A four-figure
+    # revenue number without a thousands separator reads as unfinished.
+    'django.contrib.humanize',
     'apps.technician_portal',
     'apps.customer_portal',
     'apps.rewards_referrals',
@@ -202,11 +205,20 @@ ADMINS = [
 MANAGERS = ADMINS
 
 # =========================================
-# SMS CONFIGURATION (AWS SNS)
+# SMS CONFIGURATION (AWS End User Messaging)
 # =========================================
 
-AWS_SNS_REGION_NAME = os.environ.get('AWS_SNS_REGION', 'us-east-1')
+AWS_SNS_REGION_NAME = os.environ.get('AWS_SNS_REGION', 'us-east-1')  # legacy name, kept for old callers
+AWS_SMS_REGION_NAME = os.environ.get('AWS_SMS_REGION', os.environ.get('AWS_SNS_REGION', 'us-east-1'))
 SMS_ENABLED = os.environ.get('SMS_ENABLED', 'False').lower() == 'true'
+
+# Master switch for all SMS features: the registered toll-free number (E.164)
+# or pool ARN that texts are sent from. Empty = SMS disabled everywhere,
+# regardless of SMS_ENABLED. Set via EB env once the number is verified.
+SMS_ORIGINATION_IDENTITY = os.environ.get('SMS_ORIGINATION_IDENTITY', '')
+
+# Optional End User Messaging configuration set (delivery-event tracking)
+SMS_CONFIGURATION_SET = os.environ.get('SMS_CONFIGURATION_SET', '')
 
 # =========================================
 # STRIPE CONFIGURATION

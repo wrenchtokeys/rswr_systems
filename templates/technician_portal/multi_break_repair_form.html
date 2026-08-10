@@ -40,9 +40,9 @@
     <div class="max-w-5xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <!-- Header -->
-            <div class="px-6 py-4 border-b border-gray-200 bg-green-600 text-white rounded-t-lg">
-                <h1 class="text-xl font-semibold">Multi-Break Repair Entry</h1>
-                <p class="text-green-100 text-sm mt-1">Create multiple repairs for the same unit in one session</p>
+            <div class="px-6 py-5 border-b border-gray-200">
+                <h1 class="t-h2 text-gray-900">Multi-Break Repair</h1>
+                <p class="t-sub mt-1">Several breaks on one windshield, priced progressively</p>
             </div>
 
             <div class="p-3 sm:p-6">
@@ -62,7 +62,7 @@
                                     id="customer"
                                     name="customer"
                                     required
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                                 >
                                     <option value="">Select customer...</option>
                                     {% for customer in customers %}
@@ -81,7 +81,7 @@
                                     id="unit_number"
                                     name="unit_number"
                                     required
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                                     placeholder="e.g., 1001"
                                     value="{{ initial_unit_number }}"
                                 >
@@ -97,7 +97,7 @@
                                     id="repair_date"
                                     name="repair_date"
                                     required
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                                 >
                             </div>
 
@@ -110,7 +110,7 @@
                                 <select
                                     id="technician_id"
                                     name="technician_id"
-                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                                 >
                                     <option value="">Select Technician (or self)</option>
                                     {% for tech in technicians %}
@@ -124,14 +124,14 @@
                     </div>
 
                     <!-- Pricing Preview Section -->
-                    <div id="pricingPreview" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg hidden">
+                    <div id="pricingPreview" class="mb-6 p-4 bg-brand-50 border border-brand-200 rounded-lg hidden">
                         <div class="flex items-start">
-                            <svg class="h-5 w-5 text-blue-400 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <svg class="h-5 w-5 text-brand-400 mt-0.5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                                 <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
                             </svg>
                             <div class="flex-1">
-                                <h3 class="text-sm font-semibold text-blue-900">Pricing Preview</h3>
-                                <div id="pricingDetails" class="mt-2 text-sm text-blue-800"></div>
+                                <h3 class="text-sm font-semibold text-brand-900">Pricing Preview</h3>
+                                <div id="pricingDetails" class="mt-2 text-sm text-brand-800"></div>
                             </div>
                         </div>
                     </div>
@@ -160,7 +160,7 @@
                         <button
                             type="button"
                             id="addBreakBtn"
-                            class="w-full md:w-auto px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center justify-center"
+                            class="w-full md:w-auto px-6 py-3 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg transition-colors flex items-center justify-center"
                         >
                             <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
@@ -181,7 +181,7 @@
                             <button
                                 type="submit"
                                 id="submitAllBtn"
-                                class="w-full sm:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                                class="w-full sm:w-auto px-8 py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold rounded-lg transition-colors"
                             >
                                 <i class="fas fa-paper-plane mr-2"></i> Submit All Repairs (<span id="submitBreakCount">0</span>)
                             </button>
@@ -196,20 +196,20 @@
 <!-- Success Modal for Batch Submission -->
 <div id="successModal" class="modal">
     <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
-        <div class="px-6 py-4 bg-green-600 text-white rounded-t-lg">
+        <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center">
-                <svg class="h-8 w-8 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="h-7 w-7 mr-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                <h2 class="text-xl font-semibold">Batch Created Successfully!</h2>
+                <h2 class="text-xl font-semibold text-gray-900">Batch Created</h2>
             </div>
         </div>
 
         <div class="p-6 space-y-4">
             <!-- Batch Summary -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div class="bg-brand-50 border border-brand-200 rounded-lg p-4">
                 <div class="flex items-center mb-2">
-                    <i class="fas fa-layer-group text-blue-600 mr-2"></i>
+                    <i class="fas fa-layer-group text-brand-600 mr-2"></i>
                     <h3 class="font-semibold text-gray-900">Batch Summary</h3>
                 </div>
                 <div class="space-y-1 text-sm text-gray-700">
@@ -225,7 +225,7 @@
                 <button
                     type="button"
                     id="startWorkNowBtn"
-                    class="w-full inline-flex items-center justify-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
+                    class="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-600 hover:bg-brand-700 text-white font-medium rounded-lg transition-colors"
                 >
                     <i class="fas fa-play mr-2"></i>
                     Start Work Now
@@ -234,7 +234,7 @@
                 <button
                     type="button"
                     id="viewBatchBtn"
-                    class="w-full inline-flex items-center justify-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                    class="w-full inline-flex items-center justify-center px-4 py-3 border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg transition-colors"
                 >
                     <i class="fas fa-eye mr-2"></i>
                     View Batch Details
@@ -256,9 +256,9 @@
 <!-- Modal for Adding/Editing Break -->
 <div id="breakModal" class="modal">
     <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-8">
-        <div class="px-6 py-4 border-b border-gray-200 bg-green-600 text-white rounded-t-lg flex justify-between items-center">
-            <h2 id="modalTitle" class="text-xl font-semibold">Add Break</h2>
-            <button type="button" id="closeModalBtn" class="text-white hover:text-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+            <h2 id="modalTitle" class="text-xl font-semibold text-gray-900">Add Break</h2>
+            <button type="button" id="closeModalBtn" class="text-gray-400 hover:text-gray-600">
                 <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                 </svg>
@@ -268,7 +268,7 @@
         <div class="p-6 space-y-4">
             <!-- Damage Information Section -->
             <div class="space-y-4">
-                <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Damage Information</h3>
+                <h3 class="text-[1.0625rem] font-semibold text-gray-900 tracking-[-0.011em]">Damage Information</h3>
 
                 <!-- Damage Type -->
                 <div>
@@ -278,7 +278,7 @@
                     <select
                         id="modal_damage_type"
                         required
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
                         <option value="">Select damage type...</option>
                         {% for value, label in damage_types %}
@@ -292,7 +292,7 @@
                     <input
                         type="checkbox"
                         id="modal_drilled_before_repair"
-                        class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        class="h-4 w-4 text-brand-600 focus:ring-brand-500 border-gray-300 rounded"
                     >
                     <label for="modal_drilled_before_repair" class="ml-2 block text-sm text-gray-700">
                         Was windshield drilled before repair?
@@ -302,7 +302,7 @@
 
             <!-- Damage Location Diagram -->
             <div class="pt-4 border-t border-gray-200">
-                <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Damage Location</h3>
+                <h3 class="text-[1.0625rem] font-semibold text-gray-900 tracking-[-0.011em] mb-3">Damage Location</h3>
                 <div style="max-width: 400px;">
                     <div id="modalWindshieldDiagram"
                          style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%); border: 3px solid #0284c7; border-radius: 12px; cursor: crosshair; overflow: hidden; touch-action: none;">
@@ -331,7 +331,7 @@
 
             <!-- Technical Conditions Section -->
             <div class="pt-4 border-t border-gray-200 space-y-4">
-                <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Technical Conditions</h3>
+                <h3 class="text-[1.0625rem] font-semibold text-gray-900 tracking-[-0.011em]">Technical Conditions</h3>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <!-- Windshield Temperature -->
@@ -343,7 +343,7 @@
                             type="number"
                             id="modal_windshield_temperature"
                             step="0.1"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                             placeholder="e.g., 72.5"
                         >
                         <p class="mt-1 text-xs text-gray-500">Optimal: 60-80°F</p>
@@ -358,7 +358,7 @@
                             type="text"
                             id="modal_resin_viscosity"
                             maxlength="50"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                             placeholder="e.g., Low(l), Medium(m), High(h)"
                         >
                         <p class="mt-1 text-xs text-gray-500">Document resin viscosity</p>
@@ -370,7 +370,7 @@
 
             <!-- Photo Documentation Section -->
             <div class="pt-4 border-t border-gray-200 space-y-4">
-                <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Photo Documentation</h3>
+                <h3 class="text-[1.0625rem] font-semibold text-gray-900 tracking-[-0.011em]">Photo Documentation</h3>
 
                     <!-- Photo Before -->
                 <div>
@@ -381,7 +381,7 @@
                         type="file"
                         id="modal_photo_before"
                         accept="image/*"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
                     <div id="preview_before" class="mt-2"></div>
                 </div>
@@ -395,7 +395,7 @@
                         type="file"
                         id="modal_photo_after"
                         accept="image/*"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
                     <div id="preview_after" class="mt-2"></div>
                 </div>
@@ -409,7 +409,7 @@
                 <textarea
                     id="modal_notes"
                     rows="3"
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                     placeholder="Notes about this break..."
                 ></textarea>
             </div>
@@ -419,11 +419,11 @@
                  can_override_pricing is deprecated — nothing ever set it, which
                  hid this section from every real shop owner. -->
             {% if current_technician and current_technician.is_manager %}
-            <div class="pt-4 border-t border-gray-200 bg-purple-50 -mx-6 px-6 py-4 rounded">
-                <h3 class="text-sm font-semibold text-purple-900 uppercase tracking-wide mb-3">
-                    <i class="fas fa-tag mr-1"></i> Custom Price (Optional)
+            <div class="pt-4 border-t border-gray-200">
+                <h3 class="text-[1.0625rem] font-semibold text-gray-900 tracking-[-0.011em] mb-1">
+                    Custom Price <span class="text-sm font-normal text-gray-400">(optional)</span>
                 </h3>
-                <p class="text-xs text-purple-700 mb-4">
+                <p class="text-xs text-gray-500 mb-4">
                     Leave blank to use automatic pricing.
                 </p>
 
@@ -438,7 +438,7 @@
                             id="modal_cost_override"
                             step="0.01"
                             min="0"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                             placeholder="Leave blank for auto-pricing"
                         >
                         {% if current_technician and current_technician.approval_limit is not None %}
@@ -457,7 +457,7 @@
                             type="text"
                             id="modal_override_reason"
                             maxlength="200"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
                             placeholder="Required when setting a custom price"
                         >
                         <p class="mt-1 text-xs text-gray-600">A quick note on why, for your records</p>
@@ -478,7 +478,7 @@
             <button
                 type="button"
                 id="saveBreakBtn"
-                class="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors"
+                class="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white font-medium rounded-md transition-colors"
             >
                 Save Break
             </button>

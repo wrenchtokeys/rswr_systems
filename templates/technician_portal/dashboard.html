@@ -175,7 +175,7 @@
                                 New {{ service_noun }}
                             </a>
                             {% if shop_offers_repairs %}
-                            <a href="{% url 'create_multi_break_repair' %}" class="w-full inline-flex items-center justify-center px-4 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm">
+                            <a href="{% url 'create_multi_break_repair' %}" class="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors shadow-sm">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
                                 </svg>
@@ -234,14 +234,14 @@
                             </div>
 
                             <!-- Pending Approval -->
-                            <div class="stat-widget bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+                            <div class="stat-widget bg-gradient-to-br from-brand-50 to-brand-100 rounded-lg p-4 border border-brand-200">
                                 <div class="flex items-center justify-between mb-2">
-                                    <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg class="w-8 h-8 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                     </svg>
                                 </div>
-                                <div class="text-3xl font-bold text-blue-900">{{ summary_stats.pending_approval }}</div>
-                                <div class="text-sm text-blue-700 mt-1">Ready to Start</div>
+                                <div class="text-3xl font-bold text-brand-900">{{ summary_stats.pending_approval }}</div>
+                                <div class="text-sm text-brand-700 mt-1">Ready to Start</div>
                             </div>
 
                             <!-- Completed This Week -->
@@ -355,7 +355,7 @@
                             <div class="text-xs text-gray-500 mb-1">{{ notification.created_at|date:"M d, Y" }}</div>
                             <p class="text-sm text-gray-900 mb-2">{{ notification.message }}</p>
                             {% if notification.repair_batch_id %}
-                            <a href="{% url 'technician_batch_detail' notification.repair_batch_id %}" class="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors">
+                            <a href="{% url 'technician_batch_detail' notification.repair_batch_id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
                                 View Batch
                             </a>
                             {% elif notification.repair %}
@@ -508,7 +508,7 @@
                                 </div>
                                 <div class="flex items-center gap-1">
                                     {% for repair in batch.all_repairs|slice:":5" %}
-                                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-blue-500 text-white">
+                                    <div class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-brand-500 text-white">
                                         {{ repair.break_number }}
                                     </div>
                                     {% endfor %}
@@ -554,17 +554,17 @@
 
         <!-- Rewards Section (Compact) -->
         {% if assigned_redemptions or all_pending_redemptions %}
-        <div class="bg-white rounded-lg shadow-sm border border-blue-200 mb-6">
-            <div class="px-6 py-4 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
+        <div class="bg-white rounded-lg shadow-sm border border-brand-200 mb-6">
+            <div class="px-6 py-4 bg-brand-50 border-b border-brand-200 flex items-center justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-blue-800">🎁 Reward Redemptions</h2>
-                    <p class="text-xs text-blue-700 mt-1">
+                    <h2 class="text-lg font-semibold text-brand-800">🎁 Reward Redemptions</h2>
+                    <p class="text-xs text-brand-700 mt-1">
                         {% if assigned_redemptions %}{{ assigned_redemptions|length }} assigned to you{% endif %}
                         {% if assigned_redemptions and all_pending_redemptions %} • {% endif %}
                         {% if all_pending_redemptions %}{{ all_pending_redemptions|length }} available{% endif %}
                     </p>
                 </div>
-                <a href="{% url 'job_list' %}" class="text-blue-700 hover:text-blue-800 text-sm font-medium">View All →</a>
+                <a href="{% url 'job_list' %}" class="text-brand-700 hover:text-brand-800 text-sm font-medium">View All →</a>
             </div>
             <div class="p-6">
                 <div class="space-y-3">
@@ -582,13 +582,13 @@
                     </div>
                     {% endfor %}
                     {% for redemption in all_pending_redemptions|slice:":2" %}
-                    <div class="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <div class="bg-brand-50 rounded-lg p-3 border border-brand-200">
                         <div class="flex justify-between items-center">
                             <div>
                                 <div class="font-medium text-gray-900">{{ redemption.reward_option.name }}</div>
                                 <div class="text-xs text-gray-600">{{ redemption.reward.customer.name }} • Available</div>
                             </div>
-                            <a href="{% url 'reward_fulfillment_detail' redemption.id %}" class="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded hover:bg-blue-700 transition-colors">
+                            <a href="{% url 'reward_fulfillment_detail' redemption.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
                                 Claim
                             </a>
                         </div>

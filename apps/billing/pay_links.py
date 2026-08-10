@@ -33,3 +33,21 @@ def public_pay_url(invoice):
     except Exception as e:
         logger.warning(f"Could not build pay URL for invoice #{invoice.id}: {e}")
         return None
+
+
+def public_invoice_pdf_url(invoice):
+    """Return the tokened public PDF link for an invoice (no login).
+
+    Once the invoice is paid the PDF carries the PAID stamp, so this same
+    link doubles as the customer's downloadable receipt. Unlike
+    public_pay_url this is NOT gated on can_accept_payments — the document
+    is viewable regardless of how the shop takes money.
+    """
+    try:
+        from rs_systems.views import generate_payment_token
+        base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io').rstrip('/')
+        token = generate_payment_token(invoice.id)
+        return f"{base_url}/invoice/{invoice.id}/{token}/pdf/"
+    except Exception as e:
+        logger.warning(f"Could not build PDF URL for invoice #{invoice.id}: {e}")
+        return None

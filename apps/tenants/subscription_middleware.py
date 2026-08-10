@@ -40,6 +40,7 @@ EXEMPT_PREFIXES = (
     '/help/',             # Guides + /help/contact/ — an expired shop is exactly who needs support
     '/app/invite/',       # Customer invitation acceptance (may be unauthenticated)
     '/subscription-blocked/',  # The blocked page itself
+    '/sms/',              # Public SMS program disclosure (carrier registration evidence)
 )
 
 # Paths for static/media

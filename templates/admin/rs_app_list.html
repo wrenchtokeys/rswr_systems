@@ -1,0 +1,17 @@
+{% load i18n %}
+{% if app_list %}
+  {% for app in app_list %}
+  <div class="rs-model-group">
+    <h3>{{ app.name }}</h3>
+    <ul class="rs-model-chips">
+      {% for model in app.models %}
+        {% if model.admin_url %}
+        <li><a href="{{ model.admin_url }}">{{ model.name }}</a></li>
+        {% endif %}
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="rs-help">{% trans "You don't have permission to view or edit anything." %}</p>
+{% endif %}

@@ -4,10 +4,15 @@
 
 This guide documents the design system, UI components, and patterns used across RS Systems. Following these guidelines ensures a consistent, professional user experience throughout the application.
 
-**Last Updated**: July 2026
+**Last Updated**: August 2026
 **Base Framework**: Tailwind CSS (compiled — see build section below)
-**Icon Library**: Font Awesome 6.4.0
-**Typography**: Inter font family
+**Icon Library**: Font Awesome 6.4.0 (self-hosted; migrating to an SVG sprite — see UI_MAGIC_SESSIONS S13)
+**Typography**: Inter (self-hosted variable font, weights 300–800)
+
+> **Design direction (Aug 2026):** `docs/strategy/UI_MAGIC_PLAN.md` holds the current
+> design rules — one accent, the material ladder, the type scale, three motion
+> primitives. `docs/strategy/UI_MAGIC_SESSIONS.md` is the live work queue.
+> New UI work should follow those rules; this guide documents what exists today.
 
 ---
 
@@ -32,6 +37,17 @@ color utilities. **The old 7-color button chaos is deprecated.**
 | `.btn-ghost` | Tertiary/overflow/inline | Kebab menus, cancel links |
 
 Sizes: add `.btn-sm` or `.btn-lg`.
+
+### Design tokens (Aug 2026)
+
+Defined in `static/css/src/input.css`, consumed by the component layer.
+
+| Group | Tokens | Use |
+|---|---|---|
+| Material | `--surface-base/raised/overlay`, `--hairline`, `--shadow-raised/float/overlay` | Depth comes from soft two-stop shadows, not 1px borders. `.card` = raised, `.surface-float` = dropdowns/popovers, `.modal-panel` = overlay. |
+| Type | `.t-display` `.t-h1` `.t-h2` `.t-h3` `.t-body` `.t-sub` `.t-caption` | Weight tops out at 600; tracking tightens as size grows. Adopt per page. |
+| Figures | `.num`, plus `tabular-nums` on all `table` | Money and counts must line up. Prose keeps proportional figures. |
+| Motion | `--ease-out` `--ease-in-out` `--dur-fast` `--dur-base` | Defined, not yet applied (UI_MAGIC_SESSIONS S9/S10). Never animate `all`. |
 
 ### Cards, Badges, Modals
 

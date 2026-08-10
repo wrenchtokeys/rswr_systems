@@ -5,7 +5,7 @@
 {% block content %}
 <div class="max-w-2xl mx-auto">
     <nav class="mb-6 text-sm" aria-label="Breadcrumb">
-        <a href="{% url 'help_home' %}" class="text-blue-600 hover:text-blue-800 font-medium">
+        <a href="{% url 'help_home' %}" class="text-brand-600 hover:text-brand-800 font-medium">
             <i class="fas fa-arrow-left text-xs mr-1.5"></i>All guides
         </a>
     </nav>
@@ -20,7 +20,7 @@
             {% if sent_to %}A real person will read it and reply to <span class="font-medium text-gray-900">{{ sent_to }}</span>.{% else %}A real person will read it and reply to the email you gave us.{% endif %}
         </p>
         <div class="flex items-center justify-center gap-3">
-            <a href="{% url 'help_home' %}" class="inline-flex items-center rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
+            <a href="{% url 'help_home' %}" class="inline-flex items-center rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors">
                 Back to guides
             </a>
             <a href="{% url 'help_contact' %}" class="inline-flex items-center rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
@@ -50,7 +50,7 @@
                 {% for value, label in topics %}
                 <label class="cursor-pointer">
                     <input type="radio" name="topic" value="{{ value }}" class="peer sr-only" {% if value == form_topic %}checked{% endif %}>
-                    <span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-blue-300 peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:text-blue-700 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-200">{{ label }}</span>
+                    <span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:border-brand-300 peer-checked:border-brand-600 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ label }}</span>
                 </label>
                 {% endfor %}
             </div>
@@ -60,18 +60,18 @@
             <label for="contact-message" class="block text-sm font-semibold text-gray-900 mb-2">What's going on?</label>
             <textarea name="message" id="contact-message" rows="6" required
                       placeholder="The more you tell us, the faster we can help — what you were doing, what you expected, what happened instead."
-                      class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none">{{ form_message }}</textarea>
+                      class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none">{{ form_message }}</textarea>
         </div>
 
         <div>
             <label for="contact-email" class="block text-sm font-semibold text-gray-900 mb-2">Where should the reply go?</label>
             <input type="email" name="email" id="contact-email" value="{{ form_email }}" required
-                   class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none">
+                   class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 shadow-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none">
         </div>
 
         <div class="flex items-center justify-between gap-4 pt-2">
             <p class="text-xs text-gray-400">A real person reads every message.</p>
-            <button type="submit" class="inline-flex items-center rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
+            <button type="submit" class="inline-flex items-center rounded-xl bg-brand-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 transition-colors">
                 <i class="fas fa-paper-plane text-xs mr-2"></i>Send message
             </button>
         </div>

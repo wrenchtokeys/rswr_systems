@@ -14,7 +14,9 @@ pillow-heif==1.1.1
 django-ratelimit==4.1.0
 
 # Payments
-stripe>=8.0.0
+# Unpinned major upgrades have broken webhooks before (v15 removed dict
+# inheritance from StripeObject) — bump the ceiling deliberately, with tests.
+stripe>=8.0.0,<16
 
 # PDF generation
 reportlab>=4.0.0

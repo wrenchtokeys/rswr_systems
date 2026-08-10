@@ -7,7 +7,7 @@
         <div>
             <h2 class="text-sm font-semibold text-gray-900 mb-1">Open the job form</h2>
             <p class="text-sm text-gray-600 leading-relaxed">From your dashboard, hit <strong>New Repair</strong> or <strong>New Replacement</strong> (on your phone, use the + button at the bottom). One form handles both kinds of work.</p>
-            <a href="{% url 'job_create' %}" class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 mt-2">Open the job form <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
+            <a href="{% url 'job_create' %}" class="inline-flex items-center text-sm font-medium text-brand-600 hover:text-brand-800 mt-2">Open the job form <i class="fas fa-arrow-right text-xs ml-1.5"></i></a>
         </div>
     </div>
 </div>
@@ -44,6 +44,6 @@
 
 <div class="rounded-xl bg-amber-50 border border-amber-200 p-4 flex items-start gap-3">
     <i class="fas fa-lightbulb text-amber-500 mt-0.5"></i>
-    <p class="text-sm text-gray-700 leading-relaxed"><strong>Several chips on one windshield?</strong> Use <a href="{% url 'help_topic' 'multi-break' %}" class="text-blue-600 hover:text-blue-800 font-medium">multi-break entry</a> instead — each break is priced progressively and they invoice together.</p>
+    <p class="text-sm text-gray-700 leading-relaxed"><strong>Several chips on one windshield?</strong> Use <a href="{% url 'help_topic' 'multi-break' %}" class="text-brand-600 hover:text-brand-800 font-medium">multi-break entry</a> instead — each break is priced progressively and they invoice together.</p>
 </div>
 {% endblock %}

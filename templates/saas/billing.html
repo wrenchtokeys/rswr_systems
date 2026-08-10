@@ -121,12 +121,12 @@
                 <div class="h-3 rounded-full transition-all duration-500
                     {% if usage.technicians.percent >= 90 %}bg-red-500
                     {% elif usage.technicians.percent >= 70 %}bg-yellow-500
-                    {% else %}bg-blue-500{% endif %}"
+                    {% else %}bg-brand-500{% endif %}"
                     style="width: {% if usage.technicians.percent %}{{ usage.technicians.percent }}{% else %}0{% endif %}%"></div>
             </div>
             {% else %}
             <div class="w-full bg-gray-200 rounded-full h-3">
-                <div class="bg-blue-500 h-3 rounded-full" style="width: 5%"></div>
+                <div class="bg-brand-500 h-3 rounded-full" style="width: 5%"></div>
             </div>
             {% endif %}
         </div>
@@ -188,7 +188,7 @@
                 <i class="fas fa-file-invoice-dollar text-gray-400 text-xl"></i>
             </div>
             <p class="mb-3">View your complete payment history and download invoices through the Stripe Billing Portal.</p>
-            <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+            <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
                 <i class="fas fa-external-link-alt mr-2"></i>
                 Open Billing Portal
             </a>

@@ -21,13 +21,14 @@ def get_dashboard_context():
     Gracefully handles missing models/data.
     """
     ctx = {}
+    now = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     # -------------------------------------------------------------------------
     # Subscription overview
     # -------------------------------------------------------------------------
     try:
         from apps.tenants.models import Tenant
-        now = timezone.now()
 
         ctx['tenant_active_count'] = Tenant.objects.filter(subscription_status='active').count()
         ctx['tenant_expired_count'] = Tenant.objects.filter(subscription_status='expired').count()
@@ -59,7 +60,6 @@ def get_dashboard_context():
     # -------------------------------------------------------------------------
     try:
         from apps.technician_portal.models import Repair
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         ctx['repairs_this_month'] = Repair.objects.filter(
             service_date__gte=month_start,

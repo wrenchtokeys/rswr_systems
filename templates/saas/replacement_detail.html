@@ -7,7 +7,7 @@
 <div class="max-w-3xl mx-auto">
         <!-- Header -->
         <div class="mb-8">
-            <a href="{% url 'owner_dashboard' %}" class="text-sm text-blue-600 hover:text-blue-800 mb-2 inline-block">
+            <a href="{% url 'owner_dashboard' %}" class="text-sm text-brand-600 hover:text-brand-800 mb-2 inline-block">
                 <i class="fas fa-arrow-left mr-1"></i> Back to Dashboard
             </a>
             <div class="flex items-center justify-between">
@@ -70,7 +70,7 @@
                     </form>
                     {% if user_can_invoices %}
                     <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline js-confirm-send"
-                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
+                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
                         {% csrf_token %}
                         <button type="submit" class="btn-primary btn-sm">
                             <i class="fas fa-paper-plane mr-1.5"></i>Send Invoice
@@ -86,7 +86,7 @@
             <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700">Done with this job?</span>
                 <form action="{% url 'replacement_complete_and_invoice' replacement.id %}" method="post" class="inline js-confirm-send"
-                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}">
+                        data-customer-name="{{ replacement.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
                     {% csrf_token %}
                     <button type="submit" class="btn-primary btn-sm">
                         <i class="fas fa-paper-plane mr-1.5"></i>Complete &amp; Send Invoice
@@ -109,7 +109,7 @@
 
             <!-- Vehicle -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-car mr-2 text-blue-500"></i>Vehicle Info</h2>
+                <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-car mr-2 text-brand-500"></i>Vehicle Info</h2>
                 <div class="grid grid-cols-2 gap-4 text-sm">
                     <div><span class="text-gray-500">Unit #:</span> <span class="font-medium text-gray-900">{{ replacement.unit_number }}</span></div>
                     <div><span class="text-gray-500">Glass Position:</span> <span class="font-medium text-gray-900">{{ replacement.get_glass_position_display|default:"—" }}</span></div>
@@ -168,6 +168,17 @@
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <h2 class="text-lg font-semibold text-gray-900 mb-4"><i class="fas fa-sticky-note mr-2 text-gray-500"></i>Notes</h2>
                 <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ replacement.description }}</p>
+            </div>
+            {% endif %}
+
+            <!-- Internal notes (shop-only) -->
+            {% if replacement.internal_notes %}
+            <div class="bg-amber-50 rounded-xl shadow-sm border border-amber-200 p-6">
+                <h2 class="text-lg font-semibold text-gray-900 mb-4">
+                    <i class="fas fa-lock mr-2 text-amber-600"></i>Internal Notes
+                    <span class="ml-2 text-xs font-normal text-amber-700">not visible to customer</span>
+                </h2>
+                <p class="text-sm text-amber-900 whitespace-pre-wrap">{{ replacement.internal_notes }}</p>
             </div>
             {% endif %}
 

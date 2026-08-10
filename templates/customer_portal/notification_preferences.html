@@ -17,18 +17,18 @@
             </div>
 
             <!-- Contact Verification Status -->
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <h5 class="font-semibold text-blue-900 mb-3 flex items-center">
+            <div class="bg-brand-50 border border-brand-200 rounded-lg p-4 mb-4">
+                <h5 class="font-semibold text-brand-900 mb-3 flex items-center">
                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                     </svg>
                     Contact Verification
                 </h5>
-                <p class="text-sm text-blue-700 mb-4">Verify your contact information to receive notifications</p>
+                <p class="text-sm text-brand-700 mb-4">Verify your contact information to receive notifications</p>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <!-- Email Verification -->
-                    <div class="bg-white rounded p-3 border border-blue-200">
+                    <div class="bg-white rounded p-3 border border-brand-200">
                         <div class="flex items-center justify-between mb-2">
                             <div>
                                 <strong class="text-gray-700 text-sm">Email:</strong>
@@ -48,7 +48,7 @@
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                         Not Verified
                                     </span>
-                                    <a href="{% url 'customer_verify_email' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                    <a href="{% url 'customer_verify_email' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
                                         Verify Email
                                     </a>
                                 </div>
@@ -57,7 +57,7 @@
                     </div>
 
                     <!-- Phone Verification -->
-                    <div class="bg-white rounded p-3 border border-blue-200">
+                    <div class="bg-white rounded p-3 border border-brand-200">
                         <div class="flex items-center justify-between mb-2">
                             <div>
                                 <strong class="text-gray-700 text-sm">Phone:</strong>
@@ -77,7 +77,7 @@
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                         Not Verified
                                     </span>
-                                    <a href="{% url 'customer_verify_phone' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
+                                    <a href="{% url 'customer_verify_phone' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
                                         Verify Phone
                                     </a>
                                 </div>
@@ -262,7 +262,7 @@
                 </div>
 
                 <div class="flex justify-between items-center">
-                    <a href="{% url 'customer_verify_phone' %}" class="text-sm text-blue-600 hover:text-blue-800">
+                    <a href="{% url 'customer_verify_phone' %}" class="text-sm text-brand-600 hover:text-brand-800">
                         Resend Code
                     </a>
                     <div class="space-x-2">
@@ -274,7 +274,7 @@
                         </button>
                         <button
                             type="submit"
-                            class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">
+                            class="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700">
                             Verify
                         </button>
                     </div>

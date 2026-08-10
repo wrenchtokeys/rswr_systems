@@ -12,7 +12,7 @@
     <div class="relative mb-8">
         <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none"></i>
         <input type="search" id="help-search" autocomplete="off"
-               class="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 focus:outline-none"
+               class="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 focus:outline-none"
                placeholder="Search guides — try &quot;tax&quot;, &quot;invoice&quot;, or &quot;points&quot;">
     </div>
 
@@ -25,19 +25,19 @@
             <div class="flex items-start gap-3.5">
                 <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
                     {% if t.color == 'green' %}bg-green-100
-                    {% elif t.color == 'blue' %}bg-blue-100
+                    {% elif t.color == 'blue' %}bg-brand-100
                     {% elif t.color == 'purple' %}bg-purple-100
                     {% elif t.color == 'amber' %}bg-amber-100
                     {% else %}bg-gray-100{% endif %}">
                     <i class="{{ t.icon }} text-sm
                         {% if t.color == 'green' %}text-green-600
-                        {% elif t.color == 'blue' %}text-blue-600
+                        {% elif t.color == 'blue' %}text-brand-600
                         {% elif t.color == 'purple' %}text-purple-600
                         {% elif t.color == 'amber' %}text-amber-600
                         {% else %}text-gray-600{% endif %}"></i>
                 </div>
                 <div class="min-w-0">
-                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">{{ t.title }}</h3>
+                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">{{ t.title }}</h3>
                     <p class="text-xs text-gray-500 mt-1 leading-relaxed">{{ t.blurb }}</p>
                 </div>
             </div>
@@ -49,7 +49,7 @@
 
     <div id="help-no-results" class="hidden rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 p-8 text-center">
         <p class="text-sm font-semibold text-gray-700">No guides match "<span id="help-no-results-q"></span>"</p>
-        <p class="text-sm text-gray-500 mt-1">Can't find what you need? <a href="{% url 'help_contact' %}" class="text-blue-600 hover:text-blue-800 font-medium">Send us a message</a> — a real person will help.</p>
+        <p class="text-sm text-gray-500 mt-1">Can't find what you need? <a href="{% url 'help_contact' %}" class="text-brand-600 hover:text-brand-800 font-medium">Send us a message</a> — a real person will help.</p>
     </div>
 
     {% if is_owner_or_manager %}
@@ -58,11 +58,11 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <a href="{% url 'owner_dashboard' %}?tour=1" class="card p-5 hover:shadow-md hover:-translate-y-0.5 transition-all group">
             <div class="flex items-start gap-3.5">
-                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-route text-blue-600 text-sm"></i>
+                <div class="w-10 h-10 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-route text-brand-600 text-sm"></i>
                 </div>
                 <div>
-                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Replay the dashboard tour</h3>
+                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">Replay the dashboard tour</h3>
                     <p class="text-xs text-gray-500 mt-1 leading-relaxed">A 30-second walk around your home base.</p>
                 </div>
             </div>
@@ -73,7 +73,7 @@
                     <i class="fas fa-route text-green-600 text-sm"></i>
                 </div>
                 <div>
-                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Replay the job-form tour</h3>
+                    <h3 class="text-sm font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">Replay the job-form tour</h3>
                     <p class="text-xs text-gray-500 mt-1 leading-relaxed">The 20-second version of logging a job.</p>
                 </div>
             </div>
@@ -82,15 +82,15 @@
     </div>
     {% endif %}
 
-    <a href="{% url 'help_contact' %}" class="mt-8 rounded-xl bg-blue-50 border border-blue-200 p-5 flex items-center gap-3 hover:shadow-md hover:-translate-y-0.5 transition-all group">
-        <div class="w-9 h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <i class="fas fa-comment-dots text-blue-600 text-sm"></i>
+    <a href="{% url 'help_contact' %}" class="mt-8 rounded-xl bg-brand-50 border border-brand-200 p-5 flex items-center gap-3 hover:shadow-md hover:-translate-y-0.5 transition-all group">
+        <div class="w-9 h-9 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <i class="fas fa-comment-dots text-brand-600 text-sm"></i>
         </div>
         <div class="min-w-0 flex-1">
-            <p class="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">Still stuck? Talk to a real person</p>
+            <p class="text-sm font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">Still stuck? Talk to a real person</p>
             <p class="text-sm text-gray-600 mt-0.5">Send us a message right from here — no email app needed. A real person reads every one.</p>
         </div>
-        <i class="fas fa-arrow-right text-blue-400 text-sm flex-shrink-0 group-hover:translate-x-0.5 transition-transform"></i>
+        <i class="fas fa-arrow-right text-brand-400 text-sm flex-shrink-0 group-hover:translate-x-0.5 transition-transform"></i>
     </a>
 </div>
 
