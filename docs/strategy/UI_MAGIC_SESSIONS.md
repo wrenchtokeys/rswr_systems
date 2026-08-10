@@ -75,6 +75,25 @@ python manage.py test tests.test_primary_contact tests.test_e2e_today tests.test
 python manage.py test tests/ -v 1
 ```
 
+**The suite has ~103 pre-existing failures. Compare, never count.** On SQLite the full
+suite is 3507 tests / ~66 min and ends `FAILED (failures=70, errors=33)` — on a clean
+`main` too (verified 2026-08-09; the two failure sets are byte-identical). They're mostly
+DB-index introspection and SES-mock tests. So a green run is not the bar; **an unchanged
+failure set** is:
+
+```bash
+# Extract the failing modules from your run, then replay just those on main.
+grep -E "^(FAIL|ERROR): " yours.log | sed -E 's/^(FAIL|ERROR): [^ ]+ \((.*)\)$/\2/' \
+  | sed 's/\.[^.]*$//' | sed 's/\.[^.]*$//' | sort -u > modules.txt
+git worktree add /tmp/baseline main
+# NOTE: run this under bash — zsh does not word-split unquoted $MODULES and you
+# will get one bogus "module not found" test instead of the whole list.
+bash -c 'cd /tmp/baseline && python manage.py test $(tr "\n" " " < modules.txt)'
+# Then diff the two sorted "FAIL:/ERROR:" lists. Anything only in yours is a regression.
+```
+
+Replaying only the failing modules takes ~7 min instead of another full hour.
+
 ### Traps this work has already hit — don't repeat them
 
 - **`{# … #}` is single-line only.** A multi-line `{# … #}` renders as *visible text at the
@@ -95,7 +114,13 @@ python manage.py test tests/ -v 1
 
 # Phase 1 — Foundation ✅ DONE
 
-Shipped together on `feat/ui-phase1-foundation`.
+Shipped together on `feat/ui-phase1-foundation` (commit `0e5c1742`), 2026-08-09.
+
+**Verification result:** 65 smoke tests pass; full suite 3507 tests with a failure set
+**byte-identical to `main`** (70 failures / 33 errors, all pre-existing); `collectstatic`
+passes under the production manifest storage; rendered HTML contains zero third-party
+asset hosts; brand theming confirmed end-to-end against a violet test tenant across the
+owner app, tech app and customer portal, with the platform login correctly staying blue.
 
 ## S1 · Kill the CDNs, self-host everything — DONE
 
