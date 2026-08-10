@@ -3,14 +3,6 @@
 
 {% block extra_css %}
 <style>
-    /* Status pill filters */
-    .status-pill {
-        transition: all 0.15s ease;
-    }
-    .status-pill.active {
-        box-shadow: 0 0 0 2px white, 0 0 0 4px currentColor;
-    }
-
     /* Card tap target */
     .repair-card {
         transition: transform 0.1s ease, box-shadow 0.15s ease;
@@ -18,8 +10,6 @@
     .repair-card:active {
         transform: scale(0.98);
     }
-
-    /* FAB styles now in includes/fab_quick_actions.html */
 
     /* Bulk toolbar slide-up */
     .bulk-toolbar {
@@ -30,9 +20,9 @@
         transform: translateY(0);
     }
 
-    /* Hide scrollbar on pill row */
-    .pill-scroll::-webkit-scrollbar { display: none; }
-    .pill-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    /* Kebab stays visible while its menu is open, and for keyboard users */
+    .kebab-btn.menu-open,
+    tr:focus-within .kebab-btn { opacity: 1 !important; }
 </style>
 
 {% endblock %}
@@ -41,140 +31,128 @@
 <div class="min-h-screen bg-gray-50 pb-24 md:pb-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
 
-        <!-- Page Header — compact on mobile -->
-        <div class="flex items-center justify-between mb-4 sm:mb-6">
-            <div>
-                <h1 class="text-xl sm:text-2xl font-bold text-gray-900">
+        <!-- Page Header -->
+        <div class="flex flex-wrap items-start justify-between gap-3 mb-4 sm:mb-6">
+            <div class="min-w-0">
+                <h1 class="t-h1 text-gray-900">
                     {% if is_admin %}Jobs{% else %}My Jobs{% endif %}
                 </h1>
-                <p class="text-sm text-gray-500 mt-0.5">
-                    {{ total_jobs }} total
+                {% comment %}One quiet summary line replaces the four colour-coded
+                stat tiles (R5). Each count is a link that applies the filter.{% endcomment %}
+                <p class="t-sub mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <a href="{% url 'job_list' %}{% querystring status=None page=None %}" class="hover:text-gray-900 transition-colors"><span class="num font-semibold text-gray-900">{{ stats.total_active }}</span> active</a>
+                    <span class="text-gray-300">&middot;</span>
+                    <a href="{% url 'job_list' %}{% querystring status='REQUESTED' page=None %}" class="hover:text-gray-900 transition-colors"><span class="num font-semibold text-gray-900">{{ stats.pending_approval }}</span> awaiting approval</a>
+                    <span class="text-gray-300">&middot;</span>
+                    <a href="{% url 'job_list' %}{% querystring status='IN_PROGRESS' page=None %}" class="hover:text-gray-900 transition-colors"><span class="num font-semibold text-gray-900">{{ stats.in_progress }}</span> in progress</a>
+                    <span class="text-gray-300">&middot;</span>
+                    <a href="{% url 'job_list' %}{% querystring status='COMPLETED' page=None %}" class="hover:text-gray-900 transition-colors"><span class="num font-semibold text-gray-900">{{ stats.completed_this_week }}</span> done this week</a>
                 </p>
             </div>
-            <!-- Desktop new job + export -->
-            <div class="hidden sm:flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-shrink-0">
                 <a href="{% url 'job_create' %}" class="btn-primary btn-sm">
                     <i class="fas fa-plus mr-2 text-xs"></i>New {{ service_noun }}
                 </a>
-                <button onclick="exportToCSV()" class="inline-flex items-center px-3 py-2.5 border border-gray-300 text-gray-600 text-sm rounded-lg hover:bg-gray-50 transition-colors" title="Export CSV">
-                    <i class="fas fa-download"></i>
-                </button>
+                {% comment %}The floating + FAB is gone from this page; its quick
+                actions live here instead, next to the primary button.{% endcomment %}
+                <div class="relative">
+                    <button type="button" onclick="toggleMenu(this)" aria-haspopup="menu" aria-expanded="false"
+                            class="inline-flex items-center justify-center w-9 h-9 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                            title="More actions">
+                        <i class="fas fa-ellipsis-h"></i>
+                    </button>
+                    <div class="dropdown-menu hidden text-left surface-float w-48 py-1 z-30" role="menu">
+                        {% if shop_offers_repairs %}
+                        <a role="menuitem" href="{% url 'create_multi_break_repair' %}" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Multi-break repair</a>
+                        {% endif %}
+                        {% if is_admin or technician.is_manager %}
+                        <a role="menuitem" href="{% url 'owner_receive_payment' %}" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Receive Payment</a>
+                        {% endif %}
+                        <a role="menuitem" href="{% url 'create_customer' %}" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">New customer</a>
+                        <button type="button" role="menuitem" onclick="exportToCSV()" class="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Export CSV</button>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Stats Row — horizontal scroll on mobile -->
-        <div class="flex gap-3 mb-4 sm:mb-6 overflow-x-auto pill-scroll pb-1">
-            <button onclick="filterByStatus('all')" class="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 min-w-[7rem] text-center hover:shadow-md transition-shadow">
-                <div class="text-2xl font-bold text-gray-900">{{ stats.total_active }}</div>
-                <div class="text-xs font-medium text-gray-500 mt-0.5">Active</div>
-            </button>
-            <button onclick="filterByStatus('REQUESTED')" class="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 min-w-[7rem] text-center hover:shadow-md transition-shadow">
-                <div class="text-2xl font-bold text-amber-600">{{ stats.pending_approval }}</div>
-                <div class="text-xs font-medium text-gray-500 mt-0.5">Pending</div>
-            </button>
-            <button onclick="filterByStatus('IN_PROGRESS')" class="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 min-w-[7rem] text-center hover:shadow-md transition-shadow">
-                <div class="text-2xl font-bold text-brand-600">{{ stats.in_progress }}</div>
-                <div class="text-xs font-medium text-gray-500 mt-0.5">In Progress</div>
-            </button>
-            <button onclick="filterByStatus('COMPLETED')" class="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 min-w-[7rem] text-center hover:shadow-md transition-shadow">
-                <div class="text-2xl font-bold text-green-600">{{ stats.completed_this_week }}</div>
-                <div class="text-xs font-medium text-gray-500 mt-0.5">Done This Week</div>
-            </button>
-        </div>
-
-        {% if shop_service_mix == 'both' %}
-        <!-- Type Filter Chips (only meaningful when the shop does both) -->
-        <div class="flex gap-2 mb-3">
+        <!-- Toolbar: type segmented control + status + search + Filters (R5) -->
+        <div class="flex flex-wrap items-center gap-2 mb-4">
+            {% if shop_service_mix == 'both' %}
             {# url-prefix guards against the querystring tag emitting an empty href once all params clear #}
-            <a href="{% url 'job_list' %}{% querystring type=None page=None damage_type=None %}"
-               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                All Jobs
-            </a>
-            <a href="{% querystring type='repair' page=None %}"
-               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if type_filter == 'repair' %}bg-emerald-600 text-white border-emerald-600{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                Repairs
-            </a>
-            <a href="{% querystring type='replacement' page=None damage_type=None %}"
-               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if type_filter == 'replacement' %}bg-purple-600 text-white border-purple-600{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                Replacements
-            </a>
-        </div>
-        {% endif %}
+            <div class="inline-flex items-center bg-gray-100 rounded-lg p-0.5 flex-shrink-0">
+                <a href="{% url 'job_list' %}{% querystring type=None page=None damage_type=None %}"
+                   class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'all' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+                    All
+                </a>
+                <a href="{% querystring type='repair' page=None %}"
+                   class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'repair' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+                    Repairs
+                </a>
+                <a href="{% querystring type='replacement' page=None damage_type=None %}"
+                   class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'replacement' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+                    Replacements
+                </a>
+            </div>
+            {% endif %}
 
-        <!-- Fleet vs Individual (general public) -->
-        <div class="flex gap-2 mb-3">
-            <a href="{% url 'job_list' %}{% querystring customer_type=None page=None %}"
-               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if customer_type_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                All
-            </a>
-            <a href="{% querystring customer_type='fleet' page=None %}"
-               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if customer_type_filter == 'fleet' %}bg-sky-700 text-white border-sky-700{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                <i class="fas fa-truck text-[10px] mr-1"></i>Fleet
-            </a>
-            <a href="{% querystring customer_type='individual' page=None %}"
-               class="flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if customer_type_filter == 'individual' %}bg-teal-600 text-white border-teal-600{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                <i class="fas fa-user text-[10px] mr-1"></i>Individual
-            </a>
-        </div>
+            <select onchange="filterByStatus(this.value)" aria-label="Filter by status"
+                    class="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 bg-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                <option value="all">All statuses</option>
+                {% for status_code, status_label in queue_choices %}
+                <option value="{{ status_code }}" {% if status_filter == status_code %}selected{% endif %}>{{ status_label }}</option>
+                {% endfor %}
+            </select>
 
-        <!-- Status Pill Filters -->
-        <div class="flex gap-2 mb-4 overflow-x-auto pill-scroll pb-1">
-            {# Same empty-href guard as the All Jobs chip above. #}
-            <a href="{% url 'job_list' %}{% querystring status=None page=None %}"
-               class="status-pill flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if status_filter == 'all' %}bg-gray-900 text-white border-gray-900{% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                All
-            </a>
-            {% for status_code, status_label in queue_choices %}
-            <a href="{% querystring status=status_code page=None %}"
-               class="status-pill flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
-                      {% if status_filter == status_code %}
-                        {% if status_code == 'COMPLETED' %}bg-green-600 text-white border-green-600
-                        {% elif status_code == 'IN_PROGRESS' %}bg-brand-600 text-white border-brand-600
-                        {% elif status_code == 'APPROVED' %}bg-indigo-600 text-white border-indigo-600
-                        {% elif status_code == 'PENDING' %}bg-amber-500 text-white border-amber-500
-                        {% elif status_code == 'REQUESTED' %}bg-yellow-500 text-white border-yellow-500
-                        {% elif status_code == 'DENIED' %}bg-red-600 text-white border-red-600
-                        {% else %}bg-gray-600 text-white border-gray-600{% endif %}
-                      {% else %}bg-white text-gray-600 border-gray-300 hover:border-gray-400{% endif %}">
-                {{ status_label }}
-            </a>
-            {% endfor %}
+            <form method="get" class="relative flex-1 min-w-[10rem] max-w-xs">
+                {% comment %}Hidden fields keep the other filters alive when the
+                search submits — this form works without JavaScript.{% endcomment %}
+                {% if status_filter != 'all' %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+                {% if type_filter != 'all' %}<input type="hidden" name="type" value="{{ type_filter }}">{% endif %}
+                {% if customer_type_filter != 'all' %}<input type="hidden" name="customer_type" value="{{ customer_type_filter }}">{% endif %}
+                {% if unit_search %}<input type="hidden" name="unit_search" value="{{ unit_search }}">{% endif %}
+                {% if damage_type_filter != 'all' %}<input type="hidden" name="damage_type" value="{{ damage_type_filter }}">{% endif %}
+                {% if date_from %}<input type="hidden" name="date_from" value="{{ date_from }}">{% endif %}
+                {% if date_to %}<input type="hidden" name="date_to" value="{{ date_to }}">{% endif %}
+                {% if assignment_filter != 'all' %}<input type="hidden" name="assignment" value="{{ assignment_filter }}">{% endif %}
+                <input type="hidden" name="sort" value="{{ sort_by }}">
+                <input type="hidden" name="page_size" value="{{ page_size }}">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
+                <input type="search" name="customer_search" value="{{ customer_search }}" placeholder="Search customers&hellip;"
+                       class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+            </form>
+
+            <button type="button" onclick="toggleFilters()"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
+                <i class="fas fa-sliders-h text-xs"></i>
+                Filters
+                {% if active_filter_count %}
+                <span class="num inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-brand-600 text-white text-xs font-semibold">{{ active_filter_count }}</span>
+                {% endif %}
+                <i id="filter-toggle-icon" class="fas fa-chevron-down text-xs transition-transform"></i>
+            </button>
         </div>
 
         <!-- Expandable Filters -->
         <div class="mb-4">
-            <button onclick="toggleFilters()" class="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 font-medium gap-1.5">
-                <i class="fas fa-sliders-h text-xs"></i>
-                <span id="filter-toggle-text">More Filters</span>
-                <i id="filter-toggle-icon" class="fas fa-chevron-down text-xs transition-transform"></i>
-            </button>
-
             <!-- Active Filter Chips -->
-            {% if customer_search or unit_search or damage_type_filter != 'all' or date_from or date_to or assignment_filter != 'all' %}
-            <div class="flex items-center flex-wrap gap-2 mt-2">
-                {% if customer_search %}
-                <span class="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                    <i class="fas fa-user text-[10px]"></i> {{ customer_search }}
-                    <a href="javascript:removeFilter('customer_search')" class="ml-1 hover:text-green-600">&times;</a>
+            {% if customer_type_filter != 'all' or unit_search or damage_type_filter != 'all' or date_from or date_to or assignment_filter != 'all' %}
+            <div class="flex items-center flex-wrap gap-2 mb-2">
+                {% if customer_type_filter != 'all' %}
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                    {{ customer_type_filter|title }}
+                    <a href="javascript:removeFilter('customer_type')" class="ml-1 hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if unit_search %}
-                <span class="inline-flex items-center gap-1 px-3 py-1 bg-brand-100 text-brand-800 rounded-full text-xs font-medium">
-                    <i class="fas fa-hashtag text-[10px]"></i> {{ unit_search }}
-                    <a href="javascript:removeFilter('unit_search')" class="ml-1 hover:text-brand-600">&times;</a>
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                    Unit {{ unit_search }}
+                    <a href="javascript:removeFilter('unit_search')" class="ml-1 hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if damage_type_filter != 'all' %}
-                <span class="inline-flex items-center gap-1 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     {{ damage_type_filter }}
-                    <a href="javascript:removeFilter('damage_type')" class="ml-1 hover:text-purple-600">&times;</a>
+                    <a href="javascript:removeFilter('damage_type')" class="ml-1 hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if date_from %}
@@ -190,9 +168,9 @@
                 </span>
                 {% endif %}
                 {% if assignment_filter != 'all' %}
-                <span class="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
-                    {{ assignment_filter }}
-                    <a href="javascript:removeFilter('assignment')" class="ml-1 hover:text-orange-600">&times;</a>
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
+                    {{ assignment_filter|title }}
+                    <a href="javascript:removeFilter('assignment')" class="ml-1 hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 <a href="{% url 'job_list' %}" class="text-xs text-gray-400 hover:text-gray-600 ml-1">Clear all</a>
@@ -203,21 +181,23 @@
                 <form method="get" id="filter-form" class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 mb-1">Customer</label>
-                            <input type="text" name="customer_search" value="{{ customer_search }}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                                   placeholder="Search by name...">
-                        </div>
-                        <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">Unit #</label>
                             <input type="text" name="unit_search" value="{{ unit_search }}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                                    placeholder="Search unit...">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Customer Type</label>
+                            <select name="customer_type" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                                <option value="all" {% if customer_type_filter == 'all' %}selected{% endif %}>All Customers</option>
+                                <option value="fleet" {% if customer_type_filter == 'fleet' %}selected{% endif %}>Fleet</option>
+                                <option value="individual" {% if customer_type_filter == 'individual' %}selected{% endif %}>Individual</option>
+                            </select>
                         </div>
                         {% if shop_offers_repairs %}
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">Damage Type</label>
-                            <select name="damage_type" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                            <select name="damage_type" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                                 <option value="all" {% if damage_type_filter == 'all' %}selected{% endif %}>All Types</option>
                                 {% for damage_code, damage_label in damage_types %}
                                 <option value="{{ damage_code }}" {% if damage_type_filter == damage_code %}selected{% endif %}>{{ damage_label }}</option>
@@ -228,17 +208,17 @@
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">From Date</label>
                             <input type="date" name="date_from" value="{{ date_from }}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">To Date</label>
                             <input type="date" name="date_to" value="{{ date_to }}"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                         </div>
                         {% if is_admin or technician.is_manager %}
                         <div>
                             <label class="block text-xs font-medium text-gray-500 mb-1">Assignment</label>
-                            <select name="assignment" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                            <select name="assignment" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                                 <option value="all" {% if assignment_filter == 'all' %}selected{% endif %}>All Jobs</option>
                                 <option value="mine" {% if assignment_filter == 'mine' %}selected{% endif %}>My Jobs</option>
                                 <option value="unassigned" {% if assignment_filter == 'unassigned' %}selected{% endif %}>Unassigned</option>
@@ -248,16 +228,36 @@
                             </select>
                         </div>
                         {% endif %}
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Sort By</label>
+                            <select name="sort" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                                <option value="-service_date" {% if sort_by == '-service_date' %}selected{% endif %}>Newest First</option>
+                                <option value="service_date" {% if sort_by == 'service_date' %}selected{% endif %}>Oldest First</option>
+                                <option value="customer__name" {% if sort_by == 'customer__name' %}selected{% endif %}>Customer A&ndash;Z</option>
+                                <option value="-customer__name" {% if sort_by == '-customer__name' %}selected{% endif %}>Customer Z&ndash;A</option>
+                                <option value="-cost" {% if sort_by == '-cost' %}selected{% endif %}>Cost High&ndash;Low</option>
+                                <option value="cost" {% if sort_by == 'cost' %}selected{% endif %}>Cost Low&ndash;High</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Per Page</label>
+                            <select name="page_size" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                                <option value="20" {% if page_size == 20 %}selected{% endif %}>20</option>
+                                <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+                                <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+                            </select>
+                        </div>
                     </div>
-                    <!-- Preserve current status/type filter & sort -->
+                    <!-- Preserve the always-visible toolbar filters -->
                     {% if status_filter and status_filter != 'all' %}
                     <input type="hidden" name="status" value="{{ status_filter }}">
                     {% endif %}
                     {% if type_filter and type_filter != 'all' %}
                     <input type="hidden" name="type" value="{{ type_filter }}">
                     {% endif %}
-                    <input type="hidden" name="sort" value="{{ sort_by }}">
-                    <input type="hidden" name="page_size" value="{{ page_size }}">
+                    {% if customer_search %}
+                    <input type="hidden" name="customer_search" value="{{ customer_search }}">
+                    {% endif %}
                     <div class="mt-3 flex items-center justify-between">
                         <a href="{% url 'job_list' %}" class="text-sm text-gray-500 hover:text-gray-700">Clear all</a>
                         <button type="submit" class="btn-primary">
@@ -268,27 +268,11 @@
             </div>
         </div>
 
-        <!-- Sort & Page Size (desktop) -->
-        <div class="hidden sm:flex items-center justify-between mb-3">
-            <div class="flex items-center gap-3 text-sm text-gray-500">
-                <span>{{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ total_jobs }}</span>
-                <select onchange="changePageSize(this.value)" class="px-2 py-1 border border-gray-300 rounded-md text-sm focus:ring-green-500 focus:border-green-500">
-                    <option value="20" {% if page_size == 20 %}selected{% endif %}>20/page</option>
-                    <option value="50" {% if page_size == 50 %}selected{% endif %}>50/page</option>
-                    <option value="100" {% if page_size == 100 %}selected{% endif %}>100/page</option>
-                </select>
-            </div>
-            <select onchange="changeSort(this.value)" class="px-2 py-1 border border-gray-300 rounded-md text-sm text-gray-600 focus:ring-green-500 focus:border-green-500">
-                <option value="-service_date" {% if sort_by == '-service_date' %}selected{% endif %}>Newest First</option>
-                <option value="service_date" {% if sort_by == 'service_date' %}selected{% endif %}>Oldest First</option>
-                <option value="customer__name" {% if sort_by == 'customer__name' %}selected{% endif %}>Customer A–Z</option>
-                <option value="-customer__name" {% if sort_by == '-customer__name' %}selected{% endif %}>Customer Z–A</option>
-                <option value="-cost" {% if sort_by == '-cost' %}selected{% endif %}>Cost High–Low</option>
-                <option value="cost" {% if sort_by == 'cost' %}selected{% endif %}>Cost Low–High</option>
-            </select>
-        </div>
-
         {% if jobs %}
+        <!-- Result count -->
+        <div class="hidden sm:block text-sm text-gray-500 mb-3">
+            <span class="num">{{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}</span> of <span class="num">{{ total_jobs }}</span>
+        </div>
         <!-- ===== MOBILE: Card Layout ===== -->
         <div class="sm:hidden space-y-3">
             {% for job in jobs %}
@@ -344,7 +328,7 @@
                 </div>
                 {% endif %}
                 {% if job.damage_photo_before or job.damage_photo_after or job.additional_photos %}
-                <div class="flex items-center gap-1 text-xs text-green-600 mt-1.5">
+                <div class="flex items-center gap-1 text-xs text-gray-500 mt-1.5">
                     <i class="fas fa-camera"></i> Photos attached
                 </div>
                 {% endif %}
@@ -359,7 +343,7 @@
                     <tr>
                         {% if shop_offers_repairs %}
                         <th class="px-4 py-3 text-left w-10">
-                            <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)" class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" title="Select all pending repairs">
+                            <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)" class="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500" title="Select all pending repairs">
                         </th>
                         {% endif %}
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
@@ -379,12 +363,12 @@
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     {% for job in jobs %}
-                    <tr class="hover:bg-gray-50 transition-colors {% if job.queue_status == 'REQUESTED' %}bg-yellow-50/50{% endif %}">
+                    <tr class="group hover:bg-gray-50 transition-colors {% if job.queue_status == 'REQUESTED' %}bg-yellow-50/50{% endif %}">
                         {% if shop_offers_repairs %}
                         <td class="px-4 py-3">
                             {% if job.service_type == 'repair' %}
                                 {% if job.queue_status == 'PENDING' or job.queue_status == 'REQUESTED' or is_admin and job.queue_status != 'COMPLETED' %}
-                                <input type="checkbox" class="repair-checkbox w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" data-repair-id="{{ job.id }}" data-status="{{ job.queue_status }}" onchange="updateBulkToolbar()">
+                                <input type="checkbox" class="repair-checkbox w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500" data-repair-id="{{ job.id }}" data-status="{{ job.queue_status }}" onchange="updateBulkToolbar()">
                                 {% else %}
                                 <span class="text-gray-200">—</span>
                                 {% endif %}
@@ -457,27 +441,28 @@
                         <td class="px-4 py-3 text-right">
                             <div class="flex justify-end items-center gap-1">
                                 {% if job.damage_photo_before or job.damage_photo_after or job.additional_photos %}
-                                <i class="fas fa-camera text-green-500 text-xs mr-1" title="Has photos"></i>
+                                <i class="fas fa-camera text-gray-400 text-xs mr-1" title="Has photos"></i>
                                 {% endif %}
-                                {% if job.service_type == 'repair' %}
-                                <a href="{% url 'repair_detail' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
-                                    View
-                                </a>
-                                {% if is_admin %}
-                                <a href="{% url 'update_repair' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 rounded-md hover:bg-brand-100 transition-colors">
-                                    Edit
-                                </a>
-                                {% endif %}
-                                {% else %}
-                                <a href="{% url 'replacement_detail' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 transition-colors">
-                                    View
-                                </a>
-                                {% if is_admin %}
-                                <a href="{% url 'replacement_edit' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 rounded-md hover:bg-brand-100 transition-colors">
-                                    Edit
-                                </a>
-                                {% endif %}
-                                {% endif %}
+                                <div class="relative">
+                                    <button type="button" onclick="toggleMenu(this)" aria-haspopup="menu" aria-expanded="false"
+                                            class="kebab-btn w-8 h-8 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                                            title="Actions for {{ job.customer.name }} unit {{ job.unit_number }}">
+                                        <i class="fas fa-ellipsis-v"></i>
+                                    </button>
+                                    <div class="dropdown-menu hidden text-left surface-float w-36 py-1 z-30" role="menu">
+                                        {% if job.service_type == 'repair' %}
+                                        <a role="menuitem" href="{% url 'repair_detail' job.id %}" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">View</a>
+                                        {% if is_admin %}
+                                        <a role="menuitem" href="{% url 'update_repair' job.id %}" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit</a>
+                                        {% endif %}
+                                        {% else %}
+                                        <a role="menuitem" href="{% url 'replacement_detail' job.id %}" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">View</a>
+                                        {% if is_admin %}
+                                        <a role="menuitem" href="{% url 'replacement_edit' job.id %}" class="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit</a>
+                                        {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </div>
                             </div>
                         </td>
                     </tr>
@@ -536,8 +521,6 @@
         </div>
     </div>
 
-    <!-- Mobile FAB replaced by fab_quick_actions.html include -->
-
     {% if shop_offers_repairs %}
     <!-- Bulk Action Toolbar (repair rows only — replacements have no bulk endpoints) -->
     <div id="bulk-toolbar" class="bulk-toolbar fixed bottom-0 left-0 right-0 bg-gray-900 z-50">
@@ -575,16 +558,13 @@
 // Toggle filter panel
 function toggleFilters() {
     const panel = document.getElementById('filter-panel');
-    const toggleText = document.getElementById('filter-toggle-text');
     const toggleIcon = document.getElementById('filter-toggle-icon');
     if (panel.classList.contains('hidden')) {
         panel.classList.remove('hidden');
-        toggleText.textContent = 'Hide Filters';
         toggleIcon.style.transform = 'rotate(180deg)';
         localStorage.setItem('filterPanelOpen', 'true');
     } else {
         panel.classList.add('hidden');
-        toggleText.textContent = 'More Filters';
         toggleIcon.style.transform = 'rotate(0deg)';
         localStorage.setItem('filterPanelOpen', 'false');
     }
@@ -615,19 +595,44 @@ function removeFilter(param) {
     window.location.href = url.toString();
 }
 
-function changePageSize(size) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('page_size', size);
-    url.searchParams.set('page', '1');
-    window.location.href = url.toString();
+// Dropdown menus (header quick actions + row kebabs). Menus are positioned
+// fixed so the table's rounded overflow-hidden container can't clip them.
+function toggleMenu(btn) {
+    const menu = btn.parentElement.querySelector('.dropdown-menu');
+    const wasOpen = !menu.classList.contains('hidden');
+    closeAllMenus();
+    if (wasOpen) return;
+    // Measure and position while the menu is still hidden — unhiding a
+    // statically-positioned block first shifts the button and the menu
+    // opens 150px off target.
+    const r = btn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = (r.bottom + 4) + 'px';
+    menu.style.right = Math.max(8, document.documentElement.clientWidth - r.right) + 'px';
+    menu.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    btn.classList.add('menu-open');
+    const mr = menu.getBoundingClientRect();
+    if (mr.bottom > window.innerHeight - 8) {
+        menu.style.top = (r.top - mr.height - 4) + 'px';
+    }
 }
 
-function changeSort(sortBy) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('sort', sortBy);
-    url.searchParams.set('page', '1');
-    window.location.href = url.toString();
+function closeAllMenus() {
+    document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
+    document.querySelectorAll('[aria-haspopup="menu"]').forEach(b => {
+        b.setAttribute('aria-expanded', 'false');
+        b.classList.remove('menu-open');
+    });
 }
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('[aria-haspopup="menu"], .dropdown-menu')) closeAllMenus();
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeAllMenus();
+});
+window.addEventListener('scroll', closeAllMenus, { passive: true });
 
 // Bulk selection (repair rows only)
 function toggleSelectAll(checkbox) {
@@ -643,13 +648,8 @@ function updateBulkToolbar() {
     if (count > 0) {
         toolbar.classList.add('visible');
         document.getElementById('selected-count').textContent = count;
-        // Hide FAB when bulk toolbar is shown
-        const fab = document.getElementById('fabContainer');
-        if (fab) fab.style.display = 'none';
     } else {
         toolbar.classList.remove('visible');
-        const fab = document.getElementById('fabContainer');
-        if (fab) fab.style.display = '';
     }
     const all = document.querySelectorAll('.repair-checkbox');
     const selectAll = document.getElementById('select-all');
@@ -763,5 +763,4 @@ function exportToCSV() {
     window.URL.revokeObjectURL(url);
 }
 </script>
-{% include "includes/fab_quick_actions.html" with fab_role="tech" %}
 {% endblock %}

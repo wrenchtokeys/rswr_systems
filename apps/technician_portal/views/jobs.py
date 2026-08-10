@@ -222,6 +222,17 @@ def job_list(request):
     paginator = Paginator(jobs, page_size)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
+    # Count for the "Filters" button badge — only the filters that live behind
+    # the disclosure, not the always-visible type/status/search controls.
+    active_filter_count = sum([
+        customer_type_filter != 'all',
+        bool(unit_search),
+        damage_type_filter != 'all',
+        bool(date_from),
+        bool(date_to),
+        assignment_filter != 'all',
+    ])
+
     context = {
         'jobs': page_obj,
         'page_obj': page_obj,
@@ -236,6 +247,7 @@ def job_list(request):
         'date_from': date_from,
         'date_to': date_to,
         'assignment_filter': assignment_filter,
+        'active_filter_count': active_filter_count,
         'sort_by': sort_by,
         'page_size': page_size,
         'queue_choices': Repair.QUEUE_CHOICES,
