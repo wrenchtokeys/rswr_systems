@@ -13,7 +13,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 1 | S3 · `blue-*` → `brand-*` codemod + brand CSS in every shell | **DONE** 2026-08-09 |
 | 1 | S4 · Tabular figures on money | **DONE** 2026-08-09 (partial — see S4 notes) |
 | 2 | S5 · Owner dashboard: kill the green slab, give revenue meaning | **DONE** 2026-08-09 |
-| 2 | S6 · Jobs page: 25 controls → 3 | TODO |
+| 2 | S6 · Jobs page: 25 controls → 3 | **DONE** 2026-08-09 |
 | 2 | S7 · Job/repair form: drop the green header and ALL-CAPS section tiles | TODO |
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | TODO |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | TODO |
@@ -240,21 +240,47 @@ material ladder, and the four pastel icon tints are now neutral.
   bug a **second** time. It renders explanatory notes as visible text at the top of every
   page and fails silently — no exception, no 500, nothing red. Now it fails a test.
 
-## S6 · Jobs page: 25 controls → 3
+## S6 · Jobs page: 25 controls → 3 — DONE
 
-**Files:** `templates/technician_portal/job_list.html`
+Branch `feat/ui-s6-jobs-controls` (stacked on S5). Before the first job row there are
+now exactly four things: a segmented type control, a status dropdown, a search box, and
+a "Filters" button with an active-count badge. The 4 stat tiles became one quiet summary
+line under the H1 (each count is a link that applies the filter). Row actions collapsed
+to a kebab; the FAB is gone from this page.
 
-Today, before the first job row: 4 stat tiles, 17 filter pills across 3 rows,
-"More Filters", a per-page select, and a sort select.
+**Notes**
 
-- One segmented control (All / Repairs / Replacements) + one status dropdown + search.
-  Everything else behind a "Filters" button with an active-filter count badge.
-- Active pills are currently `bg-gray-900` — a fourth accent. Use `brand-600`.
-- The stat tile numbers are colour-coded orange/blue/purple/green for no semantic reason.
-  Make them one colour, or delete the tiles and put the counts in the filter labels.
-- Row actions (`View | Edit` text links) → one kebab revealed on hover/focus.
-  Must stay keyboard-reachable and remain tappable on mobile.
-- Remove the floating `+` FAB on this page — "New Job" is already on screen.
+- **The FAB wasn't just a duplicate "New Job"** — it carried Multi-Break, Receive
+  Payment and New Customer, and `tests/test_unified_job_list.py::FabReceivePaymentTests`
+  pins Receive Payment to this page for managers. Those actions moved into a `⋯` menu
+  next to the primary button (same `is_admin or technician.is_manager` gate), so the
+  tests pass unchanged. Export CSV folded into the same menu.
+- **Deliberate deviation:** the session said "active pills → `brand-600`". The pills
+  became a segmented control with the neutral white-thumb treatment instead (track
+  `bg-gray-100`, active `bg-white shadow-sm`), which removes the black accent without
+  spending colour on a control that doesn't need it. The brand colour appears once, on
+  the Filters count badge.
+- **Dropdown menus are positioned `fixed` via JS**, not `absolute` — the table wrapper
+  is `overflow-hidden` for its rounded corners and would clip an absolute menu. Menus
+  flip upward near the viewport bottom and close on scroll/click-out/Escape.
+- **Measure the button *before* unhiding the menu.** Removing `hidden` first makes the
+  menu a static block for one frame, which widens its flex container and shifts the
+  button ~150px — the rect you then read is stale and the menu opens misaligned. Caught
+  only in the browser; no test would ever see this.
+- Menus inside table cells inherit the cell's `text-align: right` — the shared
+  `.dropdown-menu` carries `text-left`.
+- Kebab reveal is `opacity-0 group-hover:opacity-100` **plus** `tr:focus-within` and a
+  `.menu-open` state, so it stays keyboard-reachable. Mobile is unaffected: cards are
+  whole-card links there (and the mobile table doesn't render). "New Job" is now visible
+  on mobile in the header since the FAB no longer provides it.
+- Search is a plain GET form; every other live filter rides along as hidden inputs so it
+  works without JS. Sort + per-page moved into the Filters panel as ordinary form
+  fields; the count line (`1–20 of 43`) stays above the table.
+- `active_filter_count` (panel filters only, not the visible controls) is computed in
+  the view. First adopter of `.surface-float` from S2.
+- Leftover for S8: the type badges (emerald/purple), the REQUESTED row's amber status
+  text, and warranty/goodwill chips are still hand-coloured; the bulk toolbar is still
+  `bg-gray-900` (kept — it's a fixed mode bar, not a pill).
 
 ## S7 · Job/repair form: drop the green header and ALL-CAPS section tiles
 
