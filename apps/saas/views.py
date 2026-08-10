@@ -369,6 +369,11 @@ def privacy_policy(request):
     return render(request, 'saas/privacy_policy.html')
 
 
+def sms_program(request):
+    """Public SMS program disclosure page (toll-free registration opt-in evidence)."""
+    return render(request, 'saas/sms_program.html')
+
+
 # ------------------------------------------------------------------
 # 3. Onboarding wizard
 # ------------------------------------------------------------------

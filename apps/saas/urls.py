@@ -27,6 +27,7 @@ urlpatterns = [
     path('pricing/', views.pricing_view, name='pricing'),
     path('terms/', views.terms_of_service, name='terms_of_service'),
     path('privacy/', views.privacy_policy, name='privacy_policy'),
+    path('sms/', views.sms_program, name='sms_program'),
 
     # Post-signup onboarding
     path('onboarding/', views.onboarding_view, name='onboarding'),
