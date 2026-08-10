@@ -155,11 +155,13 @@ class InvoiceService:
         
         # --- Colors + logo come from the tenant (shop), never the platform
         # EmailBrandingConfig singleton — the singleton put the platform
-        # owner's logo/colors on every shop's invoices.
-        brand_color = getattr(self.tenant, 'brand_color', '') if self.tenant else ''
+        # owner's logo/colors on every shop's invoices. Both are gated on
+        # the plan's custom_branding feature (Tenant.branding_enabled).
+        branded = bool(self.tenant and self.tenant.branding_enabled)
+        brand_color = getattr(self.tenant, 'brand_color', '') if branded else ''
         self.HEADER_COLOR = brand_color or "#4299E1"
         self.PRIMARY_COLOR = brand_color or "#2C5282"
-        if self.tenant and self.tenant.logo:
+        if branded and self.tenant.logo:
             try:
                 self.logo_url = self.tenant.logo.url
             except Exception as e:

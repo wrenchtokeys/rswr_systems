@@ -15,15 +15,26 @@ from core.email_utils import send_branded_email, shop_sender
 from core.models.email_branding import EmailBrandingConfig
 
 
-def make_tenant(business_name='Test Shop', email='owner@test.com', first_name='Test'):
+def make_tenant(business_name='Test Shop', email='owner@test.com', first_name='Test',
+                branded=True):
+    """
+    branded=True upgrades the tenant to the pro plan — custom branding is a
+    plan feature (Tenant.branding_enabled), and most tests here assert the
+    branded behavior. Pass branded=False to test the starter/trial gate.
+    """
     SubscriptionPlan.objects.get_or_create(
         slug='trial',
         defaults={'name': 'Trial', 'monthly_price': 0, 'trial_days': 30, 'is_active': True},
     )
-    return create_tenant_with_owner(
+    result = create_tenant_with_owner(
         business_name=business_name, email=email,
         password='testpass123!', first_name=first_name, last_name='Owner',
     )
+    if branded:
+        tenant = result['tenant']
+        tenant.plan = 'pro'
+        tenant.save()
+    return result
 
 
 class BrandShadesTests(TestCase):
@@ -217,3 +228,81 @@ class PortalBrandCssTests(TestCase):
 
     def test_renders_nothing_without_brand_color(self):
         self.assertEqual(self._render(), '')
+
+
+class BrandingPlanGateTests(TestCase):
+    """Custom branding is the plans' custom_branding feature: Pro and up.
+    Starter/trial shops keep the stock RS Systems look everywhere, even
+    with a logo and color saved."""
+
+    def setUp(self):
+        result = make_tenant(branded=False)
+        self.tenant = result['tenant']
+        self.user = result['user']
+        self.tenant.brand_color = '#8b0000'
+        self.tenant.save()
+
+    def test_trial_and_starter_are_not_branded(self):
+        self.assertFalse(self.tenant.branding_enabled)
+        self.tenant.plan = 'starter'
+        self.assertFalse(self.tenant.branding_enabled)
+
+    def test_pro_enterprise_and_platform_owner_are_branded(self):
+        self.tenant.plan = 'pro'
+        self.assertTrue(self.tenant.branding_enabled)
+        self.tenant.plan = 'enterprise'
+        self.assertTrue(self.tenant.branding_enabled)
+        self.tenant.plan = 'trial'
+        self.tenant.is_platform_owner = True
+        self.assertTrue(self.tenant.branding_enabled)
+
+    def test_brand_css_not_emitted_for_unbranded_plan(self):
+        class Req:
+            pass
+        req = Req()
+        req.tenant = self.tenant
+        html = Template('{% load branding_tags %}{% tenant_brand_css %}').render(
+            Context({'request': req})
+        )
+        self.assertEqual(html, '')
+
+    def test_email_context_skips_logo_and_color_for_unbranded_plan(self):
+        config = EmailBrandingConfig.get_instance()
+        context = EmailBrandingConfig.get_tenant_context(self.tenant)
+        self.assertEqual(context['primary_color'], config.primary_color)
+        self.assertEqual(context['logo_url'], '')
+        # Identity still comes from the shop on every plan.
+        self.assertEqual(context['company_name'], self.tenant.name)
+
+    def test_branded_email_keeps_default_colors_for_unbranded_plan(self):
+        send_branded_email(
+            subject='Hello', recipient_list=['c@example.com'],
+            headline='Hi', body_paragraphs=['p'], tenant=self.tenant,
+        )
+        html = mail.outbox[0].alternatives[0][0]
+        self.assertNotIn('#8b0000', html)
+        # Still sent as the shop.
+        self.assertIn(self.tenant.name, mail.outbox[0].from_email)
+
+    def test_invoice_pdf_keeps_default_colors_for_unbranded_plan(self):
+        from apps.billing.services.invoice_service import InvoiceService
+        service = InvoiceService(tenant=self.tenant)
+        self.assertNotEqual(service.HEADER_COLOR, '#8b0000')
+        self.assertNotEqual(service.PRIMARY_COLOR, '#8b0000')
+
+    def test_navbar_keeps_stock_rs_branding_for_unbranded_plan(self):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+        response = self.client.get('/owner/')
+        self.assertContains(response, 'RS Systems')
+
+    def test_settings_shows_upgrade_note_for_unbranded_plan(self):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session['tenant_id'] = self.tenant.id
+        session.save()
+        response = self.client.get('/owner/settings/')
+        self.assertContains(response, 'included in the')
+        self.assertContains(response, 'Upgrade your plan')

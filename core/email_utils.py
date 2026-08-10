@@ -95,7 +95,7 @@ def send_branded_email(
         company_phone = tenant.business_phone or ''
         company_address = tenant.business_address or ''
         reply_to_email = tenant.business_email or ''
-        if getattr(tenant, 'brand_color', ''):
+        if getattr(tenant, 'brand_color', '') and tenant.branding_enabled:
             primary_color = tenant.brand_color
             button_color = tenant.brand_color
 

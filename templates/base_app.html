@@ -30,13 +30,15 @@
                 <div class="flex items-center gap-4 shrink-0">
                     {% comment %}
                     Shop logo + name, same pattern as the customer portal shell.
-                    The Pro plan sells "your logo & colors on everything" — before
-                    this, owners and techs saw the RS mark no matter what they
-                    uploaded, and only the colors changed.
+                    The Pro plan sells "your logo & colors on everything" — gated
+                    on Tenant.branding_enabled (the plans' custom_branding
+                    feature); other plans keep the stock RS mark. The logo keeps
+                    its aspect ratio (object-contain, not a square crop) so wide
+                    logos stay legible.
                     {% endcomment %}
                     <a href="{% if is_owner_or_manager %}{% url 'owner_dashboard' %}{% else %}{% url 'technician_dashboard' %}{% endif %}" class="flex items-center space-x-2 shrink-0 min-w-0">
-                        {% if request.tenant and request.tenant.logo %}
-                        <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="w-8 h-8 rounded-lg object-cover flex-shrink-0">
+                        {% if request.tenant and request.tenant.branding_enabled and request.tenant.logo %}
+                        <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-10 w-auto max-w-[11rem] object-contain flex-shrink-0">
                         {% else %}
                         <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0">
                             <svg viewBox="0 0 40 40" class="w-5 h-5">
@@ -47,7 +49,7 @@
                         </div>
                         {% endif %}
                         <span class="text-xl font-bold text-gray-900 hidden sm:inline truncate max-w-[14rem]">
-                            {% if request.tenant %}{{ request.tenant.name }}{% else %}RS Systems{% endif %}
+                            {% if request.tenant and request.tenant.branding_enabled %}{{ request.tenant.name }}{% else %}RS Systems{% endif %}
                         </span>
                     </a>
                     <div class="{% if is_owner_or_manager %}hidden lg:flex{% else %}hidden md:flex{% endif %} items-center space-x-4">
