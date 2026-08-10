@@ -10,6 +10,7 @@ Author: Amelia (Clawdbot AI)
 
 import logging
 import os
+from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login
@@ -717,6 +718,188 @@ def _get_billing_context(tenant):
         }
 
 
+# ------------------------------------------------------------------
+# 4a. Revenue hero (UI_MAGIC_SESSIONS S5)
+# ------------------------------------------------------------------
+
+REVENUE_PERIODS = {
+    'month': 'This month',
+    'last_month': 'Last month',
+    '90d': 'Last 90 days',
+}
+
+
+def _revenue_window(period, now):
+    """Resolve (start, end, prev_start, prev_end, compare_label) for a period.
+
+    The current-month window compares against the *same elapsed days* of the
+    previous month, not the whole month. Comparing a 3-days-in month against a
+    full one reads as "revenue down 90%" every time the month turns over, which
+    is worse than showing nothing.
+    """
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = day_start.replace(day=1)
+
+    if period == 'last_month':
+        end = month_start
+        start = (month_start - timedelta(days=1)).replace(day=1)
+        prev_end = start
+        prev_start = (start - timedelta(days=1)).replace(day=1)
+        return start, end, prev_start, prev_end, 'vs the month before'
+
+    if period == '90d':
+        start = day_start - timedelta(days=89)
+        end = now
+        prev_end = start
+        prev_start = start - timedelta(days=90)
+        return start, end, prev_start, prev_end, 'vs the previous 90 days'
+
+    # Default: this month so far, compared to the same elapsed days last month.
+    start = month_start
+    end = now
+    prev_start = (month_start - timedelta(days=1)).replace(day=1)
+    elapsed = now - month_start
+    prev_end = min(prev_start + elapsed, month_start)
+    return start, end, prev_start, prev_end, 'vs the same days last month'
+
+
+def _completed_revenue(tenant, start, end):
+    """Total completed repair + replacement revenue in [start, end)."""
+    from apps.technician_portal.models import Repair, Replacement
+    from django.db.models import Sum
+    from decimal import Decimal
+
+    totals = []
+    for model in (Repair, Replacement):
+        totals.append(
+            model.objects.filter(
+                tenant=tenant,
+                queue_status='COMPLETED',
+                service_date__gte=start,
+                service_date__lt=end,
+            ).aggregate(total=Sum('cost'))['total'] or Decimal('0.00')
+        )
+    return totals[0], totals[1]
+
+
+def _revenue_sparkline(tenant, start, end):
+    """Daily completed-revenue totals for [start, end) as SVG polyline points.
+
+    Two aggregate queries (one per model), bucketed in the DB — never a row
+    walk. Returns '' when the window has no revenue at all, so the template can
+    omit the chart rather than draw a flat line that implies zero is a trend.
+    """
+    from apps.technician_portal.models import Repair, Replacement
+    from django.db.models import Sum
+    from django.db.models.functions import TruncDate
+    from decimal import Decimal
+
+    per_day = {}
+    for model in (Repair, Replacement):
+        rows = (
+            model.objects.filter(
+                tenant=tenant,
+                queue_status='COMPLETED',
+                service_date__gte=start,
+                service_date__lt=end,
+            )
+            .annotate(day=TruncDate('service_date'))
+            .values('day')
+            .annotate(total=Sum('cost'))
+        )
+        for row in rows:
+            if row['day'] is not None:
+                per_day[row['day']] = per_day.get(row['day'], Decimal('0.00')) + (
+                    row['total'] or Decimal('0.00')
+                )
+
+    if not per_day or all(v <= 0 for v in per_day.values()):
+        return {'points': '', 'area': ''}, False
+
+    days = max((end.date() - start.date()).days, 1)
+    series = [
+        float(per_day.get(start.date() + timedelta(days=i), 0) or 0)
+        for i in range(days + 1)
+    ]
+    peak = max(series) or 1.0
+    step = 100.0 / (len(series) - 1) if len(series) > 1 else 100.0
+    # viewBox is 0 0 100 30; y is inverted and inset 2px so the stroke isn't clipped.
+    points = ' '.join(
+        f'{i * step:.2f},{28 - (value / peak) * 26:.2f}'
+        for i, value in enumerate(series)
+    )
+    # Same path closed down to the baseline, so the line can carry a soft area
+    # fill — a bare 1px polyline at this aspect ratio reads as a divider rule,
+    # not a chart.
+    area = f'0,30 {points} 100,30'
+    return {'points': points, 'area': area}, True
+
+
+def _get_revenue_summary(tenant, period):
+    """Revenue hero context: total, split, trend vs the previous window, sparkline.
+
+    Deliberately separate from _get_billing_context() — that function's fallback
+    dict is asserted as an exact key set by
+    tests/bug_fixes/test_code001_exception_logging.py, and revenue trend is its
+    own concern anyway. Never raises: the dashboard must render without it.
+    """
+    from django.utils import timezone
+    from decimal import Decimal
+
+    period = period if period in REVENUE_PERIODS else 'month'
+    empty = {
+        'revenue_period': period,
+        'revenue_period_label': REVENUE_PERIODS[period],
+        'revenue_periods': REVENUE_PERIODS,
+        'revenue_total': Decimal('0.00'),
+        'revenue_repairs': Decimal('0.00'),
+        'revenue_replacements': Decimal('0.00'),
+        'revenue_delta_pct': None,
+        'revenue_delta_dir': '',
+        'revenue_compare_label': '',
+        'revenue_spark_points': '',
+        'revenue_spark_area': '',
+        'revenue_spark_has_data': False,
+    }
+
+    try:
+        now = timezone.now()
+        start, end, prev_start, prev_end, compare_label = _revenue_window(period, now)
+
+        repairs, replacements = _completed_revenue(tenant, start, end)
+        total = repairs + replacements
+        prev_repairs, prev_replacements = _completed_revenue(tenant, prev_start, prev_end)
+        prev_total = prev_repairs + prev_replacements
+
+        # No baseline means no honest percentage — show the comparison as absent
+        # rather than inventing "+100%" out of a division by zero.
+        delta_pct, delta_dir = None, ''
+        if prev_total > 0:
+            change = (total - prev_total) / prev_total * 100
+            delta_pct = int(round(abs(change)))
+            delta_dir = 'up' if change > 0 else ('down' if change < 0 else 'flat')
+            if delta_pct == 0:
+                delta_dir = 'flat'
+
+        spark, has_data = _revenue_sparkline(tenant, start, end)
+
+        return {
+            **empty,
+            'revenue_total': total,
+            'revenue_repairs': repairs,
+            'revenue_replacements': replacements,
+            'revenue_delta_pct': delta_pct,
+            'revenue_delta_dir': delta_dir,
+            'revenue_compare_label': compare_label,
+            'revenue_spark_points': spark['points'],
+            'revenue_spark_area': spark['area'],
+            'revenue_spark_has_data': has_data,
+        }
+    except Exception:
+        logger.exception("Failed to build revenue summary for tenant")
+        return empty
+
+
 @owner_or_manager_required
 def owner_dashboard(request):
     """Owner dashboard with trial banner, usage, quick actions, recent activity."""
@@ -808,6 +991,9 @@ def owner_dashboard(request):
         'billing_config': billing_config,
     }
     context.update(billing_context)
+    # Revenue hero. Layered on top of billing_context, which keeps its own
+    # total_revenue/repair_revenue keys untouched for back-compat.
+    context.update(_get_revenue_summary(tenant, request.GET.get('period', 'month')))
     return render(request, 'saas/owner_dashboard.html', context)
 
 
