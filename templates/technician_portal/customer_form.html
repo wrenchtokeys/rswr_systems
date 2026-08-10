@@ -117,6 +117,12 @@
                             {% if form.phone.errors %}
                             <p class="text-xs text-red-600 mt-1">{{ form.phone.errors.0 }}</p>
                             {% endif %}
+                            <label class="flex items-center gap-2 text-sm text-gray-600 mt-2 cursor-pointer">
+                                <input type="checkbox" name="{{ form.sms_opt_in.name }}" value="1"
+                                    {% if form.sms_opt_in.value %}checked{% endif %}
+                                    class="w-4 h-4 text-sky-600 border-gray-300 rounded focus:ring-sky-500">
+                                OK to text this customer (they've agreed to receive service texts)
+                            </label>
                         </div>
                     </div>
 

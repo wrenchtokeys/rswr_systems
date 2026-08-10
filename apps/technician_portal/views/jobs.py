@@ -282,6 +282,12 @@ def _resolve_technician_for_create(request, tenant, service_type):
     return ability_qs.first() or qs.first()
 
 
+def _job_form_sms_ready(tenant):
+    """Whether the send-invoice dialog may offer "Also text it"."""
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+    return InvoiceSendService.sms_ready(tenant)
+
+
 def _copy_to_email(request):
     """BCC address for "Send me a copy", or None when not requested /
     the acting user has no email on their account."""
@@ -436,6 +442,7 @@ def job_create(request):
                             'summary': service_summary(m),
                         } for m in matches[:3]]
                         return render(request, 'technician_portal/job_form.html', {
+                            'invoice_sms_ready': _job_form_sms_ready(tenant),
                             'form': form,
                             'allowed_types': allowed_types,
                             'user_can_invoices': user_can_invoices,
@@ -528,7 +535,8 @@ def job_create(request):
 
             if send_requested and service.queue_status == 'COMPLETED':
                 invoice, created, result, excluded = invoice_and_send(
-                    service, tenant, copy_to_email=_copy_to_email(request))
+                    service, tenant, copy_to_email=_copy_to_email(request),
+                    send_sms=bool(request.POST.get('send_sms')))
                 notify_invoice_outcome(request, invoice, created, result, excluded)
                 return redirect('owner_invoice_detail', invoice_id=invoice.id)
 
@@ -571,6 +579,7 @@ def job_create(request):
             tour_slug = 'job-form'
 
     return render(request, 'technician_portal/job_form.html', {
+        'invoice_sms_ready': _job_form_sms_ready(tenant),
         'form': form,
         'allowed_types': allowed_types,
         'user_can_invoices': user_can_invoices,
@@ -613,7 +622,8 @@ def repair_complete_and_invoice(request, repair_id):
 
     try:
         invoice, created, result, excluded = invoice_and_send(
-            repair, tenant, copy_to_email=_copy_to_email(request))
+            repair, tenant, copy_to_email=_copy_to_email(request),
+            send_sms=bool(request.POST.get('send_sms')))
     except ValueError as e:
         messages.error(request, str(e))
         return redirect('repair_detail', repair_id=repair.id)
