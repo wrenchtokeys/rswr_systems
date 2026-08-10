@@ -30,15 +30,15 @@
 
             <!-- Batch Context Banner (if part of batch) -->
             {% if repair.is_part_of_batch %}
-            <div class="px-6 py-4 bg-blue-50 border-b border-blue-200">
+            <div class="px-6 py-4 bg-brand-50 border-b border-brand-200">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
-                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="w-6 h-6 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
                         </svg>
                         <div>
-                            <h3 class="text-lg font-semibold text-blue-900">Part of Multi-Break Batch</h3>
-                            <p class="text-sm text-blue-700">Break {{ repair.break_number }} of {{ repair.total_breaks_in_batch }} for Unit {{ repair.unit_number }}</p>
+                            <h3 class="text-lg font-semibold text-brand-900">Part of Multi-Break Batch</h3>
+                            <p class="text-sm text-brand-700">Break {{ repair.break_number }} of {{ repair.total_breaks_in_batch }} for Unit {{ repair.unit_number }}</p>
                         </div>
                     </div>
                     {% if repair.repair_batch_id %}
@@ -134,16 +134,16 @@
 
             <!-- Warranty Claim Original Repair Reference -->
             {% if repair.is_warranty_claim %}
-            <div class="px-6 py-3 border-b bg-blue-50 border-blue-200">
+            <div class="px-6 py-3 border-b bg-brand-50 border-brand-200">
                 <div class="flex items-center gap-2">
-                    <i class="fas fa-link text-blue-500"></i>
-                    <span class="text-sm text-blue-800">
+                    <i class="fas fa-link text-brand-500"></i>
+                    <span class="text-sm text-brand-800">
                         <strong>Warranty Claim</strong> —
                         {% if repair.warranty_original_repair %}
                             {% if repair.warranty_original_repair.deleted_at %}
                                 Original repair (deleted)
                             {% else %}
-                                Original: <a href="{% url 'repair_detail' repair.warranty_original_repair.id %}" class="underline hover:text-blue-600">Repair #{{ repair.warranty_original_repair.id }}</a>
+                                Original: <a href="{% url 'repair_detail' repair.warranty_original_repair.id %}" class="underline hover:text-brand-600">Repair #{{ repair.warranty_original_repair.id }}</a>
                             {% endif %}
                         {% else %}
                             Original repair no longer available
@@ -168,7 +168,7 @@
                                 {% else %}
                                 <form action="{% url 'owner_generate_invoice_from_repair' repair.id %}" method="post" class="inline flex items-center gap-1.5">
                                     {% csrf_token %}
-                                    <select name="payment_terms" class="rounded-md border-gray-300 text-xs py-1.5 px-2 focus:ring-blue-500 focus:border-blue-500" title="Payment terms">
+                                    <select name="payment_terms" class="rounded-md border-gray-300 text-xs py-1.5 px-2 focus:ring-brand-500 focus:border-brand-500" title="Payment terms">
                                         <option value="COD"{% if default_payment_terms == 'COD' %} selected{% endif %}>COD</option>
                                         <option value="DUE_ON_RECEIPT"{% if default_payment_terms == 'DUE_ON_RECEIPT' %} selected{% endif %}>Due on Receipt</option>
                                         <option value="NET15"{% if default_payment_terms == 'NET15' %} selected{% endif %}>Net 15</option>
@@ -342,15 +342,15 @@
                         <div class="p-6">
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
                     <!-- Customer Information -->
-                    <div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                        <h4 class="text-lg font-semibold text-blue-900 mb-3">
+                    <div class="bg-brand-50 rounded-lg p-4 border border-brand-200">
+                        <h4 class="text-lg font-semibold text-brand-900 mb-3">
                             <i class="fas fa-user mr-2"></i>Customer Information
                         </h4>
                         <div class="space-y-2 text-sm">
-                            <div><span class="font-medium text-blue-700">Customer:</span> <span class="text-blue-900">{{ repair.customer.name }}</span></div>
-                            {% if repair.customer.email %}<div><span class="font-medium text-blue-700">Contact:</span> <span class="text-blue-900">{{ repair.customer.email }}</span></div>{% endif %}
-                            {% if repair.customer.phone %}<div><span class="font-medium text-blue-700">Phone:</span> <span class="text-blue-900">{{ repair.customer.phone }}</span></div>{% endif %}
-                            <div><span class="font-medium text-blue-700">Unit Number:</span> <span class="text-blue-900">{{ repair.unit_number }}</span></div>
+                            <div><span class="font-medium text-brand-700">Customer:</span> <span class="text-brand-900">{{ repair.customer.name }}</span></div>
+                            {% if repair.customer.email %}<div><span class="font-medium text-brand-700">Contact:</span> <span class="text-brand-900">{{ repair.customer.email }}</span></div>{% endif %}
+                            {% if repair.customer.phone %}<div><span class="font-medium text-brand-700">Phone:</span> <span class="text-brand-900">{{ repair.customer.phone }}</span></div>{% endif %}
+                            <div><span class="font-medium text-brand-700">Unit Number:</span> <span class="text-brand-900">{{ repair.unit_number }}</span></div>
                         </div>
                     </div>
 
@@ -489,14 +489,14 @@
                     </h4>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {% if repair.customer_notes %}
-                        <div class="bg-blue-50 rounded-lg border border-blue-200 overflow-hidden">
-                            <div class="bg-blue-600 text-white px-4 py-2">
+                        <div class="bg-brand-50 rounded-lg border border-brand-200 overflow-hidden">
+                            <div class="bg-brand-600 text-white px-4 py-2">
                                 <h6 class="text-sm font-medium flex items-center">
                                     <i class="fas fa-user mr-2"></i>Customer Notes
                                 </h6>
                             </div>
                             <div class="p-4">
-                                <p class="text-blue-900 text-sm">{{ repair.customer_notes }}</p>
+                                <p class="text-brand-900 text-sm">{{ repair.customer_notes }}</p>
                             </div>
                         </div>
                         {% endif %}
@@ -522,14 +522,14 @@
             <div class="bg-gray-50 rounded-lg p-4 border border-gray-200 mb-6">
                 <div class="flex items-center justify-between mb-4">
                     <h4 class="text-lg font-semibold text-gray-900 flex items-center">
-                        <i class="fas fa-camera text-blue-600 mr-2"></i>Photo Documentation
-                        <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <i class="fas fa-camera text-brand-600 mr-2"></i>Photo Documentation
+                        <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-800">
                             {{ repair.get_photo_count }} photo{{ repair.get_photo_count|pluralize }}
                         </span>
                     </h4>
                     <button type="button" 
                             id="photoToggleBtn" 
-                            class="inline-flex items-center px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-md transition-colors"
+                            class="inline-flex items-center px-3 py-1 text-sm font-medium text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 rounded-md transition-colors"
                             onclick="togglePhotoSection()">
                         <i id="photoToggleIcon" class="fas fa-chevron-down mr-1"></i>
                         <span id="photoToggleText">Hide Photos</span>
@@ -563,7 +563,7 @@
                     <!-- Technician Before Photo -->
                     {% if repair.damage_photo_before %}
                     <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                        <div class="bg-blue-600 text-white px-3 py-2 text-center">
+                        <div class="bg-brand-600 text-white px-3 py-2 text-center">
                             <h6 class="text-sm font-medium flex items-center justify-center">
                                 <i class="fas fa-camera mr-2"></i>Before Repair (Tech)
                             </h6>
@@ -606,13 +606,13 @@
                 </div>
                 
                 {% if not repair.damage_photo_after and repair.queue_status == 'IN_PROGRESS' %}
-                <div id="photoReminder" class="mt-4 bg-blue-50 border-l-4 border-blue-400 p-4">
+                <div id="photoReminder" class="mt-4 bg-brand-50 border-l-4 border-brand-400 p-4">
                     <div class="flex">
                         <div class="flex-shrink-0">
-                            <i class="fas fa-info-circle text-blue-400"></i>
+                            <i class="fas fa-info-circle text-brand-400"></i>
                         </div>
                         <div class="ml-3">
-                            <p class="text-sm text-blue-700">
+                            <p class="text-sm text-brand-700">
                                 <strong>Reminder:</strong> Don't forget to take an "after" photo once the repair is completed for documentation purposes.
                             </p>
                         </div>
@@ -808,7 +808,7 @@ document.addEventListener('DOMContentLoaded', function() {
             This repair will be soft-deleted and hidden from all views.
         </p>
         <p class="text-sm text-gray-500 text-center mb-6">
-            Any invoices containing only this repair will also be archived. You can restore it within 30 days from the <a href="{% url 'archived_repairs' %}" class="text-blue-600 underline">Archived Repairs</a> page.
+            Any invoices containing only this repair will also be archived. You can restore it within 30 days from the <a href="{% url 'archived_repairs' %}" class="text-brand-600 underline">Archived Repairs</a> page.
         </p>
         <div class="flex gap-3">
             <button data-modal-close

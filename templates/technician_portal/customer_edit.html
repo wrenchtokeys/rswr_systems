@@ -6,11 +6,11 @@
 <div class="max-w-3xl mx-auto">
     <!-- Breadcrumb -->
     <div class="mb-6 flex items-center space-x-2 text-sm">
-        <a href="{% url 'technician_customers' %}" class="text-blue-600 hover:text-blue-800 font-medium">
+        <a href="{% url 'technician_customers' %}" class="text-brand-600 hover:text-brand-800 font-medium">
             <i class="fas fa-arrow-left mr-1"></i>Customers
         </a>
         <span class="text-gray-400">/</span>
-        <a href="{% url 'customer_detail' customer.id %}" class="text-blue-600 hover:text-blue-800">{{ customer.name }}</a>
+        <a href="{% url 'customer_detail' customer.id %}" class="text-brand-600 hover:text-brand-800">{{ customer.name }}</a>
         <span class="text-gray-400">/</span>
         <span class="text-gray-600">Edit</span>
     </div>

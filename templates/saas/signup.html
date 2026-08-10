@@ -11,7 +11,7 @@
 {% block content %}
 <div class="flex min-h-screen bg-gray-50">
     <!-- Left: Brand panel -->
-    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 to-blue-800 items-center justify-center relative overflow-hidden">
+    <div class="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-brand-600 to-brand-800 items-center justify-center relative overflow-hidden">
         <div class="absolute inset-0 opacity-10">
             <div class="absolute top-20 left-20 w-40 h-40 border-2 border-white rounded-full"></div>
             <div class="absolute bottom-32 right-16 w-64 h-64 border-2 border-white rounded-full"></div>
@@ -26,31 +26,31 @@
                 </svg>
             </div>
             <h1 class="text-4xl font-bold text-white mb-4">RS Systems</h1>
-            <p class="text-xl text-blue-100 mb-8">The complete platform for windshield repair & replacement shops.</p>
+            <p class="text-xl text-brand-100 mb-8">The complete platform for windshield repair & replacement shops.</p>
             <div class="space-y-4 text-left">
                 <div class="flex items-start space-x-3">
                     <div class="w-6 h-6 bg-green-400 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i class="fas fa-check text-white text-xs"></i>
                     </div>
-                    <span class="text-blue-100">Manage repairs & replacements in one place</span>
+                    <span class="text-brand-100">Manage repairs & replacements in one place</span>
                 </div>
                 <div class="flex items-start space-x-3">
                     <div class="w-6 h-6 bg-green-400 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i class="fas fa-check text-white text-xs"></i>
                     </div>
-                    <span class="text-blue-100">Fleet & retail customer management</span>
+                    <span class="text-brand-100">Fleet & retail customer management</span>
                 </div>
                 <div class="flex items-start space-x-3">
                     <div class="w-6 h-6 bg-green-400 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i class="fas fa-check text-white text-xs"></i>
                     </div>
-                    <span class="text-blue-100">Invoicing, photos, and technician tracking</span>
+                    <span class="text-brand-100">Invoicing, photos, and technician tracking</span>
                 </div>
                 <div class="flex items-start space-x-3">
                     <div class="w-6 h-6 bg-green-400 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                         <i class="fas fa-check text-white text-xs"></i>
                     </div>
-                    <span class="text-blue-100">30-day free trial — no credit card required</span>
+                    <span class="text-brand-100">30-day free trial — no credit card required</span>
                 </div>
             </div>
         </div>
@@ -61,7 +61,7 @@
         <div class="w-full max-w-md">
             <!-- Mobile branding -->
             <div class="lg:hidden text-center mb-8">
-                <div class="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                <div class="w-14 h-14 bg-brand-600 rounded-xl flex items-center justify-center mx-auto mb-4">
                     <svg viewBox="0 0 40 40" class="w-8 h-8">
                         <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">RS</text>
                         <circle cx="32" cy="10" r="2" fill="white"/>
@@ -164,16 +164,16 @@
                         <p class="text-xs text-gray-500 mb-2">This sets up the right screens for you. You can change it anytime in Settings.</p>
                         {% with current=form.services_offered.value|default:'both' %}
                         <div class="space-y-2" id="services-radio-group">
-                            <label class="services-option flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-blue-400 transition {% if current == 'both' %}border-blue-600 bg-blue-50{% else %}border-gray-300{% endif %}">
-                                <input type="radio" name="services_offered" value="both" class="h-4 w-4 text-blue-600 focus:ring-blue-500" {% if current == 'both' %}checked{% endif %}>
+                            <label class="services-option flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-brand-400 transition {% if current == 'both' %}border-brand-600 bg-brand-50{% else %}border-gray-300{% endif %}">
+                                <input type="radio" name="services_offered" value="both" class="h-4 w-4 text-brand-600 focus:ring-brand-500" {% if current == 'both' %}checked{% endif %}>
                                 <span class="text-sm text-gray-800">Both repairs and replacements</span>
                             </label>
-                            <label class="services-option flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-blue-400 transition {% if current == 'repair' %}border-blue-600 bg-blue-50{% else %}border-gray-300{% endif %}">
-                                <input type="radio" name="services_offered" value="repair" class="h-4 w-4 text-blue-600 focus:ring-blue-500" {% if current == 'repair' %}checked{% endif %}>
+                            <label class="services-option flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-brand-400 transition {% if current == 'repair' %}border-brand-600 bg-brand-50{% else %}border-gray-300{% endif %}">
+                                <input type="radio" name="services_offered" value="repair" class="h-4 w-4 text-brand-600 focus:ring-brand-500" {% if current == 'repair' %}checked{% endif %}>
                                 <span class="text-sm text-gray-800">Repairs only <span class="text-gray-500">(chips &amp; cracks)</span></span>
                             </label>
-                            <label class="services-option flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-blue-400 transition {% if current == 'replacement' %}border-blue-600 bg-blue-50{% else %}border-gray-300{% endif %}">
-                                <input type="radio" name="services_offered" value="replacement" class="h-4 w-4 text-blue-600 focus:ring-blue-500" {% if current == 'replacement' %}checked{% endif %}>
+                            <label class="services-option flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:border-brand-400 transition {% if current == 'replacement' %}border-brand-600 bg-brand-50{% else %}border-gray-300{% endif %}">
+                                <input type="radio" name="services_offered" value="replacement" class="h-4 w-4 text-brand-600 focus:ring-brand-500" {% if current == 'replacement' %}checked{% endif %}>
                                 <span class="text-sm text-gray-800">Replacements only <span class="text-gray-500">(full glass)</span></span>
                             </label>
                         </div>
@@ -181,11 +181,11 @@
                         document.querySelectorAll('#services-radio-group input[type=radio]').forEach(function(radio) {
                             radio.addEventListener('change', function() {
                                 document.querySelectorAll('#services-radio-group .services-option').forEach(function(label) {
-                                    label.classList.remove('border-blue-600', 'bg-blue-50');
+                                    label.classList.remove('border-brand-600', 'bg-brand-50');
                                     label.classList.add('border-gray-300');
                                 });
                                 this.closest('.services-option').classList.remove('border-gray-300');
-                                this.closest('.services-option').classList.add('border-blue-600', 'bg-blue-50');
+                                this.closest('.services-option').classList.add('border-brand-600', 'bg-brand-50');
                             });
                         });
                         </script>
@@ -206,7 +206,7 @@
                     <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                     {% endif %}
 
-                    <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
                         <i class="fas fa-rocket mr-2"></i>
                         Start Your Free 30-Day Trial
                     </button>
@@ -215,13 +215,13 @@
                 <div class="mt-6 text-center">
                     <p class="text-sm text-gray-600">
                         Already have an account?
-                        <a href="{% url 'login' %}" class="font-medium text-blue-600 hover:text-blue-500">Log in</a>
+                        <a href="{% url 'login' %}" class="font-medium text-brand-600 hover:text-brand-500">Log in</a>
                     </p>
                 </div>
             </div>
 
             <p class="text-center text-xs text-gray-400 mt-4">
-                By signing up, you agree to our <a href="{% url 'terms_of_service' %}" class="text-blue-600 hover:text-blue-500">Terms of Service</a> and <a href="{% url 'privacy_policy' %}" class="text-blue-600 hover:text-blue-500">Privacy Policy</a>.
+                By signing up, you agree to our <a href="{% url 'terms_of_service' %}" class="text-brand-600 hover:text-brand-500">Terms of Service</a> and <a href="{% url 'privacy_policy' %}" class="text-brand-600 hover:text-brand-500">Privacy Policy</a>.
             </p>
         </div>
     </div>

@@ -13,11 +13,11 @@
 
         <!-- Header -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-t-lg">
+            <div class="px-6 py-4 bg-gradient-to-r from-brand-600 to-brand-700 text-white rounded-t-lg">
                 <div class="flex items-center justify-between">
                     <div>
                         <h1 class="text-2xl font-bold">Request Chip or Crack Repair</h1>
-                        <p class="text-blue-100 text-sm mt-1">Submit repair requests for one or more units</p>
+                        <p class="text-brand-100 text-sm mt-1">Submit repair requests for one or more units</p>
                     </div>
                     <a href="{% url 'customer_dashboard' %}"
                        class="inline-flex items-center px-4 py-2 border border-white border-opacity-30 text-white text-sm font-medium rounded-lg hover:bg-white hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-all">
@@ -56,7 +56,7 @@
         {% if messages %}
         <div class="mb-6 space-y-4">
             {% for message in messages %}
-            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}blue-50 border-l-4 border-blue-400{% endif %} p-4 rounded">
+            <div class="bg-{% if message.tags == 'error' %}red-50 border-l-4 border-red-400{% elif message.tags == 'success' %}green-50 border-l-4 border-green-400{% else %}brand-50 border-l-4 border-brand-400{% endif %} p-4 rounded">
                 <div class="flex">
                     <div class="flex-shrink-0">
                         {% if message.tags == 'error' %}
@@ -64,11 +64,11 @@
                         {% elif message.tags == 'success' %}
                         <i class="fas fa-check-circle text-green-400"></i>
                         {% else %}
-                        <i class="fas fa-info-circle text-blue-400"></i>
+                        <i class="fas fa-info-circle text-brand-400"></i>
                         {% endif %}
                     </div>
                     <div class="ml-3">
-                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-blue-700{% endif %}">{{ message }}</p>
+                        <p class="text-sm {% if message.tags == 'error' %}text-red-700{% elif message.tags == 'success' %}text-green-700{% else %}text-brand-700{% endif %}">{{ message }}</p>
                     </div>
                 </div>
             </div>
@@ -85,12 +85,12 @@
                     <div class="flex items-center justify-between mb-4">
                         <h2 class="text-lg font-semibold text-gray-900">
                             Units to Repair
-                            <span id="unitCountBadge" class="hidden ml-2 bg-blue-100 text-blue-800 text-sm font-bold px-2.5 py-0.5 rounded-full">
+                            <span id="unitCountBadge" class="hidden ml-2 bg-brand-100 text-brand-800 text-sm font-bold px-2.5 py-0.5 rounded-full">
                                 0
                             </span>
                         </h2>
                         <button type="button" id="addUnitBtn"
-                                class="btn-primary inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                                class="btn-primary inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500">
                             <i class="fas fa-plus mr-2"></i>Add Unit
                         </button>
                     </div>
@@ -103,7 +103,7 @@
                         <h3 class="text-lg font-medium text-gray-900 mb-2">No Units Added Yet</h3>
                         <p class="text-gray-600 mb-4">Click "Add Unit" to start building your repair request</p>
                         <button type="button" onclick="document.getElementById('addUnitBtn').click()"
-                                class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                                class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
                             <i class="fas fa-plus mr-2"></i>Add Your First Unit
                         </button>
                     </div>
@@ -121,13 +121,13 @@
                 <!-- Pricing Preview -->
                 <div id="pricingPreview" class="hidden pricing-container rounded-lg p-4 mb-4">
                     <h3 class="font-semibold text-gray-900 mb-3 flex items-center">
-                        <i class="fas fa-calculator mr-2 text-blue-600"></i>
+                        <i class="fas fa-calculator mr-2 text-brand-600"></i>
                         Estimated Cost
                     </h3>
                     <div id="pricingDetails" class="mb-4">
                         <!-- Pricing details will be inserted here -->
                     </div>
-                    <div class="border-t-2 border-blue-300 pt-3 mt-3">
+                    <div class="border-t-2 border-brand-300 pt-3 mt-3">
                         <div class="flex justify-between items-center">
                             <span class="font-semibold text-gray-900">Total:</span>
                             <span id="totalCost" class="pricing-total">$0.00</span>
@@ -139,25 +139,25 @@
                 </div>
 
                 <!-- Info Card -->
-                <div class="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg mb-4">
-                    <h3 class="text-sm font-medium text-blue-900 mb-2">
+                <div class="bg-brand-50 border-l-4 border-brand-400 p-4 rounded-lg mb-4">
+                    <h3 class="text-sm font-medium text-brand-900 mb-2">
                         <i class="fas fa-lightbulb mr-1"></i>How it Works
                     </h3>
-                    <ul class="text-sm text-blue-800 space-y-2">
+                    <ul class="text-sm text-brand-800 space-y-2">
                         <li class="flex items-start">
-                            <i class="fas fa-check text-blue-600 mr-2 mt-0.5"></i>
+                            <i class="fas fa-check text-brand-600 mr-2 mt-0.5"></i>
                             <span>Add each unit that needs repair</span>
                         </li>
                         <li class="flex items-start">
-                            <i class="fas fa-check text-blue-600 mr-2 mt-0.5"></i>
+                            <i class="fas fa-check text-brand-600 mr-2 mt-0.5"></i>
                             <span>Include photos and damage details</span>
                         </li>
                         <li class="flex items-start">
-                            <i class="fas fa-check text-blue-600 mr-2 mt-0.5"></i>
+                            <i class="fas fa-check text-brand-600 mr-2 mt-0.5"></i>
                             <span>Review pricing estimates</span>
                         </li>
                         <li class="flex items-start">
-                            <i class="fas fa-check text-blue-600 mr-2 mt-0.5"></i>
+                            <i class="fas fa-check text-brand-600 mr-2 mt-0.5"></i>
                             <span>Submit all repairs at once</span>
                         </li>
                     </ul>
@@ -207,7 +207,7 @@
                     <input type="hidden" name="batch_submission" value="true">
 
                     <button type="submit" id="submitBatchBtn" disabled
-                            class="w-full btn-primary inline-flex items-center justify-center px-6 py-3 text-white text-base font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="w-full btn-primary inline-flex items-center justify-center px-6 py-3 text-white text-base font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 disabled:opacity-50 disabled:cursor-not-allowed">
                         <i class="fas fa-paper-plane mr-2"></i>Submit Repair Request
                     </button>
 
@@ -244,7 +244,7 @@
                         Unit/Vehicle Number <span class="text-red-500">*</span>
                     </label>
                     <input type="text" id="modalUnitNumber"
-                           class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                           class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500"
                            placeholder="e.g., 1001, TRUCK-42"
                            pattern="^[A-Za-z0-9\-_]+$"
                            maxlength="50">
@@ -260,7 +260,7 @@
                         Type of Damage <span class="text-gray-500">(Optional)</span>
                     </label>
                     <select id="modalDamageType"
-                            class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500">
                         <option value="">Unknown / Not Sure</option>
                         <option value="Chip">Chip</option>
                         <option value="Crack">Crack</option>
@@ -310,17 +310,17 @@
                         Additional Notes <span class="text-gray-500">(Optional)</span>
                     </label>
                     <textarea id="modalNotes" rows="3"
-                              class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                              class="form-input w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500"
                               placeholder="Urgency, special instructions..."
                               maxlength="1000"></textarea>
                 </div>
 
                 <!-- Multi-Break Option -->
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="bg-brand-50 border border-brand-200 rounded-lg p-4">
                     <div class="flex items-start">
                         <div class="flex items-center h-5">
                             <input type="checkbox" id="modalHasMultipleBreaks"
-                                   class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                                   class="h-4 w-4 text-brand-600 focus:ring-brand-500 border-gray-300 rounded">
                         </div>
                         <div class="ml-3 flex-1">
                             <label for="modalHasMultipleBreaks" class="font-medium text-gray-900 cursor-pointer">
@@ -338,7 +338,7 @@
                             Number of breaks <span class="text-gray-500">(Optional)</span>
                         </label>
                         <input type="number" id="modalBreakCount" min="2" max="10"
-                               class="form-input w-32 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                               class="form-input w-32 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500"
                                placeholder="e.g., 3">
                         <p class="text-xs text-gray-500 mt-1">
                             <i class="fas fa-info-circle"></i> If you know the exact count, enter it for accurate pricing. Leave blank for a price range estimate.
@@ -357,7 +357,7 @@
                                 <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             </svg>
                             <div class="flex text-sm text-gray-600">
-                                <label for="modalPhotoInput" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
+                                <label for="modalPhotoInput" class="relative cursor-pointer bg-white rounded-md font-medium text-brand-600 hover:text-brand-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-brand-500">
                                     <span>Choose Photo</span>
                                     <input id="modalPhotoInput" type="file" class="sr-only" accept="image/*">
                                 </label>
@@ -384,9 +384,9 @@
                 </div>
 
                 <!-- Live Pricing Preview in Modal -->
-                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4">
+                <div class="bg-gradient-to-r from-brand-50 to-indigo-50 border-2 border-brand-200 rounded-lg p-4">
                     <div class="flex items-center space-x-2 mb-2">
-                        <i class="fas fa-calculator text-blue-600"></i>
+                        <i class="fas fa-calculator text-brand-600"></i>
                         <h4 class="font-semibold text-gray-900">Estimated Cost</h4>
                     </div>
                     <div id="modalPricingPreview" class="ml-6">
@@ -404,7 +404,7 @@
                     <i class="fas fa-times mr-1"></i>Cancel
                 </button>
                 <button type="button" id="saveUnitBtn"
-                        class="btn-primary px-4 py-2 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                        class="btn-primary px-4 py-2 text-white text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500">
                     <i class="fas fa-save mr-1"></i>Save Unit
                 </button>
             </div>
@@ -449,7 +449,7 @@
                 </div>
                 <h3 class="text-2xl font-bold text-gray-900 mb-2">Request Submitted!</h3>
                 <p class="text-gray-600 mb-1">
-                    Successfully submitted <span id="successUnitCount" class="font-semibold text-blue-600">0</span> repair request(s)
+                    Successfully submitted <span id="successUnitCount" class="font-semibold text-brand-600">0</span> repair request(s)
                 </p>
                 <div class="mt-6 inline-flex items-center px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded-full text-sm">
                     <i class="fas fa-clock mr-2"></i>

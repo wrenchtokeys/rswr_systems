@@ -88,7 +88,7 @@
                 <div class="mt-4">
                     <form method="post" action="{% url 'connect_setup' %}">
                         {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors">
+                        <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-md hover:bg-brand-700 transition-colors">
                             <i class="fas fa-arrow-right mr-2"></i> Continue Setup
                         </button>
                     </form>
@@ -101,14 +101,14 @@
     <!-- Not started -->
     <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         <!-- Hero -->
-        <div class="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
+        <div class="bg-gradient-to-r from-brand-600 to-brand-700 px-6 py-8 text-white">
             <div class="flex items-center gap-4">
                 <div class="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
                     <i class="fas fa-credit-card text-2xl"></i>
                 </div>
                 <div>
                     <h2 class="text-xl font-bold">Get paid faster</h2>
-                    <p class="text-blue-100 mt-1">Let your customers pay invoices online with credit card, bank transfer, and more</p>
+                    <p class="text-brand-100 mt-1">Let your customers pay invoices online with credit card, bank transfer, and more</p>
                 </div>
             </div>
         </div>
@@ -126,8 +126,8 @@
                     </div>
                 </div>
                 <div class="flex items-start gap-3">
-                    <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <i class="fas fa-university text-blue-600 text-sm"></i>
+                    <div class="w-8 h-8 bg-brand-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-university text-brand-600 text-sm"></i>
                     </div>
                     <div>
                         <p class="text-sm font-semibold text-gray-900">Direct to your bank</p>
@@ -150,15 +150,15 @@
                 <h3 class="text-sm font-semibold text-gray-700 mb-3">How it works</h3>
                 <ol class="space-y-2 text-sm text-gray-600">
                     <li class="flex items-start gap-2">
-                        <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
+                        <span class="w-5 h-5 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
                         <span>Click "Set Up Payments" — you'll be taken to Stripe to verify your identity and connect your bank account</span>
                     </li>
                     <li class="flex items-start gap-2">
-                        <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
+                        <span class="w-5 h-5 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
                         <span>Complete the setup (takes about 5 minutes) — Stripe handles all compliance</span>
                     </li>
                     <li class="flex items-start gap-2">
-                        <span class="w-5 h-5 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</span>
+                        <span class="w-5 h-5 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</span>
                         <span>That's it — invoices automatically include a "Pay Now" button that routes payments to your account</span>
                     </li>
                 </ol>
@@ -167,7 +167,7 @@
             <!-- CTA -->
             <form method="post" action="{% url 'connect_setup' %}">
                 {% csrf_token %}
-                <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <button type="submit" class="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
                     <i class="fas fa-credit-card mr-2"></i> Set Up Payments
                 </button>
             </form>

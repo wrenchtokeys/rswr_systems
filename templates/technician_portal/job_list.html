@@ -73,7 +73,7 @@
                 <div class="text-xs font-medium text-gray-500 mt-0.5">Pending</div>
             </button>
             <button onclick="filterByStatus('IN_PROGRESS')" class="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 min-w-[7rem] text-center hover:shadow-md transition-shadow">
-                <div class="text-2xl font-bold text-blue-600">{{ stats.in_progress }}</div>
+                <div class="text-2xl font-bold text-brand-600">{{ stats.in_progress }}</div>
                 <div class="text-xs font-medium text-gray-500 mt-0.5">In Progress</div>
             </button>
             <button onclick="filterByStatus('COMPLETED')" class="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 min-w-[7rem] text-center hover:shadow-md transition-shadow">
@@ -136,7 +136,7 @@
                class="status-pill flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border transition-colors
                       {% if status_filter == status_code %}
                         {% if status_code == 'COMPLETED' %}bg-green-600 text-white border-green-600
-                        {% elif status_code == 'IN_PROGRESS' %}bg-blue-600 text-white border-blue-600
+                        {% elif status_code == 'IN_PROGRESS' %}bg-brand-600 text-white border-brand-600
                         {% elif status_code == 'APPROVED' %}bg-indigo-600 text-white border-indigo-600
                         {% elif status_code == 'PENDING' %}bg-amber-500 text-white border-amber-500
                         {% elif status_code == 'REQUESTED' %}bg-yellow-500 text-white border-yellow-500
@@ -166,9 +166,9 @@
                 </span>
                 {% endif %}
                 {% if unit_search %}
-                <span class="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                <span class="inline-flex items-center gap-1 px-3 py-1 bg-brand-100 text-brand-800 rounded-full text-xs font-medium">
                     <i class="fas fa-hashtag text-[10px]"></i> {{ unit_search }}
-                    <a href="javascript:removeFilter('unit_search')" class="ml-1 hover:text-blue-600">&times;</a>
+                    <a href="javascript:removeFilter('unit_search')" class="ml-1 hover:text-brand-600">&times;</a>
                 </span>
                 {% endif %}
                 {% if damage_type_filter != 'all' %}
@@ -464,7 +464,7 @@
                                     View
                                 </a>
                                 {% if is_admin %}
-                                <a href="{% url 'update_repair' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors">
+                                <a href="{% url 'update_repair' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 rounded-md hover:bg-brand-100 transition-colors">
                                     Edit
                                 </a>
                                 {% endif %}
@@ -473,7 +473,7 @@
                                     View
                                 </a>
                                 {% if is_admin %}
-                                <a href="{% url 'replacement_edit' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors">
+                                <a href="{% url 'replacement_edit' job.id %}" class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-brand-700 bg-brand-50 rounded-md hover:bg-brand-100 transition-colors">
                                     Edit
                                 </a>
                                 {% endif %}
