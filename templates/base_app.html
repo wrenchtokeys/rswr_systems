@@ -28,15 +28,27 @@
             <div class="flex h-16 items-center gap-4">
                 <!-- Left: Logo + Nav Links -->
                 <div class="flex items-center gap-4 shrink-0">
-                    <a href="{% if is_owner_or_manager %}{% url 'owner_dashboard' %}{% else %}{% url 'technician_dashboard' %}{% endif %}" class="flex items-center space-x-2 shrink-0">
-                        <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
+                    {% comment %}
+                    Shop logo + name, same pattern as the customer portal shell.
+                    The Pro plan sells "your logo & colors on everything" — before
+                    this, owners and techs saw the RS mark no matter what they
+                    uploaded, and only the colors changed.
+                    {% endcomment %}
+                    <a href="{% if is_owner_or_manager %}{% url 'owner_dashboard' %}{% else %}{% url 'technician_dashboard' %}{% endif %}" class="flex items-center space-x-2 shrink-0 min-w-0">
+                        {% if request.tenant and request.tenant.logo %}
+                        <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="w-8 h-8 rounded-lg object-cover flex-shrink-0">
+                        {% else %}
+                        <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0">
                             <svg viewBox="0 0 40 40" class="w-5 h-5">
                                 <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">RS</text>
                                 <circle cx="32" cy="10" r="2" fill="white"/>
                                 <path d="M32 5 L32 7 M32 13 L32 15 M27 10 L29 10 M35 10 L37 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
                             </svg>
                         </div>
-                        <span class="text-xl font-bold text-gray-900 hidden sm:inline">RS Systems</span>
+                        {% endif %}
+                        <span class="text-xl font-bold text-gray-900 hidden sm:inline truncate max-w-[14rem]">
+                            {% if request.tenant %}{{ request.tenant.name }}{% else %}RS Systems{% endif %}
+                        </span>
                     </a>
                     <div class="{% if is_owner_or_manager %}hidden lg:flex{% else %}hidden md:flex{% endif %} items-center space-x-4">
                         {% if is_owner_or_manager %}
