@@ -125,6 +125,14 @@
         <form method="post" class="p-6">
             {% csrf_token %}
             <input type="hidden" name="form_type" value="branding">
+            {% if not tenant.branding_enabled %}
+            <div class="mb-5 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+                <i class="fas fa-lock mr-1.5"></i>
+                Custom branding — your logo and color on invoices, emails and both portals — is included in the
+                <strong>Pro</strong> plan. Your picks are saved and apply the moment you upgrade.
+                <a href="{% url 'billing_settings' %}" class="font-semibold underline whitespace-nowrap">Upgrade your plan</a>
+            </div>
+            {% endif %}
             <div class="flex flex-wrap items-center gap-4">
                 <label for="brand_color" class="block text-sm font-medium text-gray-700">Brand Color</label>
                 <input type="color" id="brand_color" name="brand_color"

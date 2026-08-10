@@ -348,6 +348,23 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         """Whether this shop performs glass replacements."""
         return self.services_offered in ('replacement', 'both')
 
+    @property
+    def branding_enabled(self):
+        """
+        Whether this shop's custom branding (logo + brand color) is applied
+        to the portals, emails and invoice PDFs.
+
+        Sold as the plans' `custom_branding` feature (Pro and up — see
+        seed_plans / the pricing page). Uploaded logo/color are kept either
+        way; they just don't render until the plan includes the feature.
+        """
+        if self.is_platform_owner:
+            return True
+        if self.plan in ('pro', 'enterprise'):
+            return True
+        plan = self.subscription_plan
+        return bool(plan and plan.has_feature('custom_branding'))
+
     def _get_trial_days(self):
         """Return number of trial days for this tenant's plan."""
         if self.subscription_plan and self.subscription_plan.trial_days:

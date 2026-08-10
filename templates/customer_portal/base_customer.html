@@ -37,8 +37,8 @@
             <div class="flex justify-between h-14 sm:h-16 items-center">
                 <!-- Left: Shop branding -->
                 <a href="{% url 'customer_dashboard' %}" class="flex items-center space-x-2 min-w-0">
-                    {% if request.tenant and request.tenant.logo %}
-                    <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="w-8 h-8 rounded-lg object-cover flex-shrink-0">
+                    {% if request.tenant and request.tenant.branding_enabled and request.tenant.logo %}
+                    <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-9 sm:h-10 w-auto max-w-[11rem] object-contain flex-shrink-0">
                     {% else %}
                     <div class="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         <span class="text-white text-xs font-extrabold">RS</span>
@@ -181,8 +181,8 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div class="flex justify-between items-center">
                 <div class="flex items-center space-x-2">
-                    {% if request.tenant and request.tenant.logo %}
-                    <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="w-5 h-5 rounded object-cover">
+                    {% if request.tenant and request.tenant.branding_enabled and request.tenant.logo %}
+                    <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-5 w-auto max-w-[6rem] object-contain">
                     {% endif %}
                     <span class="text-sm font-medium text-gray-600">{% if request.tenant %}{{ request.tenant.name }}{% else %}RS Systems{% endif %}</span>
                 </div>

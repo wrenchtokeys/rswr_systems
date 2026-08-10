@@ -186,6 +186,16 @@ customer portal, while the Pro plan sells *"Your logo & colors on everything."*
   techs never saw their logo (the customer portal already showed it). The navbar now
   renders `request.tenant.logo` + tenant name with the RS mark as fallback, same
   pattern as `base_customer.html`.
+- **Addendum 2 (2026-08-10):** custom branding is now actually plan-gated.
+  `Tenant.branding_enabled` (platform owner, pro/enterprise, or a plan whose
+  `custom_branding` feature flag is true — the flag existed in `seed_plans` and the
+  pricing table since forever but nothing enforced it) gates: `{% tenant_brand_css %}`,
+  the navbar logo/name in both shells, email colors+logo
+  (`get_tenant_context` / `send_branded_email`), and invoice PDF colors+logo.
+  Shop *identity* (name, contact, From/Reply-To) applies on every plan — only the
+  visual theming is gated. Settings shows an upgrade note; picks are saved either
+  way and apply on upgrade. Logos also render `h-10 w-auto object-contain` now
+  instead of a 32px square crop that mangled wide logos.
 
 ## S4 · Tabular figures on money — DONE (partial)
 

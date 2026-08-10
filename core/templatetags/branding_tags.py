@@ -13,10 +13,13 @@ def tenant_brand_css(context):
     """
     Emit a <style> block overriding the --brand-* CSS variables with shades
     generated from the shop's brand color. Renders nothing when the tenant
-    has no brand color, leaving the default palette untouched.
+    has no brand color — or when the plan doesn't include custom branding
+    (Tenant.branding_enabled) — leaving the default palette untouched.
     """
     request = context.get('request')
     tenant = getattr(request, 'tenant', None) if request else None
+    if tenant is not None and not tenant.branding_enabled:
+        return ''
     brand_color = getattr(tenant, 'brand_color', '') if tenant else ''
     shades = brand_shades(brand_color)
     if not shades:

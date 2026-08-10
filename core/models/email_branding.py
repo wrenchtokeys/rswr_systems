@@ -380,11 +380,17 @@ class EmailBrandingConfig(AutoUpdateTimestampMixin, models.Model):
             context['footer_text'] = (
                 f"You are receiving this email because you are a customer of {tenant.name}."
             )
-            context['logo_url'] = _absolute_media_url(tenant.logo) if tenant.logo else ''
+            # Logo + brand color are the plans' custom_branding feature
+            # (Tenant.branding_enabled). Identity fields above apply on
+            # every plan — the email is still from the shop either way.
+            branded = tenant.branding_enabled
+            context['logo_url'] = (
+                _absolute_media_url(tenant.logo) if (branded and tenant.logo) else ''
+            )
             context['logo_width'] = 200
             # Shop's own brand color drives headers/buttons when set.
             brand_color = getattr(tenant, 'brand_color', '')
-            if brand_color:
+            if brand_color and branded:
                 context['primary_color'] = brand_color
                 context['secondary_color'] = brand_color
         return context
