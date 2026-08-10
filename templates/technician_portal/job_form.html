@@ -719,6 +719,8 @@ document.addEventListener('DOMContentLoaded', function() {
             : (document.querySelector('input[name="new_customer_name"]')?.value || 'New customer');
         form.dataset.recipientEmail = usingExisting
             ? (selectedOpt.dataset.email || '') : '';
+        form.dataset.recipientPhone = usingExisting
+            ? (selectedOpt.dataset.phone || '') : '';
         window.RSSendConfirm.open(form, { submitName: 'save_and_send' });
     });
 });

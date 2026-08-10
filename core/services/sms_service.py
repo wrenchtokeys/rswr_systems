@@ -1,12 +1,16 @@
 """
-SMS Service for sending notification messages via AWS SNS.
+SMS Service for sending notification messages via AWS End User Messaging.
 
 This service handles:
-- Sending SMS messages via AWS SNS
-- Phone number validation (E.164 format)
+- Sending SMS messages via AWS End User Messaging (pinpoint-sms-voice-v2)
+- Phone number normalization + validation (E.164 format)
 - Message truncation to 160 characters
 - Tracking delivery status and costs
 - Error handling and retry scheduling
+
+The master switch is settings.SMS_ORIGINATION_IDENTITY — the registered
+toll-free number (E.164) or pool ARN texts are sent from. Empty means SMS
+is disabled everywhere and every send quietly no-ops with (False, None).
 """
 
 import logging
@@ -22,13 +26,13 @@ from core.utils.logging import mask_phone
 
 logger = logging.getLogger(__name__)
 
-# SMS cost per message (AWS SNS pricing for US)
+# Approximate cost per outbound US toll-free SMS segment (base + carrier fees)
 SMS_COST_PER_MESSAGE = Decimal('0.00645')
 
 
 class SMSService:
     """
-    Service for sending notification SMS messages via AWS SNS.
+    Service for sending SMS messages via AWS End User Messaging.
 
     Usage:
         success, log = SMSService.send_notification_sms(
@@ -49,24 +53,67 @@ class SMSService:
     MAX_SMS_LENGTH = 160
 
     @staticmethod
+    def is_enabled() -> bool:
+        """SMS can send only when the kill-switch is on AND an origination
+        identity (registered toll-free number / pool) is configured."""
+        return bool(
+            getattr(settings, 'SMS_ENABLED', False)
+            and getattr(settings, 'SMS_ORIGINATION_IDENTITY', '')
+        )
+
+    @staticmethod
+    def normalize_phone(raw: Optional[str]) -> Optional[str]:
+        """
+        Normalize a user-entered phone number to E.164.
+
+        Handles US 10-digit, 11-digit with leading 1, and already-E.164
+        input (with common punctuation stripped). Returns None for anything
+        unusable rather than raising.
+        """
+        if not raw:
+            return None
+        digits = re.sub(r'[^\d+]', '', raw.strip())
+        if digits.startswith('+'):
+            candidate = '+' + re.sub(r'\D', '', digits[1:])
+        else:
+            bare = re.sub(r'\D', '', digits)
+            if len(bare) == 10:
+                candidate = '+1' + bare
+            elif len(bare) == 11 and bare.startswith('1'):
+                candidate = '+' + bare
+            else:
+                return None
+        return candidate if SMSService.E164_PATTERN.match(candidate) else None
+
+    @staticmethod
     def send_notification_sms(
         notification_id: Optional[int],
         recipient_phone: str,
         message: str,
-        attempt_number: int = 1
+        attempt_number: int = 1,
+        tenant=None,
     ) -> Tuple[bool, Optional[NotificationDeliveryLog]]:
         """
-        Send notification SMS via AWS SNS.
+        Send an SMS via AWS End User Messaging.
 
         Args:
-            notification_id: ID of related Notification
-            recipient_phone: Recipient phone number (E.164 format)
+            notification_id: ID of related Notification (optional — invoice
+                and review texts have no Notification row)
+            recipient_phone: Recipient phone number (any common US format)
             message: SMS message text
             attempt_number: Current delivery attempt number (1-indexed)
+            tenant: Tenant to stamp on the delivery log (optional)
 
         Returns:
             Tuple of (success: bool, log: NotificationDeliveryLog or None)
         """
+        if not SMSService.is_enabled():
+            logger.info(
+                "SMS disabled (SMS_ENABLED/SMS_ORIGINATION_IDENTITY unset) — "
+                f"skipping send to {mask_phone(recipient_phone or '')}"
+            )
+            return False, None
+
         notification = None
         if notification_id:
             try:
@@ -75,13 +122,15 @@ class SMSService:
                 logger.error(f"Notification {notification_id} not found")
                 return False, None
 
-        # Validate phone number
-        if not SMSService._validate_phone(recipient_phone):
+        # Normalize + validate phone number
+        normalized = SMSService.normalize_phone(recipient_phone)
+        if not normalized:
             logger.error(
-                f"Invalid phone number format: {mask_phone(recipient_phone)}. "
-                f"Must be E.164 format (e.g., +15551234567)"
+                f"Invalid phone number format: {mask_phone(recipient_phone or '')}. "
+                f"Must be a US number or E.164 format (e.g., +15551234567)"
             )
             return False, None
+        recipient_phone = normalized
 
         # Truncate message to SMS limit
         if len(message) > SMSService.MAX_SMS_LENGTH:
@@ -95,19 +144,21 @@ class SMSService:
         # Create delivery log
         delivery_log = NotificationDeliveryLog.objects.create(
             notification=notification,
+            tenant=tenant,
             channel='sms',
             recipient_phone=recipient_phone,
             status='pending',
             attempt_number=attempt_number,
+            provider_name='aws-end-user-messaging',
             estimated_cost=SMS_COST_PER_MESSAGE,
             next_retry_at=None
         )
 
         try:
-            # Send SMS via AWS SNS
-            message_id = SMSService._send_via_sns(recipient_phone, message)
+            # Send SMS via AWS End User Messaging
+            message_id = SMSService._send_via_aws(recipient_phone, message)
 
-            # Success
+            # Success (accepted by AWS — carrier delivery is asynchronous)
             delivery_log.status = 'delivered'
             delivery_log.delivered_at = timezone.now()
             delivery_log.provider_message_id = message_id
@@ -178,57 +229,52 @@ class SMSService:
         return bool(SMSService.E164_PATTERN.match(phone))
 
     @staticmethod
-    def _send_via_sns(phone: str, message: str) -> str:
+    def _send_via_aws(phone: str, message: str) -> str:
         """
-        Send SMS via AWS SNS.
+        Send SMS via AWS End User Messaging (pinpoint-sms-voice-v2).
 
         Args:
             phone: Recipient phone number (E.164 format)
             message: Message text
 
         Returns:
-            AWS SNS message ID
+            AWS message ID
 
         Raises:
-            Exception: If SNS send fails
+            Exception: If the send fails
         """
         try:
             import boto3
             from botocore.exceptions import ClientError
 
-            # Initialize SNS client
-            sns_client = boto3.client(
-                'sns',
-                region_name=getattr(settings, 'AWS_SNS_REGION_NAME', 'us-east-1'),
+            client = boto3.client(
+                'pinpoint-sms-voice-v2',
+                region_name=getattr(settings, 'AWS_SMS_REGION_NAME', 'us-east-1'),
                 aws_access_key_id=getattr(settings, 'AWS_ACCESS_KEY_ID', None),
                 aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY', None)
             )
 
-            # Send SMS
-            response = sns_client.publish(
-                PhoneNumber=phone,
-                Message=message,
-                MessageAttributes={
-                    'AWS.SNS.SMS.SenderID': {
-                        'DataType': 'String',
-                        'StringValue': 'RS_Systems'  # Optional: shows as sender name
-                    },
-                    'AWS.SNS.SMS.SMSType': {
-                        'DataType': 'String',
-                        'StringValue': 'Transactional'  # Higher priority, higher cost
-                    }
-                }
-            )
+            params = {
+                'DestinationPhoneNumber': phone,
+                'OriginationIdentity': settings.SMS_ORIGINATION_IDENTITY,
+                'MessageBody': message,
+                'MessageType': 'TRANSACTIONAL',
+            }
+            config_set = getattr(settings, 'SMS_CONFIGURATION_SET', '')
+            if config_set:
+                params['ConfigurationSetName'] = config_set
+
+            response = client.send_text_message(**params)
 
             message_id = response.get('MessageId', '')
-            logger.debug(f"SNS publish successful: {message_id}")
+            logger.debug(f"send_text_message successful: {message_id}")
             return message_id
 
         except ClientError as e:
             error_code = e.response['Error']['Code']
             error_message = e.response['Error']['Message']
-            logger.error(f"SNS ClientError {error_code}: {error_message}")
-            raise Exception(f"SNS error: {error_code} - {error_message}")
+            logger.error(f"SMS ClientError {error_code}: {error_message}")
+            raise Exception(f"SMS error: {error_code} - {error_message}")
 
         except Exception as e:
             logger.exception(f"Unexpected error sending SMS: {e}")
@@ -288,7 +334,8 @@ class SMSService:
             else:
                 sms_message = log.notification.message[:160]
 
-            send_notification_sms.delay(
+            # Plain function since the Celery/Redis teardown — runs inline.
+            send_notification_sms(
                 notification_id=log.notification.id,
                 recipient_phone=log.recipient_phone,
                 message=sms_message,
@@ -304,5 +351,3 @@ class SMSService:
         except Exception as e:
             logger.exception(f"Error queueing retry: {e}")
             return False
-
-        return False

@@ -102,6 +102,15 @@ def _invoice_recipient_email(customer):
     return InvoiceSendService.resolve_recipient(customer)
 
 
+def _invoice_sms_context(customer, tenant):
+    """Context the send-invoice dialog needs to offer "Also text it"."""
+    from apps.billing.services.invoice_send_service import InvoiceSendService
+    return {
+        'invoice_sms_ready': InvoiceSendService.sms_ready(tenant),
+        'invoice_sms_phone': InvoiceSendService.resolve_recipient_phone(customer),
+    }
+
+
 @technician_required
 def repair_detail(request, repair_id):
     """Display repair details with permission checks and batch context."""
@@ -238,6 +247,7 @@ def repair_detail(request, repair_id):
         'default_payment_terms': default_payment_terms,
         'available_technicians': available_technicians,
         'invoice_recipient_email': _invoice_recipient_email(repair.customer),
+        **_invoice_sms_context(repair.customer, tenant),
     })
 
 
