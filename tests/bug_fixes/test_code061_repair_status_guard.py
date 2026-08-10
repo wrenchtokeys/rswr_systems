@@ -165,12 +165,13 @@ class RepairApproveStatusGuardTests(TestCase):
         self.assertEqual(repair.queue_status, "IN_PROGRESS")
         self.assertEqual(response.status_code, 302)
 
-    def test_approve_requested_succeeds(self):
-        """REQUESTED repairs (customer-initiated) can also be approved."""
+    def test_approve_requested_refused(self):
+        """REQUESTED repairs (customer's own submissions) cannot be self-approved —
+        the shop reviews/prices them first; only PENDING is customer-approvable."""
         repair = _make_repair(self.customer, self.tech, status="REQUESTED")
         response = self._post_approve(repair)
         repair.refresh_from_db()
-        self.assertEqual(repair.queue_status, "APPROVED")
+        self.assertEqual(repair.queue_status, "REQUESTED")
         self.assertEqual(response.status_code, 302)
 
 
@@ -285,13 +286,14 @@ class BatchApproveStatusGuardTests(TestCase):
         self.assertTrue(all(s == "COMPLETED" for s in statuses))
         self.assertEqual(response.status_code, 302)
 
-    def test_batch_approve_requested_succeeds(self):
-        """Batch approve works when all repairs are REQUESTED."""
+    def test_batch_approve_requested_refused(self):
+        """Batch approve refuses all-REQUESTED batches — customers cannot
+        self-approve their own submissions; only PENDING is approvable."""
         batch_id, repairs = self._make_batch(["REQUESTED", "REQUESTED"])
         response = self._post_batch_approve(batch_id)
         for r in repairs:
             r.refresh_from_db()
-            self.assertEqual(r.queue_status, "APPROVED")
+            self.assertEqual(r.queue_status, "REQUESTED")
         self.assertEqual(response.status_code, 302)
 
 

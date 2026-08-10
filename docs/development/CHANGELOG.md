@@ -14,6 +14,41 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-08-07 — Frictionless requests (PR #147)
+
+### Added
+- **Auto-accepted customer repair requests** — portal-submitted repairs land
+  APPROVED with an auto-assigned technician the moment they're submitted
+  (repairs are priced from the shop's price book, so there's nothing to
+  review). The customer sees "you're on the schedule"; the shop still gets
+  its new-request and assignment notifications. Replacements keep the
+  review-then-price-then-approve flow.
+- **Multi-break quick-complete** — the multi-break form has a "Work is
+  already done" checkbox (default checked, matching the quick job form) that
+  marks every break completed on save; approval-required customers still get
+  the PENDING approval step.
+- **One-click batch invoicing** — batch detail shows "Send Invoice" (with
+  the confirm dialog) once every break is complete.
+
+### Changed
+- Customer-facing status labels: "Submitted" / "Needs Your Approval" /
+  "Declined" instead of shop-perspective wording ("Customer Requested").
+- Completed-job page shows a single primary action (Send Invoice); the
+  draft-invoice form with payment terms moved into the ⋮ menu.
+- Request-received email/in-app/SMS wording says "received and added to the
+  schedule" (data migration core/0025).
+
+### Fixed
+- A customer's own replacement request no longer shows "Action Required —
+  Approve / Deny" (and no longer quotes $0 before the shop prices it).
+- Customers can no longer self-approve or deny REQUESTED submissions via
+  any path (single, batch, bulk multi-select, replacement, one-click email
+  links) — every approval endpoint is PENDING-only.
+- Batch detail's "Start This Break" button was a silent no-op (posted the
+  wrong field name); "Complete This Break" is now a real one-click action.
+- A multi-line template comment in the app layout rendered as literal text
+  on every technician-portal page.
+
 ## 2026-08-05 — Customer-anchored loyalty (PR #139)
 
 ### Added

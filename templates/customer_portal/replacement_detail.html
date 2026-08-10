@@ -1,4 +1,5 @@
 {% extends "customer_portal/base_customer.html" %}
+{% load ui %}
 
 {% block title %}Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
@@ -15,19 +16,27 @@
             <h1 class="text-3xl font-bold text-gray-900">Replacement #{{ replacement.id }}</h1>
             <p class="text-gray-500 mt-1">{{ replacement.get_glass_position_display|default:"Glass Replacement" }}</p>
         </div>
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
-            {% if replacement.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-            {% elif replacement.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
-            {% elif replacement.queue_status == 'APPROVED' %}bg-blue-100 text-blue-800
-            {% elif replacement.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-            {% elif replacement.queue_status == 'DENIED' %}bg-red-100 text-red-800
-            {% else %}bg-gray-100 text-gray-800{% endif %}">
-            {{ replacement.get_queue_status_display }}
-        </span>
+        {% status_badge replacement.queue_status variant='customer' %}
     </div>
 
+    <!-- Submitted: request is with the shop — nothing for the customer to do yet -->
+    {% if replacement.queue_status == 'REQUESTED' %}
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
+        <div class="flex items-start">
+            <i class="fas fa-paper-plane text-blue-500 text-xl mt-1 mr-4"></i>
+            <div class="flex-1">
+                <h3 class="font-semibold text-blue-800 mb-1">Request Submitted</h3>
+                <p class="text-sm text-blue-700">
+                    {{ customer.tenant.name }} will confirm the glass and price before any work begins.
+                    You'll be notified when it's ready for your approval.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Approval Actions (if pending) -->
-    {% if replacement.queue_status == 'PENDING' or replacement.queue_status == 'REQUESTED' %}
+    {% if replacement.queue_status == 'PENDING' %}
     <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-6 mb-6">
         <div class="flex items-start">
             <i class="fas fa-clock text-yellow-500 text-xl mt-1 mr-4"></i>
@@ -41,7 +50,7 @@
                        class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-medium rounded-lg hover:bg-brand-600 transition-colors">
                         <i class="fas fa-check mr-2"></i> Approve
                     </a>
-                    <a href="{% url 'customer_replacement_deny' replacement_id=replacement.id %}" 
+                    <a href="{% url 'customer_replacement_deny' replacement_id=replacement.id %}"
                        class="inline-flex items-center px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors">
                         <i class="fas fa-times mr-2"></i> Deny
                     </a>
@@ -132,6 +141,11 @@
             <h2 class="text-lg font-semibold text-gray-900 mb-4">
                 <i class="fas fa-dollar-sign mr-2 text-green-500"></i>Pricing
             </h2>
+            {% if replacement.queue_status == 'REQUESTED' %}
+            <p class="text-sm text-gray-500">
+                Pricing pending — {{ customer.tenant.name }} will quote this before you approve.
+            </p>
+            {% else %}
             <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
                     <span class="text-gray-500">Parts</span>
@@ -166,6 +180,7 @@
                     </div>
                 </div>
             </div>
+            {% endif %}
         </div>
 
         <!-- Insurance (if applicable) -->

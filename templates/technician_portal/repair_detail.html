@@ -166,20 +166,6 @@
                                     <i class="fas fa-file-invoice-dollar mr-1.5"></i>View Invoice
                                 </a>
                                 {% else %}
-                                <form action="{% url 'owner_generate_invoice_from_repair' repair.id %}" method="post" class="inline flex items-center gap-1.5">
-                                    {% csrf_token %}
-                                    <select name="payment_terms" class="rounded-md border-gray-300 text-xs py-1.5 px-2 focus:ring-brand-500 focus:border-brand-500" title="Payment terms">
-                                        <option value="COD"{% if default_payment_terms == 'COD' %} selected{% endif %}>COD</option>
-                                        <option value="DUE_ON_RECEIPT"{% if default_payment_terms == 'DUE_ON_RECEIPT' %} selected{% endif %}>Due on Receipt</option>
-                                        <option value="NET15"{% if default_payment_terms == 'NET15' %} selected{% endif %}>Net 15</option>
-                                        <option value="NET30"{% if default_payment_terms == 'NET30' %} selected{% endif %}>Net 30</option>
-                                        <option value="NET45"{% if default_payment_terms == 'NET45' %} selected{% endif %}>Net 45</option>
-                                        <option value="NET60"{% if default_payment_terms == 'NET60' %} selected{% endif %}>Net 60</option>
-                                    </select>
-                                    <button type="submit" class="btn-secondary btn-sm">
-                                        <i class="fas fa-file-invoice-dollar mr-1.5"></i>Draft
-                                    </button>
-                                </form>
                                 {% if user_can_invoices %}
                                 <form action="{% url 'repair_complete_and_invoice' repair.id %}" method="post" class="inline js-confirm-send"
                                       data-customer-name="{{ repair.customer.name }}" data-recipient-email="{{ invoice_recipient_email }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
@@ -296,12 +282,29 @@
                             <a href="{% url 'technician_dashboard' %}" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="Dashboard">
                                 <i class="fas fa-home"></i>
                             </a>
-                            {% if is_admin or technician and technician.is_manager or can_reassign_to_self %}
+                            {% if is_admin or technician and technician.is_manager or can_reassign_to_self or user_can_invoices and repair.queue_status == 'COMPLETED' and not is_invoiced %}
                             <div class="relative">
                                 <button id="moreActionsBtn" data-dropdown-toggle="moreActionsMenu" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="More">
                                     <i class="fas fa-ellipsis-v"></i>
                                 </button>
-                                <div id="moreActionsMenu" data-dropdown-menu class="hidden absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                <div id="moreActionsMenu" data-dropdown-menu class="hidden absolute right-0 top-full mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                    {% if user_can_invoices and repair.queue_status == 'COMPLETED' and not is_invoiced %}
+                                    <form action="{% url 'owner_generate_invoice_from_repair' repair.id %}" method="post" class="px-3 py-2 border-b border-gray-100">
+                                        {% csrf_token %}
+                                        <label class="block text-[10px] font-semibold text-gray-400 uppercase mb-1">Draft invoice</label>
+                                        <select name="payment_terms" class="w-full rounded-md border-gray-300 text-xs py-1.5 px-2 mb-1.5 focus:ring-brand-500 focus:border-brand-500" title="Payment terms">
+                                            <option value="COD"{% if default_payment_terms == 'COD' %} selected{% endif %}>COD</option>
+                                            <option value="DUE_ON_RECEIPT"{% if default_payment_terms == 'DUE_ON_RECEIPT' %} selected{% endif %}>Due on Receipt</option>
+                                            <option value="NET15"{% if default_payment_terms == 'NET15' %} selected{% endif %}>Net 15</option>
+                                            <option value="NET30"{% if default_payment_terms == 'NET30' %} selected{% endif %}>Net 30</option>
+                                            <option value="NET45"{% if default_payment_terms == 'NET45' %} selected{% endif %}>Net 45</option>
+                                            <option value="NET60"{% if default_payment_terms == 'NET60' %} selected{% endif %}>Net 60</option>
+                                        </select>
+                                        <button type="submit" class="w-full text-left text-xs text-gray-700 hover:text-gray-900 font-medium">
+                                            <i class="fas fa-file-invoice-dollar mr-2 w-3"></i>Create Draft Invoice
+                                        </button>
+                                    </form>
+                                    {% endif %}
                                     {% if not repair.is_part_of_batch and repair.queue_status in 'APPROVED,IN_PROGRESS' %}
                                     <a href="{% url 'convert_to_batch' repair.id %}" class="block px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
                                         <i class="fas fa-layer-group mr-2 w-3"></i>Convert to Batch

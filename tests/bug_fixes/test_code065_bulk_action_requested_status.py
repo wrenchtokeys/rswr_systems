@@ -1,29 +1,20 @@
 """
-Regression tests for CODE-065:
-  customer_bulk_action() only filtered queue_status='PENDING', silently
-  dropping REQUESTED repairs without any warning to the user.
+Tests for customer_bulk_action() status filtering.
 
-Root cause:
-    All other customer approval views (customer_repair_approve,
-    customer_batch_approve) accept both PENDING and REQUESTED repairs.
-    customer_bulk_action was inconsistent — it only queried queue_status='PENDING'.
-
-    When a customer submitted their own repair request, it starts as REQUESTED.
-    If the customer tried to approve those repairs via the bulk multi-select UI,
-    the REQUESTED repairs were silently excluded from the queryset and the
-    success message counted fewer repairs than selected — confusing and wrong.
-
-Fix:
-    Changed queue_status='PENDING' to queue_status__in=['PENDING', 'REQUESTED']
-    in customer_bulk_action(). Consistent with all other customer approval paths.
+History: CODE-065 originally widened the bulk-action filter to
+['PENDING', 'REQUESTED'] for consistency with the single-repair approval
+views of the time. The direction has since reversed: customers must NOT be
+able to approve/deny their own REQUESTED submissions (the shop reviews and
+prices them first — repairs are now auto-accepted at submission anyway), so
+every customer approval path, including bulk action, is PENDING-only again.
 
 Tests verify:
 1. Bulk approve PENDING repairs → all approved.
-2. Bulk approve REQUESTED repairs → all approved (was silently skipped before).
-3. Bulk approve mixed PENDING+REQUESTED → all approved.
+2. Bulk approve REQUESTED repairs → refused, statuses unchanged.
+3. Bulk approve mixed PENDING+REQUESTED → PENDING approved, REQUESTED untouched.
 4. Bulk approve non-approvable statuses (COMPLETED, IN_PROGRESS) → excluded / no change.
 5. Bulk deny PENDING repairs → all denied.
-6. Bulk deny REQUESTED repairs → all denied (was silently skipped before).
+6. Bulk deny REQUESTED repairs → refused, statuses unchanged.
 7. No valid repairs selected → error message.
 8. Cross-customer repairs excluded (tenant safety).
 """
@@ -127,12 +118,10 @@ class CustomerBulkActionApproveTests(TestCase):
         self.assertEqual(r2.queue_status, "APPROVED")
         self.assertEqual(response.status_code, 302)
 
-    def test_bulk_approve_requested_repairs(self):
+    def test_bulk_approve_requested_repairs_refused(self):
         """
-        REQUESTED repairs (customer-initiated) must be approved by bulk action.
-        
-        Before CODE-065 fix: these were silently excluded (queue_status='PENDING'
-        filter), the user got a misleading success message, and repairs stayed REQUESTED.
+        REQUESTED repairs (the customer's own submissions) must NOT be
+        self-approvable via bulk action — the shop reviews/prices them first.
         """
         r1 = _make_repair(self.customer, self.tech_user, status="REQUESTED", unit="U-101")
         r2 = _make_repair(self.customer, self.tech_user, status="REQUESTED", unit="U-102")
@@ -141,14 +130,14 @@ class CustomerBulkActionApproveTests(TestCase):
 
         r1.refresh_from_db()
         r2.refresh_from_db()
-        self.assertEqual(r1.queue_status, "APPROVED",
-                         "REQUESTED repair should be APPROVED after bulk approve (CODE-065 regression)")
-        self.assertEqual(r2.queue_status, "APPROVED",
-                         "REQUESTED repair should be APPROVED after bulk approve (CODE-065 regression)")
+        self.assertEqual(r1.queue_status, "REQUESTED",
+                         "REQUESTED repair must not be customer-self-approvable")
+        self.assertEqual(r2.queue_status, "REQUESTED",
+                         "REQUESTED repair must not be customer-self-approvable")
         self.assertEqual(response.status_code, 302)
 
     def test_bulk_approve_mixed_pending_and_requested(self):
-        """Mix of PENDING and REQUESTED repairs all get approved."""
+        """Mixed selection: PENDING approved, REQUESTED left untouched."""
         r_pending = _make_repair(self.customer, self.tech_user, status="PENDING", unit="U-201")
         r_requested = _make_repair(self.customer, self.tech_user, status="REQUESTED", unit="U-202")
 
@@ -157,8 +146,8 @@ class CustomerBulkActionApproveTests(TestCase):
         r_pending.refresh_from_db()
         r_requested.refresh_from_db()
         self.assertEqual(r_pending.queue_status, "APPROVED")
-        self.assertEqual(r_requested.queue_status, "APPROVED",
-                         "REQUESTED repair must not be silently skipped in mixed bulk approve (CODE-065)")
+        self.assertEqual(r_requested.queue_status, "REQUESTED",
+                         "REQUESTED repair must be excluded from customer bulk approve")
         self.assertEqual(response.status_code, 302)
 
     def test_bulk_approve_skips_non_approvable_statuses(self):
@@ -219,12 +208,9 @@ class CustomerBulkActionDenyTests(TestCase):
         self.assertEqual(r1.queue_status, "DENIED")
         self.assertEqual(r2.queue_status, "DENIED")
 
-    def test_bulk_deny_requested_repairs(self):
-        """
-        REQUESTED repairs can also be denied via bulk action.
-
-        Before CODE-065 fix: these were silently excluded.
-        """
+    def test_bulk_deny_requested_repairs_refused(self):
+        """REQUESTED repairs must NOT be deniable via bulk action —
+        only PENDING jobs are in the customer approval flow."""
         r1 = _make_repair(self.customer, self.tech_user, status="REQUESTED", unit="D-101")
         r2 = _make_repair(self.customer, self.tech_user, status="REQUESTED", unit="D-102")
 
@@ -232,10 +218,10 @@ class CustomerBulkActionDenyTests(TestCase):
 
         r1.refresh_from_db()
         r2.refresh_from_db()
-        self.assertEqual(r1.queue_status, "DENIED",
-                         "REQUESTED repair should be DENIED after bulk deny (CODE-065 regression)")
-        self.assertEqual(r2.queue_status, "DENIED",
-                         "REQUESTED repair should be DENIED after bulk deny (CODE-065 regression)")
+        self.assertEqual(r1.queue_status, "REQUESTED",
+                         "REQUESTED repair must not be customer-deniable")
+        self.assertEqual(r2.queue_status, "REQUESTED",
+                         "REQUESTED repair must not be customer-deniable")
 
 
 class CustomerBulkActionTenantScopeTest(TestCase):

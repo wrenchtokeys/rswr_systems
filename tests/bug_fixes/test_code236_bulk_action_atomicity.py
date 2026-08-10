@@ -162,14 +162,15 @@ class BulkApproveTests(BulkActionAtomicityTestBase):
         )
         self.assertEqual(notifs.count(), 2)
 
-    def test_bulk_approve_requested_repairs(self):
-        """REQUESTED repairs should also be approvable via bulk action (CODE-065)."""
+    def test_bulk_approve_requested_repairs_refused(self):
+        """REQUESTED repairs must NOT be customer-approvable via bulk action —
+        the shop reviews/prices submissions; only PENDING is approvable."""
         r1 = self._create_repair(status='REQUESTED')
 
         self._post_bulk('approve', [r1.id])
 
         r1.refresh_from_db()
-        self.assertEqual(r1.queue_status, 'APPROVED')
+        self.assertEqual(r1.queue_status, 'REQUESTED')
 
 
 class BulkDenyTests(BulkActionAtomicityTestBase):
