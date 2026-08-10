@@ -319,6 +319,14 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">Notes for the customer</label>
                         {{ form.customer_notes }}
                     </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            <i class="fas fa-lock text-gray-400 mr-1 text-xs"></i>Internal notes
+                            <span class="font-normal text-gray-400">— not visible to the customer</span>
+                        </label>
+                        {{ form.internal_notes }}
+                    </div>
                 </div>
             </details>
 
