@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from apps.tenants.models import Tenant, SubscriptionPlan
 from apps.billing.services.stripe_compat import (
+    subscription_interval,
     subscription_item_id,
     subscription_period_end,
 )
@@ -262,16 +263,26 @@ class SubscriptionService:
             if is_upgrade:
                 # UPGRADES: Apply immediately, but don't update local plan until
                 # webhook confirms. This prevents unpaid access to higher tier.
+                # Use the price matching the subscription's CURRENT interval.
+                # This always wrote the monthly price, so any plan change
+                # silently converted an annual subscriber to monthly billing.
+                interval = subscription_interval(subscription)
                 stripe.Subscription.modify(
                     tenant.stripe_subscription_id,
                     items=[{
                         'id': subscription_item_id(subscription),
-                        'price': new_plan.stripe_price_id,
+                        'price': new_plan.price_id_for(interval),
                     }],
                     proration_behavior='create_prorations',
                     metadata={
                         'plan_slug': new_plan.slug,
                     },
+                    # Intent-shaped and stable: a double-submitted upgrade
+                    # is the same request, not two.
+                    idempotency_key=(
+                        f"{tenant.id}:upgrade:{new_plan.slug}:"
+                        f"{tenant.stripe_subscription_id}"
+                    ),
                 )
                 
                 logger.info(
@@ -292,15 +303,37 @@ class SubscriptionService:
                 # DOWNGRADES: Schedule for end of billing period.
                 # User keeps current tier access since they paid for this period.
                 # Use Stripe Subscription Schedule to defer the change.
-                
+
                 if not current_plan or not current_plan.stripe_price_id:
                     raise SubscriptionError(
                         "Cannot determine current plan. Please contact support."
                     )
+
+                # Pre-flight: refuse a downgrade the tenant already exceeds.
+                # Nothing used to re-check usage, so an Enterprise shop with
+                # 40 technicians could drop to Starter (5) and keep all 40 --
+                # grandfathered over the cap indefinitely, with the limit only
+                # biting on the next addition.
+                from apps.tenants.services.usage_service import UsageService
+                violations = UsageService(tenant).check_against_plan(new_plan)
+                if violations:
+                    raise SubscriptionError(
+                        "This plan is smaller than your current usage. "
+                        + " ".join(violations)
+                    )
                 
+                interval = subscription_interval(subscription)
+
                 # Create a subscription schedule from the current subscription
                 schedule = stripe.SubscriptionSchedule.create(
                     from_subscription=tenant.stripe_subscription_id,
+                    # Without this a double-submit creates two schedules for
+                    # the same subscription, and the second one wins
+                    # unpredictably.
+                    idempotency_key=(
+                        f"{tenant.id}:downgrade:{new_plan.slug}:"
+                        f"{tenant.stripe_subscription_id}"
+                    ),
                 )
                 
                 # Configure schedule: current plan now, new plan at period end.
@@ -325,13 +358,14 @@ class SubscriptionService:
                             # Using subscription.current_period_start (a past
                             # Unix timestamp) causes Stripe to reject the request
                             # with InvalidRequestError.  (CODE-229)
-                            'items': [{'price': current_plan.stripe_price_id}],
+                            'items': [{'price': current_plan.price_id_for(interval)}],
                             'start_date': 'now',
                             'end_date': current_period_end,
                         },
                         {
-                            # Next phase: switch to new (lower) plan
-                            'items': [{'price': new_plan.stripe_price_id}],
+                            # Next phase: switch to new (lower) plan, keeping
+                            # the interval they actually pay on.
+                            'items': [{'price': new_plan.price_id_for(interval)}],
                             'start_date': current_period_end,
                         },
                     ],

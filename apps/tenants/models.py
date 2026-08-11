@@ -27,7 +27,8 @@ class SubscriptionPlan(models.Model):
     Defines a SaaS subscription tier with pricing, limits, and features.
     
     Plans: Trial (free), Starter ($49/mo), Pro ($99/mo), Enterprise ($249/mo).
-    Limits are enforced by PlanEnforcementMixin and usage_service.
+    Limits are enforced by UsageService, called directly from the views
+    that create the resource. There is no decorator or mixin layer.
     null limit values mean unlimited.
     """
     
@@ -92,7 +93,23 @@ class SubscriptionPlan(models.Model):
     @property
     def is_free(self):
         return self.monthly_price == 0
-    
+
+    def price_id_for(self, interval):
+        """Stripe price id for a billing interval ('month' or 'year').
+
+        Plan changes used to write `stripe_price_id` unconditionally, which
+        silently converted an annual subscriber to monthly billing on any
+        upgrade or downgrade. Read the live interval off the subscription
+        and pass it here.
+
+        Falls back to the monthly price when no annual price is configured,
+        so a half-configured plan degrades to "billed monthly" rather than
+        sending Stripe an empty price id.
+        """
+        if interval in ('year', 'annual', 'yearly') and self.stripe_annual_price_id:
+            return self.stripe_annual_price_id
+        return self.stripe_price_id
+
     def has_feature(self, feature_name):
         """Check if this plan includes a specific feature."""
         return self.features.get(feature_name, False)
@@ -403,12 +420,33 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         seed_plans / the pricing page). Uploaded logo/color are kept either
         way; they just don't render until the plan includes the feature.
         """
+        return self.has_feature('custom_branding', plans=('pro', 'enterprise'))
+
+    def has_feature(self, feature_name, plans=()):
+        """Whether this tenant's plan includes a feature.
+
+        Generalised from branding_enabled, which is the only caller of
+        SubscriptionPlan.has_feature in the whole app. The other flags
+        (`rewards`, `api_access`, `invoicing`, `customer_portal`,
+        `priority_support`) appear solely in the pricing table and gate
+        nothing.
+
+        Leave it that way unless a feature is genuinely paid-tier-only.
+        `rewards` in particular is seeded False on the Trial plan, but the
+        pricing page excludes Trial as a tier -- "every plan starts with a
+        30-day free trial" -- so enforcing that flag would hide the loyalty
+        program from every shop evaluating the product.
+
+        `plans` is an optional slug shortcut for tiers that always include
+        the feature, so a tenant whose subscription_plan FK is missing still
+        gets what they pay for.
+        """
         if self.is_platform_owner:
             return True
-        if self.plan in ('pro', 'enterprise'):
+        if plans and self.plan in plans:
             return True
         plan = self.subscription_plan
-        return bool(plan and plan.has_feature('custom_branding'))
+        return bool(plan and plan.has_feature(feature_name))
 
     def _get_trial_days(self):
         """Return number of trial days for this tenant's plan."""

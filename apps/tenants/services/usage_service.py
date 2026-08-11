@@ -2,7 +2,8 @@
 Usage Tracking Service
 
 Tracks tenant resource usage against their subscription plan limits.
-Used by PlanEnforcementMixin and the /api/tenants/usage/ endpoint.
+Called directly from the views that create repairs, technicians and
+customers, and by the /api/tenants/usage/ endpoint.
 
 Author: Amelia (Clawdbot AI)
 """
@@ -27,7 +28,101 @@ class UsageService:
     
     def __init__(self, tenant):
         self.tenant = tenant
-        self.plan = tenant.subscription_plan
+        self.plan = self._resolve_plan(tenant)
+
+    @staticmethod
+    def _resolve_plan(tenant):
+        """Find the tenant's plan, falling back rather than giving up.
+
+        `Tenant.subscription_plan` is a SET_NULL FK, and every limit check
+        below used to return "allowed" when it was None -- so a null FK meant
+        unlimited everything, silently. That is reachable by deleting a
+        SubscriptionPlan row, and by any tenant created before seed_plans was
+        run. Fall back to the plan matching `tenant.plan`, then to trial.
+        """
+        from apps.tenants.models import SubscriptionPlan
+
+        if tenant.subscription_plan_id:
+            return tenant.subscription_plan
+        return (
+            SubscriptionPlan.objects.filter(slug=tenant.plan).first()
+            or SubscriptionPlan.objects.filter(slug='trial').first()
+        )
+
+    # ------------------------------------------------------------------
+    # Remaining-quota helpers
+    # ------------------------------------------------------------------
+
+    def remaining_repairs(self):
+        """Jobs left this month, or None when unlimited."""
+        if self.tenant.is_platform_owner or not self.plan:
+            return None
+        limit = self.plan.max_repairs_per_month
+        if limit is None:
+            return None
+        return max(0, limit - self.count_repairs_this_month())
+
+    def can_create_repairs(self, count):
+        """Quantity-aware version of can_create_repair.
+
+        The binary "are you at the cap?" check let a batch overshoot: a
+        tenant at 199/200 passed the gate and then created up to
+        MAX_BREAKS_PER_UNIT (20) rows in one request, landing at 219.
+        Callers creating N rows must ask for N.
+        """
+        if count <= 1:
+            return self.can_create_repair()
+
+        remaining = self.remaining_repairs()
+        if remaining is None:
+            return True, ""
+        if remaining >= count:
+            return True, ""
+
+        if remaining == 0:
+            return False, (
+                f"Your {self.plan.name} plan allows "
+                f"{self.plan.max_repairs_per_month} jobs/month and you've "
+                f"used them all. Upgrade to Pro for unlimited jobs."
+            )
+        return False, (
+            f"This would create {count} jobs but your {self.plan.name} plan "
+            f"has only {remaining} left this month. Reduce the number of "
+            f"breaks or upgrade to Pro for unlimited jobs."
+        )
+
+    def check_against_plan(self, plan):
+        """Which of `plan`'s limits this tenant already exceeds.
+
+        Used as a downgrade pre-flight. Returns a list of human-readable
+        violations; empty means the downgrade is safe.
+
+        Deliberately ignores max_repairs_per_month: the monthly count is
+        historical and cannot be reduced, so blocking on it would trap a
+        busy shop on an expensive plan until the calendar turned over.
+        """
+        violations = []
+        if plan is None or self.tenant.is_platform_owner:
+            return violations
+
+        if plan.max_technicians is not None:
+            used = self.count_active_technicians()
+            if used > plan.max_technicians:
+                violations.append(
+                    f"You have {used} active technicians but {plan.name} "
+                    f"allows {plan.max_technicians}. Deactivate "
+                    f"{used - plan.max_technicians} before downgrading."
+                )
+
+        if plan.max_customers is not None:
+            used = self.count_customers()
+            if used > plan.max_customers:
+                violations.append(
+                    f"You have {used} customers but {plan.name} allows "
+                    f"{plan.max_customers}."
+                )
+
+        return violations
     
     # ------------------------------------------------------------------
     # Counting methods
@@ -73,10 +168,16 @@ class UsageService:
         return Customer.objects.filter(tenant=self.tenant).count()
     
     def calculate_storage_mb(self):
-        """
-        Estimate storage used by the tenant in MB.
+        """Estimate storage used by the tenant in MB.
+
         Counts photo file sizes from repairs/replacements.
-        Returns approximate MB used.
+
+        NOT reported in get_summary and NOT enforced anywhere. It walks every
+        photo and touches .size, which is one S3 HEAD request per object --
+        unaffordable on a dashboard load, for a limit no tenant has ever
+        approached. get_summary used to report a hardcoded `storage_used = 0`,
+        i.e. a permanent 0% gauge that told the owner nothing true. Kept for
+        ad-hoc use; wire it to a background job if a real quota is needed.
         """
         from apps.technician_portal.models import Repair, Replacement
         
@@ -225,7 +326,6 @@ class UsageService:
             "repairs": {"used": 45, "limit": 200, "percent": 22.5},
             "technicians": {"used": 3, "limit": 5, "percent": 60.0},
             "customers": {"used": 12, "limit": 50, "percent": 24.0},
-            "storage_mb": {"used": 120.5, "limit": 500, "percent": 24.1},
             "plan": "Starter",
             "trial_days_remaining": null,
         }
@@ -234,14 +334,10 @@ class UsageService:
         techs_used = self.count_active_technicians()
         customers_used = self.count_customers()
         
-        # Storage calculation is expensive — skip if no plan
-        storage_used = 0  # self.calculate_storage_mb()  # Enable when needed
-        
         plan_name = self.plan.name if self.plan else "No Plan"
         repair_limit = self.plan.max_repairs_per_month if self.plan else None
         tech_limit = self.plan.max_technicians if self.plan else None
         cust_limit = self.plan.max_customers if self.plan else None
-        storage_limit = self.plan.max_storage_mb if self.plan else 500
         
         return {
             "repairs": {
@@ -258,11 +354,6 @@ class UsageService:
                 "used": customers_used,
                 "limit": cust_limit,
                 "percent": self._usage_percentage(customers_used, cust_limit),
-            },
-            "storage_mb": {
-                "used": storage_used,
-                "limit": storage_limit,
-                "percent": self._usage_percentage(storage_used, storage_limit),
             },
             "plan": plan_name,
             "subscription_status": self.tenant.subscription_status,

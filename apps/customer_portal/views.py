@@ -2073,6 +2073,36 @@ def handle_batch_repair_request(request, customer, customer_user=None):
                 return JsonResponse({'success': False, 'error': error_msg}, status=400)
             return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
 
+        # Quantity-aware plan check. The gate above only asks "is the shop AT
+        # its cap?", so a shop one job short of the limit could take a request
+        # that creates hundreds of rows (50 units x 20 breaks). Count what
+        # this request would actually create.
+        if tenant:
+            from apps.tenants.services.usage_service import UsageService
+
+            planned_repairs = 0
+            for _u in units_data:
+                _count = _u.get('breakCount') if _u.get('hasMultipleBreaks') else 1
+                try:
+                    _count = int(_count or 1)
+                except (TypeError, ValueError):
+                    _count = 1
+                planned_repairs += max(1, min(_count, MAX_BREAKS_PER_UNIT))
+
+            can_create, _limit_msg = UsageService(tenant).can_create_repairs(
+                planned_repairs
+            )
+            if not can_create:
+                # Don't leak the shop's plan tier or usage to its customer.
+                error_msg = (
+                    "This shop cannot accept that many repair requests right "
+                    "now. Please contact the shop or submit fewer units."
+                )
+                messages.warning(request, error_msg)
+                if 'multipart/form-data' in request.content_type or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'error': error_msg}, status=400)
+                return render(request, 'customer_portal/request_repair.html', _rewards_ctx)
+
         # Find available technician (scoped to tenant)
         tenant = getattr(request, 'tenant', None)
         technician = get_available_technician(tenant=tenant)

@@ -17,6 +17,7 @@ from apps.technician_portal.models import Technician, Repair, UnitRepairCount, T
 from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from common.auth import get_user_role
+from apps.tenants.services.usage_service import UsageService
 from apps.technician_portal.services.batch_pricing_service import calculate_batch_pricing
 from common.utils import convert_heic_to_jpeg
 
@@ -232,7 +233,6 @@ def create_multi_break_repair(request):
     # technicians on a capped plan could bypass limits by using the
     # multi-break flow instead of the single-repair form.
     if tenant:
-        from apps.tenants.services.usage_service import UsageService
         can_create, limit_msg = UsageService(tenant).can_create_repair()
         if not can_create:
             messages.warning(request, limit_msg)
@@ -257,6 +257,23 @@ def create_multi_break_repair(request):
                 if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                     return JsonResponse({'success': False, 'error': error_msg}, status=400)
                 return redirect('create_multi_break_repair')
+
+            # Quantity-aware plan check. The gate above the POST branch only
+            # asks "are you AT the cap?", so a tenant at 199/200 passed it and
+            # then created up to 20 rows, landing at 219. Reject rather than
+            # silently truncating: "I entered 8 breaks, 3 saved" is worse than
+            # a clear message.
+            if tenant and breaks_count:
+                can_create, limit_msg = UsageService(tenant).can_create_repairs(
+                    breaks_count
+                )
+                if not can_create:
+                    messages.error(request, limit_msg)
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse(
+                            {'success': False, 'error': limit_msg}, status=400,
+                        )
+                    return redirect('create_multi_break_repair')
 
             logger.info(f"[MULTI-BREAK] Request received - customer_id={customer_id}, unit={unit_number}, date={repair_date_str}, breaks={breaks_count}")
 
@@ -633,7 +650,6 @@ def convert_to_batch(request, repair_id):
     # Plan limit check — converting to batch creates additional Repair rows,
     # so it must respect the same monthly cap as single-repair creation (CODE-243).
     if tenant:
-        from apps.tenants.services.usage_service import UsageService
         can_create, limit_msg = UsageService(tenant).can_create_repair()
         if not can_create:
             messages.warning(request, limit_msg)
@@ -646,6 +662,15 @@ def convert_to_batch(request, repair_id):
             if additional_breaks < 1:
                 messages.error(request, "You must add at least 1 additional break.")
                 return redirect('convert_to_batch', repair_id=repair_id)
+
+            # Quantity-aware plan check -- see create_multi_break_repair.
+            if tenant:
+                can_create, limit_msg = UsageService(tenant).can_create_repairs(
+                    additional_breaks
+                )
+                if not can_create:
+                    messages.error(request, limit_msg)
+                    return redirect('convert_to_batch', repair_id=repair_id)
 
             # Cap additional breaks to prevent mass-creation abuse (CODE-240)
             # Total batch size = 1 (original) + additional_breaks

@@ -738,7 +738,9 @@ class UsageServiceTest(BaseTestCase):
         self.assertIn('repairs', summary)
         self.assertIn('technicians', summary)
         self.assertIn('customers', summary)
-        self.assertIn('storage_mb', summary)
+        # storage_mb was removed: get_summary reported a hardcoded 0,
+        # i.e. a permanent 0% gauge that told the owner nothing true.
+        self.assertNotIn('storage_mb', summary)
         self.assertIn('plan', summary)
         self.assertIn('subscription_status', summary)
         self.assertIn('trial_days_remaining', summary)
@@ -751,14 +753,20 @@ class UsageServiceTest(BaseTestCase):
         self.assertEqual(summary['subscription_status'], 'trialing')
         self.assertIsNotNone(summary['trial_days_remaining'])
 
-    def test_get_summary_no_plan(self):
-        """Summary works when tenant has no plan."""
+    def test_get_summary_falls_back_when_the_plan_fk_is_null(self):
+        """A null plan FK must not read as "no limits".
+
+        subscription_plan is SET_NULL, so a deleted plan row -- or any tenant
+        created before seed_plans ran -- left it None, which this used to
+        report as 'No Plan' with unlimited everything. It now falls back to
+        the plan matching the tenant's `plan` slug, then to trial.
+        """
         self.tenant.subscription_plan = None
         self.tenant.save()
         usage = UsageService(self.tenant)
         summary = usage.get_summary()
-        self.assertEqual(summary['plan'], 'No Plan')
-        self.assertIsNone(summary['repairs']['limit'])
+        self.assertEqual(summary['plan'], 'Trial')
+        self.assertEqual(summary['repairs']['limit'], 50)
 
     def test_usage_percentage_calculation(self):
         """Percentage is calculated correctly in summary."""
