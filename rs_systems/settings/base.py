@@ -239,6 +239,24 @@ STRIPE_CONNECT_WEBHOOK_SECRET = os.environ.get('STRIPE_CONNECT_WEBHOOK_SECRET', 
 STRIPE_SUBSCRIPTION_WEBHOOK_SECRET = os.environ.get('STRIPE_SUBSCRIPTION_WEBHOOK_SECRET', '')  # SaaS subscription webhooks
 STRIPE_TEST_MODE = STRIPE_MODE == 'test'
 
+# Pin the API version that outbound calls request. Without this the version
+# is whatever the installed SDK happens to default to, so a routine
+# `pip install` silently changes payload shapes in production: the
+# `stripe>=8.0.0,<16` range had already drifted prod to 15.4.0
+# (2026-07-29.dahlia) while a dev machine sat on 14.3.0 (2026-01-28.clover).
+#
+# This value matches what production was already sending, so pinning it
+# changes no behaviour today — it just stops the next rebuild from moving it.
+# Override with `eb setenv STRIPE_API_VERSION=...` to roll forward
+# deliberately, and read apps/billing/services/stripe_compat.py first: the
+# accessors there tolerate both the pre-Basil and Basil+ shapes, but code
+# that reads Stripe fields directly does not.
+#
+# NOTE: this governs outbound calls only. Inbound webhook payload shape is
+# set by the version pinned on each endpoint in the Stripe Dashboard, which
+# is configured separately and need not match.
+STRIPE_API_VERSION = os.environ.get('STRIPE_API_VERSION', '2026-07-29.dahlia')
+
 # =========================================
 # INVOICE DEFAULTS
 # =========================================

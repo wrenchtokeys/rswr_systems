@@ -16,7 +16,14 @@ django-ratelimit==4.1.0
 # Payments
 # Unpinned major upgrades have broken webhooks before (v15 removed dict
 # inheritance from StripeObject) — bump the ceiling deliberately, with tests.
-stripe>=8.0.0,<16
+#
+# The floor matters as much as the ceiling: `>=8.0.0` let production resolve
+# to 15.4.0 while dev machines sat on 14.3.0, and the two SDKs default to
+# different Stripe API versions (dahlia vs clover), so payload shapes differed
+# between the environment being tested and the one running. The API version is
+# now pinned explicitly in settings (STRIPE_API_VERSION), but keep the SDK
+# range narrow so local and prod agree by default.
+stripe>=15.4.0,<16
 
 # PDF generation
 reportlab>=4.0.0

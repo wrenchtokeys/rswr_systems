@@ -47,7 +47,11 @@ class StripeService:
         self.connect_webhook_secret = getattr(settings, 'STRIPE_CONNECT_WEBHOOK_SECRET', None)
         
         if STRIPE_AVAILABLE and self.api_key:
-            stripe.api_key = self.api_key
+            # Also pins STRIPE_API_VERSION -- services get instantiated
+            # directly by tests and management commands that never run
+            # BillingConfig.ready().
+            from apps.billing.services.stripe_compat import configure_stripe
+            configure_stripe()
             self.enabled = True
         else:
             self.enabled = False

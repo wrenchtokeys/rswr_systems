@@ -24,10 +24,34 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from apps.tenants.models import Tenant, SubscriptionPlan
+from apps.billing.services.stripe_compat import (
+    invoice_price_id,
+    invoice_subscription_id,
+)
 
 logger = logging.getLogger(__name__)
 
+
+# Stripe billing_reason values that only ever appear on subscription
+# invoices. Used as a backstop when the subscription id cannot be located
+# in any known payload shape -- better to process by customer than to drop
+# a payment on the floor because a field moved.
+_SUBSCRIPTION_BILLING_REASONS = {
+    'subscription',
+    'subscription_create',
+    'subscription_cycle',
+    'subscription_threshold',
+    'subscription_update',
+    'upcoming',
+}
+
+
+def _is_subscription_invoice(invoice):
+    """True when the invoice is subscription-related regardless of shape."""
+    return invoice.get('billing_reason') in _SUBSCRIPTION_BILLING_REASONS
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
+stripe.api_version = getattr(settings, 'STRIPE_API_VERSION', '') or stripe.api_version
 
 
 @csrf_exempt
@@ -231,13 +255,16 @@ def _handle_invoice_paid(invoice):
     - A recurring subscription invoice is paid
     """
     customer_id = invoice.get('customer')
-    subscription_id = invoice.get('subscription')
-    
-    if not subscription_id:
-        # Not a subscription invoice (might be a one-off)
+    # Basil (2025-03-31) moved this to parent.subscription_details.subscription.
+    # Reading invoice['subscription'] directly meant a payload from a newer
+    # API version silently returned here and no payment was ever processed.
+    subscription_id = invoice_subscription_id(invoice)
+
+    if not subscription_id and not _is_subscription_invoice(invoice):
+        # Genuinely not a subscription invoice (a one-off charge).
         logger.debug(f"invoice.paid for non-subscription invoice {invoice.get('id')}")
         return
-    
+
     tenant = _find_tenant_by_customer_id(customer_id)
     if not tenant:
         return
@@ -263,10 +290,10 @@ def _handle_invoice_paid(invoice):
     # plan='trial' — and get locked out when the trial clock runs out.
     if tenant.plan == 'trial':
         try:
-            lines = invoice.get('lines', {}).get('data', [])
-            price_id = ''
-            if lines:
-                price_id = (lines[0].get('price') or {}).get('id', '')
+            # Basil replaced line.price with line.pricing.price_details.price,
+            # so the old lookup returned '' and the self-heal never fired --
+            # exactly when it was needed most.
+            price_id = invoice_price_id(invoice)
             if price_id:
                 plan = SubscriptionPlan.objects.filter(
                     stripe_price_id=price_id
@@ -307,15 +334,18 @@ def _handle_invoice_payment_failed(invoice):
     payment method via the Billing Portal.
     """
     customer_id = invoice.get('customer')
-    subscription_id = invoice.get('subscription')
-    
-    if not subscription_id:
+    # See _handle_invoice_paid: reading invoice['subscription'] directly is
+    # not safe across API versions, and returning early here would silently
+    # stop every past_due transition and every dunning email.
+    subscription_id = invoice_subscription_id(invoice)
+
+    if not subscription_id and not _is_subscription_invoice(invoice):
         return
-    
+
     tenant = _find_tenant_by_customer_id(customer_id)
     if not tenant:
         return
-    
+
     tenant.subscription_status = 'past_due'
     tenant.save(update_fields=['subscription_status'])
     
