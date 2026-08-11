@@ -1,0 +1,148 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block title %}{{ title }} | RS Systems Admin{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/rs_admin.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="rs-page">
+
+  {% if not fee_enabled %}
+    <p class="rs-help" style="border-left:4px solid #f59e0b;padding-left:12px;">
+      <strong>Platform fees are currently OFF.</strong>
+      No <code>application_fee_amount</code> is being attached to any payment,
+      so nothing new will appear here.
+      <a href="{% url 'admin:admin_platform_config' %}">Platform configuration</a>
+      has the master switch.
+    </p>
+  {% endif %}
+
+  <p class="rs-help">
+    Fees are collected as Stripe <em>application fees</em> on direct charges:
+    the payment settles in the shop&rsquo;s connected account and Stripe moves
+    the fee into the platform balance. These rows mirror what appears under
+    <strong>Connect &rarr; Application fees</strong> in the Stripe Dashboard.
+  </p>
+
+  <div class="rs-form-card">
+    <h2 class="rs-section-title">All time</h2>
+    <p>
+      <strong>${{ totals.total|default:"0.00" }}</strong> collected
+      across {{ totals.count|default:0 }} payment{{ totals.count|pluralize }}
+      on ${{ totals.gross|default:"0.00" }} of gross volume.
+    </p>
+  </div>
+
+  {% if gap_count %}
+  <div class="rs-form-card" style="border-left:4px solid #dc2626;">
+    <h2 class="rs-section-title">⚠ {{ gap_count }} Stripe payment{{ gap_count|pluralize }} with no fee record</h2>
+    <p class="rs-help">
+      These invoices were paid through Stripe on a Connect-active shop but
+      have no matching fee record. Expected while fees are off. While fees are
+      ON, this should be zero &mdash; a non-zero count means fees are being
+      skipped, and each row is money that was not collected.
+    </p>
+    <table class="rs-table">
+      <thead>
+        <tr><th>Invoice</th><th>Shop</th><th>Paid</th><th>PaymentIntent</th></tr>
+      </thead>
+      <tbody>
+        {% for p in gaps|slice:":25" %}
+        <tr>
+          <td>{{ p.invoice.invoice_number }}</td>
+          <td>{{ p.invoice.tenant.name }}</td>
+          <td>{{ p.payment_date|date:"Y-m-d" }}</td>
+          <td><code>{{ p.stripe_payment_id }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="rs-form-card">
+    <h2 class="rs-section-title">By month</h2>
+    {% if by_month %}
+    <table class="rs-table">
+      <thead>
+        <tr><th>Month</th><th>Payments</th><th>Gross volume</th><th>Fees collected</th></tr>
+      </thead>
+      <tbody>
+        {% for row in by_month %}
+        <tr>
+          <td>{{ row.month|date:"F Y" }}</td>
+          <td>{{ row.count }}</td>
+          <td>${{ row.gross }}</td>
+          <td><strong>${{ row.total }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="rs-help">No fees collected yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="rs-form-card">
+    <h2 class="rs-section-title">By shop</h2>
+    {% if by_tenant %}
+    <table class="rs-table">
+      <thead>
+        <tr><th>Shop</th><th>Payments</th><th>Gross volume</th><th>Fees collected</th></tr>
+      </thead>
+      <tbody>
+        {% for row in by_tenant %}
+        <tr>
+          <td>{{ row.tenant__name }}</td>
+          <td>{{ row.count }}</td>
+          <td>${{ row.gross }}</td>
+          <td><strong>${{ row.total }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="rs-help">No fees collected yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="rs-form-card">
+    <h2 class="rs-section-title">Most recent {{ recent|length }}</h2>
+    {% if recent %}
+    <table class="rs-table">
+      <thead>
+        <tr>
+          <th>Date</th><th>Shop</th><th>Invoice</th>
+          <th>Gross</th><th>Rate</th><th>Fee</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent %}
+        <tr>
+          <td>{{ r.created_at|date:"Y-m-d H:i" }}</td>
+          <td>{{ r.tenant.name }}</td>
+          <td>{{ r.invoice.invoice_number }}</td>
+          <td>${{ r.gross_amount }}</td>
+          <td>
+            {{ r.fee_percent }}%{% if r.fee_fixed_cents %}
+              + ${{ r.fee_fixed_cents|floatformat:0 }}&cent;{% endif %}
+          </td>
+          <td><strong>${{ r.fee_amount }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="rs-help">No fees collected yet.</p>
+    {% endif %}
+  </div>
+
+  <p>
+    <a href="{% url 'admin:admin_platform_config' %}" class="rs-btn-ghost">Platform configuration</a>
+    <a href="{% url 'admin:admin_connect_accounts' %}" class="rs-btn-ghost">Connect accounts</a>
+  </p>
+</div>
+{% endblock %}

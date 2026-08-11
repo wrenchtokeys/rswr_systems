@@ -885,11 +885,16 @@ class ConnectServiceTests(WebhookEndpointTestBase):
         """Tenant-specific fee override takes priority."""
         from apps.tenants.services.connect_service import ConnectService
 
+        from apps.billing.models import PlatformConfig
+        config = PlatformConfig.get_solo()
+        config.fee_enabled = True
+        config.save()
+
         self.tenant.platform_fee_percent = Decimal('15.00')
         self.tenant.save()
 
         svc = ConnectService()
-        fee_cents, fee_percent = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
+        fee_cents, fee_percent, _fixed = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
         self.assertEqual(fee_cents, 1500)
         self.assertEqual(fee_percent, Decimal('15.00'))
 
@@ -902,10 +907,12 @@ class ConnectServiceTests(WebhookEndpointTestBase):
         self.tenant.save()
 
         PlatformConfig.objects.all().delete()
-        PlatformConfig.objects.create(default_fee_percent=Decimal('8.50'))
+        PlatformConfig.objects.create(
+            default_fee_percent=Decimal('8.50'), fee_enabled=True,
+        )
 
         svc = ConnectService()
-        fee_cents, fee_percent = svc.calculate_platform_fee(Decimal('200.00'), self.tenant)
+        fee_cents, fee_percent, _fixed = svc.calculate_platform_fee(Decimal('200.00'), self.tenant)
         self.assertEqual(fee_cents, 1700)  # $17.00
         self.assertEqual(fee_percent, Decimal('8.50'))
 
@@ -918,10 +925,12 @@ class ConnectServiceTests(WebhookEndpointTestBase):
         self.tenant.save()
 
         PlatformConfig.objects.all().delete()
-        PlatformConfig.objects.create(default_fee_percent=Decimal('0'))
+        PlatformConfig.objects.create(
+            default_fee_percent=Decimal('0'), fee_enabled=True,
+        )
 
         svc = ConnectService()
-        fee_cents, fee_percent = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
+        fee_cents, fee_percent, _fixed = svc.calculate_platform_fee(Decimal('100.00'), self.tenant)
         self.assertEqual(fee_cents, 0)
 
     @patch('stripe.checkout.Session.create')
@@ -946,7 +955,15 @@ class ConnectServiceTests(WebhookEndpointTestBase):
         """Connected checkout includes application_fee_amount."""
         from apps.tenants.services.connect_service import ConnectService
 
+        from apps.billing.models import PlatformConfig
+
         _, invoice = self._create_customer_and_invoice('INV-CONN-001', Decimal('300.00'))
+
+        # Fees are gated on the PlatformConfig master switch, so the
+        # mechanism can ship dormant.
+        config = PlatformConfig.get_solo()
+        config.fee_enabled = True
+        config.save()
 
         self.tenant.stripe_connect_account_id = 'acct_connected'
         self.tenant.stripe_onboarding_status = 'active'

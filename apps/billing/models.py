@@ -1067,9 +1067,29 @@ class PlatformConfig(AutoUpdateTimestampMixin, models.Model):
 
     Use PlatformConfig.get() to fetch (creates with defaults if missing).
     """
+    # Master switch. Turning the platform fee on is a deliberate, reversible
+    # act, not a side effect of editing a percentage. With this False the
+    # fee resolves to zero no matter what any tenant override or default
+    # says, so the mechanism can ship dormant and be enabled once shops have
+    # been given notice.
+    fee_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Master switch for platform fees on invoice payments. While off, "
+            "no application_fee_amount is charged regardless of the rates below."
+        )
+    )
     default_fee_percent = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('0.00'),
         help_text="Default platform fee % on invoice payments (e.g. 2.50 = 2.5%)"
+    )
+    default_fee_fixed_cents = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            "Default fixed component per transaction, in cents (e.g. 25 = $0.25). "
+            "On a $50 chip repair a percentage alone is noise; percent + fixed "
+            "is the industry-standard shape."
+        )
     )
     competition_pool_enabled = models.BooleanField(
         default=False,
@@ -1086,7 +1106,8 @@ class PlatformConfig(AutoUpdateTimestampMixin, models.Model):
         verbose_name_plural = 'Platform Configuration'
 
     def __str__(self):
-        return f'Platform Config (fee: {self.default_fee_percent}%)'
+        state = 'on' if self.fee_enabled else 'OFF'
+        return f'Platform Config (fees {state}, default: {self.default_fee_percent}%)'
 
     def save(self, *args, **kwargs):
         # Enforce singleton: always use pk=1
@@ -1143,7 +1164,15 @@ class PlatformFeeRecord(models.Model):
     )
     fee_percent = models.DecimalField(
         max_digits=5, decimal_places=2,
-        help_text="Fee rate at time of charge (percentage)"
+        help_text=(
+            "Effective fee rate at time of charge, derived from the raw "
+            "amounts. With a fixed component this is the blended rate, which "
+            "is still a true statement about what was taken."
+        )
+    )
+    fee_fixed_cents = models.PositiveIntegerField(
+        default=0,
+        help_text="Fixed component of the fee at time of charge, in cents"
     )
     stripe_account_id = models.CharField(
         max_length=50,
@@ -1157,6 +1186,17 @@ class PlatformFeeRecord(models.Model):
         verbose_name_plural = 'Platform Fee Records'
         indexes = [
             models.Index(fields=['tenant', 'created_at']),
+            # The monthly totals on /admin/platform-fees/ group by this.
+            models.Index(fields=['created_at']),
+        ]
+        constraints = [
+            # One fee per payment, enforced by the database rather than by
+            # the handler remembering to check. Both the webhook and the
+            # 15-minute reconcile sweep can record the same PaymentIntent.
+            models.UniqueConstraint(
+                fields=['payment_intent_id'],
+                name='uniq_platform_fee_payment_intent',
+            ),
         ]
 
     def __str__(self):

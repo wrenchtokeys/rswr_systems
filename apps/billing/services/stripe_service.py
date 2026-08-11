@@ -444,15 +444,27 @@ class StripeService:
                     #             = (application_fee_amount / (amount * 100)) * 100
                     #             = application_fee_amount / amount
                     #
-                    # NOTE: Do NOT gate this on metadata keys. The checkout
-                    # session may have been created via ConnectService (stores
-                    # 'rs_fee_percent') OR the module-level helper (stores
-                    # 'rs_fee_cents'). Computing from raw amounts is always
-                    # correct and avoids the key-name mismatch.
+                    # NOTE: Do NOT gate this on metadata keys. Deriving from
+                    # raw amounts is always correct and immune to a metadata
+                    # key-name mismatch, which is what caused CODE-069. With
+                    # a fixed fee component this yields the blended effective
+                    # rate -- still a true statement about what was taken.
                     if amount > 0:
                         fee_percent = (Decimal(str(application_fee_amount)) / (amount * 100) * 100).quantize(Decimal('0.01'))
                     else:
                         fee_percent = Decimal('0.00')
+
+                    # The fixed component can't be derived from the totals,
+                    # so it rides along in metadata. Absent on older records
+                    # and on anything the reconcile sweep rebuilds; 0 then.
+                    try:
+                        fee_fixed_cents = int(
+                            (payment_intent.get('metadata') or {}).get(
+                                'rs_fee_fixed_cents', 0) or 0
+                        )
+                    except (TypeError, ValueError):
+                        fee_fixed_cents = 0
+
                     PlatformFeeRecord.objects.create(
                         tenant=invoice.tenant,
                         invoice=invoice,
@@ -460,6 +472,7 @@ class StripeService:
                         gross_amount=amount,
                         fee_amount=fee_amount,
                         fee_percent=fee_percent,
+                        fee_fixed_cents=fee_fixed_cents,
                         stripe_account_id=payment_intent.get('on_behalf_of') or invoice.tenant.stripe_connect_account_id or '',
                     )
                     logger.info(

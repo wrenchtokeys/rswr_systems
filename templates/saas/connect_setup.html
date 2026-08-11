@@ -30,9 +30,9 @@
                         <i class="fas fa-check mr-1"></i> Payouts enabled
                     </span>
                     {% endif %}
-                    {% if tenant.platform_fee_percent > 0 %}
+                    {% if tenant.platform_fee_label != 'No platform fee' %}
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                        Platform fee: {{ tenant.platform_fee_percent }}%
+                        RS Systems fee: {{ tenant.platform_fee_label }}
                     </span>
                     {% endif %}
                 </div>
@@ -174,7 +174,10 @@
 
             <p class="text-xs text-gray-400 mt-3">
                 Powered by <a href="https://stripe.com" target="_blank" class="text-gray-500 hover:underline">Stripe</a>.
-                Standard processing fees apply (2.9% + $0.30 per transaction).
+                Standard processing fees apply (2.9% + $0.30 per transaction).{% if tenant.platform_fee_label != 'No platform fee' %}
+                RS Systems also charges {{ tenant.platform_fee_label }}.{% endif %}
+                Money from your invoices goes straight to your own bank account &mdash;
+                it never passes through RS Systems.
             </p>
         </div>
     </div>

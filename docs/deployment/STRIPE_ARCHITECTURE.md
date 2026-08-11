@@ -87,18 +87,50 @@ access to their Stripe?":
 
 Invoice payments are **direct charges** (`stripe_account=<shop acct>` on
 the Checkout Session). The shop pays Stripe's processing fees. The
-platform takes `application_fee_amount`, computed as
-`tenant.platform_fee_percent`, falling back to
-`PlatformConfig.default_fee_percent` when the tenant field is NULL
-(percent-only, truncated to whole cents). Collected fees appear in the
-platform dashboard under **Connect → Application fees** and are recorded
-locally as `PlatformFeeRecord` rows (written by the
-`payment_intent.succeeded` webhook from PaymentIntent metadata).
+platform takes `application_fee_amount`, which on a direct charge Stripe
+moves out of the connected account and into the **platform's own balance**.
+Collected fees appear in the platform dashboard under
+**Connect → Application fees** and are recorded locally as
+`PlatformFeeRecord` rows (written by the `payment_intent.succeeded`
+webhook, and by the 15-minute reconcile sweep, which go through the same
+path and dedupe on `payment_intent_id` — now enforced by a unique
+constraint, not just an `.exists()` check).
 
-**Gotcha:** tenants created before migration `tenants/0012` have
-`platform_fee_percent = 0.00` (not NULL), which reads as an explicit 0%
-override — they pay no platform fee until the field is cleared or set in
-Django admin.
+**The fee is decided in exactly one place: `Tenant.effective_platform_fee`.**
+It returns `(percent, fixed_cents, source)` and resolves in this order:
+
+1. `tenant.is_platform_owner` → 0. We never charge our own shop.
+2. `PlatformConfig.fee_enabled` is False → 0. Master switch; wins over
+   every configured rate, so turning fees off is always one click.
+3. A tenant override (either `platform_fee_percent` or
+   `platform_fee_fixed_cents` non-NULL) → that tenant's pair.
+4. Otherwise the `PlatformConfig` defaults.
+
+Percent and fixed resolve **as a unit** — a tenant override never mixes its
+percent with the global fixed amount. `ConnectService.calculate_platform_fee`
+is a thin wrapper over the property and clamps the result so at least
+`MIN_NET_CENTS` (50) of the payment remains: Stripe rejects a fee larger
+than the charge, which would make a small invoice completely unpayable.
+
+**Fixed by migration `tenants/0026` (Aug 2026):** tenants created before
+`tenants/0012` carried `platform_fee_percent = 0.00` (not NULL) because
+`0011` added the column as `default=0` NOT NULL and `0012` made it nullable
+without backfilling. That read as an explicit 0% override and silently beat
+any global rate — the reason no platform fee was ever collected on any
+payment. `0026` clears those to NULL; a literal `0.00` now genuinely means
+"this shop is zero-rated".
+
+**Deleted, do not reintroduce:** there were three implementations of this
+calculation. `ConnectService.record_platform_fee`, the module-level
+`calculate_platform_fee(amount_cents, tenant)` (no platform-owner
+exemption, no clamp), and the module-level `create_direct_charge_session`
+(wrote metadata key `rs_fee_cents` while the reader expected
+`rs_fee_percent` — the cause of CODE-069) are all gone.
+
+Reporting lives at **`/admin/platform-fees/`** (superuser only): totals by
+month and by shop, recent records, and a gap check for Stripe-paid invoices
+on Connect-active shops that have no fee record. While fees are on, that
+count should be zero; non-zero means fees are being skipped.
 
 ---
 

@@ -262,9 +262,27 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         null=True, blank=True,
         help_text="When the Stripe Connect account first became active"
     )
+    # NULL means "use the global default". A literal 0.00 means "explicitly
+    # zero-rated" (a comped shop) and beats the global.
+    #
+    # That distinction was broken for two years: migration 0011 added this
+    # column as `default=0` NOT NULL, and 0012 made it nullable without
+    # backfilling, so every pre-0012 tenant carried an explicit 0.00 that
+    # silently overrode any global rate. Migration 0026 clears those.
+    #
+    # The percent and fixed fields resolve together as a unit -- see
+    # Tenant.effective_platform_fee.
     platform_fee_percent = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
-        help_text="Override global platform fee for this tenant. Null = use global default."
+        help_text="Override global platform fee % for this tenant. Null = use global default."
+    )
+    platform_fee_fixed_cents = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text=(
+            "Override the global fixed fee component, in cents. Resolved as a "
+            "unit with platform_fee_percent: setting either one makes this "
+            "tenant use its own pair, treating the unset half as 0."
+        )
     )
 
     # Platform owner flag — exempt from subscription billing
@@ -561,6 +579,73 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
             bool(self.stripe_connect_account_id)
             and self.stripe_connect_payouts_enabled
         )
+
+    @property
+    def effective_platform_fee(self):
+        """The platform fee that applies to this tenant's invoice payments.
+
+        Returns (percent: Decimal, fixed_cents: int, source: str).
+
+        Resolution order:
+          1. Platform owner        -> 0. We do not charge ourselves, and
+             this is the tenant most likely to be sitting on a legacy 0.00.
+          2. Fees globally off     -> 0. The master switch wins over
+             everything, so turning fees off is always one click.
+          3. Tenant override       -> the tenant's pair.
+          4. Global default        -> PlatformConfig's pair.
+
+        Percent and fixed resolve AS A UNIT. Mixing a tenant percent with a
+        global fixed produces a rate nobody configured and no one can
+        explain to a shop owner asking why they were charged what they were.
+
+        This is the only place the fee is decided. There used to be three
+        implementations -- two of them dead, and one writing a different
+        metadata key than the reader expected, which is what caused CODE-069.
+        """
+        from decimal import Decimal
+
+        if self.is_platform_owner:
+            return Decimal('0'), 0, 'platform_owner'
+
+        from apps.billing.models import PlatformConfig
+        config = PlatformConfig.get()
+
+        if not config.fee_enabled:
+            return Decimal('0'), 0, 'disabled'
+
+        has_override = (
+            self.platform_fee_percent is not None
+            or self.platform_fee_fixed_cents is not None
+        )
+        if has_override:
+            return (
+                self.platform_fee_percent or Decimal('0'),
+                self.platform_fee_fixed_cents or 0,
+                'tenant',
+            )
+
+        return (
+            config.default_fee_percent or Decimal('0'),
+            config.default_fee_fixed_cents or 0,
+            'global',
+        )
+
+    @property
+    def platform_fee_label(self):
+        """Human-readable fee, for the Connect setup and billing pages.
+
+        Shops are told about this before they onboard, not after they have
+        completed KYC.
+        """
+        percent, fixed_cents, source = self.effective_platform_fee
+        if not percent and not fixed_cents:
+            return 'No platform fee'
+        parts = []
+        if percent:
+            parts.append(f"{percent.normalize():f}%".replace('.0%', '%'))
+        if fixed_cents:
+            parts.append(f"${fixed_cents / 100:.2f}")
+        return ' + '.join(parts) + ' per transaction'
 
 
 class TenantMembership(models.Model):
