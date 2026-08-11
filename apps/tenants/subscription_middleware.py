@@ -160,37 +160,81 @@ class SubscriptionEnforcementMiddleware:
                 # Grace period ended: full block
                 return self._block(request, tenant, status)
 
-        # past_due gets a warning but isn't blocked
+        # past_due: warn first, restrict later.
+        #
+        # This used to be warn-only forever — a shop whose card died kept
+        # full write access for as long as it liked. It now escalates to
+        # read-only after PAST_DUE_GRACE_DAYS (14), which still leaves about
+        # a week of Stripe's automatic retries. /owner/billing/ is exempt,
+        # so the fix is always one click away.
         if status == 'past_due':
-            try:
-                messages.warning(
-                    request,
-                    "⚠️ Your payment is past due. Please update your billing info to avoid service interruption."
+            if tenant.past_due_is_read_only:
+                return self._handle_grace_period(
+                    request, tenant,
+                    days_remaining=0,
+                    reason='past_due',
                 )
+            days_left = tenant.past_due_days_until_read_only
+            try:
+                if days_left is None:
+                    warning = (
+                        "⚠️ Your payment is past due. Please update your "
+                        "billing info to avoid service interruption."
+                    )
+                else:
+                    warning = (
+                        f"⚠️ Your payment is past due. You have {days_left} day"
+                        f"{'s' if days_left != 1 else ''} before your shop "
+                        f"becomes read-only. Update your billing info to "
+                        f"avoid interruption."
+                    )
+                messages.warning(request, warning)
             except Exception:
                 pass
+            request.subscription_past_due = True
+            request.past_due_days_until_read_only = days_left
 
         return self.get_response(request)
 
-    def _handle_grace_period(self, request, tenant):
-        """Handle requests during the 30-day read-only grace period."""
-        days_remaining = tenant.grace_days_remaining
+    def _handle_grace_period(self, request, tenant, days_remaining=None,
+                             reason='expired'):
+        """Read-only mode: GETs pass, writes are blocked.
+
+        Shared by the two ways a tenant loses write access — an expired
+        subscription working through its grace period, and a past_due tenant
+        that has used up its full-access days. Same mechanics, different copy.
+        """
+        if days_remaining is None:
+            days_remaining = tenant.grace_days_remaining
+
+        if reason == 'past_due':
+            api_error = (
+                'Your payment is past due. Your shop is read-only until '
+                'the payment is resolved.'
+            )
+            ui_error = (
+                "⛔ Your shop is read-only because we could not collect "
+                "payment. Update your payment method to restore full access."
+            )
+        else:
+            api_error = 'Your subscription has expired. You are in read-only mode.'
+            ui_error = (
+                f"⛔ Your subscription has expired. You have {days_remaining} day"
+                f"{'s' if days_remaining != 1 else ''} of read-only access remaining. "
+                "Upgrade to continue making changes."
+            )
 
         # Block write operations
         if request.method in WRITE_METHODS:
             if request.path.startswith('/api/'):
                 return JsonResponse({
-                    'error': 'Your subscription has expired. You are in read-only mode.',
+                    'error': api_error,
+                    'reason': reason,
                     'grace_days_remaining': days_remaining,
                     'upgrade_url': '/owner/billing/',
                 }, status=402)
             try:
-                messages.error(
-                    request,
-                    f"⛔ Your subscription has expired. You have {days_remaining} day"
-                    f"{'s' if days_remaining != 1 else ''} of read-only access remaining. "
-                    "Upgrade to continue making changes."
-                )
+                messages.error(request, ui_error)
             except Exception:
                 pass
             # Redirect back to the referring page or home
@@ -200,6 +244,7 @@ class SubscriptionEnforcementMiddleware:
         # Allow GET — set a flag for the template to show the grace period banner
         request.subscription_grace_period = True
         request.grace_days_remaining = days_remaining
+        request.subscription_readonly_reason = reason
         return self.get_response(request)
 
     def _block(self, request, tenant, reason):

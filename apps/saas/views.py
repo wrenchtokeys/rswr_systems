@@ -1610,7 +1610,12 @@ def update_payment_method(request):
     svc = SubscriptionService()
     try:
         return_url = request.build_absolute_uri('/owner/billing/')
-        portal_url = svc.create_billing_portal_session(tenant, return_url)
+        # Deep-link straight to the card form. This is the CTA in every
+        # dunning email, so dropping the owner on the portal home and making
+        # them hunt for it is a needless step at exactly the wrong moment.
+        portal_url = svc.create_billing_portal_session(
+            tenant, return_url, flow='payment_method_update',
+        )
         return redirect(portal_url)
     except SubscriptionError as e:
         messages.error(request, str(e))

@@ -87,24 +87,48 @@ class TenantGracePeriodModelTests(TestCase):
     """Test Tenant model grace period properties."""
 
     def test_trial_not_expired_no_grace(self):
-        """Active trial has no grace period."""
+        """A live trial is not 'in grace' -- it hasn't lost anything yet.
+
+        The computed trial grace must be gated on the trial actually having
+        expired, or every tenant inside their trial would see a "read-only
+        access remaining" banner while nothing of the sort was happening.
+        """
         tenant, _ = _make_tenant(days_ago=5)  # Trial started 5 days ago, 30-day trial
         self.assertFalse(tenant.is_trial_expired)
         self.assertFalse(tenant.is_in_grace_period)
         self.assertIsNone(tenant.effective_grace_period_end)
 
-    def test_trial_expired_no_grace_without_explicit_grace_period(self):
-        """Expired trial without explicit grace_period_end has no grace period.
-        
-        Free trials do NOT get automatic grace period after expiry.
-        Grace period only applies to paid subscriptions (set via webhook).
+    def test_expired_trial_gets_a_computed_read_only_grace(self):
+        """An expired trial gets TRIAL_GRACE_DAYS of read-only access.
+
+        It used to get none: grace_period_end was only ever written by the
+        subscription.deleted webhook, so a shop that never subscribed was
+        hard-blocked the instant the trial clock ran out -- no read-only
+        window and no chance to export anything. That also made the alert
+        email's "30 days of read-only access" copy untrue.
         """
-        # Trial started 35 days ago → expired 5 days ago, no grace_period_end
+        # Trial started 35 days ago -> expired 5 days ago, no grace_period_end
         tenant, _ = _make_tenant(days_ago=35)
         self.assertTrue(tenant.is_trial_expired)
+        self.assertTrue(tenant.is_in_grace_period)
+        self.assertIsNotNone(tenant.effective_grace_period_end)
+        # 14-day trial grace, 5 days already used.
+        self.assertEqual(tenant.grace_days_remaining, 8)
+
+    def test_long_expired_trial_is_still_blocked(self):
+        """The computed grace grants nothing retroactively."""
+        tenant, _ = _make_tenant(days_ago=90)  # expired 60 days ago
+        self.assertTrue(tenant.is_trial_expired)
         self.assertFalse(tenant.is_in_grace_period)
-        self.assertIsNone(tenant.effective_grace_period_end)
         self.assertEqual(tenant.grace_days_remaining, 0)
+
+    def test_explicit_grace_period_still_wins(self):
+        """A paid lapse's 30-day stamp must not be shortened to 14."""
+        tenant, _ = _make_tenant(days_ago=35)
+        explicit = timezone.now() + timezone.timedelta(days=25)
+        tenant.grace_period_end = explicit
+        tenant.save(update_fields=['grace_period_end'])
+        self.assertEqual(tenant.effective_grace_period_end, explicit)
 
     def test_paid_subscription_deleted_grace_period(self):
         """When subscription is deleted, grace_period_end is set explicitly."""
@@ -206,11 +230,24 @@ class SubscriptionMiddlewareGracePeriodTests(TestCase):
         response, passed = self._run_middleware(request)
         self.assertEqual(passed, ['passed_through'])
 
-    def test_trial_expired_redirect_to_blocked(self):
-        """Expired trial (no explicit grace_period_end) — redirect to /subscription-blocked/."""
-        # Trials do NOT get automatic grace period; grace is only for paid subscriptions
-        # that were explicitly deleted via Stripe webhook (which sets grace_period_end).
-        tenant, owner = _make_tenant(days_ago=35)  # 35 days: expired 5 days ago, no grace
+    def test_recently_expired_trial_is_read_only_not_blocked(self):
+        """Within the trial grace window, GETs pass (read-only)."""
+        tenant, owner = _make_tenant(days_ago=35)  # expired 5 days ago
+        request = self._make_request(method='GET', user=owner, tenant=tenant)
+        response, passed = self._run_middleware(request)
+        self.assertEqual(passed, ['passed_through'])
+        self.assertTrue(getattr(request, 'subscription_grace_period', False))
+
+    def test_recently_expired_trial_cannot_write(self):
+        tenant, owner = _make_tenant(days_ago=35)
+        request = self._make_request(method='POST', user=owner, tenant=tenant)
+        response, passed = self._run_middleware(request)
+        self.assertEqual(passed, [])
+        self.assertEqual(response.status_code, 302)
+
+    def test_trial_expired_past_grace_redirect_to_blocked(self):
+        """Once the trial grace is used up, it's a hard block again."""
+        tenant, owner = _make_tenant(days_ago=60)  # expired 30 days ago
         request = self._make_request(method='GET', user=owner, tenant=tenant)
         response, passed = self._run_middleware(request)
         self.assertEqual(passed, [])

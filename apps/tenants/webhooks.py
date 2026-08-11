@@ -261,20 +261,15 @@ def _handle_checkout_completed(session, event=None):
     if plan_slug:
         plan = SubscriptionPlan.objects.filter(slug=plan_slug).first()
     
-    # Update tenant with subscription info AND plan (payment is now confirmed)
-    tenant.stripe_subscription_id = subscription_id
-    tenant.subscription_status = 'active'
-    # Reactivation clears any grace period from a previous lapse. A stale
-    # grace_period_end left on an active tenant makes the middleware treat
-    # their NEXT "cancel at period end" as an immediate lockout. (A3)
-    tenant.grace_period_end = None
+    # Payment is confirmed, so this is a full reactivation: clears the grace
+    # period (a stale one makes the middleware treat their NEXT "cancel at
+    # period end" as an immediate lockout), past_due_since, and the alert
+    # dedup keys. (A3)
+    update_fields = tenant.mark_subscription_active(
+        status='active', subscription_id=subscription_id, plan=plan,
+    )
 
-    update_fields = ['stripe_subscription_id', 'subscription_status', 'grace_period_end']
-    
     if plan:
-        tenant.plan = plan.slug
-        tenant.subscription_plan = plan
-        update_fields.extend(['plan', 'subscription_plan'])
         logger.info(
             f"checkout.session.completed: Tenant {tenant.slug} upgraded to {plan.name}. "
             f"Subscription: {subscription_id}"
@@ -318,17 +313,13 @@ def _handle_invoice_paid(invoice, event=None):
     # Check previous status before updating (for payment_recovered detection)
     previous_status = tenant.subscription_status
 
-    # Update tenant status to active
-    tenant.subscription_status = 'active'
-    # A successful payment reactivates: clear any grace period left over
-    # from a previous lapse so it can't lock the tenant out later. (A3)
-    tenant.grace_period_end = None
-
-    # Update subscription ID if it changed
-    if subscription_id and tenant.stripe_subscription_id != subscription_id:
-        tenant.stripe_subscription_id = subscription_id
-
-    update_fields = ['subscription_status', 'stripe_subscription_id', 'grace_period_end']
+    # A successful payment reactivates. mark_subscription_active clears the
+    # grace period, past_due_since AND subscription_alerts_sent -- that last
+    # one used to be left behind, so a tenant who lapsed, resubscribed and
+    # lapsed again got no lifecycle emails at all the second time. (A3)
+    update_fields = tenant.mark_subscription_active(
+        status='active', subscription_id=subscription_id,
+    )
 
     # Self-heal the plan from the invoice's price ID. If the original
     # checkout.session.completed was lost (endpoint misconfig, transient
@@ -401,6 +392,12 @@ def _handle_invoice_payment_failed(invoice, event=None):
 
     tenant.subscription_status = 'past_due'
     update_fields = ['subscription_status']
+    # Stamp only the FIRST failure of this lapse. Stripe retries several
+    # times for the same unpaid invoice; overwriting on each retry would
+    # keep resetting the read-only countdown and it would never fire.
+    if not tenant.past_due_since:
+        tenant.past_due_since = timezone.now()
+        update_fields.append('past_due_since')
     webhook_log.stamp_synced(tenant, _event_created(event), update_fields)
     tenant.save(update_fields=update_fields)
     
@@ -409,10 +406,14 @@ def _handle_invoice_payment_failed(invoice, event=None):
         f"Invoice: {invoice.get('id')}. Attempt: {invoice.get('attempt_count', '?')}"
     )
     
-    # Notify shop owners AND managers about failed payment
+    # Notify shop owners AND managers about failed payment.
+    # next_payment_attempt is Stripe's own retry date; when it is null this
+    # WAS the last attempt. The copy used to hardcode "attempt N of 4"
+    # without reading Stripe's retry config, so it could simply be wrong.
     _notify_owners_and_managers(tenant, 'payment_failed', {
         'invoice_id': invoice.get('id'),
         'attempt_count': invoice.get('attempt_count', 1),
+        'next_payment_attempt': invoice_next_attempt(invoice),
     })
 
 
@@ -715,94 +716,15 @@ def handle_subscription_event(event_type, data_object, event=None):
 
 
 def _notify_owners_and_managers(tenant, event_type, context):
+    """Notify owners and managers of a subscription event.
+
+    Delegates to subscription_notify, which sends the branded email AND
+    creates in-app notifications. This used to be email-only, so a message
+    that landed in spam left no trace at all and the first thing an owner
+    noticed was losing write access.
     """
-    Send email notification to ALL owners AND managers about subscription events.
+    from apps.tenants.services.subscription_notify import (
+        notify_owners_and_managers,
+    )
 
-    Uses the configured email backend (Amazon SES over SMTP).
-    """
-    try:
-        from django.conf import settings as django_settings
-        from core.email_utils import send_branded_email
-
-        recipient_list = _get_owner_and_manager_emails(tenant)
-        if not recipient_list:
-            logger.warning(f"Cannot notify owners/managers for tenant {tenant.slug}: no emails found")
-            return
-
-        owner = tenant.owner
-        owner_name = (owner.first_name or 'there') if owner else 'there'
-        base_url = getattr(django_settings, 'BASE_URL', 'https://rssystems.io')
-
-        if event_type == 'payment_failed':
-            attempt_count = context.get('attempt_count', 1)
-            max_attempts = 4
-            retry_text = (
-                f"This was attempt {attempt_count} of {max_attempts}. "
-                "Stripe will retry automatically, but we recommend updating "
-                "your payment method now to avoid service interruption."
-            )
-            send_branded_email(
-                subject=f'Payment failed for {tenant.name}',
-                recipient_list=recipient_list,
-                headline='Payment Failed',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"We were unable to process your payment for {tenant.name} (attempt #{attempt_count}).",
-                    retry_text,
-                ],
-                button_text='Update Payment Method',
-                button_url=f'{base_url}/owner/update-payment-method/',
-                tenant=tenant,
-                fail_silently=True,
-            )
-        elif event_type == 'payment_recovered':
-            send_branded_email(
-                subject=f'Payment successful for {tenant.name}',
-                recipient_list=recipient_list,
-                headline='Good news!',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"Your payment for {tenant.name} has been successfully processed. "
-                    "Your account is back to active status.",
-                    "No further action is needed — thank you for being a valued customer!",
-                ],
-                button_text='Go to Dashboard',
-                button_url=f'{base_url}/owner/',
-                tenant=tenant,
-                fail_silently=True,
-            )
-        elif event_type == 'subscription_ended':
-            send_branded_email(
-                subject=f'Your {tenant.name} subscription has ended',
-                recipient_list=recipient_list,
-                headline='Subscription Ended',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"Your subscription for {tenant.name} has ended.",
-                    "Your account has been moved to read-only mode for 30 days. During this time you can view your data but cannot make changes.",
-                    "Resubscribe anytime to restore full access.",
-                ],
-                button_text='Resubscribe Now',
-                button_url=f'{base_url}/owner/billing/',
-                tenant=tenant,
-                fail_silently=True,
-            )
-        else:
-            send_branded_email(
-                subject=f'RS Systems notification for {tenant.name}',
-                recipient_list=recipient_list,
-                headline='Account Notification',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"A subscription event occurred for {tenant.name}.",
-                ],
-                tenant=tenant,
-                fail_silently=True,
-            )
-
-        logger.info(
-            f"Sent {event_type} notification to {recipient_list} for tenant {tenant.slug}"
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to send {event_type} notification for tenant {tenant.slug}: {e}")
+    notify_owners_and_managers(tenant, event_type, context)

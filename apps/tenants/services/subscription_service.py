@@ -506,17 +506,21 @@ class SubscriptionService:
     # Billing Portal
     # ------------------------------------------------------------------
     
-    def create_billing_portal_session(self, tenant, return_url):
+    def create_billing_portal_session(self, tenant, return_url, flow=None):
         """
         Create a Stripe Billing Portal session for the tenant.
-        
+
         The Billing Portal lets shop owners manage payment methods,
         view invoices, and update their subscription.
-        
+
         Args:
-            tenant: Tenant model instance  
+            tenant: Tenant model instance
             return_url: URL to redirect to after leaving the portal
-            
+            flow: optional deep-link, e.g. 'payment_method_update'. Without
+                it the owner lands on the portal home and has to find the
+                card themselves -- a needless step when the email that sent
+                them there said "update your payment method".
+
         Returns:
             str: The portal session URL
         """
@@ -524,16 +528,40 @@ class SubscriptionService:
             raise SubscriptionError(
                 "No billing account found. Please subscribe to a plan first."
             )
-        
+
+        params = {
+            'customer': tenant.stripe_customer_id,
+            'return_url': return_url,
+        }
+        if flow:
+            params['flow_data'] = {
+                'type': flow,
+                'after_completion': {
+                    'type': 'redirect',
+                    'redirect': {'return_url': return_url},
+                },
+            }
+
         try:
-            session = stripe.billing_portal.Session.create(
-                customer=tenant.stripe_customer_id,
-                return_url=return_url,
-            )
-            
+            try:
+                session = stripe.billing_portal.Session.create(**params)
+            except stripe.error.InvalidRequestError:
+                if not flow:
+                    raise
+                # flow_data requires a portal configuration that permits it.
+                # A misconfigured Dashboard must not 500 an owner who is
+                # trying to pay us -- fall back to the plain portal.
+                logger.warning(
+                    f"Billing portal flow {flow!r} rejected for {tenant.slug}; "
+                    f"falling back to the plain portal", exc_info=True,
+                )
+                params.pop('flow_data', None)
+                session = stripe.billing_portal.Session.create(**params)
+
             logger.info(f"Created billing portal session for tenant {tenant.slug}")
             return session.url
-            
+
+
         except stripe.error.InvalidRequestError as e:
             error_str = str(e)
             logger.error(f"Invalid request creating billing portal for {tenant.slug}: {e}")

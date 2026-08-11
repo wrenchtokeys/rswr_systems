@@ -266,6 +266,26 @@ PLATFORM_ALERT_EMAIL = os.environ.get(
 ) or os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
 
 # =========================================
+# SUBSCRIPTION LIFECYCLE
+# =========================================
+
+# Days of full access a past_due tenant keeps before the shop goes
+# read-only. past_due used to be warn-only forever, so a shop whose card
+# died kept full write access indefinitely, for free.
+#
+# 14 is chosen against Stripe's retry window (~3 weeks of smart retries):
+# restricting at day 0 punishes an innocently expired card, and there is
+# still roughly a week of automatic retries left after the restriction
+# lands. /owner/billing/ stays exempt so the fix is always reachable.
+PAST_DUE_GRACE_DAYS = int(os.environ.get('PAST_DUE_GRACE_DAYS', '14'))
+
+# Read-only days an expired TRIAL gets. Previously zero -- grace_period_end
+# was only ever set by the subscription.deleted webhook, so a shop that
+# never subscribed hit a hard wall the moment the trial clock ran out.
+# Shorter than the 30 days a paid lapse gets: they never paid us.
+TRIAL_GRACE_DAYS = int(os.environ.get('TRIAL_GRACE_DAYS', '14'))
+
+# =========================================
 # INVOICE DEFAULTS
 # =========================================
 

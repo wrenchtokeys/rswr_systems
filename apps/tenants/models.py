@@ -12,6 +12,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
@@ -316,6 +317,16 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         help_text="Tracks which subscription alert emails have been sent, keyed by alert type"
     )
 
+    # When the FIRST failed payment landed. Never overwritten by subsequent
+    # failures (Stripe retries several times for the same lapse); cleared on
+    # recovery. Drives the read-only ladder in subscription_middleware --
+    # past_due used to show a banner and nothing else, so a shop whose card
+    # died kept full write access indefinitely, for free.
+    past_due_since = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When this tenant first went past_due. Cleared on recovery."
+    )
+
     # Watermark for out-of-order webhook protection.
     #
     # Stripe does not guarantee delivery order, and a retry can arrive minutes
@@ -416,17 +427,101 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
     @property
     def effective_grace_period_end(self):
         """
-        The actual end of the grace period after subscription expiry.
+        The actual end of the read-only grace period after expiry.
 
-        Grace period applies only when explicitly set (via _handle_subscription_deleted
-        webhook) for paid subscriptions. Free trials do NOT get a dynamic grace period
-        because their trial duration already serves that purpose.
+        An explicit grace_period_end (set by the subscription.deleted webhook
+        for a paid subscription that ended) always wins.
 
-        Returns the grace_period_end datetime, or None if no grace period applies.
+        Otherwise an expired TRIAL gets a computed grace period. It used to
+        get none at all: grace_period_end was only ever written by the
+        deletion webhook, so a shop that never subscribed was hard-blocked
+        the instant its trial clock ran out -- no read-only window, no chance
+        to export anything, straight to the upgrade wall. That also made
+        check_subscription_alerts' "30 days of read-only access" copy untrue,
+        which its own comment admitted.
+
+        Trials get TRIAL_GRACE_DAYS (14) rather than the 30 a paid lapse
+        gets: they never paid us. A tenant whose trial expired long ago
+        computes a grace end already in the past, so they stay blocked --
+        this grants nothing retroactively.
         """
         if self.grace_period_end:
             return self.grace_period_end
+        # Only once the trial has actually EXPIRED. Returning a computed end
+        # for a live trial would make is_in_grace_period true for every
+        # tenant still inside their trial -- they'd see a "read-only access
+        # remaining" banner while nothing of the sort was happening.
+        if (self.plan == 'trial' and not self.had_paid_subscription
+                and self.is_trial_expired):
+            expiry = self.trial_expiry
+            if expiry:
+                return expiry + timezone.timedelta(
+                    days=getattr(settings, 'TRIAL_GRACE_DAYS', 14)
+                )
         return None
+
+    @property
+    def days_past_due(self):
+        """Whole days since the first failed payment (0 if not past due)."""
+        if not self.past_due_since:
+            return 0
+        return max(0, (timezone.now() - self.past_due_since).days)
+
+    @property
+    def past_due_is_read_only(self):
+        """True once a past_due tenant has run out of full-access days.
+
+        Stripe's smart retries run ~3 weeks. Restricting at day 0 would
+        punish an innocently expired card; never restricting (the old
+        behaviour) means a non-paying shop keeps full access for as long as
+        it likes. PAST_DUE_GRACE_DAYS (14) sits between the two and still
+        leaves a week of automatic retries after the restriction lands.
+        """
+        if self.subscription_status != 'past_due' or not self.past_due_since:
+            return False
+        if self.is_platform_owner:
+            return False
+        limit = getattr(settings, 'PAST_DUE_GRACE_DAYS', 14)
+        return self.days_past_due >= limit
+
+    @property
+    def past_due_days_until_read_only(self):
+        """Full-access days left before a past_due tenant goes read-only."""
+        if self.subscription_status != 'past_due' or not self.past_due_since:
+            return None
+        limit = getattr(settings, 'PAST_DUE_GRACE_DAYS', 14)
+        return max(0, limit - self.days_past_due)
+
+    def mark_subscription_active(self, status='active', subscription_id=None,
+                                 plan=None, extra_fields=None):
+        """Move the tenant to a live state and clear every lapse marker.
+
+        Three near-identical reactivation blocks used to do this by hand and
+        each forgot something. The one that mattered: subscription_alerts_sent
+        was never cleared, so a tenant who lapsed, resubscribed, and lapsed
+        again received NO lifecycle emails the second time -- the dedup keys
+        from the first lapse were still there, permanently suppressing them.
+        """
+        self.subscription_status = status
+        self.grace_period_end = None
+        self.past_due_since = None
+        self.subscription_alerts_sent = {}
+        update_fields = [
+            'subscription_status', 'grace_period_end', 'past_due_since',
+            'subscription_alerts_sent',
+        ]
+        if subscription_id and self.stripe_subscription_id != subscription_id:
+            self.stripe_subscription_id = subscription_id
+            update_fields.append('stripe_subscription_id')
+        if plan is not None:
+            self.plan = plan.slug
+            self.subscription_plan = plan
+            update_fields.extend(['plan', 'subscription_plan'])
+        if extra_fields:
+            update_fields.extend(
+                f for f in extra_fields if f not in update_fields
+            )
+        return update_fields
 
     @property
     def is_in_grace_period(self):
