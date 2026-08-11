@@ -596,11 +596,15 @@ _original_get_urls = admin.AdminSite.get_urls
 
 def _custom_get_urls(self):
     original_urls = _original_get_urls(self)
-    from rs_systems.admin_connect_views import admin_connect_accounts_view, admin_platform_config_view
+    from rs_systems.admin_connect_views import (
+        admin_connect_accounts_view, admin_platform_config_view,
+        admin_platform_fees_view,
+    )
     custom = [
         path('search/', self.admin_view(_global_search_view), name='global_search'),
         path('connect-accounts/', self.admin_view(admin_connect_accounts_view), name='admin_connect_accounts'),
         path('platform-config/', self.admin_view(admin_platform_config_view), name='admin_platform_config'),
+        path('platform-fees/', self.admin_view(admin_platform_fees_view), name='admin_platform_fees'),
     ]
     return custom + original_urls
 

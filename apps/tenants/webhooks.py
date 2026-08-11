@@ -24,10 +24,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from apps.tenants.models import Tenant, SubscriptionPlan
+from apps.billing.services import webhook_log
 from apps.billing.services.stripe_compat import (
     invoice_price_id,
+    invoice_next_attempt,
     invoice_subscription_id,
+    subscription_price_id,
 )
+from apps.billing.services.webhook_log import WebhookPermanentError
 
 logger = logging.getLogger(__name__)
 
@@ -111,33 +115,41 @@ def stripe_subscription_webhook(request):
 
     event_type = event['type']
     data_object = event['data']['object']
-    
-    logger.info(f"Stripe webhook received: {event_type} [{event.get('id', 'unknown')}]")
-    
-    # Route to handler
-    handlers = {
-        'checkout.session.completed': _handle_checkout_completed,
-        'invoice.paid': _handle_invoice_paid,
-        'invoice.payment_failed': _handle_invoice_payment_failed,
-        'customer.subscription.updated': _handle_subscription_updated,
-        'customer.subscription.deleted': _handle_subscription_deleted,
-    }
-    
-    handler = handlers.get(event_type)
-    if handler:
-        try:
-            handler(data_object)
-        except Exception as e:
-            logger.exception(f"Error processing webhook {event_type}: {e}")
-            # Return 200 anyway so Stripe doesn't retry
-            # (we log the error for investigation)
-            return JsonResponse({
-                'status': 'error',
-                'message': f'Error processing {event_type}',
-            }, status=200)
-    else:
+    event_id = event.get('id', 'unknown')
+
+    logger.info(f"Stripe webhook received: {event_type} [{event_id}]")
+
+    # Idempotency: a redelivery of an event we already handled must not
+    # re-run the handler or re-send its email.
+    row, should_process = webhook_log.claim(event, 'subscription')
+    if not should_process:
+        return JsonResponse({'status': 'ok', 'duplicate': True})
+
+    handler = get_subscription_handler(event_type)
+    if not handler:
         logger.debug(f"Unhandled webhook event type: {event_type}")
-    
+        webhook_log.mark_ignored(row, f"no handler for {event_type}")
+        return JsonResponse({'status': 'ok', 'handled': False})
+
+    try:
+        handler(data_object, event=event)
+    except WebhookPermanentError as e:
+        # Understood, nothing to do. Retrying would not help.
+        logger.info(f"Webhook {event_type} [{event_id}] ignored: {e}")
+        webhook_log.mark_ignored(row, str(e))
+        return JsonResponse({'status': 'ok', 'handled': False, 'reason': str(e)})
+    except Exception as e:
+        # Anything that might succeed later gets a 500 so Stripe retries on
+        # its own backoff (~3 days). Returning 200 here used to destroy the
+        # event permanently on a transient DB or SES blip.
+        logger.exception(f"Error processing webhook {event_type} [{event_id}]: {e}")
+        webhook_log.mark_failed(row, e)
+        return JsonResponse({
+            'status': 'error',
+            'message': f'Error processing {event_type}; retry expected',
+        }, status=500)
+
+    webhook_log.mark_processed(row)
     return JsonResponse({'status': 'ok'})
 
 
@@ -166,7 +178,35 @@ def _find_tenant_by_subscription_id(subscription_id):
 # Event Handlers
 # ------------------------------------------------------------------
 
-def _handle_checkout_completed(session):
+def _event_created(event):
+    """Stripe's event.created (unix seconds), or None if we weren't given it."""
+    if not event:
+        return None
+    try:
+        return event.get('created')
+    except AttributeError:
+        return None
+
+
+def _apply_in_order(tenant, event, event_type):
+    """False when this event predates the last one applied to the tenant.
+
+    Stripe does not guarantee delivery order and retries can arrive late.
+    Without this, a redelivered invoice.payment_failed landing after
+    invoice.paid marks a paying shop past_due.
+    """
+    created = _event_created(event)
+    if webhook_log.should_apply(tenant, created):
+        return True
+    logger.warning(
+        "Ignoring out-of-order %s for tenant %s: event created %s predates "
+        "last applied state at %s",
+        event_type, tenant.slug, created, tenant.subscription_synced_at,
+    )
+    return False
+
+
+def _handle_checkout_completed(session, event=None):
     """
     Handle checkout.session.completed — customer completed Stripe Checkout.
     
@@ -207,32 +247,29 @@ def _handle_checkout_completed(session):
                 pass
     
     if not tenant:
-        logger.warning(
-            f"checkout.session.completed: No tenant found for customer {customer_id} "
+        raise WebhookPermanentError(
+            f"checkout.session.completed: no tenant for customer {customer_id} "
             f"or metadata tenant_id"
         )
+
+    if not _apply_in_order(tenant, event, 'checkout.session.completed'):
         return
-    
+
     # Get plan from metadata
     plan_slug = metadata.get('plan_slug')
     plan = None
     if plan_slug:
         plan = SubscriptionPlan.objects.filter(slug=plan_slug).first()
     
-    # Update tenant with subscription info AND plan (payment is now confirmed)
-    tenant.stripe_subscription_id = subscription_id
-    tenant.subscription_status = 'active'
-    # Reactivation clears any grace period from a previous lapse. A stale
-    # grace_period_end left on an active tenant makes the middleware treat
-    # their NEXT "cancel at period end" as an immediate lockout. (A3)
-    tenant.grace_period_end = None
+    # Payment is confirmed, so this is a full reactivation: clears the grace
+    # period (a stale one makes the middleware treat their NEXT "cancel at
+    # period end" as an immediate lockout), past_due_since, and the alert
+    # dedup keys. (A3)
+    update_fields = tenant.mark_subscription_active(
+        status='active', subscription_id=subscription_id, plan=plan,
+    )
 
-    update_fields = ['stripe_subscription_id', 'subscription_status', 'grace_period_end']
-    
     if plan:
-        tenant.plan = plan.slug
-        tenant.subscription_plan = plan
-        update_fields.extend(['plan', 'subscription_plan'])
         logger.info(
             f"checkout.session.completed: Tenant {tenant.slug} upgraded to {plan.name}. "
             f"Subscription: {subscription_id}"
@@ -242,11 +279,12 @@ def _handle_checkout_completed(session):
             f"checkout.session.completed: Tenant {tenant.slug} subscribed. "
             f"Subscription: {subscription_id}"
         )
-    
+
+    webhook_log.stamp_synced(tenant, _event_created(event), update_fields)
     tenant.save(update_fields=update_fields)
 
 
-def _handle_invoice_paid(invoice):
+def _handle_invoice_paid(invoice, event=None):
     """
     Handle invoice.paid — subscription payment was successful.
     
@@ -267,22 +305,21 @@ def _handle_invoice_paid(invoice):
 
     tenant = _find_tenant_by_customer_id(customer_id)
     if not tenant:
+        raise WebhookPermanentError(f"no tenant for customer {customer_id}")
+
+    if not _apply_in_order(tenant, event, 'invoice.paid'):
         return
-    
+
     # Check previous status before updating (for payment_recovered detection)
     previous_status = tenant.subscription_status
 
-    # Update tenant status to active
-    tenant.subscription_status = 'active'
-    # A successful payment reactivates: clear any grace period left over
-    # from a previous lapse so it can't lock the tenant out later. (A3)
-    tenant.grace_period_end = None
-
-    # Update subscription ID if it changed
-    if subscription_id and tenant.stripe_subscription_id != subscription_id:
-        tenant.stripe_subscription_id = subscription_id
-
-    update_fields = ['subscription_status', 'stripe_subscription_id', 'grace_period_end']
+    # A successful payment reactivates. mark_subscription_active clears the
+    # grace period, past_due_since AND subscription_alerts_sent -- that last
+    # one used to be left behind, so a tenant who lapsed, resubscribed and
+    # lapsed again got no lifecycle emails at all the second time. (A3)
+    update_fields = tenant.mark_subscription_active(
+        status='active', subscription_id=subscription_id,
+    )
 
     # Self-heal the plan from the invoice's price ID. If the original
     # checkout.session.completed was lost (endpoint misconfig, transient
@@ -311,6 +348,7 @@ def _handle_invoice_paid(invoice):
         except Exception as e:
             logger.warning(f"invoice.paid plan self-heal failed for {tenant.slug}: {e}")
 
+    webhook_log.stamp_synced(tenant, _event_created(event), update_fields)
     tenant.save(update_fields=update_fields)
 
     logger.info(
@@ -325,7 +363,7 @@ def _handle_invoice_paid(invoice):
         })
 
 
-def _handle_invoice_payment_failed(invoice):
+def _handle_invoice_payment_failed(invoice, event=None):
     """
     Handle invoice.payment_failed — subscription payment failed.
     
@@ -344,136 +382,80 @@ def _handle_invoice_payment_failed(invoice):
 
     tenant = _find_tenant_by_customer_id(customer_id)
     if not tenant:
+        raise WebhookPermanentError(f"no tenant for customer {customer_id}")
+
+    # The ordering guard matters most here: a retried payment_failed
+    # arriving after invoice.paid would otherwise flip a paying shop back
+    # to past_due -- and past_due now restricts access.
+    if not _apply_in_order(tenant, event, 'invoice.payment_failed'):
         return
 
     tenant.subscription_status = 'past_due'
-    tenant.save(update_fields=['subscription_status'])
+    update_fields = ['subscription_status']
+    # Stamp only the FIRST failure of this lapse. Stripe retries several
+    # times for the same unpaid invoice; overwriting on each retry would
+    # keep resetting the read-only countdown and it would never fire.
+    if not tenant.past_due_since:
+        tenant.past_due_since = timezone.now()
+        update_fields.append('past_due_since')
+    webhook_log.stamp_synced(tenant, _event_created(event), update_fields)
+    tenant.save(update_fields=update_fields)
     
     logger.warning(
         f"invoice.payment_failed: Tenant {tenant.slug} payment failed. "
         f"Invoice: {invoice.get('id')}. Attempt: {invoice.get('attempt_count', '?')}"
     )
     
-    # Notify shop owners AND managers about failed payment
+    # Notify shop owners AND managers about failed payment.
+    # next_payment_attempt is Stripe's own retry date; when it is null this
+    # WAS the last attempt. The copy used to hardcode "attempt N of 4"
+    # without reading Stripe's retry config, so it could simply be wrong.
     _notify_owners_and_managers(tenant, 'payment_failed', {
         'invoice_id': invoice.get('id'),
         'attempt_count': invoice.get('attempt_count', 1),
+        'next_payment_attempt': invoice_next_attempt(invoice),
     })
 
 
-def _handle_subscription_updated(subscription):
+def _handle_subscription_updated(subscription, event=None):
     """
     Handle customer.subscription.updated — plan changes, status updates.
-    
+
     This fires when:
     - Subscription status changes (active, past_due, etc.)
     - Plan is changed (upgrade/downgrade)
     - Subscription is set to cancel at period end
+
+    The mapping itself lives in subscription_reconcile.apply_subscription_state
+    so the hourly reconcile sweep repairs drift using exactly the same rules
+    a webhook would have applied. One mapping, two callers.
     """
+    from apps.tenants.services.subscription_reconcile import (
+        apply_subscription_state,
+    )
+
     subscription_id = subscription.get('id')
     customer_id = subscription.get('customer')
-    
+
     tenant = (
         _find_tenant_by_subscription_id(subscription_id)
         or _find_tenant_by_customer_id(customer_id)
     )
     if not tenant:
-        return
-    
-    # Update subscription status
-    stripe_status = subscription.get('status', '')
-    status_map = {
-        'active': 'active',
-        'past_due': 'past_due',
-        'canceled': 'canceled',
-        'trialing': 'trialing',
-        # 'incomplete' = checkout started but not paid.  Don't upgrade plan.
-        # Map to 'trialing' (current access unchanged) rather than storing the
-        # invalid value 'incomplete' which is not in Tenant.subscription_status
-        # choices.  The 'active' status arrives via invoice.paid webhook once
-        # payment clears.  (CODE-228)
-        'incomplete': 'trialing',
-        'incomplete_expired': 'expired',
-        # 'unpaid' is Stripe's TERMINAL "payment retries exhausted" state.
-        # Mapping it to 'past_due' (warn-only) let the tenant keep full
-        # access indefinitely, for free, until Stripe eventually deleted
-        # the subscription. Map to 'expired' — a blocking state; the grace
-        # period is granted below so the owner gets read-only access and
-        # the upgrade path instead of a hard lockout. (D4)
-        'unpaid': 'expired',
-    }
-    new_status = status_map.get(stripe_status, tenant.subscription_status)
-    
-    # SECURITY: Only update plan if subscription is actually active (payment confirmed)
-    # 'incomplete' means checkout started but not paid — don't upgrade yet!
-    if stripe_status not in ('active', 'trialing'):
-        # Just update status, don't change plan
-        tenant.subscription_status = new_status
-        tenant.stripe_subscription_id = subscription_id
-        update_fields = ['subscription_status', 'stripe_subscription_id']
-        # D4: 'unpaid' maps to the blocking 'expired' state — grant the
-        # standard 30-day read-only grace period (if none is running) so
-        # the owner can still reach their data and the reactivation flow,
-        # matching what _handle_subscription_deleted does.
-        if stripe_status == 'unpaid' and not tenant.grace_period_end:
-            tenant.grace_period_end = timezone.now() + timezone.timedelta(days=30)
-            update_fields.append('grace_period_end')
-        tenant.save(update_fields=update_fields)
-        logger.info(
-            f"subscription.updated: Tenant {tenant.slug} status={new_status} "
-            f"(plan unchanged, waiting for payment)"
+        raise WebhookPermanentError(
+            f"no tenant for subscription {subscription_id} / customer {customer_id}"
         )
+
+    if not _apply_in_order(tenant, event, 'customer.subscription.updated'):
         return
-    
-    # Check if plan changed (look at the price ID)
-    items = subscription.get('items', {}).get('data', [])
-    if items:
-        price_id = items[0].get('price', {}).get('id', '')
-        if price_id:
-            # Try to match the price ID to a SubscriptionPlan
-            plan = SubscriptionPlan.objects.filter(
-                stripe_price_id=price_id
-            ).first() or SubscriptionPlan.objects.filter(
-                stripe_annual_price_id=price_id
-            ).first()
-            
-            if plan and tenant.subscription_plan != plan:
-                tenant.plan = plan.slug
-                tenant.subscription_plan = plan
-                logger.info(
-                    f"subscription.updated: Tenant {tenant.slug} plan changed to {plan.name}"
-                )
-    
-    # Handle cancel_at_period_end: subscription is scheduled to cancel but is still
-    # active.  Keep the status as 'canceled' (matching cancel_subscription() which
-    # sets it when the owner clicks "Cancel").  The middleware now treats 'canceled'
-    # without a grace_period_end as still-active, so no access loss occurs here.
-    # The customer.subscription.deleted webhook fires when it truly expires, setting
-    # status='expired' and grace_period_end at that point.  (CODE-130)
-    if subscription.get('cancel_at_period_end'):
-        new_status = 'canceled'
 
-    tenant.subscription_status = new_status
-    tenant.stripe_subscription_id = subscription_id
-    update_fields = [
-        'subscription_status', 'stripe_subscription_id',
-        'plan', 'subscription_plan',
-    ]
-    # Moving to a live status clears any grace period left from a previous
-    # lapse (see _handle_checkout_completed). Do NOT clear when the status
-    # is 'canceled' (cancel_at_period_end) — a currently-running grace
-    # period must keep its read-only semantics. (A3)
-    if new_status in ('active', 'trialing'):
-        tenant.grace_period_end = None
-        update_fields.append('grace_period_end')
-    tenant.save(update_fields=update_fields)
-
-    logger.info(
-        f"subscription.updated: Tenant {tenant.slug} status={new_status}"
+    apply_subscription_state(
+        tenant, subscription, source='webhook',
+        synced_at=_event_created(event),
     )
 
 
-def _handle_subscription_deleted(subscription):
+def _handle_subscription_deleted(subscription, event=None):
     """
     Handle customer.subscription.deleted — subscription fully canceled.
     
@@ -488,8 +470,13 @@ def _handle_subscription_deleted(subscription):
         or _find_tenant_by_customer_id(customer_id)
     )
     if not tenant:
+        raise WebhookPermanentError(
+            f"no tenant for subscription {subscription_id} / customer {customer_id}"
+        )
+
+    if not _apply_in_order(tenant, event, 'customer.subscription.deleted'):
         return
-    
+
     tenant.subscription_status = 'expired'
     tenant.plan = 'trial'  # Revert to trial-level access
 
@@ -505,9 +492,11 @@ def _handle_subscription_deleted(subscription):
     if trial_plan:
         tenant.subscription_plan = trial_plan
 
-    tenant.save(update_fields=[
+    update_fields = [
         'subscription_status', 'plan', 'subscription_plan', 'grace_period_end',
-    ])
+    ]
+    webhook_log.stamp_synced(tenant, _event_created(event), update_fields)
+    tenant.save(update_fields=update_fields)
 
     logger.info(
         f"subscription.deleted: Tenant {tenant.slug} subscription ended. "
@@ -516,6 +505,130 @@ def _handle_subscription_deleted(subscription):
 
     # Notify shop owners AND managers their subscription has ended
     _notify_owners_and_managers(tenant, 'subscription_ended', {})
+
+
+# ----------------------------------------------------------------------
+# Revenue-visibility events
+#
+# Deliberately NOT handled, with reasons:
+#   customer.subscription.trial_will_end -- trials here are local
+#     (trial_started_at + plan.trial_days), never Stripe trials, so Stripe
+#     never fires it. check_subscription_alerts already covers this.
+#   subscription_schedule.*  -- the resulting customer.subscription.updated
+#     already carries the state change.
+#   payment_method.attached  -- no local state to mirror.
+#   charge.refunded          -- rare enough to handle by hand.
+# ----------------------------------------------------------------------
+
+def _handle_invoice_upcoming(invoice, event=None):
+    """Stripe's ~3-day heads-up before it charges the card again.
+
+    A renewal that arrives with no warning is a chargeback risk and a
+    support ticket. Notifying costs nothing and pre-empts both.
+    """
+    tenant = _find_tenant_by_customer_id(invoice.get('customer'))
+    if not tenant:
+        raise WebhookPermanentError(
+            f"no tenant for customer {invoice.get('customer')}"
+        )
+
+    _notify_owners_and_managers(tenant, 'renewal_upcoming', {
+        'invoice_id': invoice.get('id'),
+        'amount_due': invoice.get('amount_due'),
+        'next_payment_attempt': invoice_next_attempt(invoice),
+    })
+
+
+def _handle_invoice_action_required(invoice, event=None):
+    """3DS / bank confirmation needed before the payment can complete.
+
+    Previously invisible: the charge simply never completed and the shop
+    found out when they hit past_due.
+    """
+    tenant = _find_tenant_by_customer_id(invoice.get('customer'))
+    if not tenant:
+        raise WebhookPermanentError(
+            f"no tenant for customer {invoice.get('customer')}"
+        )
+
+    _notify_owners_and_managers(tenant, 'payment_action_required', {
+        'invoice_id': invoice.get('id'),
+        'hosted_invoice_url': invoice.get('hosted_invoice_url'),
+    })
+
+
+def _handle_invoice_uncollectible(invoice, event=None):
+    """Stripe gave up on this invoice. Terminal, same as 'unpaid'.
+
+    Reuses the expired + grace-period treatment so the owner keeps
+    read-only access and a reactivation path instead of a hard lockout.
+    """
+    tenant = _find_tenant_by_customer_id(invoice.get('customer'))
+    if not tenant:
+        raise WebhookPermanentError(
+            f"no tenant for customer {invoice.get('customer')}"
+        )
+
+    if not _apply_in_order(tenant, event, 'invoice.marked_uncollectible'):
+        return
+
+    tenant.subscription_status = 'expired'
+    update_fields = ['subscription_status']
+    if not tenant.grace_period_end:
+        tenant.grace_period_end = timezone.now() + timezone.timedelta(days=30)
+        update_fields.append('grace_period_end')
+
+    webhook_log.stamp_synced(tenant, _event_created(event), update_fields)
+    tenant.save(update_fields=update_fields)
+
+    logger.warning(
+        f"invoice.marked_uncollectible: Tenant {tenant.slug} written off. "
+        f"Invoice: {invoice.get('id')}"
+    )
+    _notify_owners_and_managers(tenant, 'subscription_ended', {
+        'invoice_id': invoice.get('id'),
+    })
+
+
+def _handle_dispute_created(dispute, event=None):
+    """A subscription chargeback. Alerts the PLATFORM, not the shop.
+
+    This is our money and our Stripe account's risk profile, not something
+    to ask the shop about. Deliberately does not touch tenant state --
+    disputing is not the same as cancelling.
+    """
+    charge_id = dispute.get('charge')
+    amount = dispute.get('amount')
+    reason = dispute.get('reason')
+
+    logger.error(
+        f"STRIPE DISPUTE opened: charge={charge_id} amount={amount} "
+        f"reason={reason} status={dispute.get('status')}. "
+        f"Respond in the Stripe Dashboard before the evidence deadline."
+    )
+
+    alert_to = getattr(settings, 'PLATFORM_ALERT_EMAIL', '') or getattr(
+        settings, 'DEFAULT_FROM_EMAIL', ''
+    )
+    if not alert_to:
+        return
+
+    try:
+        from core.email_utils import send_branded_email
+        send_branded_email(
+            subject="Stripe dispute opened",
+            recipient_list=[alert_to],
+            headline="A payment has been disputed",
+            body_paragraphs=[
+                f"Charge {charge_id} was disputed for "
+                f"{(amount or 0) / 100:.2f} ({reason}).",
+                "Respond in the Stripe Dashboard before the evidence "
+                "deadline or the dispute is lost by default.",
+            ],
+            fail_silently=True,
+        )
+    except Exception:
+        logger.exception("Could not send dispute alert")
 
 
 def _get_owner_and_manager_emails(tenant):
@@ -542,125 +655,76 @@ def _notify_owner(tenant, event_type, context):
     _notify_owners_and_managers(tenant, event_type, context)
 
 
-def handle_subscription_event(event_type, data_object):
+# Event type -> handler name. Both the dedicated subscription endpoint and
+# the billing endpoint's fallback delegation dispatch through here.
+#
+# Names, not function objects: a dict of objects binds at import time, so a
+# test patching `webhooks._handle_invoice_paid` would silently keep hitting
+# the original. Resolving per call also keeps the table readable as a plain
+# list of what we accept.
+SUBSCRIPTION_HANDLER_NAMES = {
+    'checkout.session.completed': '_handle_checkout_completed',
+    'invoice.paid': '_handle_invoice_paid',
+    'invoice.payment_failed': '_handle_invoice_payment_failed',
+    'customer.subscription.updated': '_handle_subscription_updated',
+    'customer.subscription.deleted': '_handle_subscription_deleted',
+    # Revenue visibility
+    'invoice.upcoming': '_handle_invoice_upcoming',
+    'invoice.payment_action_required': '_handle_invoice_action_required',
+    'invoice.marked_uncollectible': '_handle_invoice_uncollectible',
+    'charge.dispute.created': '_handle_dispute_created',
+}
+
+
+def get_subscription_handler(event_type):
+    """Resolve a handler by event type, or None if we don't handle it."""
+    name = SUBSCRIPTION_HANDLER_NAMES.get(event_type)
+    return globals().get(name) if name else None
+
+
+def handle_subscription_event(event_type, data_object, event=None):
     """
     Process a subscription-related Stripe webhook event.
-    
-    Called from the unified billing webhook endpoint to handle
-    SaaS subscription events without needing a separate webhook URL.
-    
-    Returns dict with 'success' and 'handled' keys.
+
+    Called from the unified billing webhook endpoint to handle SaaS
+    subscription events without needing a separate webhook URL.
+
+    Returns a dict with 'success' and 'handled' keys. `retryable` is True
+    when the caller should surface a 5xx so Stripe redelivers -- this used
+    to always report success, which told Stripe to discard an event we had
+    in fact failed to process.
     """
-    handlers = {
-        'checkout.session.completed': _handle_checkout_completed,
-        'invoice.paid': _handle_invoice_paid,
-        'invoice.payment_failed': _handle_invoice_payment_failed,
-        'customer.subscription.updated': _handle_subscription_updated,
-        'customer.subscription.deleted': _handle_subscription_deleted,
-    }
-    
-    handler = handlers.get(event_type)
+    handler = get_subscription_handler(event_type)
     if not handler:
         return {'success': True, 'handled': False}
-    
+
     try:
-        handler(data_object)
+        handler(data_object, event=event)
         return {'success': True, 'handled': True, 'event_type': event_type}
+    except WebhookPermanentError as e:
+        logger.info(f"Subscription webhook {event_type} ignored: {e}")
+        return {
+            'success': True, 'handled': True, 'event_type': event_type,
+            'ignored': True, 'reason': str(e),
+        }
     except Exception as e:
         logger.exception(f"Error processing subscription webhook {event_type}: {e}")
-        # Return success so Stripe doesn't retry (error is logged)
-        return {'success': True, 'handled': True, 'event_type': event_type, 'error': str(e)}
+        return {
+            'success': False, 'handled': True, 'event_type': event_type,
+            'error': str(e), 'retryable': True,
+        }
 
 
 def _notify_owners_and_managers(tenant, event_type, context):
+    """Notify owners and managers of a subscription event.
+
+    Delegates to subscription_notify, which sends the branded email AND
+    creates in-app notifications. This used to be email-only, so a message
+    that landed in spam left no trace at all and the first thing an owner
+    noticed was losing write access.
     """
-    Send email notification to ALL owners AND managers about subscription events.
+    from apps.tenants.services.subscription_notify import (
+        notify_owners_and_managers,
+    )
 
-    Uses the configured email backend (Amazon SES over SMTP).
-    """
-    try:
-        from django.conf import settings as django_settings
-        from core.email_utils import send_branded_email
-
-        recipient_list = _get_owner_and_manager_emails(tenant)
-        if not recipient_list:
-            logger.warning(f"Cannot notify owners/managers for tenant {tenant.slug}: no emails found")
-            return
-
-        owner = tenant.owner
-        owner_name = (owner.first_name or 'there') if owner else 'there'
-        base_url = getattr(django_settings, 'BASE_URL', 'https://rssystems.io')
-
-        if event_type == 'payment_failed':
-            attempt_count = context.get('attempt_count', 1)
-            max_attempts = 4
-            retry_text = (
-                f"This was attempt {attempt_count} of {max_attempts}. "
-                "Stripe will retry automatically, but we recommend updating "
-                "your payment method now to avoid service interruption."
-            )
-            send_branded_email(
-                subject=f'Payment failed for {tenant.name}',
-                recipient_list=recipient_list,
-                headline='Payment Failed',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"We were unable to process your payment for {tenant.name} (attempt #{attempt_count}).",
-                    retry_text,
-                ],
-                button_text='Update Payment Method',
-                button_url=f'{base_url}/owner/update-payment-method/',
-                tenant=tenant,
-                fail_silently=True,
-            )
-        elif event_type == 'payment_recovered':
-            send_branded_email(
-                subject=f'Payment successful for {tenant.name}',
-                recipient_list=recipient_list,
-                headline='Good news!',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"Your payment for {tenant.name} has been successfully processed. "
-                    "Your account is back to active status.",
-                    "No further action is needed — thank you for being a valued customer!",
-                ],
-                button_text='Go to Dashboard',
-                button_url=f'{base_url}/owner/',
-                tenant=tenant,
-                fail_silently=True,
-            )
-        elif event_type == 'subscription_ended':
-            send_branded_email(
-                subject=f'Your {tenant.name} subscription has ended',
-                recipient_list=recipient_list,
-                headline='Subscription Ended',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"Your subscription for {tenant.name} has ended.",
-                    "Your account has been moved to read-only mode for 30 days. During this time you can view your data but cannot make changes.",
-                    "Resubscribe anytime to restore full access.",
-                ],
-                button_text='Resubscribe Now',
-                button_url=f'{base_url}/owner/billing/',
-                tenant=tenant,
-                fail_silently=True,
-            )
-        else:
-            send_branded_email(
-                subject=f'RS Systems notification for {tenant.name}',
-                recipient_list=recipient_list,
-                headline='Account Notification',
-                body_paragraphs=[
-                    f"Hi {owner_name},",
-                    f"A subscription event occurred for {tenant.name}.",
-                ],
-                tenant=tenant,
-                fail_silently=True,
-            )
-
-        logger.info(
-            f"Sent {event_type} notification to {recipient_list} for tenant {tenant.slug}"
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to send {event_type} notification for tenant {tenant.slug}: {e}")
+    notify_owners_and_managers(tenant, event_type, context)

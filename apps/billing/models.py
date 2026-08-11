@@ -1067,9 +1067,29 @@ class PlatformConfig(AutoUpdateTimestampMixin, models.Model):
 
     Use PlatformConfig.get() to fetch (creates with defaults if missing).
     """
+    # Master switch. Turning the platform fee on is a deliberate, reversible
+    # act, not a side effect of editing a percentage. With this False the
+    # fee resolves to zero no matter what any tenant override or default
+    # says, so the mechanism can ship dormant and be enabled once shops have
+    # been given notice.
+    fee_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Master switch for platform fees on invoice payments. While off, "
+            "no application_fee_amount is charged regardless of the rates below."
+        )
+    )
     default_fee_percent = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('0.00'),
         help_text="Default platform fee % on invoice payments (e.g. 2.50 = 2.5%)"
+    )
+    default_fee_fixed_cents = models.PositiveIntegerField(
+        default=0,
+        help_text=(
+            "Default fixed component per transaction, in cents (e.g. 25 = $0.25). "
+            "On a $50 chip repair a percentage alone is noise; percent + fixed "
+            "is the industry-standard shape."
+        )
     )
     competition_pool_enabled = models.BooleanField(
         default=False,
@@ -1086,7 +1106,8 @@ class PlatformConfig(AutoUpdateTimestampMixin, models.Model):
         verbose_name_plural = 'Platform Configuration'
 
     def __str__(self):
-        return f'Platform Config (fee: {self.default_fee_percent}%)'
+        state = 'on' if self.fee_enabled else 'OFF'
+        return f'Platform Config (fees {state}, default: {self.default_fee_percent}%)'
 
     def save(self, *args, **kwargs):
         # Enforce singleton: always use pk=1
@@ -1143,7 +1164,15 @@ class PlatformFeeRecord(models.Model):
     )
     fee_percent = models.DecimalField(
         max_digits=5, decimal_places=2,
-        help_text="Fee rate at time of charge (percentage)"
+        help_text=(
+            "Effective fee rate at time of charge, derived from the raw "
+            "amounts. With a fixed component this is the blended rate, which "
+            "is still a true statement about what was taken."
+        )
+    )
+    fee_fixed_cents = models.PositiveIntegerField(
+        default=0,
+        help_text="Fixed component of the fee at time of charge, in cents"
     )
     stripe_account_id = models.CharField(
         max_length=50,
@@ -1157,6 +1186,17 @@ class PlatformFeeRecord(models.Model):
         verbose_name_plural = 'Platform Fee Records'
         indexes = [
             models.Index(fields=['tenant', 'created_at']),
+            # The monthly totals on /admin/platform-fees/ group by this.
+            models.Index(fields=['created_at']),
+        ]
+        constraints = [
+            # One fee per payment, enforced by the database rather than by
+            # the handler remembering to check. Both the webhook and the
+            # 15-minute reconcile sweep can record the same PaymentIntent.
+            models.UniqueConstraint(
+                fields=['payment_intent_id'],
+                name='uniq_platform_fee_payment_intent',
+            ),
         ]
 
     def __str__(self):
@@ -1221,3 +1261,90 @@ class StripeCheckoutAttempt(models.Model):
 
     def __str__(self):
         return f"{self.session_id} ({self.status}) → {self.invoice.invoice_number}"
+
+
+class StripeWebhookEvent(models.Model):
+    """
+    Every Stripe webhook delivery, recorded before it is processed.
+
+    Before this existed there was no idempotency of any kind: a redelivered
+    event re-ran its handler and re-sent its emails, and an out-of-order
+    delivery (a late invoice.payment_failed arriving after invoice.paid)
+    silently flipped a paying tenant back to past_due.
+
+    Worse, both endpoints returned HTTP 200 on *every* exception "so Stripe
+    doesn't retry" — which meant a transient DB or SES blip destroyed the
+    event permanently, with a log line as the only trace. Stripe retries for
+    ~3 days if you let it; this table is what makes returning 500 safe,
+    because a poison event shows up as `failed` with a climbing `attempts`
+    instead of retrying forever unnoticed.
+
+    The full payload is stored deliberately. At this volume it costs almost
+    nothing and it is simultaneously the dead-letter queue, the replay
+    source, and the only way to answer "what did Stripe actually send us?"
+    after the fact.
+    """
+
+    ENDPOINT_CHOICES = [
+        ('subscription', 'Subscription (/api/tenants/webhooks/stripe/)'),
+        ('billing', 'Billing/Connect (/api/billing/stripe/webhook/)'),
+    ]
+
+    STATUS_CHOICES = [
+        ('processing', 'Processing'),
+        ('processed', 'Processed'),
+        ('ignored', 'Ignored (nothing to do)'),
+        ('failed', 'Failed (Stripe will retry)'),
+    ]
+
+    event_id = models.CharField(
+        max_length=255, unique=True,
+        help_text="Stripe event id (evt_...). The idempotency key.",
+    )
+    event_type = models.CharField(max_length=100, db_index=True)
+    endpoint = models.CharField(
+        max_length=20, choices=ENDPOINT_CHOICES, db_index=True,
+        help_text="Which of our two endpoints received it",
+    )
+    api_version = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="API version Stripe shaped this payload with. Differs from "
+                  "settings.STRIPE_API_VERSION when the Dashboard endpoint "
+                  "is pinned to something else.",
+    )
+    account_id = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text="Connected account id for Connect events (acct_...)",
+    )
+    livemode = models.BooleanField(default=True)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='processing',
+        db_index=True,
+    )
+    attempts = models.PositiveIntegerField(
+        default=0, help_text="How many times we have tried to process it",
+    )
+    created_ts = models.BigIntegerField(
+        null=True, blank=True,
+        help_text="Stripe's event.created (unix). Used to reject out-of-order "
+                  "state writes.",
+    )
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default='')
+    payload = models.JSONField(
+        default=dict, blank=True,
+        help_text="The full event body, for replay and forensics.",
+    )
+
+    class Meta:
+        ordering = ['-first_seen_at']
+        verbose_name = 'Stripe Webhook Event'
+        verbose_name_plural = 'Stripe Webhook Events'
+        indexes = [
+            models.Index(fields=['status', 'first_seen_at']),
+            models.Index(fields=['event_type', 'first_seen_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.event_type} [{self.event_id}] {self.status}"

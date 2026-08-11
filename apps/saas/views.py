@@ -1088,7 +1088,14 @@ def billing_view(request):
                 plan_slug = request.POST.get('plan') or tenant.intended_plan
                 if plan_slug:
                     base_url = request.build_absolute_uri('/').rstrip('/')
-                    result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
+                    # Annual was unreachable from every HTML path -- only
+                    # /api/tenants/subscribe/ ever passed billing_period, so
+                    # stripe_annual_price_id was dead config.
+                    billing_period = _billing_period(request)
+                    result = svc.create_subscription(
+                        tenant, plan_slug, billing_period=billing_period,
+                        base_url=base_url,
+                    )
                     # Redirect to Stripe Checkout for payment
                     if result.get('checkout_url'):
                         return redirect(result['checkout_url'])
@@ -1114,7 +1121,11 @@ def billing_view(request):
                         if 'canceled' in str(e).lower() or 'not completed' in str(e).lower() or 'no subscription' in str(e).lower():
                             # Auto-fallback to create new subscription
                             base_url = request.build_absolute_uri('/').rstrip('/')
-                            result = svc.create_subscription(tenant, plan_slug, base_url=base_url)
+                            result = svc.create_subscription(
+                                tenant, plan_slug,
+                                billing_period=_billing_period(request),
+                                base_url=base_url,
+                            )
                             if result.get('checkout_url'):
                                 return redirect(result['checkout_url'])
                         else:
@@ -1578,6 +1589,12 @@ def billing_update_plan(request):
         return redirect('billing_settings')
 
 
+def _billing_period(request):
+    """Read the monthly/annual toggle from a POST, defaulting to monthly."""
+    value = (request.POST.get('billing_period') or 'monthly').strip().lower()
+    return 'annual' if value in ('annual', 'year', 'yearly') else 'monthly'
+
+
 @owner_required
 def billing_cancel(request):
     """POST /owner/billing/cancel/ — cancel subscription at end of period."""
@@ -1610,7 +1627,12 @@ def update_payment_method(request):
     svc = SubscriptionService()
     try:
         return_url = request.build_absolute_uri('/owner/billing/')
-        portal_url = svc.create_billing_portal_session(tenant, return_url)
+        # Deep-link straight to the card form. This is the CTA in every
+        # dunning email, so dropping the owner on the portal home and making
+        # them hunt for it is a needless step at exactly the wrong moment.
+        portal_url = svc.create_billing_portal_session(
+            tenant, return_url, flow='payment_method_update',
+        )
         return redirect(portal_url)
     except SubscriptionError as e:
         messages.error(request, str(e))
@@ -2916,6 +2938,24 @@ def update_team_member(request, membership_id):
             # cross-tenant membership manually.
             try:
                 tech = Technician.objects.get(user=target.user, tenant=tenant)
+                # Reactivating a deactivated technician consumes a seat just
+                # as creating one does. Only the DoesNotExist branch below
+                # used to check, so demoting a tech and promoting them back
+                # walked straight past the plan limit -- repeatable, and an
+                # easy way to sit permanently over the cap.
+                #
+                # count_active_technicians() counts a tech only when BOTH the
+                # Technician row and the user account are active, so mirror
+                # that when deciding whether a seat is actually being taken.
+                consumes_seat = not (tech.is_active and tech.user.is_active)
+                if consumes_seat:
+                    from apps.tenants.services.usage_service import UsageService
+                    can_add, limit_msg = UsageService(tenant).can_add_technician()
+                    if not can_add:
+                        messages.warning(request, limit_msg)
+                        transaction.set_rollback(True)
+                        return redirect('owner_settings')
+
                 # Existing record for this tenant — update in place
                 tech.is_manager = (new_role == 'manager')
                 tech.can_repair = can_repair

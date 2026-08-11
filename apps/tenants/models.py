@@ -12,6 +12,7 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import RegexValidator
@@ -26,7 +27,8 @@ class SubscriptionPlan(models.Model):
     Defines a SaaS subscription tier with pricing, limits, and features.
     
     Plans: Trial (free), Starter ($49/mo), Pro ($99/mo), Enterprise ($249/mo).
-    Limits are enforced by PlanEnforcementMixin and usage_service.
+    Limits are enforced by UsageService, called directly from the views
+    that create the resource. There is no decorator or mixin layer.
     null limit values mean unlimited.
     """
     
@@ -91,7 +93,23 @@ class SubscriptionPlan(models.Model):
     @property
     def is_free(self):
         return self.monthly_price == 0
-    
+
+    def price_id_for(self, interval):
+        """Stripe price id for a billing interval ('month' or 'year').
+
+        Plan changes used to write `stripe_price_id` unconditionally, which
+        silently converted an annual subscriber to monthly billing on any
+        upgrade or downgrade. Read the live interval off the subscription
+        and pass it here.
+
+        Falls back to the monthly price when no annual price is configured,
+        so a half-configured plan degrades to "billed monthly" rather than
+        sending Stripe an empty price id.
+        """
+        if interval in ('year', 'annual', 'yearly') and self.stripe_annual_price_id:
+            return self.stripe_annual_price_id
+        return self.stripe_price_id
+
     def has_feature(self, feature_name):
         """Check if this plan includes a specific feature."""
         return self.features.get(feature_name, False)
@@ -261,9 +279,27 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         null=True, blank=True,
         help_text="When the Stripe Connect account first became active"
     )
+    # NULL means "use the global default". A literal 0.00 means "explicitly
+    # zero-rated" (a comped shop) and beats the global.
+    #
+    # That distinction was broken for two years: migration 0011 added this
+    # column as `default=0` NOT NULL, and 0012 made it nullable without
+    # backfilling, so every pre-0012 tenant carried an explicit 0.00 that
+    # silently overrode any global rate. Migration 0026 clears those.
+    #
+    # The percent and fixed fields resolve together as a unit -- see
+    # Tenant.effective_platform_fee.
     platform_fee_percent = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
-        help_text="Override global platform fee for this tenant. Null = use global default."
+        help_text="Override global platform fee % for this tenant. Null = use global default."
+    )
+    platform_fee_fixed_cents = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text=(
+            "Override the global fixed fee component, in cents. Resolved as a "
+            "unit with platform_fee_percent: setting either one makes this "
+            "tenant use its own pair, treating the unset half as 0."
+        )
     )
 
     # Platform owner flag — exempt from subscription billing
@@ -315,7 +351,33 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         default=dict, blank=True,
         help_text="Tracks which subscription alert emails have been sent, keyed by alert type"
     )
-    
+
+    # When the FIRST failed payment landed. Never overwritten by subsequent
+    # failures (Stripe retries several times for the same lapse); cleared on
+    # recovery. Drives the read-only ladder in subscription_middleware --
+    # past_due used to show a banner and nothing else, so a shop whose card
+    # died kept full write access indefinitely, for free.
+    past_due_since = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When this tenant first went past_due. Cleared on recovery."
+    )
+
+    # Watermark for out-of-order webhook protection.
+    #
+    # Stripe does not guarantee delivery order, and a retry can arrive minutes
+    # after a later event. Without this, a late invoice.payment_failed landing
+    # after invoice.paid flips a paying shop back to past_due -- which, once
+    # past_due actually restricts access, locks out a customer who paid.
+    #
+    # Every handler that writes subscription state stamps this from the
+    # event's `created` timestamp and refuses to apply anything older.
+    subscription_synced_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp of the newest Stripe event applied to this "
+                  "tenant's subscription state. Older events are ignored."
+    )
+
+
     class Meta:
         ordering = ['name']
         verbose_name = 'Tenant'
@@ -358,12 +420,33 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         seed_plans / the pricing page). Uploaded logo/color are kept either
         way; they just don't render until the plan includes the feature.
         """
+        return self.has_feature('custom_branding', plans=('pro', 'enterprise'))
+
+    def has_feature(self, feature_name, plans=()):
+        """Whether this tenant's plan includes a feature.
+
+        Generalised from branding_enabled, which is the only caller of
+        SubscriptionPlan.has_feature in the whole app. The other flags
+        (`rewards`, `api_access`, `invoicing`, `customer_portal`,
+        `priority_support`) appear solely in the pricing table and gate
+        nothing.
+
+        Leave it that way unless a feature is genuinely paid-tier-only.
+        `rewards` in particular is seeded False on the Trial plan, but the
+        pricing page excludes Trial as a tier -- "every plan starts with a
+        30-day free trial" -- so enforcing that flag would hide the loyalty
+        program from every shop evaluating the product.
+
+        `plans` is an optional slug shortcut for tiers that always include
+        the feature, so a tenant whose subscription_plan FK is missing still
+        gets what they pay for.
+        """
         if self.is_platform_owner:
             return True
-        if self.plan in ('pro', 'enterprise'):
+        if plans and self.plan in plans:
             return True
         plan = self.subscription_plan
-        return bool(plan and plan.has_feature('custom_branding'))
+        return bool(plan and plan.has_feature(feature_name))
 
     def _get_trial_days(self):
         """Return number of trial days for this tenant's plan."""
@@ -400,17 +483,101 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
     @property
     def effective_grace_period_end(self):
         """
-        The actual end of the grace period after subscription expiry.
+        The actual end of the read-only grace period after expiry.
 
-        Grace period applies only when explicitly set (via _handle_subscription_deleted
-        webhook) for paid subscriptions. Free trials do NOT get a dynamic grace period
-        because their trial duration already serves that purpose.
+        An explicit grace_period_end (set by the subscription.deleted webhook
+        for a paid subscription that ended) always wins.
 
-        Returns the grace_period_end datetime, or None if no grace period applies.
+        Otherwise an expired TRIAL gets a computed grace period. It used to
+        get none at all: grace_period_end was only ever written by the
+        deletion webhook, so a shop that never subscribed was hard-blocked
+        the instant its trial clock ran out -- no read-only window, no chance
+        to export anything, straight to the upgrade wall. That also made
+        check_subscription_alerts' "30 days of read-only access" copy untrue,
+        which its own comment admitted.
+
+        Trials get TRIAL_GRACE_DAYS (14) rather than the 30 a paid lapse
+        gets: they never paid us. A tenant whose trial expired long ago
+        computes a grace end already in the past, so they stay blocked --
+        this grants nothing retroactively.
         """
         if self.grace_period_end:
             return self.grace_period_end
+        # Only once the trial has actually EXPIRED. Returning a computed end
+        # for a live trial would make is_in_grace_period true for every
+        # tenant still inside their trial -- they'd see a "read-only access
+        # remaining" banner while nothing of the sort was happening.
+        if (self.plan == 'trial' and not self.had_paid_subscription
+                and self.is_trial_expired):
+            expiry = self.trial_expiry
+            if expiry:
+                return expiry + timezone.timedelta(
+                    days=getattr(settings, 'TRIAL_GRACE_DAYS', 14)
+                )
         return None
+
+    @property
+    def days_past_due(self):
+        """Whole days since the first failed payment (0 if not past due)."""
+        if not self.past_due_since:
+            return 0
+        return max(0, (timezone.now() - self.past_due_since).days)
+
+    @property
+    def past_due_is_read_only(self):
+        """True once a past_due tenant has run out of full-access days.
+
+        Stripe's smart retries run ~3 weeks. Restricting at day 0 would
+        punish an innocently expired card; never restricting (the old
+        behaviour) means a non-paying shop keeps full access for as long as
+        it likes. PAST_DUE_GRACE_DAYS (14) sits between the two and still
+        leaves a week of automatic retries after the restriction lands.
+        """
+        if self.subscription_status != 'past_due' or not self.past_due_since:
+            return False
+        if self.is_platform_owner:
+            return False
+        limit = getattr(settings, 'PAST_DUE_GRACE_DAYS', 14)
+        return self.days_past_due >= limit
+
+    @property
+    def past_due_days_until_read_only(self):
+        """Full-access days left before a past_due tenant goes read-only."""
+        if self.subscription_status != 'past_due' or not self.past_due_since:
+            return None
+        limit = getattr(settings, 'PAST_DUE_GRACE_DAYS', 14)
+        return max(0, limit - self.days_past_due)
+
+    def mark_subscription_active(self, status='active', subscription_id=None,
+                                 plan=None, extra_fields=None):
+        """Move the tenant to a live state and clear every lapse marker.
+
+        Three near-identical reactivation blocks used to do this by hand and
+        each forgot something. The one that mattered: subscription_alerts_sent
+        was never cleared, so a tenant who lapsed, resubscribed, and lapsed
+        again received NO lifecycle emails the second time -- the dedup keys
+        from the first lapse were still there, permanently suppressing them.
+        """
+        self.subscription_status = status
+        self.grace_period_end = None
+        self.past_due_since = None
+        self.subscription_alerts_sent = {}
+        update_fields = [
+            'subscription_status', 'grace_period_end', 'past_due_since',
+            'subscription_alerts_sent',
+        ]
+        if subscription_id and self.stripe_subscription_id != subscription_id:
+            self.stripe_subscription_id = subscription_id
+            update_fields.append('stripe_subscription_id')
+        if plan is not None:
+            self.plan = plan.slug
+            self.subscription_plan = plan
+            update_fields.extend(['plan', 'subscription_plan'])
+        if extra_fields:
+            update_fields.extend(
+                f for f in extra_fields if f not in update_fields
+            )
+        return update_fields
 
     @property
     def is_in_grace_period(self):
@@ -450,6 +617,73 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
             bool(self.stripe_connect_account_id)
             and self.stripe_connect_payouts_enabled
         )
+
+    @property
+    def effective_platform_fee(self):
+        """The platform fee that applies to this tenant's invoice payments.
+
+        Returns (percent: Decimal, fixed_cents: int, source: str).
+
+        Resolution order:
+          1. Platform owner        -> 0. We do not charge ourselves, and
+             this is the tenant most likely to be sitting on a legacy 0.00.
+          2. Fees globally off     -> 0. The master switch wins over
+             everything, so turning fees off is always one click.
+          3. Tenant override       -> the tenant's pair.
+          4. Global default        -> PlatformConfig's pair.
+
+        Percent and fixed resolve AS A UNIT. Mixing a tenant percent with a
+        global fixed produces a rate nobody configured and no one can
+        explain to a shop owner asking why they were charged what they were.
+
+        This is the only place the fee is decided. There used to be three
+        implementations -- two of them dead, and one writing a different
+        metadata key than the reader expected, which is what caused CODE-069.
+        """
+        from decimal import Decimal
+
+        if self.is_platform_owner:
+            return Decimal('0'), 0, 'platform_owner'
+
+        from apps.billing.models import PlatformConfig
+        config = PlatformConfig.get()
+
+        if not config.fee_enabled:
+            return Decimal('0'), 0, 'disabled'
+
+        has_override = (
+            self.platform_fee_percent is not None
+            or self.platform_fee_fixed_cents is not None
+        )
+        if has_override:
+            return (
+                self.platform_fee_percent or Decimal('0'),
+                self.platform_fee_fixed_cents or 0,
+                'tenant',
+            )
+
+        return (
+            config.default_fee_percent or Decimal('0'),
+            config.default_fee_fixed_cents or 0,
+            'global',
+        )
+
+    @property
+    def platform_fee_label(self):
+        """Human-readable fee, for the Connect setup and billing pages.
+
+        Shops are told about this before they onboard, not after they have
+        completed KYC.
+        """
+        percent, fixed_cents, source = self.effective_platform_fee
+        if not percent and not fixed_cents:
+            return 'No platform fee'
+        parts = []
+        if percent:
+            parts.append(f"{percent.normalize():f}%".replace('.0%', '%'))
+        if fixed_cents:
+            parts.append(f"${fixed_cents / 100:.2f}")
+        return ' + '.join(parts) + ' per transaction'
 
 
 class TenantMembership(models.Model):

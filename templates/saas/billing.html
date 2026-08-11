@@ -54,6 +54,17 @@
                     {% endif %}
                 </div>
                 {% endif %}
+                {% if tenant.platform_fee_label != 'No platform fee' %}
+                {% comment %}
+                    Invoice-payment platform fee, disclosed on the page a shop
+                    owner actually looks at. Separate from the subscription
+                    price above -- this one is charged per customer payment.
+                {% endcomment %}
+                <div class="text-sm text-gray-500 mt-2">
+                    Invoice payment fee: {{ tenant.platform_fee_label }}
+                    <span class="text-gray-400">(plus Stripe's processing fees)</span>
+                </div>
+                {% endif %}
             </div>
             <div class="flex flex-wrap gap-2">
                 {% if tenant.stripe_customer_id and not is_platform_owner %}

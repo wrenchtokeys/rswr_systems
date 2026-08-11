@@ -6,14 +6,13 @@ is_platform_owner short-circuit that can_create_repair() already had. If the pla
 owner's SubscriptionPlan had limits set (as it does on the Trial plan: 2 techs, 10
 customers), they could be falsely blocked from adding staff or customers.
 
-Also: PlanEnforcementMixin._check_plan_limits() and the check_plan_limit() helper
+Also covers the expired-status bypass in UsageService.
 both had `subscription_status == 'expired'` checks without first bailing out for
 platform owners. A platform owner with a non-standard subscription_status could
 be blocked from write operations.
 
 Fix: Added is_platform_owner bypass at the top of can_add_technician() and
-can_add_customer() in UsageService, and at the top of _check_plan_limits() and
-check_plan_limit() in mixins.py.
+can_add_customer() in UsageService.
 """
 
 from django.test import TestCase
@@ -22,7 +21,6 @@ from django.test import RequestFactory
 
 from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from apps.tenants.services.usage_service import UsageService
-from apps.tenants.mixins import PlanEnforcementMixin, check_plan_limit
 
 
 class PlatformOwnerUsageLimitsTest(TestCase):
@@ -143,79 +141,16 @@ class PlatformOwnerUsageLimitsTest(TestCase):
         self.assertIn('1 customers', msg)
 
     # ----------------------------------------------------------------
-    # check_plan_limit() helper — expired status bypass
+    # Removed with the code they covered
     # ----------------------------------------------------------------
-
-    def test_platform_owner_not_blocked_by_expired_status(self):
-        """Platform owner with expired subscription_status is not blocked."""
-        self.tenant.subscription_status = 'expired'
-        self.tenant.save()
-        # Reload to avoid cached properties
-        tenant = Tenant.objects.get(pk=self.tenant.pk)
-
-        ok, error = check_plan_limit(tenant, 'repair')
-        self.assertTrue(ok, f"Platform owner was blocked despite is_platform_owner=True: {error}")
-
-        ok, error = check_plan_limit(tenant, 'technician')
-        self.assertTrue(ok, f"Platform owner technician limit blocked despite is_platform_owner=True: {error}")
-
-        ok, error = check_plan_limit(tenant, 'customer')
-        self.assertTrue(ok, f"Platform owner customer limit blocked despite is_platform_owner=True: {error}")
-
-    def test_platform_owner_not_blocked_by_expired_trial(self):
-        """Platform owner with is_trial_expired is not blocked by check_plan_limit."""
-        from django.utils import timezone
-        self.tenant.plan = 'trial'
-        self.tenant.trial_started_at = timezone.now() - timezone.timedelta(days=60)
-        self.tenant.save()
-
-        tenant = Tenant.objects.get(pk=self.tenant.pk)
-        self.assertTrue(tenant.is_platform_owner)
-        # Without the fix, this would return (False, trial_expired error)
-        ok, error = check_plan_limit(tenant, 'repair')
-        self.assertTrue(ok, f"Platform owner falsely blocked on trial_expired: {error}")
-
-    def test_regular_tenant_blocked_by_expired_status(self):
-        """Regular tenant with expired subscription_status IS blocked (regression guard)."""
-        self.regular_tenant.subscription_status = 'expired'
-        self.regular_tenant.save()
-
-        tenant = Tenant.objects.get(pk=self.regular_tenant.pk)
-        ok, error = check_plan_limit(tenant, 'repair')
-        self.assertFalse(ok)
-        self.assertEqual(error['error'], 'subscription_expired')
-
-    # ----------------------------------------------------------------
-    # PlanEnforcementMixin — expired bypass
-    # ----------------------------------------------------------------
-
-    def test_plan_enforcement_mixin_bypasses_platform_owner(self):
-        """PlanEnforcementMixin._check_plan_limits returns (True, None) for platform owner."""
-
-        class MockView(PlanEnforcementMixin):
-            resource_type = 'technician'
-
-        view = MockView()
-        request = RequestFactory().post('/')
-        request.tenant = self.tenant  # is_platform_owner=True
-
-        ok, error = view._check_plan_limits(request)
-        self.assertTrue(ok, f"PlanEnforcementMixin blocked platform owner: {error}")
-        self.assertIsNone(error)
-
-    def test_plan_enforcement_mixin_bypasses_platform_owner_when_expired(self):
-        """PlanEnforcementMixin still bypasses even when status is expired."""
-        self.tenant.subscription_status = 'expired'
-        self.tenant.save()
-        tenant = Tenant.objects.get(pk=self.tenant.pk)
-
-        class MockView(PlanEnforcementMixin):
-            resource_type = 'repair'
-
-        view = MockView()
-        request = RequestFactory().post('/')
-        request.tenant = tenant
-
-        ok, error = view._check_plan_limits(request)
-        self.assertTrue(ok)
-        self.assertIsNone(error)
+    #
+    # This file used to also test check_plan_limit() and
+    # PlanEnforcementMixin. Both were deleted: neither had a single
+    # production caller, and both carried a third copy of the limit logic
+    # that had already drifted from UsageService (same null-plan-FK bug).
+    #
+    # The platform-owner bypass they verified is covered above against
+    # UsageService, which is what the app actually calls. The
+    # expired-subscription blocking they also covered lives in
+    # SubscriptionEnforcementMiddleware and is tested in
+    # tests/test_subscription_expiry.py.

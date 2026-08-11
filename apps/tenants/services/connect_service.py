@@ -234,31 +234,38 @@ class ConnectService:
     # Payment Routing (Direct Charges)
     # ------------------------------------------------------------------
 
+    # A direct charge still owes Stripe roughly 2.9% + $0.30, and Stripe
+    # rejects an application fee that exceeds the charge. Leave at least
+    # this much of the payment behind.
+    MIN_NET_CENTS = 50
+
     def calculate_platform_fee(self, amount, tenant):
         """
         Calculate the platform fee for an invoice payment.
 
-        Priority:
-        1. Tenant-specific override (tenant.platform_fee_percent)
-        2. Global default (PlatformConfig.default_fee_percent)
-        3. Fallback: 0 (no fee)
+        Thin wrapper over Tenant.effective_platform_fee, which owns the
+        resolution rules (platform-owner exemption, master switch, tenant
+        override vs global default).
 
         Args:
             amount: Payment amount in dollars (Decimal)
             tenant: Tenant model instance
 
         Returns:
-            tuple: (fee_cents: int, fee_percent: Decimal)
+            tuple: (fee_cents: int, fee_percent: Decimal, fee_fixed_cents: int)
         """
-        fee_percent = tenant.platform_fee_percent
-        if fee_percent is None:
-            from apps.billing.models import PlatformConfig
-            config = PlatformConfig.get()
-            fee_percent = config.default_fee_percent
-        if fee_percent is None or fee_percent <= 0:
-            return 0, Decimal('0')
-        fee = amount * fee_percent / 100
-        return max(int(fee * 100), 0), fee_percent  # cents, percent
+        percent, fixed_cents, _source = tenant.effective_platform_fee
+        if not percent and not fixed_cents:
+            return 0, Decimal('0'), 0
+
+        amount_cents = int(Decimal(str(amount)) * 100)
+        fee_cents = int(Decimal(str(amount)) * percent / 100 * 100) + int(fixed_cents)
+
+        # Clamp. Without this a $0.25 invoice with a $0.30 fixed fee makes
+        # Stripe reject the whole checkout session, so the customer cannot
+        # pay at all -- a far worse outcome than collecting a smaller fee.
+        fee_cents = max(0, min(fee_cents, amount_cents - self.MIN_NET_CENTS))
+        return fee_cents, percent, int(fixed_cents)
 
     def create_connected_checkout_session(
         self, invoice, success_url=None, cancel_url=None
@@ -294,7 +301,7 @@ class ConnectService:
         try:
             base_url = getattr(settings, 'BASE_URL', 'https://rssystems.io')
             amount_cents = int(invoice.amount_due * 100)
-            fee_cents, fee_percent = self.calculate_platform_fee(
+            fee_cents, fee_percent, fee_fixed_cents = self.calculate_platform_fee(
                 invoice.amount_due, tenant
             )
 
@@ -322,6 +329,7 @@ class ConnectService:
                     'rs_invoice_number': invoice.invoice_number,
                     'rs_tenant_id': str(tenant.id),
                     'rs_fee_percent': str(fee_percent),
+                    'rs_fee_fixed_cents': str(fee_fixed_cents),
                 },
                 # Metadata must ALSO live on the PaymentIntent — Stripe does
                 # not copy session metadata onto it, and the webhook's
@@ -333,6 +341,7 @@ class ConnectService:
                         'rs_invoice_number': invoice.invoice_number,
                         'rs_tenant_id': str(tenant.id),
                         'rs_fee_percent': str(fee_percent),
+                        'rs_fee_fixed_cents': str(fee_fixed_cents),
                     },
                 },
                 # Direct charge: session created ON the connected account
@@ -381,46 +390,24 @@ class ConnectService:
             )
             return {'success': False, 'error': str(e)}
 
-    def record_platform_fee(self, invoice, payment_intent_id, gross_amount,
-                            fee_cents, fee_percent):
-        """
-        Record a PlatformFeeRecord after a successful connected charge.
 
-        Args:
-            invoice: Invoice model instance
-            payment_intent_id: Stripe PaymentIntent ID
-            gross_amount: Total payment in dollars (Decimal)
-            fee_cents: Platform fee in cents
-            fee_percent: Fee rate at time of charge
-        """
-        if fee_cents <= 0:
-            return None
+# ----------------------------------------------------------------------
+# Deleted here, deliberately -- do not reintroduce:
+#
+#   ConnectService.record_platform_fee()  - zero production callers. Fee
+#       records are written by StripeService._handle_payment_succeeded,
+#       which is also what the reconcile sweep goes through.
+#   calculate_platform_fee(amount_cents, tenant)  - a SECOND, differently
+#       signed copy of the fee maths (cents in, int out) with no
+#       platform-owner exemption and no clamp.
+#   create_direct_charge_session(...)  - a second checkout builder that
+#       wrote metadata key 'rs_fee_cents' while the reader expected
+#       'rs_fee_percent'. That mismatch is exactly what caused CODE-069.
+#
+# Three implementations of one calculation is how they drift. The fee is
+# now decided in exactly one place: Tenant.effective_platform_fee.
+# ----------------------------------------------------------------------
 
-        from apps.billing.models import PlatformFeeRecord
-        tenant = invoice.tenant
-        try:
-            record = PlatformFeeRecord.objects.create(
-                tenant=tenant,
-                invoice=invoice,
-                payment_intent_id=payment_intent_id,
-                gross_amount=gross_amount,
-                fee_amount=Decimal(str(fee_cents)) / 100,
-                fee_percent=fee_percent,
-                stripe_account_id=tenant.stripe_connect_account_id,
-            )
-            logger.info(
-                f"Recorded platform fee: ${record.fee_amount} on "
-                f"{invoice.invoice_number}"
-            )
-            return record
-        except Exception as e:
-            logger.error(f"Failed to record platform fee: {e}")
-            return None
-
-
-# ------------------------------------------------------------------
-# Webhook Handler
-# ------------------------------------------------------------------
 
 def handle_account_updated(event_data):
     """
@@ -618,128 +605,3 @@ def handle_account_updated_webhook(account_data):
         'charges_enabled': charges_enabled,
         'payouts_enabled': payouts_enabled,
     }
-
-
-def calculate_platform_fee(amount_cents, tenant):
-    """
-    Calculate platform fee in cents.
-
-    Priority:
-    1. Tenant-specific override (tenant.platform_fee_percent)
-    2. Global default (PlatformConfig.get_solo().default_fee_percent)
-    3. Fallback: 0
-
-    Args:
-        amount_cents: Payment amount in CENTS (int)
-        tenant: Tenant model instance
-
-    Returns:
-        int: Platform fee in cents (never negative)
-    """
-    from apps.billing.models import PlatformConfig
-
-    fee_percent = getattr(tenant, 'platform_fee_percent', None)
-    if fee_percent is None:
-        config = PlatformConfig.get_solo()
-        fee_percent = config.default_fee_percent
-
-    if not fee_percent or fee_percent <= 0:
-        return 0
-
-    fee = int(amount_cents * Decimal(str(fee_percent)) / 100)
-    return max(fee, 0)
-
-
-def create_direct_charge_session(invoice, success_url, cancel_url):
-    """
-    Create a Stripe Checkout Session via direct charge on the tenant's connected account.
-
-    HARD BLOCK: Raises ConnectError if tenant has no active Connect account
-    (stripe_onboarding_status != 'active' OR not stripe_connect_charges_enabled).
-
-    Args:
-        invoice: Invoice model instance
-        success_url: Redirect URL on success
-        cancel_url: Redirect URL on cancel
-
-    Returns:
-        Stripe checkout.Session object
-
-    Raises:
-        ConnectError if tenant cannot accept payments
-    """
-    tenant = invoice.tenant
-    if not tenant:
-        raise ConnectError("Invoice has no tenant")
-
-    # Validate Connect status BEFORE checking Stripe config (fail fast with clear error)
-    if tenant.stripe_onboarding_status != 'active':
-        raise ConnectError(
-            f"Tenant '{tenant.name}' Stripe Connect is not active "
-            f"(status: {tenant.stripe_onboarding_status}). "
-            f"Complete onboarding before accepting online payments."
-        )
-
-    if not tenant.stripe_connect_charges_enabled:
-        raise ConnectError(
-            f"Tenant '{tenant.name}' cannot accept charges. "
-            f"Stripe Connect charges are not enabled."
-        )
-
-    if not getattr(settings, 'STRIPE_SECRET_KEY', None):
-        raise ConnectError("Stripe is not configured")
-    stripe.api_key = settings.STRIPE_SECRET_KEY
-
-    amount_cents = int(invoice.amount_due * 100)
-    fee_cents = calculate_platform_fee(amount_cents, tenant)
-
-    session_params = {
-        'payment_method_types': ['card'],
-        'line_items': [{
-            'price_data': {
-                'currency': 'usd',
-                'unit_amount': amount_cents,
-                'product_data': {
-                    'name': f'Invoice {invoice.invoice_number}',
-                },
-            },
-            'quantity': 1,
-        }],
-        'mode': 'payment',
-        'success_url': success_url,
-        'cancel_url': cancel_url,
-        'metadata': {
-            'rs_invoice_id': str(invoice.id),
-            'rs_invoice_number': invoice.invoice_number,
-            'rs_tenant_id': str(tenant.id),
-            'rs_fee_cents': str(fee_cents),
-        },
-        # Metadata must ALSO live on the PaymentIntent — Stripe does not
-        # copy session metadata onto it, and the webhook resolves the
-        # invoice (and writes PlatformFeeRecord) from PaymentIntent metadata.
-        'payment_intent_data': {
-            'metadata': {
-                'rs_invoice_id': str(invoice.id),
-                'rs_invoice_number': invoice.invoice_number,
-                'rs_tenant_id': str(tenant.id),
-                'rs_fee_cents': str(fee_cents),
-            },
-        },
-        # Direct charge on connected account
-        'stripe_account': tenant.stripe_connect_account_id,
-    }
-
-    if fee_cents > 0:
-        session_params['payment_intent_data']['application_fee_amount'] = fee_cents
-
-    try:
-        session = stripe.checkout.Session.create(**session_params)
-        logger.info(
-            f"Direct charge session for {invoice.invoice_number}: "
-            f"${invoice.amount_due} on {tenant.stripe_connect_account_id} "
-            f"(fee: {fee_cents}¢)"
-        )
-        return session
-    except stripe.error.StripeError as e:
-        logger.error(f"create_direct_charge_session error: {e}")
-        raise ConnectError(str(e))

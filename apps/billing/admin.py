@@ -35,7 +35,10 @@ def _csv_safe(value):
         return "'" + value
     return value
 
-from .models import BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate, PlatformConfig, PlatformFeeRecord
+from .models import (
+    BillingConfig, Invoice, InvoiceLineItem, Payment, TaxRate, PlatformConfig,
+    PlatformFeeRecord, StripeWebhookEvent,
+)
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -621,3 +624,47 @@ class PlatformFeeRecordAdmin(TenantFilterMixin, admin.ModelAdmin):
         return f"${obj.gross_amount:,.2f}"
     gross_amount_display.short_description = 'Gross'
     gross_amount_display.admin_order_field = 'gross_amount'
+
+
+@admin.register(StripeWebhookEvent)
+class StripeWebhookEventAdmin(admin.ModelAdmin):
+    """Read-only view of every Stripe delivery — the dead-letter queue.
+
+    Filter on status='failed' to find events Stripe is still retrying (or has
+    given up on). Before this table existed, a swallowed webhook left nothing
+    but a log line, and the endpoint reported 200 either way — so the Stripe
+    Dashboard's delivery stats showed 100% success while events were being
+    dropped.
+    """
+    list_display = (
+        'first_seen_at', 'event_type', 'status', 'endpoint', 'attempts',
+        'livemode', 'event_id',
+    )
+    list_filter = ('status', 'endpoint', 'event_type', 'livemode')
+    search_fields = ('event_id', 'account_id', 'event_type')
+    date_hierarchy = 'first_seen_at'
+    ordering = ('-first_seen_at',)
+    readonly_fields = (
+        'event_id', 'event_type', 'endpoint', 'api_version', 'account_id',
+        'livemode', 'status', 'attempts', 'created_ts', 'first_seen_at',
+        'processed_at', 'last_error', 'payload_pretty',
+    )
+    exclude = ('payload',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # Read-only: this is an audit log, not a work queue.
+        return False
+
+    def payload_pretty(self, obj):
+        import json
+        try:
+            return format_html(
+                '<pre style="max-height:400px;overflow:auto">{}</pre>',
+                json.dumps(obj.payload, indent=2, default=str),
+            )
+        except (TypeError, ValueError):
+            return str(obj.payload)
+    payload_pretty.short_description = 'Payload'

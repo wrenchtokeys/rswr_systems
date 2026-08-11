@@ -26,6 +26,22 @@
       <fieldset class="module aligned" style="border:none;">
         <h2 class="rs-section-title">Platform Fee</h2>
         <div class="form-row">
+          <label for="fee_enabled">Charge platform fees:</label>
+          <input
+            type="checkbox"
+            id="fee_enabled"
+            name="fee_enabled"
+            {% if config.fee_enabled %}checked{% endif %}
+          >
+          <p class="rs-help">
+            <strong>Master switch.</strong> While this is off, no platform fee is
+            charged on any invoice payment, whatever the rates below say.
+            Turning it on starts charging every shop that has no explicit
+            override &mdash; give shops notice first, and consider setting the
+            fee on a single tenant record before flipping this globally.
+          </p>
+        </div>
+        <div class="form-row">
           <label for="default_fee_percent">Default platform fee %:</label>
           <input
             type="number"
@@ -39,9 +55,34 @@
             style="max-width:120px;"
           >
           <p class="rs-help">
-            Percentage taken from each invoice payment (e.g. 2.50 = 2.5%). Set to 0 for no platform fee.
+            Percentage taken from each invoice payment (e.g. 2.50 = 2.5%).
           </p>
         </div>
+        <div class="form-row">
+          <label for="default_fee_fixed_cents">Fixed fee (cents):</label>
+          <input
+            type="number"
+            id="default_fee_fixed_cents"
+            name="default_fee_fixed_cents"
+            value="{{ config.default_fee_fixed_cents }}"
+            step="1"
+            min="0"
+            class="rs-input"
+            style="max-width:120px;"
+          >
+          <p class="rs-help">
+            Flat amount per transaction, in cents (25 = $0.25). On a $50 chip
+            repair a percentage alone is pennies; percent + fixed is the
+            standard shape. The fee is always clamped so at least $0.50 of the
+            payment remains &mdash; Stripe rejects a fee larger than the charge.
+          </p>
+        </div>
+        <p class="rs-help">
+          A shop with its own override on its tenant record uses <em>its</em>
+          percent and fixed amount as a pair, ignoring both defaults above.
+          Blank (NULL) on a tenant means &ldquo;use these defaults&rdquo;; an
+          explicit 0 means &ldquo;this shop is zero-rated&rdquo;.
+        </p>
       </fieldset>
 
       <fieldset class="module aligned" style="border:none;">
@@ -84,6 +125,7 @@
 
   <p>
     <a href="{% url 'admin:admin_connect_accounts' %}" class="rs-btn-ghost">View Connect accounts</a>
+    <a href="{% url 'admin:admin_platform_fees' %}" class="rs-btn-ghost">View fees collected</a>
   </p>
 </div>
 {% endblock %}

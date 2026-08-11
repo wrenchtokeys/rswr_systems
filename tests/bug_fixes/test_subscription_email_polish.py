@@ -40,8 +40,15 @@ class PaymentFailedEmailTests(TestCase):
         self.tenant.save()
 
     @patch('core.email_utils.send_branded_email')
-    def test_payment_failed_email_contains_retry_text(self, mock_email):
-        """Payment failed email includes attempt count and retry info."""
+    def test_payment_failed_email_states_the_real_retry_date(self, mock_email):
+        """Retry copy must come from Stripe, not a hardcoded attempt count.
+
+        This asserted 'attempt 2 of 4' for a long time. The 4 was a literal
+        in the code that never read Stripe's retry configuration -- which
+        lives in the Dashboard and can be changed at any time -- so the email
+        was free to be simply wrong. Stripe sends next_payment_attempt on
+        every failed invoice; use that.
+        """
         from apps.tenants.webhooks import _handle_invoice_payment_failed
 
         invoice = {
@@ -49,6 +56,7 @@ class PaymentFailedEmailTests(TestCase):
             'customer': 'cus_test123',
             'subscription': 'sub_test123',
             'attempt_count': 2,
+            'next_payment_attempt': 1767225600,  # 2026-01-01
         }
         _handle_invoice_payment_failed(invoice)
 
@@ -62,8 +70,29 @@ class PaymentFailedEmailTests(TestCase):
             call_kwargs.update(mock_email.call_args[1])
 
         body = ' '.join(call_kwargs['body_paragraphs'])
-        self.assertIn('attempt 2 of 4', body)
-        self.assertIn('Stripe will retry automatically', body)
+        self.assertIn('attempt #2', body)
+        self.assertIn('January 1, 2026', body)
+        self.assertNotIn(
+            'of 4', body,
+            "must not invent an attempt count Stripe never told us",
+        )
+
+    @patch('core.email_utils.send_branded_email')
+    def test_payment_failed_email_says_final_when_no_retry_left(self, mock_email):
+        """next_payment_attempt is null on the LAST attempt. Say so."""
+        from apps.tenants.webhooks import _handle_invoice_payment_failed
+
+        invoice = {
+            'id': 'inv_test',
+            'customer': 'cus_test123',
+            'subscription': 'sub_test123',
+            'attempt_count': 4,
+            'next_payment_attempt': None,
+        }
+        _handle_invoice_payment_failed(invoice)
+
+        body = ' '.join(mock_email.call_args[1]['body_paragraphs'])
+        self.assertIn('final automatic attempt', body)
 
     @patch('core.email_utils.send_branded_email')
     def test_payment_failed_email_url_points_to_update_payment_method(self, mock_email):

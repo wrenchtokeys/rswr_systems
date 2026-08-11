@@ -3,7 +3,7 @@ Tests for Stripe Connect implementation (Phases 1-3).
 
 Tests:
 - Fee calculation: tenant override > global default > 0
-- create_direct_charge_session raises ConnectError when no active Connect
+- create_connected_checkout_session raises ConnectError when no active Connect
 - handle_account_updated_webhook: active account → status='active', restricted → status='restricted'
 - Invoice email: no payment link when tenant status != active
 - Customer portal: pay_online context var False when no active Connect
@@ -25,8 +25,7 @@ from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from apps.billing.models import Invoice, PlatformConfig, PlatformFeeRecord
 from core.models import Customer
 from apps.tenants.services.connect_service import (
-    calculate_platform_fee,
-    create_direct_charge_session,
+    ConnectService,
     handle_account_updated_webhook,
     ConnectError,
 )
@@ -83,183 +82,157 @@ def make_invoice(tenant, amount=Decimal('100.00')):
 # ---------------------------------------------------------------------------
 
 class PlatformFeeCalculationTests(TestCase):
-    """
-    Tests for calculate_platform_fee:
-    - Tenant override > global default > 0 (fallback)
+    """ConnectService.calculate_platform_fee — the ONE implementation.
+
+    There used to be three: this method, a differently-signed module-level
+    `calculate_platform_fee(amount_cents, tenant)` with no platform-owner
+    exemption, and a second checkout builder writing a different metadata
+    key than the reader expected (which is what caused CODE-069). The two
+    duplicates are deleted; these tests cover what remains.
+
+    Note fees are now gated on PlatformConfig.fee_enabled, so every test
+    that expects a non-zero fee must turn the master switch on.
     """
 
     def setUp(self):
         _, self.tenant = make_tenant('Fee Test Shop', 'fee-test', 'feeuser')
-        # Reset platform config to 0
         config = PlatformConfig.get_solo()
+        config.fee_enabled = True
         config.default_fee_percent = Decimal('0.00')
+        config.default_fee_fixed_cents = 0
         config.save()
+        self.svc = ConnectService()
+
+    def _fee(self, dollars):
+        """Returns just the cents, for brevity."""
+        return self.svc.calculate_platform_fee(Decimal(str(dollars)), self.tenant)[0]
 
     def test_no_fee_when_both_zero(self):
-        """Default fee 0%, tenant override null → fee = 0 cents."""
         self.tenant.platform_fee_percent = None
         self.tenant.save()
-        fee = calculate_platform_fee(10000, self.tenant)  # $100
-        self.assertEqual(fee, 0)
+        self.assertEqual(self._fee(100), 0)
 
     def test_global_default_fee(self):
-        """Global default fee is used when tenant has no override."""
         config = PlatformConfig.get_solo()
         config.default_fee_percent = Decimal('2.50')
         config.save()
         self.tenant.platform_fee_percent = None
         self.tenant.save()
-
-        fee = calculate_platform_fee(10000, self.tenant)  # 2.5% of $100 = 250 cents
-        self.assertEqual(fee, 250)
+        self.assertEqual(self._fee(100), 250)
 
     def test_tenant_override_beats_global(self):
-        """Tenant-specific override takes priority over global default."""
         config = PlatformConfig.get_solo()
         config.default_fee_percent = Decimal('5.00')
         config.save()
-        self.tenant.platform_fee_percent = Decimal('1.00')  # tenant wants 1%
+        self.tenant.platform_fee_percent = Decimal('1.00')
         self.tenant.save()
-
-        fee = calculate_platform_fee(10000, self.tenant)  # 1% of $100 = 100 cents
-        self.assertEqual(fee, 100)
+        self.assertEqual(self._fee(100), 100)
 
     def test_zero_tenant_override_beats_global(self):
-        """Tenant override of 0% means no fee, even if global has fee."""
+        """An explicit 0.00 means 'this shop is zero-rated'.
+
+        Migration 0026 clears the legacy 0.00s that were never intended as
+        overrides, so this now means what it says.
+        """
         config = PlatformConfig.get_solo()
         config.default_fee_percent = Decimal('3.00')
         config.save()
         self.tenant.platform_fee_percent = Decimal('0.00')
         self.tenant.save()
-
-        fee = calculate_platform_fee(10000, self.tenant)
-        self.assertEqual(fee, 0)
+        self.assertEqual(self._fee(100), 0)
 
     def test_fee_never_negative(self):
-        """Fee is never negative (safety check)."""
         self.tenant.platform_fee_percent = Decimal('0.00')
         self.tenant.save()
-        fee = calculate_platform_fee(0, self.tenant)
-        self.assertGreaterEqual(fee, 0)
+        self.assertGreaterEqual(self._fee(0), 0)
 
-    def test_fee_rounding(self):
-        """Fee is always an integer (cents, truncated)."""
+    def test_fee_truncates_to_whole_cents(self):
         config = PlatformConfig.get_solo()
         config.default_fee_percent = Decimal('2.50')
         config.save()
         self.tenant.platform_fee_percent = None
         self.tenant.save()
-
-        # $1.25 * 2.5% = 3.125 cents → truncated to 3
-        fee = calculate_platform_fee(125, self.tenant)
+        # $1.25 * 2.5% = 3.125 cents -> 3
+        fee = self._fee(Decimal('1.25'))
         self.assertIsInstance(fee, int)
+        self.assertEqual(fee, 3)
 
-
-# ---------------------------------------------------------------------------
-# create_direct_charge_session Tests
-# ---------------------------------------------------------------------------
-
-class DirectChargeSessionTests(TestCase):
-    """
-    Tests for create_direct_charge_session:
-    - Hard block when tenant status != 'active'
-    - Hard block when charges not enabled
-    - Success path calls stripe with correct params
-    """
-
-    def setUp(self):
-        _, self.tenant = make_tenant('Charge Test Shop', 'charge-test', 'chargeuser')
-        self.invoice = make_invoice(self.tenant)
-
-    def test_raises_when_not_active(self):
-        """ConnectError raised when stripe_onboarding_status != 'active'."""
-        for bad_status in ('not_started', 'pending', 'in_review', 'disabled'):
-            self.tenant.stripe_onboarding_status = bad_status
-            self.tenant.stripe_connect_charges_enabled = False
-            self.tenant.save()
-            with self.assertRaises(ConnectError) as ctx:
-                create_direct_charge_session(
-                    self.invoice,
-                    'https://example.com/success',
-                    'https://example.com/cancel',
-                )
-            self.assertIn('not active', str(ctx.exception).lower(), msg=f'status={bad_status}')
-
-    def test_raises_when_charges_not_enabled(self):
-        """ConnectError raised when stripe_connect_charges_enabled is False even if status is active."""
-        self.tenant.stripe_onboarding_status = 'active'
-        self.tenant.stripe_connect_charges_enabled = False
-        self.tenant.stripe_connect_account_id = 'acct_test123'
+    def test_master_switch_off_forces_zero(self):
+        """fee_enabled=False wins over every configured rate."""
+        config = PlatformConfig.get_solo()
+        config.fee_enabled = False
+        config.default_fee_percent = Decimal('10.00')
+        config.save()
+        self.tenant.platform_fee_percent = Decimal('5.00')
         self.tenant.save()
-        with self.assertRaises(ConnectError):
-            create_direct_charge_session(
-                self.invoice,
-                'https://example.com/success',
-                'https://example.com/cancel',
-            )
+        self.assertEqual(self._fee(100), 0)
 
-    @patch('apps.tenants.services.connect_service.stripe')
-    @patch('apps.tenants.services.connect_service.settings')
-    def test_success_creates_session(self, mock_settings, mock_stripe):
-        """Successful path creates Stripe checkout session with correct params."""
-        mock_settings.STRIPE_SECRET_KEY = 'sk_test_fake'
-
-        mock_session = MagicMock()
-        mock_session.url = 'https://checkout.stripe.com/test'
-        mock_session.id = 'cs_test123'
-        mock_stripe.checkout.Session.create.return_value = mock_session
-
-        self.tenant.stripe_onboarding_status = 'active'
-        self.tenant.stripe_connect_charges_enabled = True
-        self.tenant.stripe_connect_account_id = 'acct_test123'
+    def test_platform_owner_is_never_charged(self):
+        """We do not take a fee from our own shop."""
+        config = PlatformConfig.get_solo()
+        config.default_fee_percent = Decimal('5.00')
+        config.save()
+        self.tenant.is_platform_owner = True
+        self.tenant.platform_fee_percent = None
         self.tenant.save()
+        self.assertEqual(self._fee(100), 0)
 
-        session = create_direct_charge_session(
-            self.invoice,
-            'https://example.com/success',
-            'https://example.com/cancel',
-        )
+    def test_fixed_component_is_added(self):
+        config = PlatformConfig.get_solo()
+        config.default_fee_percent = Decimal('2.00')
+        config.default_fee_fixed_cents = 25
+        config.save()
+        self.tenant.platform_fee_percent = None
+        self.tenant.save()
+        # 2% of $100 = 200c, + 25c fixed
+        self.assertEqual(self._fee(100), 225)
 
-        self.assertEqual(session, mock_session)
-        mock_stripe.checkout.Session.create.assert_called_once()
-        call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        self.assertEqual(call_kwargs['stripe_account'], 'acct_test123')
-        self.assertEqual(call_kwargs['mode'], 'payment')
+    def test_tenant_pair_resolves_as_a_unit(self):
+        """A tenant override must not mix its percent with the global fixed.
 
-    @patch('apps.tenants.services.connect_service.stripe')
-    @patch('apps.tenants.services.connect_service.settings')
-    def test_no_fee_no_payment_intent_data(self, mock_settings, mock_stripe):
-        """When fee is 0, payment_intent_data is not set."""
-        mock_settings.STRIPE_SECRET_KEY = 'sk_test_fake'
+        Mixing produces a rate nobody configured and nobody can explain to
+        a shop owner asking why they were charged what they were.
+        """
+        config = PlatformConfig.get_solo()
+        config.default_fee_percent = Decimal('9.00')
+        config.default_fee_fixed_cents = 99
+        config.save()
+        self.tenant.platform_fee_percent = Decimal('1.00')
+        self.tenant.platform_fee_fixed_cents = None
+        self.tenant.save()
+        # 1% of $100 = 100c, and the global 99c fixed must NOT apply.
+        self.assertEqual(self._fee(100), 100)
 
+    def test_fee_is_clamped_so_the_charge_can_still_go_through(self):
+        """Stripe rejects an application fee larger than the charge.
+
+        Without the clamp a $0.25 invoice with a $0.30 fixed fee makes the
+        whole checkout session fail, so the customer cannot pay at all --
+        far worse than collecting a smaller fee.
+        """
         config = PlatformConfig.get_solo()
         config.default_fee_percent = Decimal('0.00')
+        config.default_fee_fixed_cents = 30
         config.save()
-        self.tenant.platform_fee_percent = Decimal('0.00')
-        self.tenant.stripe_onboarding_status = 'active'
-        self.tenant.stripe_connect_charges_enabled = True
-        self.tenant.stripe_connect_account_id = 'acct_test123'
+        self.tenant.platform_fee_percent = None
         self.tenant.save()
 
-        mock_session = MagicMock()
-        mock_stripe.checkout.Session.create.return_value = mock_session
+        fee = self._fee(Decimal('0.25'))  # 25 cent charge
+        self.assertLessEqual(fee, 25)
+        self.assertGreaterEqual(fee, 0)
 
-        create_direct_charge_session(
-            self.invoice,
-            'https://example.com/success',
-            'https://example.com/cancel',
-        )
+    def test_returns_percent_and_fixed_for_metadata(self):
+        config = PlatformConfig.get_solo()
+        config.default_fee_percent = Decimal('2.00')
+        config.default_fee_fixed_cents = 25
+        config.save()
+        self.tenant.platform_fee_percent = None
+        self.tenant.save()
 
-        call_kwargs = mock_stripe.checkout.Session.create.call_args[1]
-        # payment_intent_data always carries the invoice metadata (the webhook
-        # resolves the invoice from PaymentIntent metadata), but must not add
-        # an application_fee_amount when the fee is 0.
-        self.assertIn('payment_intent_data', call_kwargs)
-        self.assertNotIn('application_fee_amount', call_kwargs['payment_intent_data'])
-        self.assertEqual(
-            call_kwargs['payment_intent_data']['metadata']['rs_invoice_id'],
-            str(self.invoice.id),
+        cents, percent, fixed = self.svc.calculate_platform_fee(
+            Decimal('100'), self.tenant,
         )
+        self.assertEqual((cents, percent, fixed), (225, Decimal('2.00'), 25))
 
 
 # ---------------------------------------------------------------------------
