@@ -1,28 +1,20 @@
 {% extends "base_app.html" %}
 {% load billing_tags %}
+{% load ui %}
 
 {% block content %}
 <div class="min-h-screen bg-gray-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-200 bg-green-600 text-white rounded-t-lg">
+            <div class="px-6 py-4 border-b border-gray-100">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h1 class="text-xl font-semibold">Repair #{{ repair.id }} - {{ repair.customer.name }}</h1>
+                        <h1 class="text-xl font-semibold text-gray-900">Repair #{{ repair.id }} - {{ repair.customer.name }}</h1>
                         <div class="mt-2">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium 
-                                {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                                {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-800
-                                {% elif repair.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                                {% elif repair.queue_status == 'APPROVED' %}bg-indigo-100 text-indigo-800
-                                {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-800
-                                {% elif repair.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-800
-                                {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                {{ repair.get_queue_status_display }}
-                            </span>
+                            {% status_badge repair.queue_status %}
                         </div>
                     </div>
-                    <a href="{% url 'job_list' %}" class="inline-flex items-center px-3 py-1 border border-white border-opacity-20 text-white text-sm font-medium rounded hover:bg-white hover:bg-opacity-10 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 transition-colors">
+                    <a href="{% url 'job_list' %}" class="inline-flex items-center px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
                         <i class="fas fa-arrow-left mr-2"></i>Back to Jobs
                     </a>
                 </div>
@@ -79,22 +71,22 @@
 
             <!-- Warranty Status Banner -->
             {% if repair.queue_status == 'COMPLETED' and repair.warranty_policy %}
-            <div class="px-6 py-4 border-b {% if repair.has_warranty %}bg-emerald-50 border-emerald-200{% else %}bg-gray-50 border-gray-200{% endif %}">
+            <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         {% if repair.has_warranty %}
-                        <div class="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
-                            <i class="fas fa-shield-alt text-emerald-600 text-lg"></i>
+                        <div class="flex-shrink-0 w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+                            <i class="fas fa-shield-alt text-green-600 text-lg"></i>
                         </div>
                         <div>
-                            <h3 class="text-sm font-semibold text-emerald-900">
+                            <h3 class="text-sm font-semibold text-gray-900">
                                 {% if repair.warranty_expires_at %}
                                     ✅ Under Warranty — expires {{ repair.warranty_expires_at|date:"M d, Y" }}
                                 {% else %}
                                     ✅ Lifetime Warranty
                                 {% endif %}
                             </h3>
-                            <p class="text-xs text-emerald-700">{{ repair.warranty_policy.name }} · {{ repair.warranty_policy.coverage_description|default:"Standard coverage" }}</p>
+                            <p class="text-xs text-gray-500">{{ repair.warranty_policy.name }} · {{ repair.warranty_policy.coverage_description|default:"Standard coverage" }}</p>
                         </div>
                         {% else %}
                         <div class="flex-shrink-0 w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
@@ -113,7 +105,7 @@
                     </div>
                     {% if repair.has_warranty %}
                     <button onclick="document.getElementById('warrantyClaimModal').classList.remove('hidden')"
-                            class="inline-flex items-center px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded hover:bg-emerald-700 transition-colors">
+                            class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded hover:bg-brand-700 transition-colors">
                         <i class="fas fa-plus-circle mr-2"></i>Create Warranty Claim
                     </button>
                     {% endif %}
@@ -287,7 +279,7 @@
                                 <button id="moreActionsBtn" data-dropdown-toggle="moreActionsMenu" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="More">
                                     <i class="fas fa-ellipsis-v"></i>
                                 </button>
-                                <div id="moreActionsMenu" data-dropdown-menu class="hidden absolute right-0 top-full mt-1 w-52 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                                <div id="moreActionsMenu" data-dropdown-menu class="hidden absolute right-0 top-full mt-1 w-52 surface-float py-1 z-20">
                                     {% if user_can_invoices and repair.queue_status == 'COMPLETED' and not is_invoiced %}
                                     <form action="{% url 'owner_generate_invoice_from_repair' repair.id %}" method="post" class="px-3 py-2 border-b border-gray-100">
                                         {% csrf_token %}
@@ -321,7 +313,7 @@
                                     </a>
                                     {% endif %}
                                     {% if is_admin and repair.queue_status != 'COMPLETED' %}
-                                    <a href="{% url 'admin_reassign_repair' repair.id %}" class="block px-3 py-2 text-xs text-purple-700 hover:bg-purple-50 transition-colors">
+                                    <a href="{% url 'admin_reassign_repair' repair.id %}" class="block px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
                                         <i class="fas fa-user-edit mr-2 w-3"></i>Reassign Tech
                                     </a>
                                     {% endif %}
@@ -345,47 +337,51 @@
                         <div class="p-6">
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
                     <!-- Customer Information -->
-                    <div class="bg-brand-50 rounded-lg p-4 border border-brand-200">
-                        <h4 class="text-lg font-semibold text-brand-900 mb-3">
+                    {% comment %}
+                    Three tinted boxes (brand / green / yellow) used to divide these panels.
+                    Grouping is whitespace and a hairline now — same rule as the repair form (S7).
+                    {% endcomment %}
+                    <div class="rounded-lg p-4 border border-gray-200">
+                        <h4 class="text-base font-semibold text-gray-900 mb-3">
                             <i class="fas fa-user mr-2"></i>Customer Information
                         </h4>
                         <div class="space-y-2 text-sm">
-                            <div><span class="font-medium text-brand-700">Customer:</span> <span class="text-brand-900">{{ repair.customer.name }}</span></div>
-                            {% if repair.customer.email %}<div><span class="font-medium text-brand-700">Contact:</span> <span class="text-brand-900">{{ repair.customer.email }}</span></div>{% endif %}
-                            {% if repair.customer.phone %}<div><span class="font-medium text-brand-700">Phone:</span> <span class="text-brand-900">{{ repair.customer.phone }}</span></div>{% endif %}
-                            <div><span class="font-medium text-brand-700">Unit Number:</span> <span class="text-brand-900">{{ repair.unit_number }}</span></div>
+                            <div><span class="font-medium text-gray-500">Customer:</span> <span class="text-gray-900">{{ repair.customer.name }}</span></div>
+                            {% if repair.customer.email %}<div><span class="font-medium text-gray-500">Contact:</span> <span class="text-gray-900">{{ repair.customer.email }}</span></div>{% endif %}
+                            {% if repair.customer.phone %}<div><span class="font-medium text-gray-500">Phone:</span> <span class="text-gray-900">{{ repair.customer.phone }}</span></div>{% endif %}
+                            <div><span class="font-medium text-gray-500">Unit Number:</span> <span class="text-gray-900">{{ repair.unit_number }}</span></div>
                         </div>
                     </div>
 
                     <!-- Repair Information -->
-                    <div class="bg-green-50 rounded-lg p-4 border border-green-200">
-                        <h4 class="text-lg font-semibold text-green-900 mb-3">
+                    <div class="rounded-lg p-4 border border-gray-200">
+                        <h4 class="text-base font-semibold text-gray-900 mb-3">
                             <i class="fas fa-tools mr-2"></i>Repair Information
                         </h4>
                         <div class="space-y-2 text-sm">
-                            <div><span class="font-medium text-green-700">Date:</span> <span class="text-green-900">{{ repair.repair_date|date:"F j, Y, g:i a" }}</span></div>
-                            <div><span class="font-medium text-green-700">Damage Type:</span> <span class="text-green-900">{{ repair.damage_type }}</span></div>
+                            <div><span class="font-medium text-gray-500">Date:</span> <span class="text-gray-900">{{ repair.repair_date|date:"F j, Y, g:i a" }}</span></div>
+                            <div><span class="font-medium text-gray-500">Damage Type:</span> <span class="text-gray-900">{{ repair.damage_type }}</span></div>
                             {% if repair.damage_location_x and repair.damage_location_y %}
                             <div class="mt-3">
-                                <span class="font-medium text-green-700">Damage Location:</span>
+                                <span class="font-medium text-gray-500">Damage Location:</span>
                                 <div class="mt-2" style="max-width: 250px;">
-                                    <div style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 2px solid #16a34a; border-radius: 8px; overflow: hidden;">
-                                        <div style="position: absolute; top: 4px; left: 8px; font-size: 8px; color: #166534;">DR</div>
-                                        <div style="position: absolute; top: 4px; right: 8px; font-size: 8px; color: #166534;">PA</div>
-                                        <div style="position: absolute; left: 50%; top: 20%; bottom: 20%; width: 1px; background: rgba(22,163,74,0.3);"></div>
+                                    <div style="position: relative; width: 100%; padding-bottom: 45%; background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%); border: 2px solid #d1d5db; border-radius: 8px; overflow: hidden;">
+                                        <div style="position: absolute; top: 4px; left: 8px; font-size: 8px; color: #6b7280;">DR</div>
+                                        <div style="position: absolute; top: 4px; right: 8px; font-size: 8px; color: #6b7280;">PA</div>
+                                        <div style="position: absolute; left: 50%; top: 20%; bottom: 20%; width: 1px; background: rgba(107,114,128,0.3);"></div>
                                         <div style="position: absolute; left: {{ repair.damage_location_x }}%; top: {{ repair.damage_location_y }}%; width: 12px; height: 12px; background: #dc2626; border: 2px solid #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 1px 4px rgba(0,0,0,0.3);">
                                         </div>
                                     </div>
                                 </div>
                             </div>
                             {% endif %}
-                            <div><span class="font-medium text-green-700">Technician:</span> <span class="text-green-900">{% if repair.technician %}{{ repair.technician.user.get_full_name }}{% else %}<em class="text-gray-400">Unassigned</em>{% endif %}</span></div>
+                            <div><span class="font-medium text-gray-500">Technician:</span> <span class="text-gray-900">{% if repair.technician %}{{ repair.technician.user.get_full_name }}{% else %}<em class="text-gray-400">Unassigned</em>{% endif %}</span></div>
                         </div>
                     </div>
 
                     <!-- Cost Information -->
-                    <div class="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
-                        <h4 class="text-lg font-semibold text-yellow-900 mb-3">
+                    <div class="rounded-lg p-4 border border-gray-200">
+                        <h4 class="text-base font-semibold text-gray-900 mb-3">
                             <i class="fas fa-dollar-sign mr-2"></i>Cost Information
                             {% if repair.has_price_override %}
                             <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800" title="{{ repair.override_reason|default:'Manual override' }}">
@@ -396,17 +392,17 @@
                         {% with cost_info=repair.get_discounted_cost %}
                         {% if cost_info.discount_applied %}
                         <div class="space-y-2 text-sm">
-                            <div><span class="font-medium text-yellow-700">Original Cost:</span> <span class="line-through text-gray-500">${{ cost_info.original_cost }}</span></div>
-                            <div><span class="font-medium text-yellow-700">Discount:</span> <span class="text-green-600 font-medium">{{ cost_info.discount_description }}</span></div>
-                            <div><span class="font-medium text-yellow-700">Final Cost:</span> <span class="text-yellow-900 font-bold text-lg">${{ cost_info.final_cost }}</span></div>
-                            <div><span class="font-medium text-yellow-700">Savings:</span> <span class="text-green-600 font-medium">${{ cost_info.savings }}</span></div>
+                            <div><span class="font-medium text-gray-500">Original Cost:</span> <span class="line-through text-gray-500">${{ cost_info.original_cost }}</span></div>
+                            <div><span class="font-medium text-gray-500">Discount:</span> <span class="text-green-600 font-medium">{{ cost_info.discount_description }}</span></div>
+                            <div><span class="font-medium text-gray-500">Final Cost:</span> <span class="text-green-700 font-bold text-lg num">${{ cost_info.final_cost }}</span></div>
+                            <div><span class="font-medium text-gray-500">Savings:</span> <span class="text-green-600 font-medium">${{ cost_info.savings }}</span></div>
                         </div>
                         {% else %}
                         <div class="text-sm">
                             {% if repair.queue_status != 'COMPLETED' %}
-                            <div><span class="font-medium text-yellow-700">Expected Cost:</span> <span class="text-yellow-900 font-bold text-lg">${{ repair.get_expected_price }}</span></div>
+                            <div><span class="font-medium text-gray-500">Expected Cost:</span> <span class="text-green-700 font-bold text-lg num">${{ repair.get_expected_price }}</span></div>
                             {% else %}
-                            <div><span class="font-medium text-yellow-700">Cost:</span> <span class="text-yellow-900 font-bold text-lg">${{ repair.cost }}</span></div>
+                            <div><span class="font-medium text-gray-500">Cost:</span> <span class="text-green-700 font-bold text-lg num">${{ repair.cost }}</span></div>
                             {% endif %}
                             {% if repair.has_price_override %}
                             <div class="mt-2 text-xs text-red-600">
@@ -420,16 +416,16 @@
                         {% if extra_charges %}
                         <div class="mt-3 pt-3 border-t border-yellow-200 text-sm space-y-1">
                             {% for charge in extra_charges %}
-                            <div><span class="font-medium text-yellow-700">{{ charge.description }}:</span> <span class="text-yellow-900">${{ charge.amount }}</span></div>
+                            <div><span class="font-medium text-gray-500">{{ charge.description }}:</span> <span class="text-gray-900">${{ charge.amount }}</span></div>
                             {% endfor %}
-                            <div><span class="font-medium text-yellow-700">Job + charges:</span> <span class="text-yellow-900 font-bold">${{ repair.total_with_charges }}</span></div>
+                            <div><span class="font-medium text-gray-500">Job + charges:</span> <span class="text-green-700 font-bold num">${{ repair.total_with_charges }}</span></div>
                         </div>
                         {% endif %}
                         {% endwith %}
                         {% if repair.tax_amount and repair.tax_amount > 0 %}
                         <div class="mt-3 pt-3 border-t border-yellow-200 text-sm space-y-1">
-                            <div><span class="font-medium text-yellow-700">Tax ({{ repair.tax_rate }}%):</span> <span class="text-yellow-900">${{ repair.tax_amount }}</span></div>
-                            <div><span class="font-medium text-yellow-700">Total:</span> <span class="text-yellow-900 font-bold text-lg">${{ repair.total_with_tax }}</span></div>
+                            <div><span class="font-medium text-gray-500">Tax ({{ repair.tax_rate }}%):</span> <span class="text-gray-900">${{ repair.tax_amount }}</span></div>
+                            <div><span class="font-medium text-gray-500">Total:</span> <span class="text-green-700 font-bold text-lg num">${{ repair.total_with_tax }}</span></div>
                         </div>
                         {% endif %}
 
@@ -452,12 +448,12 @@
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Amount</label>
                                     <input type="number" name="amount" step="0.01" min="0.01" max="{{ inv_pay.amount_due }}" 
                                            value="{{ inv_pay.amount_due }}" required
-                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Method</label>
                                     <select name="payment_method" required
-                                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                                         <option value="CASH">Cash</option>
                                         <option value="CHECK">Check</option>
                                         <option value="CREDIT_CARD">Credit Card (Manual)</option>
@@ -467,14 +463,14 @@
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Reference # <span class="text-gray-400">(optional)</span></label>
                                     <input type="text" name="reference_number" placeholder="Check #, receipt #, etc."
-                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 mb-1">Notes <span class="text-gray-400">(optional)</span></label>
                                     <input type="text" name="notes" placeholder="Collected on-site"
-                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
                                 </div>
-                                <button type="submit" class="w-full bg-green-600 text-white text-sm font-medium py-2 px-4 rounded-lg hover:bg-green-700 transition-colors">
+                                <button type="submit" class="w-full bg-brand-600 text-white text-sm font-medium py-2 px-4 rounded-lg hover:bg-brand-700 transition-colors">
                                     <i class="fas fa-check mr-1"></i> Record Payment
                                 </button>
                             </form>
@@ -505,15 +501,15 @@
                         {% endif %}
 
                         {% if repair.technician_notes %}
-                        <div class="bg-green-50 rounded-lg border border-green-200 overflow-hidden">
-                            <div class="bg-green-600 text-white px-4 py-2">
-                                <h6 class="text-sm font-medium flex items-center">
-                                    <i class="fas fa-wrench mr-2"></i>Work Notes
-                                    <span class="ml-2 text-xs font-normal text-green-100">on invoice</span>
+                        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                            <div class="px-4 py-2 border-b border-gray-100">
+                                <h6 class="text-sm font-medium text-gray-900 flex items-center">
+                                    <i class="fas fa-wrench mr-2 text-gray-400"></i>Work Notes
+                                    <span class="ml-2 text-xs font-normal text-gray-500">on invoice</span>
                                 </h6>
                             </div>
                             <div class="p-4">
-                                <p class="text-green-900 text-sm">{{ repair.technician_notes }}</p>
+                                <p class="text-gray-700 text-sm">{{ repair.technician_notes }}</p>
                             </div>
                         </div>
                         {% endif %}
@@ -557,12 +553,12 @@
                 <div id="photoContent" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <!-- Customer Submitted Photo (if exists) -->
                     {% if repair.customer_submitted_photo %}
-                    <div class="bg-white rounded-lg border-2 border-purple-300 shadow-sm overflow-hidden">
-                        <div class="bg-purple-600 text-white px-3 py-2 text-center">
-                            <h6 class="text-sm font-medium flex items-center justify-center">
-                                <i class="fas fa-user mr-2"></i>Customer Photo
+                    <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                        <div class="px-3 py-2 text-center border-b border-gray-100">
+                            <h6 class="text-sm font-medium text-gray-900 flex items-center justify-center">
+                                <i class="fas fa-user mr-2 text-gray-400"></i>Customer Photo
                             </h6>
-                            <p class="text-xs text-purple-100 mt-1">Submitted with repair request</p>
+                            <p class="text-xs text-gray-500 mt-1">Submitted with repair request</p>
                         </div>
                         <div class="p-2 text-center">
                             <div class="photo-container">
@@ -581,9 +577,9 @@
                     <!-- Technician Before Photo -->
                     {% if repair.damage_photo_before %}
                     <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                        <div class="bg-brand-600 text-white px-3 py-2 text-center">
-                            <h6 class="text-sm font-medium flex items-center justify-center">
-                                <i class="fas fa-camera mr-2"></i>Before Repair (Tech)
+                        <div class="px-3 py-2 text-center border-b border-gray-100">
+                            <h6 class="text-sm font-medium text-gray-900 flex items-center justify-center">
+                                <i class="fas fa-camera mr-2 text-gray-400"></i>Before Repair (Tech)
                             </h6>
                         </div>
                         <div class="p-2 text-center">
@@ -603,9 +599,9 @@
                     <!-- Technician After Photo -->
                     {% if repair.damage_photo_after %}
                     <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                        <div class="bg-green-600 text-white px-3 py-2 text-center">
-                            <h6 class="text-sm font-medium flex items-center justify-center">
-                                <i class="fas fa-check-circle mr-2"></i>After Repair (Tech)
+                        <div class="px-3 py-2 text-center border-b border-gray-100">
+                            <h6 class="text-sm font-medium text-gray-900 flex items-center justify-center">
+                                <i class="fas fa-check-circle mr-2 text-green-500"></i>After Repair (Tech)
                             </h6>
                         </div>
                         <div class="p-2 text-center">
@@ -658,16 +654,16 @@
             {% endif %}
             
             {% if repair.queue_status == 'REQUESTED' %}
-            <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mt-4">
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
                 <div class="flex items-start">
                     <div class="flex-shrink-0">
-                        <svg class="h-5 w-5 text-purple-400" viewBox="0 0 20 20" fill="currentColor">
+                        <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
                         </svg>
                     </div>
                     <div class="ml-3">
-                        <h3 class="text-sm font-medium text-purple-800">Customer Requested Repair</h3>
-                        <div class="mt-2 text-sm text-purple-700">
+                        <h3 class="text-sm font-medium text-gray-900">Customer Requested Repair</h3>
+                        <div class="mt-2 text-sm text-gray-600">
                             <p>This repair was requested directly by the customer. {% if technician and technician.is_manager or is_admin %}Please assign this repair to a technician to begin work.{% else %}This repair needs to be assigned by a manager before work can begin.{% endif %}</p>
                         </div>
                     </div>
@@ -677,19 +673,19 @@
             
                 <!-- Technical Details -->
                 {% if repair.drilled_before_repair or repair.windshield_temperature or repair.resin_viscosity %}
-                <div class="bg-indigo-50 rounded-lg p-4 border border-indigo-200 mb-6">
-                    <h4 class="text-lg font-semibold text-indigo-900 mb-3">
+                <div class="rounded-lg p-4 border border-gray-200 mb-6">
+                    <h4 class="text-base font-semibold text-gray-900 mb-3">
                         <i class="fas fa-cogs mr-2"></i>Technical Details
                     </h4>
                     <div class="space-y-2 text-sm">
                         {% if repair.drilled_before_repair %}
-                        <div><span class="font-medium text-indigo-700">Drilled Before Repair:</span> <span class="text-indigo-900">Yes</span></div>
+                        <div><span class="font-medium text-gray-500">Drilled Before Repair:</span> <span class="text-gray-900">Yes</span></div>
                         {% endif %}
                         {% if repair.windshield_temperature %}
-                        <div><span class="font-medium text-indigo-700">Windshield Temperature:</span> <span class="text-indigo-900">{{ repair.windshield_temperature }}°F</span></div>
+                        <div><span class="font-medium text-gray-500">Windshield Temperature:</span> <span class="text-gray-900">{{ repair.windshield_temperature }}°F</span></div>
                         {% endif %}
                         {% if repair.resin_viscosity %}
-                        <div><span class="font-medium text-indigo-700">Resin Viscosity:</span> <span class="text-indigo-900">{{ repair.resin_viscosity }}</span></div>
+                        <div><span class="font-medium text-gray-500">Resin Viscosity:</span> <span class="text-gray-900">{{ repair.resin_viscosity }}</span></div>
                         {% endif %}
                     </div>
                 </div>
@@ -697,30 +693,30 @@
                 
                 <!-- Applied Rewards -->
                 {% if repair.applied_rewards.exists %}
-                <div class="bg-purple-50 rounded-lg p-4 border border-purple-200 mb-6">
+                <div class="rounded-lg p-4 border border-gray-200 mb-6">
                     <div class="flex items-center justify-between mb-4">
-                        <h4 class="text-lg font-semibold text-purple-900">
+                        <h4 class="text-base font-semibold text-gray-900">
                             <i class="fas fa-gift mr-2"></i>Applied Rewards
                         </h4>
-                        <span class="text-xs text-purple-600 italic">
+                        <span class="text-xs text-gray-500 italic">
                             <i class="fas fa-info-circle mr-1"></i>Only one reward per repair
                         </span>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-purple-200">
-                            <thead class="bg-purple-100">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Reward</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Type</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Status</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-purple-700 uppercase tracking-wider">Applied On</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reward</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applied On</th>
                                 </tr>
                             </thead>
-                            <tbody class="bg-white divide-y divide-purple-200">
+                            <tbody class="bg-white divide-y divide-gray-200">
                                 {% for redemption in repair.applied_rewards.all %}
                                 <tr>
-                                    <td class="px-4 py-2 text-sm text-purple-900">{{ redemption.reward_option.name }}</td>
-                                    <td class="px-4 py-2 text-sm text-purple-900">
+                                    <td class="px-4 py-2 text-sm text-gray-900">{{ redemption.reward_option.name }}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-900">
                                         {% if redemption.reward_option.reward_type %}
                                             {{ redemption.reward_option.reward_type }}
                                         {% else %}
@@ -735,7 +731,7 @@
                                             {{ redemption.get_status_display }}
                                         </span>
                                     </td>
-                                    <td class="px-4 py-2 text-sm text-purple-900">{{ redemption.processed_at|date:"M d, Y" }}</td>
+                                    <td class="px-4 py-2 text-sm text-gray-900">{{ redemption.processed_at|date:"M d, Y" }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -878,7 +874,7 @@ document.addEventListener('DOMContentLoaded', function() {
             {% if repair.is_part_of_batch %}
             <div class="mb-4">
                 <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" name="claim_batch" class="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+                    <input type="checkbox" name="claim_batch" class="rounded border-gray-300 text-brand-600 focus:ring-brand-500">
                     <span>Claim entire batch (all {{ repair.total_breaks_in_batch }} breaks)</span>
                 </label>
                 <p class="text-xs text-gray-500 mt-1 ml-6">Creates warranty claims for all warranty-eligible repairs in this batch.</p>
@@ -892,7 +888,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     class="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
                     Cancel
                 </button>
-                <button type="submit" class="flex-1 px-4 py-2.5 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors">
+                <button type="submit" class="flex-1 px-4 py-2.5 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 transition-colors">
                     <i class="fas fa-shield-alt mr-2"></i>Create Warranty Repair
                 </button>
             </div>

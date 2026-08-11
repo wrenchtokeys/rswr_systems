@@ -1,4 +1,5 @@
 {% extends "base_app.html" %}
+{% load ui %}
 
 {% block title %}Unit {{ unit_number }} | {{ customer.name }} | RS Systems{% endblock %}
 
@@ -17,7 +18,7 @@
         </div>
         <div class="flex items-center gap-2">
             <a href="{% url 'job_create' %}?customer={{ customer.id }}&unit={{ unit_number }}"
-               class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors">
+               class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
                 <i class="fas fa-plus mr-2"></i>New {{ service_noun }}
             </a>
         </div>
@@ -112,20 +113,8 @@
             <a href="{% url 'repair_detail' repair.id %}" class="block px-6 py-4 hover:bg-gray-50 transition-colors">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0
-                            {% if repair.queue_status == 'COMPLETED' %}bg-green-100
-                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-orange-100
-                            {% elif repair.queue_status == 'APPROVED' %}bg-blue-100
-                            {% elif repair.queue_status == 'REQUESTED' %}bg-red-100
-                            {% elif repair.queue_status == 'PENDING' %}bg-yellow-100
-                            {% else %}bg-gray-100{% endif %}">
-                            <i class="fas fa-tools
-                                {% if repair.queue_status == 'COMPLETED' %}text-green-600
-                                {% elif repair.queue_status == 'IN_PROGRESS' %}text-orange-600
-                                {% elif repair.queue_status == 'APPROVED' %}text-blue-600
-                                {% elif repair.queue_status == 'REQUESTED' %}text-red-600
-                                {% elif repair.queue_status == 'PENDING' %}text-yellow-600
-                                {% else %}text-gray-600{% endif %}"></i>
+                        <div class="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100">
+                            <i class="fas fa-tools text-gray-500"></i>
                         </div>
                         <div>
                             <div class="text-sm font-medium text-gray-900">
@@ -141,16 +130,7 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold
-                            {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                            {% elif repair.queue_status == 'IN_PROGRESS' %}bg-orange-100 text-orange-800
-                            {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-800
-                            {% elif repair.queue_status == 'REQUESTED' %}bg-red-100 text-red-800
-                            {% elif repair.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                            {% elif repair.queue_status == 'DENIED' %}bg-gray-100 text-gray-800
-                            {% else %}bg-gray-100 text-gray-800{% endif %}">
-                            {{ repair.get_queue_status_display }}
-                        </span>
+                        {% status_badge repair.queue_status %}
                         {% if repair.cost %}
                         <span class="text-sm font-semibold text-gray-900">${{ repair.cost|floatformat:2 }}</span>
                         {% endif %}
@@ -168,7 +148,7 @@
             <h3 class="text-sm font-medium text-gray-900 mb-1">No repairs found</h3>
             <p class="text-sm text-gray-500 mb-4">No repair history for this unit yet.</p>
             <a href="{% url 'job_create' %}?customer={{ customer.id }}&unit={{ unit_number }}" 
-               class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+               class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
                 <i class="fas fa-plus mr-2"></i>Create First Repair
             </a>
         </div>

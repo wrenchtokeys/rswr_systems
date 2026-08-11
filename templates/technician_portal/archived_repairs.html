@@ -1,4 +1,5 @@
 {% extends "base_app.html" %}
+{% load ui %}
 
 {% block content %}
 <div class="min-h-screen bg-gray-50">
@@ -36,9 +37,9 @@
         <!-- Deleted Customers -->
         {% if deleted_customers %}
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="px-6 py-4 border-b border-gray-200 bg-purple-50 rounded-t-lg">
+            <div class="px-6 py-4 border-b border-gray-100">
                 <h2 class="text-lg font-semibold text-gray-800">
-                    <i class="fas fa-users mr-2 text-purple-500"></i>Deleted Customers
+                    <i class="fas fa-users mr-2 text-gray-400"></i>Deleted Customers
                     <span class="ml-2 text-sm font-normal text-gray-500">({{ deleted_customers|length }} total)</span>
                 </h2>
                 <p class="text-xs text-gray-500 mt-1">Restoring a customer also restores the jobs, invoices, and portal accounts deleted with them.</p>
@@ -69,7 +70,7 @@
                                 <form method="post" action="{% url 'restore_customer' customer.id %}" class="inline">
                                     {% csrf_token %}
                                     <button type="submit"
-                                        class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
+                                        class="inline-flex items-center px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
                                         <i class="fas fa-undo mr-1"></i>Restore
                                     </button>
                                 </form>
@@ -84,9 +85,9 @@
 
         <!-- Archived Repairs -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="px-6 py-4 border-b border-gray-200 bg-red-50 rounded-t-lg">
+            <div class="px-6 py-4 border-b border-gray-100">
                 <h2 class="text-lg font-semibold text-gray-800">
-                    <i class="fas fa-wrench mr-2 text-red-500"></i>Deleted Repairs
+                    <i class="fas fa-wrench mr-2 text-gray-400"></i>Deleted Repairs
                     <span class="ml-2 text-sm font-normal text-gray-500">({{ deleted_repairs|length }} total)</span>
                 </h2>
             </div>
@@ -118,13 +119,7 @@
                                 <div class="text-xs text-gray-400">{{ repair.service_date|date:"M d, Y" }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                    {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                                    {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-800
-                                    {% elif repair.queue_status == 'PENDING' %}bg-yellow-100 text-yellow-800
-                                    {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                    {{ repair.get_queue_status_display }}
-                                </span>
+                                {% status_badge repair.queue_status %}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {{ repair.deleted_at|date:"M d, Y g:i A" }}
@@ -133,7 +128,7 @@
                                 <form method="post" action="{% url 'restore_repair' repair.id %}" class="inline">
                                     {% csrf_token %}
                                     <button type="submit"
-                                        class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
+                                        class="inline-flex items-center px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
                                         <i class="fas fa-undo mr-1"></i>Restore
                                     </button>
                                 </form>
@@ -153,9 +148,9 @@
 
         <!-- Deleted Replacements -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="px-6 py-4 border-b border-gray-200 bg-indigo-50 rounded-t-lg">
+            <div class="px-6 py-4 border-b border-gray-100">
                 <h2 class="text-lg font-semibold text-gray-800">
-                    <i class="fas fa-car mr-2 text-indigo-500"></i>Deleted Replacements
+                    <i class="fas fa-car mr-2 text-gray-400"></i>Deleted Replacements
                     <span class="ml-2 text-sm font-normal text-gray-500">({{ deleted_replacements|length }} total)</span>
                 </h2>
             </div>
@@ -191,7 +186,7 @@
                                 <form method="post" action="{% url 'restore_replacement' replacement.id %}" class="inline">
                                     {% csrf_token %}
                                     <button type="submit"
-                                        class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
+                                        class="inline-flex items-center px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
                                         <i class="fas fa-undo mr-1"></i>Restore
                                     </button>
                                 </form>
@@ -211,9 +206,9 @@
 
         <!-- Archived Invoices -->
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div class="px-6 py-4 border-b border-gray-200 bg-orange-50 rounded-t-lg">
+            <div class="px-6 py-4 border-b border-gray-100">
                 <h2 class="text-lg font-semibold text-gray-800">
-                    <i class="fas fa-file-invoice-dollar mr-2 text-orange-500"></i>Deleted Invoices
+                    <i class="fas fa-file-invoice-dollar mr-2 text-gray-400"></i>Deleted Invoices
                     <span class="ml-2 text-sm font-normal text-gray-500">({{ deleted_invoices|length }} total)</span>
                 </h2>
                 <p class="text-xs text-gray-500 mt-1">Invoices deleted along with a job are also restored automatically when that job is restored.</p>
@@ -256,7 +251,7 @@
                                 <form method="post" action="{% url 'restore_invoice' invoice.id %}" class="inline">
                                     {% csrf_token %}
                                     <button type="submit"
-                                        class="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors">
+                                        class="inline-flex items-center px-3 py-1.5 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
                                         <i class="fas fa-undo mr-1"></i>Restore
                                     </button>
                                 </form>

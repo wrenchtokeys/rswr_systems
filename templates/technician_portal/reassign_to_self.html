@@ -1,4 +1,5 @@
 {% extends "base_app.html" %}
+{% load ui %}
 
 {% block extra_css %}
 {% endblock %}
@@ -8,9 +9,9 @@
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="bg-white rounded-lg shadow-sm border border-gray-200">
             <!-- Header -->
-            <div class="px-6 py-4 border-b border-gray-200 bg-indigo-600 text-white rounded-t-lg">
-                <h1 class="text-xl font-semibold flex items-center">
-                    <i class="fas fa-user-check mr-3"></i>
+            <div class="px-6 py-4 border-b border-gray-100">
+                <h1 class="text-xl font-semibold text-gray-900 flex items-center">
+                    <i class="fas fa-user-check mr-3 text-gray-400"></i>
                     Reassign Repair to Yourself
                 </h1>
             </div>
@@ -44,13 +45,7 @@
                         </div>
                         <div>
                             <span class="font-medium text-gray-700">Status:</span>
-                            <span class="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium
-                                {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-800
-                                {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-800
-                                {% elif repair.queue_status == 'APPROVED' %}bg-indigo-100 text-indigo-800
-                                {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                {{ repair.get_queue_status_display }}
-                            </span>
+                            <span class="ml-2">{% status_badge repair.queue_status %}</span>
                         </div>
                         <div>
                             <span class="font-medium text-gray-700">Customer:</span>
@@ -75,7 +70,7 @@
                 <div class="flex flex-wrap gap-3 justify-between items-center">
                     <form method="post" class="inline">
                         {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center px-6 py-3 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">
+                        <button type="submit" class="inline-flex items-center px-6 py-3 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
                             <i class="fas fa-check mr-2"></i>Confirm Reassignment
                         </button>
                     </form>

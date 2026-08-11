@@ -15,7 +15,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 2 | S5 · Owner dashboard: kill the green slab, give revenue meaning | **DONE** 2026-08-09 |
 | 2 | S6 · Jobs page: 25 controls → 3 | **DONE** 2026-08-09 |
 | 2 | S7 · Job/repair form: drop the green header and ALL-CAPS section tiles | **DONE** 2026-08-10 |
-| 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | TODO |
+| 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | **DONE** 2026-08-10 |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | TODO |
 | 3 | S10 · View Transitions for list → detail continuity | TODO |
 | 3 | S11 · Skeletons and optimistic status changes | TODO |
@@ -108,7 +108,14 @@ Replaying only the failing modules takes ~7 min instead of another full hour.
 - **Tailwind purges `@layer components` rules that no template uses yet.** New shared
   classes need a `safelist` entry in `tailwind.config.js` or they silently do nothing.
 - **The dev server caches templates even with `--noreload`.** Restart it before concluding
-  a template fix didn't work.
+  a template fix didn't work. (Hit again in S8 — cost a round of screenshots.)
+- **zsh does not word-split unquoted `$VAR`.** A `for f in $FILES` codemod loop runs once
+  with every filename joined into one string, modifies nothing, and prints a log that
+  looks like it worked. Run codemod loops under `bash -c` or `bash <<'EOF'`. (S8)
+- **A page can be full of `brand-*` classes and still leak RS blue.** Component CSS under
+  `static/css/components/` and inline `<style>` blocks use raw hex, load *after* `app.css`,
+  and win. Two files were overriding the shared `.btn-primary` this way (S7, S8). Grep for
+  `#2563eb|#3b82f6|#eff6ff|#dbeafe` before calling a surface themed.
 
 ---
 
@@ -337,15 +344,71 @@ the multi-break form and the quick job form lost their green (and purple) accent
 gradient header; `job_form.html` keeps its teal "picked individual" state; the
 `icon-field-helper.helper-success` green in form-fields.css is semantic and stays.
 
-## S8 · Retire the second accent everywhere else
+## S8 · Retire the second accent everywhere else — DONE
 
-**Known leftovers after S5:** the dashboard's floating `+` FAB is still green, and the
-`Recent Activity` rows still use hand-rolled status badge conditionals rather than
-`{% status_badge %}`.
+Branch `feat/ui-s8-second-accent`. Green (plus purple, orange, teal, indigo, sky and
+black) stop being action and surface colours app-wide. ~40 templates, 2 CSS files.
 
-Sweep for the remaining green/black accents outside S5–S7: the global FAB, any remaining
-`bg-gray-900` pills, the four-tint icon system. Migrate hand-rolled status badges to
-`{% status_badge %}`. Adopt `.surface-float` for dropdown menus.
+**Notes**
+
+- **The session's one-line scope was badly under-sized.** Green wasn't a leftover
+  accent — it was the *de-facto primary action colour* of the whole technician portal
+  and half the owner app: 67 solid `bg-green-*` surfaces, 46 green focus rings, plus
+  purple/orange/indigo/teal/sky doing the same job on other pages. The rule applied was
+  the one already in `CLAUDE.md`: **green means money (paid/collected/completed) and is
+  not a surface, header, or button colour.**
+- **What deliberately stayed green** — success toasts (`warranty_policies`,
+  `viscosity_rules`, `manager_settings.js`), the "Copied!" button flashes, the
+  COMPLETED status dot, money figures, and the plan-usage gauge's red/amber/green
+  *thresholds* (a genuine health ramp). Below the threshold that same bar is now brand:
+  it isn't reporting anything, so it shouldn't spend a colour.
+- **Trial/expiry banners stay orange.** They're a warning state, not decoration.
+- **The technician dashboard was the worst surface in the app** and got the most work:
+  a green gradient header, five pastel gradient stat tiles (orange/amber/brand/green/
+  purple), three stacked solid colour slabs (red "Customer Requests", yellow
+  "Notifications", orange "In Progress"), a green "Ready to Start" panel and orange
+  Continue buttons. All neutral now, on the S5 stat-tile idiom, with status colour
+  coming only from `{% status_badge %}`.
+- **Orange was being used for IN_PROGRESS** on that dashboard while `ui.py` says blue,
+  so the same job read as a different colour on the dashboard, the jobs list and the
+  detail page. All three now come from the shared tag.
+- **`{% status_badge %}` migration**: owner dashboard Recent Activity, tech dashboard
+  queue, `archived_repairs`, `reassign_to_self`, `unit_details`, `repair_detail`,
+  `customer_portal/repair_detail`. The tag takes `label=` — that's how the tech queue
+  keeps "Ready" and the customer portal keeps "Submitted — Awaiting Technician" while
+  still drawing colour from the single source of truth.
+- **Where a row showed status three times** (tinted icon tile + tinted dot + badge),
+  the tile and dot became neutral. The badge carries it once.
+- **The FAB was seven hand-picked hues** (green/teal/amber/violet/blue/cyan/purple) —
+  a colour key with nothing to decode. One neutral circle now; the main button is
+  `rgb(var(--brand-600))` so it follows `Tenant.brand_color`. Its open state was red,
+  which read as "destructive" for a button that only closes a menu — now brand-700.
+- **Black pills → segmented controls** (S6's pattern: `bg-gray-100` track, active
+  `bg-white shadow-sm`) on `customer_portal/services`, `technician_portal/customer_list`
+  and `owner_invoices`. This also removed the sky/teal Fleet-vs-Individual pills.
+- **Two more brand leaks found and fixed, same class as S7's `form-fields.css`:**
+  `static/css/components/customer-repair-request.css` **redefined `.btn-primary`** with a
+  hardcoded RS-blue gradient and loads after `app.css`, so every button in the
+  *customer's request flow* ignored the shop's brand. Deleted, not restyled, with a
+  warning comment. `profile_creation.html` hardcoded `#2563eb`/`#eff6ff` for the
+  selected radio card, so a violet shop got a blue selection. Both now use
+  `rgb(var(--brand-N))`. **Grep for raw hex before assuming a page is themed** —
+  `grep -rn '#2563eb\|#3b82f6\|#eff6ff\|#dbeafe' templates/ static/css/components`.
+- Left as known raw-hex leaks (out of scope, no `--brand-*` in those documents):
+  `templates/billing/public_*.html` (standalone public pay pages) and
+  `templates/emails/customer_invitation.html`.
+- `.surface-float` adopted by the two remaining absolute dropdowns (`base_app.html`
+  account menu, `repair_detail` more-actions).
+- **Restart the dev server before believing a template fix failed.** Cost a full round
+  of screenshots this session — the same trap already listed at the top of this file.
+- **`for f in $FILES` does not word-split in zsh.** The first codemod silently ran on a
+  single newline-joined "filename", modified nothing, and printed a plausible-looking
+  log. Run codemod loops under `bash -c` (same note as the baseline-replay recipe).
+
+**Leftovers:** `templates/saas/billing.html:14` keeps its purple→indigo "Platform Owner"
+gradient — that banner only ever renders for the platform-owner tenant, so it's an
+RS Systems surface, not a shop's. The Fleet/Individual and Repair/Replacement chips keep
+their two-value hues (`service_type_chip` in `ui.py`) — that's a taxonomy, not an accent.
 
 ---
 

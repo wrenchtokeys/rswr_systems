@@ -94,7 +94,10 @@ class UnifiedDashboardTests(TestCase):
         # Legacy per-type keys stay populated
         self.assertEqual(len(resp.context['customer_requested_repairs']), 1)
         self.assertEqual(len(resp.context['customer_requested_replacements']), 1)
-        self.assertContains(resp, 'Customer Requests - Attention Required')
+        # Heading lost its "- Attention Required" suffix in S8: the panel is a neutral
+        # card now and urgency is carried by the count chip, not a red slab.
+        self.assertContains(resp, 'Customer requests')
+        self.assertContains(resp, 'need review')
 
     def test_summary_stats_include_replacements(self):
         Replacement.objects.create(
