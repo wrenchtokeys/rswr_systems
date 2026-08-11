@@ -238,12 +238,12 @@
             <h3 class="text-base font-semibold text-gray-900 mb-3">What do you need?</h3>
             <div class="space-y-2">
                 {% if shop_offers_repairs %}
-                <a href="{% url 'customer_request_repair' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors">
+                <a href="{% url 'customer_request_repair' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors press">
                     <i class="fas fa-tools mr-3"></i> Chip or Crack Repair
                 </a>
                 {% endif %}
                 {% if shop_offers_replacements %}
-                <a href="{% url 'customer_request_replacement' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors">
+                <a href="{% url 'customer_request_replacement' %}" class="flex items-center px-4 py-3.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-600 transition-colors press">
                     <i class="fas fa-car mr-3"></i> Full Glass Replacement
                 </a>
                 {% endif %}

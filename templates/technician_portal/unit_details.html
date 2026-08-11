@@ -18,7 +18,7 @@
         </div>
         <div class="flex items-center gap-2">
             <a href="{% url 'job_create' %}?customer={{ customer.id }}&unit={{ unit_number }}"
-               class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+               class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors press">
                 <i class="fas fa-plus mr-2"></i>New {{ service_noun }}
             </a>
         </div>
@@ -148,7 +148,7 @@
             <h3 class="text-sm font-medium text-gray-900 mb-1">No repairs found</h3>
             <p class="text-sm text-gray-500 mb-4">No repair history for this unit yet.</p>
             <a href="{% url 'job_create' %}?customer={{ customer.id }}&unit={{ unit_number }}" 
-               class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+               class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press">
                 <i class="fas fa-plus mr-2"></i>Create First Repair
             </a>
         </div>
@@ -157,10 +157,10 @@
 </div>
 
 <!-- Replace Confirmation Modal -->
-<div id="replaceModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<div id="replaceModal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-black bg-opacity-50" onclick="closeReplaceModal()"></div>
-        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6 motion-rise">
             <div class="flex items-center justify-center w-12 h-12 bg-amber-100 rounded-full mx-auto mb-4">
                 <i class="fas fa-sync-alt text-amber-600 text-xl"></i>
             </div>

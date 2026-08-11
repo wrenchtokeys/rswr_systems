@@ -14,7 +14,14 @@
   --info-color: #3b82f6;
   --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --border-radius: 0.375rem;
-  --transition: all 0.3s ease;
+  /* Named properties, never `all` (UI_MAGIC_PLAN §7 / R4). Kept in step with
+     the definition in static/css/src/input.css, which loads after this file
+     and wins anyway — this copy exists so the value isn't a lie when you read
+     it here. --dur-*/--ease-out come from app.css's :root. */
+  --transition: color var(--dur-fast, 140ms) var(--ease-out, ease),
+                background-color var(--dur-fast, 140ms) var(--ease-out, ease),
+                border-color var(--dur-fast, 140ms) var(--ease-out, ease),
+                box-shadow var(--dur-base, 220ms) var(--ease-out, ease);
 }
 
 body {

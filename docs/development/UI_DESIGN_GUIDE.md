@@ -47,7 +47,30 @@ Defined in `static/css/src/input.css`, consumed by the component layer.
 | Material | `--surface-base/raised/overlay`, `--hairline`, `--shadow-raised/float/overlay` | Depth comes from soft two-stop shadows, not 1px borders. `.card` = raised, `.surface-float` = dropdowns/popovers, `.modal-panel` = overlay. |
 | Type | `.t-display` `.t-h1` `.t-h2` `.t-h3` `.t-body` `.t-sub` `.t-caption` | Weight tops out at 600; tracking tightens as size grows. Adopt per page. |
 | Figures | `.num`, plus `tabular-nums` on all `table` | Money and counts must line up. Prose keeps proportional figures. |
-| Motion | `--ease-out` `--ease-in-out` `--dur-fast` `--dur-base` | Defined, not yet applied (UI_MAGIC_SESSIONS S9/S10). Never animate `all`. |
+| Motion | `--ease-out` `--ease-in-out` `--dur-fast` `--dur-base` | Applied by the primitives below (UI_MAGIC_SESSIONS S9). Never animate `all` — name the properties. |
+
+### Motion primitives (Aug 2026, S9)
+
+Everything below lives inside `@media (prefers-reduced-motion: no-preference)`,
+so a reader who has asked for less motion gets today's instant behaviour.
+
+| Primitive | What it does | You get it by |
+|---|---|---|
+| Press | 2% dip while held, 140ms | Automatic on `<button>`, `[role=button]`, `<summary>`, submit/button inputs and `.btn*`. Add `.press` to an `<a>` that is styled as a button, `.press-card` to a whole-card link (0.5% — a card must not lurch), `.no-press` to opt out. |
+| Enter/exit | Fade (+4px rise) over 220ms, in **and** out | Automatic on `.modal-overlay` / `.modal-panel` and any `.dropdown-menu` / `[data-dropdown-menu]`. A hand-rolled modal opts in: `.motion-fade` on the full-screen root, `.motion-rise` on the panel. |
+
+Two things to know before changing this:
+
+- Press feedback uses the independent `scale` property, not `transform`, so it
+  composes with elements that already have a transform. `scale` is set only in
+  `:active` — a resting `scale: 1` would make the element a containing block
+  for any `position: fixed` descendant.
+- Enter/exit is pure CSS (`@starting-style` + `transition-behavior:
+  allow-discrete`) keyed off the `.hidden` class, which is why it works for
+  modals toggled from `ui.js`, from page-local scripts, and from inline
+  `onclick` alike. **Never write `.hidden .thing` to mean "inside a hidden
+  parent"** — `hidden md:flex` is idiomatic Tailwind, so half the navbar
+  carries a permanent `hidden` class. Scope to the modal root class instead.
 
 ### Cards, Badges, Modals
 

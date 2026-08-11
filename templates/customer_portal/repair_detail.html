@@ -207,7 +207,7 @@
                             {% endif %}
                         </div>
                         {% if inv_status.stripe_url and inv_status.amount_due > 0 and inv_status.can_pay_online %}
-                        <a href="{{ inv_status.stripe_url }}" target="_blank" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                        <a href="{{ inv_status.stripe_url }}" target="_blank" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors press">
                             <i class="fas fa-credit-card mr-2"></i> Pay Online
                         </a>
                         {% endif %}
@@ -384,8 +384,8 @@
 </div>
 
 <!-- Image Lightbox Modal -->
-<div id="imageModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80" onclick="closeImageModal()">
-    <div class="relative max-w-4xl w-full" onclick="event.stopPropagation()">
+<div id="imageModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 motion-fade" onclick="closeImageModal()">
+    <div class="relative max-w-4xl w-full motion-rise" onclick="event.stopPropagation()">
         <button onclick="closeImageModal()" class="absolute -top-10 right-0 text-white hover:text-gray-300 transition-colors">
             <i class="fas fa-times text-xl"></i>
         </button>

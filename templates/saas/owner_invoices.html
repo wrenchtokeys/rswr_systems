@@ -18,7 +18,7 @@
         <a href="{% url 'owner_dashboard' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
             <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
         </a>
-        <a href="{% url 'owner_receive_payment' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors" title="Record one payment across a customer's open invoices">
+        <a href="{% url 'owner_receive_payment' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press" title="Record one payment across a customer's open invoices">
             <i class="fas fa-hand-holding-usd mr-2"></i>Receive Payment
         </a>
     </div>
@@ -372,10 +372,10 @@
 </div>
 
 <!-- Send Email Confirmation Modal -->
-<div id="send-email-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<div id="send-email-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeSendEmailModal()"></div>
-        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10 motion-rise">
             <!-- Header -->
             <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <div>
@@ -448,10 +448,10 @@
     </div>
 </div>
 
-<!-- Create Invoice Modal --><div id="invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<!-- Create Invoice Modal --><div id="invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeInvoiceModal()"></div>
-        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10 motion-rise">
             <!-- Header -->
             <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <div>
@@ -524,10 +524,10 @@
     </div>
 </div>
 <!-- Quick Record Payment Modal (per-row) -->
-<div id="quick-pay-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+<div id="quick-pay-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeQuickPayModal()"></div>
-        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10">
+        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10 motion-rise">
             <div class="bg-gradient-to-r from-green-50 to-green-100 px-6 py-4 border-b border-green-100 flex items-center justify-between rounded-t-2xl">
                 <div>
                     <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-dollar-sign mr-2 text-green-600"></i>Record Payment</h3>
@@ -578,10 +578,10 @@
 </div>
 
 <!-- Bulk Mark Paid Modal -->
-<div id="bulk-paid-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+<div id="bulk-paid-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeBulkPaidModal()"></div>
-        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10">
+        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10 motion-rise">
             <div class="bg-gradient-to-r from-green-50 to-green-100 px-6 py-4 border-b border-green-100 flex items-center justify-between rounded-t-2xl">
                 <div>
                     <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-check-circle mr-2 text-green-600"></i>Mark as Paid</h3>

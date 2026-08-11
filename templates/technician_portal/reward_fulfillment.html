@@ -318,8 +318,8 @@
 </div>
 
 <!-- Contact Customer Modal -->
-<div id="contactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
-    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-lg bg-white">
+<div id="contactModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50 motion-fade">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-lg bg-white motion-rise">
         <div class="flex justify-between items-center pb-3 border-b">
             <h3 class="text-xl font-semibold text-gray-900">Contact Customer</h3>
             <button onclick="closeContactModal()" class="text-gray-400 hover:text-gray-500">
@@ -374,7 +374,7 @@ Best regards,
             <button onclick="closeContactModal()" type="button" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors">
                 Cancel
             </button>
-            <a href="mailto:{{ redemption.reward.customer.email|default:'No email on file' }}?subject=Regarding your reward redemption" id="sendEmailBtn" class="flex-1 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors text-center">
+            <a href="mailto:{{ redemption.reward.customer.email|default:'No email on file' }}?subject=Regarding your reward redemption" id="sendEmailBtn" class="flex-1 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-md hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors text-center press">
                 Send Email
             </a>
         </div>

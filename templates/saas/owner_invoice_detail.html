@@ -25,21 +25,21 @@
             <i class="fas fa-paper-plane sm:mr-2"></i><span class="hidden sm:inline">Send Invoice</span>
         </button>
         {% if pdf_url %}
-        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
         </a>
         {% endif %}
-        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
         </a>
         {% else %}
         <!-- Sent/Active Invoice Actions -->
         {% if pdf_url %}
-        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
         </a>
         {% endif %}
-        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
         </a>
         <form method="post" action="{% url 'owner_email_invoice' invoice_id=invoice.id %}" class="inline js-confirm-send"
@@ -562,13 +562,13 @@
 
 <!-- Send Reminder Modal -->
 {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' and invoice.status != 'DRAFT' %}
-<div id="reminder-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+<div id="reminder-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" aria-labelledby="modal-title" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <!-- Background overlay -->
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeReminderModal()"></div>
 
         <!-- Modal panel -->
-        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full motion-rise">
             <!-- Header -->
             <div class="bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-4 border-b border-amber-100">
                 <div class="flex items-center justify-between">
@@ -728,10 +728,10 @@ document.addEventListener('keydown', function(e) {
 <form id="invoice-edit-csrf" class="hidden">{% csrf_token %}</form>
 
 <!-- Line Item Edit Modal -->
-<div id="line-item-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+<div id="line-item-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeLineItemEditModal()"></div>
-        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full">
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full motion-rise">
             <div class="bg-gradient-to-r from-brand-50 to-brand-100 px-6 py-4 border-b border-brand-100 flex items-center justify-between">
                 <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-pen mr-2 text-brand-600"></i>Edit Line Item</h3>
                 <button onclick="closeLineItemEditModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
@@ -781,10 +781,10 @@ document.addEventListener('keydown', function(e) {
 </div>
 
 <!-- Line Item Add Modal -->
-<div id="line-item-add-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+<div id="line-item-add-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeAddLineItemModal()"></div>
-        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full">
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md sm:w-full motion-rise">
             <div class="bg-gradient-to-r from-brand-50 to-brand-100 px-6 py-4 border-b border-brand-100 flex items-center justify-between">
                 <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-plus mr-2 text-brand-600"></i>Add Line Item</h3>
                 <button onclick="closeAddLineItemModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
@@ -821,10 +821,10 @@ document.addEventListener('keydown', function(e) {
 </div>
 
 <!-- Invoice Details Edit Modal -->
-<div id="invoice-edit-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+<div id="invoice-edit-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeInvoiceEditModal()"></div>
-        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+        <div class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full motion-rise">
             <div class="bg-gradient-to-r from-brand-50 to-brand-100 px-6 py-4 border-b border-brand-100 flex items-center justify-between">
                 <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-pen mr-2 text-brand-600"></i>Edit Invoice Details</h3>
                 <button onclick="closeInvoiceEditModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
@@ -1017,10 +1017,10 @@ document.addEventListener('keydown', function(e) {
 
 {% if invoice.status == 'DRAFT' %}
 <!-- Send Confirmation Modal (CODE-112) -->
-<div id="send-confirm-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<div id="send-confirm-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75" onclick="document.getElementById('send-confirm-modal').classList.add('hidden')"></div>
-        <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6">
+        <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6 motion-rise">
             <h3 class="text-lg font-semibold text-gray-900 mb-4">
                 <i class="fas fa-paper-plane text-brand-600 mr-2"></i>Send Invoice
             </h3>

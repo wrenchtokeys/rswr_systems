@@ -47,11 +47,11 @@
                 </p>
                 <div class="flex flex-wrap gap-3">
                     <a href="{% url 'customer_replacement_approve' replacement_id=replacement.id %}"
-                       class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-medium rounded-lg hover:bg-brand-600 transition-colors">
+                       class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-medium rounded-lg hover:bg-brand-600 transition-colors press">
                         <i class="fas fa-check mr-2"></i> Approve
                     </a>
                     <a href="{% url 'customer_replacement_deny' replacement_id=replacement.id %}"
-                       class="inline-flex items-center px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors">
+                       class="inline-flex items-center px-4 py-2 bg-red-100 text-red-700 text-sm font-medium rounded-lg hover:bg-red-200 transition-colors press">
                         <i class="fas fa-times mr-2"></i> Deny
                     </a>
                 </div>
