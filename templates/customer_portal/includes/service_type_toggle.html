@@ -10,7 +10,7 @@ Renders nothing when the shop only offers one service — there is no choice to 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <a href="{% url 'customer_request_repair' %}"
            class="flex items-start gap-3 p-4 rounded-xl border-2 transition-colors
-                  {% if active == 'repair' %}border-brand-500 bg-brand-50{% else %}border-gray-200 bg-white hover:border-gray-300{% endif %}">
+                  {% if active == 'repair' %}border-brand-500 bg-brand-50{% else %}border-gray-200 bg-white hover:border-gray-300{% endif %} press-card">
             <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 {% if active == 'repair' %}bg-brand-500 text-white{% else %}bg-gray-100 text-gray-500{% endif %}">
                 <i class="fas fa-tools"></i>
             </div>
@@ -22,7 +22,7 @@ Renders nothing when the shop only offers one service — there is no choice to 
         </a>
         <a href="{% url 'customer_request_replacement' %}"
            class="flex items-start gap-3 p-4 rounded-xl border-2 transition-colors
-                  {% if active == 'replacement' %}border-brand-500 bg-brand-50{% else %}border-gray-200 bg-white hover:border-gray-300{% endif %}">
+                  {% if active == 'replacement' %}border-brand-500 bg-brand-50{% else %}border-gray-200 bg-white hover:border-gray-300{% endif %} press-card">
             <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 {% if active == 'replacement' %}bg-brand-500 text-white{% else %}bg-gray-100 text-gray-500{% endif %}">
                 <i class="fas fa-car"></i>
             </div>

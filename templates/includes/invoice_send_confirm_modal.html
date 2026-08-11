@@ -15,10 +15,10 @@ Usage:
 On confirm the modal re-submits the original form with send_me_copy=1
 appended when "Email me a copy" is checked.
 {% endcomment %}
-<div id="send-invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="sim-title" data-sms-ready="{% if invoice_sms_ready %}1{% endif %}">
+<div id="send-invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true" aria-labelledby="sim-title" data-sms-ready="{% if invoice_sms_ready %}1{% endif %}">
     <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75" data-sim-close></div>
-        <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6">
+        <div class="bg-white rounded-xl shadow-xl z-10 max-w-md w-full p-6 motion-rise">
             <h3 id="sim-title" class="text-lg font-semibold text-gray-900 mb-4">
                 <i class="fas fa-paper-plane text-brand-600 mr-2"></i>Send this invoice?
             </h3>

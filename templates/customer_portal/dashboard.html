@@ -24,7 +24,7 @@
                     <p class="text-sm text-amber-800">Review and approve to keep your fleet on schedule</p>
                 </div>
             </div>
-            <a href="{% url 'customer_services' %}?type=approval" class="hidden sm:inline-flex items-center px-4 py-2 bg-white text-amber-700 text-sm font-semibold rounded-lg hover:bg-amber-50 transition-colors shadow-sm">
+            <a href="{% url 'customer_services' %}?type=approval" class="hidden sm:inline-flex items-center px-4 py-2 bg-white text-amber-700 text-sm font-semibold rounded-lg hover:bg-amber-50 transition-colors shadow-sm press">
                 View All <i class="fas fa-arrow-right ml-2"></i>
             </a>
         </div>
@@ -170,7 +170,7 @@
     </a>
 
     <!-- Active Services -->
-    <a href="{% url 'customer_services' %}" class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md transition-shadow">
+    <a href="{% url 'customer_services' %}" class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md transition-shadow press-card">
         <div class="w-9 h-9 bg-brand-100 rounded-lg flex items-center justify-center mb-2">
             <i class="fas fa-wrench text-brand-600"></i>
         </div>
@@ -179,7 +179,7 @@
     </a>
 
     <!-- Completed -->
-    <a href="{% url 'customer_services' %}?status=COMPLETED" class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md transition-shadow">
+    <a href="{% url 'customer_services' %}?status=COMPLETED" class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md transition-shadow press-card">
         <div class="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center mb-2">
             <i class="fas fa-check-circle text-green-600"></i>
         </div>
@@ -283,7 +283,7 @@
                 <p class="text-sm text-gray-500 mb-4">Request your first service to get started.</p>
                 <div class="flex flex-wrap items-center justify-center gap-2">
                     {% if shop_offers_repairs %}
-                    <a href="{% url 'customer_request_repair' %}" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                    <a href="{% url 'customer_request_repair' %}" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors press">
                         <i class="fas fa-tools mr-2"></i> Request a Repair
                     </a>
                     {% endif %}
@@ -313,7 +313,7 @@
             {% else %}
             <p class="text-sm text-brand-100 mt-1 mb-4">Request a glass replacement — we'll take it from there.</p>
             {% endif %}
-            <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="flex items-center justify-center w-full px-4 py-3 bg-white text-brand-700 text-sm font-bold rounded-lg hover:bg-brand-50 transition-colors">
+            <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="flex items-center justify-center w-full px-4 py-3 bg-white text-brand-700 text-sm font-bold rounded-lg hover:bg-brand-50 transition-colors press">
                 Request Service
             </a>
         </div>

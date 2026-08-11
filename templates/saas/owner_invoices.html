@@ -18,7 +18,7 @@
         <a href="{% url 'owner_dashboard' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
             <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
         </a>
-        <a href="{% url 'owner_receive_payment' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors" title="Record one payment across a customer's open invoices">
+        <a href="{% url 'owner_receive_payment' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press" title="Record one payment across a customer's open invoices">
             <i class="fas fa-hand-holding-usd mr-2"></i>Receive Payment
         </a>
     </div>
@@ -202,10 +202,10 @@
                 <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                     onchange="updateBatchBar()"
                     class="invoice-checkbox mt-1 rounded border-gray-300 text-brand-600 focus:ring-brand-500 shrink-0">
-                <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="flex-1 min-w-0 block">
+                <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" data-vt-key="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="flex-1 min-w-0 block">
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <div class="text-sm font-semibold text-brand-600">{{ inv.invoice_number }}</div>
+                            <div data-vt-hero class="text-sm font-semibold text-brand-600">{{ inv.invoice_number }}</div>
                             <div class="text-sm text-gray-700 truncate">{{ inv.customer.name }}</div>
                         </div>
                         <div class="shrink-0 text-right">
@@ -292,14 +292,14 @@
             </thead>
             <tbody class="bg-white divide-y divide-gray-100">
                 {% for inv in invoices %}
-                <tr class="hover:bg-gray-50 cursor-pointer" onclick="if(!event.target.closest('.no-nav'))window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
+                <tr data-vt-key="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="hover:bg-gray-50 cursor-pointer" onclick="if(!event.target.closest('.no-nav'))window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
                     <td class="px-3 py-4 no-nav" onclick="event.stopPropagation()">
                         <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                             onchange="updateBatchBar()"
                             class="invoice-checkbox rounded border-gray-300 text-brand-600 focus:ring-brand-500">
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="text-sm font-semibold text-brand-600 hover:text-brand-800">{{ inv.invoice_number }}</span>
+                        <span data-vt-hero class="text-sm font-semibold text-brand-600 hover:text-brand-800">{{ inv.invoice_number }}</span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ inv.customer.name }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">{{ inv.invoice_date|date:"M d, Y" }}</td>
@@ -372,10 +372,10 @@
 </div>
 
 <!-- Send Email Confirmation Modal -->
-<div id="send-email-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<div id="send-email-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeSendEmailModal()"></div>
-        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10 motion-rise">
             <!-- Header -->
             <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <div>
@@ -448,10 +448,10 @@
     </div>
 </div>
 
-<!-- Create Invoice Modal --><div id="invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<!-- Create Invoice Modal --><div id="invoice-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="closeInvoiceModal()"></div>
-        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full relative z-10 motion-rise">
             <!-- Header -->
             <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                 <div>
@@ -524,10 +524,10 @@
     </div>
 </div>
 <!-- Quick Record Payment Modal (per-row) -->
-<div id="quick-pay-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+<div id="quick-pay-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeQuickPayModal()"></div>
-        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10">
+        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10 motion-rise">
             <div class="bg-gradient-to-r from-green-50 to-green-100 px-6 py-4 border-b border-green-100 flex items-center justify-between rounded-t-2xl">
                 <div>
                     <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-dollar-sign mr-2 text-green-600"></i>Record Payment</h3>
@@ -578,10 +578,10 @@
 </div>
 
 <!-- Bulk Mark Paid Modal -->
-<div id="bulk-paid-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" role="dialog" aria-modal="true">
+<div id="bulk-paid-modal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade" role="dialog" aria-modal="true">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeBulkPaidModal()"></div>
-        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10">
+        <div class="relative bg-white rounded-2xl shadow-xl max-w-md w-full z-10 motion-rise">
             <div class="bg-gradient-to-r from-green-50 to-green-100 px-6 py-4 border-b border-green-100 flex items-center justify-between rounded-t-2xl">
                 <div>
                     <h3 class="text-lg font-bold text-gray-900"><i class="fas fa-check-circle mr-2 text-green-600"></i>Mark as Paid</h3>

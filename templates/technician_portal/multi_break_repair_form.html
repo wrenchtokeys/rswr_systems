@@ -19,6 +19,19 @@
         align-items: center;
         justify-content: center;
     }
+    /* This modal predates the shared skeleton and toggles `.active`, not
+       `.hidden`, so the S9 enter/exit primitive cannot key off it. The root
+       carries .motion-fade and the panel .motion-rise (transitions and
+       @starting-style come from app.css); these two rules state the hidden
+       state in this page's own vocabulary. */
+    .modal:not(.active) {
+        opacity: 0;
+        pointer-events: none;
+    }
+    .modal:not(.active) .modal-content {
+        opacity: 0;
+        translate: 0 4px;
+    }
     .break-card {
         transition: all 0.2s;
     }
@@ -199,8 +212,8 @@
 </div>
 
 <!-- Success Modal for Batch Submission -->
-<div id="successModal" class="modal">
-    <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+<div id="successModal" class="modal motion-fade">
+    <div class="modal-content motion-rise bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
         <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center">
                 <svg class="h-7 w-7 mr-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -259,8 +272,8 @@
 </div>
 
 <!-- Modal for Adding/Editing Break -->
-<div id="breakModal" class="modal">
-    <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-8">
+<div id="breakModal" class="modal motion-fade">
+    <div class="modal-content motion-rise bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 my-8">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
             <h2 id="modalTitle" class="text-xl font-semibold text-gray-900">Add Break</h2>
             <button type="button" id="closeModalBtn" class="text-gray-400 hover:text-gray-600">

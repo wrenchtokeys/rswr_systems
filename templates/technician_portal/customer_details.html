@@ -15,10 +15,10 @@
         </div>
         {% if can_edit_customer %}
         <div class="flex items-center gap-2">
-            <a href="{% url 'edit_customer' customer.id %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <a href="{% url 'edit_customer' customer.id %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
                 <i class="fas fa-edit mr-2"></i>Edit Customer
             </a>
-            <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+            <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors press">
                 <i class="fas fa-plus mr-2"></i>New {{ service_noun }}
             </a>
         </div>
@@ -42,7 +42,7 @@
                                 {% else %}text-gray-600{% endif %} text-xl"></i>
                         </div>
                         <div>
-                            <h1 class="text-xl font-bold text-gray-900">{{ customer.name }}</h1>
+                            <h1 class="vt-hero text-xl font-bold text-gray-900">{{ customer.name }}</h1>
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
                                 {% if customer.customer_type == 'FLEET' %}bg-indigo-100 text-indigo-800
                                 {% elif customer.customer_type == 'RETAIL' %}bg-sky-100 text-sky-800
@@ -419,7 +419,7 @@
                     <p class="text-sm text-gray-500 mb-4">
                         {% if unit_search %}No units match "{{ unit_search }}"{% else %}No repairs recorded for this customer yet{% endif %}
                     </p>
-                    <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                    <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press">
                         <i class="fas fa-plus mr-2"></i>Create Repair
                     </a>
                 </div>
@@ -463,7 +463,7 @@
                     </div>
                     <h3 class="text-sm font-medium text-gray-900 mb-1">No jobs yet</h3>
                     <p class="text-sm text-gray-500 mb-4">No work recorded for this customer yet</p>
-                    <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                    <a href="{% url 'job_create' %}?customer={{ customer.id }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press">
                         <i class="fas fa-plus mr-2"></i>New Job
                     </a>
                 </div>
@@ -476,13 +476,13 @@
 
 <!-- Invite Modal -->
 {% if can_edit_customer %}
-<div id="inviteModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<div id="inviteModal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4 py-6">
         <!-- Backdrop -->
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="document.getElementById('inviteModal').classList.add('hidden')"></div>
         
         <!-- Modal Content -->
-        <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full mx-auto">
+        <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full mx-auto motion-rise">
             <div class="px-6 py-4 border-b border-gray-200">
                 <div class="flex items-center justify-between">
                     <h3 class="text-lg font-semibold text-gray-900">Invite to Portal</h3>

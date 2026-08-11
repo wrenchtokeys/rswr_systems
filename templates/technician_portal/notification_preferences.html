@@ -51,7 +51,7 @@
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                 Not Verified
                             </span>
-                            <a href="{% url 'verify_email' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
+                            <a href="{% url 'verify_email' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 press">
                                 Verify Email
                             </a>
                         </div>
@@ -74,12 +74,12 @@
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
                                 Not Verified
                             </span>
-                            <a href="{% url 'verify_phone' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
+                            <a href="{% url 'verify_phone' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 press">
                                 Verify Phone
                             </a>
                         </div>
                     {% else %}
-                        <a href="{% url 'technician_profile' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700">
+                        <a href="{% url 'technician_profile' %}" class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-gray-600 hover:bg-gray-700 press">
                             Add Phone Number
                         </a>
                     {% endif %}
@@ -299,7 +299,7 @@
                         <p class="text-gray-600 mt-1">Total Notifications</p>
                     </div>
                     <div class="flex items-center justify-center">
-                        <a href="{% url 'notification_history' %}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-brand-600 hover:bg-brand-700">
+                        <a href="{% url 'notification_history' %}" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-brand-600 hover:bg-brand-700 press">
                             View Notification History
                         </a>
                     </div>

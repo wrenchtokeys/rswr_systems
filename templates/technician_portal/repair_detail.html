@@ -9,7 +9,7 @@
             <div class="px-6 py-4 border-b border-gray-100">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h1 class="text-xl font-semibold text-gray-900">Repair #{{ repair.id }} - {{ repair.customer.name }}</h1>
+                        <h1 class="vt-hero text-xl font-semibold text-gray-900">Repair #{{ repair.id }} - {{ repair.customer.name }}</h1>
                         <div class="mt-2">
                             {% status_badge repair.queue_status %}
                         </div>
@@ -811,9 +811,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <!-- Delete Repair Confirmation Modal -->
 {% if is_admin or technician and technician.is_manager %}
-<div id="deleteRepairModal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center px-4">
+<div id="deleteRepairModal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 motion-fade">
     <div class="fixed inset-0 bg-black bg-opacity-50" data-modal-close></div>
-    <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6 motion-rise">
         <div class="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
             <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
         </div>
@@ -845,9 +845,9 @@ document.addEventListener('DOMContentLoaded', function() {
 {% endif %}
 
 {% if repair.queue_status == 'COMPLETED' and repair.has_warranty %}
-<div id="warrantyClaimModal" class="hidden fixed inset-0 z-50 flex items-center justify-center px-4">
+<div id="warrantyClaimModal" class="hidden fixed inset-0 z-50 flex items-center justify-center px-4 motion-fade">
     <div class="fixed inset-0 bg-black bg-opacity-50" onclick="document.getElementById('warrantyClaimModal').classList.add('hidden')"></div>
-    <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6 motion-rise">
         <h3 class="text-lg font-bold text-gray-900 mb-4">Create Warranty Claim</h3>
         <div class="text-sm text-gray-600 mb-4 space-y-1">
             <p><strong>Original:</strong> Repair #{{ repair.id }} ({{ repair.repair_date|date:"M d, Y" }})</p>

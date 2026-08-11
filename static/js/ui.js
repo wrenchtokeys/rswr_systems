@@ -255,9 +255,15 @@
 
             function done(result) {
                 document.removeEventListener('keydown', onKey, true);
-                overlay.remove();
                 document.body.classList.remove('overflow-hidden');
+                // Resolve first: the caller usually submits the form, and the
+                // dialog must never delay that. The exit is cosmetic.
                 resolve(result);
+                // Every other modal exits via CSS (`.hidden` + allow-discrete),
+                // but this one is removed from the DOM, which no transition can
+                // animate. Fade it out by hand, then remove.
+                overlay.classList.add('hidden');
+                setTimeout(function () { overlay.remove(); }, 260);
             }
             // Capture phase so the global Escape handler (which force-hides
             // .modal-overlay without resolving) never sees this keypress.

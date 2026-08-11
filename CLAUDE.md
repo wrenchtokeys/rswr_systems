@@ -47,6 +47,10 @@ There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are ven
 - **Keep `url()` out of `static/css/src/input.css`.** collectstatic collects the Tailwind *source* as well as the built `app.css`, so a relative `url()` resolves differently from each location and manifest storage hard-fails the deploy. Font declarations live inline in `templates/includes/head_assets.html` via `{% static %}`.
 - Verify before deploying: run `collectstatic` under `ForgivingManifestStaticFilesStorage`, not just dev storage — see `docs/strategy/UI_MAGIC_SESSIONS.md` for the settings shim.
 
+### View Transitions
+- **`@view-transition { navigation: auto; }` must stay inline** in the `<style>` block of `templates/includes/head_assets.html`. Chrome ignores the opt-in from an external stylesheet, so moving it into `input.css` silently turns every page transition back into a hard swap with nothing in the console. `tests/test_view_transitions.py` guards it.
+- List rows opt into the row→title morph with `data-vt-key="<detail url>"` + a `data-vt-hero` inside; the detail page's `<h1>` carries `.vt-hero`. Only pair them where the two texts are the same thing. `static/js/view-transitions.js` (loaded from `<head>`, not deferred — its `pagereveal` listener must exist before first render) does the naming.
+
 ### Color rules
 - **Interactive/brand colour → `brand-*` tokens**, never hardcoded `blue-*`. `{% tenant_brand_css %}` is injected in `base_app.html`, `base_auth.html` and `customer_portal/base_customer.html`, so a shop's `Tenant.brand_color` rethemes the whole product.
 - **Semantic status colour stays literal `blue-*`** (`core/templatetags/ui.py` is the source of truth: IN_PROGRESS/SENT are blue alongside green/amber/red). A red-branded shop must not get a red "In Progress" badge next to a red "Denied" one. Prefer `{% status_badge %}` over hand-rolled conditionals.

@@ -68,7 +68,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
                 {% if tenant.stripe_customer_id and not is_platform_owner %}
-                <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm">
+                <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors shadow-sm press">
                     <i class="fas fa-credit-card mr-2"></i>
                     Manage Payment Method
                 </a>
@@ -199,7 +199,7 @@
                 <i class="fas fa-file-invoice-dollar text-gray-400 text-xl"></i>
             </div>
             <p class="mb-3">View your complete payment history and download invoices through the Stripe Billing Portal.</p>
-            <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+            <a href="{% url 'billing_portal_redirect' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press">
                 <i class="fas fa-external-link-alt mr-2"></i>
                 Open Billing Portal
             </a>
@@ -217,10 +217,10 @@
 
 {% if not is_platform_owner %}
 <!-- Cancel-subscription confirm modal -->
-<div id="cancelModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+<div id="cancelModal" class="hidden fixed inset-0 z-50 overflow-y-auto motion-fade">
     <div class="flex items-center justify-center min-h-screen px-4">
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onclick="document.getElementById('cancelModal').classList.add('hidden')"></div>
-        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full relative z-10 p-6 motion-rise">
             <div class="text-center mb-6">
                 <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
                     <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>

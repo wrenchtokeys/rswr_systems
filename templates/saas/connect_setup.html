@@ -39,7 +39,7 @@
                 <div class="mt-4">
                     <form method="post" action="{% url 'connect_dashboard' %}">
                         {% csrf_token %}
-                        <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors">
+                        <a href="{% url 'connect_dashboard' %}" class="inline-flex items-center px-4 py-2 text-sm font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 transition-colors press">
                             <i class="fas fa-external-link-alt mr-2"></i> View Stripe Dashboard
                         </a>
                     </form>
