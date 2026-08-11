@@ -18,12 +18,12 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <!-- Header -->
         <div class="mb-6">
-            <div class="flex items-center justify-between">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 class="text-3xl font-bold text-gray-900">Notification History</h1>
+                    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Notification History</h1>
                     <p class="text-gray-600 mt-1">View and manage your notifications</p>
                 </div>
-                <div class="flex space-x-3">
+                <div class="flex flex-wrap gap-2 sm:gap-3">
                     <a href="{% url 'notification_preferences' %}" class="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
                         Preferences
                     </a>
@@ -87,10 +87,18 @@
                     {% for notification in notifications %}
                         <div class="notification-item px-6 py-4 {% if not notification.read %}unread{% endif %}"
                              data-notification-id="{{ notification.id }}">
-                            <div class="flex items-start justify-between">
-                                <div class="flex-1">
-                                    <div class="flex items-center">
-                                        <h3 class="text-lg font-medium text-gray-900">
+                            {% comment %}
+                            Stacks below sm: this row used to be a single
+                            non-wrapping flex line, and `flex-1` without
+                            `min-w-0` cannot shrink past its content, so a
+                            phone-width row pushed the View / Mark Read column
+                            ~160px off the right edge — unreachable, on the page
+                            the notification bell's "View All" leads to.
+                            {% endcomment %}
+                            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center flex-wrap gap-y-1">
+                                        <h3 class="text-base sm:text-lg font-medium text-gray-900 break-words">
                                             {{ notification.title }}
                                         </h3>
                                         {% if not notification.read %}
@@ -99,8 +107,8 @@
                                             </span>
                                         {% endif %}
                                     </div>
-                                    <p class="mt-1 text-gray-700">{{ notification.message }}</p>
-                                    <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+                                    <p class="mt-1 text-gray-700 break-words">{{ notification.message }}</p>
+                                    <div class="mt-2 flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                                         <span class="flex items-center">
                                             <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -117,16 +125,16 @@
                                         {% endif %}
                                     </div>
                                 </div>
-                                <div class="ml-4 flex-shrink-0 flex items-center space-x-2">
+                                <div class="flex-shrink-0 flex items-center gap-2 sm:ml-4">
                                     {% if notification.action_url %}
                                         <a href="{{ notification.action_url }}"
-                                           class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 press">
+                                           class="inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 press">
                                             View
                                         </a>
                                     {% endif %}
                                     {% if not notification.read %}
                                         <button type="button"
-                                                class="mark-read-btn inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                                class="mark-read-btn inline-flex items-center justify-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
                                                 data-notification-id="{{ notification.id }}">
                                             Mark Read
                                         </button>
