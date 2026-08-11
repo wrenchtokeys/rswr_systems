@@ -596,6 +596,12 @@ one small script, `data-vt-*` on three lists and `.vt-hero` on four detail title
 - The flash-message and subscription banners were the stated risk and turned out to be a
   non-issue: they live inside the root snapshot, so a page that has one simply cross-fades
   into a page that doesn't.
+- Full suite: 3625 tests, `57F/34E`. Replaying those 34 modules on a clean `main`
+  worktree gives the same 57F/34E and the two sorted `FAIL:/ERROR:` lists diff to
+  zero lines — no regressions. (Counts drift between runs; the set is the bar.)
+- New: `tests/test_view_transitions.py` (7) — the inline opt-in on two shells, the
+  `data-vt-key`/`data-vt-hero` contract on each keyed list, and `.vt-hero` on the
+  detail titles.
 
 ## S11 · Skeletons and optimistic status changes
 
