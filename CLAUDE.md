@@ -99,17 +99,53 @@ python manage.py sync_job_prices_from_invoices --customer x --apply  # Back-fill
 ```bash
 python manage.py test_ses email@example.com   # Test Amazon SES delivery
 
-# Billing (also scheduled via EB cron)
-python manage.py process_batch_invoices       # Generate batch invoices
-python manage.py process_overdue_invoices     # Mark overdue, send reminders
-python manage.py generate_aging_report        # Refresh aging data
+# Scheduled via EB cron — ENABLED
+python manage.py generate_aging_report          # Refresh aging data (no email)
+python manage.py reconcile_loyalty_balances     # Reward.points cache vs ledger
+python manage.py reconcile_stripe_payments      # Webhook safety net (invoices)
+python manage.py reconcile_subscriptions        # Webhook safety net (subscriptions)
+python manage.py check_subscription_alerts      # Trial/grace/past-due emails
+python manage.py send_review_requests           # Due review request emails
 
-# Subscription alerts (scheduled via EB cron)
-python manage.py check_subscription_alerts    # Send expiry warning emails
+# DISABLED in cron — see "EB cron" below before touching
+python manage.py process_overdue_invoices     # DISABLED BY POLICY
+python manage.py process_batch_invoices       # disabled pending review
+python manage.py expire_loyalty_points        # disabled pending review
 
-# Review requests (scheduled via EB cron, every 20 min — 12_reviews_cron.config)
-python manage.py send_review_requests           # Send due review request emails
-python manage.py send_review_requests --dry-run # Count without sending
+# Every one of these supports --dry-run. Use it first, always.
+```
+
+### EB cron (read before editing `.ebextensions/1[123]*.config`)
+
+Cron in this app was **completely dead until 2026-08-11** — four independent
+silent bugs, each of which deployed green. Do not undo any of them:
+
+1. **One top-level key per section.** `11_billing_cron.config` had two `files:`
+   keys; YAML is last-wins, so the whole cron table was discarded at parse time.
+2. **Never redirect a cron job to a bare `/var/log/` path.** `/var/log` is
+   root-owned and jobs run as `webapp`. Bash applies redirections *before*
+   exec'ing, so the command never starts. Logs go to `/var/log/rs-systems/`.
+3. **Purge `.bak`.** EB's `files:` leaves a `.bak` on overwrite and cron reads
+   every entry in `/etc/cron.d`, so each job ran twice.
+4. **Every job must go through `/opt/rs-systems/run-cron.sh`.** Cron has no
+   `DJANGO_SETTINGS_MODULE`, so a direct `manage.py` call falls back to dev
+   settings and silently hits **SQLite instead of Postgres** — exiting 0 and
+   writing a log while touching no real data. The runner sources a
+   `shlex.quote`d snapshot of `get-config environment` (the raw
+   `/opt/elasticbeanstalk/deployment/env` is NOT sourceable: `SECRET_KEY`
+   contains `!%&()`).
+
+`tests/test_ebextensions_cron.py` locks all four down. Jobs are installed
+`leader_only` so scaling out cannot double-run them.
+
+**Email policy:** `process_overdue_invoices` is **DISABLED BY POLICY** — RS
+Systems does not email a shop's customers chasing overdue invoices. This is
+not a backlog question; do not re-enable it. Before enabling any other
+email-sending job, run it with `--dry-run` **on the instance through the
+runner** and confirm the backlog is what you expect:
+```bash
+eb ssh rs-systems-production --command \
+  "sudo -u webapp /opt/rs-systems/run-cron.sh <command> --dry-run"
 ```
 
 ---
@@ -190,6 +226,16 @@ All fire via `core.services.notification_service`. Per-user and per-customer pre
 **BillingConfig (per-tenant, fixed CODE-002)**: BillingConfig is now per-tenant via `OneToOneField(Tenant)`. Use `BillingConfig.get_for_tenant(tenant)` — creates with defaults if missing. `get_instance()` raises `RuntimeError`. Migrations: `0013_billingconfig_tenant_fk`, `0014_alter_billingconfig_options`.
 
 **Review Request System**: After a repair completes, `review_request_hook` (`apps/technician_portal/hooks.py`) calls `ReviewRequestService.schedule_review_request`, which queues a Google-review email (per-tenant `ReviewConfig`, Settings → Reviews tab). The `send_review_requests` command (EB cron `12_reviews_cron.config`, every 20 min) sends due requests — concurrency-safe via `select_for_update(skip_locked=True)` (CODE-230). **Fleet accounts are excluded by default** (`ReviewConfig.send_to_fleet=False`, skip_reason `fleet_disabled`) — only RETAIL/WALK_IN customers get requests unless the shop enables the "Include Fleet Accounts" toggle. Note `Customer.customer_type` defaults to `'FLEET'`. Tests that exercise sending must set `send_to_fleet=True` or use a RETAIL customer. See `docs/proposals/review-request-system.md`.
+
+**Stripe API version (Aug 2026)**: `settings.STRIPE_API_VERSION` pins the outbound version; without it the payload shape depends on whichever SDK the last build resolved. Prod runs stripe 15.4.0 → `2026-07-29.dahlia`, which is past Basil (2025-03-31), and Basil MOVED three fields this app reads: `invoice.subscription` → `invoice.parent.subscription_details.subscription`, `subscription.current_period_end` → onto the items, and `line.price` → `line.pricing.price_details.price`. **Never read those directly** — use the shape-tolerant accessors in `apps/billing/services/stripe_compat.py`. Reading them raw silently disabled all subscription payment processing and every downgrade.
+
+**Webhook durability**: `StripeWebhookEvent` (billing) records every Stripe delivery before processing — it is the idempotency key, the dead-letter queue and the replay source. `apps/billing/services/webhook_log.py` provides `claim()` (dedupes on `event.id`), `should_apply()`/`stamp_synced()` (the out-of-order guard, backed by `Tenant.subscription_synced_at`), and the mark helpers. **Retryable failures must return 5xx** so Stripe redelivers; only `WebhookPermanentError` ("understood, nothing to do") returns 200. Returning 200 on every exception is how events used to be destroyed permanently. `apps/tenants/services/subscription_reconcile.py` + `reconcile_subscriptions` are the subscription counterpart to `stripe_reconcile`; `apply_subscription_state()` is the single mapping both the webhook and the sweep call.
+
+**past_due enforcement**: `past_due` is warn-only for `PAST_DUE_GRACE_DAYS` (14) from `Tenant.past_due_since` (stamped on the FIRST failure of a lapse, never on retries), then the shop goes read-only via the shared `_handle_grace_period`. Expired trials get a computed `TRIAL_GRACE_DAYS` read-only window from `effective_grace_period_end` — gated on the trial having actually expired. Use `Tenant.mark_subscription_active()` on any reactivation path: it clears `grace_period_end`, `past_due_since` AND `subscription_alerts_sent` (leaving the last one behind meant a second lapse sent no emails at all).
+
+**Platform fee**: decided in exactly ONE place — `Tenant.effective_platform_fee`, returning `(percent, fixed_cents, source)`. Order: platform-owner exemption → `PlatformConfig.fee_enabled` master switch → tenant override → global default. Percent and fixed resolve **as a unit**. `ConnectService.calculate_platform_fee` is a thin wrapper that clamps so a fixed fee can't exceed the charge. Do not reintroduce `record_platform_fee`, the module-level `calculate_platform_fee`, or `create_direct_charge_session` — three implementations is how they drifted (CODE-069). Reporting: `/admin/platform-fees/`.
+
+**Plan limits**: enforce with `UsageService` directly — there is no mixin or decorator layer (`PlanEnforcementMixin`/`check_plan_limit` were deleted; they had no callers and a third, divergent copy of the logic). Anything creating N rows must call `can_create_repairs(n)`, not `can_create_repair()` — the binary check let batches overshoot the monthly cap. A null `subscription_plan` FK no longer means unlimited: `UsageService` falls back to the `plan` slug, then trial. Downgrades are pre-flighted with `check_against_plan()`. Read the live billing interval and use `SubscriptionPlan.price_id_for(interval)` on any plan change, or annual subscribers get silently converted to monthly.
 
 **v2.3 — Subscription Expiry UX**: Grace period, blocked/upgrade page, subscription enforcement middleware, email alerts via `check_subscription_alerts` management command.
 
@@ -317,6 +363,15 @@ LOCAL_DATABASE_URL=postgresql://user:pass@localhost:5432/dbname
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_PUBLISHABLE_KEY=pk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
+# Pins the OUTBOUND API version. Defaults to what prod already sends.
+# Leaving it unset makes payload shapes a function of the last pip install —
+# see apps/billing/services/stripe_compat.py before changing it.
+STRIPE_API_VERSION=2026-07-29.dahlia
+
+# Subscription lifecycle (all optional, defaults shown)
+PAST_DUE_GRACE_DAYS=14      # full-access days before a past_due shop goes read-only
+TRIAL_GRACE_DAYS=14         # read-only days an expired trial gets
+PLATFORM_ALERT_EMAIL=...    # Stripe disputes + failed-webhook digest (platform, not tenant)
 
 # AWS S3 (photos, invoices)
 AWS_ACCESS_KEY_ID=...
@@ -337,7 +392,7 @@ DEFAULT_FROM_EMAIL=notifications@rssystems.io
 ## Documentation
 
 - `docs/deployment/AWS_DEPLOYMENT.md` — AWS/EB deployment guide
-- `docs/deployment/STRIPE_ARCHITECTURE.md` — platform vs shop (Connect Express) money flows, live price IDs, webhooks, platform fees
+- `docs/deployment/STRIPE_ARCHITECTURE.md` — platform vs shop (Connect Express) money flows, live price IDs, webhooks, platform fee resolution + the NULL-vs-0.00 repair
 - `docs/deployment/PRODUCTION_CHECKLIST.md` — pre/post deploy verification
 - `docs/operations/SES_OPERATIONS.md` — email deliverability: auth setup, content rules, verification log
 - `docs/security/SECURITY_OVERVIEW.md` — security features
