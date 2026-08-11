@@ -126,9 +126,13 @@ class SubscriptionDowngradeStartDateTest(TestCase):
         self.assertEqual(result['status'], 'scheduled')
         self.assertEqual(result['new_plan'], 'Starter')
 
-        # Verify SubscriptionSchedule.create was called with from_subscription
-        mock_schedule_cls.create.assert_called_once_with(
-            from_subscription='sub_test123'
+        # Verify SubscriptionSchedule.create was called with from_subscription.
+        # Assert the argument rather than the exact call -- an idempotency_key
+        # rides along so a double-submit cannot create two schedules.
+        mock_schedule_cls.create.assert_called_once()
+        self.assertEqual(
+            mock_schedule_cls.create.call_args.kwargs['from_subscription'],
+            'sub_test123',
         )
 
         # Extract the phases passed to modify

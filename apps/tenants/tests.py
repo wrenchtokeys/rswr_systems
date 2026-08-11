@@ -1496,9 +1496,17 @@ class SubscriptionUpgradeDowngradeTest(BaseTestCase):
         self.assertEqual(self.tenant.plan, 'pro')  # Still Pro!
         self.assertEqual(self.tenant.subscription_plan, self.pro_plan)
         
-        # Verify schedule was created
-        mock_schedule_create.assert_called_once_with(
-            from_subscription='sub_test456'
+        # Verify schedule was created from the right subscription.
+        # Assert the argument, not the exact call: SubscriptionSchedule.create
+        # also carries an idempotency_key so a double-submitted downgrade
+        # cannot create two schedules.
+        mock_schedule_create.assert_called_once()
+        self.assertEqual(
+            mock_schedule_create.call_args.kwargs['from_subscription'],
+            'sub_test456',
+        )
+        self.assertIn(
+            'idempotency_key', mock_schedule_create.call_args.kwargs,
         )
 
     @patch('stripe.Subscription.retrieve')
