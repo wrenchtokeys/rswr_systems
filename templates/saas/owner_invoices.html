@@ -18,7 +18,7 @@
         <a href="{% url 'owner_dashboard' %}" class="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900">
             <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
         </a>
-        <a href="{% url 'owner_receive_payment' %}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors" title="Record one payment across a customer's open invoices">
+        <a href="{% url 'owner_receive_payment' %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors" title="Record one payment across a customer's open invoices">
             <i class="fas fa-hand-holding-usd mr-2"></i>Receive Payment
         </a>
     </div>
@@ -89,17 +89,18 @@
 
 <!-- Filters: status pills + customer dropdown -->
 <div class="mb-4 flex flex-wrap items-center gap-2">
+    <div class="inline-flex items-center bg-gray-100 rounded-lg p-0.5 flex-wrap">
     {% for value, label in status_pills %}
     <a href="?status={{ value }}{% if customer_filter %}&customer={{ customer_filter }}{% endif %}"
-        class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border transition-colors
-        {% if status_filter == value %}bg-gray-900 border-gray-900 text-white{% else %}bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900{% endif %}">
+        class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+        {% if status_filter == value %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
         {{ label }}
         {% if value == 'overdue' and overdue_count > 0 %}
-        <span class="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-bold
-            {% if status_filter == value %}bg-white text-red-600{% else %}bg-red-100 text-red-700{% endif %}">{{ overdue_count }}</span>
+        <span class="ml-1.5 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-xs font-bold bg-red-100 text-red-700">{{ overdue_count }}</span>
         {% endif %}
     </a>
     {% endfor %}
+    </div>
     <form method="get" class="ml-auto flex items-center gap-2">
         <input type="hidden" name="status" value="{{ status_filter }}">
         <select name="customer" onchange="this.form.submit()" class="text-sm border-gray-300 rounded-lg shadow-sm focus:border-brand-500 focus:ring-brand-500 py-1.5 pl-3 pr-8">
@@ -175,7 +176,7 @@
         <button onclick="sendSelectedEmails()" class="inline-flex items-center justify-center sm:justify-start w-full min-h-[36px] px-3 sm:px-3 py-2 sm:py-1.5 bg-white text-brand-700 text-xs sm:text-sm font-medium rounded-md hover:bg-brand-50 transition-colors">
             <i class="fas fa-envelope text-base sm:text-sm sm:mr-1.5"></i><span class="hidden sm:inline ml-1">Send Email</span>
         </button>
-        <button onclick="markSelectedPaid()" class="inline-flex items-center justify-center sm:justify-start w-full min-h-[36px] px-3 sm:px-3 py-2 sm:py-1.5 bg-green-500 text-white text-xs sm:text-sm font-medium rounded-md hover:bg-green-600 transition-colors">
+        <button onclick="markSelectedPaid()" class="inline-flex items-center justify-center sm:justify-start w-full min-h-[36px] px-3 sm:px-3 py-2 sm:py-1.5 bg-brand-600 text-white text-xs sm:text-sm font-medium rounded-md hover:bg-brand-700 transition-colors">
             <i class="fas fa-check-circle text-base sm:text-sm sm:mr-1.5"></i><span class="hidden sm:inline ml-1">Mark Paid</span>
         </button>
         <button onclick="voidSelectedInvoices()" class="inline-flex items-center justify-center sm:justify-start w-full min-h-[36px] px-3 sm:px-3 py-2 sm:py-1.5 bg-yellow-500 text-white text-xs sm:text-sm font-medium rounded-md hover:bg-yellow-600 transition-colors">
@@ -252,13 +253,13 @@
             <div class="mt-3 pl-7 flex gap-2">
                 {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 %}
                 <button onclick="openQuickPayModal({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}', '{{ inv.amount_due }}')"
-                    class="inline-flex items-center justify-center flex-1 min-h-[36px] px-3 py-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
+                    class="inline-flex items-center justify-center flex-1 min-h-[36px] px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                     <i class="fas fa-dollar-sign mr-1.5"></i>Record payment
                 </button>
                 {% endif %}
                 {% if inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}
                 <button onclick="sendReminderAjax({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}')"
-                    class="inline-flex items-center justify-center flex-1 min-h-[36px] px-3 py-2 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors"
+                    class="inline-flex items-center justify-center flex-1 min-h-[36px] px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                     title="Send payment reminder to {{ inv.customer.email }}">
                     <i class="fas fa-bell mr-1.5"></i>Send reminder
                 </button>
@@ -334,14 +335,14 @@
                         <div class="inline-flex items-center gap-1.5">
                             {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 %}
                             <button onclick="openQuickPayModal({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}', '{{ inv.amount_due }}')"
-                                class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                                class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                                 title="Record a payment on this invoice">
                                 <i class="fas fa-dollar-sign mr-1"></i>Payment
                             </button>
                             {% endif %}
                             {% if inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}
                             <button onclick="sendReminderAjax({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}')"
-                                class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors"
+                                class="inline-flex items-center px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                                 title="Send payment reminder to {{ inv.customer.email }}">
                                 <i class="fas fa-bell mr-1"></i>Remind
                             </button>
@@ -543,13 +544,13 @@
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><span class="text-gray-500 text-sm">$</span></div>
                             <input type="number" name="amount" id="qp-amount" step="0.01" min="0.01" required
-                                class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-green-500 focus:border-green-500">
+                                class="block w-full pl-7 pr-3 py-2 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Method</label>
-                            <select name="payment_method" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-green-500 focus:border-green-500">
+                            <select name="payment_method" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                                 {% for value, label in payment_methods %}
                                 <option value="{{ value }}" {% if value == 'CHECK' %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
@@ -558,18 +559,18 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
                             <input type="date" name="payment_date" value="{{ today|date:'Y-m-d' }}"
-                                class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-green-500 focus:border-green-500">
+                                class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                         </div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Check / Reference #</label>
                         <input type="text" name="reference_number" maxlength="100" placeholder="Optional"
-                            class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-green-500 focus:border-green-500">
+                            class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                     </div>
                 </div>
                 <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex gap-3 justify-end rounded-b-2xl">
                     <button type="button" onclick="closeQuickPayModal()" class="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-                    <button type="submit" class="px-5 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700">Record Payment</button>
+                    <button type="submit" class="px-5 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700">Record Payment</button>
                 </div>
             </form>
         </div>
@@ -593,7 +594,7 @@
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Method</label>
-                        <select id="bp-method" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-green-500 focus:border-green-500">
+                        <select id="bp-method" class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                             {% for value, label in payment_methods %}
                             <option value="{{ value }}" {% if value == 'CHECK' %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
@@ -602,18 +603,18 @@
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
                         <input type="date" id="bp-date" value="{{ today|date:'Y-m-d' }}"
-                            class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-green-500 focus:border-green-500">
+                            class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                     </div>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Check / Reference #</label>
                     <input type="text" id="bp-reference" maxlength="100" placeholder="Optional"
-                        class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-green-500 focus:border-green-500">
+                        class="block w-full py-2 px-3 border border-gray-300 rounded-lg shadow-sm text-sm focus:ring-brand-500 focus:border-brand-500">
                 </div>
             </div>
             <div class="bg-gray-50 px-6 py-4 border-t border-gray-100 flex gap-3 justify-end rounded-b-2xl">
                 <button type="button" onclick="closeBulkPaidModal()" class="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-                <button type="button" id="bp-confirm" onclick="doMarkSelectedPaid()" class="px-5 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50">Mark Paid</button>
+                <button type="button" id="bp-confirm" onclick="doMarkSelectedPaid()" class="px-5 py-2.5 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 disabled:opacity-50">Mark Paid</button>
             </div>
         </div>
     </div>

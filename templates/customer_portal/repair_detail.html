@@ -1,5 +1,6 @@
 {% extends 'customer_portal/base_customer.html' %}
 {% load billing_tags %}
+{% load ui %}
 
 {% block title %}Repair #{{ repair.id }} | Customer Portal{% endblock %}
 
@@ -50,18 +51,18 @@
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h1 class="text-lg font-bold text-gray-900">Repair #{{ repair.id }}</h1>
-                <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-bold
-                    {% if repair.queue_status == 'COMPLETED' %}bg-green-100 text-green-700
-                    {% elif repair.queue_status == 'IN_PROGRESS' %}bg-blue-100 text-blue-700
-                    {% elif repair.queue_status == 'PENDING' %}bg-amber-100 text-amber-700
-                    {% elif repair.queue_status == 'APPROVED' %}bg-blue-100 text-blue-700
-                    {% elif repair.queue_status == 'REQUESTED' %}bg-gray-100 text-gray-700
-                    {% elif repair.queue_status == 'DENIED' %}bg-red-100 text-red-700
-                    {% else %}bg-gray-100 text-gray-700{% endif %}">
-                    {% if repair.queue_status == 'REQUESTED' %}Submitted — Awaiting Technician
-                    {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}Scheduled for Repair
-                    {% else %}{{ repair.get_queue_status_display }}{% endif %}
-                </span>
+                {% comment %}
+                Two statuses read better to a customer than the shared tag's wording; the
+                colour still comes from {% templatetag openblock %} status_badge {% templatetag closeblock %}
+                so it matches the services list and the portal dashboard.
+                {% endcomment %}
+                {% if repair.queue_status == 'REQUESTED' %}
+                {% status_badge repair.queue_status label="Submitted — Awaiting Technician" variant='customer' %}
+                {% elif repair.queue_status == 'APPROVED' and repair.customer_initiated %}
+                {% status_badge repair.queue_status label="Scheduled for Repair" variant='customer' %}
+                {% else %}
+                {% status_badge repair.queue_status variant='customer' %}
+                {% endif %}
             </div>
 
             <div class="p-5">

@@ -2,9 +2,10 @@
 
 {% block extra_css %}
 <style>
+    /* "Unread" is a brand-weight highlight, not the semantic status blue. */
     .notification-item.unread {
-        background-color: #eff6ff;
-        border-left: 4px solid #3b82f6;
+        background-color: rgb(var(--brand-500) / 0.06);
+        border-left: 4px solid rgb(var(--brand-500));
     }
     .notification-item:hover {
         background-color: #f9fafb;
@@ -44,7 +45,7 @@
                                value="true"
                                {% if show_read %}checked{% endif %}
                                id="show_read"
-                               class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                               class="h-4 w-4 text-green-600 focus:ring-brand-500 border-gray-300 rounded"
                                onchange="this.form.submit()">
                         <label for="show_read" class="ml-2 text-sm text-gray-700 cursor-pointer">
                             Show read notifications
@@ -56,7 +57,7 @@
                         <label for="category" class="text-sm text-gray-700 mr-2">Category:</label>
                         <select name="category"
                                 id="category"
-                                class="border-gray-300 rounded-md shadow-sm focus:border-green-500 focus:ring-green-500 text-sm"
+                                class="border-gray-300 rounded-md shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm"
                                 onchange="this.form.submit()">
                             <option value="">All Categories</option>
                             {% for value, label in categories %}
@@ -119,7 +120,7 @@
                                 <div class="ml-4 flex-shrink-0 flex items-center space-x-2">
                                     {% if notification.action_url %}
                                         <a href="{{ notification.action_url }}"
-                                           class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
+                                           class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
                                             View
                                         </a>
                                     {% endif %}
@@ -205,7 +206,7 @@
                     </p>
                     {% if not show_read %}
                         <div class="mt-6">
-                            <a href="?show_read=true" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
+                            <a href="?show_read=true" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
                                 Show all notifications
                             </a>
                         </div>

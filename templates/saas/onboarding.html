@@ -11,7 +11,7 @@
             <div class="flex items-center {% if not forloop.last %}flex-1{% endif %}">
                 <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300
                     {% if s == step %}bg-brand-600 text-white ring-4 ring-brand-100 scale-110
-                    {% elif s < step %}bg-green-500 text-white
+                    {% elif s < step %}bg-brand-500 text-white
                     {% else %}bg-gray-200 text-gray-500{% endif %}">
                     {% if s < step %}
                         <i class="fas fa-check"></i>
@@ -20,7 +20,7 @@
                     {% endif %}
                 </div>
                 {% if not forloop.last %}
-                <div class="flex-1 h-1 mx-2 rounded transition-colors duration-500 {% if s < step %}bg-green-500{% else %}bg-gray-200{% endif %}"></div>
+                <div class="flex-1 h-1 mx-2 rounded transition-colors duration-500 {% if s < step %}bg-brand-500{% else %}bg-gray-200{% endif %}"></div>
                 {% endif %}
             </div>
             {% endfor %}
@@ -186,37 +186,41 @@
             <h2 class="text-3xl font-bold text-gray-900 mb-2">You're all set! 🎉</h2>
             <p class="text-gray-500 mb-8">Your shop <strong>{{ tenant.name }}</strong> is ready to go. Here's what you can do next:</p>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-left">
-                <a href="{% url 'job_create' %}?type=repair" class="flex items-center space-x-3 p-4 bg-green-50 rounded-lg border border-green-200 hover:bg-green-100 transition-colors">
-                    <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-tools text-white"></i>
+            {% comment %}
+                Four cards, four different hues (green/brand/purple/gray) — a colour key with
+                nothing to decode. Neutral cards, brand icon, per UI_MAGIC_PLAN R1.
+                {% endcomment %}
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-left">
+                <a href="{% url 'job_create' %}?type=repair" class="flex items-center space-x-3 p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                    <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-tools text-brand-600"></i>
                     </div>
                     <div>
                         <div class="font-semibold text-gray-900">New Repair</div>
                         <div class="text-xs text-gray-500">Log a chip or crack repair</div>
                     </div>
                 </a>
-                <a href="{% url 'job_create' %}?type=replacement" class="flex items-center space-x-3 p-4 bg-brand-50 rounded-lg border border-brand-200 hover:bg-brand-100 transition-colors">
-                    <div class="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-car-crash text-white"></i>
+                <a href="{% url 'job_create' %}?type=replacement" class="flex items-center space-x-3 p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                    <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-car-crash text-brand-600"></i>
                     </div>
                     <div>
                         <div class="font-semibold text-gray-900">New Replacement</div>
                         <div class="text-xs text-gray-500">Full glass swap job</div>
                     </div>
                 </a>
-                <a href="{% url 'create_customer' %}" class="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg border border-purple-200 hover:bg-purple-100 transition-colors">
-                    <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-user-plus text-white"></i>
+                <a href="{% url 'create_customer' %}" class="flex items-center space-x-3 p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                    <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-user-plus text-brand-600"></i>
                     </div>
                     <div>
                         <div class="font-semibold text-gray-900">Add Customer</div>
                         <div class="text-xs text-gray-500">Fleet or individual</div>
                     </div>
                 </a>
-                <a href="{% url 'owner_dashboard' %}" class="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors">
-                    <div class="w-10 h-10 bg-gray-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-tachometer-alt text-white"></i>
+                <a href="{% url 'owner_dashboard' %}" class="flex items-center space-x-3 p-4 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                    <div class="w-10 h-10 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-tachometer-alt text-brand-600"></i>
                     </div>
                     <div>
                         <div class="font-semibold text-gray-900">Dashboard</div>

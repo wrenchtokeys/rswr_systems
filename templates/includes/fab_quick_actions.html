@@ -47,29 +47,35 @@ Override items by passing fab_role="owner"|"tech"|"customer".
     font-size: 0.75rem; font-weight: 500; border-radius: 0.5rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15); white-space: nowrap;
 }
+/* One neutral circle for every action. These used to be seven different hues
+   (green/teal/amber/violet/blue/cyan/purple) which made the menu read as a
+   colour key with nothing to decode — see UI_MAGIC_PLAN R1. */
 .fab-menu-circle {
     width: 2.75rem; height: 2.75rem; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.2); flex-shrink: 0;
+    background: #fff; color: #374151; border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.16); flex-shrink: 0;
     transition: transform 0.15s ease;
 }
 .fab-menu-item:active .fab-menu-circle { transform: scale(0.92); }
 
 .fab-main-btn {
-    width: 3.5rem; height: 3.5rem; border-radius: 50%; background: #16a34a;
+    width: 3.5rem; height: 3.5rem; border-radius: 50%;
+    background: rgb(var(--brand-600));
     color: #fff; border: none; display: flex; align-items: center;
     justify-content: center; font-size: 1.25rem; cursor: pointer;
-    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);
+    box-shadow: 0 4px 14px rgb(var(--brand-600) / 0.35);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s ease, box-shadow 0.2s ease;
 }
 .fab-main-btn:hover {
-    box-shadow: 0 6px 20px rgba(22, 163, 74, 0.5);
+    box-shadow: 0 6px 20px rgb(var(--brand-600) / 0.45);
     transform: translateY(-2px);
 }
+/* Open state rotates the + into an ×. It stays brand — turning the button red
+   read as "destructive" when all it does is close a menu. */
 .fab-container.open .fab-main-btn {
     transform: rotate(45deg);
-    background: #ef4444;
-    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+    background: rgb(var(--brand-700));
 }
 
 </style>
@@ -82,72 +88,72 @@ Override items by passing fab_role="owner"|"tech"|"customer".
         {% if shop_offers_repairs %}
         <a href="{% url 'customer_request_repair' %}" class="fab-menu-item">
             <span class="fab-menu-label">Request Repair</span>
-            <div class="fab-menu-circle" style="background:#16a34a;"><i class="fas fa-tools"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-tools"></i></div>
         </a>
         {% endif %}
         {% if shop_offers_replacements %}
         <a href="{% url 'customer_request_replacement' %}" class="fab-menu-item">
             <span class="fab-menu-label">Request Replacement</span>
-            <div class="fab-menu-circle" style="background:#9333ea;"><i class="fas fa-car"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-car"></i></div>
         </a>
         {% endif %}
         {% if shop_offers_repairs %}
         <a href="{% url 'customer_repairs' %}" class="fab-menu-item">
             <span class="fab-menu-label">My Repairs</span>
-            <div class="fab-menu-circle" style="background:#2563eb;"><i class="fas fa-list"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-list"></i></div>
         </a>
         {% endif %}
         {% if shop_offers_replacements %}
         <a href="{% url 'customer_replacements' %}" class="fab-menu-item">
             <span class="fab-menu-label">My Replacements</span>
-            <div class="fab-menu-circle" style="background:#0891b2;"><i class="fas fa-car-side"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-car-side"></i></div>
         </a>
         {% endif %}
         <a href="{% url 'customer_invoices' %}" class="fab-menu-item">
             <span class="fab-menu-label">My Invoices</span>
-            <div class="fab-menu-circle" style="background:#7c3aed;"><i class="fas fa-file-invoice-dollar"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-file-invoice-dollar"></i></div>
         </a>
         {% elif fab_role == "tech" %}
         {# Technician Portal FAB #}
         <a href="{% url 'job_create' %}" class="fab-menu-item">
             <span class="fab-menu-label">New {{ service_noun }}</span>
-            <div class="fab-menu-circle" style="background:#16a34a;"><i class="fas fa-tools"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-tools"></i></div>
         </a>
         {% if shop_offers_repairs %}
         <a href="{% url 'create_multi_break_repair' %}" class="fab-menu-item">
             <span class="fab-menu-label">Multi-Break</span>
-            <div class="fab-menu-circle" style="background:#0d9488;"><i class="fas fa-layer-group"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-layer-group"></i></div>
         </a>
         {% endif %}
         {% if is_admin or technician.is_manager %}
         <a href="{% url 'owner_receive_payment' %}" class="fab-menu-item">
             <span class="fab-menu-label">Receive Payment</span>
-            <div class="fab-menu-circle" style="background:#d97706;"><i class="fas fa-hand-holding-usd"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-hand-holding-usd"></i></div>
         </a>
         {% endif %}
         <a href="{% url 'create_customer' %}" class="fab-menu-item">
             <span class="fab-menu-label">New Customer</span>
-            <div class="fab-menu-circle" style="background:#7c3aed;"><i class="fas fa-user-plus"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-user-plus"></i></div>
         </a>
         {% else %}
         {# Owner / Manager Portal FAB (default) #}
         <a href="{% url 'job_create' %}" class="fab-menu-item">
             <span class="fab-menu-label">New {{ service_noun }}</span>
-            <div class="fab-menu-circle" style="background:#16a34a;"><i class="fas fa-tools"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-tools"></i></div>
         </a>
         {% if shop_offers_repairs %}
         <a href="{% url 'create_multi_break_repair' %}" class="fab-menu-item">
             <span class="fab-menu-label">Multi-Break</span>
-            <div class="fab-menu-circle" style="background:#0d9488;"><i class="fas fa-layer-group"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-layer-group"></i></div>
         </a>
         {% endif %}
         <a href="{% url 'owner_receive_payment' %}" class="fab-menu-item">
             <span class="fab-menu-label">Receive Payment</span>
-            <div class="fab-menu-circle" style="background:#d97706;"><i class="fas fa-hand-holding-usd"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-hand-holding-usd"></i></div>
         </a>
         <a href="{% url 'create_customer' %}" class="fab-menu-item">
             <span class="fab-menu-label">New Customer</span>
-            <div class="fab-menu-circle" style="background:#7c3aed;"><i class="fas fa-user-plus"></i></div>
+            <div class="fab-menu-circle"><i class="fas fa-user-plus"></i></div>
         </a>
         {% endif %}
     </div>
