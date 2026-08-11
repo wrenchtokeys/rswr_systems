@@ -497,6 +497,99 @@
   }
 }
 
+/* ---- Continuity (UI_MAGIC_PLAN R4, primitive 3) ----------------------
+   Cross-document View Transitions. Every navigation in this app is a plain
+   Django full page load, and that is exactly what this API is for: the
+   browser snapshots the outgoing page, waits for the incoming one, and
+   animates between them. No SPA, no router, no JS on the happy path.
+
+   Three groups, and nothing else gets a name:
+     root    — everything unnamed, cross-fades.
+     vt-nav  — the app shell's navbar. Naming it lifts it OUT of the root
+               snapshot, so it does not fade with the page; it stays put
+               while the content changes underneath. That single line is
+               what makes a full page load stop reading as a page load.
+     vt-hero — the one row you clicked, morphing into the detail page's
+               title (see static/js/view-transitions.js). The list side is
+               named at click time by JS because a name must be UNIQUE in
+               the document — naming all 20 rows up front would abort every
+               transition on the page.
+
+   Unsupported browsers (Firefox today) simply navigate as they always have;
+   there is no fallback to write.
+
+   THE OPT-IN ITSELF IS NOT HERE. `@view-transition { navigation: auto; }`
+   lives in an inline <style> in templates/includes/head_assets.html, because
+   Chrome ignores it when it comes from an external stylesheet — see the
+   comment there before moving it back. Everything below is ordinary CSS and
+   works fine from this file. */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-out);
+}
+
+.vt-nav {
+  view-transition-name: vt-nav;
+}
+
+/* The customer portal's mobile tab bar — same job, second name, because a
+   name may only appear once per document. */
+.vt-tabbar {
+  view-transition-name: vt-tabbar;
+}
+
+/* The detail side is static — a detail page has exactly one title. The list
+   side is `.vt-hero-active`, applied by JS to the row being left. */
+.vt-hero,
+.vt-hero-active {
+  view-transition-name: vt-hero;
+}
+
+::view-transition-group(vt-hero) {
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-out);
+}
+
+/* Both snapshots are images stretched to the group's box, which for text of
+   two different sizes means visibly squashed glyphs mid-flight. `contain`
+   keeps their aspect ratio; the left/top anchor keeps the first letter
+   pinned so the word grows out of itself instead of drifting sideways. */
+::view-transition-old(vt-hero),
+::view-transition-new(vt-hero) {
+  object-fit: contain;
+  object-position: left top;
+}
+
+/* Reduced motion: no animation at all, i.e. exactly the instant page swap
+   this app had before S10. Written twice on purpose — the `*` form is the
+   complete one, but if a browser doesn't understand it the whole rule is
+   dropped, so the three names in play are also listed explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-group(vt-nav),
+  ::view-transition-old(vt-nav),
+  ::view-transition-new(vt-nav),
+  ::view-transition-group(vt-tabbar),
+  ::view-transition-old(vt-tabbar),
+  ::view-transition-new(vt-tabbar),
+  ::view-transition-group(vt-hero),
+  ::view-transition-old(vt-hero),
+  ::view-transition-new(vt-hero) {
+    animation: none !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
 
 /* ------------------------------------------------------------------
    VENDORED: driver.js v1.3.6 popover/overlay styles (MIT, https://driverjs.com)

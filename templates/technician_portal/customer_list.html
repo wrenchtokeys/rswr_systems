@@ -52,7 +52,7 @@
         <!-- Customer Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {% for customer in customers %}
-            <a href="{% url 'customer_detail' customer.id %}" class="block bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md hover:border-gray-300 transition-all group press-card">
+            <a href="{% url 'customer_detail' customer.id %}" data-vt-key="{% url 'customer_detail' customer.id %}" class="block bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md hover:border-gray-300 transition-all group press-card">
                 <div class="flex items-start justify-between mb-3">
                     <div class="flex items-center gap-3 min-w-0">
                         <!-- Avatar -->
@@ -60,7 +60,7 @@
                             <span class="text-gray-600 font-bold text-sm">{{ customer.name|truncatechars:1 }}</span>
                         </div>
                         <div class="min-w-0">
-                            <div class="font-semibold text-gray-900 truncate">{{ customer.name }}</div>
+                            <div data-vt-hero class="font-semibold text-gray-900 truncate">{{ customer.name }}</div>
                             {% if customer.customer_type == 'FLEET' %}
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-100 text-sky-700"><i class="fas fa-truck mr-1"></i>Fleet</span>
                             {% else %}

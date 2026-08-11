@@ -27,6 +27,22 @@ app that takes card payments.
     font-display: swap;
     src: url("{% static 'fonts/inter-variable-latin.woff2' %}") format('woff2');
   }
+
+  {% comment %}
+  Cross-document View Transitions opt-in (S10). Everything else about the
+  transition — the timing, the named navbar, the list-row hero — lives in
+  app.css; only this one line has to be here.
+
+  It must be INLINE. Chrome 151 does not honour the opt-in when it arrives in
+  an external stylesheet, even one that is render-blocking, fully loaded,
+  applying its other rules, and present in document.styleSheets as a real
+  CSSViewTransitionRule (verified against this app and against a two-file
+  reduction of it). Move this into input.css and every navigation silently
+  goes back to a hard page swap, with nothing in the console to explain it.
+  {% endcomment %}
+  @view-transition {
+    navigation: auto;
+  }
 </style>
 
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
