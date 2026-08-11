@@ -17,7 +17,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 2 | S7 · Job/repair form: drop the green header and ALL-CAPS section tiles | **DONE** 2026-08-10 |
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | **DONE** 2026-08-10 |
 | 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
-| 3 | S10 · View Transitions for list → detail continuity | TODO |
+| 3 | S10 · View Transitions for list → detail continuity | **DONE** 2026-08-11 |
 | 3 | S11 · Skeletons and optimistic status changes | TODO |
 | 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | TODO |
 | 3 | S13 · Icon language: Font Awesome solid → line-weight SVG sprite | TODO |
@@ -113,6 +113,14 @@ Replaying only the failing modules takes ~7 min instead of another full hour.
 - **`.hidden` is not an "is hidden" hook.** `hidden md:flex` is idiomatic Tailwind, so a
   descendant selector like `.hidden .panel` matches at every breakpoint where the parent
   is visibly *shown*. Scope to your own root class instead. (S9) (Hit again in S8 — cost a round of screenshots.)
+- **A hidden browser tab runs no view transitions at all.** Chrome only transitions
+  documents it actually paints, so in a background/automation tab
+  `document.startViewTransition()` rejects with "invalid state", `pagereveal` never fires,
+  and a cross-document transition reports `pageswap.viewTransition === null`. Everything
+  looks healthy and nothing animates. Verify motion in a rendering browser. (S10)
+- **`@view-transition` only counts when it is inline in the document.** From an external
+  stylesheet Chrome parses it, exposes it in the CSSOM, and ignores it. It lives in
+  `head_assets.html`; moving it to `input.css` silently disables every transition. (S10)
 - **zsh does not word-split unquoted `$VAR`.** A `for f in $FILES` codemod loop runs once
   with every filename joined into one string, modifies nothing, and prints a log that
   looks like it worked. Run codemod loops under `bash -c` or `bash <<'EOF'`. (S8)
@@ -524,13 +532,76 @@ when that page is next touched. The customer portal's own component CSS still ha
 `transform: translateY(-2px)` hover lifts of its own (`customer-repair-request.css`);
 they're harmless but should collapse into these primitives eventually.
 
-## S10 · View Transitions for list → detail continuity
+## S10 · View Transitions for list → detail continuity — DONE
 
-`@view-transition { navigation: auto; }` plus `view-transition-name` on the row and the
-detail header. Works with plain Django full-page loads and degrades silently in
-unsupporting browsers. Highest magic-per-line in the whole plan.
+Branch `feat/ui-s10-view-transitions`. Navigations cross-fade instead of blinking, the
+navbar holds still while they do, and the row you clicked flies into the detail page's
+title — then flies back into the row when you return. One inline line, ~35 lines of CSS,
+one small script, `data-vt-*` on three lists and `.vt-hero` on four detail titles.
 
-**Care:** verify it doesn't fight the flash-message banner or the subscription banner.
+**Notes**
+
+- **The opt-in must be inline in the document.** `@view-transition { navigation: auto; }`
+  lives in the `<style>` block in `templates/includes/head_assets.html`, *not* in
+  `input.css`. Chrome 151 ignores the opt-in when it comes from an external stylesheet —
+  even one that is render-blocking, fully loaded, applying its other rules, and present in
+  `document.styleSheets` as a real `CSSViewTransitionRule`. Reduced to two static files to
+  be sure: identical pages transition with an inline `<style>` and do nothing with a
+  `<link>`. There is no error, no console warning, no visual clue — navigation just goes
+  back to a hard swap. `tests/test_view_transitions.py` asserts the rule is in the
+  rendered HTML so a future tidy-up can't quietly move it into the stylesheet.
+- **The script is in `<head>`, not at the end of `<body>`.** Its `pagereveal` listener
+  has to exist before the browser's first render of the incoming page, and these list
+  pages are ~70 KB — Chrome paints them mid-parse, long before an end-of-body script runs.
+- **The row is named at click time, never up front.** `view-transition-name` must be
+  unique in the document, so naming all 20 rows `vt-hero` would abort every transition on
+  the page. `static/js/view-transitions.js` marks the one row being left (capture-phase
+  click, because the invoice and job tables navigate from an inline
+  `onclick="window.location=…"` that runs on bubble — too late).
+- **The way back needs two signals.** "Back to Jobs" is a forward navigation, so
+  `document.referrer` identifies it; the Back button is a traverse, where the referrer is
+  whatever led to the list originally and proves nothing — that case is caught with
+  `navigation.activation.navigationType === 'traverse'`. The clicked key is kept in
+  `sessionStorage`, and the name is cleared on `viewTransition.finished` so a second stale
+  name can't abort the next transition.
+- **Naming the navbar is what makes it stop reading as a page load.** `.vt-nav` (and
+  `.vt-tabbar` for the portal's mobile bar) lifts the chrome out of the root snapshot, so
+  it doesn't dissolve and redraw on every click. It is one line and it does more than the
+  hero does.
+- **Heroes only where the row title and the page title are the same thing**: job rows
+  (customer name → `Repair #6 - Bill Smith`), invoice rows (invoice number → invoice
+  number), customer cards (name → name). The customer portal's services list is keyed by
+  *unit*, and its detail heading is `Repair #12`; morphing between two unrelated strings
+  reads as a glitch, so that list gets the page cross-fade only. Same reason no hero on
+  the dashboards.
+- Both snapshots are stretched to the group's box by default, which squashes glyphs when
+  a 14px row label becomes a 20px page title — `object-fit: contain` +
+  `object-position: left top` keeps the aspect and pins the first letter so the word grows
+  out of itself.
+- Reduced motion kills all three groups' animations (instant swap, i.e. exactly the old
+  behaviour). The `*` form is written twice, once with the three names spelled out: if a
+  browser doesn't understand `::view-transition-group(*)` it drops the whole rule, and
+  silently animating for someone who asked for no motion is the one failure that matters.
+- **Verifying this needed a browser that actually renders.** Chrome skips every view
+  transition in a document that is never painted, and the MCP automation tab is a hidden
+  tab: `document.visibilityState === 'hidden'`, `startViewTransition()` rejects with
+  "invalid state", `pagereveal` never fires, and every check reports a perfectly healthy
+  no-op. Driving a headless-but-rendering Chrome over CDP (tornado's websocket client is
+  already in the venv, so no new dependency) gave both the true/false answer and
+  mid-flight screenshots. Worth keeping: `pageswap.viewTransition` on the outgoing page is
+  the one-bit test for "did this actually engage".
+- **The dev-server template cache bit again**, and cost the wrong conclusion for twenty
+  minutes: the inline opt-in was in the file and *not* in the served HTML. It is already
+  the fourth bullet in the trap list at the top of this file. Restart the server.
+- The flash-message and subscription banners were the stated risk and turned out to be a
+  non-issue: they live inside the root snapshot, so a page that has one simply cross-fades
+  into a page that doesn't.
+- Full suite: 3625 tests, `57F/34E`. Replaying those 34 modules on a clean `main`
+  worktree gives the same 57F/34E and the two sorted `FAIL:/ERROR:` lists diff to
+  zero lines — no regressions. (Counts drift between runs; the set is the bar.)
+- New: `tests/test_view_transitions.py` (7) — the inline opt-in on two shells, the
+  `data-vt-key`/`data-vt-hero` contract on each keyed list, and `.vt-hero` on the
+  detail titles.
 
 ## S11 · Skeletons and optimistic status changes
 

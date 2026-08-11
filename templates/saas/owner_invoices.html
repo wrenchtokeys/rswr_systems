@@ -202,10 +202,10 @@
                 <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                     onchange="updateBatchBar()"
                     class="invoice-checkbox mt-1 rounded border-gray-300 text-brand-600 focus:ring-brand-500 shrink-0">
-                <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="flex-1 min-w-0 block">
+                <a href="{% url 'owner_invoice_detail' invoice_id=inv.id %}" data-vt-key="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="flex-1 min-w-0 block">
                     <div class="flex items-start justify-between gap-2">
                         <div class="min-w-0">
-                            <div class="text-sm font-semibold text-brand-600">{{ inv.invoice_number }}</div>
+                            <div data-vt-hero class="text-sm font-semibold text-brand-600">{{ inv.invoice_number }}</div>
                             <div class="text-sm text-gray-700 truncate">{{ inv.customer.name }}</div>
                         </div>
                         <div class="shrink-0 text-right">
@@ -292,14 +292,14 @@
             </thead>
             <tbody class="bg-white divide-y divide-gray-100">
                 {% for inv in invoices %}
-                <tr class="hover:bg-gray-50 cursor-pointer" onclick="if(!event.target.closest('.no-nav'))window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
+                <tr data-vt-key="{% url 'owner_invoice_detail' invoice_id=inv.id %}" class="hover:bg-gray-50 cursor-pointer" onclick="if(!event.target.closest('.no-nav'))window.location='{% url 'owner_invoice_detail' invoice_id=inv.id %}'">
                     <td class="px-3 py-4 no-nav" onclick="event.stopPropagation()">
                         <input type="checkbox" name="invoice_select" value="{{ inv.id }}"
                             onchange="updateBatchBar()"
                             class="invoice-checkbox rounded border-gray-300 text-brand-600 focus:ring-brand-500">
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="text-sm font-semibold text-brand-600 hover:text-brand-800">{{ inv.invoice_number }}</span>
+                        <span data-vt-hero class="text-sm font-semibold text-brand-600 hover:text-brand-800">{{ inv.invoice_number }}</span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ inv.customer.name }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">{{ inv.invoice_date|date:"M d, Y" }}</td>
