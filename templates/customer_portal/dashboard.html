@@ -5,14 +5,14 @@
 
 {% block content %}
 <!-- Welcome Header -->
-<div class="mb-6">
+<div class="mb-6"{% if tour_slug %} data-tour="{{ tour_slug }}" data-tour-complete-url="{% url 'complete_customer_tour' tour_slug %}"{% endif %}>
     <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Welcome, {{ display_name }}</h1>
     <p class="text-gray-500 mt-1 text-sm">{% if customer.tenant.name %}{{ customer.tenant.name }} &middot; {% endif %}Here's what needs your attention</p>
 </div>
 
 <!-- PRIORITY: Pending Approvals Alert -->
 {% if pending_approval_repairs or pending_approval_replacements %}
-<div class="mb-6 bg-amber-50 border-2 border-amber-300 rounded-2xl overflow-hidden">
+<div class="mb-6 bg-amber-50 border-2 border-amber-300 rounded-2xl overflow-hidden" data-tour-step="approvals">
     <div class="px-5 py-4 bg-amber-400">
         <div class="flex items-center justify-between">
             <div class="flex items-center">
@@ -154,7 +154,7 @@
 {% endif %}
 
 <!-- Stats Cards -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6" data-tour-step="stats">
     <!-- Pending Approval -->
     <a href="{% url 'customer_services' %}?type=approval" class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md transition-shadow {% if pending_services_count > 0 %}ring-2 ring-amber-300{% endif %}">
         <div class="flex items-center justify-between mb-2">
@@ -205,7 +205,7 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Recent Repairs -->
     <div class="lg:col-span-2">
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden" data-tour-step="recent-services">
             <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
                 <h2 class="text-base font-semibold text-gray-900">Recent Services</h2>
                 <a href="{% url 'customer_services' %}" class="text-sm text-brand-500 font-medium hover:text-brand-700 transition-colors">
@@ -301,7 +301,7 @@
     <!-- Company Info Sidebar -->
     <div class="space-y-4">
         <!-- Request Service hero card -->
-        <div class="bg-gradient-to-br from-brand-500 to-brand-700 rounded-xl p-5 text-white">
+        <div class="bg-gradient-to-br from-brand-500 to-brand-700 rounded-xl p-5 text-white" data-tour-step="request-service">
             <div class="w-10 h-10 bg-white/15 rounded-lg flex items-center justify-center mb-3">
                 <i class="fas fa-plus text-white"></i>
             </div>

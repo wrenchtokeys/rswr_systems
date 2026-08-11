@@ -339,6 +339,11 @@
     </script>
 
     <script src="{% static 'js/ui.js' %}"></script>
+    {% comment %}First-run walkthrough — driver.js must load before tours.js, and
+       tours.js reads UI.csrfToken() from ui.js above. ?v= busts dev-server caches
+       (production gets content-hashed names from manifest storage).{% endcomment %}
+    <script src="{% static 'js/vendor/driver.iife.js' %}?v=1"></script>
+    <script src="{% static 'js/tours.js' %}?v=4"></script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

@@ -2,12 +2,17 @@
  * Interactive first-run tours (driver.js, vendored — static/js/vendor/driver.iife.js).
  *
  * A page opts in by putting data-tour="<slug>" on any element; the server only
- * renders that attribute while the tour is uncompleted for the tenant. When the
- * tour ends — finished OR closed early — we POST /owner/tours/<slug>/complete/
- * so it never re-nags (skip counts as done).
+ * renders that attribute while the tour is uncompleted for the viewer. When the
+ * tour ends — finished OR closed early — we POST the completion endpoint so it
+ * never re-nags (skip counts as done). That endpoint defaults to the shop side's
+ * /owner/tours/<slug>/complete/; a page in another portal overrides it with
+ * data-tour-complete-url (the customer portal's is /app/tours/<slug>/complete/,
+ * since shop owners and portal customers can't POST to each other's views).
  *
- * Adding a tour: add a definition here AND add the slug to TOUR_SLUGS in
- * apps/saas/views.py (unknown slugs 404 on the completion endpoint).
+ * Adding a tour: add a definition here AND add the slug to the matching server
+ * allow-list — TOUR_SLUGS in apps/saas/views.py for shop-side tours,
+ * CUSTOMER_TOUR_SLUGS in apps/customer_portal/views.py for portal tours
+ * (unknown slugs 404 on the completion endpoint).
  */
 (function () {
     'use strict';
@@ -111,6 +116,59 @@
                     }
                 }
             ]
+        },
+        'customer-dashboard': {
+            steps: [
+                {
+                    popover: {
+                        title: 'Welcome to your portal 👋',
+                        description: 'This is where you approve work, track your vehicles and pay invoices. A quick tour takes about 30 seconds — skip any time and we won’t show it again.'
+                    }
+                },
+                {
+                    element: '[data-tour-step="approvals"]',
+                    popover: {
+                        title: 'Work waiting on you',
+                        description: 'Anything the shop needs your OK on shows up here first. Approve or deny right from this card — no phone call needed.'
+                    }
+                },
+                {
+                    element: '[data-tour-step="stats"]',
+                    popover: {
+                        title: 'Your account at a glance',
+                        description: 'Awaiting approval, work in progress, completed jobs, and what you owe. Tap any card to see the full list.'
+                    }
+                },
+                {
+                    element: '[data-tour-step="request-service"]',
+                    popover: {
+                        title: 'Ask for service',
+                        description: 'Got a chip or a cracked windshield? Send the request here and the shop picks it up — you’ll get a price to approve before any work starts.',
+                        side: 'top'
+                    }
+                },
+                {
+                    element: '[data-tour-step="recent-services"]',
+                    popover: {
+                        title: 'Every job, in one place',
+                        description: 'Your service history lives here, newest first — with photos and pricing on each one.',
+                        side: 'top'
+                    }
+                },
+                {
+                    element: '#notification-dropdown',
+                    popover: {
+                        title: 'We’ll tell you what changed',
+                        description: 'The bell fills up when work is approved, started or finished. The same updates go to your email.'
+                    }
+                },
+                {
+                    popover: {
+                        title: 'You’re all set',
+                        description: 'Need a hand? Open Help from the menu (top right, or “More” on your phone) — and you can replay this tour from there any time.'
+                    }
+                }
+            ]
         }
     };
 
@@ -122,6 +180,8 @@
         var host = document.querySelector('[data-tour]');
         if (!host) return;
         var slug = host.getAttribute('data-tour');
+        var completeUrl = host.getAttribute('data-tour-complete-url')
+            || '/owner/tours/' + encodeURIComponent(slug) + '/complete/';
         var def = TOURS[slug];
         if (!def || typeof window.driver === 'undefined' || !window.driver.js) return;
 
@@ -149,7 +209,7 @@
             if (reported) return;
             reported = true;
             try { localStorage.setItem(seenKey, '1'); } catch (err) { /* private mode */ }
-            fetch('/owner/tours/' + encodeURIComponent(slug) + '/complete/', {
+            fetch(completeUrl, {
                 method: 'POST',
                 headers: { 'X-CSRFToken': window.UI ? window.UI.csrfToken() : '' },
                 credentials: 'same-origin'

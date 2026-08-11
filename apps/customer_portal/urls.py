@@ -47,6 +47,9 @@ urlpatterns = [
     # Help
     path('help/', views.customer_help, name='customer_help'),
 
+    # First-run walkthrough state (per portal user)
+    path('tours/<slug:slug>/complete/', views.complete_customer_tour, name='complete_customer_tour'),
+
     # Company and account management
     path('company/edit/', views.edit_company, name='edit_company'),
     path('account/settings/', views.account_settings, name='customer_account_settings'),

@@ -515,10 +515,16 @@
 .driver-popover * {
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
+/* driver.js builds the title as a <header> element, so the legacy
+   style.css `header { background; box-shadow; padding }` rule painted a
+   floating card around every popover title. Undo it. */
 .driver-popover-title {
   font-size: 1rem;
   font-weight: 600;
   color: #111827;
+  background: none;
+  box-shadow: none;
+  padding: 0;
 }
 .driver-popover-description {
   font-size: 0.875rem;

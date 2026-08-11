@@ -22,7 +22,8 @@ from django.db.models import Sum, Q, Count
 from django.db import models, transaction, IntegrityError
 from django.contrib.auth import update_session_auth_hash
 from functools import wraps
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, Http404
+from django.views.decorators.http import require_POST
 from collections import defaultdict
 from datetime import datetime, timedelta
 from django.urls import reverse
@@ -366,6 +367,16 @@ def customer_dashboard(request):
             'outstanding_invoices': outstanding_invoices,
             'outstanding_total': outstanding_total,
             'overdue_count': overdue_count,
+            # First-run walkthrough. Completion is per portal user (an invited
+            # fleet contact signing in for the first time gets their own), and
+            # skipping counts as done. ?tour=1 forces a replay — the help page
+            # links it.
+            'tour_slug': (
+                'customer-dashboard'
+                if (request.GET.get('tour') == '1'
+                    or not customer_user.has_completed_tour('customer-dashboard'))
+                else ''
+            ),
         }
 
         # Add notification context
@@ -4297,3 +4308,19 @@ def customer_help(request):
         'tenant': tenant,
         'loyalty_active': loyalty_active,
     })
+
+
+# Tours that exist in static/js/tours.js for the customer portal. Slugs not
+# listed here 404 — adding a tour means adding it in both places.
+CUSTOMER_TOUR_SLUGS = ('customer-dashboard',)
+
+
+@customer_required
+@require_POST
+def complete_customer_tour(request, slug):
+    """POST /app/tours/<slug>/complete/ — mark a portal tour done (skip = done)."""
+    if slug not in CUSTOMER_TOUR_SLUGS:
+        raise Http404('Unknown tour')
+    customer_user = _get_customer_user_for_tenant(request)
+    customer_user.mark_tour_completed(slug)
+    return JsonResponse({'success': True})

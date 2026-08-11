@@ -8,7 +8,7 @@ Expects `unread_count` and `recent_notifications` in context.
 <div class="relative inline-block" id="notification-dropdown">
     <button type="button"
             id="notificationDropdown"
-            class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 {% if bell_role == 'customer' %}focus:ring-brand-500{% else %}focus:ring-brand-500{% endif %} rounded-full"
+            class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 rounded-full"
             aria-expanded="false"
             aria-haspopup="true">
         <span class="sr-only">View notifications</span>
@@ -22,9 +22,21 @@ Expects `unread_count` and `recent_notifications` in context.
         </span>
     </button>
 
-    <!-- Dropdown Menu -->
+    {% comment %}
+    Mobile panel is `fixed` to the viewport, not `absolute` to the bell.
+    It used to be `absolute … w-full`, which resolves against the bell button's
+    inline-block wrapper (~40px) — the panel collapsed to bell width and every
+    line of text spilled outside it. Sizing off the viewport instead isn't enough
+    either: the bell is not the rightmost thing in the header (the avatar menu
+    sits to its right), so an `absolute right-0` panel wide enough to be readable
+    still ran ~58px off the left edge. Fixed + inset-x-3 gives even gutters no
+    matter where the bell sits — and the two callers put it in very different
+    places (customer nav bar vs. mid-page on the technician dashboard). Vertical
+    placement comes from JS on open, for the same reason. Desktop keeps the
+    classic absolute dropdown anchored under the bell.
+    {% endcomment %}
     <div id="notification-menu"
-         class="hidden origin-top-right absolute {% if bell_role == 'customer' %}right-0 left-0 sm:left-auto mt-2 w-full sm:w-96{% else %}right-0 mt-2 w-96{% endif %} rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+         class="hidden origin-top-right fixed inset-x-3 sm:absolute sm:inset-x-auto sm:right-0 sm:mt-2 sm:w-96 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
          role="menu"
          aria-orientation="vertical"
          aria-labelledby="notificationDropdown">
@@ -110,10 +122,36 @@ Expects `unread_count` and `recent_notifications` in context.
     const menu = document.getElementById('notification-menu');
     const markAllBtn = document.getElementById('mark-all-read');
 
+    // Below sm the panel is `fixed` (see the note on the markup), so its top
+    // has to be measured from the bell — the two callers place the bell in a
+    // sticky nav and mid-page respectively, and only the live rect knows which.
+    // At sm+ the inline style is cleared so the absolute dropdown takes over.
+    var mobile = window.matchMedia('(max-width: 639px)');
+    var list = document.getElementById('notification-list');
+    function positionMenu() {
+        if (!mobile.matches) {
+            menu.style.top = '';
+            list.style.maxHeight = '';
+            return;
+        }
+        var top = Math.round(dropdown.getBoundingClientRect().bottom + 8);
+        menu.style.top = top + 'px';
+        // The technician bell scrolls with the page, so it can sit anywhere in
+        // the viewport — keep the scrolling list short enough that the panel's
+        // footer ("View All Notifications") stays reachable. 120px covers the
+        // panel's own header and footer rows.
+        list.style.maxHeight = Math.max(140, window.innerHeight - top - 120) + 'px';
+    }
+
     // Toggle dropdown
     dropdown.addEventListener('click', function(e) {
         e.stopPropagation();
+        positionMenu();
         menu.classList.toggle('hidden');
+    });
+
+    window.addEventListener('resize', function() {
+        if (!menu.classList.contains('hidden')) positionMenu();
     });
 
     // Close dropdown when clicking outside

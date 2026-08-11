@@ -25,6 +25,12 @@ class CustomerUser(models.Model):
         null=True, blank=True,
         help_text="When set, this portal user was removed and their login deactivated",
     )
+    # {"<tour-slug>": "<ISO timestamp>"} — first-run walkthroughs this person
+    # has seen.  Skipping counts as completing, so a tour never re-nags.  Per
+    # portal user, not per company: the shop's OnboardingState.tours_completed
+    # is the owner-side equivalent, and a fleet's second contact still deserves
+    # their own walkthrough.  New tours need no migration.
+    tours_completed = models.JSONField(default=dict, blank=True)
 
     class Meta:
         verbose_name = 'Customer User'
@@ -32,6 +38,13 @@ class CustomerUser(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.customer.name}"
+
+    def mark_tour_completed(self, slug):
+        self.tours_completed[slug] = timezone.now().isoformat()
+        self.save(update_fields=['tours_completed'])
+
+    def has_completed_tour(self, slug):
+        return slug in (self.tours_completed or {})
 
 
 class CustomerPreference(models.Model):
