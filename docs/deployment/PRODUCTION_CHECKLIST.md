@@ -221,7 +221,7 @@ Comprehensive pre-deployment, deployment, and post-deployment verification check
 - [ ] Database performance monitoring enabled
 - [ ] Backup system running
 - [ ] Log aggregation working
-- [ ] EB cron jobs verified (billing commands running at scheduled times)
+- [ ] EB cron verified: tables installed, no `.bak` duplicates, log dir webapp-owned, runner reaches **Postgres not SQLite**, and a real tick ran clean (see "Billing Automation (EB Cron)")
 
 ---
 
@@ -447,16 +447,55 @@ Deployment is considered successful when:
 
 Billing tasks are scheduled via `.ebextensions/11_billing_cron.config`. No Celery or Redis required.
 
-Verify cron is active after deploy:
+> **History:** cron in this app was completely dead until 2026-08-11 — four
+> independent silent bugs (see `CLAUDE.md` → "EB cron"). The checks below
+> exist because "the file is there" was never sufficient evidence.
+
+**Verify after every deploy** (the old instruction pointed at
+`/etc/cron.d/billing_tasks`, which has never existed — the file is
+`rs-systems-billing`):
+
 ```bash
-eb ssh
-cat /etc/cron.d/billing_tasks
+# 1. Tables installed, and NO .bak duplicates (cron runs those too)
+eb ssh rs-systems-production --command "ls -l /etc/cron.d/"
+
+# 2. Log dir exists and is webapp-owned — jobs run as webapp and CANNOT
+#    write to a root-owned /var/log, which kills the command before it starts
+eb ssh rs-systems-production --command "ls -ld /var/log/rs-systems/"
+
+# 3. The runner reaches PRODUCTION Postgres, not the SQLite fallback.
+#    This is the check that matters most: without it jobs exit 0, write a
+#    log, and touch no real data.
+eb ssh rs-systems-production --command \
+  "sudo -u webapp /opt/rs-systems/run-cron.sh shell -c \
+   \"from django.conf import settings; print(settings.SETTINGS_MODULE, settings.DATABASES['default']['ENGINE'])\""
+# expect: rs_systems.settings.production django.db.backends.postgresql
+
+# 4. A real tick actually ran, once, with no permission errors
+eb ssh rs-systems-production --command \
+  "sudo grep run-cron.sh /var/log/cron | tail -3; \
+   sudo grep -c 'Permission denied' /var/log/cron"
 ```
 
-Expected entries:
-- `0 6 * * *` — `process_batch_invoices`
-- `0 8 * * *` — `process_overdue_invoices`
+Expected enabled entries:
 - `0 9 * * *` — `generate_aging_report`
+- `0 3 * * *` — `reconcile_loyalty_balances`
+- `0 9 * * *` — `check_subscription_alerts`
+- `17 * * * *` — `reconcile_subscriptions`
+- `*/15 * * * *` — `reconcile_stripe_payments`
+- `*/20 * * * *` — `send_review_requests`
+
+Deliberately **disabled** (commented, with reasons, in the config):
+- `process_overdue_invoices` — **DISABLED BY POLICY.** RS Systems does not
+  email a shop's customers chasing overdue invoices. Do not re-enable.
+- `process_batch_invoices`, `expire_loyalty_points` — pending backlog review.
+
+Before enabling any email-sending job, dry-run it **on the instance through
+the runner** and confirm the backlog:
+```bash
+eb ssh rs-systems-production --command \
+  "sudo -u webapp /opt/rs-systems/run-cron.sh <command> --dry-run"
+```
 
 ---
 
@@ -466,29 +505,52 @@ All scheduled and operational management commands for RS Systems. Update this ta
 
 ### Scheduled (EB Cron — `.ebextensions/11_billing_cron.config`)
 
+All logs live under `/var/log/rs-systems/` (a bare `/var/log/` path is not
+writable by the `webapp` user cron runs as, and silently kills the job).
+All entries invoke `/opt/rs-systems/run-cron.sh`, which loads the EB
+environment — a direct `manage.py` call hits SQLite instead of Postgres.
+
 | Command | Schedule (UTC) | Log File | Purpose |
 |---------|---------------|----------|---------|
-| `process_batch_invoices` | Daily 6:00 AM | `/var/log/billing-batch.log` | Auto-generate batch invoices for fleet customers on their billing cycle |
-| `process_overdue_invoices` | Daily 8:00 AM | `/var/log/billing-overdue.log` | Mark invoices past due date as OVERDUE, send configurable reminder emails |
-| `generate_aging_report` | Daily 9:00 AM | `/var/log/billing-aging.log` | Refresh AR aging report cache (30/60/90/90+ day buckets) |
-| `check_subscription_alerts` | Daily 9:00 AM | (stdout) | Send subscription expiry warning emails at 7d/1d/0d/15d-past/5d-past/end milestones |
+| `generate_aging_report` | Daily 9:00 AM | `billing-aging.log` | Refresh AR aging report cache (30/60/90/90+ buckets). No email. |
+| `reconcile_loyalty_balances` | Daily 3:00 AM | `loyalty-reconcile.log` | Repair `Reward.points` cache against the `PointTransaction` ledger. No email. |
+| `check_subscription_alerts` | Daily 9:00 AM | `subscription-alerts.log` | Trial/grace/past-due warning emails to shop owners + failed-webhook digest |
+| `reconcile_subscriptions` | Hourly :17 | `subscription-reconcile.log` | Repair subscription drift from lost webhooks. No email. WARNs when it changes anything. |
+| `reconcile_stripe_payments` | Every 15 min | `stripe-reconcile.log` | Invoice payment safety net. Recording a payment emails the customer a receipt. |
+| `send_review_requests` | Every 20 min | `review-requests.log` | Send due Google-review request emails |
 
-> **Note:** New loyalty commands (`expire_loyalty_points`, `reconcile_loyalty_balances`) and the review request command (`send_review_requests`) should be added to the cron config before the next production deployment. See "Add to Cron" section below.
+**Disabled on purpose** (commented in the config, each with its reason):
 
-### Loyalty & Review Commands — Add to Cron Before Next Deploy
+| Command | Why |
+|---------|-----|
+| `process_overdue_invoices` | **DISABLED BY POLICY** — RS Systems does not email a shop's customers chasing overdue invoices. Not a backlog question. Note this command also *marks* invoices OVERDUE, which is forgone with it; `generate_aging_report` is the read-only view of what's outstanding. |
+| `process_batch_invoices` | Generates invoices, which auto-invoice may email. Pending review. |
+| `expire_loyalty_points` | Irreversibly destroys accrued points. Pending review. |
 
-These commands are implemented but not yet in `.ebextensions/11_billing_cron.config`. Add them:
+### Adding a new cron job
+
+Superseded 2026-08-11 — `reconcile_loyalty_balances` and `send_review_requests`
+are in the config now, and `expire_loyalty_points` is there but deliberately
+commented out.
+
+When adding one, copy the shape of an existing entry. Four rules, each of
+which was learned the hard way (see `CLAUDE.md` → "EB cron"):
 
 ```cron
-# Run daily at midnight UTC — expire points past their expiry date
-0 0 * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py expire_loyalty_points --json >> /var/log/loyalty-expire.log 2>&1'
-
-# Run daily at 3 AM UTC — reconcile Reward.points cache vs PointTransaction ledger
-0 3 * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py reconcile_loyalty_balances --json >> /var/log/loyalty-reconcile.log 2>&1'
-
-# Run every 15 minutes — send pending review request emails whose scheduled_at has arrived
-*/15 * * * * webapp /bin/bash -c 'source /var/app/venv/*/bin/activate && cd /var/app/current && python manage.py send_review_requests >> /var/log/review-requests.log 2>&1'
+# Log under /var/log/rs-systems/ — NOT a bare /var/log/ path, which the
+# webapp user cannot write, killing the command before it starts.
+# Invoke run-cron.sh — a direct `manage.py` call has no
+# DJANGO_SETTINGS_MODULE and silently reads SQLite instead of Postgres.
+0 4 * * * webapp /opt/rs-systems/run-cron.sh my_command --json >> /var/log/rs-systems/my-command.log 2>&1
 ```
+
+Then: add the log path to the `bundlelogs.d` block in the same file so
+`eb logs` picks it up, keep one top-level key per section (a duplicate
+`files:` key silently discards the whole block), and install it via the
+`leader_only` container command that also purges `.bak`.
+
+`tests/test_ebextensions_cron.py` enforces all of this — run it before
+deploying.
 
 ### On-Demand Commands (Run Manually)
 

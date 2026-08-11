@@ -14,6 +14,92 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-08-11 — Billing & subscription hardening (PRs #166, #171, #172, #173)
+
+### Fixed
+- **No EB cron job had ever executed.** Four independent silent bugs, each of
+  which deployed green and reported healthy:
+  1. `11_billing_cron.config` had two top-level `files:` keys — YAML is
+     last-wins, so the cron table was discarded at parse time and
+     `/etc/cron.d/rs-systems-billing` was never written.
+  2. Jobs redirected to a bare `/var/log/*.log`. `/var/log` is root-owned and
+     jobs run as `webapp`; bash applies redirections *before* exec, so the
+     command never started (`Permission denied`, every tick). This silently
+     disabled `send_review_requests` and `reconcile_stripe_payments` too.
+  3. EB's `files:` leaves a `.bak` on overwrite and cron reads every entry in
+     `/etc/cron.d`, so each job was registered and run twice.
+  4. Cron has no `DJANGO_SETTINGS_MODULE`, so `manage.py` fell back to
+     development settings and hit **SQLite instead of Postgres** — exiting 0
+     and writing a log while touching no real data.
+- **Stripe payload shapes had moved.** Prod runs stripe 15.4.0
+  (`2026-07-29.dahlia`), past Basil, which relocated `invoice.subscription`,
+  `subscription.current_period_end` and `line.price`. Reading them directly
+  meant `invoice.paid`/`invoice.payment_failed` returned early (no payment
+  processed, no dunning email), the plan self-heal never fired, and every
+  downgrade raised `AttributeError`.
+- **Webhooks had no idempotency, no ordering guard, and returned 200 on
+  every error** — so redeliveries re-sent customer emails, a late
+  `payment_failed` could flip a paying tenant to `past_due`, and a transient
+  DB/SES blip destroyed the event permanently.
+- **`past_due` restricted nothing** — a shop whose card died kept full write
+  access indefinitely, for free.
+- **Expired trials got no grace period at all** (hard wall the instant the
+  trial clock ran out), which also made the alert email's "read-only access"
+  copy untrue.
+- **Reactivation never cleared `subscription_alerts_sent`**, so a
+  lapse→resubscribe→lapse tenant received no lifecycle emails the second time.
+- **The platform fee could never be collected.** `tenants/0011` added
+  `platform_fee_percent` as `default=0` NOT NULL and `0012` made it nullable
+  without backfilling, so every pre-`0012` tenant carried an explicit `0.00`
+  that beat any global rate.
+- **Plan limits were porous**: a null `subscription_plan` FK meant unlimited
+  everything; batch creation overshot the monthly cap by up to 20 rows
+  (technician) or 50×20 (customer portal); technician seat *reactivation*
+  skipped the check entirely; downgrades never reconciled existing usage.
+- **Any plan change silently converted annual subscribers to monthly**,
+  because the price written was always `stripe_price_id`.
+
+### Added
+- `StripeWebhookEvent` + `apps/billing/services/webhook_log.py` — event log,
+  `event.id` dedup, ordering watermark (`Tenant.subscription_synced_at`),
+  dead-letter queue with the full payload for replay.
+- `reconcile_subscriptions` — the subscription counterpart to
+  `reconcile_stripe_payments`; `apply_subscription_state()` is the single
+  mapping both it and the webhook use.
+- `apps/billing/services/stripe_compat.py` — shape-tolerant Stripe accessors
+  plus `settings.STRIPE_API_VERSION` pinning.
+- In-app notifications for every subscription event (previously email-only).
+- Platform fee mechanism: `PlatformConfig.fee_enabled` master switch (ships
+  **False**), optional fixed component, single resolution path
+  (`Tenant.effective_platform_fee`), and `/admin/platform-fees/` reporting
+  with a gap check.
+- Handlers for `invoice.upcoming`, `invoice.payment_action_required`,
+  `invoice.marked_uncollectible`, `charge.dispute.created`.
+- Terms of Service section covering invoice-payment fees, committing to 30
+  days' notice.
+
+### Changed
+- `past_due` → read-only after `PAST_DUE_GRACE_DAYS` (14); expired trials get
+  `TRIAL_GRACE_DAYS` (14) of read-only access.
+- Dunning copy now derives from Stripe's `next_payment_attempt` instead of a
+  hardcoded `max_attempts = 4` that never read Stripe's retry config; the CTA
+  deep-links to the card form.
+- `process_overdue_invoices` is **disabled by policy** — RS Systems does not
+  email a shop's customers chasing overdue invoices.
+
+### Technical
+- Deleted three duplicate implementations of the platform fee calculation
+  (one caused CODE-069 via an `rs_fee_cents` vs `rs_fee_percent` mismatch) and
+  the unused `PlanEnforcementMixin` / `check_plan_limit`.
+- Migrations: `billing/0033`, `billing/0034`, `tenants/0023`–`0026`.
+  `tenants/0026` clears the legacy `platform_fee_percent = 0.00` to NULL and
+  changes nothing about money on the day it runs.
+- Verified with a name-by-name full-suite diff against `main`: 101 failures on
+  main, 86 on the branch, **0 new**. Note the suite contains day-of-month
+  fragile tests — compare same-day.
+
+---
+
 ## 2026-08-07 — Frictionless requests (PR #147)
 
 ### Added
