@@ -442,6 +442,19 @@ one 6-line JS change, and a class on ~130 template elements.
   an explicit `.press`, chosen by a heuristic: padding + rounded + an unprefixed
   background. `hover:bg-gray-50` deliberately does not count, or every list row in the
   app would have been treated as a button.
+- **The press rules had to out-rank a utility class, and that has two knock-ons.**
+  `transition-colors` / `transition-all` are all over these templates, they live in the
+  utilities layer (which wins ties against base *and* components), and they set
+  `transition-property` without `scale` — so a plain `button { transition: scale }` rule
+  leaves the press dipping with **no easing at all**, which reads worse than no press
+  feedback. Hence `:not(.no-press)` and the doubled `.press.press`: specificity, not
+  logic. And because those rules *replace* the utility's property list wholesale, the
+  list has to carry the element's hover properties too — that's `--transition-control`
+  (colour, background, border, shadow, transform, scale), not a bare `scale`.
+- **`@apply btn` copies declarations; it does not add the `btn` class.** A `.btn.btn`
+  rule therefore never matches `<a class="btn-primary">`. Each variant is listed
+  explicitly in the doubled-specificity rule. Caught only because a browser check showed
+  `.btn-primary` computing `transition: all 0s`.
 - **`.press-card` (0.5%) for whole-card links.** 2% on a full-width card doesn't read as
   feedback, it reads as a lurch. The codemod told cards from buttons by all-sides
   padding (`p-4`/`p-5`) — buttons in this codebase always use `px-`/`py-`.
@@ -458,6 +471,11 @@ one 6-line JS change, and a class on ~130 template elements.
   get it automatically. `.surface-float` deliberately does **not** — it's a *material*
   class, and a static element wearing it would fade in on every page load. Motion is
   opted into by behaviour, not inherited from depth.
+- **The multi-break Add Break and success modals toggle `.active`, not `.hidden`** (a
+  page-local `.modal` idiom that predates the shared skeleton). They carry
+  `.motion-fade`/`.motion-rise` for the transitions and `@starting-style`, plus two
+  local rules stating the hidden state in that page's own vocabulary. The same
+  `.modal` CSS in `convert_to_batch_form.html` is dead — no modal markup uses it.
 - **`pointer-events: none` on the exit state is not optional.** `display: none` is now
   deferred to the end of the transition, so without it a closing overlay eats the next
   220ms of clicks — the fastest way to make "polish" feel broken.
@@ -486,6 +504,11 @@ one 6-line JS change, and a class on ~130 template elements.
   needs the rule present when the element first renders). Two false negatives came from
   this. Hard-reload (`cmd+shift+r`) before concluding the motion doesn't work, and
   measure with `element.getAnimations()` rather than by eye.
+- **`getComputedStyle` sampling through the browser-automation bridge went stale** after
+  one long-running script timed out — it reported a modal as `display: flex, opacity: 0`
+  in every state, including states the screenshot plainly contradicted. When the numbers
+  stop making sense, take a picture: two screenshots ~200ms apart showed the fade
+  perfectly.
 
 **Verified:** account dropdown, the JS-positioned `fixed` kebab menu on the jobs page
 (opens at the measured rect, closes click-through), a hand-rolled `.motion-fade` modal,
