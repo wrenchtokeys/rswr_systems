@@ -513,8 +513,10 @@ one 6-line JS change, and a class on ~130 template elements.
 **Verified:** account dropdown, the JS-positioned `fixed` kebab menu on the jobs page
 (opens at the measured rect, closes click-through), a hand-rolled `.motion-fade` modal,
 and `UI.confirm()` — all sampled mid-transition via `getComputedStyle`/`getAnimations`.
-`collectstatic` passes under production manifest storage. 111 smoke tests pass; full
-suite failure set unchanged from `main`.
+`collectstatic` passes under production manifest storage. 111 smoke tests pass. Full
+suite: 3618 tests, `failures=71, errors=34`; replaying those 40 modules on clean `main`
+gives the same `failures=71, errors=34` and the two sorted failure lists diff to
+**zero lines in either direction**.
 
 **Leftover:** `customer_portal/notification_preferences.html` toggles a modal with
 `style.display` rather than `.hidden`, so it stays instant — convert it to `.hidden`
