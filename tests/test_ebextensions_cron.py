@@ -105,6 +105,97 @@ class EbextensionsYamlTests(SimpleTestCase):
                 self.assertTrue(doc, f"{name} parsed to an empty mapping")
 
 
+CRON_RUNNER = '/opt/rs-systems/run-cron.sh'
+
+# A cron line invoking manage.py, enabled or commented out.
+MANAGE_LINE_RE = re.compile(r'^\s*#?\s*[\d*][\d*/,\- ]*\s+webapp\s+(.+)$', re.M)
+
+
+class CronEnvironmentTests(SimpleTestCase):
+    """Cron jobs must run against production Postgres, not SQLite.
+
+    A cron entry inherits cron's bare environment: no DJANGO_SETTINGS_MODULE,
+    no RDS_*. manage.py then falls back to development settings and talks to
+    a stale SQLite file inside the deployment. The jobs appear to run -- they
+    exit 0 and write a log -- while touching none of the real data.
+
+    Verified on production 2026-08-11: reconcile_subscriptions died with
+        OperationalError: no such column: tenants_tenant.platform_fee_fixed_cents
+    because it was reading SQLite, and generate_aging_report reported $0.00
+    across the board for the same reason.
+
+    Every job therefore goes through run-cron.sh, which sources a snapshot of
+    the EB environment before exec'ing manage.py.
+    """
+
+    # Only the cron configs. Deploy-time container_commands legitimately
+    # call manage.py directly -- those DO run with the EB environment.
+    CRON_CONFIG_NAMES = (
+        '11_billing_cron.config',
+        '12_reviews_cron.config',
+        '13_stripe_reconcile_cron.config',
+    )
+
+    def test_every_cron_job_goes_through_the_runner(self):
+        """Match real crontab entries only, enabled or commented out."""
+        offenders = []
+        for name in self.CRON_CONFIG_NAMES:
+            path = os.path.join(EBEXTENSIONS_DIR, name)
+            with open(path) as fh:
+                content = fh.read()
+            for command in MANAGE_LINE_RE.findall(content):
+                if 'manage.py' not in command and 'run-cron.sh' not in command:
+                    continue
+                if command.startswith(CRON_RUNNER):
+                    continue
+                offenders.append(f"{name}: {command.strip()[:70]}")
+        self.assertEqual(
+            offenders, [],
+            "every cron job must run via run-cron.sh so it loads the EB "
+            "environment; calling manage.py directly silently uses SQLite. "
+            "Offenders: " + "; ".join(offenders)
+        )
+
+    def test_the_matcher_actually_matches_something(self):
+        """Guard against the regex above silently matching nothing."""
+        found = 0
+        for name in self.CRON_CONFIG_NAMES:
+            with open(os.path.join(EBEXTENSIONS_DIR, name)) as fh:
+                found += len(MANAGE_LINE_RE.findall(fh.read()))
+        self.assertGreaterEqual(
+            found, 8, "expected to find the cron entries; regex may be stale",
+        )
+
+    @unittest.skipIf(yaml is None, "PyYAML not installed")
+    def test_runner_script_is_defined_and_executable(self):
+        with open(os.path.join(EBEXTENSIONS_DIR, '11_billing_cron.config')) as fh:
+            doc = yaml.load(fh, Loader=_DuplicateKeyLoader)
+        runner = doc.get('files', {}).get(CRON_RUNNER)
+        self.assertIsNotNone(runner, f"{CRON_RUNNER} is not created")
+        self.assertEqual(runner.get('mode'), '000755', "runner must be executable")
+        body = runner.get('content', '')
+        self.assertIn('cron.env', body, "runner must source the EB environment")
+        self.assertIn('exec python manage.py', body)
+
+    @unittest.skipIf(yaml is None, "PyYAML not installed")
+    def test_env_snapshot_is_written_and_locked_down(self):
+        """cron.env holds SECRET_KEY, the DB password and live Stripe keys."""
+        with open(os.path.join(EBEXTENSIONS_DIR, '11_billing_cron.config')) as fh:
+            doc = yaml.load(fh, Loader=_DuplicateKeyLoader)
+        cmds = doc.get('container_commands', {})
+        writer = next(
+            (c for c in cmds.values() if 'cron.env' in c.get('command', '')), None,
+        )
+        self.assertIsNotNone(writer, "nothing writes /opt/rs-systems/cron.env")
+        cmd = writer['command']
+        self.assertIn('get-config environment', cmd)
+        self.assertIn('shlex.quote', cmd,
+                      "raw EB env is not safely sourceable -- SECRET_KEY "
+                      "contains shell metacharacters")
+        self.assertIn('chmod 0600', cmd, "cron.env contains secrets")
+        self.assertIn('chown webapp', cmd)
+
+
 class CronLogPathTests(SimpleTestCase):
     """Cron jobs run as `webapp` and cannot create files in /var/log."""
 
