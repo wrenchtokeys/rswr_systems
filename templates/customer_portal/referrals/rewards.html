@@ -28,7 +28,7 @@
             <p class="text-2xl sm:text-3xl font-bold">{{ points }} <span class="text-base font-medium text-brand-200">points</span></p>
         </div>
     </div>
-    <a href="{% url 'customer_rewards' %}" class="hidden sm:inline-flex items-center px-4 py-2 bg-white/15 text-white text-sm font-medium rounded-lg hover:bg-white/25 transition-colors">
+    <a href="{% url 'customer_rewards' %}" class="hidden sm:inline-flex items-center px-4 py-2 bg-white/15 text-white text-sm font-medium rounded-lg hover:bg-white/25 transition-colors press">
         <i class="fas fa-plus mr-2"></i> Earn More
     </a>
 </div>
@@ -176,8 +176,8 @@
 {% endif %}
 
 <!-- Schedule Modal for Physical Rewards -->
-<div id="scheduleModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onclick="closeScheduleModal()">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md" onclick="event.stopPropagation()">
+<div id="scheduleModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 motion-fade" onclick="closeScheduleModal()">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md motion-rise" onclick="event.stopPropagation()">
         <form action="{% url 'redeem_reward' %}" method="post" id="scheduleForm">
             {% csrf_token %}
             <input type="hidden" name="option_id" id="scheduleOptionId" value="">

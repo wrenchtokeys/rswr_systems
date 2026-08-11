@@ -19,7 +19,7 @@ subscription_grace_period, grace_days_remaining).
                     </span>
                 </div>
                 {% if is_owner_or_manager %}
-                <a href="{% url 'billing_settings' %}" class="bg-white text-orange-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-50 transition-colors">
+                <a href="{% url 'billing_settings' %}" class="bg-white text-orange-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-50 transition-colors press">
                     Upgrade Now
                 </a>
                 {% elif user_role == 'technician' %}
@@ -42,7 +42,7 @@ subscription_grace_period, grace_days_remaining).
                     <span class="font-medium">Payment failed.</span>
                     <span class="ml-1">Please update your payment method to avoid service interruption.</span>
                 </div>
-                <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors press">
                     Update Payment
                 </a>
             </div>
@@ -69,7 +69,7 @@ subscription_grace_period, grace_days_remaining).
                     <i class="fas fa-info-circle mr-2"></i>
                     <span>Your subscription is set to cancel at the end of the billing period.</span>
                 </div>
-                <a href="{% url 'billing_settings' %}" class="bg-white text-gray-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                <a href="{% url 'billing_settings' %}" class="bg-white text-gray-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors press">
                     Reactivate
                 </a>
             </div>
@@ -101,7 +101,7 @@ subscription_grace_period, grace_days_remaining).
                     {% endif %}
                     <span class="ml-1">Upgrade now to continue using RS Systems.</span>
                 </div>
-                <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors press">
                     Upgrade Now
                 </a>
             </div>
@@ -131,7 +131,7 @@ subscription_grace_period, grace_days_remaining).
                         <span class="font-medium">Your free trial has expired.</span>
                         <span class="ml-1">Upgrade now to continue using RS Systems.</span>
                     </div>
-                    <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">
+                    <a href="{% url 'billing_settings' %}" class="bg-white text-red-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors press">
                         Upgrade Now
                     </a>
                 </div>
@@ -159,7 +159,7 @@ subscription_grace_period, grace_days_remaining).
                         <span class="font-medium">Your free trial expires in {{ tenant.trial_days_remaining }} day{{ tenant.trial_days_remaining|pluralize }}.</span>
                         <span class="ml-1">Upgrade now to keep your data.</span>
                     </div>
-                    <a href="{% url 'billing_settings' %}" class="bg-white text-amber-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50 transition-colors">
+                    <a href="{% url 'billing_settings' %}" class="bg-white text-amber-600 px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-50 transition-colors press">
                         Upgrade Now
                     </a>
                 </div>

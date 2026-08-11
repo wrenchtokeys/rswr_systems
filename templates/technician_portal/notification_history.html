@@ -120,7 +120,7 @@
                                 <div class="ml-4 flex-shrink-0 flex items-center space-x-2">
                                     {% if notification.action_url %}
                                         <a href="{{ notification.action_url }}"
-                                           class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
+                                           class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 press">
                                             View
                                         </a>
                                     {% endif %}
@@ -143,13 +143,13 @@
                         <div class="flex-1 flex justify-between items-center sm:hidden">
                             {% if notifications.has_previous %}
                                 <a href="?page={{ notifications.previous_page_number }}{% if show_read %}&show_read=true{% endif %}{% if category %}&category={{ category }}{% endif %}"
-                                   class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                   class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 press">
                                     Previous
                                 </a>
                             {% endif %}
                             {% if notifications.has_next %}
                                 <a href="?page={{ notifications.next_page_number }}{% if show_read %}&show_read=true{% endif %}{% if category %}&category={{ category }}{% endif %}"
-                                   class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                                   class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 press">
                                     Next
                                 </a>
                             {% endif %}
@@ -165,7 +165,7 @@
                                 <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                                     {% if notifications.has_previous %}
                                         <a href="?page={{ notifications.previous_page_number }}{% if show_read %}&show_read=true{% endif %}{% if category %}&category={{ category }}{% endif %}"
-                                           class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                           class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 press">
                                             <span class="sr-only">Previous</span>
                                             <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
@@ -179,7 +179,7 @@
 
                                     {% if notifications.has_next %}
                                         <a href="?page={{ notifications.next_page_number }}{% if show_read %}&show_read=true{% endif %}{% if category %}&category={{ category }}{% endif %}"
-                                           class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
+                                           class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 press">
                                             <span class="sr-only">Next</span>
                                             <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
                                                 <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
@@ -206,7 +206,7 @@
                     </p>
                     {% if not show_read %}
                         <div class="mt-6">
-                            <a href="?show_read=true" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700">
+                            <a href="?show_read=true" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-brand-600 hover:bg-brand-700 press">
                                 Show all notifications
                             </a>
                         </div>

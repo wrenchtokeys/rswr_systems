@@ -16,7 +16,7 @@ session with no memory of this work can pick exactly one up and finish it.
 | 2 | S6 · Jobs page: 25 controls → 3 | **DONE** 2026-08-09 |
 | 2 | S7 · Job/repair form: drop the green header and ALL-CAPS section tiles | **DONE** 2026-08-10 |
 | 2 | S8 · Retire the second accent everywhere else (FAB, black pills) | **DONE** 2026-08-10 |
-| 3 | S9 · Motion primitives: press feedback + enter/exit | TODO |
+| 3 | S9 · Motion primitives: press feedback + enter/exit | **DONE** 2026-08-10 |
 | 3 | S10 · View Transitions for list → detail continuity | TODO |
 | 3 | S11 · Skeletons and optimistic status changes | TODO |
 | 3 | S12 · Auth pages: one brand mention, full-height, no marketing nav | TODO |
@@ -108,7 +108,11 @@ Replaying only the failing modules takes ~7 min instead of another full hour.
 - **Tailwind purges `@layer components` rules that no template uses yet.** New shared
   classes need a `safelist` entry in `tailwind.config.js` or they silently do nothing.
 - **The dev server caches templates even with `--noreload`.** Restart it before concluding
-  a template fix didn't work. (Hit again in S8 — cost a round of screenshots.)
+  a template fix didn't work. Chrome caches the served `app.css` just as stubbornly —
+  hard-reload (`cmd+shift+r`) before concluding a CSS change didn't land. (S9)
+- **`.hidden` is not an "is hidden" hook.** `hidden md:flex` is idiomatic Tailwind, so a
+  descendant selector like `.hidden .panel` matches at every breakpoint where the parent
+  is visibly *shown*. Scope to your own root class instead. (S9) (Hit again in S8 — cost a round of screenshots.)
 - **zsh does not word-split unquoted `$VAR`.** A `for f in $FILES` codemod loop runs once
   with every filename joined into one string, modifies nothing, and prints a log that
   looks like it worked. Run codemod loops under `bash -c` or `bash <<'EOF'`. (S8)
@@ -163,7 +167,8 @@ Added to `static/css/src/input.css`: the four-rung material ladder
 - `.surface-float` is new and currently **unused**; it's for dropdowns/popovers in S8.
 - The `t-*` scale is **safelisted** so pages can adopt it one at a time. Nothing uses it
   yet — that's Phase 2's job, page by page, not a big-bang restyle.
-- Motion tokens are defined but **deliberately not applied**. Applying them is S9/S10.
+- Motion tokens were defined but **deliberately not applied** here. S9 applied them
+  (press feedback + enter/exit); continuity is still S10.
 
 ## S3 · `blue-*` → `brand-*` codemod + brand CSS in every shell — DONE
 
@@ -414,15 +419,85 @@ their two-value hues (`service_type_chip` in `ui.py`) — that's a taxonomy, not
 
 # Phase 3 — Feel
 
-## S9 · Motion primitives: press feedback + enter/exit
+## S9 · Motion primitives: press feedback + enter/exit — DONE
 
-Apply the S2 tokens. Only two things in this session:
-- `active:scale-[0.98]` + `transition` on `.btn` and every actionable row/chip. This one
-  line changes how the whole app feels more than any redesign.
-- Enter/exit on dropdowns, modals and toasts: 220 ms, `--ease-out`, opacity + 4px translate.
+Branch `feat/ui-s9-motion`. The S2 motion tokens are now applied. Every control dips
+2% while held; every modal and menu fades and rises in — **and out**. Two CSS files,
+one 6-line JS change, and a class on ~130 template elements.
 
-**Never animate `all`** — name the properties. Wrap everything in
-`@media (prefers-reduced-motion: reduce)`.
+**Notes**
+
+- **Press feedback uses the independent `scale` property, not `transform`.** The plan
+  said `active:scale-[0.98]`, which is Tailwind's transform-based scale — it would have
+  silently clobbered the FAB's rotate-on-open and the portal drawer's translate. `scale`
+  composes with an existing transform; `transform` replaces it.
+- **`scale` is declared only in `:active`, never at rest.** A resting `scale: 1` is a
+  non-`none` value, which makes the element a containing block for `position: fixed`
+  descendants — i.e. every dropdown or modal that happens to live inside a button would
+  reposition. Transitioning from `none` interpolates as 1, so nothing is lost.
+- **Coverage without a 1,300-site codemod:** the base-layer rule takes `<button>`,
+  `[role=button]`, `<summary>` and submit/button inputs, and `.btn` takes every
+  `<a class="btn-primary">`. That leaves anchors styled as buttons with raw utilities
+  (S6/S8 converted the surfaces they touched; the rest is A1's job) — 112 of those got
+  an explicit `.press`, chosen by a heuristic: padding + rounded + an unprefixed
+  background. `hover:bg-gray-50` deliberately does not count, or every list row in the
+  app would have been treated as a button.
+- **`.press-card` (0.5%) for whole-card links.** 2% on a full-width card doesn't read as
+  feedback, it reads as a lurch. The codemod told cards from buttons by all-sides
+  padding (`p-4`/`p-5`) — buttons in this codebase always use `px-`/`py-`.
+- **Enter/exit is pure CSS**: `@starting-style` + `transition-behavior: allow-discrete`,
+  keyed off the `.hidden` class. This is the whole reason it covers the app: modals here
+  are toggled from `ui.js`, from page-local `<script>` blocks, and from inline `onclick`
+  attributes, and a JS implementation would have had to convert all three. It also gets
+  the **exit** animation, which `classList.add('hidden')` can never do on its own.
+  Browsers without `@starting-style` (pre-Chrome 117 / Safari 17.5 / Firefox 129) show
+  and hide instantly — exactly today's behaviour.
+- **`.motion-fade` (root) + `.motion-rise` (panel), applied by codemod to 24 hand-rolled
+  modals.** The root only fades: a 4px rise on a full-bleed backdrop slides a sliver of
+  page in under it. `.modal-overlay`/`.modal-panel`/`.dropdown-menu`/`[data-dropdown-menu]`
+  get it automatically. `.surface-float` deliberately does **not** — it's a *material*
+  class, and a static element wearing it would fade in on every page load. Motion is
+  opted into by behaviour, not inherited from depth.
+- **`pointer-events: none` on the exit state is not optional.** `display: none` is now
+  deferred to the end of the transition, so without it a closing overlay eats the next
+  220ms of clicks — the fastest way to make "polish" feel broken.
+- `UI.confirm()` is the one dialog CSS can't animate out: it's removed from the DOM
+  rather than hidden. It now resolves its promise *first* (the caller usually submits a
+  form — the exit must never delay that), then fades and removes.
+- **`transition-all duration-300` on the toast and the autosave chip is gone.** Both now
+  name `opacity, translate` at `--dur-base`; `transition-all` was animating width,
+  colour and shadow along with the two properties that actually move.
+- `--transition: all 0.3s ease` — the anti-pattern named in UI_MAGIC_PLAN §7 — is dead in
+  both `input.css` and `style.css`. It's now a named-property list, which fixes all seven
+  legacy `transition: var(--transition)` uses in the portal's stylesheet at once.
+- Everything is inside `@media (prefers-reduced-motion: no-preference)`, and the resting
+  states of the toast/autosave chip are deliberately *outside* it, so under reduced
+  motion they still appear — instantly — instead of being stuck at `opacity: 0`.
+
+**Traps hit this session**
+
+- **`.hidden .thing` does not mean "inside a hidden parent".** `hidden md:flex` is
+  idiomatic Tailwind, so a large part of the navbar carries a permanent `hidden` class
+  that only stops applying at a breakpoint. The first version pinned the account menu at
+  `opacity: 0` forever. Ancestor selectors are now scoped to `.motion-fade.hidden` /
+  `.modal-overlay.hidden`, which are our own classes on a modal root.
+- **The dev server's `app.css` is aggressively cached by Chrome**, and hot-swapping the
+  `<link>` to verify makes the *enter* animation silently not run (`@starting-style`
+  needs the rule present when the element first renders). Two false negatives came from
+  this. Hard-reload (`cmd+shift+r`) before concluding the motion doesn't work, and
+  measure with `element.getAnimations()` rather than by eye.
+
+**Verified:** account dropdown, the JS-positioned `fixed` kebab menu on the jobs page
+(opens at the measured rect, closes click-through), a hand-rolled `.motion-fade` modal,
+and `UI.confirm()` — all sampled mid-transition via `getComputedStyle`/`getAnimations`.
+`collectstatic` passes under production manifest storage. 111 smoke tests pass; full
+suite failure set unchanged from `main`.
+
+**Leftover:** `customer_portal/notification_preferences.html` toggles a modal with
+`style.display` rather than `.hidden`, so it stays instant — convert it to `.hidden`
+when that page is next touched. The customer portal's own component CSS still has a few
+`transform: translateY(-2px)` hover lifts of its own (`customer-repair-request.css`);
+they're harmless but should collapse into these primitives eventually.
 
 ## S10 · View Transitions for list → detail continuity
 

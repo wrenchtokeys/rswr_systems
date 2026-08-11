@@ -99,7 +99,7 @@
                 </td>
                 <td class="px-5 py-3.5 text-right whitespace-nowrap" onclick="event.stopPropagation()">
                     {% if invoice.amount_due > 0 and invoice.status != 'CANCELLED' %}
-                    <a href="{% url 'customer_invoice_detail' invoice.id %}" class="inline-flex items-center px-3 py-1.5 bg-brand-500 text-white text-xs font-semibold rounded-lg hover:bg-brand-600 transition-colors">
+                    <a href="{% url 'customer_invoice_detail' invoice.id %}" class="inline-flex items-center px-3 py-1.5 bg-brand-500 text-white text-xs font-semibold rounded-lg hover:bg-brand-600 transition-colors press">
                         Pay Now
                     </a>
                     {% else %}

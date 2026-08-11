@@ -42,7 +42,14 @@
   --info-color: #3b82f6;
   --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --border-radius: 0.375rem;
-  --transition: all 0.3s ease;
+  /* Legacy variable still consumed by static/css/style.css. It used to be
+     `all 0.3s ease` — the anti-pattern called out in UI_MAGIC_PLAN §7: it
+     animates layout properties (width/height/top) on every hover, which is
+     both janky and the reason a hover felt "gluey". Named properties only. */
+  --transition: color var(--dur-fast) var(--ease-out),
+                background-color var(--dur-fast) var(--ease-out),
+                border-color var(--dur-fast) var(--ease-out),
+                box-shadow var(--dur-base) var(--ease-out);
 
   /* ---- Material ladder (UI_MAGIC_PLAN R2) -------------------------------
      Depth comes from two-stop, wide-radius, very-low-opacity shadows rather
@@ -66,6 +73,17 @@
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-fast: 140ms;
   --dur-base: 220ms;
+  /* The transition every control shares. Named once because it is declared in
+     several places at different specificities (see `.btn` and the press rules),
+     and because those rules REPLACE whatever `transition-colors` /
+     `transition-all` a template put on the element — so the list has to carry
+     that element's hover properties too, not just `scale`. */
+  --transition-control: color var(--dur-fast) var(--ease-out),
+                        background-color var(--dur-fast) var(--ease-out),
+                        border-color var(--dur-fast) var(--ease-out),
+                        box-shadow var(--dur-fast) var(--ease-out),
+                        transform var(--dur-fast) var(--ease-out),
+                        scale var(--dur-fast) var(--ease-out);
 }
 
 /* Declared explicitly rather than relying on Tailwind's built-in spin keyframe,
@@ -83,6 +101,68 @@
      Use the .num utility for money/counts outside a table. */
   table {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- Press feedback (UI_MAGIC_PLAN R4, primitive 2) -------------------
+     Every real control dips 2% while it is held. This is the cheapest thing
+     in the whole plan and the one people read as "responsive".
+
+     Two deliberate implementation choices:
+     1. It uses the independent `scale` property, NOT `transform`. Several
+        elements already carry a transform (the FAB's rotate-on-open, the
+        off-canvas drawer's translate); a `transform: scale()` here would
+        silently clobber those. `scale` composes instead.
+     2. `scale` is declared ONLY in the :active state. A resting `scale: 1`
+        is still a non-`none` value, which makes the element a containing
+        block for any `position: fixed` descendant — that would move every
+        modal/dropdown that happens to live inside a button. Transitioning
+        from `none` interpolates as 1, so nothing is lost.
+
+     Opt out with `.no-press` on anything that must not move.
+
+     Every selector below is written to out-rank a single utility class on
+     purpose. `transition-colors` and `transition-duration-*` are all over
+     these templates, they live in the utilities layer (which wins ties
+     against base and components), and they set `transition-property` without
+     `scale` — so a plain `button { transition: scale }` rule would leave the
+     press dipping with no easing at all: an instant snap, which reads worse
+     than no press feedback. `:not(.no-press)` and the doubled class are
+     specificity, not logic. */
+  @media (prefers-reduced-motion: no-preference) {
+    button:not(.no-press),
+    summary:not(.no-press),
+    [role="button"]:not(.no-press),
+    input[type="submit"]:not(.no-press),
+    input[type="button"]:not(.no-press),
+    .press.press {
+      transition: var(--transition-control);
+    }
+
+    button:not(:disabled):not(.no-press):active,
+    summary:not(.no-press):active,
+    [role="button"]:not([aria-disabled="true"]):not(.no-press):active,
+    input[type="submit"]:not(:disabled):active,
+    input[type="button"]:not(:disabled):active,
+    .press:not(.no-press):active {
+      scale: 0.98;
+    }
+
+    /* Large surfaces need a smaller dip — 2% on a full-width card reads as a
+       lurch, not as feedback. */
+    .press-card.press-card {
+      transition: var(--transition-control);
+    }
+    .press-card:active {
+      scale: 0.995;
+    }
+  }
+
+  /* Actionable rows: the hover tint arrives over 140ms instead of snapping.
+     Rows are never scaled — moving a table row shifts everything around it. */
+  @media (prefers-reduced-motion: no-preference) {
+    tbody tr {
+      transition: background-color var(--dur-fast) var(--ease-out);
+    }
   }
 }
 
@@ -122,9 +202,37 @@
      action. danger: destructive only. ghost: tertiary/overflow. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 font-semibold rounded-lg
-      px-4 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2
+      px-4 py-2 text-sm focus:outline-none focus-visible:ring-2
       focus-visible:ring-brand-500 focus-visible:ring-offset-1
       disabled:opacity-50 disabled:pointer-events-none;
+    /* Named properties instead of `transition-colors`, so the press has
+       something to ease. `@apply btn` copies this into each variant below. */
+    transition: var(--transition-control);
+  }
+  /* The variants again at doubled specificity. Two traps in one rule:
+     `@apply btn` COPIES declarations, it does not add the `btn` class — so a
+     `.btn.btn` rule alone would never match `<a class="btn-primary">`. And the
+     doubling is needed because plenty of templates also put `transition-colors`
+     on these elements; that utility lives in the utilities layer (wins ties)
+     and sets `transition-property` without `scale`, which would leave the press
+     dipping with no easing at all — worse than no press feedback. */
+  .btn.btn,
+  .btn-primary.btn-primary,
+  .btn-secondary.btn-secondary,
+  .btn-danger.btn-danger,
+  .btn-ghost.btn-ghost {
+    transition: var(--transition-control);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    /* `<button class="btn-primary">` is already covered by the base rule;
+       this is what catches the many `<a class="btn-primary">` links. */
+    .btn:not(.no-press):active,
+    .btn-primary:not(.no-press):active,
+    .btn-secondary:not(.no-press):active,
+    .btn-danger:not(.no-press):active,
+    .btn-ghost:not(.no-press):active {
+      scale: 0.98;
+    }
   }
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-700;
@@ -222,10 +330,22 @@
   .toast {
     @apply pointer-events-auto flex items-start gap-3 rounded-lg border
       border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-lg
-      opacity-0 translate-x-4 transition-all duration-300;
+      opacity-0;
+    /* `translate` (independent property) rather than Tailwind's transform-
+       based `translate-x-4`, so it never fights a transform. */
+    translate: 1rem 0;
   }
   .toast.toast-show {
-    @apply opacity-100 translate-x-0;
+    @apply opacity-100;
+    translate: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    /* Was `transition-all duration-300` — that animated width, height, colour
+       and shadow along with the two properties that actually move. */
+    .toast {
+      transition: opacity var(--dur-base) var(--ease-out),
+                  translate var(--dur-base) var(--ease-out);
+    }
   }
   .toast-icon-success {
     @apply text-emerald-500;
@@ -250,11 +370,18 @@
      components/form-fields.css. */
   .autosave-indicator {
     @apply fixed bottom-6 right-6 px-4 py-3 bg-white border border-gray-200 rounded-lg
-      shadow-md text-sm flex items-center opacity-0 translate-y-4 transition-all
-      duration-300 pointer-events-none z-50;
+      shadow-md text-sm flex items-center opacity-0 pointer-events-none z-50;
+    translate: 0 1rem;
   }
   .autosave-indicator.show {
-    @apply opacity-100 translate-y-0;
+    @apply opacity-100;
+    translate: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .autosave-indicator {
+      transition: opacity var(--dur-base) var(--ease-out),
+                  translate var(--dur-base) var(--ease-out);
+    }
   }
   .autosave-indicator i {
     @apply mr-2;
@@ -279,6 +406,97 @@
     animation: spin 1s linear infinite;
   }
 }
+
+/* ---- Enter/exit (UI_MAGIC_PLAN R4, primitive 1) -----------------------
+   220ms, --ease-out, opacity + a 4px rise. Menus, modals, popovers.
+
+   This is implemented entirely in CSS, with `@starting-style` and
+   `transition-behavior: allow-discrete`, keyed off the `.hidden` class.
+   That is the whole trick: every modal and menu in this app is shown by
+   removing `.hidden` — from ui.js, from page-local <script> blocks, and
+   from inline onclick attributes. A JS implementation would have to find
+   and convert all three. This one animates every existing modal without
+   touching a line of their JS, and the exit animates too, which is the
+   part a naive `classList.remove('hidden')` can never do.
+
+   Browsers without @starting-style (pre-Chrome 117 / Safari 17.5 /
+   Firefox 129) show and hide instantly — i.e. exactly today's behaviour.
+
+   Two classes, applied to the shared component classes automatically:
+     .motion-fade — opacity only. For full-bleed overlay roots; a rise
+                    would slide a 4px sliver of page in under the backdrop.
+     .motion-rise — opacity + 4px rise. For the thing you actually look at:
+                    the panel, the menu, the popover.
+   Hand-rolled modals (the ones that don't use .modal-overlay/.modal-panel)
+   carry the classes explicitly in their template.
+
+   `.surface-float` is deliberately NOT in this list even though every one
+   of its current uses is a dropdown: it is a *material* class, and a static
+   element wearing it would fade in on page load. Motion is opted into by
+   behaviour (.dropdown-menu / .motion-rise), not inherited from depth. */
+@media (prefers-reduced-motion: no-preference) {
+  .motion-fade,
+  .modal-overlay {
+    opacity: 1;
+    transition: opacity var(--dur-base) var(--ease-out),
+                display var(--dur-base) var(--ease-out) allow-discrete;
+  }
+  .motion-fade.hidden,
+  .modal-overlay.hidden {
+    opacity: 0;
+    /* `display: none` is now deferred to the end of the exit transition, so
+       without this the fading overlay would swallow the next 220ms of
+       clicks — the fastest way to make "polish" feel broken. */
+    pointer-events: none;
+  }
+  @starting-style {
+    .motion-fade,
+    .modal-overlay {
+      opacity: 0;
+    }
+  }
+
+  .motion-rise,
+  .modal-panel,
+  .dropdown-menu,
+  [data-dropdown-menu] {
+    opacity: 1;
+    transition: opacity var(--dur-base) var(--ease-out),
+                translate var(--dur-base) var(--ease-out),
+                display var(--dur-base) var(--ease-out) allow-discrete;
+  }
+  /* Self-hidden (dropdown menus) and parent-hidden (a panel inside an overlay
+     that just got `.hidden`) both need the exit state — the panel's own class
+     list never changes, so without the descendant selector it would pop out
+     while the overlay behind it was still fading.
+
+     The ancestor half is scoped to `.motion-fade`/`.modal-overlay` on purpose.
+     A bare `.hidden .motion-rise` looks equivalent and is not: `hidden md:flex`
+     is idiomatic Tailwind, so half the navbar has a permanent `hidden` class
+     that only stops applying at a breakpoint. That selector pinned the account
+     menu at opacity 0 forever. */
+  .motion-rise.hidden,
+  .dropdown-menu.hidden,
+  [data-dropdown-menu].hidden,
+  .motion-fade.hidden .motion-rise,
+  .motion-fade.hidden .modal-panel,
+  .modal-overlay.hidden .motion-rise,
+  .modal-overlay.hidden .modal-panel {
+    opacity: 0;
+    translate: 0 4px;
+    pointer-events: none;
+  }
+  @starting-style {
+    .motion-rise,
+    .modal-panel,
+    .dropdown-menu,
+    [data-dropdown-menu] {
+      opacity: 0;
+      translate: 0 4px;
+    }
+  }
+}
+
 
 /* ------------------------------------------------------------------
    VENDORED: driver.js v1.3.6 popover/overlay styles (MIT, https://driverjs.com)

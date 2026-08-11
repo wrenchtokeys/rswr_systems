@@ -276,7 +276,7 @@
         <!-- ===== MOBILE: Card Layout ===== -->
         <div class="sm:hidden space-y-3">
             {% for job in jobs %}
-            <a href="{% if job.service_type == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}" class="repair-card block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md">
+            <a href="{% if job.service_type == 'repair' %}{% url 'repair_detail' job.id %}{% else %}{% url 'replacement_detail' job.id %}{% endif %}" class="repair-card block bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md press-card">
                 <div class="flex items-start justify-between mb-2">
                     <div class="flex-1 min-w-0">
                         <div class="font-semibold text-gray-900 truncate">{{ job.customer.name }}</div>
@@ -490,7 +490,7 @@
         <nav class="flex items-center justify-center gap-1 mt-6">
             {% if page_obj.has_previous %}
             <a href="{% querystring page=page_obj.previous_page_number %}"
-               class="px-3 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+               class="px-3 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
                 <i class="fas fa-chevron-left text-xs"></i>
             </a>
             {% endif %}
@@ -500,13 +500,13 @@
                 <span class="px-3.5 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg">{{ i }}</span>
                 {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
                 <a href="{% querystring page=i %}"
-                   class="px-3.5 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">{{ i }}</a>
+                   class="px-3.5 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">{{ i }}</a>
                 {% endif %}
             {% endfor %}
 
             {% if page_obj.has_next %}
             <a href="{% querystring page=page_obj.next_page_number %}"
-               class="px-3 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+               class="px-3 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
                 <i class="fas fa-chevron-right text-xs"></i>
             </a>
             {% endif %}

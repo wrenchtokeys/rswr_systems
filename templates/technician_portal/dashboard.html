@@ -106,11 +106,11 @@
                             {% url 'repair_detail' job.id as job_url %}
                             {% endif %}
                             {% if job.queue_status == 'IN_PROGRESS' %}
-                            <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
+                            <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
                                 Continue
                             </a>
                             {% elif job.queue_status == 'APPROVED' %}
-                            <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm">
+                            <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
                                 Start
                             </a>
                             {% else %}
@@ -147,7 +147,7 @@
             <div class="px-6 py-12 text-center">
                 <div class="text-4xl mb-3">☕</div>
                 <p class="text-gray-500 font-medium">No jobs queued — time for coffee</p>
-                <a href="{% url 'job_create' %}" class="inline-flex items-center mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors">
+                <a href="{% url 'job_create' %}" class="inline-flex items-center mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                     </svg>
@@ -167,21 +167,21 @@
                     </div>
                     <div class="p-6">
                         <div class="space-y-3">
-                            <a href="{% url 'job_create' %}" class="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors shadow-sm">
+                            <a href="{% url 'job_create' %}" class="w-full inline-flex items-center justify-center px-4 py-3 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors shadow-sm press">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                                 </svg>
                                 New {{ service_noun }}
                             </a>
                             {% if shop_offers_repairs %}
-                            <a href="{% url 'create_multi_break_repair' %}" class="w-full inline-flex items-center justify-center px-4 py-3 border border-gray-300 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
+                            <a href="{% url 'create_multi_break_repair' %}" class="w-full inline-flex items-center justify-center px-4 py-3 border border-gray-300 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors press">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
                                 </svg>
                                 Multi-Break Entry
                             </a>
                             {% endif %}
-                            <a href="{% url 'job_list' %}" class="w-full inline-flex items-center justify-center px-4 py-3 border border-gray-300 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
+                            <a href="{% url 'job_list' %}" class="w-full inline-flex items-center justify-center px-4 py-3 border border-gray-300 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors press">
                                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
                                 </svg>
@@ -308,11 +308,11 @@
                                 </div>
                             </div>
                             {% if req.service_type == 'replacement' %}
-                            <a href="{% url 'replacement_detail' req.id %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
+                            <a href="{% url 'replacement_detail' req.id %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors press">
                                 Review
                             </a>
                             {% else %}
-                            <a href="{% url 'repair_detail' req.id %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
+                            <a href="{% url 'repair_detail' req.id %}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors press">
                                 Review
                             </a>
                             {% endif %}
@@ -351,15 +351,15 @@
                             <div class="text-xs text-gray-500 mb-1">{{ notification.created_at|date:"M d, Y" }}</div>
                             <p class="text-sm text-gray-900 mb-2">{{ notification.message }}</p>
                             {% if notification.repair_batch_id %}
-                            <a href="{% url 'technician_batch_detail' notification.repair_batch_id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'technician_batch_detail' notification.repair_batch_id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 View Batch
                             </a>
                             {% elif notification.repair %}
-                            <a href="{% url 'repair_detail' notification.repair.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'repair_detail' notification.repair.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 View Repair
                             </a>
                             {% elif notification.redemption %}
-                            <a href="{% url 'reward_fulfillment_detail' notification.redemption.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'reward_fulfillment_detail' notification.redemption.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 View Details
                             </a>
                             {% endif %}
@@ -452,7 +452,7 @@
                                 </div>
                             </div>
                             {% if batch.batch_id %}
-                            <a href="{% url 'technician_batch_detail' batch.batch_id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'technician_batch_detail' batch.batch_id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 Continue
                             </a>
                             {% endif %}
@@ -470,7 +470,7 @@
                                     {{ repair.customer.name }} • ${{ repair.cost|floatformat:2 }}
                                 </div>
                             </div>
-                            <a href="{% url 'update_repair' repair.id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'update_repair' repair.id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 Complete
                             </a>
                         </div>
@@ -537,7 +537,7 @@
                                     {{ repair.customer.name }} • ${{ repair.estimated_cost|floatformat:2 }}
                                 </div>
                             </div>
-                            <a href="{% url 'repair_detail' repair.id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'repair_detail' repair.id %}" class="flex-shrink-0 inline-flex items-center px-3 py-2 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 Start Work
                             </a>
                         </div>
@@ -571,7 +571,7 @@
                                 <div class="font-medium text-gray-900">{{ redemption.reward_option.name }}</div>
                                 <div class="text-xs text-gray-600">{{ redemption.reward.customer.name }} • {{ redemption.created_at|date:"M d" }}</div>
                             </div>
-                            <a href="{% url 'reward_fulfillment_detail' redemption.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'reward_fulfillment_detail' redemption.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 Fulfill
                             </a>
                         </div>
@@ -584,7 +584,7 @@
                                 <div class="font-medium text-gray-900">{{ redemption.reward_option.name }}</div>
                                 <div class="text-xs text-gray-600">{{ redemption.reward.customer.name }} • Available</div>
                             </div>
-                            <a href="{% url 'reward_fulfillment_detail' redemption.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors">
+                            <a href="{% url 'reward_fulfillment_detail' redemption.id %}" class="inline-flex items-center px-3 py-1 bg-brand-600 text-white text-xs font-medium rounded hover:bg-brand-700 transition-colors press">
                                 Claim
                             </a>
                         </div>
