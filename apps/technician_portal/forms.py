@@ -996,11 +996,21 @@ class QuickJobForm(forms.Form):
     )
     damage_photo_before = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        # w-full: the unstyled native file input is wider than a phone
+        # column and spilled past the viewport edge on the job form.
+        widget=forms.ClearableFileInput(attrs={
+            'accept': 'image/*',
+            'class': 'w-full max-w-full text-sm text-gray-700',
+        }),
     )
     damage_photo_after = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        # w-full: the unstyled native file input is wider than a phone
+        # column and spilled past the viewport edge on the job form.
+        widget=forms.ClearableFileInput(attrs={
+            'accept': 'image/*',
+            'class': 'w-full max-w-full text-sm text-gray-700',
+        }),
     )
     customer_notes = forms.CharField(
         required=False,
