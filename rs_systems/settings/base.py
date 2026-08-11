@@ -257,6 +257,14 @@ STRIPE_TEST_MODE = STRIPE_MODE == 'test'
 # is configured separately and need not match.
 STRIPE_API_VERSION = os.environ.get('STRIPE_API_VERSION', '2026-07-29.dahlia')
 
+# Where platform-level billing alerts go: Stripe disputes, and the daily
+# digest of webhook events that failed to process. These concern the
+# platform's own money and Stripe account risk, not any shop's, so they must
+# NOT be routed through the tenant notification path.
+PLATFORM_ALERT_EMAIL = os.environ.get(
+    'PLATFORM_ALERT_EMAIL', ''
+) or os.environ.get('DEFAULT_FROM_EMAIL', 'notifications@rssystems.io')
+
 # =========================================
 # INVOICE DEFAULTS
 # =========================================

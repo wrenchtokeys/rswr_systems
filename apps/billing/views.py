@@ -1385,7 +1385,16 @@ def stripe_webhook(request):
     result = svc.handle_webhook(
         request.body, request.headers.get('Stripe-Signature', '')
     )
-    return JsonResponse(result, status=200 if result['success'] else 400)
+
+    if result.get('success'):
+        return JsonResponse(result, status=200)
+
+    # A retryable failure (DB error, transient service problem) must return
+    # 5xx so Stripe redelivers on its own backoff. Returning 200/400 here
+    # told Stripe the event was final and destroyed it permanently.
+    # Signature/payload rejections stay 400: retrying those never helps.
+    status = 500 if result.get('retryable') else 400
+    return JsonResponse(result, status=status)
 
 
 # =============================================================================

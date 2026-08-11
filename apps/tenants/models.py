@@ -315,7 +315,23 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
         default=dict, blank=True,
         help_text="Tracks which subscription alert emails have been sent, keyed by alert type"
     )
-    
+
+    # Watermark for out-of-order webhook protection.
+    #
+    # Stripe does not guarantee delivery order, and a retry can arrive minutes
+    # after a later event. Without this, a late invoice.payment_failed landing
+    # after invoice.paid flips a paying shop back to past_due -- which, once
+    # past_due actually restricts access, locks out a customer who paid.
+    #
+    # Every handler that writes subscription state stamps this from the
+    # event's `created` timestamp and refuses to apply anything older.
+    subscription_synced_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp of the newest Stripe event applied to this "
+                  "tenant's subscription state. Older events are ignored."
+    )
+
+
     class Meta:
         ordering = ['name']
         verbose_name = 'Tenant'

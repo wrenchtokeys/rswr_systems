@@ -26,19 +26,39 @@ from apps.tenants.services.subscription_service import SubscriptionService, Subs
 
 
 def _make_mock_subscription(status='active', cancel_at_period_end=False):
-    """Build a minimal mock Stripe Subscription object."""
+    """Build a minimal mock Stripe Subscription object.
+
+    Attribute access and __getitem__ must agree. This double previously set
+    current_period_end as an attribute while its __getitem__ knew only
+    'items' -- a real StripeObject resolves the same field either way, so the
+    double silently disagreed with production. It also carries the period on
+    the items, which is where Basil (2025-03-31) moved it and where the
+    deployed SDK actually reports it.
+    """
     now = int(time.time())
-    sub = MagicMock()
-    sub.id = 'sub_test123'
-    sub.status = status
-    sub.cancel_at_period_end = cancel_at_period_end
-    sub.current_period_start = now - (30 * 24 * 3600)  # 30 days ago (in the past)
-    sub.current_period_end = now + (0 * 24 * 3600 + 1)  # future (1 second from now)
-    sub.__getitem__ = lambda self, key: {
-        'items': {'data': [MagicMock(id='si_test')]},
-    }[key]
+    period_start = now - (30 * 24 * 3600)   # 30 days ago (in the past)
+    period_end = now + (0 * 24 * 3600 + 1)  # future (1 second from now)
+
+    item = {
+        'id': 'si_test',
+        'current_period_start': period_start,
+        'current_period_end': period_end,
+        'price': {'id': 'price_pro_monthly', 'recurring': {'interval': 'month'}},
+    }
+    data = {
+        'id': 'sub_test123',
+        'status': status,
+        'cancel_at_period_end': cancel_at_period_end,
+        'current_period_start': period_start,
+        'current_period_end': period_end,
+        'items': {'data': [item]},
+    }
+
+    sub = MagicMock(**{k: v for k, v in data.items() if k != 'items'})
+    sub.__getitem__ = lambda _self, key: data[key]
+    sub.__contains__ = lambda _self, key: key in data
     sub.items = MagicMock()
-    sub.items.data = [MagicMock(id='si_test')]
+    sub.items.data = [item]
     return sub
 
 

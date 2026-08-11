@@ -291,32 +291,67 @@ class StripeService:
         # used to verify the paying account matches the invoice's tenant.
         event_account = event.get('account')
 
+        # Idempotency. This endpoint is registered twice in the Stripe
+        # Dashboard (as a Connect endpoint and a legacy platform catch-all),
+        # so duplicate deliveries are routine, not exceptional.
+        from apps.billing.services import webhook_log
+        row, should_process = webhook_log.claim(event, 'billing')
+        if not should_process:
+            return {'success': True, 'handled': True, 'duplicate': True,
+                    'event_type': event_type}
+
+        try:
+            result = self._dispatch_webhook(
+                event_type, data, event=event, event_account=event_account,
+            )
+        except Exception as e:
+            logger.exception(f"Error processing webhook {event_type}: {e}")
+            webhook_log.mark_failed(row, e)
+            return {'success': False, 'handled': True, 'event_type': event_type,
+                    'error': str(e), 'retryable': True}
+
+        if result.get('retryable'):
+            webhook_log.mark_failed(row, Exception(result.get('error', 'unknown')))
+        elif result.get('handled'):
+            webhook_log.mark_processed(row)
+        else:
+            webhook_log.mark_ignored(row, f"no handler for {event_type}")
+        return result
+
+    def _dispatch_webhook(self, event_type, data, event=None, event_account=None):
+        """Route a verified event to its handler. Raises on retryable errors."""
         # Subscription checkouts must reach the subscription handler — the
         # invoice handler would drop them (no rs_invoice_id metadata) and the
         # paying shop would never get its plan activated.
         if event_type == 'checkout.session.completed' and data.get('mode') == 'subscription':
             from apps.tenants.webhooks import handle_subscription_event
-            return handle_subscription_event(event_type, data)
+            return handle_subscription_event(event_type, data, event=event)
 
         # Billing payment handlers (invoice checkout + payment intents)
         if event_type == 'checkout.session.completed':
-            return self._handle_checkout_completed(data, event_account=event_account)
+            result = self._handle_checkout_completed(data, event_account=event_account)
+            result.setdefault('handled', True)
+            return result
         if event_type == 'payment_intent.succeeded':
-            return self._handle_payment_succeeded(data, event_account=event_account)
+            result = self._handle_payment_succeeded(data, event_account=event_account)
+            result.setdefault('handled', True)
+            return result
 
         # SaaS subscription handlers (delegated to tenants.webhooks)
         # NOTE: These are also handled by the dedicated subscription webhook
-        # at /ap/tenants/webhooks/stripe/ with its own signing secret.
+        # at /api/tenants/webhooks/stripe/ with its own signing secret.
         # We keep the delegation here as a fallback for existing single-endpoint setups.
         from apps.tenants.webhooks import handle_subscription_event
-        sub_result = handle_subscription_event(event_type, data)
+        sub_result = handle_subscription_event(event_type, data, event=event)
         if sub_result.get('handled'):
             return sub_result
 
         # Stripe Connect account updates
         if event_type == 'account.updated':
             from apps.tenants.services.connect_service import handle_account_updated
-            return handle_account_updated(data)
+            result = handle_account_updated(data)
+            result.setdefault('handled', True)
+            return result
 
         logger.debug(f"Unhandled webhook: {event_type}")
         return {'success': True, 'handled': False, 'event_type': event_type}
