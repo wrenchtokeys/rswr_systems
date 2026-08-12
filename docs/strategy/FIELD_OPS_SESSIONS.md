@@ -12,8 +12,9 @@ This file is the **work queue** for making field operations real: a technician f
 | Phase | Session | Size | Status |
 |-------|---------|------|--------|
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | TODO |
-| N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on TFN approval — Appendix A) |
+| N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
 | N — The tech finds out | N3 · Notification coverage audit | S | TODO |
+| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | TODO (unblocks N2 and all shipped SMS) |
 | S — Where and when | S1 · A real "booked time" | M | TODO |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | TODO |
 | S — Where and when | S3 · Day / agenda view | M | TODO |
@@ -21,7 +22,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S5 · Dispatch board | L | TODO |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 
-**Suggested sequence:** N1 → S1 → S2 → S3 → N2 (or whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand).
+**Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
 
 Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
@@ -58,7 +59,7 @@ What works: recipient resolution (`notification_service.py:340-379` falls throug
 
 ### SMS status
 
-RS Systems' toll-free number `+18663115189` is **PENDING** — registration submitted ~2026-08-10, status `REVIEWING`. No AWS approval email has arrived because it hasn't been approved yet. All current SMS senders are customer-facing (invoice texts, review texts); nothing texts a tech. Activation checklist in **Appendix A**.
+RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration was **DENIED on 2026-08-11** for *"Unclear Opt-in Language"* — the number cannot send until a corrected version 2 is submitted and approved. This is **product work, not paperwork**: see **Appendix A**. All current SMS senders are customer-facing (invoice texts, review texts); nothing texts a tech. Prod is inert rather than broken — `SMS_ENABLED=true` but `SMS_ORIGINATION_IDENTITY` is unset, and `SMSService.is_enabled()` requires both.
 
 ### Scheduling — planned vs. built
 
@@ -123,6 +124,22 @@ RS Systems' toll-free number `+18663115189` is **PENDING** — registration subm
 | **Decisions needed** | Whether to add `replacement_*` lifecycle templates now or keep replacements on the shop-email path (Drake previously deferred replacement lifecycle emails by choice — see `simplicity-first-product-direction`; don't expand customer-facing email without asking). |
 | **Acceptance criteria** | A written inventory table (in this doc's Notes) of every tech-facing event → recipient → channel; no event a tech must act on lands only in the dashboard list. |
 | **Out of scope** | Customer-facing notification redesign. |
+
+**Notes**
+
+## N4 · SMS opt-in compliance + registration v2 — TODO
+
+| Field | Value |
+|---|---|
+| **Goal** | The consent surface carries carrier-compliant language, and toll-free registration version 2 is submitted with a screenshot of it. |
+| **Size** | S |
+| **Depends on** | — (independent of N1/N3; blocks N2's prod effect) |
+| **Why it matters** | Every SMS feature shipped 2026-08-09 (#156/#159/#158) is dark, and stays dark until this number is approved. Version 1 was denied 2026-08-11 — waiting changes nothing on its own. |
+| **Verified current state** | Denial reason + full analysis in **Appendix A**. Consent checkbox: `templates/technician_portal/customer_form.html:121` and `customer_edit.html:84` (label states none of message type / frequency / rates / STOP). Compliant copy already written at `templates/saas/sms_program.html:15-50`. Consent model: `Customer.sms_opt_in` / `sms_opt_in_at`, stamped in `core/models/customer.py:190-222`. Prod inert: `SMS_ENABLED=true`, `SMS_ORIGINATION_IDENTITY` unset. |
+| **Considerations** | Two levels: (a) minimum — expand the checkbox label in both templates; (b) better — a first-party customer opt-in (portal profile or public invoice page) so consent isn't shop-attested, which is what the reviewer objected to. Recommend doing (b); a second denial costs another review cycle. Keep the copy identical to `/sms/` so the screenshot and the disclosure agree. `sms_opt_in_at` already gives an auditable consent timestamp — surface it if the reviewer asks for proof. |
+| **Decisions needed** | Whether to build the first-party opt-in now (recommended) or resubmit with checkbox copy alone and accept the risk. |
+| **Acceptance criteria** | Consent surface states message types, frequency, "Msg & data rates may apply", STOP/HELP, and links to `/sms/`. Screenshot taken from live prod. Registration version 2 submitted; `describe-registration-versions` shows version 2 `REVIEWING`. |
+| **Out of scope** | Sending anything to techs (N2). Two-way SMS (B2 in IMPROVEMENT_SESSIONS). |
 
 **Notes**
 
@@ -237,26 +254,50 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 
 ## Appendix A — SMS toll-free number status + activation checklist
 
-Checked live 2026-08-11 (`aws pinpoint-sms-voice-v2`, us-east-1, account tier PRODUCTION):
+Checked live 2026-08-12 (`aws pinpoint-sms-voice-v2`, us-east-1, account tier PRODUCTION):
 
 | Number | Status | Registration |
 |---|---|---|
-| `+18663115189` (RS Systems) | **PENDING** | `REVIEWING` — submitted ~2026-08-10 |
+| `+18663115189` (RS Systems) | **PENDING** | `REQUIRES_UPDATES` — version 1 **DENIED 2026-08-11 16:58** |
 | `+18559394817` (Rockstar shop, older) | ACTIVE | COMPLETE |
-
-No AWS approval email has arrived because approval hasn't happened yet. Toll-free verification typically takes days to ~2 weeks from submission. Check status:
 
 ```bash
 aws pinpoint-sms-voice-v2 describe-registrations --region us-east-1 \
   --query 'Registrations[].[RegistrationType,RegistrationStatus]'
+# the denial reason lives on the VERSION, not the registration:
+aws pinpoint-sms-voice-v2 describe-registration-versions --region us-east-1 \
+  --registration-id registration-3c4aceac54424845b6d540e818f2bddb \
+  --query 'RegistrationVersions[].[VersionNumber,RegistrationVersionStatus,DeniedReasons]'
 ```
 
-**When it flips to COMPLETE:**
+### Why it was denied — and why the fix is product work
+
+> **Unclear Opt-in Language** — *"The language used in your opt-in process is unclear or insufficient to obtain proper consent. Opt-in language must explicitly state message content frequency and that consent is for SMS messages."*
+
+The submitted `messagingUseCase.optInImage` documents **third-party** consent: the shop-side
+checkbox at `templates/technician_portal/customer_form.html:121`, whose entire label is
+*"OK to text this customer (they've agreed to receive service texts)."* At the point of consent
+there is no message-type list, no frequency, no msg&data-rates line, and no STOP/HELP.
+
+All of that language **does** exist — on `/sms/` (`templates/saas/sms_program.html:15-50`), which
+is not the screen in the screenshot. The reviewer sees a shop attesting on a customer's behalf.
+
+**Resubmission requires, in order:**
+1. Put compliant language beside the checkbox itself: message types (invoice + review texts),
+   frequency ("varies; typically 1–2 per completed job"), "Msg & data rates may apply",
+   "Reply STOP to opt out, HELP for help", and a link to `/sms/`.
+2. Preferably add a **customer-facing self-opt-in** (customer-portal profile / public invoice page)
+   so consent is first-party, not attested. Carriers want the consumer's own screen.
+3. Re-screenshot that surface, update `messagingUseCase.optInDescription` to describe it, and
+   submit registration **version 2** (`put-registration-field-value` → `submit-registration-version`,
+   or the console form — Drake runs paid AWS actions in his own terminal).
+
+Until then the $2/mo lease is running on a number that cannot send.
+
+**When it eventually flips to COMPLETE:**
 1. `eb setenv SMS_ORIGINATION_IDENTITY=+18663115189` (against `rs-systems-production`; remember `eb setenv` triggers the collectstatic confighooks — this is fine, just expect a deploy cycle).
 2. Send a test SMS to a real number (invoice-text path is the easiest end-to-end check).
 3. N2 becomes fully unblocked (tech-facing texts).
-
-If it flips to `REQUIRES_UPDATES` instead, AWS wants registration edits — check the console form, fix, resubmit.
 
 ---
 
@@ -266,3 +307,4 @@ If it flips to `REQUIRES_UPDATES` instead, AWS wants registration edits — chec
 |---|---|
 | 2026-08-11 | Created from live exploration (notification-path + scheduling audits) and Drake's scoping decisions: one combined doc; full arc MVP-first; staff notifications default-ON. |
 | 2026-08-11 | Review pass with Drake: confirmed MVP-first sequencing over deeper upfront scheduling design. Named the two known gaps so they don't get lost — technician availability (S5 consideration + S6 backlog item 4) and self-service rescheduling (S6 backlog item 5). |
+| 2026-08-12 | Corrected the SMS status: the TFN registration was **denied** on 2026-08-11 (this doc said `REVIEWING` — it was written hours before the denial landed). Rewrote Appendix A with the reason and the resubmission path, and added **N4** to the queue, because the fix is product work on the consent surface, not a console edit. |
