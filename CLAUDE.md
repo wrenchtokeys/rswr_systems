@@ -314,15 +314,24 @@ Otherwise TaxService finds no rate and sets tax_rate=0.
 ## Branch Strategy
 
 - `main` — production (AWS Elastic Beanstalk, rssystems.io)
-- `autonomous-work` — active development (Amelia's work branch)
-- PRs from `autonomous-work` → `main` for production deploys
+- **One session = one fresh branch off `main` = one PR.** Name it for the work
+  (`feat/…`, `fix/…`, `docs/…`). Never stack on, share with, or merge from another
+  session's branch.
+
+> **`autonomous-work` is dead.** It was the shared development branch until 2026-04-02
+> and is kept only so the work on it isn't lost. **Do not branch from it, commit to it,
+> or merge it** — it predates the tenant-branding, soft-delete, tax, loyalty and billing
+> rewrites and would regress `main` (e.g. its `invitation_service.py` still uses the
+> platform-singleton `EmailBrandingConfig.get_instance()` that is now a documented bug).
+> Its one piece of unlanded value is `docs/proposals/scheduling-system.md`.
 
 **When developing autonomously:**
-1. Verify `git branch` shows `autonomous-work`
-2. Run targeted tests for the changed area
-3. Commit with clear message
-4. Push to `origin/autonomous-work`
-5. Create PR if change is substantial
+1. Cut a fresh branch from the latest `main`; print `git branch --show-current` before
+   every test run — another Claude session may share this working tree.
+2. Run targeted tests for the changed area. The suite has ~90–105 pre-existing failures
+   on `main` — compare against a baseline, never count absolutes.
+3. Commit with a clear message. Add files by name; never `git add -A`.
+4. Push the branch and open a PR.
 
 ---
 

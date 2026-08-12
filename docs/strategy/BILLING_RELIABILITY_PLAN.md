@@ -42,14 +42,23 @@ noticed for 4 days because Sentry is not wired up in production.
 
 ## Still to do (in order)
 
+*Status refreshed 2026-08-11.*
+
 | # | Item | Why | Owner |
 |---|------|-----|-------|
-| 1 | Set `SENTRY_DSN` in EB env | 4 days of 500s went unseen; this is the alarm | **Drake** (account/DSN), then `eb setenv` |
+| ~~1~~ | ~~Set `SENTRY_DSN` in EB env~~ | **DONE** — set and verified in prod 2026-08-09 | — |
+| ~~3~~ | ~~Weekly Stripe Dashboard webhook health check until Sentry is live~~ | **Superseded** — Sentry is live; PR #171 added `StripeWebhookEvent` as a dead-letter queue plus the `reconcile_*` sweeps | — |
 | 2 | `set_stripe_prices --verify` after deploy | standard post-billing-deploy check | either |
-| 3 | Weekly check of Stripe Dashboard webhook health until Sentry is live | belt and braces | Drake |
-| 4 | Text-to-pay: send invoice/pay link by SMS | the incident night's biggest friction; SMS infra exists in the rswr project, not here | future PR |
-| 5 | In-person card: Stripe Terminal / Tap to Pay, or at minimum a "charge card on file" flow | Drake had no sanctioned way to take a card in person | future PR (needs product decision) |
+| 4 | Text-to-pay: send invoice/pay link by SMS | the incident night's biggest friction | **Largely shipped** — PR #159 added "Also text it" on every send dialog (AWS End User Messaging). Blocked in prod on toll-free registration |
+| 5 | In-person card: Stripe Terminal / Tap to Pay, or at minimum a "charge card on file" flow | Drake had no sanctioned way to take a card in person | future PR (needs product decision) — **the last genuinely open item here** |
 | 6 | Receipt/PDF texting UX (the "text a screenshot" hack) | follow-on of #4 | future PR |
+
+Also still open, from the billing hardening that followed (PRs #171–#174):
+- The four newer Stripe webhook handlers only fire if those events are enabled in the Stripe
+  Dashboard — verify there before assuming they run.
+- The platform fee mechanism shipped **off** (`PlatformConfig.fee_enabled = False`); prod's
+  default is 1%, which takes effect the moment the switch is flipped.
+- Annual billing works end-to-end but has no UI toggle.
 
 ## Invariants to keep (learned the hard way)
 

@@ -1,6 +1,10 @@
 # Launch Readiness Roadmap (Funnel → First-Run → Support)
 
-Status: IN PROGRESS · Owner: Drake · Started: 2026-08-05
+Status: **COMPLETE** — all three phases merged and deployed · Owner: Drake · Started: 2026-08-05 · Closed: 2026-08-11
+
+> Kept for the design charter and decisions log below; there is **no open work** in this document.
+> The pre-marketing checklist it tracked is done (`SENTRY_DSN` set + verified 2026-08-09, SES,
+> Turnstile, sitemap).
 
 Three phases, **each executed in its own fresh Claude session**. This doc is the handoff between sessions: read it top-to-bottom before starting any phase. Goal: the entire prospect-to-customer journey feels Apple-quality before Google/Facebook ads + SEO spend begins.
 
@@ -19,7 +23,7 @@ Three phases, **each executed in its own fresh Claude session**. This doc is the
 |-------|-------|--------|--------------|------------|
 | 1 | Conversion funnel & plans surfaces (landing, /pricing/, signup, login, My Plan) | **DEPLOYED to prod 2026-08-05** (PR #143 merged; prod plans re-seeded; live pricing + My Plan verified) | 2026-08-05 | PR #143 |
 | 2 | First-run experience (OnboardingState, checklist, tours, /help/ pages, video slots) + help-center backlog (FAQ, search, role-aware guides, /app/help/, GuideFeedback) | **MERGED + DEPLOYED 2026-08-06** (PR #144) | 2026-08-05/06 | PR #144 |
-| 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | **BUILT 2026-08-06** — PR #146 open, pending merge/deploy | 2026-08-06 | PR #146 |
+| 3 | Support (/help/contact/ → SES → admin) + pre-marketing checklist | **MERGED + DEPLOYED 2026-08-06** (PR #146) | 2026-08-06 | PR #146 |
 
 ## Decisions Log
 
