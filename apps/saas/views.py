@@ -1246,6 +1246,9 @@ def replacement_create(request):
         if form.is_valid():
             replacement = form.save(commit=False)
             replacement.tenant = tenant
+            # Assignment signal: notify the chosen tech unless the creator
+            # picked themselves.
+            replacement._assignment_actor_user_id = request.user.id
             replacement.save()
 
             if charges:
@@ -1363,6 +1366,9 @@ def replacement_edit(request, pk):
         if not charges_locked_invoice and charge_error and form.is_valid():
             form.add_error(None, charge_error)
         if form.is_valid():
+            # Assignment signal: a technician change on this form notifies
+            # the new/old techs — never the actor about themselves.
+            form.instance._assignment_actor_user_id = request.user.id
             form.save()
             if not charges_locked_invoice:
                 _save_extra_charges(

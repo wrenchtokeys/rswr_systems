@@ -1898,7 +1898,10 @@ def _auto_accept_customer_repair(repair, customer_user=None):
     glass and price them first.
 
     The transition happens via a second save() (create-time signals have
-    already fired for REQUESTED; REQUESTED -> APPROVED itself notifies no one).
+    already fired for REQUESTED). Crossing REQUESTED -> APPROVED is what
+    fires the assignment notification to the final technician — while the
+    job was REQUESTED, assignment notifications are deliberately suppressed
+    (see apps.technician_portal.services.assignments).
     The RepairApproval breadcrumb marks the job customer-initiated — the
     detail pages key off this exact notes string.
     """

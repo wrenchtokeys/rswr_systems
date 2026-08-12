@@ -526,6 +526,12 @@ def job_create(request):
                     adas_calibration_cost=data.get('adas_calibration_cost'),
                     **common,
                 )
+            # Assignment signal: notify the assigned tech when someone else
+            # created the job for them — but not about their own creations,
+            # and not for walk-ins being logged after the work is done.
+            service._assignment_actor_user_id = request.user.id
+            if data['already_completed']:
+                service._skip_assignment_notifications = True
             service.save()
 
             # Extra charges (trip fee etc.) ride along on the ticket and

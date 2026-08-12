@@ -1,0 +1,22 @@
+================================================
+{{ branding.company_name }}
+JOBS REASSIGNED
+================================================
+
+{{ job_count }} of your job{{ job_count|pluralize }} ({{ job_summary }}) {{ job_count|pluralize:"was,were" }} reassigned to {{ new_technician_name }}.
+
+You are no longer responsible for {{ job_count|pluralize:"it,them" }}. If you have any questions about this change, please contact your manager.
+
+View your jobs:
+{{ base_url }}{{ action_url }}
+
+================================================
+
+{{ branding.footer_text }}
+
+Manage notification preferences:
+{{ base_url }}/tech/notifications/preferences/
+
+{{ branding.company_name }}
+{% if branding.company_address %}{{ branding.company_address }}
+{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}

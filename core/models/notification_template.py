@@ -79,6 +79,20 @@ class NotificationTemplate(AutoUpdateTimestampMixin, models.Model):
         help_text="URL template for notification action (e.g., '/tech/repairs/{{ repair.id }}/')"
     )
 
+    # Explicit delivery channels. When set, this list overrides the
+    # priority→channel mapping in Notification.get_delivery_channels() for
+    # notifications created from this template. Added so repair_assigned
+    # (priority HIGH → in_app+sms) can also send email without remapping
+    # what HIGH means for every other template at once (fieldops N1).
+    channels_override = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Explicit delivery channels for this template, e.g. "
+            '["in_app", "email", "sms"]. Empty = derive channels from priority.'
+        )
+    )
+
     # Template metadata
     active = models.BooleanField(
         default=True,

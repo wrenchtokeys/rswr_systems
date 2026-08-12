@@ -115,6 +115,9 @@ class Command(BaseCommand):
                 'description': 'Technician notification when assigned to repair',
                 'category': Notification.CATEGORY_ASSIGNMENT,
                 'default_priority': Notification.PRIORITY_HIGH,
+                # HIGH maps to in_app+sms; assignment must email too
+                # (fieldops N1 — staff notifications are default-ON).
+                'channels_override': ['in_app', 'email', 'sms'],
                 'title_template': 'New Repair Assignment - Unit {{ unit_number }}',
                 'message_template': (
                     'You have been assigned to repair unit {{ unit_number }} '
@@ -281,6 +284,61 @@ class Command(BaseCommand):
                     'unit_number', 'repair_id', 'customer_name',
                     'damage_type', 'technician_name'
                 ],
+            },
+
+            # 11. BULK ASSIGNED (Technician) — one summary per bulk reassign
+            {
+                'name': 'jobs_bulk_assigned',
+                'description': 'Technician summary notification for a bulk assignment',
+                'category': Notification.CATEGORY_ASSIGNMENT,
+                'default_priority': Notification.PRIORITY_HIGH,
+                'channels_override': ['in_app', 'email', 'sms'],
+                'title_template': (
+                    'You have been assigned {{ job_count }} '
+                    'job{{ job_count|pluralize }}'
+                ),
+                'message_template': (
+                    'You have been assigned {{ job_count }} '
+                    'job{{ job_count|pluralize }}: {{ job_summary }}.'
+                ),
+                'email_subject_template': (
+                    'You have been assigned {{ job_count }} '
+                    'job{{ job_count|pluralize }}'
+                ),
+                'email_html_template': 'emails/notifications/jobs_bulk_assigned.html',
+                'email_text_template': 'emails/notifications/jobs_bulk_assigned.txt',
+                'sms_template': (
+                    'You have been assigned {{ job_count }} '
+                    'job{{ job_count|pluralize }}. View: {{ action_url }}'
+                ),
+                'action_url_template': '/tech/jobs/',
+                'required_context': ['job_count', 'job_summary', 'technician_name'],
+            },
+
+            # 12. BULK REASSIGNED AWAY (Technician)
+            {
+                'name': 'jobs_bulk_reassigned_away',
+                'description': 'Technician summary notification when jobs are bulk-reassigned away',
+                'category': Notification.CATEGORY_ASSIGNMENT,
+                'default_priority': Notification.PRIORITY_MEDIUM,
+                'title_template': (
+                    '{{ job_count }} job{{ job_count|pluralize }} reassigned '
+                    'to {{ new_technician_name }}'
+                ),
+                'message_template': (
+                    '{{ job_count }} of your job{{ job_count|pluralize }} '
+                    '({{ job_summary }}) {{ job_count|pluralize:"was,were" }} '
+                    'reassigned to {{ new_technician_name }}.'
+                ),
+                'email_subject_template': (
+                    '{{ job_count }} job{{ job_count|pluralize }} reassigned '
+                    'to {{ new_technician_name }}'
+                ),
+                'email_html_template': 'emails/notifications/jobs_bulk_reassigned_away.html',
+                'email_text_template': 'emails/notifications/jobs_bulk_reassigned_away.txt',
+                'sms_template': '',
+                'action_url_template': '/tech/jobs/',
+                'required_context': ['job_count', 'job_summary', 'new_technician_name'],
             },
         ]
 

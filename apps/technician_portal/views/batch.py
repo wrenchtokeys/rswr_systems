@@ -474,6 +474,13 @@ def create_multi_break_repair(request):
                     # Repair.save() auto-approves shop-created work unless the
                     # customer explicitly requires approval
 
+                    # Assignment signal: never notify the creator about their
+                    # own batch; when a manager assigns someone else, notify
+                    # on the first break only — one ping per batch, not N.
+                    repair._assignment_actor_user_id = request.user.id
+                    if created_repairs:
+                        repair._skip_assignment_notifications = True
+
                     try:
                         repair.save()
                         created_repairs.append(repair)
@@ -800,6 +807,9 @@ def convert_to_batch(request, repair_id):
                 if photo_after:
                     new_repair.damage_photo_after = convert_heic_to_jpeg(photo_after)
 
+                # Extra breaks on an existing job aren't a new assignment —
+                # don't fire "you have been assigned" for each added break.
+                new_repair._skip_assignment_notifications = True
                 new_repair.save()
                 created_repairs.append(new_repair)
 
