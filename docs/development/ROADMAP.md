@@ -1,11 +1,33 @@
 # RS Systems — Roadmap
 
 *High-level project status and what's next.*
-*Last Updated: July 10, 2026 (absorbed TODO.md; core sections last revised March 25, 2026)*
+*Last Updated: August 11, 2026 (stale-doc sweep — March-era "next up" items reconciled against what actually shipped).*
+
+> **Scope note.** This file is the long-horizon view. The near-term work queues live in
+> `docs/strategy/` and are the ones to read before starting a session:
+> `UI_MAGIC_SESSIONS.md` (S11–S17 open), `FIELD_OPS_SESSIONS.md` (tech notifications +
+> scheduling, all TODO), `IMPROVEMENT_SESSIONS.md` (blocked on the Path A/B fork).
+> For dated detail on anything below, `CHANGELOG.md` is canonical.
 
 ---
 
 ## ✅ Completed
+
+### Aug 2026 — see `CHANGELOG.md` for the full record
+Condensed, because these closed out items this file used to list as pending:
+- **Billing & subscription hardening** (PRs #166/#171/#172/#173) — EB cron had never executed (four silent bugs), Stripe Basil payload shapes, webhook idempotency + reconcile sweeps, `past_due` read-only at 14 days, platform fee resolution, real plan limits.
+- **Payment reliability** (PRs #148/#149) — webhook 500 hotfix, manual-payment guard, reconcile cron, verified payment-complete landing.
+- **UI "magic" overhaul S1–S10** (PRs #160/#162/#163/#164/#167/#168/#169) — self-hosted assets, design tokens, brand palette, dashboard/jobs/job-form redesigns, motion, view transitions.
+- **SMS** (PRs #156/#158/#159) — AWS End User Messaging transport, invoice texts, review-request texts. TFN registration pending (see `docs/strategy/FIELD_OPS_SESSIONS.md` Appendix A).
+- **Launch readiness Phases 1–3** (PRs #143/#144/#146) — funnel/plans, first-run experience, support contact form.
+- **Loyalty** (PRs #139/#140/#142) — customer-anchored balances, owner reward management, opt-in auto-apply.
+- **Soft delete + 30-day restore** (PR #130), **tax overhaul + fleet/individual** (PRs #127/#128), **tenant branding** (PRs #116/#165).
+
+### v2.10 — Loyalty System + Bug Fix Sprint (March 24, 2026)
+- **Loyalty Phase 1** — PointTransaction ledger, LoyaltyConfig (per-tenant configurable), LoyaltyService, points in customer nav, points history page
+- **Rewards bug fixes** — 4 bugs fixed from code review (is_active filter, context, routing, unique constraint)
+- **Bug fix sprint** — CODE-164 through CODE-175 (tenant isolation in rewards, race conditions, N+1 queries, admin delete_queryset gaps)
+- **PR #98** — merged
 
 ### v2.10 — Loyalty System + Bug Fix Sprint (March 24, 2026)
 - **Loyalty Phase 1** — PointTransaction ledger, LoyaltyConfig (per-tenant configurable), LoyaltyService, points in customer nav, points history page
@@ -54,30 +76,37 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 
 ## 🔴 High Priority (Do Now)
 
-### Sentry Error Tracking
-- **Status:** Integration wired in code, just needs `SENTRY_DSN` env var in EB
-- **Action:** Create free Sentry project → set DSN → deploy
-- **Impact:** Catches every 500 instantly with full traceback
+### Technician assignment notifications
+- **Status:** Broken — an assigned tech is told nothing. Four stacked blockers, each verified.
+- **Action:** Sessions N1–N3 in [`../strategy/FIELD_OPS_SESSIONS.md`](/docs/strategy/FIELD_OPS_SESSIONS.md)
 
-### Tailwind CDN → Production Build
-- **Status:** Loading from `cdn.tailwindcss.com` in production (console warning)
-- **Action:** Bundle Tailwind via PostCSS or CLI, serve from static files
-- **Impact:** Faster page loads, no external dependency
+### Pre-existing test-suite failures
+- **Status:** ~90–105 failures on `main`. Sessions must compare against a baseline instead of counting absolutes, which makes real regressions easy to miss.
+- **Action:** Triage and fix in batches; mostly SES mocks and seed-data drift.
+
+### Customer portal test coverage
+- **Status:** 30+ views, thin coverage. Anything building on those views is building on sand.
+
+*(Resolved: Sentry — `SENTRY_DSN` set and verified in prod 2026-08-09. Tailwind CDN — removed in
+PR #160; there are now zero third-party asset hosts and CLAUDE.md forbids reintroducing them.)*
 
 ---
 
 ## 🟡 Next Up
 
-### Loyalty System Phase 2-4
-- Phase 2: Engagement hooks (early payment bonus, review bonus, manual adjustments, expiry cron)
-- Phase 3: Tiers (Pro-only — Bronze/Silver/Gold/Platinum, point multipliers)
-- Phase 4: Dashboards (customer loyalty dashboard, owner per-customer view, liability report)
-- → [`proposals/loyalty-system-overhaul.md`](/docs/proposals/loyalty-system-overhaul.md)
+### Scheduling & dispatch
+- The largest missing capability: repairs carry a date but there is no booked time, day view, or dispatch board.
+- → Sessions S1–S6 in [`../strategy/FIELD_OPS_SESSIONS.md`](/docs/strategy/FIELD_OPS_SESSIONS.md)
 
-### Review Request System
-- Smart Google review requests after repair completion
-- Throttled per customer type (retail/fleet/already reviewed)
-- Google Business integration
+### Loyalty System Phase 3-4
+- Phase 3: Tiers (Pro-only — Bronze/Silver/Gold/Platinum, point multipliers)
+- Phase 4: Dashboards (customer loyalty dashboard, owner per-customer view)
+- *Phases 1–2 shipped* (ledger, LoyaltyConfig, reconcile + expire commands, liability report, manual adjustment), plus the Aug 2026 customer-anchored rework.
+- → [`proposals/loyalty-system-overhaul.md`](/docs/proposals/loyalty-system-overhaul.md), [`proposals/loyalty-program-improvements.md`](/docs/proposals/loyalty-program-improvements.md)
+
+### Review Request System — Google Reviews API
+- *Shipped:* `ReviewRequestService`/`ReviewConfig`/`ReviewRequest`, per-tenant settings, fleet gating, and the `send_review_requests` cron (`12_reviews_cron.config`, every 20 min).
+- *Remaining:* actual Google Business Profile API integration (currently a link-out).
 - → [`proposals/review-request-system.md`](/docs/proposals/review-request-system.md)
 
 ### Website Integration Widget
@@ -87,8 +116,8 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 - → [`proposals/website-integration-widget.md`](/docs/proposals/website-integration-widget.md)
 
 ### Stripe Connect Phase 3 — Dashboard
-- Payout history, balance, admin fee reporting
-- Connect is live, dashboard is the remaining piece
+- *Shipped:* platform fee reporting at `/admin/platform-fees/`.
+- *Remaining:* per-shop payout history and balance.
 
 ---
 
@@ -104,9 +133,10 @@ Unified permissions, billing/invoicing lifecycle, SaaS subscription billing, Str
 - Technician performance
 - Customer profitability analysis
 
-### SMS Notifications (Twilio)
-- Fleet managers don't check email — text them
-- Repair approval, invoice ready, payment confirmed
+### SMS — remaining coverage
+- *Shipped* on AWS End User Messaging (not Twilio): invoice texts and review-request texts.
+- *Remaining:* repair approval and payment-confirmed texts; tech assignment texts (session N2).
+- Blocked in prod until the toll-free number clears registration — see `FIELD_OPS_SESSIONS.md` Appendix A.
 
 ### CI/CD Pipeline
 - GitHub Actions: run test suite on every PR to `main`
@@ -145,17 +175,16 @@ Items folded in from the deleted `docs/TODO.md` that weren't already tracked her
 
 ### Missing operational features (proposals needed)
 - **Customer communication log** — no record of calls/texts/conversations per customer; shops track this in their heads
-- **Scheduling / calendar** — repairs have a date but no calendar view, time slots, or route planning; minimum viable: daily view of who's going where
+- **Scheduling / calendar** — repairs have a date but no calendar view, time slots, or route planning; minimum viable: daily view of who's going where. **Now planned in detail** → [`../strategy/FIELD_OPS_SESSIONS.md`](/docs/strategy/FIELD_OPS_SESSIONS.md) sessions S1–S5
 - **Estimates / quotes** — no quote workflow before a repair (quote → customer approves → converts to repair)
 
 ### Infrastructure / code health
-- **Test coverage gaps** — customer portal (30+ views, ~16 tests), ConnectService payment routing lightly tested, 8 pre-existing failures in test_step5_nav / test_step3_signup / test_rewards / test_user_flow
+- **Test coverage gaps** — customer portal (30+ views, ~16 tests), ConnectService payment routing lightly tested. Pre-existing failures have grown to **~90–105** on `main` (mostly SES mocks and seed-data drift): always compare against a baseline, never count absolutes
 - **Missing `db_index` on frequently filtered fields** — `queue_status` on Repair; `status` on Invoice, CustomerInvitation, ReviewRequest, RewardRedemption; `is_active` on Tenant, Technician, etc. Not urgent at current data size; address before scale
 - **Admin fieldsets missing `tenant`** (low priority) — Repair, Replacement, Customer, Invoice, TaxRate, UnitRepairCount, DeliveryLog show `tenant` in list views but not fieldsets; admin UX gap only
 - **Security admin models not registered** (low priority) — `LoginAttempt`, `SecurityAuditLog`, `customer_portal.ApprovalToken` have no admin registration; likely intentional
 
 ### Backlog additions
-- White-label branding (custom colors/logo per shop beyond name)
 - Public API for third-party integrations
 - AI damage assessment from photos
 - Lot-walking scheduler (route optimization for parking-lot jobs)

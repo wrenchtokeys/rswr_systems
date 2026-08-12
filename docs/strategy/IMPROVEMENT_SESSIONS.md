@@ -2,10 +2,21 @@
 
 **Created:** 2026-08-07
 **Author:** Amelia (from a live walkthrough of the running app)
-**Status:** Proposed — pending Drake's review
+**Status:** Proposed — pending Drake's review. **Blocked on the §1 Path A / Path B fork**; nothing
+below can be sequenced until that call is made.
 **Companion to:** `docs/strategy/PRODUCT_DIRECTION.md` (June 2026). This document does not
 supersede it; it adds an execution layout and adds two strategic items that document omits
 (insurance/TPA billing, NAGS).
+
+> **Two caveats before using this doc (added 2026-08-11).**
+> 1. **It has no per-session status column**, unlike `UI_MAGIC_SESSIONS.md` and
+>    `FIELD_OPS_SESSIONS.md`. Nothing here is marked done even where the work has since shipped —
+>    check `CHANGELOG.md` before starting any session. Known overlaps: **B1 (field dispatch) is
+>    superseded** by `FIELD_OPS_SESSIONS.md` S2, which absorbs its execution; several Track A
+>    items were resolved by the UI sessions S1–S10.
+> 2. **Line-number anchors have drifted** — the app changed substantially after 2026-08-07.
+>    Re-verify every `file:line` before relying on it (Appendix A had one such anchor pointing at
+>    a since-deleted symbol).
 
 ---
 
@@ -813,7 +824,7 @@ bypassed model validation. **They are not defects. Do not "fix" them.**
 |---|---|
 | Damage types render as raw enums (`half_moon`, `bullseye`) in the jobs list | `DAMAGE_TYPE_CHOICES` (`apps/technician_portal/models.py:663–672`) are already human-readable (`Half-Moon`, `Bull's Eye`) and `job_list.html` correctly uses `get_damage_type_display`. The seed script wrote values not in `choices`; Django's `get_FOO_display` returns the raw value in that case. **Templates are correct.** |
 | Glass position renders lowercase (`windshield`) in the portal | `GLASS_POSITION_CHOICES` keys are uppercase (`WINDSHIELD` → `Windshield`, `:1484–1495`). Same seeding cause. **Templates are correct.** |
-| Plan limits aren't enforced (3 technicians on a 2-seat plan, no block) | Enforcement exists and works via `UsageService` + `PlanEnforcementMixin` (`apps/tenants/mixins.py:130`, `:221`). The seed created `Technician` rows directly in the ORM, bypassing the view layer. The *real*, smaller finding is A6: over-limit stat cards have no upgrade CTA. |
+| Plan limits aren't enforced (3 technicians on a 2-seat plan, no block) | Enforcement exists and works via `UsageService`. The seed created `Technician` rows directly in the ORM, bypassing the view layer. The *real*, smaller finding is A6: over-limit stat cards have no upgrade CTA. **Anchor corrected 2026-08-11:** this originally cited `PlanEnforcementMixin` (`apps/tenants/mixins.py:130`, `:221`). That mixin and `check_plan_limit` were **deleted** in PR #171 — no callers, and a third divergent copy of the logic. Call `UsageService` directly (`can_create_repairs(n)`, not `can_create_repair()`); `mixins.py` now holds only `TenantQuerysetMixin`/`TenantCreateMixin`. |
 | The customer portal isn't white-labeled — it shows the RS Systems logo | It is white-labeled when `tenant.logo` is set (`base_customer.html:40–41`). The tenant used for testing had no logo uploaded. The *real*, smaller finding is A3: the no-logo **fallback** is an RS monogram. |
 | The job-form onboarding tour renders detached/broken | The first step of each tour is an intentional element-less intro modal, which driver.js centers by design (`static/js/tours.js:19`, `:61`, `:71`). Working as built. Whether a centered intro modal over the damage diagram is the *best* first impression is a judgment call, not a bug — low priority if pursued at all. |
 
@@ -874,3 +885,4 @@ username — usernames are generated from first names.
 | Date | Change |
 |---|---|
 | 2026-08-07 | Initial version — from a live four-audience walkthrough of the running app. |
+| 2026-08-11 | Stale-doc sweep: flagged that this file has no status tracking and that B1 is superseded by `FIELD_OPS_SESSIONS.md` S2; corrected the Appendix A anchor citing the deleted `PlanEnforcementMixin`. No session content changed. |
