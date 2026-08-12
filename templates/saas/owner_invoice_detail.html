@@ -442,16 +442,49 @@
         function copyPayLink() {
             const input = document.getElementById('public-pay-link');
             const btn = document.getElementById('copy-pay-link-btn');
-            const done = () => {
-                btn.innerHTML = '<i class="fas fa-check mr-1.5"></i>Copied!';
-                setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy mr-1.5"></i>Copy'; }, 2000);
+            const idle = '<i class="fas fa-copy mr-1.5"></i>Copy';
+            let resetTimer;
+
+            const flash = (html, ms) => {
+                btn.innerHTML = html;
+                clearTimeout(resetTimer);
+                resetTimer = setTimeout(() => { btn.innerHTML = idle; }, ms);
             };
+            const copied = () => flash('<i class="fas fa-check mr-1.5"></i>Copied!', 2000);
+
+            // Selection-based copy. Needs the text selected first, and it
+            // actually reports whether it worked -- the old code ran it
+            // blind and claimed success either way.
+            const execCopy = () => {
+                try {
+                    input.focus();
+                    input.setSelectionRange(0, input.value.length);
+                    return document.execCommand('copy');
+                } catch (e) {
+                    return false;
+                }
+            };
+
+            // Last resort: leave the link selected and say who finishes the
+            // job. Silence is what made this button look broken --
+            // writeText REJECTS when the clipboard permission is blocked or
+            // the document isn't focused, and nothing caught that, so the
+            // button sat there doing visibly nothing, forever.
+            const manual = () => {
+                input.focus();
+                input.setSelectionRange(0, input.value.length);
+                const keys = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘C' : 'Ctrl+C';
+                flash('<i class="fas fa-i-cursor mr-1.5"></i>Press ' + keys, 4000);
+            };
+
             if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(input.value).then(done);
+                navigator.clipboard.writeText(input.value).then(copied, () => {
+                    if (execCopy()) { copied(); } else { manual(); }
+                });
+            } else if (execCopy()) {
+                copied();
             } else {
-                input.select();
-                document.execCommand('copy');
-                done();
+                manual();
             }
         }
         </script>
