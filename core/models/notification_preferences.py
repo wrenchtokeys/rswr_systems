@@ -162,6 +162,16 @@ class TechnicianNotificationPreference(BaseNotificationPreference):
     def __str__(self):
         return f"Preferences for {self.technician.user.get_full_name()}"
 
+    def can_send_email(self):
+        """Staff notifications are default-ON (Drake, 2026-08-11).
+
+        Technicians are staff the owner added — the owner-entered email is
+        trusted, so no email_verified gate (nothing ever set it for techs,
+        which silently blocked all technician email). The opt-out
+        (receive_email_notifications) is still honored.
+        """
+        return self.receive_email_notifications
+
 
 class CustomerNotificationPreference(BaseNotificationPreference):
     """

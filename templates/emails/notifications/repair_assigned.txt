@@ -1,47 +1,39 @@
 ================================================
 {{ branding.company_name }}
-NEW REPAIR ASSIGNMENT
+NEW {{ job_type|default:"Repair"|upper }} ASSIGNMENT
 ================================================
 
-You've been assigned to a new windshield repair. Please review the details below.
+You've been assigned a new job. Please review the details below.
 
 ================================================
-REPAIR #{{ repair.id }}
-Unit {{ repair.unit_number }}
+{{ job_type|default:"Repair"|upper }} #{% firstof job_id repair_id %}
+Unit {{ unit_number }}
 ================================================
 
-{% if repair.customer %}CUSTOMER:           {{ repair.customer.company_name }}
+CUSTOMER:     {{ customer_name }}
 
-{% endif %}BREAK DESCRIPTION:  {{ repair.break_description }}
-
-REQUESTED DATE:     {{ repair.requested_repair_date|date:"M d, Y" }}
-
-REPAIR COST:        ${{ repair.total_cost }}
-
-{% if repair.damage_photo_before %}================================================
-DAMAGE PHOTO
+STATUS:       {{ status }}
+{% if description %}
+DETAILS:      {{ description }}
+{% endif %}
+================================================
+VIEW JOB DETAILS
 ================================================
 
-View damage photo at: {{ repair.damage_photo_before.url }}
-
-{% endif %}================================================
-VIEW FULL DETAILS & START REPAIR
-================================================
-
-{{ view_repair_url }}
+{{ base_url }}{{ action_url }}
 
 ================================================
-⏰ ACTION REQUIRED
+ACTION REQUIRED
 ================================================
 
-Please review this repair assignment and update the status once you begin work. The customer is waiting for your update.
+Please review this assignment and update the status once you begin work.
 
 ================================================
 
 {{ branding.footer_text }}
 
 Manage notification preferences:
-{{ unsubscribe_url }}
+{{ base_url }}/tech/notifications/preferences/
 
 {{ branding.company_name }}
 {% if branding.company_address %}{{ branding.company_address }}

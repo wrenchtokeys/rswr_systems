@@ -1,0 +1,22 @@
+================================================
+{{ branding.company_name }}
+NEW ASSIGNMENTS
+================================================
+
+You have been assigned {{ job_count }} job{{ job_count|pluralize }}:
+
+{{ job_summary }}
+
+View your jobs:
+{{ base_url }}{{ action_url }}
+
+================================================
+
+{{ branding.footer_text }}
+
+Manage notification preferences:
+{{ base_url }}/tech/notifications/preferences/
+
+{{ branding.company_name }}
+{% if branding.company_address %}{{ branding.company_address }}
+{% endif %}{% if branding.website_url %}{{ branding.website_url }}{% endif %}

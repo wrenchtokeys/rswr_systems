@@ -18,6 +18,9 @@ from apps.customer_portal.models import RepairApproval, CustomerUser
 from core.models import Customer
 from apps.technician_portal.forms import RepairForm
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
+from apps.technician_portal.services.assignments import (
+    assign_job, notify_bulk_assignment,
+)
 from common.auth import get_user_role
 from common.utils import convert_heic_to_jpeg
 
@@ -341,6 +344,7 @@ def create_repair(request):
 
                     # Repair.save() auto-approves shop-created work unless the
                     # customer explicitly requires approval
+                    repair._assignment_actor_user_id = request.user.id
                     repair.save()
                     form.save_m2m()
                     if repair.queue_status == 'PENDING':
@@ -372,6 +376,7 @@ def create_repair(request):
 
                     # Repair.save() auto-approves shop-created work unless the
                     # customer explicitly requires approval
+                    repair._assignment_actor_user_id = request.user.id
                     repair.save()
                     form.save_m2m()
                     if repair.queue_status == 'PENDING':
@@ -595,6 +600,9 @@ def update_repair(request, repair_id):
                 else:
                     messages.error(request, "That reward is no longer available to apply.")
 
+            # Assignment signal: if the admin changed the technician on this
+            # form, notify the techs — but never the actor about themselves.
+            updated_repair._assignment_actor_user_id = request.user.id
             updated_repair.save()
             form.save_m2m()
 
@@ -973,9 +981,14 @@ def assign_repair(request, repair_id):
                     messages.error(request, "You can only assign repairs to yourself or technicians you manage.")
                     return redirect('assign_repair', repair_id=repair.id)
 
-            repair.technician = assigned_tech
-            repair.queue_status = 'APPROVED'
-            repair.save()
+            # force_notify_new: the tech may already be provisionally set on
+            # the REQUESTED job — accepting it is still news to them.
+            assign_job(
+                repair, assigned_tech,
+                assigned_by=request.user,
+                queue_status='APPROVED',
+                force_notify_new=True,
+            )
 
             # Create approval record
             customer_users = CustomerUser.objects.filter(customer=repair.customer)
@@ -993,13 +1006,6 @@ def assign_repair(request, repair_id):
                         'notes': "Auto-approved - customer requested repair",
                     }
                 )
-
-            TechnicianNotification.objects.create(
-                technician=assigned_tech,
-                message=f"You have been assigned Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number}",
-                read=False,
-                repair=repair
-            )
 
             messages.success(request, f"Repair #{repair.id} assigned to {assigned_tech.user.get_full_name()}")
             return redirect('repair_detail', repair_id=repair.id)
@@ -1079,28 +1085,12 @@ def reassign_to_self(request, repair_id):
         old_technician = repair.technician
 
         if not user_is_admin:
-            repair.technician = manager
-            repair.save()
+            # Notifies the old tech (repair_reassigned_away) and marks their
+            # stale unread rows read; the manager assigned themselves, so no
+            # self-notification.
+            assign_job(repair, manager, assigned_by=request.user)
 
             messages.success(request, f"Repair reassigned from {old_technician.user.get_full_name()} to you.")
-
-            # Auto-cleanup notifications
-            old_tech_notifications = TechnicianNotification.objects.filter(
-                technician=old_technician,
-                repair=repair,
-                read=False
-            )
-            if old_tech_notifications.exists():
-                reassign_count = old_tech_notifications.count()
-                old_tech_notifications.update(read=True)
-                logger.info(f"Auto-marked {reassign_count} notification(s) as read for technician {old_technician.user.username} after reassigning repair #{repair.id}")
-
-            TechnicianNotification.objects.create(
-                technician=old_technician,
-                message=f"Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been reassigned to {request.user.get_full_name()}",
-                read=False,
-                repair=repair
-            )
         else:
             messages.info(request, "Admins should use the regular assignment interface.")
             return redirect('assign_repair', repair_id=repair.id)
@@ -1211,6 +1201,10 @@ def bulk_repair_action(request):
                     repair.technician = technician
 
                 repair.queue_status = 'APPROVED'
+                # Assignment signal: don't notify the actor about jobs they
+                # just assigned to themselves; do notify a pre-set tech that
+                # their REQUESTED job is now approved.
+                repair._assignment_actor_user_id = request.user.id
                 repair.save()
 
                 # Build actor display name for audit notes
@@ -1794,26 +1788,9 @@ def admin_reassign_repair(request, repair_id):
                 tech_qs = tech_qs.none()
             new_tech = tech_qs.get()
 
-            old_tech = repair.technician
-            repair.technician = new_tech
-            repair.save()
-
-            # Notify old technician
-            if old_tech and old_tech != new_tech:
-                TechnicianNotification.objects.create(
-                    technician=old_tech,
-                    message=f"Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been reassigned to {new_tech.user.get_full_name()}",
-                    read=False,
-                    repair=repair
-                )
-
-            # Notify new technician
-            TechnicianNotification.objects.create(
-                technician=new_tech,
-                message=f"You have been assigned Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number}",
-                read=False,
-                repair=repair
-            )
+            # Notifies the new tech (repair_assigned) and the old tech
+            # (repair_reassigned_away) through the one assignment path.
+            assign_job(repair, new_tech, assigned_by=request.user)
 
             messages.success(request, f"Repair #{repair.id} reassigned to {new_tech.user.get_full_name()}")
             return redirect('repair_detail', repair_id=repair.id)
@@ -1872,27 +1849,44 @@ def portal_bulk_reassign(request):
             qs = qs.none()
 
         count = 0
+        gained = []          # jobs that actually changed hands to new_tech
+        lost_by_tech = {}    # old Technician -> [jobs they lost]
         with transaction.atomic():
             for repair in qs:
                 old_tech = repair.technician
-                repair.technician = new_tech
-                repair.save()
+                changed = old_tech is None or old_tech.pk != new_tech.pk
+                # Per-job core notifications are suppressed (notify=False);
+                # each affected tech gets ONE summary notification below
+                # instead of one email per repair.
+                assign_job(repair, new_tech, assigned_by=request.user, notify=False)
                 count += 1
 
-                if old_tech and old_tech != new_tech:
+                if not changed:
+                    continue
+                gained.append(repair)
+                if old_tech is not None:
+                    lost_by_tech.setdefault(old_tech, []).append(repair)
+                    TechnicianNotification.objects.filter(
+                        technician=old_tech, repair=repair, read=False,
+                    ).update(read=True)
                     TechnicianNotification.objects.create(
                         technician=old_tech,
                         message=f"Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number} has been reassigned to {new_tech.user.get_full_name()}",
                         read=False,
                         repair=repair
                     )
-
                 TechnicianNotification.objects.create(
                     technician=new_tech,
                     message=f"You have been assigned Repair #{repair.id} for {repair.customer.name} - Unit {repair.unit_number}",
                     read=False,
                     repair=repair
                 )
+
+        notify_bulk_assignment(
+            new_tech, gained,
+            assigned_by=request.user,
+            reassigned_away=lost_by_tech,
+        )
 
         messages.success(request, f"Reassigned {count} repair(s) to {new_tech.user.get_full_name()}")
         return redirect('job_list')
