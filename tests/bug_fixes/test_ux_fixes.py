@@ -1085,15 +1085,15 @@ class NavbarStickyOffsetTemplateTest(TestCase):
 
     def test_repair_detail_quick_actions_bar_uses_top_16(self):
         """
-        The Quick Actions Bar must use top-16 so it sticks just below the main nav
-        (which is h-16 = 64px tall) rather than overlapping with it.
+        The Quick Actions Bar must dock just below the main nav rather than
+        overlapping it. The nav is h-16 sm:h-20, so the offset is paired.
         """
         content = self._read_template('technician_portal', 'repair_detail.html')
         self.assertIn(
-            'sticky top-16 z-10',
+            'sticky top-16 sm:top-20 z-10',
             content,
-            "repair_detail.html Quick Actions Bar should use 'sticky top-16 z-10' "
-            "to dock below the main nav (h-16 = 64px)."
+            "repair_detail.html Quick Actions Bar should use 'sticky top-16 sm:top-20 z-10' "
+            "to dock below the main nav (h-16 sm:h-20)."
         )
 
     def test_owner_invoices_batch_bar_not_top_0(self):
@@ -1111,14 +1111,15 @@ class NavbarStickyOffsetTemplateTest(TestCase):
 
     def test_owner_invoices_batch_bar_uses_top_16(self):
         """
-        The batch bar must use top-16 so it sticks below the main nav.
+        The batch bar must dock below the main nav, whose height is
+        h-16 sm:h-20 — change the two together.
         """
         content = self._read_template('saas', 'owner_invoices.html')
         self.assertIn(
-            'sticky top-16 z-10',
+            'sticky top-16 sm:top-20 z-10',
             content,
-            "owner_invoices.html batch bar should use 'sticky top-16 z-10' to "
-            "dock below the main nav (h-16 = 64px)."
+            "owner_invoices.html batch bar should use 'sticky top-16 sm:top-20 z-10' "
+            "to dock below the main nav (h-16 sm:h-20)."
         )
 
     def test_base_app_main_nav_still_at_top_0(self):

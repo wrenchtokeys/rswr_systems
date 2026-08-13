@@ -30,7 +30,7 @@
                     {% for radio in form.service_type %}
                     <label class="flex-1 cursor-pointer">
                         {{ radio.tag }}
-                        <span class="type-pill block text-center px-4 py-2.5 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                        <span class="type-pill flex items-center justify-center min-h-11 text-center px-4 py-2.5 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
                             {{ radio.choice_label }}
                         </span>
                     </label>
@@ -53,11 +53,11 @@
 
                 <div class="flex gap-2 mb-3" id="cust-mode-toggle">
                     <button type="button" data-mode="fleet"
-                            class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                            class="cust-mode-btn flex-1 min-h-11 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
                         <i class="fas fa-truck mr-1.5"></i>Fleet
                     </button>
                     <button type="button" data-mode="individual"
-                            class="cust-mode-btn flex-1 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
+                            class="cust-mode-btn flex-1 min-h-11 px-4 py-2 rounded-lg border text-sm font-medium border-gray-300 text-gray-600 hover:border-gray-400 transition-colors">
                         <i class="fas fa-user mr-1.5"></i>Individual
                     </button>
                 </div>
@@ -125,8 +125,17 @@
                 </div>
             </div>
 
+            {% comment %}
+            One input, two meanings: a fleet's unit number and an individual's
+            vehicle. The label and placeholder follow the customer-type toggle
+            (setMode below) so the tech is never asked for a "unit #" on a
+            walk-in's Camry — that's how "Unit #Silver Camry" reached invoices.
+            {% endcomment %}
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Vehicle / unit <span class="text-gray-400 font-normal">(optional)</span></label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <span id="unit-label-text">Vehicle / unit</span>
+                    <span class="text-gray-400 font-normal">(optional)</span>
+                </label>
                 {{ form.unit_number }}
             </div>
 
@@ -330,10 +339,15 @@
                 </div>
             </details>
 
-            <div class="flex items-center gap-3 pt-2">
-                <button type="submit" class="btn-secondary flex-1">Save</button>
+            {% comment %}
+            Stacked on a phone: "Save & Send Invoice" does not fit beside
+            "Save" at 360px, and the bottom slot is the one a thumb reaches
+            without a regrip — so the primary action goes there.
+            {% endcomment %}
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2">
+                <button type="submit" class="btn-secondary w-full sm:w-auto sm:flex-1">Save</button>
                 {% if user_can_invoices %}
-                <button type="submit" name="save_and_send" value="1" id="save-send-btn" class="btn-primary flex-1">
+                <button type="submit" name="save_and_send" value="1" id="save-send-btn" class="btn-primary w-full sm:w-auto sm:flex-1">
                     <i class="fas fa-paper-plane mr-2 text-xs"></i>Save &amp; Send Invoice
                 </button>
                 {% endif %}
@@ -350,7 +364,7 @@
         </form>
 
         <div class="flex justify-center mt-6">
-            <a href="{% url 'job_list' %}" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            <a href="{% url 'job_list' %}" class="inline-flex items-center min-h-11 px-3 text-sm text-gray-500 hover:text-gray-700 transition-colors">
                 <i class="fas fa-arrow-left mr-1"></i> Back to Jobs
             </a>
         </div>
@@ -456,10 +470,24 @@ document.addEventListener('DOMContentLoaded', function() {
             syncTaxExempt();
         }
 
+        // Fleets have unit numbers; individuals have a vehicle. Same input,
+        // so the wording has to move with the mode — otherwise the tech types
+        // "Silver Camry" under a "unit" label and the invoice prints it as one.
+        const unitInput = document.querySelector('[name="unit_number"]');
+        const unitLabel = document.getElementById('unit-label-text');
+        function syncUnitWording(mode) {
+            if (!unitInput) return;
+            const individual = (mode === 'individual');
+            if (unitLabel) unitLabel.textContent = individual ? 'Vehicle' : 'Unit #';
+            const key = individual ? 'individualPlaceholder' : 'fleetPlaceholder';
+            if (unitInput.dataset[key]) unitInput.placeholder = unitInput.dataset[key];
+        }
+
         function setMode(mode) {
             fleetBox.style.display = (mode === 'fleet') ? '' : 'none';
             indBox.style.display = (mode === 'individual') ? '' : 'none';
             btns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+            syncUnitWording(mode);
             if (mode === 'fleet') {
                 // Leaving individual mode: clear its state
                 clearNewInputs();

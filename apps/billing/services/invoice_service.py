@@ -88,6 +88,10 @@ class InvoiceData:
     city_tax_rate: Decimal = Decimal('0.000')
     special_tax_rate: Decimal = Decimal('0.000')
     tax_amount: Decimal = Decimal('0.00')
+    # Header for the vehicle column. An invoice belongs to exactly one
+    # customer, so the whole column is either fleet unit numbers or
+    # individuals' vehicles — never a mix. See Customer.vehicle_column_label.
+    unit_column_label: str = 'Unit #'
 
 
 class InvoiceService:
@@ -345,7 +349,9 @@ class InvoiceService:
         
         return InvoiceLineItem(
             repair_id=repair.id,
-            unit_number=repair.unit_number,
+            # Bare identifier — the column header supplies the noun ("Unit #"
+            # for a fleet, "Vehicle" for an individual).
+            unit_number=repair.get_vehicle_identifier(),
             damage_type='Windshield Repair',
             repair_date=repair.repair_date,
             description=full_description,
@@ -493,8 +499,9 @@ class InvoiceService:
             tax_amount=tax_amount,
             payment_terms=payment_terms,
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
+            unit_column_label=customer.vehicle_column_label,
         )
-    
+
     def build_invoice_data_from_record(self, invoice) -> InvoiceData:
         """
         Build InvoiceData from an existing Invoice model record — its OWN
@@ -534,9 +541,18 @@ class InvoiceService:
             original_cost = unit_price * li.quantity
             discount = li.discount or Decimal('0.00')
 
+            # The job is the authority on how its vehicle is named — an
+            # individual gets their vehicle, not the stored unit_number
+            # wearing a fleet label. li.unit_number is the fallback for lines
+            # whose job was deleted, and for free-form charge lines.
+            job = repair or li.replacement
+            vehicle_identifier = (
+                job.get_vehicle_identifier() if job is not None else ''
+            ) or li.unit_number or ''
+
             line_items.append(InvoiceLineItem(
                 repair_id=li.repair_id,
-                unit_number=li.unit_number or (repair.unit_number if repair else ''),
+                unit_number=vehicle_identifier,
                 damage_type=damage_type,
                 # li.repair_date is nullable; the PDF renderer strftime()s it
                 repair_date=li.repair_date or invoice.invoice_date,
@@ -599,6 +615,7 @@ class InvoiceService:
             tax_amount=invoice.tax_amount,
             payment_terms=payment_terms,
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
+            unit_column_label=customer.vehicle_column_label,
         )
 
     def generate_invoice_from_record(
@@ -795,8 +812,10 @@ class InvoiceService:
         
         story = []
         
-        # Header: Logo + Company Name side by side
-        logo = self._get_logo_for_pdf(max_width=1.5*inch, max_height=1*inch)
+        # Header: Logo + Company Name side by side. The shop's logo is the
+        # first thing a customer sees on the invoice, so it gets real estate:
+        # 1.5in was a thumbnail next to a five-line address block.
+        logo = self._get_logo_for_pdf(max_width=2.4*inch, max_height=1.5*inch)
         
         # Build company info block (stacked vertically)
         company_info_parts = [f"<b>{self.COMPANY_NAME}</b>"]
@@ -818,7 +837,7 @@ class InvoiceService:
             # Logo on left, company info on right
             header_table = Table(
                 [[logo, company_info_para]],
-                colWidths=[1.8*inch, 5.2*inch]
+                colWidths=[2.6*inch, 4.4*inch]
             )
             header_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -891,12 +910,15 @@ class InvoiceService:
             story.append(Spacer(1, 15))
 
         # Line Items Table
-        story.append(Paragraph("Repair Details", self.styles['SectionHeader']))
-        
-        # Table header - using royal blue background with white text
+        story.append(Paragraph("Service Details", self.styles['SectionHeader']))
+
+        # Table header - using royal blue background with white text.
+        # The first column is "Unit #" for a fleet and "Vehicle" for an
+        # individual — an invoice has exactly one customer, so the column
+        # never has to serve both.
         header_style = self.styles['TableHeader']
         table_data = [[
-            Paragraph("<b>Unit #</b>", header_style),
+            Paragraph(f"<b>{invoice_data.unit_column_label}</b>", header_style),
             Paragraph("<b>Date</b>", header_style),
             Paragraph("<b>Type</b>", header_style),
             Paragraph("<b>Description</b>", header_style),
@@ -920,11 +942,15 @@ class InvoiceService:
                 Paragraph(amount_text, self.styles['Normal'])
             ])
         
-        # Create and style the table with ROYAL BLUE header
-        line_items_table = Table(
-            table_data,
-            colWidths=[1*inch, 0.9*inch, 1.1*inch, 2.5*inch, 1*inch]
+        # Create and style the table with ROYAL BLUE header.
+        # "2019 Ford F-150" needs more room than "4521", so the first column
+        # borrows from Description on an individual's invoice.
+        is_individual = invoice_data.unit_column_label != 'Unit #'
+        col_widths = (
+            [1.7*inch, 0.9*inch, 1.1*inch, 1.8*inch, 1*inch] if is_individual
+            else [1*inch, 0.9*inch, 1.1*inch, 2.5*inch, 1*inch]
         )
+        line_items_table = Table(table_data, colWidths=col_widths)
         
         line_items_table.setStyle(TableStyle([
             # Header styling - ROYAL BLUE background with white text

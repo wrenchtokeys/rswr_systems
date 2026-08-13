@@ -10,7 +10,19 @@ blocked first paint, leaked visitor IPs, and made a strict CSP impossible for an
 app that takes card payments.
 {% endcomment %}
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% comment %}
+viewport-fit=cover is what makes env(safe-area-inset-*) report a real value
+instead of 0 — without it the `.safe-area-*` classes in app.css are no-ops and
+the customer portal's fixed bottom tab bar sits under the iPhone home
+indicator. It also lets content reach the screen edges in landscape, so the
+shells pair it with `.safe-area-x` on their content wrappers.
+
+Deliberately no `maximum-scale` / `user-scalable=no`: a tech in bright sun
+pinching in on a photo is a feature, and blocking zoom is an accessibility
+failure. The iOS focus-zoom annoyance is fixed properly instead — 16px form
+inputs on coarse pointers, see the TOUCH / MOBILE block in app.css.
+{% endcomment %}
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
 {# Preload the one font that blocks first paint. Self-hosted = same origin, so #}
 {# the browser can start it during HTML parse instead of after a DNS+TLS hop. #}

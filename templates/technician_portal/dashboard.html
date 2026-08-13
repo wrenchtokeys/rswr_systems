@@ -147,7 +147,7 @@
             <div class="px-6 py-12 text-center">
                 <div class="text-4xl mb-3">☕</div>
                 <p class="text-gray-500 font-medium">No jobs queued — time for coffee</p>
-                <a href="{% url 'job_create' %}" class="inline-flex items-center mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press">
+                <a href="{% url 'job_create' %}" class="inline-flex items-center min-h-11 mt-4 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors press">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                     </svg>
@@ -605,7 +605,7 @@
             </div>
             <div class="text-2xl font-bold text-gray-900 mb-1">{{ summary_stats.completed_this_week }} Repair{{ summary_stats.completed_this_week|pluralize }} Completed</div>
             <p class="text-sm text-gray-600 mb-3">in the past 7 days</p>
-            <a href="{% url 'job_list' %}?status=COMPLETED" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+            <a href="{% url 'job_list' %}?status=COMPLETED" class="inline-flex items-center min-h-11 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
                 View Completed Repairs
             </a>
         </div>

@@ -67,11 +67,16 @@
                 </table>
 
                 <table class="items">
-                    <tr><th>Service</th><th>Unit</th><th>Amount</th></tr>
+                    {% comment %}
+                    Fleets are identified by unit number, individuals by their
+                    vehicle — the header follows the customer so an individual
+                    never reads "Unit #2019 Ford F-150".
+                    {% endcomment %}
+                    <tr><th>Service</th><th>{{ invoice.vehicle_column_label }}</th><th>Amount</th></tr>
                     {% for item in line_items %}
                     <tr>
                         <td>{{ item.description|default:"Service" }}</td>
-                        <td>{{ item.unit_number|default:"—" }}</td>
+                        <td>{{ item.vehicle_identifier|default:"—" }}</td>
                         <td>${{ item.amount|floatformat:2 }}</td>
                     </tr>
                     {% endfor %}

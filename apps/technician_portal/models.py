@@ -466,6 +466,50 @@ class GlassService(models.Model):
             count += len(self.additional_photos)
         return count
 
+    # ---- Vehicle identity -------------------------------------------------
+    # A fleet is identified by unit number, an individual by their vehicle,
+    # and the two are never interchangeable. The job form's one "Vehicle /
+    # unit" box writes to unit_number for both, so an individual's invoice
+    # used to read "Unit #Silver Camry" — the shop's own field note wearing a
+    # fleet label. Everything customer-facing goes through these three.
+
+    @property
+    def is_for_individual(self):
+        """True when this job belongs to a person rather than a fleet account."""
+        return bool(self.customer and self.customer.is_individual)
+
+    @property
+    def vehicle_description(self):
+        """'2019 Ford F-150' from the year/make/model fields, or ''."""
+        parts = [self.vehicle_year, self.vehicle_make, self.vehicle_model]
+        return ' '.join(str(p).strip() for p in parts if p).strip()
+
+    def get_vehicle_identifier(self):
+        """Bare identifier for a column whose header already says what it is.
+
+        Fleet      -> '4521'
+        Individual -> '2019 Ford F-150', falling back to whatever free text
+                      the tech typed in the vehicle box ('Silver Camry').
+        '' when there is nothing to show.
+        """
+        unit = (self.unit_number or '').strip()
+        if self.is_for_individual:
+            return self.vehicle_description or unit
+        return unit
+
+    def get_vehicle_label(self):
+        """Self-describing identifier for inline prose (invoice descriptions).
+
+        Fleet      -> 'Unit #4521'
+        Individual -> '2019 Ford F-150' (no unit-number framing, ever)
+        '' when there is nothing to show, so callers drop the whole segment
+        rather than printing a bare 'Unit #'.
+        """
+        identifier = self.get_vehicle_identifier()
+        if not identifier:
+            return ''
+        return identifier if self.is_for_individual else f"Unit #{identifier}"
+
 
 # =============================================================================
 # WARRANTY POLICY MODEL
@@ -1088,12 +1132,19 @@ class Repair(GlassService):
         """Generate a descriptive line item string for invoices.
         
         Includes break number (for batches) and damage location if available.
+        The vehicle segment follows the customer type — fleets get a unit
+        number, individuals get their vehicle — and is dropped entirely when
+        there is nothing to name.
         Examples:
             'Windshield repair - Unit #100 - Chip'
+            'Windshield repair - 2019 Ford F-150 - Chip'
             'Windshield repair - Unit #100 - Break 2 of 3 - Chip (passenger side)'
         """
-        parts = [f"Windshield repair - Unit #{self.unit_number}"]
-        
+        parts = ['Windshield repair']
+        vehicle = self.get_vehicle_label()
+        if vehicle:
+            parts.append(vehicle)
+
         if self.is_part_of_batch and self.break_number:
             if self.total_breaks_in_batch:
                 parts.append(f"Break {self.break_number} of {self.total_breaks_in_batch}")
@@ -1757,12 +1808,19 @@ class Replacement(GlassService):
     def get_invoice_description(self):
         """Generate a descriptive line item string for invoices.
 
+        The vehicle segment follows the customer type (see
+        GlassService.get_vehicle_label) and is dropped when there is nothing
+        to name — the old 'Unit #N/A' was noise on every walk-in.
         Examples:
             'Windshield Replacement - Unit #100'
-            'Rear Window Replacement - Unit #N/A'
+            'Windshield Replacement - 2019 Ford F-150'
+            'Rear Window Replacement'
         """
         position = self.get_glass_position_display() if self.glass_position else 'Glass'
-        return f"{position} Replacement - Unit #{self.unit_number or 'N/A'}"
+        vehicle = self.get_vehicle_label()
+        if vehicle:
+            return f"{position} Replacement - {vehicle}"
+        return f"{position} Replacement"
 
     class Meta:
         ordering = ['-service_date']

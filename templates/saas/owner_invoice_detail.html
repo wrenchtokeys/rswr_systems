@@ -6,7 +6,7 @@
 <!-- Breadcrumb -->
 <div class="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
     <div class="flex items-center space-x-2 text-sm">
-        <a href="{% url 'owner_invoice_list' %}" class="text-brand-600 hover:text-brand-800 font-medium">
+        <a href="{% url 'owner_invoice_list' %}" class="inline-flex items-center min-h-11 -my-2 pr-2 text-brand-600 hover:text-brand-800 font-medium">
             <i class="fas fa-arrow-left mr-1"></i>Invoices
         </a>
         <span class="text-gray-400">/</span>
@@ -14,53 +14,53 @@
     </div>
     <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
-        <button onclick="openInvoiceEditModal()" aria-label="Edit invoice details" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+        <button onclick="openInvoiceEditModal()" aria-label="Edit invoice details" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <i class="fas fa-pen sm:mr-2"></i><span class="hidden sm:inline">Edit Details</span>
         </button>
         {% endif %}
         {% if invoice.status == 'DRAFT' %}
         <!-- Draft Actions -->
         <button onclick="document.getElementById('send-confirm-modal').classList.remove('hidden')" aria-label="Send invoice"
-            class="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
+            class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-3 sm:px-4 py-2 text-sm font-semibold text-white bg-brand-600 rounded-lg hover:bg-brand-700 transition-colors">
             <i class="fas fa-paper-plane sm:mr-2"></i><span class="hidden sm:inline">Send Invoice</span>
         </button>
         {% if pdf_url %}
-        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
         </a>
         {% endif %}
-        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
         </a>
         {% else %}
         <!-- Sent/Active Invoice Actions -->
         {% if pdf_url %}
-        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
+        <a href="{{ pdf_url }}" target="_blank" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-download sm:mr-2"></i><span class="hidden sm:inline">Download PDF</span>
         </a>
         {% endif %}
-        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
+        <a href="{% url 'owner_invoice_pdf' invoice_id=invoice.id %}?fresh=1" target="_blank" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors press">
             <i class="fas fa-file-pdf sm:mr-2"></i><span class="hidden sm:inline">{% if pdf_url %}Regenerate{% else %}Generate{% endif %} PDF</span>
         </a>
         <form method="post" action="{% url 'owner_email_invoice' invoice_id=invoice.id %}" class="inline js-confirm-send"
               data-customer-name="{{ invoice.customer.name }}" data-recipient-email="{{ recipient_email|default:'' }}" data-recipient-phone="{{ invoice_sms_phone|default:'' }}">
             {% csrf_token %}
-            <button type="submit" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <button type="submit" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                 <i class="fas fa-envelope sm:mr-2"></i><span class="hidden sm:inline">Email Invoice</span>
             </button>
         </form>
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' and invoice.status != 'DRAFT' %}
-        <button onclick="openReminderModal()" aria-label="Send payment reminder" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
+        <button onclick="openReminderModal()" aria-label="Send payment reminder" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-300 rounded-lg hover:bg-amber-100 transition-colors">
             <i class="fas fa-bell sm:mr-2"></i><span class="hidden sm:inline">Send Reminder</span>
         </button>
         {% endif %}
         {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
-        <button onclick="voidInvoice()" aria-label="Void invoice" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-lg hover:bg-red-100 transition-colors">
+        <button onclick="voidInvoice()" aria-label="Void invoice" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-lg hover:bg-red-100 transition-colors">
             <i class="fas fa-ban mr-1.5 sm:mr-2"></i><span class="sm:hidden">Void</span><span class="hidden sm:inline">Void Invoice</span>
         </button>
         {% endif %}
         {% endif %}
-        <button onclick="deleteInvoice()" aria-label="Delete invoice" class="inline-flex items-center px-2.5 sm:px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 transition-colors">
+        <button onclick="deleteInvoice()" aria-label="Delete invoice" class="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-w-0 px-2.5 sm:px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-lg hover:bg-red-700 transition-colors">
             <i class="fas fa-trash mr-1.5 sm:mr-2"></i><span class="sm:hidden">Delete</span><span class="hidden sm:inline">Delete Invoice</span>
         </button>
     </div>
@@ -160,7 +160,7 @@
                 <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wider">Line Items</h2>
                 {% if invoice.status != 'PAID' and invoice.status != 'CANCELLED' %}
                 <button type="button" onclick="openAddLineItemModal()"
-                    class="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700">
+                    class="inline-flex items-center gap-1.5 min-h-11 -my-2 px-2 text-sm font-medium text-brand-600 hover:text-brand-700">
                     <i class="fas fa-plus text-xs"></i>Add Line Item
                 </button>
                 {% endif %}
@@ -175,8 +175,8 @@
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
                             <div class="text-sm font-medium text-gray-900">{{ item.description }}</div>
-                            {% if item.unit_number %}
-                            <div class="text-xs text-gray-500">Unit: {{ item.unit_number }}</div>
+                            {% if item.vehicle_identifier %}
+                            <div class="text-xs text-gray-500">{{ invoice.vehicle_column_label }}: {{ item.vehicle_identifier }}</div>
                             {% endif %}
                             {% if item.repair_date %}
                             <div class="text-xs text-gray-500">{{ item.repair_date|date:"M d, Y" }}</div>
@@ -188,14 +188,14 @@
                             <button type="button"
                                 onclick="openLineItemEditModal({{ item.id }}, '{{ item.description|escapejs }}', '{{ item.unit_price }}', '{{ item.discount }}', {% if item.repair_id or item.replacement_id %}true{% else %}false{% endif %}, '{{ item.amount }}')"
                                 aria-label="Edit line item: {{ item.description }}"
-                                class="text-gray-400 hover:text-brand-600 transition-colors p-1">
+                                class="tap-target inline-flex items-center justify-center w-9 h-9 shrink-0 text-gray-400 hover:text-brand-600 transition-colors">
                                 <i class="fas fa-pen text-xs"></i>
                             </button>
                             {% if not item.repair_id and not item.replacement_id %}
                             <button type="button"
                                 onclick="deleteLineItem({{ item.id }}, '{{ item.description|escapejs }}')"
                                 aria-label="Remove line item: {{ item.description }}"
-                                class="text-gray-400 hover:text-red-600 transition-colors p-1">
+                                class="tap-target inline-flex items-center justify-center w-9 h-9 shrink-0 text-gray-400 hover:text-red-600 transition-colors">
                                 <i class="fas fa-trash-alt text-xs"></i>
                             </button>
                             {% endif %}
@@ -261,8 +261,8 @@
                         <tr>
                             <td class="px-6 py-4">
                                 <div class="text-sm font-medium text-gray-900">{{ item.description }}</div>
-                                {% if item.unit_number %}
-                                <div class="text-xs text-gray-500">Unit: {{ item.unit_number }}</div>
+                                {% if item.vehicle_identifier %}
+                                <div class="text-xs text-gray-500">{{ invoice.vehicle_column_label }}: {{ item.vehicle_identifier }}</div>
                                 {% endif %}
                                 {% if item.repair_date %}
                                 <div class="text-xs text-gray-500">{{ item.repair_date|date:"M d, Y" }}</div>
@@ -546,7 +546,7 @@
                 </div>
 
                 <!-- Submit Button -->
-                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-md hover:bg-brand-700 focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
+                <button type="submit" class="w-full inline-flex items-center justify-center min-h-11 px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-md hover:bg-brand-700 focus:ring-2 focus:ring-offset-2 focus:ring-brand-500 transition-colors">
                     <i class="fas fa-check mr-2"></i>Record Payment
                 </button>
             </form>

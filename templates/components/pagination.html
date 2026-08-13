@@ -4,7 +4,7 @@ Params: page_obj (required). Preserves all other querystring params via {% query
 Usage: {% include "components/pagination.html" with page_obj=page_obj %}
 {% endcomment %}
 {% if page_obj.paginator.num_pages > 1 %}
-<nav class="flex items-center justify-between mt-6" aria-label="Pagination">
+<nav class="flex flex-wrap items-center justify-between gap-3 mt-6" aria-label="Pagination">
     <p class="text-sm text-gray-500">
         Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
     </p>
@@ -14,7 +14,7 @@ Usage: {% include "components/pagination.html" with page_obj=page_obj %}
             <i class="fas fa-chevron-left text-[10px]"></i> Prev
         </a>
         {% endif %}
-        <span class="px-3 py-1.5 text-xs font-medium text-gray-600">
+        <span class="px-3 py-1.5 text-sm font-medium text-gray-600 whitespace-nowrap">
             Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
         </span>
         {% if page_obj.has_next %}
