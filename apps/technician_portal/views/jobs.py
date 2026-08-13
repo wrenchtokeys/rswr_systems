@@ -383,7 +383,9 @@ def job_create(request):
     """Quick job + invoice: one short form, optionally straight to a sent
     invoice ("Save & Send Invoice")."""
     from apps.technician_portal.forms import QuickJobForm
-    from apps.tenants.services.usage_service import UsageService
+    from apps.tenants.services.usage_service import (
+        UsageService, limit_message_for,
+    )
 
     tenant = getattr(request, 'tenant', None)
     if not tenant:
@@ -398,7 +400,8 @@ def job_create(request):
 
     can_create, limit_msg = UsageService(tenant).can_create_repair()
     if not can_create:
-        messages.warning(request, limit_msg)
+        messages.warning(
+            request, limit_message_for(request.user, tenant, limit_msg))
         return redirect('job_list')
 
     user_can_invoices = can_access(request.user, 'invoices', tenant)
@@ -434,7 +437,9 @@ def job_create(request):
                 )
                 can_add, add_msg = UsageService(tenant).can_add_customer()
                 if not can_add:
-                    messages.warning(request, add_msg)
+                    messages.warning(
+                        request,
+                        limit_message_for(request.user, tenant, add_msg))
                     return redirect('job_list')
 
                 # Duplicate guard: suggest the existing person instead of

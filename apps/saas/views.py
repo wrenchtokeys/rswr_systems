@@ -4031,16 +4031,30 @@ def subscription_blocked_view(request):
     - Owners/Managers: upgrade prompt with link to billing
     - Technicians: contact owner message
     - Customers: contact shop message
+
+    The SHELL varies too. This used to always extend base_app.html, so a
+    shop's customer who landed here got the internal app chrome — the RS
+    Systems mark instead of their shop's, a "Search jobs, customers and
+    invoices" box, a link to the technician profile page, and a tab reading
+    "Subscription Expired". The middleware no longer sends customers here at
+    all (they stay read-only in their own portal), but if one arrives by
+    typing the URL they get the portal shell they know.
     """
     from common.auth import get_user_role
-    from apps.tenants.models import TenantMembership
+    from apps.tenants.subscription_middleware import audience_for_role
 
     tenant = getattr(request, 'tenant', None)
     user_role = get_user_role(request.user, tenant)
+    audience = audience_for_role(user_role)
 
     context = {
         'tenant': tenant,
         'user_role': user_role,
+        'subscription_audience': audience,
+        'base_template': (
+            'customer_portal/base_customer.html' if audience == 'customer'
+            else 'base_app.html'
+        ),
     }
 
     if tenant:
