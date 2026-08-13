@@ -1,12 +1,23 @@
-{% extends "base_app.html" %}
+{% extends base_template|default:"base_app.html" %}
 
-{% block title %}Subscription Expired | RS Systems{% endblock %}
+{% comment %}
+The shell is chosen by the view: shop staff get the internal app shell, the
+shop's customers get the customer-portal shell. Nothing on this page names a
+plan, a price or a payment reason to anyone but an owner/manager.
+{% endcomment %}
+
+{% comment %}
+The tab title is part of the message. "Subscription Expired" on a
+technician's screen says the same thing as a banner would — so only the
+person who can act on it gets that word.
+{% endcomment %}
+{% block title %}{% if subscription_audience == 'owner' %}Subscription Expired | RS Systems{% elif subscription_audience == 'staff' %}Shop Locked | RS Systems{% else %}{{ shop_name|default:"Portal" }}{% endif %}{% endblock %}
 
 {% block content %}
 <div class="min-h-[60vh] flex items-center justify-center">
     <div class="max-w-lg w-full text-center">
 
-        {% if user_role == 'owner' or user_role == 'manager' %}
+        {% if subscription_audience == 'owner' %}
         <!-- Owner / Manager: upgrade prompt -->
         <div class="bg-white rounded-2xl shadow-sm border border-red-100 p-10">
             <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -28,20 +39,24 @@
             </p>
         </div>
 
-        {% elif user_role == 'technician' %}
-        <!-- Technician: contact owner -->
+        {% elif subscription_audience == 'staff' %}
+        {% comment %}
+        Technician: told they're locked out and who unlocks it. No plan, no
+        amount, no date — they can't act on any of it, and this screen gets
+        read over their shoulder in a customer's driveway.
+        {% endcomment %}
         <div class="bg-white rounded-2xl shadow-sm border border-amber-100 p-10">
             <div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <i class="fas fa-pause-circle text-amber-600 text-2xl"></i>
+                <i class="fas fa-lock text-amber-600 text-2xl"></i>
             </div>
-            <h1 class="text-2xl font-bold text-gray-900 mb-3">Shop Subscription Expired</h1>
+            <h1 class="text-2xl font-bold text-gray-900 mb-3">This Shop Is Locked</h1>
             <p class="text-gray-600 mb-6">
-                Your shop's RS Systems subscription has expired. You won't be able to access the
-                system until the subscription is reactivated.
+                You won't be able to use RS Systems until your shop owner reactivates the account.
+                Nothing has been lost — your jobs and customers are all still here.
             </p>
             {% if owner %}
             <div class="bg-amber-50 rounded-xl p-4 text-sm text-amber-800 mb-6">
-                <p class="font-medium mb-1">Contact your shop owner to reactivate:</p>
+                <p class="font-medium mb-1">Contact your shop owner:</p>
                 <p>
                     <strong>{{ owner.get_full_name|default:owner.username }}</strong>
                     {% if owner.email %}
@@ -51,26 +66,31 @@
             </div>
             {% endif %}
             <p class="text-sm text-gray-500">
-                Once the subscription is renewed, you'll regain access automatically.
+                You'll get access back automatically once that's done.
             </p>
         </div>
 
         {% else %}
-        <!-- Customer (or unknown role): shop temporarily unavailable -->
+        {% comment %}
+        The shop's customer. They are not a party to the shop's subscription,
+        so this says nothing about it — just that the shop can't take online
+        requests and how to reach them. The middleware keeps customers
+        read-only in their own portal rather than sending them here at all;
+        this is the fallback for someone who types the URL.
+        {% endcomment %}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-10">
             <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <i class="fas fa-store-slash text-gray-500 text-2xl"></i>
+                <i class="fas fa-phone text-gray-500 text-2xl"></i>
             </div>
-            <h1 class="text-2xl font-bold text-gray-900 mb-3">Portal Temporarily Unavailable</h1>
+            <h1 class="text-2xl font-bold text-gray-900 mb-3">Give the Shop a Call</h1>
             <p class="text-gray-600 mb-6">
-                {% if shop_name %}{{ shop_name }}'s{% else %}This shop's{% endif %}
-                customer portal is temporarily unavailable.
-                Please contact the shop directly for assistance with your repairs or account.
+                {% if shop_name %}{{ shop_name }}{% else %}This shop{% endif %}
+                isn't taking online requests right now. They can still help you directly.
             </p>
             {% if shop_name or shop_phone or shop_email %}
             <div class="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 mb-6">
                 {% if shop_name %}<p class="font-medium">{{ shop_name }}</p>{% endif %}
-                {% if shop_phone %}<p><i class="fas fa-phone mr-2 text-gray-400"></i>{{ shop_phone }}</p>{% endif %}
+                {% if shop_phone %}<p><i class="fas fa-phone mr-2 text-gray-400"></i><a href="tel:{{ shop_phone }}" class="text-brand-600 hover:underline">{{ shop_phone }}</a></p>{% endif %}
                 {% if shop_email %}
                 <p>
                     <i class="fas fa-envelope mr-2 text-gray-400"></i>
@@ -79,9 +99,6 @@
                 {% endif %}
             </div>
             {% endif %}
-            <p class="text-sm text-gray-500">
-                We apologize for the inconvenience. The shop owner is working to restore access.
-            </p>
         </div>
         {% endif %}
 

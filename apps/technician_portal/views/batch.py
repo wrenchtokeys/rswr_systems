@@ -17,7 +17,7 @@ from apps.technician_portal.models import Technician, Repair, UnitRepairCount, T
 from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from common.auth import get_user_role
-from apps.tenants.services.usage_service import UsageService
+from apps.tenants.services.usage_service import UsageService, limit_message_for
 from apps.technician_portal.services.batch_pricing_service import calculate_batch_pricing
 from common.utils import convert_heic_to_jpeg
 
@@ -235,7 +235,8 @@ def create_multi_break_repair(request):
     if tenant:
         can_create, limit_msg = UsageService(tenant).can_create_repair()
         if not can_create:
-            messages.warning(request, limit_msg)
+            messages.warning(
+                request, limit_message_for(request.user, tenant, limit_msg))
             return redirect('technician_dashboard')
 
     if request.method == 'POST':
@@ -268,6 +269,7 @@ def create_multi_break_repair(request):
                     breaks_count
                 )
                 if not can_create:
+                    limit_msg = limit_message_for(request.user, tenant, limit_msg)
                     messages.error(request, limit_msg)
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                         return JsonResponse(
@@ -659,7 +661,8 @@ def convert_to_batch(request, repair_id):
     if tenant:
         can_create, limit_msg = UsageService(tenant).can_create_repair()
         if not can_create:
-            messages.warning(request, limit_msg)
+            messages.warning(
+                request, limit_message_for(request.user, tenant, limit_msg))
             return redirect('repair_detail', repair_id=repair_id)
 
     if request.method == 'POST':
@@ -676,6 +679,7 @@ def convert_to_batch(request, repair_id):
                     additional_breaks
                 )
                 if not can_create:
+                    limit_msg = limit_message_for(request.user, tenant, limit_msg)
                     messages.error(request, limit_msg)
                     return redirect('convert_to_batch', repair_id=repair_id)
 

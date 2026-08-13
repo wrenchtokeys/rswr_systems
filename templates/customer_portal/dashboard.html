@@ -281,6 +281,11 @@
                 </div>
                 <h3 class="text-base font-semibold text-gray-900 mb-1">No services yet</h3>
                 <p class="text-sm text-gray-500 mb-4">Request your first service to get started.</p>
+                {% comment %}
+                No request buttons while the shop can't take online work —
+                the banner above already says why and what to do instead.
+                {% endcomment %}
+                {% if not shop_unavailable_message %}
                 <div class="flex flex-wrap items-center justify-center gap-2">
                     {% if shop_offers_repairs %}
                     <a href="{% url 'customer_request_repair' %}" class="inline-flex items-center px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors press">
@@ -293,6 +298,7 @@
                     </a>
                     {% endif %}
                 </div>
+                {% endif %}
             </div>
             {% endif %}
         </div>
@@ -306,6 +312,18 @@
                 <i class="fas fa-plus text-white"></i>
             </div>
             <h2 class="text-base font-bold">Need glass work?</h2>
+            {% if shop_unavailable_message %}
+            {% comment %}
+            The shop can't take an online request right now, so the card
+            hands over the one route that still works.
+            {% endcomment %}
+            <p class="text-sm text-brand-100 mt-1 mb-4">{{ request.tenant.name }} isn't taking online requests at the moment — give them a call and they'll get you taken care of.</p>
+            {% if request.tenant.business_phone %}
+            <a href="tel:{{ request.tenant.business_phone }}" class="flex items-center justify-center w-full px-4 py-3 bg-white text-brand-700 text-sm font-bold rounded-lg hover:bg-brand-50 transition-colors press">
+                <i class="fas fa-phone mr-2"></i> {{ request.tenant.business_phone }}
+            </a>
+            {% endif %}
+            {% else %}
             {% if shop_offers_repairs and shop_offers_replacements %}
             <p class="text-sm text-brand-100 mt-1 mb-4">Request a chip repair or full replacement — we'll take it from there.</p>
             {% elif shop_offers_repairs %}
@@ -316,6 +334,7 @@
             <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="flex items-center justify-center w-full px-4 py-3 bg-white text-brand-700 text-sm font-bold rounded-lg hover:bg-brand-50 transition-colors press">
                 Request Service
             </a>
+            {% endif %}
         </div>
 
         <!-- Company Card -->

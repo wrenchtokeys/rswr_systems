@@ -58,10 +58,13 @@ def create_customer(request):
 
     # Usage limit check
     if tenant:
-        from apps.tenants.services.usage_service import UsageService
+        from apps.tenants.services.usage_service import (
+            UsageService, limit_message_for,
+        )
         can_create, limit_msg = UsageService(tenant).can_add_customer()
         if not can_create:
-            messages.warning(request, limit_msg)
+            messages.warning(
+                request, limit_message_for(request.user, tenant, limit_msg))
             return redirect('technician_dashboard')
 
     if request.method == 'POST':

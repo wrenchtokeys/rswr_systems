@@ -10,9 +10,18 @@
         <h1 class="text-2xl font-bold text-gray-900">Services</h1>
         <p class="text-sm text-gray-500 mt-1">{{ stats.total }} service{{ stats.total|pluralize }}{% if shop_offers_repairs and shop_offers_replacements %} · repairs and replacements{% endif %}</p>
     </div>
+    {% comment %}Nothing to request while the shop is offline to online work.{% endcomment %}
+    {% if shop_unavailable_message %}
+        {% if request.tenant.business_phone %}
+        <a href="tel:{{ request.tenant.business_phone }}" class="btn-primary hidden md:inline-flex">
+            <i class="fas fa-phone"></i> Call the Shop
+        </a>
+        {% endif %}
+    {% else %}
     <a href="{% if shop_offers_repairs %}{% url 'customer_request_repair' %}{% else %}{% url 'customer_request_replacement' %}{% endif %}" class="btn-primary hidden md:inline-flex">
         <i class="fas fa-plus"></i> Request Service
     </a>
+    {% endif %}
 </div>
 
 <!-- Stat chips (link to filtered views) -->
@@ -152,8 +161,12 @@
     {% if unit_search or type_filter != 'all' or status_filter != 'all' %}
     {% include "components/empty_state.html" with icon="fa-filter" title="No matching services" message="Try clearing your filters or search." cta_url="?type=all" cta_label="Clear Filters" %}
     {% else %}
+    {% if shop_unavailable_message %}
+    {% include "components/empty_state.html" with icon="fa-car" title="No services yet" message=shop_unavailable_message %}
+    {% else %}
     {% if shop_offers_repairs %}{% url 'customer_request_repair' as request_service_url %}{% else %}{% url 'customer_request_replacement' as request_service_url %}{% endif %}
     {% include "components/empty_state.html" with icon="fa-car" title="No services yet" message="Request your first service to get started." cta_url=request_service_url cta_label="Request Service" %}
+    {% endif %}
     {% endif %}
 </div>
 {% endif %}

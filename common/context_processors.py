@@ -6,6 +6,9 @@ Provides portal access flags and per-area permission flags to all templates.
 import logging
 import os
 
+from apps.tenants.subscription_middleware import (
+    audience_for_role, shop_unavailable_message,
+)
 from common.auth import can_access, get_user_role
 
 logger = logging.getLogger(__name__)
@@ -31,6 +34,9 @@ def portal_access(request):
         service_noun_plural   – 'Repairs' | 'Replacements' | 'Jobs'
         subscription_grace_period – True if tenant is in read-only grace period
         grace_days_remaining  – Days remaining in grace period (0 if not in grace period)
+        subscription_readonly_reason – 'expired' | 'past_due' | 'paused' | ''
+        subscription_audience – 'owner' | 'staff' | 'customer': how much of the
+                                shop's billing state this viewer may be shown
     """
     if not hasattr(request, 'user') or not request.user.is_authenticated:
         return {}
@@ -47,10 +53,15 @@ def portal_access(request):
     settings = can_access(user, 'settings', tenant)
 
     role = get_user_role(user, tenant)
+    # How much of the shop's billing state this viewer may see —
+    # 'owner' | 'staff' | 'customer'. Derived from the role we already have
+    # rather than re-resolving it. See apps.tenants.subscription_middleware.
+    audience = audience_for_role(role)
 
     # Grace period context (set by SubscriptionEnforcementMiddleware on GETs)
     in_grace_period = getattr(request, 'subscription_grace_period', False)
     grace_days = getattr(request, 'grace_days_remaining', 0)
+    readonly_reason = getattr(request, 'subscription_readonly_reason', '')
 
     # Adaptive service terminology: single-service shops see their own word
     # ("Repair"/"Replacement"); both-shops (and no-tenant superusers) see the
@@ -89,6 +100,15 @@ def portal_access(request):
         # Subscription grace period info
         'subscription_grace_period': in_grace_period,
         'grace_days_remaining': grace_days,
+        'subscription_readonly_reason': readonly_reason,
+        'subscription_audience': audience,
+        # The one sentence a portal customer is ever shown about a shop that
+        # can't take work. Same string the write-block message uses, so the
+        # banner and the error can't drift apart.
+        'shop_unavailable_message': (
+            shop_unavailable_message(tenant)
+            if in_grace_period and audience == 'customer' and tenant else ''
+        ),
 
         # Cloudflare Turnstile CAPTCHA site key (empty string = disabled in dev)
         'turnstile_site_key': os.environ.get('TURNSTILE_SITE_KEY', ''),

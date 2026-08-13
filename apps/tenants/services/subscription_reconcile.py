@@ -61,9 +61,17 @@ class StripeUnavailable(Exception):
 # free, until Stripe eventually deleted the subscription. It maps to the
 # blocking 'expired' instead, with a grace period granted below so the owner
 # gets read-only access and the upgrade path rather than a hard lockout. (D4)
+#
+# 'paused' is Stripe's paused-collection / paused-trial state. It used to be
+# missing from this table, and an unmapped status falls back to the tenant's
+# CURRENT status — so pausing a subscription changed nothing at all and the
+# shop kept full paid access indefinitely, silently. It maps to a real stored
+# status now, which the middleware treats as read-only rather than a hard
+# block: a pause is deliberate, not a lapse.
 STATUS_MAP = {
     'active': 'active',
     'past_due': 'past_due',
+    'paused': 'paused',
     'canceled': 'canceled',
     'trialing': 'trialing',
     'incomplete': 'trialing',
@@ -105,6 +113,16 @@ def apply_subscription_state(tenant, subscription, source='webhook', synced_at=N
         else subscription['id']
     stripe_status = _get(subscription, 'status', '')
     new_status = STATUS_MAP.get(stripe_status, tenant.subscription_status)
+    if stripe_status not in STATUS_MAP:
+        # Falling back to the current status means "do nothing", which is the
+        # safe default but an invisible one. Say so: a status Stripe added
+        # and we never mapped will otherwise leave a tenant frozen in
+        # whatever access level it had, forever, with a clean log.
+        logger.warning(
+            f"[{source}] Unmapped Stripe subscription status {stripe_status!r} "
+            f"for tenant {tenant.slug} — access left at "
+            f"{tenant.subscription_status!r}. Add it to STATUS_MAP."
+        )
 
     before = {
         'status': tenant.subscription_status,
