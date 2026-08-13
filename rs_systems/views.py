@@ -678,6 +678,15 @@ def public_view_invoice(request, invoice_id, token):
     except Exception as e:
         logger.warning(f"Could not load photos for public invoice {invoice_id}: {e}")
 
+    # First-party SMS opt-in (toll-free registration requires consent from
+    # the customer's own screen, not shop attestation). Offered whenever the
+    # customer has a usable mobile on file — deliberately NOT gated on
+    # SMSService.is_enabled(), so consent can be collected (and the surface
+    # screenshotted for carrier review) while the number awaits approval.
+    from core.services.sms_service import SMSService
+    customer = invoice.customer
+    sms_phone = SMSService.normalize_phone(customer.phone) if customer else ''
+
     context = {
         'invoice': invoice,
         'line_items': invoice.line_items.all(),
@@ -688,8 +697,39 @@ def public_view_invoice(request, invoice_id, token):
         'pay_url': f"/pay/{invoice.id}/{token}/",
         'pdf_url': f"/invoice/{invoice.id}/{token}/pdf/",
         'photos': photos,
+        'sms_optin_phone_last4': sms_phone[-4:] if sms_phone else '',
+        'sms_opted_in': bool(customer and customer.sms_opt_in),
+        'sms_optin_url': f"/invoice/{invoice.id}/{token}/sms-opt-in/",
+        'sms_optin_state': request.GET.get('sms', ''),
     }
     return render(request, 'billing/public_invoice_view.html', context)
+
+
+@require_POST
+def public_invoice_sms_opt_in(request, invoice_id, token):
+    """First-party SMS consent from the public invoice page (same token).
+
+    Records CUSTOMER-source consent on the invoice's customer — the
+    carrier-compliant opt-in surface for toll-free registration v2."""
+    from core.services.sms_service import SMSService
+
+    invoice = _resolve_public_invoice(invoice_id, token, request=request, record_view=False)
+    if invoice is None:
+        return render(request, '404.html', status=404)
+
+    view_url = f"/invoice/{invoice.id}/{token}/"
+    customer = invoice.customer
+    if customer is None or not SMSService.normalize_phone(customer.phone):
+        return redirect(view_url)
+    if request.POST.get('sms_agree') != '1':
+        return redirect(f"{view_url}?sms=missing#sms-updates")
+
+    customer.record_sms_consent(source=customer.SMS_CONSENT_CUSTOMER)
+    logger.info(
+        f"First-party SMS opt-in recorded for customer {customer.id} "
+        f"via public invoice {invoice.id}"
+    )
+    return redirect(f"{view_url}?sms=thanks#sms-updates")
 
 
 def public_invoice_pdf(request, invoice_id, token):
