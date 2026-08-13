@@ -239,7 +239,9 @@ class SendCopyAndTrackingTests(TestCase):
         )
         result = InvoiceSendService.send(invoice, self.tenant)
         self.assertTrue(result.sent, result.message)
-        html_body = mail.outbox[0].alternatives[0][0]
+        # Creating the Replacement fires the tech assignment email (N1), so
+        # the invoice email is the LAST message, not the first.
+        html_body = mail.outbox[-1].alternatives[0][0]
         self.assertIn('recent glass replacement services', html_body)
         self.assertNotIn('recent windshield repair services', html_body)
 
