@@ -23,6 +23,12 @@
     /* Kebab stays visible while its menu is open, and for keyboard users */
     .kebab-btn.menu-open,
     tr:focus-within .kebab-btn { opacity: 1 !important; }
+
+    /* Reveal-on-hover is a mouse idiom. On a tablet there IS no hover, so the
+       row's only actions menu was invisible until it was tapped blind. */
+    @media (pointer: coarse) {
+        .kebab-btn { opacity: 1 !important; }
+    }
 </style>
 
 {% endblock %}
@@ -57,7 +63,7 @@
                 actions live here instead, next to the primary button.{% endcomment %}
                 <div class="relative">
                     <button type="button" onclick="toggleMenu(this)" aria-haspopup="menu" aria-expanded="false"
-                            class="inline-flex items-center justify-center w-9 h-9 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                            class="tap-target inline-flex items-center justify-center w-11 h-11 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
                             title="More actions">
                         <i class="fas fa-ellipsis-h"></i>
                     </button>
@@ -81,15 +87,15 @@
             {# url-prefix guards against the querystring tag emitting an empty href once all params clear #}
             <div class="inline-flex items-center bg-gray-100 rounded-lg p-0.5 flex-shrink-0">
                 <a href="{% url 'job_list' %}{% querystring type=None page=None damage_type=None %}"
-                   class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'all' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+                   class="inline-flex items-center min-h-10 px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'all' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
                     All
                 </a>
                 <a href="{% querystring type='repair' page=None %}"
-                   class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'repair' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+                   class="inline-flex items-center min-h-10 px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'repair' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
                     Repairs
                 </a>
                 <a href="{% querystring type='replacement' page=None damage_type=None %}"
-                   class="px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'replacement' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+                   class="inline-flex items-center min-h-10 px-3 py-1.5 rounded-md text-sm font-medium transition-colors {% if type_filter == 'replacement' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
                     Replacements
                 </a>
             </div>
@@ -122,7 +128,7 @@
             </form>
 
             <button type="button" onclick="toggleFilters()"
-                    class="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
+                    class="inline-flex items-center gap-1.5 min-h-11 px-3 py-2 border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0">
                 <i class="fas fa-sliders-h text-xs"></i>
                 Filters
                 {% if active_filter_count %}
@@ -140,37 +146,37 @@
                 {% if customer_type_filter != 'all' %}
                 <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     {{ customer_type_filter|title }}
-                    <a href="javascript:removeFilter('customer_type')" class="ml-1 hover:text-gray-500">&times;</a>
+                    <a href="javascript:removeFilter('customer_type')" class="tap-target -my-1 ml-0.5 inline-flex items-center justify-center w-6 h-6 text-base leading-none hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if unit_search %}
                 <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     Unit {{ unit_search }}
-                    <a href="javascript:removeFilter('unit_search')" class="ml-1 hover:text-gray-500">&times;</a>
+                    <a href="javascript:removeFilter('unit_search')" class="tap-target -my-1 ml-0.5 inline-flex items-center justify-center w-6 h-6 text-base leading-none hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if damage_type_filter != 'all' %}
                 <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     {{ damage_type_filter }}
-                    <a href="javascript:removeFilter('damage_type')" class="ml-1 hover:text-gray-500">&times;</a>
+                    <a href="javascript:removeFilter('damage_type')" class="tap-target -my-1 ml-0.5 inline-flex items-center justify-center w-6 h-6 text-base leading-none hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if date_from %}
                 <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     From {{ date_from }}
-                    <a href="javascript:removeFilter('date_from')" class="ml-1 hover:text-gray-500">&times;</a>
+                    <a href="javascript:removeFilter('date_from')" class="tap-target -my-1 ml-0.5 inline-flex items-center justify-center w-6 h-6 text-base leading-none hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if date_to %}
                 <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     To {{ date_to }}
-                    <a href="javascript:removeFilter('date_to')" class="ml-1 hover:text-gray-500">&times;</a>
+                    <a href="javascript:removeFilter('date_to')" class="tap-target -my-1 ml-0.5 inline-flex items-center justify-center w-6 h-6 text-base leading-none hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 {% if assignment_filter != 'all' %}
                 <span class="inline-flex items-center gap-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     {{ assignment_filter|title }}
-                    <a href="javascript:removeFilter('assignment')" class="ml-1 hover:text-gray-500">&times;</a>
+                    <a href="javascript:removeFilter('assignment')" class="tap-target -my-1 ml-0.5 inline-flex items-center justify-center w-6 h-6 text-base leading-none hover:text-gray-500">&times;</a>
                 </span>
                 {% endif %}
                 <a href="{% url 'job_list' %}" class="text-xs text-gray-400 hover:text-gray-600 ml-1">Clear all</a>
@@ -181,7 +187,7 @@
                 <form method="get" id="filter-form" class="bg-white rounded-xl border border-gray-200 p-4 sm:p-5">
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <div>
-                            <label class="block text-xs font-medium text-gray-500 mb-1">Unit #</label>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Unit # or vehicle</label>
                             <input type="text" name="unit_search" value="{{ unit_search }}"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
                                    placeholder="Search unit...">
@@ -281,7 +287,12 @@
                     <div class="flex-1 min-w-0">
                         <div data-vt-hero class="font-semibold text-gray-900 truncate">{{ job.customer.name }}</div>
                         <div class="text-sm text-gray-500 mt-0.5">
-                            Unit {{ job.unit_number }}
+                            {% comment %}
+                            'Unit #4521' for a fleet, '2019 Ford F-150' for an
+                            individual, nothing when the job names no vehicle
+                            (this used to render a bare "Unit").
+                            {% endcomment %}
+                            {{ job.get_vehicle_label }}
                             {% if shop_service_mix == 'both' %}
                             {% if job.service_type == 'replacement' %}
                             <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">Replacement</span>
@@ -347,7 +358,7 @@
                         </th>
                         {% endif %}
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
                         {% if shop_service_mix == 'both' %}
                         <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                         {% endif %}
@@ -383,7 +394,11 @@
                             <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 mt-0.5">Batch #{{ job.break_number }}</span>
                             {% endif %}
                         </td>
-                        <td class="px-4 py-3 text-sm font-mono font-medium text-gray-900">{{ job.unit_number }}</td>
+                        {% comment %}
+                        Mono suits a unit number; an individual's "2019 Ford
+                        F-150" reads better in the body face.
+                        {% endcomment %}
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900 {% if not job.customer.is_individual %}font-mono{% endif %}">{{ job.get_vehicle_identifier|default:"—" }}</td>
                         {% if shop_service_mix == 'both' %}
                         <td class="px-4 py-3">
                             {% if job.service_type == 'replacement' %}
@@ -445,7 +460,7 @@
                                 {% endif %}
                                 <div class="relative">
                                     <button type="button" onclick="toggleMenu(this)" aria-haspopup="menu" aria-expanded="false"
-                                            class="kebab-btn w-8 h-8 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                                            class="kebab-btn tap-target w-9 h-9 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                                             title="Actions for {{ job.customer.name }} unit {{ job.unit_number }}">
                                         <i class="fas fa-ellipsis-v"></i>
                                     </button>
@@ -515,7 +530,7 @@
 
         <!-- Back to Dashboard -->
         <div class="flex justify-center mt-6">
-            <a href="{% url 'technician_dashboard' %}" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+            <a href="{% url 'technician_dashboard' %}" class="inline-flex items-center min-h-11 px-3 text-sm text-gray-500 hover:text-gray-700 transition-colors">
                 <i class="fas fa-arrow-left mr-1"></i> Back to Dashboard
             </a>
         </div>
@@ -523,7 +538,7 @@
 
     {% if shop_offers_repairs %}
     <!-- Bulk Action Toolbar (repair rows only — replacements have no bulk endpoints) -->
-    <div id="bulk-toolbar" class="bulk-toolbar fixed bottom-0 left-0 right-0 bg-gray-900 z-50">
+    <div id="bulk-toolbar" class="bulk-toolbar fixed bottom-0 left-0 right-0 bg-gray-900 z-50 safe-area-bottom">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <div class="flex items-center justify-between">
                 <span class="text-white text-sm font-medium">
@@ -544,7 +559,7 @@
                         <i class="fas fa-user-edit mr-1.5"></i>Reassign
                     </button>
                     {% endif %}
-                    <button onclick="deselectAll()" class="px-3 py-2 text-gray-400 hover:text-white text-sm transition-colors">
+                    <button onclick="deselectAll()" class="inline-flex items-center min-h-11 px-3 py-2 text-gray-400 hover:text-white text-sm transition-colors">
                         Cancel
                     </button>
                 </div>

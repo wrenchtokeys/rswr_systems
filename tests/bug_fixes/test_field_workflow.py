@@ -781,7 +781,9 @@ class InvoiceDescriptionTest(TestCase):
         """Single repair (not in batch) should not show break number."""
         repair = self._make_repair()
         desc = repair.get_invoice_description()
-        self.assertIn('Unit #500', desc)
+        # The vehicle lives in the invoice's own Vehicle/Unit # column, not in
+        # the description — it used to print on the row twice.
+        self.assertNotIn('Unit #500', desc)
         # get_damage_type_display() returns display name; check case-insensitive
         self.assertIn('chip', desc.lower())
         self.assertNotIn('Break', desc)
@@ -794,7 +796,7 @@ class InvoiceDescriptionTest(TestCase):
         )
         desc = repair.get_invoice_description()
         self.assertIn('Break 2', desc)
-        self.assertIn('Unit #500', desc)
+        self.assertNotIn('Unit #500', desc)
 
     def test_damage_location_driver_side(self):
         """Repair with damage on driver side shows location."""
@@ -837,7 +839,7 @@ class InvoiceDescriptionTest(TestCase):
         self.assertIn('Break 1', desc)
         self.assertIn('driver side', desc)
         self.assertIn('lower', desc)
-        self.assertIn('Unit #500', desc)
+        self.assertNotIn('Unit #500', desc)
 
     def test_get_damage_location_label_no_coords(self):
         """No coords returns empty string."""

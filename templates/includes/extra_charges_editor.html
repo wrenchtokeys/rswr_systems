@@ -25,7 +25,7 @@ Context:
 <div class="mt-4">
     <div class="flex items-center justify-between">
         <label class="block text-sm font-medium text-gray-700">Extra charges <span class="text-gray-400 font-normal">(optional)</span></label>
-        <button type="button" onclick="addChargeRow()" class="text-sm font-medium text-brand-600 hover:text-brand-800">
+        <button type="button" onclick="addChargeRow()" class="inline-flex items-center min-h-11 -my-2 px-2 text-sm font-medium text-brand-600 hover:text-brand-800">
             <i class="fas fa-plus text-xs mr-1"></i>Add charge
         </button>
     </div>
@@ -33,7 +33,7 @@ Context:
     <div class="flex flex-wrap gap-2 mt-2">
         {% for preset in fee_presets %}
         <button type="button" onclick="addChargeRow('{{ preset.label|escapejs }}', '{{ preset.amount }}')"
-            class="inline-flex items-center px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full hover:bg-brand-100 hover:text-brand-700 transition-colors">
+            class="inline-flex items-center min-h-10 px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-full hover:bg-brand-100 hover:text-brand-700 transition-colors">
             <i class="fas fa-plus text-[10px] mr-1 opacity-50"></i>{{ preset.label }} · ${{ preset.amount|floatformat:2 }}
         </button>
         {% endfor %}
@@ -49,7 +49,7 @@ Context:
                 <input type="number" name="charge_amount" value="{{ amount }}" step="0.01" min="0.01" placeholder="0.00"
                     class="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg shadow-sm text-sm text-right focus:ring-brand-500 focus:border-brand-500">
             </div>
-            <button type="button" onclick="this.closest('.charge-row').remove()" class="text-gray-400 hover:text-red-600 p-1" aria-label="Remove charge">
+            <button type="button" onclick="this.closest('.charge-row').remove()" class="tap-target shrink-0 inline-flex items-center justify-center w-9 h-9 text-gray-400 hover:text-red-600" aria-label="Remove charge">
                 <i class="fas fa-times"></i>
             </button>
         </div>
@@ -71,7 +71,7 @@ if (!window.addChargeRow) {
             '<input type="number" name="charge_amount" step="0.01" min="0.01" placeholder="0.00"' +
             ' class="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg shadow-sm text-sm text-right focus:ring-brand-500 focus:border-brand-500">' +
             '</div>' +
-            '<button type="button" onclick="this.closest(\'.charge-row\').remove()" class="text-gray-400 hover:text-red-600 p-1" aria-label="Remove charge">' +
+            '<button type="button" onclick="this.closest(\'.charge-row\').remove()" class="tap-target shrink-0 inline-flex items-center justify-center w-9 h-9 text-gray-400 hover:text-red-600" aria-label="Remove charge">' +
             '<i class="fas fa-times"></i></button>';
         container.appendChild(row);
         const descInput = row.querySelector('input[name="charge_desc"]');

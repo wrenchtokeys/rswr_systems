@@ -572,6 +572,17 @@ class Invoice(AutoUpdateTimestampMixin, models.Model):
     def __str__(self):
         return f"{self.invoice_number} - {self.customer.name} - ${self.total}"
 
+    @property
+    def vehicle_column_label(self):
+        """Header for the vehicle column on this invoice.
+
+        An invoice has exactly one customer, so the column is either fleet
+        unit numbers or an individual's vehicles — never a mix.
+        """
+        if self.customer_id and self.customer:
+            return self.customer.vehicle_column_label
+        return 'Unit #'
+
     # ------------------------------------------------------------------
     # S3 cleanup on delete (CODE-152)
     # ------------------------------------------------------------------
@@ -814,9 +825,24 @@ class InvoiceLineItem(models.Model):
 
     class Meta:
         ordering = ['id']
-    
+
     def __str__(self):
         return f"{self.description} - ${self.amount}"
+
+    @property
+    def vehicle_identifier(self):
+        """Bare identifier for the vehicle column, no noun attached.
+
+        The linked job is the authority — it knows whether its customer is a
+        fleet (unit number) or an individual (year/make/model), and the two
+        are stored in different columns. ``unit_number`` here is only the
+        denormalized fallback for lines whose job is gone, and for free-form
+        charge lines that never had one.
+        """
+        job = self.repair or self.replacement
+        if job is not None:
+            return job.get_vehicle_identifier() or ''
+        return self.unit_number or ''
     
     def save(self, *args, **kwargs):
         # Auto-calculate amount only when it has not been explicitly set (None).

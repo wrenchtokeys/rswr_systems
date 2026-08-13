@@ -238,7 +238,7 @@
                                 {% endif %}
                             </td>
                             <td class="px-5 py-3 text-sm text-gray-900">
-                                {% if service.service_type == 'replacement' %}{{ service.get_glass_position_display|default:"Glass replacement" }} &mdash; {% endif %}{{ service.description|truncatechars:50 }}
+                                {% if service.service_type == 'replacement' %}{{ service.get_glass_position_display|default:"Glass replacement" }} &mdash; {% endif %}{{ service.description|default_if_none:""|truncatechars:50|default:service.get_vehicle_label|default:"Service" }}
                                 {% if service.customer_initiated %}
                                 <span class="inline-flex items-center ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-brand-100 text-brand-700">SELF</span>
                                 {% endif %}
@@ -261,7 +261,7 @@
                 <a href="{% if service.service_type == 'replacement' %}{% url 'customer_replacement_detail' service.id %}{% else %}{% url 'customer_repair_detail' service.id %}{% endif %}" class="flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors">
                     <div class="flex-1 min-w-0">
                         <p class="text-sm font-medium text-gray-900 truncate">
-                            {% if service.service_type == 'replacement' %}{{ service.get_glass_position_display|default:"Glass replacement" }} &mdash; {% endif %}{{ service.description|truncatechars:40 }}
+                            {% if service.service_type == 'replacement' %}{{ service.get_glass_position_display|default:"Glass replacement" }} &mdash; {% endif %}{{ service.description|default_if_none:""|truncatechars:40|default:service.get_vehicle_label|default:"Service" }}
                         </p>
                         <p class="text-xs text-gray-500 mt-0.5">
                             {% if service.service_type == 'replacement' %}<span class="font-semibold text-purple-600">Replacement</span> &middot; {% endif %}{{ service.service_date|date:"M d, Y" }}

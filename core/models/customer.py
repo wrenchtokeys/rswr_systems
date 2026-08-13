@@ -193,8 +193,27 @@ class Customer(models.Model):
             ),
         ]
 
+    # Customer types that are a PERSON with their own vehicle rather than a
+    # business with a numbered fleet. The two are never interchangeable in the
+    # UI: a fleet is identified by unit number, an individual by their vehicle.
+    INDIVIDUAL_TYPES = ('RETAIL', 'WALK_IN')
+
     def __str__(self):
         return self.name
+
+    @property
+    def is_individual(self):
+        """True for a person (retail/walk-in), False for a fleet account.
+
+        Anything that prints "Unit #" must check this first — an individual's
+        invoice reading "Unit #Silver Camry" is what this exists to prevent.
+        """
+        return self.customer_type in self.INDIVIDUAL_TYPES
+
+    @property
+    def vehicle_column_label(self):
+        """Header for the column that identifies the vehicle worked on."""
+        return 'Vehicle' if self.is_individual else 'Unit #'
 
     def record_sms_consent(self, source=SMS_CONSENT_SHOP):
         """Record SMS consent. Idempotent — keeps the original consent

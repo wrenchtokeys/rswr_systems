@@ -146,7 +146,8 @@
             {% endif %}
 
             <!-- Quick Actions Bar — Compact -->
-            <div class="bg-gray-50 border-b border-gray-200 sticky top-16 z-10">
+            {# top offset must track the navbar height in base_app.html (h-16 sm:h-20). #}
+            <div class="bg-gray-50 border-b border-gray-200 sticky top-16 sm:top-20 z-10">
                 <div class="px-4 sm:px-6 py-2.5">
                     <div class="flex items-center justify-between gap-2">
                         
@@ -267,16 +268,16 @@
                         <!-- SECONDARY ACTIONS -->
                         <div class="flex items-center gap-1 text-xs relative">
                             {% if is_admin or technician and technician.is_manager or repair.queue_status not in 'COMPLETED,DENIED' and repair.technician == technician %}
-                            <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="Edit">
+                            <a href="{% url 'update_repair' repair.id %}{% if repair.is_part_of_batch %}?batch_id={{ repair.repair_batch_id }}{% endif %}" class="tap-target inline-flex items-center justify-center w-9 h-9 text-gray-500 hover:text-gray-700 rounded hover:bg-gray-200 transition-colors" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </a>
                             {% endif %}
-                            <a href="{% url 'technician_dashboard' %}" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="Dashboard">
+                            <a href="{% url 'technician_dashboard' %}" class="tap-target inline-flex items-center justify-center w-9 h-9 text-gray-500 hover:text-gray-700 rounded hover:bg-gray-200 transition-colors" title="Dashboard">
                                 <i class="fas fa-home"></i>
                             </a>
                             {% if is_admin or technician and technician.is_manager or can_reassign_to_self or user_can_invoices and repair.queue_status == 'COMPLETED' and not is_invoiced %}
                             <div class="relative">
-                                <button id="moreActionsBtn" data-dropdown-toggle="moreActionsMenu" class="text-gray-500 hover:text-gray-700 p-1.5 rounded hover:bg-gray-200 transition-colors" title="More">
+                                <button id="moreActionsBtn" data-dropdown-toggle="moreActionsMenu" class="tap-target inline-flex items-center justify-center w-9 h-9 text-gray-500 hover:text-gray-700 rounded hover:bg-gray-200 transition-colors" title="More">
                                     <i class="fas fa-ellipsis-v"></i>
                                 </button>
                                 <div id="moreActionsMenu" data-dropdown-menu class="hidden absolute right-0 top-full mt-1 w-52 surface-float py-1 z-20">
@@ -438,7 +439,7 @@
                         {% if inv_pay and inv_pay.amount_due > 0 and inv_pay.status != 'CANCELLED' %}
                         <div class="mt-3 p-4 rounded-lg border border-gray-200 bg-white">
                             <button onclick="document.getElementById('collectPaymentForm').classList.toggle('hidden')" 
-                                    class="w-full flex items-center justify-between text-sm font-medium text-green-700 hover:text-green-800">
+                                    class="w-full flex items-center justify-between min-h-11 -my-1 text-sm font-medium text-green-700 hover:text-green-800">
                                 <span><i class="fas fa-money-bill-wave mr-2"></i>Collect Payment</span>
                                 <i class="fas fa-chevron-down text-xs"></i>
                             </button>

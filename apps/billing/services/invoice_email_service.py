@@ -37,6 +37,18 @@ class PhotoAttachment:
     content_type: str = 'image/jpeg'
 
 
+def _unit_column_label(invoice_data) -> str:
+    """'Unit #' for a fleet, 'Vehicle' for an individual.
+
+    getattr rather than attribute access on purpose: the builders below are
+    called with duck-typed invoice-data objects as well as the real
+    InvoiceData dataclass (the same reason `tax_amount` is hasattr-guarded).
+    The fallback matches the dataclass default, so an object from before this
+    field existed renders exactly as it always did.
+    """
+    return getattr(invoice_data, 'unit_column_label', 'Unit #') or 'Unit #'
+
+
 class InvoiceEmailService:
     """
     Service for sending invoice emails with photo attachments.
@@ -235,10 +247,25 @@ class InvoiceEmailService:
             "-" * 40,
         ]
         
+        # No column header in a plain-text mail, so the noun rides along:
+        # "Unit 4521" for a fleet, "2019 Ford F-150" for an individual, and
+        # nothing at all when the job names no vehicle.
+        #
+        # getattr, not attribute access: callers pass duck-typed invoice-data
+        # objects as well as the real dataclass (same reason `tax_amount` is
+        # hasattr-guarded below). 'Unit #' matches the dataclass default.
+        unit_noun = 'Unit ' if _unit_column_label(invoice_data) == 'Unit #' else ''
+        # The bullet already names the service type, so the detail line prints
+        # only what the type doesn't cover — otherwise a replacement read
+        # "Windshield Replacement" twice in a row.
+        from apps.billing.services.invoice_service import description_detail
+
         for item in invoice_data.line_items:
-            lines.append(f"  • Unit {item.unit_number} - {item.damage_type} - ${item.final_cost:.2f}")
-            if item.description:
-                lines.append(f"    {item.description[:100]}")
+            vehicle = f"{unit_noun}{item.unit_number} - " if item.unit_number else ''
+            lines.append(f"  • {vehicle}{item.damage_type} - ${item.final_cost:.2f}")
+            detail = description_detail(item.description, item.damage_type)
+            if detail:
+                lines.append(f"    {detail[:100]}")
         
         lines.append("-" * 40)
 
@@ -597,14 +624,19 @@ class InvoiceEmailService:
             company_address = html.escape(self.tenant.business_address or '')
             company_phone = html.escape(self.tenant.business_phone or '')
 
-        # Line items HTML
+        # Line items HTML. The column header carries the noun ("Unit #" for a
+        # fleet, "Vehicle" for an individual), so cells hold the bare
+        # identifier — and an em dash when the job names no vehicle.
+        unit_column_label = html.escape(_unit_column_label(invoice_data))
         items_html = ''
         for item in invoice_data.line_items:
-            unit_esc = html.escape(str(item.unit_number))
+            unit_esc = (
+                html.escape(str(item.unit_number)) if item.unit_number else '&mdash;'
+            )
             damage_esc = html.escape(str(item.damage_type))
             items_html += f'''
             <tr>
-                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">Unit {unit_esc}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{unit_esc}</td>
                 <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;">{damage_esc}</td>
                 <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#374151;text-align:right;">${item.final_cost:.2f}</td>
             </tr>'''
@@ -681,7 +713,7 @@ class InvoiceEmailService:
     <!-- Line Items -->
     <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <tr style="background-color:#f3f4f6;">
-            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Unit</th>
+            <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">{unit_column_label}</th>
             <th style="padding:10px 12px;text-align:left;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Service</th>
             <th style="padding:10px 12px;text-align:right;font-size:12px;color:#6b7280;text-transform:uppercase;font-weight:600;">Amount</th>
         </tr>

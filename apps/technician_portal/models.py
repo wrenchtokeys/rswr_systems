@@ -233,7 +233,22 @@ class Technician(models.Model):
             instance.technician.save()
 
 class UnitRepairCount(models.Model):
-    """Tracks the number of repairs per unit per customer for progressive pricing."""
+    """Repairs done per vehicle per customer, for progressive pricing.
+
+    The ``unit_number`` column holds whatever identifies the vehicle to THIS
+    customer's account — a unit number for a fleet, the vehicle itself for an
+    individual. It is never the raw ``Repair.unit_number`` column, which an
+    individual's job leaves blank (their car lives in vehicle_year/make/model).
+    Keying on that blank collapsed every car a person owns into one counter row
+    labelled '', so their second vehicle's first repair counted as their third.
+
+    Always derive the key with ``key_for(job)`` — never read the job's
+    ``unit_number`` attribute directly.
+
+    Two spellings of one vehicle ('2019 Ford F-150' vs '2019 ford f150') still
+    make two rows. That is inherent to a free-text field and is equally true of
+    fleet unit numbers today; normalizing is a separate question.
+    """
     # Multi-tenant support
     tenant = models.ForeignKey(
         'tenants.Tenant',
@@ -264,8 +279,26 @@ class UnitRepairCount(models.Model):
             ),
         ]
 
+    # The column is 50 chars; a year + make + model can legitimately exceed it
+    # ('2019 Mercedes-Benz Sprinter 3500 High Roof Extended'), and Postgres
+    # errors rather than truncating. Clamp at the one place the key is built.
+    KEY_MAX_LENGTH = 50
+
+    @classmethod
+    def key_for(cls, job):
+        """Counter key for a Repair/Replacement — how its customer names the car.
+
+        Fleet      -> the unit number ('4521')
+        Individual -> their vehicle ('2019 Ford F-150')
+        '' when the job names no vehicle at all, which is a single shared
+        bucket by necessity — there is nothing to tell those jobs apart.
+        """
+        return (job.get_vehicle_identifier() or '')[:cls.KEY_MAX_LENGTH]
+
     def __str__(self):
-        return f"{self.customer.name} - Unit #{self.unit_number} - Repairs: {self.repair_count}"
+        # No bare "Unit #" — this row may well be an individual's vehicle.
+        vehicle = self.unit_number or '(no vehicle on record)'
+        return f"{self.customer.name} - {vehicle} - Repairs: {self.repair_count}"
 
 
 # =============================================================================
@@ -465,6 +498,50 @@ class GlassService(models.Model):
         if self.additional_photos:
             count += len(self.additional_photos)
         return count
+
+    # ---- Vehicle identity -------------------------------------------------
+    # A fleet is identified by unit number, an individual by their vehicle,
+    # and the two are never interchangeable. The job form's one "Vehicle /
+    # unit" box writes to unit_number for both, so an individual's invoice
+    # used to read "Unit #Silver Camry" — the shop's own field note wearing a
+    # fleet label. Everything customer-facing goes through these three.
+
+    @property
+    def is_for_individual(self):
+        """True when this job belongs to a person rather than a fleet account."""
+        return bool(self.customer and self.customer.is_individual)
+
+    @property
+    def vehicle_description(self):
+        """'2019 Ford F-150' from the year/make/model fields, or ''."""
+        parts = [self.vehicle_year, self.vehicle_make, self.vehicle_model]
+        return ' '.join(str(p).strip() for p in parts if p).strip()
+
+    def get_vehicle_identifier(self):
+        """Bare identifier for a column whose header already says what it is.
+
+        Fleet      -> '4521'
+        Individual -> '2019 Ford F-150', falling back to whatever free text
+                      the tech typed in the vehicle box ('Silver Camry').
+        '' when there is nothing to show.
+        """
+        unit = (self.unit_number or '').strip()
+        if self.is_for_individual:
+            return self.vehicle_description or unit
+        return unit
+
+    def get_vehicle_label(self):
+        """Self-describing identifier for inline prose (invoice descriptions).
+
+        Fleet      -> 'Unit #4521'
+        Individual -> '2019 Ford F-150' (no unit-number framing, ever)
+        '' when there is nothing to show, so callers drop the whole segment
+        rather than printing a bare 'Unit #'.
+        """
+        identifier = self.get_vehicle_identifier()
+        if not identifier:
+            return ''
+        return identifier if self.is_for_individual else f"Unit #{identifier}"
 
 
 # =============================================================================
@@ -830,10 +907,13 @@ class Repair(GlassService):
             # tenant=NULL (the field is nullable for migration compat), which
             # breaks TenantManager scoping and could produce duplicate NULL-tenant
             # rows on PostgreSQL (where NULL != NULL in unique constraints).
+            # key_for(), not self.unit_number: an individual's car is in
+            # vehicle_year/make/model, so the raw column is blank and every car
+            # they own would share one counter row.
             unit_repair_count, created = UnitRepairCount.objects.get_or_create(
                 tenant=self.tenant,
                 customer=self.customer,
-                unit_number=self.unit_number,
+                unit_number=UnitRepairCount.key_for(self),
                 defaults={'repair_count': 0}
             )
 
@@ -1086,14 +1166,23 @@ class Repair(GlassService):
 
     def get_invoice_description(self):
         """Generate a descriptive line item string for invoices.
-        
+
         Includes break number (for batches) and damage location if available.
+
+        The vehicle is deliberately NOT in here. Every surface that shows this
+        string also shows the vehicle in its own column or sub-line (PDF,
+        emailed invoice, public pay page, customer portal, owner invoice), so
+        naming it here printed it twice on the same row —
+        'Windshield repair - 2022 Toyota Camry - Crack' sitting next to a
+        Vehicle column already reading '2022 Toyota Camry'. Use
+        get_vehicle_label() for inline prose that has no such column.
+
         Examples:
-            'Windshield repair - Unit #100 - Chip'
-            'Windshield repair - Unit #100 - Break 2 of 3 - Chip (passenger side)'
+            'Windshield repair - Chip'
+            'Windshield repair - Break 2 of 3 - Chip (passenger side)'
         """
-        parts = [f"Windshield repair - Unit #{self.unit_number}"]
-        
+        parts = ['Windshield repair']
+
         if self.is_part_of_batch and self.break_number:
             if self.total_breaks_in_batch:
                 parts.append(f"Break {self.break_number} of {self.total_breaks_in_batch}")
@@ -1369,7 +1458,9 @@ class Repair(GlassService):
                 return get_retail_repair_price(self.customer)
             
             # Fleet: progressive pricing based on unit repair count
-            expected_cost, _ = get_expected_repair_cost(self.customer, self.unit_number)
+            expected_cost, _ = get_expected_repair_cost(
+                self.customer, UnitRepairCount.key_for(self)
+            )
             return expected_cost
         return 0
 
@@ -1647,10 +1738,13 @@ class Replacement(GlassService):
                     # already includes tenant= in its UnitRepairCount lookup
                     # (see line ~756) — this brings Replacement into parity.
                     # (CODE-230)
+                    # key_for(), not self.unit_number — an individual's car is
+                    # in vehicle_year/make/model, so the raw column is blank
+                    # and this would reset the wrong (shared) row.
                     unit_repair_count = UnitRepairCount.objects.filter(
                         tenant=self.tenant,
                         customer=self.customer,
-                        unit_number=self.unit_number
+                        unit_number=UnitRepairCount.key_for(self)
                     ).first()
                     if unit_repair_count:
                         unit_repair_count.repair_count = 0
@@ -1757,12 +1851,17 @@ class Replacement(GlassService):
     def get_invoice_description(self):
         """Generate a descriptive line item string for invoices.
 
+        The vehicle is deliberately NOT in here — every surface that renders
+        this string carries the vehicle in its own column or sub-line, so
+        naming it here printed it twice on one row. See
+        Repair.get_invoice_description for the full rationale.
+
         Examples:
-            'Windshield Replacement - Unit #100'
-            'Rear Window Replacement - Unit #N/A'
+            'Windshield Replacement'
+            'Rear Window Replacement'
         """
         position = self.get_glass_position_display() if self.glass_position else 'Glass'
-        return f"{position} Replacement - Unit #{self.unit_number or 'N/A'}"
+        return f"{position} Replacement"
 
     class Meta:
         ordering = ['-service_date']

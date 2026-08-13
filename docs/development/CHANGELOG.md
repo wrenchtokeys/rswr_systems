@@ -14,6 +14,60 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-08-12 — Individual vs fleet on invoices + mobile/touch pass
+
+### Fixed
+- **An individual's invoice called their car a unit number.** The job forms
+  funnel both a fleet's unit number and an individual's vehicle into the same
+  `unit_number` column, so a walk-in's invoice read `Unit #Silver Camry`
+  under a `Unit #` header — or, when the job came through `RepairForm` (which
+  writes `unit_number=''` and fills `vehicle_year/make/model` instead), an
+  empty column and a description ending `Unit # - Chip`. Replacements printed
+  `Unit #N/A`. The rule now lives in three places and nowhere else:
+  - `Customer.is_individual` / `.vehicle_column_label` (RETAIL + WALK_IN)
+  - `GlassService.get_vehicle_identifier()` (bare) and `.get_vehicle_label()`
+    (self-describing) — year/make/model first, free-text vehicle box second,
+    and `''` rather than a bare noun when there is nothing on record
+  - `InvoiceLineItem.vehicle_identifier` + `Invoice.vehicle_column_label`
+
+  Applied to the invoice PDF (header, cells, and a wider first column for
+  "2019 Ford F-150"), the invoice email (text + HTML), the public invoice
+  page, the customer-portal and owner invoice screens, the job list, and the
+  loyalty ledger. Fleets are unchanged.
+- **The job form asked for a "unit #" on a walk-in's Camry.** The
+  Fleet/Individual toggle now swaps the field's label and placeholder, so the
+  vehicle stops being entered under fleet framing in the first place.
+  `QuickJobForm.unit_number` also allowed 100 characters against a 50-char
+  column — a long vehicle string passed validation and blew up on save.
+- **A customer's own dashboard showed "None"** as the title of any job logged
+  without notes (`Repair.description` is nullable). It shows the vehicle now.
+- **`.safe-area-bottom` was referenced by the customer portal and defined
+  nowhere**, so the fixed bottom tab bar sat under the iPhone home indicator.
+  Defined, and the viewport meta now carries `viewport-fit=cover` — without
+  it `env(safe-area-inset-*)` reports 0 and the class is a no-op.
+
+### Changed
+- **Touch pass over the whole app**, gated on `(pointer: coarse)` — the input
+  device, not the viewport width, so a narrow desktop window keeps its dense
+  layout and a tablet gets the finger-sized one:
+  - 44px minimum on anything tappable. `.btn` was 34px and `.btn-sm` 26px;
+    kebab menus, dismiss ×, filter chips, breadcrumbs, tab bars, dropdown
+    rows and segmented controls were 20–38px. Icon-only controls in list rows
+    grow their *hit area* via `.tap-target` without moving the drawn box.
+  - **16px minimum on anything typeable.** Every form here styles its inputs
+    `text-sm` (14px); under 16px iOS Safari zooms the viewport on focus and
+    never zooms back. Zoom itself is deliberately NOT blocked.
+  - `touch-action: manipulation` (drops the ~300ms double-tap-zoom wait) and
+    no grey tap flash — the existing `scale: 0.98` press dip replaces it.
+  - Row action menus no longer hide behind `:hover`, which a tablet lacks.
+  - Modal panels use `dvh`, so a full modal's buttons are on screen while the
+    URL bar is showing.
+- **The shop's logo is roughly 40% larger** in the owner/tech navbar, the
+  customer portal navbar (both `h-11 sm:h-14`, in a taller `h-16 sm:h-20`
+  bar) and on the invoice PDF (2.4in × 1.5in, was 1.5in × 1in).
+
+---
+
 ## 2026-08-11 — Billing & subscription hardening (PRs #166, #171, #172, #173)
 
 ### Fixed

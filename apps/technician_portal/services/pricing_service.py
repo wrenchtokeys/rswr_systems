@@ -182,11 +182,15 @@ def get_retail_repair_price(customer: Customer) -> Decimal:
 
 def get_expected_repair_cost(customer: Customer, unit_number: str, tenant=None) -> Tuple[Decimal, int]:
     """
-    Get the expected cost for the next repair on a specific unit.
+    Get the expected cost for the next repair on a specific vehicle.
 
     Args:
         customer: The Customer object
-        unit_number: The unit number
+        unit_number: The counter key for the vehicle — a fleet's unit number,
+            or an individual's vehicle. Build it with
+            ``UnitRepairCount.key_for(job)`` whenever a job is in hand; only
+            fleets reach the counter here, so a raw unit number is equivalent
+            for them.
         tenant: Optional Tenant object (defaults to customer.tenant)
 
     Returns:
@@ -268,12 +272,17 @@ def apply_pricing_to_repair(repair: 'Repair') -> None:
         repair.cost = repair.cost_override
         return
 
-    # Get the current repair count for this unit.
+    # Get the current repair count for this vehicle.
     # Include tenant= so the lookup matches the unique constraint
     # (tenant, customer, unit_number) — consistent with get_or_create above
     # and avoids hitting stale NULL-tenant rows.  (CODE-257)
+    # The counter is keyed by UnitRepairCount.key_for(), not the raw
+    # unit_number column, which an individual's job leaves blank.
     try:
-        lookup = {'customer': repair.customer, 'unit_number': repair.unit_number}
+        lookup = {
+            'customer': repair.customer,
+            'unit_number': UnitRepairCount.key_for(repair),
+        }
         tenant = getattr(repair, 'tenant', None)
         if tenant is not None:
             lookup['tenant'] = tenant

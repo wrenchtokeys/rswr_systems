@@ -921,11 +921,17 @@ class QuickJobForm(forms.Form):
     # a different person than the existing individual with the same name.
     confirmed_new_customer = forms.BooleanField(
         required=False, widget=forms.HiddenInput)
+    # max_length matches GlassService.unit_number (50). It was 100, so a long
+    # vehicle string passed form validation and then blew up on save.
+    # The label and placeholder are swapped to vehicle wording by the
+    # customer-type toggle in job_form.html.
     unit_number = forms.CharField(
-        required=False, max_length=100,
+        required=False, max_length=50,
         widget=forms.TextInput(attrs={
             'class': _INPUT,
-            'placeholder': 'e.g. T-1045 or 2023 Toyota Camry',
+            'placeholder': 'e.g. T-1045',
+            'data-fleet-placeholder': 'e.g. T-1045',
+            'data-individual-placeholder': 'e.g. 2023 Toyota Camry',
         }),
     )
     work_done = forms.CharField(

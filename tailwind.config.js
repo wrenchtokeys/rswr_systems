@@ -18,6 +18,10 @@ module.exports = {
     // have it work immediately instead of silently rendering unstyled.
     { pattern: /^t-(display|h1|h2|h3|body|sub|caption)$/ },
     'surface-float',
+    // Safe-area helpers. `.safe-area-bottom` is used today; the other two are
+    // shared component classes kept alive for the shells that need them next
+    // — an @layer components class no template references yet is purged.
+    { pattern: /^safe-area-(top|bottom|x)$/ },
   ],
   theme: {
     extend: {

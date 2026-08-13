@@ -331,20 +331,22 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
         safe_to_delete = queryset.exclude(id__in=invoiced_ids)
 
         # Before deletion, tally how many COMPLETED repairs we're removing per
-        # (tenant, customer, unit_number) so we can decrement UnitRepairCount.
+        # (tenant, customer, vehicle) so we can decrement UnitRepairCount.
         # Only COMPLETED repairs incremented the count (see Repair.save() logic),
         # and only when progressive pricing was active (non-retail, use_progressive=True).
         # We conservatively decrement for any deleted COMPLETED repair to avoid
         # leaving inflated counts that produce incorrect future pricing.
+        # Iterate model instances, not .values(): the counter key comes from
+        # UnitRepairCount.key_for(), which reads year/make/model for an
+        # individual rather than the blank unit_number column.
         completed_repairs = (
             safe_to_delete
             .filter(queue_status='COMPLETED')
             .select_related('tenant', 'customer')
-            .values('tenant_id', 'customer_id', 'unit_number')
         )
         decrement_map = defaultdict(int)
         for r in completed_repairs:
-            key = (r['tenant_id'], r['customer_id'], r['unit_number'])
+            key = (r.tenant_id, r.customer_id, UnitRepairCount.key_for(r))
             decrement_map[key] += 1
 
         deleted_count = safe_to_delete.count()
@@ -398,15 +400,16 @@ class RepairAdmin(TenantFilterMixin, admin.ModelAdmin):
         safe_to_delete = queryset.exclude(id__in=invoiced_ids)
 
         # Tally COMPLETED repairs to decrement UnitRepairCount after deletion.
+        # Keyed by UnitRepairCount.key_for(), not the raw unit_number column —
+        # an individual's vehicle lives in year/make/model.
         completed_repairs = (
             safe_to_delete
             .filter(queue_status='COMPLETED')
             .select_related('tenant', 'customer')
-            .values('tenant_id', 'customer_id', 'unit_number')
         )
         decrement_map = defaultdict(int)
         for r in completed_repairs:
-            key = (r['tenant_id'], r['customer_id'], r['unit_number'])
+            key = (r.tenant_id, r.customer_id, UnitRepairCount.key_for(r))
             decrement_map[key] += 1
 
         safe_to_delete.delete()

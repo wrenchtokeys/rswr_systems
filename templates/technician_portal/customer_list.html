@@ -8,7 +8,7 @@
         <div class="flex items-center justify-between mb-5">
             <h1 class="text-xl sm:text-2xl font-bold text-gray-900">Customers</h1>
             {% if is_admin %}
-            <a href="{% url 'create_customer' %}" class="hidden sm:inline-flex items-center px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-md hover:bg-brand-700 transition-colors press">
+            <a href="{% url 'create_customer' %}" class="hidden sm:inline-flex items-center min-h-11 px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-md hover:bg-brand-700 transition-colors press">
                 <i class="fas fa-plus mr-2 text-xs"></i>New Customer
             </a>
             {% endif %}
@@ -35,15 +35,15 @@
         <!-- Fleet / Individual filter chips -->
         <div class="inline-flex items-center bg-gray-100 rounded-lg p-0.5 mb-5">
             <a href="?{% if search_query %}search={{ search_query|urlencode }}{% endif %}"
-               class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors {% if not type_filter %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+               class="inline-flex items-center min-h-10 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors {% if not type_filter %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
                 All
             </a>
             <a href="?type=fleet{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
-               class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors {% if type_filter == 'fleet' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+               class="inline-flex items-center min-h-10 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors {% if type_filter == 'fleet' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
                 <i class="fas fa-truck mr-1"></i>Fleet
             </a>
             <a href="?type=individual{% if search_query %}&search={{ search_query|urlencode }}{% endif %}"
-               class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors {% if type_filter == 'individual' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
+               class="inline-flex items-center min-h-10 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-colors {% if type_filter == 'individual' %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
                 <i class="fas fa-user mr-1"></i>Individual
             </a>
         </div>
@@ -136,7 +136,7 @@
                 {% endif %}
             </p>
             {% if is_admin and not search_query %}
-            <a href="{% url 'create_customer' %}" class="inline-flex items-center px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-md hover:bg-brand-700 transition-colors press">
+            <a href="{% url 'create_customer' %}" class="inline-flex items-center min-h-11 px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-md hover:bg-brand-700 transition-colors press">
                 <i class="fas fa-plus mr-2"></i>New Customer
             </a>
             {% endif %}

@@ -698,7 +698,7 @@ def convert_to_batch(request, repair_id):
             unit_count = UnitRepairCount.objects.get_or_create(
                 tenant=original_repair.tenant,
                 customer=original_repair.customer,
-                unit_number=original_repair.unit_number
+                unit_number=UnitRepairCount.key_for(original_repair),
             )[0]
             starting_count = unit_count.repair_count
 

@@ -38,16 +38,16 @@
     the chrome holds still while the content changes under it.
     {% endcomment %}
     <!-- Top Navbar -->
-    <nav class="vt-nav bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <nav class="vt-nav bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm safe-area-x">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-14 sm:h-16 items-center">
+            <div class="flex justify-between h-16 sm:h-20 items-center">
                 <!-- Left: Shop branding -->
                 <a href="{% url 'customer_dashboard' %}" class="flex items-center space-x-2 min-w-0">
                     {% if request.tenant and request.tenant.branding_enabled and request.tenant.logo %}
-                    <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-9 sm:h-10 w-auto max-w-[11rem] object-contain flex-shrink-0">
+                    <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-11 sm:h-14 w-auto max-w-[9rem] sm:max-w-[15rem] object-contain flex-shrink-0">
                     {% else %}
-                    <div class="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <span class="text-white text-xs font-extrabold">RS</span>
+                    <div class="w-10 h-10 bg-brand-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <span class="text-white text-sm font-extrabold">RS</span>
                     </div>
                     {% endif %}
                     <span class="text-base font-bold text-gray-900 truncate hidden sm:inline">
@@ -178,7 +178,8 @@
     </div>
     {% endif %}
 
-    <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8">
+    {# pb-24 clears the fixed tab bar; safe-area-x keeps content off the notch in landscape. #}
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 pb-28 md:pb-8 safe-area-x">
         {% block content %}{% endblock %}
     </main>
 
@@ -268,7 +269,7 @@
                     <p class="text-sm font-semibold text-gray-900">{{ request.user.get_full_name|default:request.user.username }}</p>
                     <p class="text-xs text-gray-500">{{ request.user.email }}</p>
                 </div>
-                <button onclick="document.getElementById('mobileDrawer').classList.add('translate-x-full')" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">
+                <button onclick="document.getElementById('mobileDrawer').classList.add('translate-x-full')" class="tap-target w-11 h-11 -mr-2 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-400">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
