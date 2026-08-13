@@ -11,10 +11,10 @@ This file is the **work queue** for making field operations real: a technician f
 
 | Phase | Session | Size | Status |
 |-------|---------|------|--------|
-| N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR pending) |
+| N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
 | N — The tech finds out | N3 · Notification coverage audit | S | TODO |
-| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | TODO (unblocks N2 and all shipped SMS) |
+| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE (2026-08-12, PR pending) — v2 submission awaits deploy + Drake (see Notes) |
 | S — Where and when | S1 · A real "booked time" | M | TODO |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | TODO |
 | S — Where and when | S3 · Day / agenda view | M | TODO |
@@ -175,7 +175,7 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 
 **Notes**
 
-## N4 · SMS opt-in compliance + registration v2 — TODO
+## N4 · SMS opt-in compliance + registration v2 — CODE DONE (2026-08-12)
 
 | Field | Value |
 |---|---|
@@ -189,7 +189,45 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 | **Acceptance criteria** | Consent surface states message types, frequency, "Msg & data rates may apply", STOP/HELP, and links to `/sms/`. Screenshot taken from live prod. Registration version 2 submitted; `describe-registration-versions` shows version 2 `REVIEWING`. |
 | **Out of scope** | Sending anything to techs (N2). Two-way SMS (B2 in IMPROVEMENT_SESSIONS). |
 
-**Notes**
+**Notes** *(session run 2026-08-12, branch `feat/fieldops-n4-sms-opt-in`)*
+
+- **Both levels built — (a) and (b).** Shop-side checkbox in `customer_form.html` +
+  `customer_edit.html` now carries the full disclosure (message types, "typically 1–2
+  messages per completed job", msg & data rates, STOP/HELP, `/sms/` link). AND a
+  **first-party opt-in on the public invoice page** (`templates/billing/public_invoice_view.html`):
+  a "Get text updates from {shop}" card with a required consent checkbox, shown whenever
+  the invoice's customer has a usable mobile and isn't opted in. POSTs to
+  `/invoice/<id>/<token>/sms-opt-in/` (`public_invoice_sms_opt_in` in `rs_systems/views.py`).
+  This is the screen to screenshot for registration v2 — it's the customer's own device,
+  which is exactly what the reviewer objected to not having.
+- **Deliberately NOT gated on `SMSService.is_enabled()`** — consent collection (and the
+  screenshot) must work while the number is still pending approval. The page shows only
+  the LAST 4 digits of the phone (the full number never renders on a token-shared page).
+- **Consent provenance is now recorded:** `Customer.sms_opt_in_source` (`SHOP`/`CUSTOMER`,
+  core migration `0028_customer_sms_opt_in_source`; existing consent backfilled `SHOP`).
+  `record_sms_consent(source=...)` — first-party consent *upgrades* shop-attested (new
+  timestamp + source), shop attestation never downgrades first-party. If the reviewer asks
+  for proof of consent, `sms_opt_in_at` + `sms_opt_in_source` is the audit answer.
+- **`/sms/` "How you opt in" rewritten** to lead with the self-serve invoice-page path so
+  the program terms and the screenshot agree.
+- **Tests:** `tests/test_fieldops_n4.py` (15: disclosure phrases on both shop forms +
+  the invoice widget, consent-source semantics, POST endpoint incl. bad-token/GET/no-phone).
+  Also fixed a pre-existing N1-introduced failure in `test_invoice_send_polish` —
+  creating a Replacement now emails the tech, so `mail.outbox[0]` was the assignment
+  email, not the invoice email. Any outbox-indexing test that creates jobs is suspect now.
+- **What remains is Drake's (after this PR deploys):**
+  1. Make/pick a test customer **with a mobile number, not opted in** in the live shop,
+     open one of their invoice public links, screenshot the "Get text updates" card
+     (checkbox + disclosure visible, no real PII).
+  2. Update the registration: `optInDescription` should now say consent is collected
+     first-party on the customer's own invoice page (checkbox with message types,
+     frequency, rates, STOP/HELP), with shop-recorded consent as the secondary path;
+     attach the new screenshot as `optInImage`.
+  3. Submit version 2 — console (End User Messaging → Registrations) or CLI:
+     `aws pinpoint-sms-voice-v2 put-registration-field-value` for the changed fields, then
+     `aws pinpoint-sms-voice-v2 submit-registration-version --registration-id registration-3c4aceac54424845b6d540e818f2bddb`
+     (us-east-1). Verify with `describe-registration-versions` → version 2 `REVIEWING`.
+  4. When it flips COMPLETE: the activation checklist at the bottom of Appendix A.
 
 ---
 
@@ -342,6 +380,10 @@ is not the screen in the screenshot. The reviewer sees a shop attesting on a cus
    submit registration **version 2** (`put-registration-field-value` → `submit-registration-version`,
    or the console form — Drake runs paid AWS actions in his own terminal).
 
+**Update 2026-08-12 (N4):** steps 1 and 2 are built — compliant checkbox disclosure on both
+shop-side forms AND a first-party opt-in on the public invoice page. Step 3 (screenshot from
+live prod + submit v2) is Drake's, after the N4 PR deploys — exact checklist in N4's Notes.
+
 Until then the $2/mo lease is running on a number that cannot send.
 
 **When it eventually flips to COMPLETE:**
@@ -358,4 +400,5 @@ Until then the $2/mo lease is running on a number that cannot send.
 | 2026-08-11 | Created from live exploration (notification-path + scheduling audits) and Drake's scoping decisions: one combined doc; full arc MVP-first; staff notifications default-ON. |
 | 2026-08-11 | Review pass with Drake: confirmed MVP-first sequencing over deeper upfront scheduling design. Named the two known gaps so they don't get lost — technician availability (S5 consideration + S6 backlog item 4) and self-service rescheduling (S6 backlog item 5). |
 | 2026-08-12 | Corrected the SMS status: the TFN registration was **denied** on 2026-08-11 (this doc said `REVIEWING` — it was written hours before the denial landed). Rewrote Appendix A with the reason and the resubmission path, and added **N4** to the queue, because the fix is product work on the consent surface, not a console edit. |
-| 2026-08-12 | **N1 executed** (branch `feat/fieldops-n1-assignment-notifications`): one assignment write path (`services/assignments.py`), per-template `channels_override`, staff email default-ON, Replacement signals, bulk summaries, rewritten assignment emails. §0 blockers 1–3 closed; blocker 4's SMS half stays with N2. Two traps added (NOT NULL technician; flat-context/absolute-link email rules). |
+| 2026-08-12 | **N1 executed** (branch `feat/fieldops-n1-assignment-notifications`): one assignment write path (`services/assignments.py`), per-template `channels_override`, staff email default-ON, Replacement signals, bulk summaries, rewritten assignment emails. §0 blockers 1–3 closed; blocker 4's SMS half stays with N2. Two traps added (NOT NULL technician; flat-context/absolute-link email rules). Merged as PR #179. |
+| 2026-08-12 | **N4 code executed** (branch `feat/fieldops-n4-sms-opt-in`): compliant disclosure on both shop-side consent checkboxes, first-party opt-in card on the public invoice page (`/invoice/<id>/<token>/sms-opt-in/`), `Customer.sms_opt_in_source` provenance (core migration 0028), `/sms/` opt-in copy rewritten. Registration v2 submission is Drake's post-deploy step — checklist in N4 Notes. |
