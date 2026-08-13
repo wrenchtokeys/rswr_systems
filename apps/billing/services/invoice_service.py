@@ -48,6 +48,29 @@ ROYAL_BLUE = "#4169E1"
 LIGHT_BLUE = "#E8F0FE"
 
 
+def description_detail(description: str, damage_type: str) -> str:
+    """The part of a line's description that the service type doesn't already say.
+
+    A line's stored description has to name its own service, because the
+    customer portal, the public pay page and the owner invoice screens render
+    it with no service-type column beside it. The invoice PDF and the
+    plain-text email DO print the type separately, so there the description
+    would restate it: 'Windshield Replacement | Windshield Replacement'.
+
+    Both of those renderers call this, so they cannot drift apart. An
+    owner-edited description won't match the type and is returned whole.
+
+        ('Windshield repair - Chip', 'Windshield Repair') -> 'Chip'
+        ('Windshield Replacement',   'Windshield Replacement') -> ''
+        ('Rock chip, waived fee',    'Windshield Repair') -> unchanged
+    """
+    text = (description or '').strip()
+    lead, sep, rest = text.partition(' - ')
+    if lead.strip().casefold() == (damage_type or '').strip().casefold():
+        return rest.strip() if sep else ''
+    return text
+
+
 @dataclass
 class InvoiceLineItem:
     """Single line item on an invoice"""
@@ -931,8 +954,9 @@ class InvoiceService:
             if item.discount_description:
                 amount_text = f"<strike>${item.original_cost:.2f}</strike><br/>${item.final_cost:.2f}<br/><font size='8'><i>({item.discount_description})</i></font>"
             
-            # Show full description (notes included)
-            desc_text = item.description if item.description else ''
+            # Full description (notes included) minus whatever the Type column
+            # beside it already says — see description_detail().
+            desc_text = description_detail(item.description, item.damage_type)
             
             table_data.append([
                 Paragraph(item.unit_number, self.styles['Normal']),

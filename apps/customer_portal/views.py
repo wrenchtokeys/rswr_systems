@@ -90,31 +90,42 @@ def customer_required(view_func):
     return _wrapped_view
 
 def rebuild_unit_repair_counts(customer):
-    """Rebuild the UnitRepairCount data for a customer"""
+    """Rebuild the UnitRepairCount data for a customer.
+
+    Counts by VEHICLE, not by the raw unit_number column: a fleet's unit
+    number, an individual's year/make/model. Grouping in SQL on unit_number
+    put every car an individual owns into one ''-keyed row, so their second
+    car's first repair was counted as their third.
+    """
     from apps.technician_portal.models import UnitRepairCount
-    
-    # Get counts of completed repairs by unit (scoped to tenant for isolation)
-    repair_counts = Repair.objects.filter(
+
+    # Tally in Python so the key comes from the one helper that knows how a
+    # customer names its vehicles. A customer's completed repairs are a small
+    # set, and only their own rows are touched.
+    completed = Repair.objects.filter(
         customer=customer,
         tenant=customer.tenant,
-        queue_status='COMPLETED'
-    ).values('unit_number').annotate(
-        count=Count('id')
-    ).order_by('-count')
-    
+        queue_status='COMPLETED',
+    ).select_related('customer')
+
+    counts = {}
+    for repair in completed:
+        key = UnitRepairCount.key_for(repair)
+        counts[key] = counts.get(key, 0) + 1
+
     # Delete existing counts for this customer
     UnitRepairCount.objects.filter(customer=customer).delete()
-    
+
     # Create new counts (include tenant so rows are properly scoped)
-    for repair in repair_counts:
+    for unit_number, count in counts.items():
         UnitRepairCount.objects.create(
             tenant=customer.tenant,
             customer=customer,
-            unit_number=repair['unit_number'],
-            repair_count=repair['count']
+            unit_number=unit_number,
+            repair_count=count,
         )
-    
-    return len(repair_counts)
+
+    return len(counts)
 
 @customer_required
 def customer_dashboard(request):
@@ -2658,29 +2669,13 @@ def unit_repair_data_api(request):
         tenant = customer.tenant
         unit_repairs = UnitRepairCount.objects.filter(customer=customer, tenant=tenant)
 
-        # If no unit repair counts exist, create them from repairs data
+        # If no unit repair counts exist, create them from repairs data.
+        # Delegate to the one rebuild function rather than keeping a second
+        # copy of the tally here — the local copy grouped in SQL on
+        # unit_number and so gave every individual a single ''-keyed row.
+        # It writes tenant-scoped rows (customer.tenant == tenant above).
         if not unit_repairs.exists():
-            # Get counts directly from Repair model (tenant-scoped)
-            repair_counts = Repair.objects.filter(
-                customer=customer,
-                tenant=tenant,
-                queue_status='COMPLETED'  # Only count completed repairs
-            ).values('unit_number').annotate(
-                count=Count('id')
-            ).order_by('-count')
-
-            # Create UnitRepairCount records if needed.
-            # Include tenant in the lookup keys (not just defaults) so the lookup
-            # itself is tenant-scoped.  Omitting it would create NULL-tenant rows
-            # or silently match a NULL-tenant row left by an older codepath, so the
-            # correct tenant would never be set.  (Same pattern as customers.py mark_unit_replaced.)
-            for repair in repair_counts:
-                UnitRepairCount.objects.update_or_create(
-                    tenant=tenant,
-                    customer=customer,
-                    unit_number=repair['unit_number'],
-                    defaults={'repair_count': repair['count']}
-                )
+            rebuild_unit_repair_counts(customer)
 
             # Refresh the queryset (tenant-scoped)
             unit_repairs = UnitRepairCount.objects.filter(customer=customer, tenant=tenant)

@@ -255,11 +255,17 @@ class InvoiceEmailService:
         # objects as well as the real dataclass (same reason `tax_amount` is
         # hasattr-guarded below). 'Unit #' matches the dataclass default.
         unit_noun = 'Unit ' if _unit_column_label(invoice_data) == 'Unit #' else ''
+        # The bullet already names the service type, so the detail line prints
+        # only what the type doesn't cover — otherwise a replacement read
+        # "Windshield Replacement" twice in a row.
+        from apps.billing.services.invoice_service import description_detail
+
         for item in invoice_data.line_items:
             vehicle = f"{unit_noun}{item.unit_number} - " if item.unit_number else ''
             lines.append(f"  • {vehicle}{item.damage_type} - ${item.final_cost:.2f}")
-            if item.description:
-                lines.append(f"    {item.description[:100]}")
+            detail = description_detail(item.description, item.damage_type)
+            if detail:
+                lines.append(f"    {detail[:100]}")
         
         lines.append("-" * 40)
 

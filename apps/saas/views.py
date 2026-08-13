@@ -5252,7 +5252,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
                         discount=total_disc,
                         amount=amount,
                         repair_date=mr.repair_date.date() if mr.repair_date else None,
-                        unit_number=mr.unit_number,
+                        unit_number=mr.get_vehicle_identifier(),
                         taxable=not mr.no_tax and not mr.customer.tax_exempt,
                     )
 

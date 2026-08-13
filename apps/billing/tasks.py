@@ -470,7 +470,7 @@ def _create_batch_invoice(tenant, customer, config):
                     discount=total_disc,
                     amount=amount,
                     repair_date=repair.service_date,
-                    unit_number=repair.unit_number or '',
+                    unit_number=repair.get_vehicle_identifier(),
                     taxable=not repair.no_tax,
                 )
 
@@ -495,7 +495,7 @@ def _create_batch_invoice(tenant, customer, config):
                     unit_price=amount,
                     amount=amount,
                     repair_date=replacement.service_date,
-                    unit_number=replacement.unit_number or '',
+                    unit_number=replacement.get_vehicle_identifier(),
                     taxable=not replacement.no_tax,
                 )
 

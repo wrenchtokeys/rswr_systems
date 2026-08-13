@@ -33,7 +33,10 @@ def calculate_batch_pricing(
 
     Args:
         customer: Customer object
-        unit_number: Unit identifier
+        unit_number: The vehicle's counter key — a fleet's unit number, or an
+            individual's vehicle (``UnitRepairCount.key_for(job)`` when a job
+            is in hand). Only fleets reach the counter, so a raw unit number is
+            equivalent for them.
         breaks_count: Number of breaks in this batch
 
     Returns:
