@@ -319,6 +319,15 @@
     background: var(--surface-overlay);
     box-shadow: var(--shadow-overlay);
   }
+  /* On a phone, `vh` is measured against the viewport with the URL bar
+     COLLAPSED, so 90vh is taller than what you can actually see while the bar
+     is showing — the bottom of a full modal (i.e. its buttons) sits off
+     screen until you scroll the page. `dvh` tracks the live viewport. */
+  @supports (height: 100dvh) {
+    .modal-panel {
+      max-height: 90dvh;
+    }
+  }
 
   /* Toast notifications driven by UI.toast()/UI.flash() in static/js/ui.js.
      Sits above modals (modal-overlay is z-50) so feedback from modal actions
@@ -405,7 +414,154 @@
   .spin {
     animation: spin 1s linear infinite;
   }
+
+  /* ---- Safe areas -------------------------------------------------------
+     Used by the customer portal's fixed bottom tab bar and its bottom
+     sheets. These classes were referenced in the templates but NEVER
+     DEFINED anywhere, so on every iPhone with a home indicator the tab bar's
+     bottom row of labels sat under it. `env()` only reports a non-zero inset
+     when the document opts in with `viewport-fit=cover` — that lives on the
+     <meta name="viewport"> in includes/head_assets.html. */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  /* viewport-fit=cover also pushes content under the notch in landscape.
+     The app shells add this to their max-width wrappers so no control ever
+     lands under the camera housing. */
+  .safe-area-x {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
 }
+
+/* ======================================================================
+   TOUCH / MOBILE
+   ======================================================================
+   This app is used one-handed, outdoors, by a tech wearing gloves, on a
+   phone propped on a truck fender. Everything below is gated on
+   `(pointer: coarse)` — the *input device*, not the viewport width. A
+   narrow desktop window keeps the dense pointer-precision layout; a big
+   tablet gets the finger-sized one, which is what it needs.
+
+   Rules of thumb applied here: 44px minimum on anything tappable (Apple
+   HIG; Material says 48dp), 16px minimum on anything typeable (below that,
+   iOS Safari zooms the viewport on focus and never zooms back out).
+   ====================================================================== */
+
+@media (pointer: coarse) {
+  /* --- Tappable floor --------------------------------------------------
+     `.btn` was 34px tall and `.btn-sm` 26px. Both are comfortably inside
+     fat-finger range next to another control. Padding grows with the
+     min-height so the label stays optically centred rather than pinned to
+     a taller box. `.btn-sm` is listed after the general rule for the same
+     reason it is in the components layer: later wins the tie. */
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-ghost {
+    min-height: 2.75rem; /* 44px */
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+  }
+  .btn-sm {
+    min-height: 2.5rem; /* 40px — still a deliberate step down, still hittable */
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    font-size: 0.8125rem;
+  }
+  .btn-lg {
+    min-height: 3.25rem;
+  }
+
+  /* Icon-only controls: the kebab menus on list rows, the navbar hamburger,
+     the toast/alert dismiss. Templates size these as a small square box
+     (w-8 h-8 / w-9 h-9); the box is what gets drawn, so grow the HIT AREA
+     without moving the box using a transparent inset pseudo-element. This
+     is the only way to hit 44px without relaying out every list row. */
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 2.75rem);
+    height: max(100%, 2.75rem);
+    translate: -50% -50%;
+  }
+
+  /* --- Typeable floor --------------------------------------------------
+     Every form in this app styles its inputs `text-sm` (14px). Under 16px,
+     iOS Safari zooms the page on focus and leaves it zoomed — the single
+     most common "this app feels broken on my phone" complaint, and it hits
+     every job form in the field.
+
+     !important is load-bearing, not laziness: `text-sm` is a Tailwind
+     UTILITY, and utilities out-rank both base and components no matter how
+     specific a selector we write here. A media query adds no specificity.
+     Checkboxes, radios and ranges are excluded — they have no text to zoom
+     toward and font-size changes their box size. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']),
+  select,
+  textarea {
+    font-size: 16px !important;
+    min-height: 2.75rem;
+  }
+  /* Checkboxes are the other end of the same problem: a 16px box next to a
+     16px label is a coin toss with a fingertip. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-width: 1.25rem;
+    min-height: 1.25rem;
+  }
+
+  /* --- Feel -------------------------------------------------------------
+     `touch-action: manipulation` drops the ~300ms double-tap-to-zoom wait
+     before a tap registers. The grey flash is removed only because this app
+     already answers a press with the `scale: 0.98` dip in the base layer —
+     never remove one without the other. */
+  a,
+  button,
+  summary,
+  label,
+  [role='button'],
+  input[type='submit'],
+  input[type='button'] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The shared tab bar (Settings, and every other [data-tabs] page). `pb-3
+     px-1` puts the underline where the design wants it and leaves the target
+     34px tall — the padding has to grow upward, not just down. */
+  .tab-btn {
+    min-height: 2.75rem;
+    padding-top: 0.5rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  /* Menu and drawer rows. `px-3 py-2 text-sm` lands at 36px, so the account
+     dropdown, every list-row kebab menu and the mobile nav were all a row
+     of near-misses stacked 4px apart. */
+  .dropdown-menu a,
+  .dropdown-menu button,
+  [data-dropdown-menu] a,
+  [data-dropdown-menu] button,
+  [role='menuitem'] {
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* (No `html { -webkit-text-size-adjust: 100% }` here — Tailwind's preflight
+   already sets it, along with -webkit-tap-highlight-color.) */
 
 /* ---- Enter/exit (UI_MAGIC_PLAN R4, primitive 1) -----------------------
    220ms, --ease-out, opacity + a 4px rise. Menus, modals, popovers.

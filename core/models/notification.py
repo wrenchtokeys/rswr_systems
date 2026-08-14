@@ -172,7 +172,18 @@ class Notification(models.Model):
             self.save(update_fields=['read', 'read_at'])
 
     def get_delivery_channels(self):
-        """Return list of delivery channels based on priority"""
+        """Return list of delivery channels based on priority.
+
+        A template with channels_override set wins over the priority mapping —
+        that's how repair_assigned (HIGH) sends email without changing what
+        HIGH means for every other template.
+        """
+        if self.template_id and self.template.channels_override:
+            channels = list(self.template.channels_override)
+            if 'in_app' not in channels:
+                channels.insert(0, 'in_app')
+            return channels
+
         channels = ['in_app']  # Always include in-app
 
         if self.priority == self.PRIORITY_URGENT:

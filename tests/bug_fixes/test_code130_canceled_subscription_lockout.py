@@ -14,6 +14,7 @@ customer.subscription.deleted webhook sets along with status='expired') does
 access restriction kick in.
 """
 
+from itertools import count
 from unittest.mock import MagicMock, patch
 from django.test import TestCase, RequestFactory
 from django.contrib.auth.models import User
@@ -24,27 +25,43 @@ from apps.tenants.models import Tenant, TenantMembership, SubscriptionPlan
 from apps.tenants.subscription_middleware import SubscriptionEnforcementMiddleware
 
 
-def _make_tenant(status, grace_period_end=None, stripe_sub_id='sub_abc123', plan='paid'):
-    """Helper: build an unsaved Tenant-like object for middleware testing."""
-    tenant = MagicMock(spec=Tenant)
-    tenant.subscription_status = status
-    tenant.grace_period_end = grace_period_end
-    # The middleware (since A3) reads effective_grace_period_end and compares
-    # it to now; on the real model the property mirrors grace_period_end.
-    tenant.effective_grace_period_end = grace_period_end
-    tenant.plan = plan
-    tenant.stripe_subscription_id = stripe_sub_id
-    # is_trial_expired only relevant for trial plan
-    tenant.is_trial_expired = False
-    # is_in_grace_period derived from grace_period_end
-    if grace_period_end and timezone.now() <= grace_period_end:
-        tenant.is_in_grace_period = True
-        tenant.grace_days_remaining = (grace_period_end - timezone.now()).days
-    else:
-        tenant.is_in_grace_period = False
-        tenant.grace_days_remaining = 0
-    # had_paid_subscription
-    tenant.had_paid_subscription = bool(stripe_sub_id)
+_TENANT_SEQ = count(1)
+
+
+def _make_tenant(owner, status, grace_period_end=None,
+                 stripe_sub_id='sub_abc123', plan='starter'):
+    """A REAL saved Tenant in the state under test, owned by `owner`.
+
+    This used to be a MagicMock(spec=Tenant) with is_in_grace_period,
+    effective_grace_period_end, is_trial_expired and grace_days_remaining
+    all pinned by hand. Two problems with that: the properties being pinned
+    are exactly the ones the middleware's decision depends on, so the mock
+    could agree with a model that had drifted; and a mock is not queryable,
+    so once the middleware started asking who the requesting user is, the
+    mock raised ValueError and production code grew a `try/except
+    (TypeError, ValueError)` whose only real caller was this file. Test
+    doubles should not shape production error handling.
+
+    A real Tenant reproduces every state these tests need from real fields:
+    a non-trial plan makes is_trial_expired False on its own, and
+    effective_grace_period_end mirrors grace_period_end for a paid plan.
+    """
+    n = next(_TENANT_SEQ)
+    tenant = Tenant.objects.create(
+        name=f'Code130 Shop {n}',
+        slug=f'code130-shop-{n}',
+        subdomain=f'code130-shop-{n}',
+        owner=owner,
+        subscription_status=status,
+        plan=plan,
+        grace_period_end=grace_period_end,
+        stripe_subscription_id=stripe_sub_id,
+        # Non-trial plan, but set anyway so nothing derives off a null.
+        trial_started_at=timezone.now(),
+    )
+    TenantMembership.objects.create(
+        tenant=tenant, user=owner, role='owner', is_active=True,
+    )
     return tenant
 
 
@@ -62,6 +79,11 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
             password='testpass',
         )
         self.user.is_superuser = False
+        # The middleware asks who is looking before deciding how much of the
+        # shop's billing state to show, and whether to hard-block at all --
+        # the shop's own customers never are. These cases are all about the
+        # shop's own people, so _make_tenant() gives this user a real owner
+        # membership on each tenant it builds.
         self.get_response = MagicMock(return_value=MagicMock(status_code=200))
         self.middleware = SubscriptionEnforcementMiddleware(self.get_response)
 
@@ -85,7 +107,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         STATUS: canceled, grace_period_end=None (cancel_at_period_end=True)
         EXPECTED: GET request allowed — shop still has paid time remaining.
         """
-        tenant = _make_tenant('canceled', grace_period_end=None)
+        tenant = _make_tenant(self.user, 'canceled', grace_period_end=None)
         request = self._make_request('/owner/dashboard/', 'GET')
         self._attach_tenant(request, tenant)
 
@@ -99,7 +121,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         STATUS: canceled, grace_period_end=None
         EXPECTED: POST request allowed — shop is still active (just scheduled).
         """
-        tenant = _make_tenant('canceled', grace_period_end=None)
+        tenant = _make_tenant(self.user, 'canceled', grace_period_end=None)
         request = self._make_request('/owner/invoices/1/', 'POST')
         self._attach_tenant(request, tenant)
 
@@ -118,7 +140,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         EXPECTED: GET allowed (grace period read-only mode).
         """
         grace_end = timezone.now() + timedelta(days=15)
-        tenant = _make_tenant('canceled', grace_period_end=grace_end)
+        tenant = _make_tenant(self.user, 'canceled', grace_period_end=grace_end)
         request = self._make_request('/owner/dashboard/', 'GET')
         self._attach_tenant(request, tenant)
 
@@ -140,7 +162,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         blocks — covered below.)
         """
         grace_end = timezone.now() - timedelta(days=1)
-        tenant = _make_tenant('canceled', grace_period_end=grace_end)
+        tenant = _make_tenant(self.user, 'canceled', grace_period_end=grace_end)
         request = self._make_request('/owner/dashboard/', 'GET')
         self._attach_tenant(request, tenant)
 
@@ -158,7 +180,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         STATUS: expired, no grace_period_end
         EXPECTED: access blocked.
         """
-        tenant = _make_tenant('expired', grace_period_end=None)
+        tenant = _make_tenant(self.user, 'expired', grace_period_end=None)
         request = self._make_request('/owner/dashboard/', 'GET')
         self._attach_tenant(request, tenant)
 
@@ -173,7 +195,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         EXPECTED: GET allowed, POST blocked.
         """
         grace_end = timezone.now() + timedelta(days=20)
-        tenant = _make_tenant('expired', grace_period_end=grace_end)
+        tenant = _make_tenant(self.user, 'expired', grace_period_end=grace_end)
         request = self._make_request('/owner/dashboard/', 'GET')
         self._attach_tenant(request, tenant)
 
@@ -187,7 +209,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
 
     def test_active_subscription_allows_everything(self):
         """STATUS: active — always allowed."""
-        tenant = _make_tenant('active')
+        tenant = _make_tenant(self.user, 'active')
         request = self._make_request('/owner/invoices/', 'POST')
         self._attach_tenant(request, tenant)
 
@@ -204,7 +226,7 @@ class CanceledSubscriptionMiddlewareTests(TestCase):
         """
         /owner/billing/ is exempt so owners can always access billing settings.
         """
-        tenant = _make_tenant('expired', grace_period_end=timezone.now() - timedelta(days=5))
+        tenant = _make_tenant(self.user, 'expired', grace_period_end=timezone.now() - timedelta(days=5))
         request = self._make_request('/owner/billing/', 'GET')
         self._attach_tenant(request, tenant)
 

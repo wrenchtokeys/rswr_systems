@@ -333,6 +333,7 @@ class Tenant(AutoUpdateTimestampMixin, models.Model):
             ('trialing', 'Trialing'),
             ('active', 'Active'),
             ('past_due', 'Past Due'),
+            ('paused', 'Paused'),
             ('canceled', 'Canceled'),
             ('expired', 'Expired'),
         ],

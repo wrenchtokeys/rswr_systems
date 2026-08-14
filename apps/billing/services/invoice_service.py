@@ -36,6 +36,7 @@ from reportlab.platypus import (
     Image as RLImage, PageBreak
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from PIL import Image
 
@@ -46,6 +47,29 @@ from apps.technician_portal.models import Repair, Replacement
 # Royal Blue color for better readability
 ROYAL_BLUE = "#4169E1"
 LIGHT_BLUE = "#E8F0FE"
+
+
+def description_detail(description: str, damage_type: str) -> str:
+    """The part of a line's description that the service type doesn't already say.
+
+    A line's stored description has to name its own service, because the
+    customer portal, the public pay page and the owner invoice screens render
+    it with no service-type column beside it. The invoice PDF and the
+    plain-text email DO print the type separately, so there the description
+    would restate it: 'Windshield Replacement | Windshield Replacement'.
+
+    Both of those renderers call this, so they cannot drift apart. An
+    owner-edited description won't match the type and is returned whole.
+
+        ('Windshield repair - Chip', 'Windshield Repair') -> 'Chip'
+        ('Windshield Replacement',   'Windshield Replacement') -> ''
+        ('Rock chip, waived fee',    'Windshield Repair') -> unchanged
+    """
+    text = (description or '').strip()
+    lead, sep, rest = text.partition(' - ')
+    if lead.strip().casefold() == (damage_type or '').strip().casefold():
+        return rest.strip() if sep else ''
+    return text
 
 
 @dataclass
@@ -88,6 +112,10 @@ class InvoiceData:
     city_tax_rate: Decimal = Decimal('0.000')
     special_tax_rate: Decimal = Decimal('0.000')
     tax_amount: Decimal = Decimal('0.00')
+    # Header for the vehicle column. An invoice belongs to exactly one
+    # customer, so the whole column is either fleet unit numbers or
+    # individuals' vehicles — never a mix. See Customer.vehicle_column_label.
+    unit_column_label: str = 'Unit #'
 
 
 class InvoiceService:
@@ -233,6 +261,45 @@ class InvoiceService:
             print(f"Error loading logo for PDF: {e}")
             return None
     
+    # Totals block, right-aligned to the same edge as the line-items table
+    # (3.4 + 2.0 + 1.6 == the 7.0in the other tables use). The amount column
+    # has to hold "$1,234,567.89" set in 16pt bold, and the label column
+    # "Special Tax (10.125%):" in 10pt bold — at the old 1.0in/1.5in both
+    # overflowed and ReportLab broke the word to fit. A number has no spaces
+    # to break at, so splitLongWords stacked the digits one per line and a
+    # four-figure total came out reading vertically.
+    TOTALS_SPACER_WIDTH = 3.4 * inch
+    TOTALS_LABEL_WIDTH = 2.0 * inch
+    TOTALS_AMOUNT_WIDTH = 1.6 * inch
+    # ReportLab's default LEFTPADDING/RIGHTPADDING per table cell.
+    TABLE_CELL_PADDING = 6
+
+    @staticmethod
+    def money(amount):
+        """'$1,234.56'. Thousands separators — a four-figure total on an
+        invoice has to be readable at a glance, not counted digit by digit."""
+        return f"${amount:,.2f}"
+
+    @classmethod
+    def _fitted_style(cls, text, style, avail_width, min_font_size=9):
+        """Return `style`, shrunk just enough that `text` fits on one line.
+
+        Belt-and-braces against the vertical-digits bug: the columns are sized
+        for any total this app will realistically print, but a number that
+        still overruns must come out small, never stacked."""
+        font_name = style.fontName
+        size = style.fontSize
+        while size > min_font_size and stringWidth(text, font_name, size) > avail_width:
+            size -= 0.5
+        if size == style.fontSize and style.leading >= style.fontSize:
+            return style
+        return ParagraphStyle(
+            name=f'{style.name}Fitted{size}',
+            parent=style,
+            fontSize=size,
+            leading=size * 1.2,
+        )
+
     def _setup_custom_styles(self):
         """Set up custom paragraph styles for the invoice"""
         self.styles.add(ParagraphStyle(
@@ -269,6 +336,14 @@ class InvoiceService:
             spaceAfter=5
         ))
         
+        # Subtotal/discount/tax amounts. Right-aligned so their decimal points
+        # line up with each other and with the TOTAL beneath them.
+        self.styles.add(ParagraphStyle(
+            name='TotalsAmount',
+            parent=self.styles['Normal'],
+            alignment=TA_RIGHT
+        ))
+
         self.styles.add(ParagraphStyle(
             name='TotalAmount',
             parent=self.styles['Normal'],
@@ -345,7 +420,9 @@ class InvoiceService:
         
         return InvoiceLineItem(
             repair_id=repair.id,
-            unit_number=repair.unit_number,
+            # Bare identifier — the column header supplies the noun ("Unit #"
+            # for a fleet, "Vehicle" for an individual).
+            unit_number=repair.get_vehicle_identifier(),
             damage_type='Windshield Repair',
             repair_date=repair.repair_date,
             description=full_description,
@@ -493,8 +570,9 @@ class InvoiceService:
             tax_amount=tax_amount,
             payment_terms=payment_terms,
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
+            unit_column_label=customer.vehicle_column_label,
         )
-    
+
     def build_invoice_data_from_record(self, invoice) -> InvoiceData:
         """
         Build InvoiceData from an existing Invoice model record — its OWN
@@ -534,9 +612,18 @@ class InvoiceService:
             original_cost = unit_price * li.quantity
             discount = li.discount or Decimal('0.00')
 
+            # The job is the authority on how its vehicle is named — an
+            # individual gets their vehicle, not the stored unit_number
+            # wearing a fleet label. li.unit_number is the fallback for lines
+            # whose job was deleted, and for free-form charge lines.
+            job = repair or li.replacement
+            vehicle_identifier = (
+                job.get_vehicle_identifier() if job is not None else ''
+            ) or li.unit_number or ''
+
             line_items.append(InvoiceLineItem(
                 repair_id=li.repair_id,
-                unit_number=li.unit_number or (repair.unit_number if repair else ''),
+                unit_number=vehicle_identifier,
                 damage_type=damage_type,
                 # li.repair_date is nullable; the PDF renderer strftime()s it
                 repair_date=li.repair_date or invoice.invoice_date,
@@ -599,6 +686,7 @@ class InvoiceService:
             tax_amount=invoice.tax_amount,
             payment_terms=payment_terms,
             payment_terms_display=terms_display_map.get(payment_terms, payment_terms),
+            unit_column_label=customer.vehicle_column_label,
         )
 
     def generate_invoice_from_record(
@@ -795,8 +883,10 @@ class InvoiceService:
         
         story = []
         
-        # Header: Logo + Company Name side by side
-        logo = self._get_logo_for_pdf(max_width=1.5*inch, max_height=1*inch)
+        # Header: Logo + Company Name side by side. The shop's logo is the
+        # first thing a customer sees on the invoice, so it gets real estate:
+        # 1.5in was a thumbnail next to a five-line address block.
+        logo = self._get_logo_for_pdf(max_width=2.4*inch, max_height=1.5*inch)
         
         # Build company info block (stacked vertically)
         company_info_parts = [f"<b>{self.COMPANY_NAME}</b>"]
@@ -818,7 +908,7 @@ class InvoiceService:
             # Logo on left, company info on right
             header_table = Table(
                 [[logo, company_info_para]],
-                colWidths=[1.8*inch, 5.2*inch]
+                colWidths=[2.6*inch, 4.4*inch]
             )
             header_table.setStyle(TableStyle([
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -891,12 +981,15 @@ class InvoiceService:
             story.append(Spacer(1, 15))
 
         # Line Items Table
-        story.append(Paragraph("Repair Details", self.styles['SectionHeader']))
-        
-        # Table header - using royal blue background with white text
+        story.append(Paragraph("Service Details", self.styles['SectionHeader']))
+
+        # Table header - using royal blue background with white text.
+        # The first column is "Unit #" for a fleet and "Vehicle" for an
+        # individual — an invoice has exactly one customer, so the column
+        # never has to serve both.
         header_style = self.styles['TableHeader']
         table_data = [[
-            Paragraph("<b>Unit #</b>", header_style),
+            Paragraph(f"<b>{invoice_data.unit_column_label}</b>", header_style),
             Paragraph("<b>Date</b>", header_style),
             Paragraph("<b>Type</b>", header_style),
             Paragraph("<b>Description</b>", header_style),
@@ -905,12 +998,17 @@ class InvoiceService:
         
         # Table rows
         for item in invoice_data.line_items:
-            amount_text = f"${item.final_cost:.2f}"
+            amount_text = self.money(item.final_cost)
             if item.discount_description:
-                amount_text = f"<strike>${item.original_cost:.2f}</strike><br/>${item.final_cost:.2f}<br/><font size='8'><i>({item.discount_description})</i></font>"
+                amount_text = (
+                    f"<strike>{self.money(item.original_cost)}</strike>"
+                    f"<br/>{self.money(item.final_cost)}"
+                    f"<br/><font size='8'><i>({item.discount_description})</i></font>"
+                )
             
-            # Show full description (notes included)
-            desc_text = item.description if item.description else ''
+            # Full description (notes included) minus whatever the Type column
+            # beside it already says — see description_detail().
+            desc_text = description_detail(item.description, item.damage_type)
             
             table_data.append([
                 Paragraph(item.unit_number, self.styles['Normal']),
@@ -920,11 +1018,15 @@ class InvoiceService:
                 Paragraph(amount_text, self.styles['Normal'])
             ])
         
-        # Create and style the table with ROYAL BLUE header
-        line_items_table = Table(
-            table_data,
-            colWidths=[1*inch, 0.9*inch, 1.1*inch, 2.5*inch, 1*inch]
+        # Create and style the table with ROYAL BLUE header.
+        # "2019 Ford F-150" needs more room than "4521", so the first column
+        # borrows from Description on an individual's invoice.
+        is_individual = invoice_data.unit_column_label != 'Unit #'
+        col_widths = (
+            [1.7*inch, 0.9*inch, 1.1*inch, 1.8*inch, 1*inch] if is_individual
+            else [1*inch, 0.9*inch, 1.1*inch, 2.5*inch, 1*inch]
         )
+        line_items_table = Table(table_data, colWidths=col_widths)
         
         line_items_table.setStyle(TableStyle([
             # Header styling - ROYAL BLUE background with white text
@@ -961,14 +1063,14 @@ class InvoiceService:
             totals_data.append([
                 '',
                 Paragraph("<b>Subtotal:</b>", self.styles['Normal']),
-                Paragraph(f"${invoice_data.subtotal:.2f}", self.styles['Normal'])
+                Paragraph(self.money(invoice_data.subtotal), self.styles['TotalsAmount'])
             ])
         
         if invoice_data.total_discount > 0:
             totals_data.append([
                 '',
                 Paragraph("<b>Discounts:</b>", self.styles['Normal']),
-                Paragraph(f"-${invoice_data.total_discount:.2f}", self.styles['Normal'])
+                Paragraph(f"-{self.money(invoice_data.total_discount)}", self.styles['TotalsAmount'])
             ])
         
         if invoice_data.tax_amount > 0:
@@ -990,7 +1092,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"State Tax ({_fmt_rate(invoice_data.state_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${state_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(state_amt), self.styles['TotalsAmount'])
                     ])
                 if invoice_data.county_tax_rate > 0:
                     county_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.county_tax_rate / Decimal('100')
@@ -998,7 +1100,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"County Tax ({_fmt_rate(invoice_data.county_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${county_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(county_amt), self.styles['TotalsAmount'])
                     ])
                 if invoice_data.city_tax_rate > 0:
                     city_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.city_tax_rate / Decimal('100')
@@ -1006,7 +1108,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"City Tax ({_fmt_rate(invoice_data.city_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${city_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(city_amt), self.styles['TotalsAmount'])
                     ])
                 if invoice_data.special_tax_rate > 0:
                     special_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.special_tax_rate / Decimal('100')
@@ -1014,7 +1116,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"Special Tax ({_fmt_rate(invoice_data.special_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${special_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(special_amt), self.styles['TotalsAmount'])
                     ])
             else:
                 # Fallback: single combined rate (when using default_tax_rate with no breakdown)
@@ -1022,16 +1124,28 @@ class InvoiceService:
                 totals_data.append([
                     '',
                     Paragraph(f"<b>Tax ({rate_display}%):</b>", self.styles['Normal']),
-                    Paragraph(f"${invoice_data.tax_amount:.2f}", self.styles['Normal'])
+                    Paragraph(self.money(invoice_data.tax_amount), self.styles['TotalsAmount'])
                 ])
         
+        total_text = self.money(invoice_data.total)
         totals_data.append([
             '',
             Paragraph("<b>TOTAL:</b>", self.styles['Normal']),
-            Paragraph(f"<b>${invoice_data.total:.2f}</b>", self.styles['TotalAmount'])
+            Paragraph(
+                f"<b>{total_text}</b>",
+                self._fitted_style(
+                    total_text,
+                    self.styles['TotalAmount'],
+                    self.TOTALS_AMOUNT_WIDTH - 2 * self.TABLE_CELL_PADDING,
+                ),
+            )
         ])
-        
-        totals_table = Table(totals_data, colWidths=[4.5*inch, 1.5*inch, 1*inch])
+
+        totals_table = Table(totals_data, colWidths=[
+            self.TOTALS_SPACER_WIDTH,
+            self.TOTALS_LABEL_WIDTH,
+            self.TOTALS_AMOUNT_WIDTH,
+        ])
         totals_table.setStyle(TableStyle([
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('ALIGN', (2, 0), (2, -1), 'RIGHT'),

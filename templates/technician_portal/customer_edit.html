@@ -80,12 +80,20 @@
                             placeholder="+1 (555) 123-4567"
                             class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-brand-500 focus:border-purple-500 text-sm">
                         {% if form.phone.errors %}<p class="mt-1 text-xs text-red-600">{{ form.phone.errors.0 }}</p>{% endif %}
-                        <label class="flex items-center gap-2 text-sm text-gray-600 mt-2 cursor-pointer">
+                        <label class="flex items-start gap-2 text-sm text-gray-600 mt-2 cursor-pointer">
                             <input type="checkbox" name="sms_opt_in" value="1"
                                 {% if form.sms_opt_in.value %}checked{% endif %}
-                                class="w-4 h-4 text-sky-600 border-gray-300 rounded focus:ring-sky-500">
-                            OK to text this customer (they've agreed to receive service texts)
+                                class="w-4 h-4 mt-0.5 text-sky-600 border-gray-300 rounded focus:ring-sky-500">
+                            OK to text this customer
                         </label>
+                        <p class="text-xs text-gray-500 mt-1 ml-6">
+                            Check only if this customer agreed to receive automated service
+                            texts from your shop via RS Systems: invoice links and review
+                            requests, typically 1&ndash;2 messages per completed job.
+                            Msg &amp; data rates may apply. They can reply STOP to opt out
+                            or HELP for help at any time.
+                            <a href="/sms/" target="_blank" rel="noopener" class="text-sky-600 hover:underline">Program terms</a>
+                        </p>
                     </div>
                 </div>
 

@@ -16,7 +16,9 @@ from django.db.models import Count, Max, Q
 from core.models import Customer
 
 # RETAIL and WALK_IN are both "Individual" in the UI; new ones are RETAIL.
-INDIVIDUAL_TYPES = ('RETAIL', 'WALK_IN')
+# Re-exported from the model so there is exactly one list — Customer.is_individual
+# is the property form of the same rule.
+INDIVIDUAL_TYPES = Customer.INDIVIDUAL_TYPES
 
 
 def normalize_phone(phone):

@@ -34,7 +34,7 @@
                 <div class="mt-1 text-3xl font-bold text-gray-900">${{ outstanding_amount|floatformat:2 }}</div>
             </div>
             <a href="{% url 'owner_aging_report_csv' %}"
-                class="inline-flex items-center text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
+                class="inline-flex items-center min-h-11 -my-2 px-2 text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors"
                 title="Download the full aging report as a spreadsheet">
                 <i class="fas fa-download mr-1"></i>Spreadsheet
             </a>
@@ -92,7 +92,7 @@
     <div class="inline-flex items-center bg-gray-100 rounded-lg p-0.5 flex-wrap">
     {% for value, label in status_pills %}
     <a href="?status={{ value }}{% if customer_filter %}&customer={{ customer_filter }}{% endif %}"
-        class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+        class="inline-flex items-center min-h-10 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
         {% if status_filter == value %}bg-white text-gray-900 shadow-sm{% else %}text-gray-500 hover:text-gray-700{% endif %}">
         {{ label }}
         {% if value == 'overdue' and overdue_count > 0 %}
@@ -165,7 +165,8 @@
 {% endif %}
 
 <!-- Batch Actions Bar (hidden until checkboxes selected) -->
-<div id="batch-bar" class="hidden sticky top-16 z-10 bg-brand-600 text-white rounded-xl shadow-lg p-3 mb-4">
+{# top offset must track the navbar height in base_app.html (h-16 sm:h-20). #}
+<div id="batch-bar" class="hidden sticky top-16 sm:top-20 z-10 bg-brand-600 text-white rounded-xl shadow-lg p-3 mb-4">
     <div class="flex items-center justify-between gap-2 mb-2 sm:mb-0">
         <span class="text-sm font-medium"><span id="selected-count">0</span> selected</span>
         <button onclick="clearSelection()" class="inline-flex items-center text-brand-200 text-sm hover:text-white transition-colors">
@@ -253,13 +254,13 @@
             <div class="mt-3 pl-7 flex gap-2">
                 {% if inv.status in 'OVERDUE,SENT,PARTIAL,DRAFT' and inv.amount_due > 0 %}
                 <button onclick="openQuickPayModal({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}', '{{ inv.amount_due }}')"
-                    class="inline-flex items-center justify-center flex-1 min-h-[36px] px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                    class="inline-flex items-center justify-center flex-1 min-h-11 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                     <i class="fas fa-dollar-sign mr-1.5"></i>Record payment
                 </button>
                 {% endif %}
                 {% if inv.status in 'OVERDUE,SENT,PARTIAL' and inv.customer.email %}
                 <button onclick="sendReminderAjax({{ inv.id }}, '{{ inv.invoice_number|escapejs }}', '{{ inv.customer.name|escapejs }}')"
-                    class="inline-flex items-center justify-center flex-1 min-h-[36px] px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    class="inline-flex items-center justify-center flex-1 min-h-11 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                     title="Send payment reminder to {{ inv.customer.email }}">
                     <i class="fas fa-bell mr-1.5"></i>Send reminder
                 </button>

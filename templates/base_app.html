@@ -31,13 +31,14 @@
     redrawing on every navigation.
     {% endcomment %}
     <!-- Unified App Navbar -->
-    <nav class="vt-nav bg-white border-b border-gray-200 sticky top-0 z-50">
+    <nav class="vt-nav bg-white border-b border-gray-200 sticky top-0 z-50 safe-area-x">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <!-- Three slots: links (fixed) / search (flexible, shrinks first) / user (fixed).
                  Owners get 7 links, which never fit next to a search box between
                  768-1023px — so the owner link row waits for lg: and the hamburger
                  covers md. Technicians (4-5 links) keep the md: row. -->
-            <div class="flex h-16 items-center gap-4">
+            {# Taller at sm+ so the shop's logo has somewhere to be. #}
+            <div class="flex h-16 sm:h-20 items-center gap-4">
                 <!-- Left: Logo + Nav Links -->
                 <div class="flex items-center gap-4 shrink-0">
                     {% comment %}
@@ -50,10 +51,10 @@
                     {% endcomment %}
                     <a href="{% if is_owner_or_manager %}{% url 'owner_dashboard' %}{% else %}{% url 'technician_dashboard' %}{% endif %}" class="flex items-center space-x-2 shrink-0 min-w-0">
                         {% if request.tenant and request.tenant.branding_enabled and request.tenant.logo %}
-                        <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-10 w-auto max-w-[11rem] object-contain flex-shrink-0">
+                        <img src="{{ request.tenant.logo.url }}" alt="{{ request.tenant.name }}" class="h-11 sm:h-14 w-auto max-w-[9rem] sm:max-w-[15rem] object-contain flex-shrink-0">
                         {% else %}
-                        <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg viewBox="0 0 40 40" class="w-5 h-5">
+                        <div class="w-10 h-10 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg viewBox="0 0 40 40" class="w-6 h-6">
                                 <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="800" font-family="Inter, sans-serif">RS</text>
                                 <circle cx="32" cy="10" r="2" fill="white"/>
                                 <path d="M32 5 L32 7 M32 13 L32 15 M27 10 L29 10 M35 10 L37 10" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
@@ -116,53 +117,62 @@
                 <!-- Right: hamburger + user dropdown (tenant name + plan moved
                      into the dropdown to free bar width) -->
                 <div class="flex items-center gap-3 shrink-0 ml-auto">
-                    <button class="{% if is_owner_or_manager %}lg:hidden{% else %}md:hidden{% endif %} text-gray-600 hover:text-gray-900" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')">
+                    {# -mr/-my keep the 44px hit area from widening the bar. #}
+                    <button aria-label="Open menu" class="{% if is_owner_or_manager %}lg:hidden{% else %}md:hidden{% endif %} inline-flex items-center justify-center w-11 h-11 -mx-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')">
                         <i class="fas fa-bars text-lg"></i>
                     </button>
 
                     <div class="relative">
-                        <button class="flex items-center space-x-2 text-gray-600 hover:text-gray-900" onclick="document.getElementById('app-dropdown').classList.toggle('hidden')">
-                            <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                        <button aria-label="Account menu" class="flex items-center gap-2 min-h-11 py-1 text-gray-600 hover:text-gray-900" onclick="document.getElementById('app-dropdown').classList.toggle('hidden')">
+                            <div class="w-9 h-9 bg-gray-200 rounded-full flex items-center justify-center">
                                 <i class="fas fa-user text-gray-600 text-sm"></i>
                             </div>
                             <span class="text-sm font-medium hidden sm:inline">{{ request.user.first_name|default:request.user.username }}</span>
                             <i class="fas fa-chevron-down text-xs hidden sm:inline"></i>
                         </button>
                         <div id="app-dropdown" class="hidden absolute right-0 mt-2 w-56 surface-float motion-rise py-1 z-50">
-                            {% if tenant %}
+                            {% comment %}
+                            request.tenant, not a `tenant` view-context var:
+                            the shop's name used to appear only on the views
+                            that happened to pass one. The plan badge is the
+                            owner's business alone — a technician doesn't need
+                            to know the shop is on a free trial, and the
+                            shop's customers must never see it.
+                            {% endcomment %}
+                            {% if request.tenant %}
                             <div class="px-4 py-2 border-b border-gray-200">
-                                <p class="text-sm text-gray-700 truncate" title="{{ tenant.name }}">{{ tenant.name }}</p>
-                                {% if is_owner_or_manager %}
+                                <p class="text-sm text-gray-700 truncate" title="{{ request.tenant.name }}">{{ request.tenant.name }}</p>
+                                {% if subscription_audience == 'owner' %}
                                 <span class="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
-                                    {% if tenant.plan == 'trial' %}border border-blue-300 text-blue-600 bg-white
-                                    {% elif tenant.plan == 'starter' %}bg-blue-100 text-blue-800
-                                    {% elif tenant.plan == 'pro' %}bg-green-100 text-green-800
-                                    {% elif tenant.plan == 'enterprise' %}bg-purple-100 text-purple-800
+                                    {% if request.tenant.plan == 'trial' %}border border-blue-300 text-blue-600 bg-white
+                                    {% elif request.tenant.plan == 'starter' %}bg-blue-100 text-blue-800
+                                    {% elif request.tenant.plan == 'pro' %}bg-green-100 text-green-800
+                                    {% elif request.tenant.plan == 'enterprise' %}bg-purple-100 text-purple-800
                                     {% else %}bg-gray-100 text-gray-800{% endif %}">
-                                    {{ tenant.get_plan_display }}
+                                    {{ request.tenant.get_plan_display }}
                                 </span>
                                 {% endif %}
                             </div>
                             {% endif %}
                             {% if is_owner_or_manager %}
-                            <a href="{% url 'owner_dashboard' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            <a href="{% url 'owner_dashboard' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <i class="fas fa-tachometer-alt mr-2 w-4"></i>Dashboard
                             </a>
-                            <a href="{% url 'owner_settings' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            <a href="{% url 'owner_settings' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <i class="fas fa-cog mr-2 w-4"></i>Settings
                             </a>
                             {% else %}
-                            <a href="{% url 'technician_profile' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            <a href="{% url 'technician_profile' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <i class="fas fa-user-cog mr-2 w-4"></i>Profile
                             </a>
                             {% endif %}
-                            <a href="{% url 'help_home' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            <a href="{% url 'help_home' %}" class="flex items-center min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <i class="fas fa-question-circle mr-2 w-4"></i>Help
                             </a>
                             <div class="border-t border-gray-200 my-1"></div>
                             <form method="post" action="{% url 'logout' %}">
                                 {% csrf_token %}
-                                <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                <button type="submit" class="flex items-center w-full text-left min-h-11 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                     <i class="fas fa-sign-out-alt mr-2 w-4"></i>Logout
                                 </button>
                             </form>
@@ -184,29 +194,29 @@
                     </div>
                 </form>
                 {% if is_owner_or_manager %}
-                <a href="{% url 'owner_dashboard' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Dashboard</a>
+                <a href="{% url 'owner_dashboard' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Dashboard</a>
                 {% else %}
-                <a href="{% url 'technician_dashboard' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Dashboard</a>
+                <a href="{% url 'technician_dashboard' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Dashboard</a>
                 {% endif %}
                 {% if user_can_repairs %}
-                <a href="{% url 'job_list' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Jobs</a>
+                <a href="{% url 'job_list' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Jobs</a>
                 {% endif %}
                 {% if user_can_customers %}
-                <a href="{% url 'technician_customers' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Customers</a>
+                <a href="{% url 'technician_customers' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Customers</a>
                 {% endif %}
                 {% if user_can_invoices %}
-                <a href="{% url 'owner_invoice_list' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Invoices</a>
+                <a href="{% url 'owner_invoice_list' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Invoices</a>
                 {% endif %}
                 {% if is_owner_or_manager %}
-                <a href="{% url 'owner_loyalty_dashboard' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Loyalty</a>
+                <a href="{% url 'owner_loyalty_dashboard' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Loyalty</a>
                 {% endif %}
                 {% if is_owner_or_manager %}
-                <a href="{% url 'billing_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">My Plan</a>
+                <a href="{% url 'billing_settings' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">My Plan</a>
                 {% endif %}
                 {% if user_can_settings %}
-                <a href="{% url 'owner_settings' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Settings</a>
+                <a href="{% url 'owner_settings' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Settings</a>
                 {% endif %}
-                <a href="{% url 'help_home' %}" class="block py-2 text-sm font-medium text-gray-700 hover:text-brand-600">Help</a>
+                <a href="{% url 'help_home' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Help</a>
             </div>
         </div>
     </nav>
@@ -222,7 +232,7 @@
             {% else %}bg-brand-50 text-brand-800 border border-brand-200{% endif %}">
             <div class="flex justify-between items-center">
                 <span>{{ message }}</span>
-                <button onclick="this.parentElement.parentElement.remove()" class="text-current opacity-50 hover:opacity-100">&times;</button>
+                <button type="button" aria-label="Dismiss" onclick="this.parentElement.parentElement.remove()" class="shrink-0 -my-2 -mr-2 inline-flex items-center justify-center w-11 h-11 text-xl leading-none text-current opacity-50 hover:opacity-100">&times;</button>
             </div>
         </div>
         {% endfor %}
@@ -232,7 +242,7 @@
     {% include "includes/subscription_banner.html" %}
 
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 safe-area-x">
         {% block content %}{% endblock %}
     </main>
 

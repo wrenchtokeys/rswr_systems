@@ -1246,6 +1246,9 @@ def replacement_create(request):
         if form.is_valid():
             replacement = form.save(commit=False)
             replacement.tenant = tenant
+            # Assignment signal: notify the chosen tech unless the creator
+            # picked themselves.
+            replacement._assignment_actor_user_id = request.user.id
             replacement.save()
 
             if charges:
@@ -1363,6 +1366,9 @@ def replacement_edit(request, pk):
         if not charges_locked_invoice and charge_error and form.is_valid():
             form.add_error(None, charge_error)
         if form.is_valid():
+            # Assignment signal: a technician change on this form notifies
+            # the new/old techs — never the actor about themselves.
+            form.instance._assignment_actor_user_id = request.user.id
             form.save()
             if not charges_locked_invoice:
                 _save_extra_charges(
@@ -4025,16 +4031,30 @@ def subscription_blocked_view(request):
     - Owners/Managers: upgrade prompt with link to billing
     - Technicians: contact owner message
     - Customers: contact shop message
+
+    The SHELL varies too. This used to always extend base_app.html, so a
+    shop's customer who landed here got the internal app chrome — the RS
+    Systems mark instead of their shop's, a "Search jobs, customers and
+    invoices" box, a link to the technician profile page, and a tab reading
+    "Subscription Expired". The middleware no longer sends customers here at
+    all (they stay read-only in their own portal), but if one arrives by
+    typing the URL they get the portal shell they know.
     """
     from common.auth import get_user_role
-    from apps.tenants.models import TenantMembership
+    from apps.tenants.subscription_middleware import audience_for_role
 
     tenant = getattr(request, 'tenant', None)
     user_role = get_user_role(request.user, tenant)
+    audience = audience_for_role(user_role)
 
     context = {
         'tenant': tenant,
         'user_role': user_role,
+        'subscription_audience': audience,
+        'base_template': (
+            'customer_portal/base_customer.html' if audience == 'customer'
+            else 'base_app.html'
+        ),
     }
 
     if tenant:
@@ -5246,7 +5266,7 @@ def owner_generate_invoice_from_repair(request, repair_id):
                         discount=total_disc,
                         amount=amount,
                         repair_date=mr.repair_date.date() if mr.repair_date else None,
-                        unit_number=mr.unit_number,
+                        unit_number=mr.get_vehicle_identifier(),
                         taxable=not mr.no_tax and not mr.customer.tax_exempt,
                     )
 

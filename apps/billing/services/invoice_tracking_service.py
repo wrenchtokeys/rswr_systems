@@ -197,7 +197,10 @@ class InvoiceTrackingService:
                     discount=total_line_discount,
                     amount=amount,
                     repair_date=service.repair_date.date() if service.repair_date else None,
-                    unit_number=service.unit_number,
+                    # The denormalized fallback for when the linked job is gone.
+                    # Store how the CUSTOMER's account names the vehicle, not the
+                    # raw unit_number column — an individual's is blank there.
+                    unit_number=service.get_vehicle_identifier(),
                     taxable=line_taxable,
                     **line_kwargs,
                 )

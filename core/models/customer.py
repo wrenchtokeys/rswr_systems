@@ -111,6 +111,18 @@ class Customer(models.Model):
         blank=True,
         help_text="When SMS consent was recorded"
     )
+    SMS_CONSENT_SHOP = 'SHOP'
+    SMS_CONSENT_CUSTOMER = 'CUSTOMER'
+    sms_opt_in_source = models.CharField(
+        max_length=10,
+        blank=True,
+        default='',
+        choices=[
+            (SMS_CONSENT_SHOP, 'Shop recorded (customer agreed off-platform)'),
+            (SMS_CONSENT_CUSTOMER, 'Customer self-opt-in (first-party)'),
+        ],
+        help_text="Who recorded the SMS consent — first-party (customer's own screen) or shop-attested"
+    )
 
     # Primary technician assignment
     primary_technician = models.ForeignKey(
@@ -181,17 +193,45 @@ class Customer(models.Model):
             ),
         ]
 
+    # Customer types that are a PERSON with their own vehicle rather than a
+    # business with a numbered fleet. The two are never interchangeable in the
+    # UI: a fleet is identified by unit number, an individual by their vehicle.
+    INDIVIDUAL_TYPES = ('RETAIL', 'WALK_IN')
+
     def __str__(self):
         return self.name
 
-    def record_sms_consent(self):
-        """Record SMS consent (shop attests the customer agreed to receive
-        texts). Idempotent — keeps the original consent timestamp."""
+    @property
+    def is_individual(self):
+        """True for a person (retail/walk-in), False for a fleet account.
+
+        Anything that prints "Unit #" must check this first — an individual's
+        invoice reading "Unit #Silver Camry" is what this exists to prevent.
+        """
+        return self.customer_type in self.INDIVIDUAL_TYPES
+
+    @property
+    def vehicle_column_label(self):
+        """Header for the column that identifies the vehicle worked on."""
+        return 'Vehicle' if self.is_individual else 'Unit #'
+
+    def record_sms_consent(self, source=SMS_CONSENT_SHOP):
+        """Record SMS consent. Idempotent — keeps the original consent
+        timestamp — except that a first-party (CUSTOMER) consent upgrades a
+        shop-attested one: it is a new, stronger consent event, so the source
+        and timestamp are refreshed. A shop-attested consent never downgrades
+        a first-party one."""
+        from django.utils import timezone
         if not self.sms_opt_in:
-            from django.utils import timezone
             self.sms_opt_in = True
             self.sms_opt_in_at = timezone.now()
-            self.save(update_fields=['sms_opt_in', 'sms_opt_in_at'])
+            self.sms_opt_in_source = source
+            self.save(update_fields=['sms_opt_in', 'sms_opt_in_at', 'sms_opt_in_source'])
+        elif (source == self.SMS_CONSENT_CUSTOMER
+              and self.sms_opt_in_source != self.SMS_CONSENT_CUSTOMER):
+            self.sms_opt_in_at = timezone.now()
+            self.sms_opt_in_source = source
+            self.save(update_fields=['sms_opt_in_at', 'sms_opt_in_source'])
 
     def get_effective_discount_percentage(self):
         """Flat discount % that applies to this customer's work.
@@ -220,6 +260,10 @@ class Customer(models.Model):
         if self.sms_opt_in and not self.sms_opt_in_at:
             from django.utils import timezone
             self.sms_opt_in_at = timezone.now()
+        # Consent set through a form (shop-side customer form) without an
+        # explicit source is shop-attested.
+        if self.sms_opt_in and not self.sms_opt_in_source:
+            self.sms_opt_in_source = self.SMS_CONSENT_SHOP
         # Store "no email" as NULL, never ''. The unique_customer_email_per_tenant
         # constraint only ignores NULL, so a second customer saved with '' raises
         # IntegrityError (500) even though both have "no email".

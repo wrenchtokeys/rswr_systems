@@ -110,12 +110,13 @@ def _assign_primary_first(service, tenant, service_type='repair'):
         return None
 
     service.technician = tech
+    # The Repair/Replacement post_save assignment signal notifies the tech
+    # (dashboard row + bell + email) — no hand-rolled notification here.
     service.save(update_fields=['technician'])
     logger.info(
         "Auto-assigned %s #%s to primary tech %s for customer %s",
         service_type, service.id, tech, customer,
     )
-    _notify_tech(tech, service, service_type)
     return tech
 
 
@@ -149,7 +150,6 @@ def _assign_smart(service, tenant, service_type='repair'):
             "Smart-assigned %s #%s to %s (lowest workload)",
             service_type, service.id, tech,
         )
-        _notify_tech(tech, service, service_type)
         return tech
 
     return None
@@ -201,46 +201,4 @@ def _assign_round_robin(service, tenant, service_type='repair'):
         "Round-robin assigned %s #%s to %s",
         service_type, service.id, tech,
     )
-    _notify_tech(tech, service, service_type)
     return tech
-
-
-# ---------------------------------------------------------------------------
-# Notification helper
-# ---------------------------------------------------------------------------
-
-def _notify_tech(tech, service, service_type='repair'):
-    """
-    Create a TechnicianNotification (in-app) for the auto-assigned tech.
-    Uses the existing lightweight notification model used everywhere else
-    in the technician portal.
-    """
-    from apps.technician_portal.models import TechnicianNotification
-
-    try:
-        customer_name = service.customer.name if service.customer else 'Unknown'
-        unit_number = getattr(service, 'unit_number', '?')
-
-        if service_type == 'replacement':
-            glass_pos = ''
-            if hasattr(service, 'get_glass_position_display') and service.glass_position:
-                glass_pos = f" ({service.get_glass_position_display()})"
-            msg = (
-                f"🔧 You've been auto-assigned Replacement #{service.id} "
-                f"for {customer_name} — Unit {unit_number}{glass_pos}"
-            )
-        else:
-            msg = (
-                f"🔧 You've been auto-assigned Repair #{service.id} "
-                f"for {customer_name} — Unit {unit_number}"
-            )
-
-        TechnicianNotification.objects.create(
-            technician=tech,
-            message=msg,
-            read=False,
-            repair=service if service_type == 'repair' else None,
-            repair_batch_id=getattr(service, 'repair_batch_id', None),
-        )
-    except Exception as exc:
-        logger.error("Failed to create auto-assignment notification: %s", exc)

@@ -40,6 +40,28 @@ python manage.py collectstatic
 - `static/css/app.css` is a build artifact but IS committed (EB deploys unchanged; manifest storage handles cache busting).
 - Classes composed dynamically (JS string concat, Django template vars like `grid-cols-{{ n }}`) must be safelisted in `tailwind.config.js` or the purge will drop them. Shared `@layer components` classes that no template uses *yet* are also purged — safelist them.
 
+### Touch / mobile rules
+This app is used one-handed in the field. The TOUCH / MOBILE block in
+`input.css` is gated on **`(pointer: coarse)`** — the input device, not the
+viewport width — so a narrow desktop window keeps the dense layout and a
+tablet gets the finger-sized one. `tests/test_mobile_touch_targets.py` guards
+the compiled output.
+- **44px minimum on anything tappable, 16px minimum on anything typeable.**
+  Under 16px, iOS Safari zooms the viewport on focus and never zooms back;
+  every form here styles its inputs `text-sm`, so the override carries
+  `!important` (a utility can't be beaten by specificity from a lower layer).
+- **Never add `user-scalable=no` / `maximum-scale`.** Pinch-zoom on a damage
+  photo is a feature; the focus-zoom annoyance is fixed with 16px inputs.
+- Icon-only controls in list rows use `.tap-target`, which grows the hit area
+  with an inset pseudo-element instead of resizing the drawn box.
+- `.safe-area-*` only reports non-zero with **`viewport-fit=cover`** on the
+  viewport meta (`includes/head_assets.html`). Any `fixed bottom-0` bar needs
+  `.safe-area-bottom` or it sits under the iPhone home indicator.
+- The navbar is `h-16 sm:h-20`. Sticky sub-headers pin themselves to it by
+  hand (`top-16 sm:top-20`) — change both together.
+- Reveal-on-hover is a mouse idiom; a coarse-pointer rule must make the
+  control visible, or it does not exist on a tablet.
+
 ### No third-party asset hosts (Aug 2026)
 There are **zero** CDN asset requests. Fonts, Font Awesome and flatpickr are vendored by
 `scripts/vendor_assets.sh` (idempotent, pinned; downloaded files ARE committed).
@@ -195,6 +217,12 @@ Shop-created repairs/replacements auto-approve on create via `resolve_initial_sh
 **Replacement Invoicing**: `InvoiceLineItem` has both `repair` and `replacement` FKs. `InvoiceTrackingService.create_invoice_from_services` accepts a mixed list (`create_invoice_from_repairs` is a back-compat delegator). Uninvoiced queries: `get_uninvoiced_repairs` + `get_uninvoiced_replacements` (both honor `skip_invoicing`). Auto-invoice (`AutoInvoiceService.generate_and_save`) is record-first: Invoice row created before PDF/S3/email, and PDFs render from the record (`generate_invoice_from_record`) — never from the repairs-only live-query path.
 
 Tax is calculated automatically on every `Repair.save()` via `TaxService(tenant=self.tenant).calculate_tax()`. If no `TaxRate` exists for the tenant, tax is 0. Tests that check tax behavior must create a `TaxRate` in setUp.
+
+**Individuals vs fleets (never mixed)**: a fleet account is identified by a unit number, an individual (RETAIL/WALK_IN) by their vehicle. The job forms funnel both into the same `unit_number` column, so **nothing customer-facing may print "Unit #" without checking the customer type first** — that is how invoices came to read `Unit #Silver Camry`. Three helpers, no fourth: `Customer.is_individual` / `.vehicle_column_label`; `GlassService.get_vehicle_identifier()` (bare, for a column whose header supplies the noun) and `.get_vehicle_label()` (self-describing, for inline prose); `InvoiceLineItem.vehicle_identifier` + `Invoice.vehicle_column_label` for templates. All return `''` when nothing is on record — print nothing rather than a bare noun or `Unit #N/A`. The linked job is always the authority over the denormalized `InvoiceLineItem.unit_number`, which is only a fallback for deleted jobs and free-form charge lines — write it with `get_vehicle_identifier()`, never the raw column. Guarded by `tests/test_individual_vs_fleet_vehicles.py`.
+
+**One row, one mention**: an invoice line names its vehicle once and its service type once. `get_invoice_description()` therefore does NOT name the vehicle — every surface that renders a description also renders the vehicle in its own column or sub-line, so putting it in both printed `Windshield repair - 2022 Toyota Camry - Crack` beside a Vehicle column already reading `2022 Toyota Camry`. The description DOES name its own service, because the customer portal, public pay page and owner screens have no type column; the two renderers that do have one (invoice PDF, plain-text email) trim it back out through `invoice_service.description_detail()` — use that helper, don't re-derive it. Historical rows were cleaned by `billing/0035`, which skips PAID/CANCELLED invoices and anything an owner hand-edited.
+
+**`UnitRepairCount` is keyed by vehicle, not by the `unit_number` column** — build the key with `UnitRepairCount.key_for(job)` (clamps to the 50-char column) on every read and write. An individual's job leaves `unit_number` blank, so keying on it collapsed every car a person owns into one `''` row and made their second car's first repair count as their third. `technician_portal/0051` re-keyed existing individuals' rows; fleets were left alone, hand-adjusted counts included.
 
 **Multi-Break Batch Repairs**: Multiple repairs for same unit in one session. Each break is a separate `Repair` linked via `repair_batch_id` (UUID). Progressive pricing: Break N priced as repair #(existing_count + N). Created atomically. URL: `/tech/repairs/create-multi-break/`.
 

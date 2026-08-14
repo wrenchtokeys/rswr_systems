@@ -89,7 +89,14 @@ def create_charge_lines(invoice, service):
             discount=Decimal('0.00'),
             amount=charge.amount,
             repair_date=repair_date.date() if repair_date else None,
-            unit_number=getattr(service, 'unit_number', '') or '',
+            # A charge line carries no job FK, so this stored value IS its
+            # vehicle column. Ask the job how its customer names the vehicle
+            # (blank unit_number for an individual, year/make/model instead).
+            unit_number=(
+                service.get_vehicle_identifier()
+                if hasattr(service, 'get_vehicle_identifier')
+                else getattr(service, 'unit_number', '') or ''
+            ),
             taxable=taxable,
         ))
     return lines

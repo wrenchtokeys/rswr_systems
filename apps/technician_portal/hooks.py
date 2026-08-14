@@ -72,13 +72,17 @@ def loyalty_hook(service) -> None:
         base_points = config.points_per_repair
         related = {'related_repair': service} if is_repair else {'related_replacement': service}
 
+        # '' when there's no vehicle on record, and never "Unit #" for an
+        # individual — the ledger entry a customer can be shown.
+        vehicle = service.get_vehicle_label()
+
         LoyaltyService.award_points(
             customer=customer,
             amount=base_points,
             transaction_type='repair_complete' if is_repair else 'replacement_complete',
             description=(
-                f"{'Repair' if is_repair else 'Replacement'} completed — "
-                f"Unit #{service.unit_number}"
+                f"{'Repair' if is_repair else 'Replacement'} completed"
+                + (f" — {vehicle}" if vehicle else '')
             ),
             tenant=tenant,
             **related,

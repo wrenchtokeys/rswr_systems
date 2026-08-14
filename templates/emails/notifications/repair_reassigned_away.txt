@@ -16,7 +16,7 @@ This repair has been reassigned to {{ new_technician_name }}. You are no longer 
 If you have any questions about this change, please contact your manager.
 
 View repair details:
-{{ action_url }}
+{{ base_url }}{{ action_url }}
 
 ---
 {{ branding.company_name }}

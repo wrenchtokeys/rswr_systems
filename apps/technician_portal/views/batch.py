@@ -17,7 +17,7 @@ from apps.technician_portal.models import Technician, Repair, UnitRepairCount, T
 from core.models import Customer
 from apps.technician_portal.decorators import technician_required, is_tenant_admin
 from common.auth import get_user_role
-from apps.tenants.services.usage_service import UsageService
+from apps.tenants.services.usage_service import UsageService, limit_message_for
 from apps.technician_portal.services.batch_pricing_service import calculate_batch_pricing
 from common.utils import convert_heic_to_jpeg
 
@@ -235,7 +235,8 @@ def create_multi_break_repair(request):
     if tenant:
         can_create, limit_msg = UsageService(tenant).can_create_repair()
         if not can_create:
-            messages.warning(request, limit_msg)
+            messages.warning(
+                request, limit_message_for(request.user, tenant, limit_msg))
             return redirect('technician_dashboard')
 
     if request.method == 'POST':
@@ -268,6 +269,7 @@ def create_multi_break_repair(request):
                     breaks_count
                 )
                 if not can_create:
+                    limit_msg = limit_message_for(request.user, tenant, limit_msg)
                     messages.error(request, limit_msg)
                     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                         return JsonResponse(
@@ -474,6 +476,13 @@ def create_multi_break_repair(request):
                     # Repair.save() auto-approves shop-created work unless the
                     # customer explicitly requires approval
 
+                    # Assignment signal: never notify the creator about their
+                    # own batch; when a manager assigns someone else, notify
+                    # on the first break only — one ping per batch, not N.
+                    repair._assignment_actor_user_id = request.user.id
+                    if created_repairs:
+                        repair._skip_assignment_notifications = True
+
                     try:
                         repair.save()
                         created_repairs.append(repair)
@@ -652,7 +661,8 @@ def convert_to_batch(request, repair_id):
     if tenant:
         can_create, limit_msg = UsageService(tenant).can_create_repair()
         if not can_create:
-            messages.warning(request, limit_msg)
+            messages.warning(
+                request, limit_message_for(request.user, tenant, limit_msg))
             return redirect('repair_detail', repair_id=repair_id)
 
     if request.method == 'POST':
@@ -669,6 +679,7 @@ def convert_to_batch(request, repair_id):
                     additional_breaks
                 )
                 if not can_create:
+                    limit_msg = limit_message_for(request.user, tenant, limit_msg)
                     messages.error(request, limit_msg)
                     return redirect('convert_to_batch', repair_id=repair_id)
 
@@ -691,7 +702,7 @@ def convert_to_batch(request, repair_id):
             unit_count = UnitRepairCount.objects.get_or_create(
                 tenant=original_repair.tenant,
                 customer=original_repair.customer,
-                unit_number=original_repair.unit_number
+                unit_number=UnitRepairCount.key_for(original_repair),
             )[0]
             starting_count = unit_count.repair_count
 
@@ -800,6 +811,9 @@ def convert_to_batch(request, repair_id):
                 if photo_after:
                     new_repair.damage_photo_after = convert_heic_to_jpeg(photo_after)
 
+                # Extra breaks on an existing job aren't a new assignment —
+                # don't fire "you have been assigned" for each added break.
+                new_repair._skip_assignment_notifications = True
                 new_repair.save()
                 created_repairs.append(new_repair)
 

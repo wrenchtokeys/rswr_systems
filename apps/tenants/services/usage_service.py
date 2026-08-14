@@ -16,6 +16,28 @@ from django.db.models import Sum
 logger = logging.getLogger(__name__)
 
 
+def limit_message_for(user, tenant, owner_message):
+    """The plan-limit copy this viewer is allowed to read.
+
+    The owner gets the real reason — plan name, cap, and the upgrade that
+    lifts it. Nobody else does: a technician can't buy a plan, so naming the
+    shop's tier and pitching Pro at them turns our pricing into their
+    problem, on a screen a customer can read over their shoulder. They get
+    told they're blocked and who unblocks it.
+
+    Same principle as the subscription banners — see
+    apps.tenants.subscription_middleware.subscription_audience.
+    """
+    from apps.tenants.subscription_middleware import subscription_audience
+
+    if subscription_audience(user, tenant) == 'owner':
+        return owner_message
+    return (
+        "Your shop has reached a limit on its account. "
+        "Contact your shop owner to continue."
+    )
+
+
 class UsageService:
     """
     Measures a tenant's current resource usage and checks plan limits.

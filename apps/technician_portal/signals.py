@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 # Module-level dictionary to track status changes
 # Key: repair.id, Value: previous queue_status
 _repair_previous_status = {}
-_repair_previous_technician = {}
+# Key: job pk, Value: (previous queue_status, previous technician).
+# Separate from _repair_previous_status because handle_repair_status_change
+# deletes that entry before the assignment handler runs, and the assignment
+# decision needs the old status too (REQUESTED → APPROVED acceptance).
+_repair_prev_assignment_state = {}
+_replacement_prev_assignment_state = {}
 
 
 @receiver(pre_save, sender=Repair)
@@ -40,10 +45,25 @@ def track_repair_changes(sender, instance, **kwargs):
     """
     if instance.pk:  # Only for existing repairs (updates)
         try:
-            old_repair = Repair.objects.get(pk=instance.pk)
+            old_repair = Repair.objects.select_related('technician').get(pk=instance.pk)
             _repair_previous_status[instance.pk] = old_repair.queue_status
-            _repair_previous_technician[instance.pk] = old_repair.technician
+            _repair_prev_assignment_state[instance.pk] = (
+                old_repair.queue_status, old_repair.technician
+            )
         except Repair.DoesNotExist:
+            pass
+
+
+@receiver(pre_save, sender=Replacement)
+def track_replacement_changes(sender, instance, **kwargs):
+    """Track replacement technician/status changes for assignment signals."""
+    if instance.pk:
+        try:
+            old = Replacement.objects.select_related('technician').get(pk=instance.pk)
+            _replacement_prev_assignment_state[instance.pk] = (
+                old.queue_status, old.technician
+            )
+        except Replacement.DoesNotExist:
             pass
 
 
@@ -115,45 +135,49 @@ def handle_repair_status_change(sender, instance, created, **kwargs):
         del _repair_previous_status[instance.pk]
 
 
-@receiver(post_save, sender=Repair)
-def handle_technician_assignment(sender, instance, created, **kwargs):
-    """
-    Handle technician assignments and reassignments.
+def _handle_assignment_change(instance, created, prev_state_dict):
+    """Shared Repair/Replacement assignment handler.
 
-    Triggers notifications when:
-    - New repair is assigned to a technician
-    - Repair is reassigned to a different technician
-
-    Args:
-        sender: Repair model class
-        instance: Repair instance that was saved
-        created: Boolean indicating if this is a new repair
-        **kwargs: Additional signal arguments
+    Delegates the actual decision + delivery to
+    services.assignments.notify_assignment_from_signal, which fixes the two
+    holes the old handler had: assigning a previously-UNASSIGNED job now
+    notifies (old code required an old technician), and crossing
+    REQUESTED → APPROVED notifies the tech who was provisionally assigned
+    while the job was still a request.
     """
-    # New assignment
-    if created and instance.technician:
-        _notify_technician_assigned(instance)
+    prev_status, prev_technician = prev_state_dict.pop(
+        instance.pk, (None, None)
+    )
+
+    # Paths that go through services.assignments.assign_job notify explicitly
+    # and exactly once — the signal is the fallback for everything else
+    # (form edits, auto-assign, future code).
+    if getattr(instance, '_assignment_notifications_handled', False):
         return
 
-    # Check for reassignment
-    if not created and instance.pk:
-        old_technician = _repair_previous_technician.get(instance.pk)
+    from apps.technician_portal.services.assignments import (
+        notify_assignment_from_signal,
+    )
+    notify_assignment_from_signal(
+        instance,
+        old_technician=prev_technician,
+        old_status=prev_status,
+        created=created,
+        actor_user_id=getattr(instance, '_assignment_actor_user_id', None),
+    )
 
-        if old_technician and old_technician != instance.technician:
-            logger.info(
-                f"Repair {instance.pk} reassigned: "
-                f"{old_technician} → {instance.technician}"
-            )
 
-            # Notify old technician about reassignment
-            _notify_technician_reassigned(instance, old_technician)
+@receiver(post_save, sender=Repair)
+def handle_technician_assignment(sender, instance, created, **kwargs):
+    """Notify on repair assignment/reassignment (see _handle_assignment_change)."""
+    _handle_assignment_change(instance, created, _repair_prev_assignment_state)
 
-            # Notify new technician about assignment
-            _notify_technician_assigned(instance)
 
-        # Clean up tracking dict
-        if instance.pk in _repair_previous_technician:
-            del _repair_previous_technician[instance.pk]
+@receiver(post_save, sender=Replacement)
+def handle_replacement_assignment(sender, instance, created, **kwargs):
+    """Notify on replacement assignment/reassignment — replacements previously
+    had no assignment signals at all."""
+    _handle_assignment_change(instance, created, _replacement_prev_assignment_state)
 
 
 # ============================================================================
@@ -372,55 +396,6 @@ def _notify_owner_repair_completed(repair):
                 logger.warning(f"Could not notify manager {membership.user_id} of repair completion: {e}")
     except Exception as e:
         logger.warning(f"Could not notify managers of repair completion: {e}")
-
-
-def _notify_technician_assigned(repair):
-    """
-    Notify technician of new repair assignment.
-
-    Priority: HIGH (SMS + in-app)
-    Triggered when: New repair created or repair reassigned
-    """
-    context = {
-        'repair_id': repair.pk,
-        'unit_number': repair.unit_number,
-        'customer_name': repair.customer.name if repair.customer else 'Unknown',
-        'status': repair.get_queue_status_display(),
-        'technician_name': repair.technician.user.get_full_name() or repair.technician.user.username,
-        'action_url': f'/tech/repairs/{repair.pk}/',
-    }
-
-    NotificationService.create_notification(
-        recipient=repair.technician,
-        template_name='repair_assigned',
-        context=context,
-        repair=repair,
-        customer=repair.customer
-    )
-
-
-def _notify_technician_reassigned(repair, old_technician):
-    """
-    Notify old technician that repair was reassigned.
-
-    Priority: MEDIUM (Email + in-app)
-    Triggered when: Technician changed on existing repair
-    """
-    context = {
-        'repair_id': repair.pk,
-        'unit_number': repair.unit_number,
-        'new_technician_name': repair.technician.user.get_full_name() or repair.technician.user.username,
-        'customer_name': repair.customer.name if repair.customer else 'Unknown',
-        'action_url': f'/tech/repairs/{repair.pk}/',
-    }
-
-    NotificationService.create_notification(
-        recipient=old_technician,
-        template_name='repair_reassigned_away',
-        context=context,
-        repair=repair,
-        customer=repair.customer
-    )
 
 
 def _notify_customer_request_received(repair):
