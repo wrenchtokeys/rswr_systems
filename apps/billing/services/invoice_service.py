@@ -36,6 +36,7 @@ from reportlab.platypus import (
     Image as RLImage, PageBreak
 )
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.pdfbase.pdfmetrics import stringWidth
 
 from PIL import Image
 
@@ -260,6 +261,45 @@ class InvoiceService:
             print(f"Error loading logo for PDF: {e}")
             return None
     
+    # Totals block, right-aligned to the same edge as the line-items table
+    # (3.4 + 2.0 + 1.6 == the 7.0in the other tables use). The amount column
+    # has to hold "$1,234,567.89" set in 16pt bold, and the label column
+    # "Special Tax (10.125%):" in 10pt bold — at the old 1.0in/1.5in both
+    # overflowed and ReportLab broke the word to fit. A number has no spaces
+    # to break at, so splitLongWords stacked the digits one per line and a
+    # four-figure total came out reading vertically.
+    TOTALS_SPACER_WIDTH = 3.4 * inch
+    TOTALS_LABEL_WIDTH = 2.0 * inch
+    TOTALS_AMOUNT_WIDTH = 1.6 * inch
+    # ReportLab's default LEFTPADDING/RIGHTPADDING per table cell.
+    TABLE_CELL_PADDING = 6
+
+    @staticmethod
+    def money(amount):
+        """'$1,234.56'. Thousands separators — a four-figure total on an
+        invoice has to be readable at a glance, not counted digit by digit."""
+        return f"${amount:,.2f}"
+
+    @classmethod
+    def _fitted_style(cls, text, style, avail_width, min_font_size=9):
+        """Return `style`, shrunk just enough that `text` fits on one line.
+
+        Belt-and-braces against the vertical-digits bug: the columns are sized
+        for any total this app will realistically print, but a number that
+        still overruns must come out small, never stacked."""
+        font_name = style.fontName
+        size = style.fontSize
+        while size > min_font_size and stringWidth(text, font_name, size) > avail_width:
+            size -= 0.5
+        if size == style.fontSize and style.leading >= style.fontSize:
+            return style
+        return ParagraphStyle(
+            name=f'{style.name}Fitted{size}',
+            parent=style,
+            fontSize=size,
+            leading=size * 1.2,
+        )
+
     def _setup_custom_styles(self):
         """Set up custom paragraph styles for the invoice"""
         self.styles.add(ParagraphStyle(
@@ -296,6 +336,14 @@ class InvoiceService:
             spaceAfter=5
         ))
         
+        # Subtotal/discount/tax amounts. Right-aligned so their decimal points
+        # line up with each other and with the TOTAL beneath them.
+        self.styles.add(ParagraphStyle(
+            name='TotalsAmount',
+            parent=self.styles['Normal'],
+            alignment=TA_RIGHT
+        ))
+
         self.styles.add(ParagraphStyle(
             name='TotalAmount',
             parent=self.styles['Normal'],
@@ -950,9 +998,13 @@ class InvoiceService:
         
         # Table rows
         for item in invoice_data.line_items:
-            amount_text = f"${item.final_cost:.2f}"
+            amount_text = self.money(item.final_cost)
             if item.discount_description:
-                amount_text = f"<strike>${item.original_cost:.2f}</strike><br/>${item.final_cost:.2f}<br/><font size='8'><i>({item.discount_description})</i></font>"
+                amount_text = (
+                    f"<strike>{self.money(item.original_cost)}</strike>"
+                    f"<br/>{self.money(item.final_cost)}"
+                    f"<br/><font size='8'><i>({item.discount_description})</i></font>"
+                )
             
             # Full description (notes included) minus whatever the Type column
             # beside it already says — see description_detail().
@@ -1011,14 +1063,14 @@ class InvoiceService:
             totals_data.append([
                 '',
                 Paragraph("<b>Subtotal:</b>", self.styles['Normal']),
-                Paragraph(f"${invoice_data.subtotal:.2f}", self.styles['Normal'])
+                Paragraph(self.money(invoice_data.subtotal), self.styles['TotalsAmount'])
             ])
         
         if invoice_data.total_discount > 0:
             totals_data.append([
                 '',
                 Paragraph("<b>Discounts:</b>", self.styles['Normal']),
-                Paragraph(f"-${invoice_data.total_discount:.2f}", self.styles['Normal'])
+                Paragraph(f"-{self.money(invoice_data.total_discount)}", self.styles['TotalsAmount'])
             ])
         
         if invoice_data.tax_amount > 0:
@@ -1040,7 +1092,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"State Tax ({_fmt_rate(invoice_data.state_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${state_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(state_amt), self.styles['TotalsAmount'])
                     ])
                 if invoice_data.county_tax_rate > 0:
                     county_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.county_tax_rate / Decimal('100')
@@ -1048,7 +1100,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"County Tax ({_fmt_rate(invoice_data.county_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${county_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(county_amt), self.styles['TotalsAmount'])
                     ])
                 if invoice_data.city_tax_rate > 0:
                     city_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.city_tax_rate / Decimal('100')
@@ -1056,7 +1108,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"City Tax ({_fmt_rate(invoice_data.city_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${city_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(city_amt), self.styles['TotalsAmount'])
                     ])
                 if invoice_data.special_tax_rate > 0:
                     special_amt = (invoice_data.subtotal - invoice_data.total_discount) * invoice_data.special_tax_rate / Decimal('100')
@@ -1064,7 +1116,7 @@ class InvoiceService:
                     totals_data.append([
                         '',
                         Paragraph(f"Special Tax ({_fmt_rate(invoice_data.special_tax_rate)}%):", self.styles['Normal']),
-                        Paragraph(f"${special_amt:.2f}", self.styles['Normal'])
+                        Paragraph(self.money(special_amt), self.styles['TotalsAmount'])
                     ])
             else:
                 # Fallback: single combined rate (when using default_tax_rate with no breakdown)
@@ -1072,16 +1124,28 @@ class InvoiceService:
                 totals_data.append([
                     '',
                     Paragraph(f"<b>Tax ({rate_display}%):</b>", self.styles['Normal']),
-                    Paragraph(f"${invoice_data.tax_amount:.2f}", self.styles['Normal'])
+                    Paragraph(self.money(invoice_data.tax_amount), self.styles['TotalsAmount'])
                 ])
         
+        total_text = self.money(invoice_data.total)
         totals_data.append([
             '',
             Paragraph("<b>TOTAL:</b>", self.styles['Normal']),
-            Paragraph(f"<b>${invoice_data.total:.2f}</b>", self.styles['TotalAmount'])
+            Paragraph(
+                f"<b>{total_text}</b>",
+                self._fitted_style(
+                    total_text,
+                    self.styles['TotalAmount'],
+                    self.TOTALS_AMOUNT_WIDTH - 2 * self.TABLE_CELL_PADDING,
+                ),
+            )
         ])
-        
-        totals_table = Table(totals_data, colWidths=[4.5*inch, 1.5*inch, 1*inch])
+
+        totals_table = Table(totals_data, colWidths=[
+            self.TOTALS_SPACER_WIDTH,
+            self.TOTALS_LABEL_WIDTH,
+            self.TOTALS_AMOUNT_WIDTH,
+        ])
         totals_table.setStyle(TableStyle([
             ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
             ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
