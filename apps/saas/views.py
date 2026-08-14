@@ -2186,6 +2186,60 @@ def owner_settings_view(request):
                 messages.error(request, 'Could not save review settings.')
             return redirect('/owner/settings/?tab=reviews')
 
+        if form_type == 'mygrant_settings':
+            try:
+                from common import encryption
+                from apps.technician_portal.parts_models import MygrantConfig
+                if not encryption.is_configured():
+                    messages.error(
+                        request,
+                        'Supplier connections are not available yet — the platform '
+                        'is missing its encryption setup. Please contact support.',
+                    )
+                    return redirect('/owner/settings/?tab=parts')
+                mygrant_config = MygrantConfig.get_for_tenant(tenant)
+                mygrant_config.customer_id = request.POST.get('mygrant_customer_id', '').strip()
+                mygrant_config.web_user_id = request.POST.get('mygrant_web_user_id', '').strip()
+                update_fields = ['customer_id', 'web_user_id', 'updated_at']
+                # Secrets are never echoed back into the form, so an empty
+                # submit means "keep what's stored", not "clear it".
+                new_password = request.POST.get('mygrant_password', '')
+                if new_password:
+                    mygrant_config.password = new_password
+                    update_fields.append('password')
+                new_api_key = request.POST.get('mygrant_api_key', '').strip()
+                if new_api_key:
+                    mygrant_config.api_key = new_api_key
+                    update_fields.append('api_key')
+                # Credentials changed — the old verification no longer vouches
+                # for them. Re-test to verify.
+                mygrant_config.last_verified_at = None
+                mygrant_config.last_verify_error = ''
+                update_fields += ['last_verified_at', 'last_verify_error']
+                mygrant_config.save(update_fields=update_fields)
+                messages.success(request, 'Mygrant account saved. Use "Test connection" to verify it.')
+            except Exception as e:
+                logger.error(f"Error saving Mygrant settings: {e}")
+                messages.error(request, 'Could not save Mygrant settings.')
+            return redirect('/owner/settings/?tab=parts')
+
+        if form_type == 'mygrant_disconnect':
+            try:
+                from apps.technician_portal.parts_models import MygrantConfig
+                mygrant_config = MygrantConfig.get_for_tenant(tenant)
+                mygrant_config.customer_id = ''
+                mygrant_config.web_user_id = ''
+                mygrant_config.password = ''
+                mygrant_config.api_key = ''
+                mygrant_config.last_verified_at = None
+                mygrant_config.last_verify_error = ''
+                mygrant_config.save()
+                messages.success(request, 'Mygrant account disconnected and credentials deleted.')
+            except Exception as e:
+                logger.error(f"Error disconnecting Mygrant: {e}")
+                messages.error(request, 'Could not disconnect the Mygrant account.')
+            return redirect('/owner/settings/?tab=parts')
+
         if form_type == 'branding':
             import re
             if request.POST.get('reset_brand'):
@@ -2352,6 +2406,11 @@ def owner_settings_view(request):
     from apps.technician_portal.models import FeePreset
     fee_presets = FeePreset.objects.filter(tenant=tenant).order_by('display_order', 'id')
 
+    # Mygrant connection (Parts tab)
+    from common import encryption
+    from apps.technician_portal.parts_models import MygrantConfig
+    mygrant_config = MygrantConfig.get_for_tenant(tenant)
+
     context = {
         'tenant': tenant,
         'membership': membership,
@@ -2380,9 +2439,46 @@ def owner_settings_view(request):
         'checklist_items': _setup_checklist_items(tenant, completion),
         'fee_presets': fee_presets,
         'sms_platform_ready': _sms_platform_ready(),
+        'mygrant_config': mygrant_config,
+        'mygrant_encryption_ready': encryption.is_configured(),
     }
 
     return render(request, 'saas/owner_settings.html', context)
+
+
+@owner_or_manager_required
+def mygrant_test_connection(request):
+    """
+    POST /owner/settings/mygrant/test/ — AJAX "Test connection" button.
+
+    Sends one Inquiry to Mygrant's STAGING system (EnvironmentID=TEST) with
+    the tenant's stored credentials, and records the outcome on the config.
+    """
+    from django.http import JsonResponse
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required.'}, status=405)
+
+    tenant, membership = _get_owner_tenant(request)
+    if not tenant or not membership or membership.role not in ('owner', 'manager'):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    from apps.technician_portal import mygrant_service
+    from apps.technician_portal.parts_models import MygrantConfig
+
+    config = MygrantConfig.get_for_tenant(tenant)
+    try:
+        detail = mygrant_service.test_connection(config)
+    except mygrant_service.MygrantError as e:
+        config.mark_verify_failed(e)
+        return JsonResponse({'success': False, 'error': str(e)})
+    except Exception as e:
+        logger.error(f"Mygrant test connection failed unexpectedly (tenant={tenant.id}): {e}")
+        config.mark_verify_failed('Unexpected error — try again.')
+        return JsonResponse({'success': False, 'error': 'Something went wrong — try again.'})
+
+    config.mark_verified()
+    return JsonResponse({'success': True, 'message': detail})
 
 
 @owner_or_manager_required

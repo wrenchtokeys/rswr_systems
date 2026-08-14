@@ -25,6 +25,14 @@ django-ratelimit==4.1.0
 # range narrow so local and prod agree by default.
 stripe>=15.4.0,<16
 
+# Credential encryption at rest (common/encryption.py — Mygrant credentials).
+# Already present transitively, but we import it directly now, so pin it.
+cryptography>=45,<47
+
+# Supplier web-service calls (apps/technician_portal/mygrant_service.py).
+# Already present transitively via stripe, but we import it directly now.
+requests>=2.32.0,<3
+
 # PDF generation
 reportlab>=4.0.0
 

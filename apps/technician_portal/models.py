@@ -2119,3 +2119,6 @@ class FeePreset(models.Model):
 
 # Review request models live in a separate file to keep this module manageable.
 from apps.technician_portal.review_models import ReviewConfig, ReviewRequest  # noqa: E402, F401
+
+# Parts-sourcing models (Mygrant supplier connection) — same pattern.
+from apps.technician_portal.parts_models import MygrantConfig  # noqa: E402, F401

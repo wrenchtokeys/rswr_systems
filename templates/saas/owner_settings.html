@@ -53,6 +53,9 @@
         <button data-tab="warranty" id="tab-warranty" class="tab-btn">
             <i class="fas fa-shield-alt mr-1.5"></i>Warranty
         </button>
+        <button data-tab="parts" id="tab-parts" class="tab-btn">
+            <i class="fas fa-cubes mr-1.5"></i>Parts
+        </button>
     </nav>
 </div>
 
@@ -1680,6 +1683,121 @@ Thank you,
         </div>
     </div>
 </div>
+
+<!-- ======================= PARTS TAB ======================= -->
+<div id="panel-parts" data-tab-panel="parts" class="hidden">
+
+    <div class="card mb-6">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900">Connect Your Mygrant Account</h3>
+                <p class="text-sm text-gray-500 mt-1">Quote glass prices and availability from your own Mygrant Glass account, right from a job.</p>
+            </div>
+            {% if mygrant_config.last_verified_at %}
+            <span class="badge-green"><i class="fas fa-check mr-1"></i>Connected</span>
+            {% elif mygrant_config.last_verify_error %}
+            <span class="badge-red"><i class="fas fa-triangle-exclamation mr-1"></i>Test failed</span>
+            {% elif mygrant_config.has_credentials %}
+            <span class="badge-yellow">Not tested yet</span>
+            {% else %}
+            <span class="badge-gray">Not connected</span>
+            {% endif %}
+        </div>
+
+        {% if not mygrant_encryption_ready %}
+        <div class="p-6">
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p class="text-sm text-amber-800">
+                    <i class="fas fa-triangle-exclamation mr-1"></i>
+                    Supplier connections aren't available yet — the platform is missing its
+                    credential-encryption setup. Please contact support.
+                </p>
+            </div>
+        </div>
+        {% else %}
+        <form method="post" class="p-6 space-y-6">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="mygrant_settings">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="mygrant_customer_id" class="block text-sm font-medium text-gray-700 mb-1">Customer ID</label>
+                    <input type="text" id="mygrant_customer_id" name="mygrant_customer_id"
+                        value="{{ mygrant_config.customer_id }}" autocomplete="off"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm transition"
+                        placeholder="C000001-001">
+                    <p class="text-xs text-gray-500 mt-1">Your Mygrant customer number — it's on your invoices.</p>
+                </div>
+                <div>
+                    <label for="mygrant_web_user_id" class="block text-sm font-medium text-gray-700 mb-1">Web User ID</label>
+                    <input type="text" id="mygrant_web_user_id" name="mygrant_web_user_id"
+                        value="{{ mygrant_config.web_user_id }}" autocomplete="off"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm transition"
+                        placeholder="Your MygrantGlass.com login">
+                </div>
+                <div>
+                    <label for="mygrant_password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input type="password" id="mygrant_password" name="mygrant_password"
+                        autocomplete="new-password"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm transition"
+                        placeholder="{% if mygrant_config.password %}Saved — leave blank to keep{% else %}Your MygrantGlass.com password{% endif %}">
+                </div>
+                <div>
+                    <label for="mygrant_api_key" class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                    <input type="password" id="mygrant_api_key" name="mygrant_api_key"
+                        autocomplete="off"
+                        class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm transition"
+                        placeholder="{% if mygrant_config.api_key %}Saved — leave blank to keep{% else %}From MygrantGlass.com, once API access is enabled{% endif %}">
+                    <p class="text-xs text-gray-500 mt-1">Ask your Mygrant rep to enable API access, then generate a key at MygrantGlass.com &rarr; My Account &rarr; Edit User Settings.</p>
+                </div>
+            </div>
+
+            <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <p class="text-xs text-gray-600">
+                    <i class="fas fa-lock mr-1"></i>
+                    Your password and API key are encrypted before they're stored, are only used to talk to
+                    Mygrant on your behalf, and are never shown again on this page.
+                </p>
+            </div>
+
+            {% if mygrant_config.last_verify_error %}
+            <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p class="text-sm text-red-800"><i class="fas fa-triangle-exclamation mr-1"></i>Last test failed: {{ mygrant_config.last_verify_error }}</p>
+            </div>
+            {% endif %}
+
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+                <p id="mygrant-test-result" class="hidden text-sm"></p>
+                <div class="flex items-center gap-3 ml-auto">
+                    {% if mygrant_config.has_credentials %}
+                    <button type="button" id="mygrant-test-btn"
+                        data-endpoint="{% url 'mygrant_test_connection' %}"
+                        class="btn-secondary">
+                        <i class="fas fa-plug mr-2"></i>Test Connection
+                    </button>
+                    {% endif %}
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-save mr-2"></i>Save Mygrant Account
+                    </button>
+                </div>
+            </div>
+            <p class="text-xs text-gray-500">Test Connection checks your credentials against Mygrant's test system — it never places an order.</p>
+        </form>
+
+        {% if mygrant_config.has_credentials or mygrant_config.api_key %}
+        <div class="px-6 pb-6">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="mygrant_disconnect">
+                <button type="submit" class="text-sm text-red-600 hover:text-red-800 font-medium tap-target">
+                    Disconnect and delete my Mygrant credentials
+                </button>
+            </form>
+        </div>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
 {% endblock %}
 
 
@@ -1870,6 +1988,37 @@ document.addEventListener('change', async function(e) {
     } catch (err) {
         toggle.checked = !toggle.checked;
         if (errorEl) { errorEl.textContent = 'Network error. Please try again.'; errorEl.classList.remove('hidden'); }
+    }
+});
+
+// === Mygrant "Test Connection" (Parts tab) ===
+document.addEventListener('click', async function(e) {
+    const btn = e.target.closest('#mygrant-test-btn');
+    if (!btn) return;
+    const resultEl = document.getElementById('mygrant-test-result');
+    const csrf = btn.closest('form').querySelector('[name=csrfmiddlewaretoken]').value;
+    btn.disabled = true;
+    resultEl.className = 'text-sm text-gray-500';
+    resultEl.textContent = 'Testing…';
+    try {
+        const resp = await fetch(btn.dataset.endpoint, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrf },
+        });
+        const data = await resp.json();
+        if (data.success) {
+            resultEl.className = 'text-sm text-green-700 font-medium';
+            resultEl.textContent = data.message || 'Connected.';
+            setTimeout(() => window.location.reload(), 1200);
+        } else {
+            resultEl.className = 'text-sm text-red-600';
+            resultEl.textContent = data.error || 'Test failed. Please try again.';
+            btn.disabled = false;
+        }
+    } catch (err) {
+        resultEl.className = 'text-sm text-red-600';
+        resultEl.textContent = 'Network error. Please try again.';
+        btn.disabled = false;
     }
 });
 </script>

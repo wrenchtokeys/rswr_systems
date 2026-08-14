@@ -257,6 +257,17 @@ STRIPE_TEST_MODE = STRIPE_MODE == 'test'
 # is configured separately and need not match.
 STRIPE_API_VERSION = os.environ.get('STRIPE_API_VERSION', '2026-07-29.dahlia')
 
+# =========================================
+# CREDENTIAL ENCRYPTION AT REST
+# =========================================
+
+# Fernet key for common.encryption — encrypts third-party credentials tenants
+# hand us (Mygrant passwords/API keys). Deliberately NOT SECRET_KEY: rotating
+# Django's signing key must never brick stored credentials. No production
+# fallback; development.py derives a dev key so local dev and tests just work.
+# Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEY = os.environ.get('FIELD_ENCRYPTION_KEY', '')
+
 # Where platform-level billing alerts go: Stripe disputes, and the daily
 # digest of webhook events that failed to process. These concern the
 # platform's own money and Stripe account risk, not any shop's, so they must

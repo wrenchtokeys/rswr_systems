@@ -23,6 +23,16 @@ DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Credential encryption (common.encryption): derive a stable dev key from
+# SECRET_KEY when the env var is unset, so dev and the test suite need no
+# setup. Production has no fallback — see base.py.
+if not FIELD_ENCRYPTION_KEY:  # noqa: F405
+    import base64 as _b64
+    import hashlib as _hashlib
+    FIELD_ENCRYPTION_KEY = _b64.urlsafe_b64encode(
+        _hashlib.sha256(('field-encryption:' + SECRET_KEY).encode()).digest()
+    ).decode()
+
 # =========================================
 # CORS
 # =========================================
