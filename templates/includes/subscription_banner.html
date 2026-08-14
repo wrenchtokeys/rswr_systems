@@ -54,8 +54,10 @@ pass `tenant` and silently vanished everywhere else.
 {% endif %}
 
 {% elif subscription_audience == 'owner' %}
-{# Everything below is between the shop owner and us. Staff see none of it:
-   nothing here blocks them, so there is nothing for them to act on. #}
+{% comment %}
+Everything below is between the shop owner and us. Staff see none of it:
+nothing here blocks them, so there is nothing for them to act on.
+{% endcomment %}
 
     {% if request.tenant.subscription_status == 'past_due' %}
     <div class="bg-red-600 text-white">
