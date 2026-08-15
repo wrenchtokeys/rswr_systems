@@ -280,6 +280,12 @@
                             <label class="block text-sm font-medium text-gray-700 mb-1">Resin viscosity</label>
                             {{ form.resin_viscosity }}
                         </div>
+                        {% comment %}
+                        Filled by the viscosity-suggestion script below from the shop's
+                        own rules (Settings → Repair Resin Rules). Stays empty — and
+                        hidden — for a shop that has never turned those rules on.
+                        {% endcomment %}
+                        <div id="viscositySuggestion" class="hidden sm:col-span-2"></div>
                         <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer sm:col-span-2">
                             <input type="checkbox" name="drilled_before_repair" {% if form.drilled_before_repair.value %}checked{% endif %}
                                    class="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500">
@@ -700,6 +706,88 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     syncMarkerFromInputs();
     window.QuickJobForm.syncMarker = syncMarkerFromInputs;
+})();
+</script>
+
+{% comment %}
+Temperature → resin viscosity suggestion. This lived only in the old
+repair_form.html, so it disappeared the day every "New job" link started
+pointing here; the API and the per-shop rules behind it were never touched.
+Tone classes are written out in full because Tailwind purges anything it
+can't read as a literal string.
+{% endcomment %}
+<script>
+(function() {
+    const tempInput = document.getElementById('id_windshield_temperature');
+    const box = document.getElementById('viscositySuggestion');
+    if (!tempInput || !box) return;
+
+    const TONES = {
+        blue:   'bg-blue-50 border-blue-200 text-blue-800',
+        green:  'bg-green-50 border-green-200 text-green-800',
+        yellow: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+        orange: 'bg-orange-50 border-orange-200 text-orange-800',
+        red:    'bg-red-50 border-red-200 text-red-800',
+        purple: 'bg-purple-50 border-purple-200 text-purple-800',
+        gray:   'bg-gray-50 border-gray-200 text-gray-700',
+    };
+
+    let timer = null;
+    // Bumped per request so a slow reply for an old temperature can't land
+    // on top of a fresh one — easy to hit typing "105" digit by digit.
+    let latest = 0;
+
+    function hide() {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+    }
+
+    function show(data) {
+        box.innerHTML = '';
+        const tone = TONES[data.badge_color] || TONES.gray;
+        box.className = 'sm:col-span-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ' + tone;
+
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-tint mt-0.5 shrink-0';
+        const text = document.createElement('div');
+        const strong = document.createElement('strong');
+        strong.textContent = data.recommendation;
+        text.appendChild(strong);
+        if (data.suggestion_text) {
+            // textContent, not innerHTML — this string is shop-authored.
+            text.appendChild(document.createTextNode(' — ' + data.suggestion_text));
+        }
+        box.appendChild(icon);
+        box.appendChild(text);
+    }
+
+    function fetchSuggestion(temperature) {
+        if (temperature === '' || temperature === null) {
+            hide();
+            return;
+        }
+        clearTimeout(timer);
+        timer = setTimeout(function() {
+            const token = ++latest;
+            fetch('/tech/api/viscosity-suggestion/?temperature=' + encodeURIComponent(temperature))
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (token !== latest) return;
+                    if (data.success && data.recommendation) {
+                        show(data);
+                    } else {
+                        // No rule covers this temperature — say nothing rather
+                        // than nag. A shop with no rules at all lands here too.
+                        hide();
+                    }
+                })
+                .catch(function() { hide(); });
+        }, 400);
+    }
+
+    tempInput.addEventListener('input', function(e) { fetchSuggestion(e.target.value); });
+    // Autosaved drafts and validation re-renders come back with a value already in.
+    if (tempInput.value) fetchSuggestion(tempInput.value);
 })();
 </script>
 {% endif %}
