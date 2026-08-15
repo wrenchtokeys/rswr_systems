@@ -15,7 +15,7 @@ This file is the **work queue** for making field operations real: a technician f
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
 | N — The tech finds out | N3 · Notification coverage audit | S | TODO |
 | N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE (2026-08-12, PR pending) — v2 submission awaits deploy + Drake (see Notes) |
-| S — Where and when | S1 · A real "booked time" | M | TODO |
+| S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | TODO |
 | S — Where and when | S3 · Day / agenda view | M | TODO |
 | S — Where and when | S4 · Customer requests carry when + where | M | TODO |
@@ -235,7 +235,7 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 
 # Phase S — The tech knows where and when
 
-## S1 · A real "booked time" — TODO
+## S1 · A real "booked time" — DONE (2026-08-15, PR #188)
 
 | Field | Value |
 |---|---|
@@ -249,7 +249,39 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 | **Acceptance criteria** | A job can be created/edited with a scheduled time via QuickJobForm and legacy forms. Tech dashboard shows Today (scheduled today), Unscheduled, and Overdue (scheduled before today, not completed) buckets. Existing flows with no date behave exactly as before. Migration is additive-only. |
 | **Out of scope** | Any calendar rendering (S3). Customer-side capture (S4). Capacity/conflicts (S5). |
 
-**Notes**
+**Notes** *(session run 2026-08-15, branch `feat/fieldops-s1-booked-time`, PR #188)*
+
+- **Shipped as designed, both recommended decisions taken.** `scheduled_for` +
+  `scheduled_window_end` on `GlassService` (migration `technician_portal/0053`,
+  additive, indexed on both job types); `service_date` untouched. The quick-job
+  form shows "Scheduled for" only while *Job is already done* is unchecked —
+  belt AND suspenders: a JS toggle hides it, and `QuickJobForm.clean()` drops
+  any submitted schedule when `already_completed` is set, so a walk-in can
+  never land in a schedule bucket even with a stale value in the POST.
+- **Dashboard buckets are an annotation + stable resort of the existing
+  `todays_queue`, not a new query.** Each job gets `job.schedule_bucket`
+  (overdue/today/later/unscheduled, computed against `timezone.localtime`);
+  `queue_has_schedule` gates both the resort and the template's `{% ifchanged %}`
+  group headers, so an all-unscheduled queue renders byte-identically to
+  pre-S1 (asserted by test). Unscheduled jobs keep their status-priority order
+  via the stable sort (they all share one key). A "Later" bucket was added
+  beyond the doc's three — without it a job scheduled next Tuesday would have
+  looked unscheduled.
+- **Things future S-sessions should know:**
+  - `scheduled_window_end` is schema-only — no UI writes it yet. S4's
+    customer time-window capture is its intended first writer.
+  - `ReplacementForm` lives in `apps/saas/forms.py` (not technician_portal),
+    same as the replacement views — the S3 day view will need both apps.
+  - Shop-created jobs passed `queue_status='PENDING'` get flipped to APPROVED
+    by `resolve_initial_shop_status` — bucket tests use IN_PROGRESS/APPROVED.
+  - The queue is still capped at 20 by status-priority BEFORE bucketing, so
+    with >20 active jobs a scheduled-today PENDING job can be cut by
+    unscheduled IN_PROGRESS ones. Fine at current shop sizes; S3's dedicated
+    day view queries by `scheduled_for` directly and won't inherit this.
+  - Multi-break deliberately untouched: its date input is the work date
+    (`service_date`), not a booking.
+- **Tests:** `tests/test_fieldops_s1.py` (16). Smoke + 190 adjacent green,
+  incl. the CSS guards after `./scripts/build_css.sh`.
 
 ## S2 · Field dispatch — executes B1 — TODO
 
@@ -360,6 +392,7 @@ The one-sentence version: **live Mygrant quotes and ordering are real and builda
 
 - **2026-08-14 (steps 3+4, PR #184 — `feat/mygrant-connect`)**: built while waiting on the Mygrant IT callback. Encryption decision + Connect plumbing shipped exactly as designed above; nothing needed the API key to build, and the card degrades honestly at every gate (no platform key → "not available yet"; no credentials → nothing anywhere; credentials but no API key → save works, Test connection explains the key comes after onboarding). Two things future steps should know: **(a)** Test connection uses the *stored* credentials, not unsaved form edits — save first, then test (the card's flow makes this natural); **(b)** the quote/order gate for step 5 is `MygrantConfig.is_enabled()` (credentials + API key), already defined, so the quote PR only adds UI + the Inquiry-parse beyond what `mygrant_service.py` has. Deploy checklist for whichever PR merges first: generate + `eb setenv FIELD_ENCRYPTION_KEY` (one-time; recipe in CLAUDE.md env-var block).
 - **2026-08-15 (steps 3+4 merged + deployed; step 5 built, PR #186 — `feat/mygrant-quotes`)**: PRs #184/#183 merged and `eb deploy` verified (health 200). `FIELD_ENCRYPTION_KEY` was NOT yet set at deploy time — the sandbox couldn't run `eb setenv` with a secret, so Drake runs the one-liner from CLAUDE.md; until then the Parts card shows its "not available yet" state, which was verified deliberate behavior. Step 5 learnings: the Replacement views live in `apps/saas/views.py` (not technician_portal); `Replacement.save()` recomputes cost+tax from `parts_cost` automatically UNLESS `cost_override` is set — the apply endpoint says so out loud instead of silently not moving the total; quote results cache under `mygrant_quote_<tenant>_<replacement>` for 15 min and the apply step reads prices only from that cache. When the API key arrives, the full first-quote sequence is: owner enters key in Settings → Parts → Test connection → `mygrant_quote --staging` → one confirmed `mygrant_quote` prod run → then techs use the button. Step 6 (ordering) should reuse the same cached-SKU pick so the order is exact-SKU by construction.
+- **2026-08-15: `FIELD_ENCRYPTION_KEY` IS SET in prod** — Drake ran the `eb setenv` one-liner (config deploy completed 16:18 UTC, instance deployment successful). The encryption-at-rest gate is cleared: the Parts → Connect card is fully functional in production. Remaining blockers for a live quote are steps 1–2 only (Mygrant IT callback → API key + billing-model confirmation).
 
 ## P2 · Vehicle→NAGS part lookup — BACKLOG (blocked on a licensing decision)
 

@@ -509,6 +509,9 @@ def job_create(request):
                 insurance_company=data.get('insurance_company') or '',
                 claim_number=data.get('claim_number') or '',
                 deductible=data.get('deductible'),
+                # Booking time — the form clears it for already-completed
+                # jobs, so a walk-in never lands in a schedule bucket.
+                scheduled_for=data.get('scheduled_for'),
             )
             if data['service_type'] == 'repair':
                 service = Repair(

@@ -73,6 +73,14 @@
                         {{ form.nags_number }}
                     </div>
                 </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label for="id_scheduled_for" class="block text-sm font-medium text-gray-700 mb-1">Scheduled for</label>
+                        {{ form.scheduled_for }}
+                        <p class="mt-1 text-xs text-gray-400">Optional &mdash; when you told the customer you'd do this job. Leave blank if unscheduled.</p>
+                        {% if form.scheduled_for.errors %}<p class="mt-1 text-sm text-red-600">{{ form.scheduled_for.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
             </div>
 
             <!-- Pricing -->

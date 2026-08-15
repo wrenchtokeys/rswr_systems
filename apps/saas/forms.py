@@ -326,7 +326,7 @@ class ReplacementForm(forms.ModelForm):
     class Meta:
         model = Replacement
         fields = [
-            'customer', 'technician', 'unit_number',
+            'customer', 'technician', 'unit_number', 'scheduled_for',
             'glass_position', 'glass_type', 'nags_number',
             'parts_cost', 'labor_cost',
             'requires_adas_calibration', 'adas_calibration_cost',
@@ -351,6 +351,13 @@ class ReplacementForm(forms.ModelForm):
                 'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
                 'placeholder': 'e.g. T-1045 or 2023 Toyota Camry',
             }),
+            'scheduled_for': forms.DateTimeInput(
+                attrs={
+                    'type': 'datetime-local', 'step': '60',
+                    'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition',
+                },
+                format='%Y-%m-%dT%H:%M',
+            ),
             'glass_position': forms.Select(attrs={
                 'class': 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white',
             }),

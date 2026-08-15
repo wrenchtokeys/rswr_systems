@@ -232,10 +232,21 @@
             {% endif %}
 
             <label class="flex items-center gap-3 py-1 cursor-pointer">
-                <input type="checkbox" name="already_completed" {% if form.already_completed.value %}checked{% endif %}
+                <input type="checkbox" name="already_completed" id="id_already_completed" {% if form.already_completed.value %}checked{% endif %}
                        class="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500">
                 <span class="text-sm font-medium text-gray-700">Job is already done</span>
             </label>
+
+            {% comment %}
+            Booking time — only offered for work that hasn't happened yet.
+            The checkbox toggle keeps the walk-in path free of a date field.
+            {% endcomment %}
+            <div id="schedule-row" {% if form.already_completed.value %}class="hidden"{% endif %}>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Scheduled for</label>
+                {{ form.scheduled_for }}
+                {% if form.scheduled_for.errors %}<p class="text-sm text-red-600 mt-1">{{ form.scheduled_for.errors.0 }}</p>{% endif %}
+                <p class="text-xs text-gray-400 mt-1">Optional — leave blank to keep this job unscheduled.</p>
+            </div>
 
             <!-- Everything optional. Open by default when the server bounced the
                  form back with an error in here, so the message isn't hidden. -->
@@ -435,6 +446,19 @@ document.addEventListener('DOMContentLoaded', function() {
     radios.forEach(r => r.addEventListener('change', syncDetailSections));
     syncDetailSections();
     window.QuickJobForm.syncDetailSections = syncDetailSections;
+
+    // "Scheduled for" only applies to work that hasn't happened yet —
+    // hide it while "Job is already done" is checked (server drops the
+    // value anyway; this keeps the two from ever disagreeing on screen).
+    const doneBox = document.getElementById('id_already_completed');
+    const scheduleRow = document.getElementById('schedule-row');
+    if (doneBox && scheduleRow) {
+        function syncScheduleRow() {
+            scheduleRow.classList.toggle('hidden', doneBox.checked);
+        }
+        doneBox.addEventListener('change', syncScheduleRow);
+        syncScheduleRow();
+    }
 
     // Customer picker: [Fleet] [Individual] tabs driving ONE hidden validated
     // select. Fleet = filtered dropdown; Individual = search previous people

@@ -359,6 +359,38 @@ def technician_dashboard(request):
         key=lambda j: (j.service_date is not None, j.service_date), reverse=True
     )
 
+    # --- Date-aware queue buckets (S1) ---
+    # scheduled_for is the booking time ("when we said we'd come"); a null
+    # means unscheduled. service_date is when work happened and plays no part
+    # here. When nothing in the queue is scheduled, the order and rendering
+    # are exactly the pre-S1 flat queue — the template only draws bucket
+    # headers when queue_has_schedule is true.
+    _local_today = timezone.localtime(timezone.now()).date()
+
+    def _schedule_bucket(job):
+        if job.scheduled_for is None:
+            return 'unscheduled'
+        scheduled_day = timezone.localtime(job.scheduled_for).date()
+        if scheduled_day < _local_today:
+            return 'overdue'
+        if scheduled_day == _local_today:
+            return 'today'
+        return 'later'
+
+    for job in todays_queue:
+        job.schedule_bucket = _schedule_bucket(job)
+    queue_has_schedule = any(
+        j.schedule_bucket != 'unscheduled' for j in todays_queue)
+    if queue_has_schedule:
+        _BUCKET_ORDER = {'overdue': 0, 'today': 1, 'later': 2, 'unscheduled': 3}
+        _now = timezone.now()
+        # Scheduled buckets sort by booking time; unscheduled jobs all share
+        # the same key, so the stable sort keeps their existing status-priority
+        # order.
+        todays_queue.sort(key=lambda j: (
+            _BUCKET_ORDER[j.schedule_bucket], j.scheduled_for or _now,
+        ))
+
     # Fold the tech's replacement workload into the summary tiles so a
     # replacement-only shop's dashboard isn't all zeros.
     if technician and shop_offers_replacements:
@@ -419,6 +451,7 @@ def technician_dashboard(request):
         'admin_data': admin_data,
         'summary_stats': summary_stats,
         'todays_queue': todays_queue,
+        'queue_has_schedule': queue_has_schedule,
         'customer_requests': customer_requests,
         'replacements_active': replacements_active,
         'customer_requested_replacements': customer_requested_replacements,

@@ -677,6 +677,25 @@
                                     </div>
                                 {% endif %}
                             </div>
+
+                            <!-- Scheduled for (booking time, optional) -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-calendar-check"></i>
+                                    Scheduled For
+                                </label>
+                                {{ form.scheduled_for }}
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-clock"></i>
+                                    When you told the customer you'd do this job — leave blank if unscheduled
+                                </p>
+                                {% if form.scheduled_for.errors %}
+                                    <div class="field-error">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                        {{ form.scheduled_for.errors.0 }}
+                                    </div>
+                                {% endif %}
+                            </div>
                         </div>
 
                         {% if pending_reward_redemptions %}

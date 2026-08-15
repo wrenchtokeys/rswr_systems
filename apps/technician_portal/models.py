@@ -357,6 +357,18 @@ class GlassService(models.Model):
     )
     
     service_date = models.DateTimeField(default=timezone.now)
+    # Booking time — "when we said we'd come", distinct from service_date,
+    # which records when the work happened (and keeps its now() default and
+    # sort/index semantics everywhere). Null means unscheduled; walk-in and
+    # quick-complete flows never touch these.
+    scheduled_for = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the shop promised to do this job. Blank = unscheduled."
+    )
+    scheduled_window_end = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Optional end of the promised arrival window."
+    )
     description = models.TextField(blank=True, null=True)
     cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     cost_override = models.DecimalField(
@@ -1490,6 +1502,7 @@ class Repair(GlassService):
             models.Index(fields=['customer', 'unit_number']),
             models.Index(fields=['technician']),
             models.Index(fields=['service_date']),
+            models.Index(fields=['scheduled_for']),
             # Partial index for soft-delete filter: RepairSoftDeleteManager always
             # appends deleted_at__isnull=True.  Without an index every query
             # does a post-filter pass on an unindexed column.  The partial index
@@ -1872,6 +1885,7 @@ class Replacement(GlassService):
             models.Index(fields=['customer', 'unit_number']),
             models.Index(fields=['technician']),
             models.Index(fields=['service_date']),
+            models.Index(fields=['scheduled_for']),
         ]
 
     def __str__(self):
