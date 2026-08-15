@@ -104,6 +104,9 @@
                     <div><span class="text-gray-500">Customer:</span> <span class="font-medium text-gray-900">{{ replacement.customer.name|title|default:"—" }}</span></div>
                     <div><span class="text-gray-500">Technician:</span> <span class="font-medium text-gray-900">{{ replacement.technician.user.get_full_name|default:"—" }}</span></div>
                     <div><span class="text-gray-500">Date:</span> <span class="font-medium text-gray-900">{{ replacement.service_date|date:"M d, Y h:i A" }}</span></div>
+                    {% if replacement.scheduled_for %}
+                    <div><span class="text-gray-500">Scheduled for:</span> <span class="font-medium text-gray-900">{{ replacement.scheduled_for|date:"M d, Y h:i A" }}</span></div>
+                    {% endif %}
                 </div>
             </div>
 

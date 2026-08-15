@@ -58,6 +58,25 @@
             <div class="divide-y divide-gray-100">
                 {% for job in todays_queue %}
                 <div class="{% if forloop.counter > 5 %}hidden queue-overflow-item{% endif %}">
+                    {% comment %}
+                    Schedule buckets (S1): headers only appear once anything in
+                    the queue has a booking time — an all-unscheduled queue
+                    renders exactly as it always did. Overdue is red because it
+                    is a broken promise, not a status (status colour still comes
+                    from core/templatetags/ui.py).
+                    {% endcomment %}
+                    {% if queue_has_schedule %}
+                    {% ifchanged job.schedule_bucket %}
+                    <div class="px-4 sm:px-6 pt-3 pb-1">
+                        <span class="text-xs font-semibold uppercase tracking-wide {% if job.schedule_bucket == 'overdue' %}text-red-600{% else %}text-gray-400{% endif %}">
+                            {% if job.schedule_bucket == 'overdue' %}Overdue
+                            {% elif job.schedule_bucket == 'today' %}Today
+                            {% elif job.schedule_bucket == 'later' %}Later
+                            {% else %}Unscheduled{% endif %}
+                        </span>
+                    </div>
+                    {% endifchanged %}
+                    {% endif %}
                     <div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4">
                         {% comment %}
                         Priority indicator. Colours follow core/templatetags/ui.py — the
@@ -94,7 +113,13 @@
                                 {% if job.cost %}
                                 <span class="text-xs text-gray-500">${{ job.cost|floatformat:2 }}</span>
                                 {% endif %}
+                                {% if job.scheduled_for %}
+                                <span class="text-xs {% if job.schedule_bucket == 'overdue' %}text-red-600 font-medium{% else %}text-gray-500{% endif %}">
+                                    <i class="far fa-clock mr-0.5"></i>{% if job.schedule_bucket == 'today' %}{{ job.scheduled_for|date:"g:i A" }}{% else %}{{ job.scheduled_for|date:"D M j, g:i A" }}{% endif %}
+                                </span>
+                                {% else %}
                                 <span class="text-xs text-gray-400">{{ job.service_date|date:"M d" }}</span>
+                                {% endif %}
                             </div>
                         </div>
 

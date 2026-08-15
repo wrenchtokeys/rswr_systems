@@ -440,6 +440,7 @@ class RepairForm(forms.ModelForm):
     class Meta:
         model = Repair
         fields = ['technician', 'customer', 'unit_number', 'vehicle_year', 'vehicle_make', 'vehicle_model',
+                  'scheduled_for',
                   'queue_status', 'damage_type', 'damage_location_x', 'damage_location_y',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
@@ -453,6 +454,7 @@ class RepairForm(forms.ModelForm):
             'no_tax': forms.CheckboxInput(attrs={
                 'class': 'w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500',
             }),
+            'scheduled_for': CustomDateTimeInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -948,6 +950,16 @@ class QuickJobForm(forms.Form):
         }),
     )
     already_completed = forms.BooleanField(required=False, initial=True)
+    # Booking time (maps to GlassService.scheduled_for). The template reveals
+    # this only when "Job is already done" is unchecked — a walk-in being
+    # logged after the fact has no booking, and the common path stays
+    # zero-friction.
+    scheduled_for = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={
+            'type': 'datetime-local', 'step': '60', 'class': _INPUT,
+        }),
+    )
     # Rendered only when the shop has tax enabled. Unchecking makes this a
     # no-tax job (cash deal); the view maps it onto Repair/Replacement.no_tax.
     charge_tax = forms.BooleanField(required=False, initial=True)
@@ -1104,4 +1116,8 @@ class QuickJobForm(forms.Form):
         # no price book, so a blank price would make a $0 invoice.
         if cleaned.get('service_type') == 'replacement' and cleaned.get('price') in (None, ''):
             self.add_error('price', 'Enter a price for the replacement.')
+        # A job logged as already done is history, not a booking — drop any
+        # schedule value typed before the "already done" box was re-checked.
+        if cleaned.get('already_completed'):
+            cleaned['scheduled_for'] = None
         return cleaned
