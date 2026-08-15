@@ -121,4 +121,6 @@ urlpatterns = [
     path('tech/replacement/<int:pk>/update-status/', views.replacement_update_status, name='replacement_update_status'),
     path('tech/replacement/<int:pk>/complete-and-invoice/', views.replacement_complete_and_invoice, name='replacement_complete_and_invoice'),
     path('tech/replacement/<int:pk>/delete/', views.replacement_delete, name='replacement_delete'),
+    path('tech/replacement/<int:pk>/mygrant-quote/', views.replacement_mygrant_quote, name='replacement_mygrant_quote'),
+    path('tech/replacement/<int:pk>/mygrant-apply/', views.replacement_mygrant_apply, name='replacement_mygrant_apply'),
 ]

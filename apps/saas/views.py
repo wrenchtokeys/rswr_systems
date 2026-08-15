@@ -1323,6 +1323,14 @@ def replacement_detail(request, pk):
 
     from apps.billing.services.invoice_send_service import InvoiceSendService
     from apps.technician_portal.decorators import is_tenant_admin
+    from apps.technician_portal.parts_models import MygrantConfig
+
+    # Profit on this ticket (shop-facing only): what the shop charges before
+    # tax, minus what the glass costs them. Only shown once parts_cost is real.
+    job_margin = None
+    if replacement.parts_cost is not None:
+        job_margin = (replacement.total_with_charges or 0) - replacement.parts_cost
+
     return render(request, 'saas/replacement_detail.html', {
         'replacement': replacement,
         'tenant': tenant,
@@ -1335,7 +1343,113 @@ def replacement_detail(request, pk):
         'invoice_sms_ready': InvoiceSendService.sms_ready(tenant),
         'invoice_sms_phone': InvoiceSendService.resolve_recipient_phone(replacement.customer)
                              if replacement.customer else '',
+        'mygrant_enabled': MygrantConfig.get_for_tenant(tenant).is_enabled(),
+        'job_margin': job_margin,
     })
+
+
+def _mygrant_quote_cache_key(tenant, replacement):
+    return f'mygrant_quote_{tenant.pk}_{replacement.pk}'
+
+
+@technician_required
+def replacement_mygrant_quote(request, pk):
+    """
+    POST /tech/replacement/<pk>/mygrant-quote/ — one live Mygrant Inquiry for
+    the job's NAGS number, using the shop's own connected account.
+
+    Deliberate-action only (searches can bill on the shop's Mygrant account):
+    the page never calls this on load, only from the quote button. The
+    multi-SKU response is cached so the pick/apply step re-reads it instead
+    of firing a second billable search.
+    """
+    from django.core.cache import cache
+    from apps.technician_portal import mygrant_service
+    from apps.technician_portal.parts_models import MygrantConfig
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required.'}, status=405)
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop context.'}, status=403)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+    if not _replacement_technician_access(request, tenant, replacement=replacement):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+
+    config = MygrantConfig.get_for_tenant(tenant)
+    if not config.is_enabled():
+        return JsonResponse({'success': False, 'error': 'Mygrant is not connected for this shop.'}, status=400)
+
+    try:
+        skus = mygrant_service.quote_nags(config, replacement.nags_number)
+    except mygrant_service.MygrantError as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+    except Exception as e:
+        logger.error(f"Mygrant quote failed unexpectedly (tenant={tenant.id}, replacement={pk}): {e}")
+        return JsonResponse({'success': False, 'error': 'Something went wrong — try again.'})
+
+    # Prices go into the cache server-side; apply reads them back from here so
+    # the client can never submit a made-up price.
+    cache.set(_mygrant_quote_cache_key(tenant, replacement), skus, 15 * 60)
+    return JsonResponse({'success': True, 'skus': [
+        {
+            'index': i,
+            'part': s['part'],
+            'description': s['description'],
+            'brand': s['brand'],
+            'qty_available': s['qty_available'],
+            'list_price': str(s['list_price']) if s['list_price'] is not None else '',
+            'customer_price': str(s['customer_price']) if s['customer_price'] is not None else '',
+            'branch': s['branch'],
+            'truck_run': s['truck_run'],
+            'next_departing': s['next_departing'],
+            'notes': s['notes'],
+            'ok': s['response_code'] == '0' and s['customer_price'] is not None,
+        }
+        for i, s in enumerate(skus)
+    ]})
+
+
+@technician_required
+def replacement_mygrant_apply(request, pk):
+    """
+    POST /tech/replacement/<pk>/mygrant-apply/ — one-tap fill of parts_cost
+    from a SKU in the cached quote. Never silent: returns what was written,
+    and Replacement.save() recomputes the job total and tax.
+    """
+    from django.core.cache import cache
+    from apps.technician_portal.parts_models import MygrantConfig
+
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST required.'}, status=405)
+    tenant = getattr(request, 'tenant', None)
+    if not tenant:
+        return JsonResponse({'success': False, 'error': 'No shop context.'}, status=403)
+    replacement = get_object_or_404(Replacement, pk=pk, tenant=tenant)
+    if not _replacement_technician_access(request, tenant, replacement=replacement):
+        return JsonResponse({'success': False, 'error': 'Access denied.'}, status=403)
+    if not MygrantConfig.get_for_tenant(tenant).is_enabled():
+        return JsonResponse({'success': False, 'error': 'Mygrant is not connected for this shop.'}, status=400)
+
+    skus = cache.get(_mygrant_quote_cache_key(tenant, replacement))
+    if not skus:
+        return JsonResponse({'success': False, 'error': 'That quote expired — run it again.'})
+    try:
+        sku = skus[int(request.POST.get('sku_index', ''))]
+    except (ValueError, IndexError):
+        return JsonResponse({'success': False, 'error': 'Pick a part from the quote list.'})
+    if sku['customer_price'] is None:
+        return JsonResponse({'success': False, 'error': 'Mygrant returned no price for that part.'})
+
+    replacement.parts_cost = sku['customer_price']
+    replacement.save()
+
+    message = f"Parts cost set to ${sku['customer_price']} from {sku['part'] or sku['product_id']}."
+    if replacement.cost_override is not None:
+        # save() ignores parts_cost when a manual price override is set —
+        # say so instead of letting the total silently not move.
+        message += " Heads up: this job has a manual price override, so the customer total didn't change."
+    return JsonResponse({'success': True, 'message': message})
 
 
 @technician_required
