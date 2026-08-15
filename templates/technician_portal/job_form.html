@@ -253,7 +253,7 @@
             <details class="border-t border-gray-200 pt-4" {% if advanced_has_errors %}open{% endif %}>
                 <summary class="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 select-none">
                     <i class="fas fa-chevron-right text-xs mr-1.5 transition-transform"></i>More details
-                    <span class="text-gray-400 font-normal">— photos, vehicle, insurance</span>
+                    <span class="text-gray-400 font-normal">— photos, vehicle, location, insurance</span>
                 </summary>
 
                 <div class="mt-4 space-y-4">
@@ -276,6 +276,28 @@
                             <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
                             {{ form.vehicle_model }}
                         </div>
+                    </div>
+
+                    {% comment %}
+                    Service location (S2): where the vehicle is for this job.
+                    Picking a customer prefills these from their record (the
+                    data-address/... attrs on the select options); the server
+                    blanks an untouched prefill so only a real override is
+                    stored and display keeps following the customer record.
+                    {% endcomment %}
+                    <div id="service-location-block">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Service location
+                            <span class="font-normal text-gray-400">— where the vehicle is</span>
+                        </label>
+                        <div class="space-y-3">
+                            {{ form.service_address }}
+                            <div class="grid grid-cols-3 gap-3">
+                                {{ form.service_city }}
+                                {{ form.service_state }}
+                                {{ form.service_zip }}
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-1">Filled from the customer's address — change it when the vehicle is somewhere else (job site, yard, driveway).</p>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -591,7 +613,30 @@ document.addEventListener('DOMContentLoaded', function() {
         // duplicate check cannot be the one a new path forgets.
         function syncCustomerDependents() {
             syncTaxExempt();
+            syncServiceLocation();
             checkDuplicateJob();
+        }
+
+        // Service-location prefill (S2): picking a customer fills the
+        // More-details address inputs from the option's data attrs so the
+        // tech sees where the job defaults to and can override it. Never
+        // clobbers anything the tech (or a bounced POST re-render) typed.
+        const locationInputs = ['service_address', 'service_city',
+                                'service_state', 'service_zip']
+            .map(n => document.querySelector('[name="' + n + '"]'));
+        let locationTouched = locationInputs.some(f => f && f.value.trim() !== '');
+        locationInputs.forEach(f => f && f.addEventListener('input', () => {
+            locationTouched = true;
+        }));
+        function syncServiceLocation() {
+            if (locationTouched || locationInputs.some(f => !f)) return;
+            const opt = realSelect.value
+                ? realSelect.options[realSelect.selectedIndex] : null;
+            const data = (opt && opt.dataset) || {};
+            locationInputs[0].value = data.address || '';
+            locationInputs[1].value = data.city || '';
+            locationInputs[2].value = data.state || '';
+            locationInputs[3].value = data.zip || '';
         }
 
         function setMode(mode) {

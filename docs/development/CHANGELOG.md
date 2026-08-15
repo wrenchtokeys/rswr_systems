@@ -14,6 +14,32 @@ forward, this is the single canonical changelog — see `docs/README.md`.
 
 ---
 
+## 2026-08-15 — Field dispatch: get the tech to the vehicle (FIELD_OPS S2 / B1)
+
+### Added
+- **A tech can go from the job list to the customer's door without leaving
+  the app.** The dashboard job card and both detail pages (repair, replacement)
+  now show where to go and who to call: a map link that opens the native maps
+  app (Google Maps universal URL, works on iOS and Android) and a `tel:` call
+  link. Both hrefs are composed in the browser (`static/js/field_dispatch.js`)
+  from `data-*` attributes, so customer addresses and phone numbers never
+  appear in server-rendered URLs. Links are 44px tap targets; Call sits with
+  the job info, away from the Continue/Start action. A job with no address
+  and no phone renders nothing — no empty shell.
+- **Per-job service location.** `service_address/_city/_state/_zip` on
+  `GlassService` (both job types, migration `technician_portal/0054`,
+  additive-only) for when the vehicle isn't at the customer's billing address
+  (fleet yard, job site, driveway). Display goes through
+  `get_service_location()`, which falls back to the customer's address when
+  the job's own fields are blank — existing jobs gained map links with no
+  backfill. The quick job form prefills the More-details location inputs from
+  the picked customer and stores only genuine overrides (an untouched prefill
+  is blanked server-side so the job keeps following the customer record).
+  The legacy repair/replacement forms can set or clear the override when
+  editing.
+
+---
+
 ## 2026-08-12 — Individual vs fleet on invoices + mobile/touch pass
 
 ### Fixed

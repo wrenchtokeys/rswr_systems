@@ -696,6 +696,45 @@
                                     </div>
                                 {% endif %}
                             </div>
+
+                            <!-- Service location (S2): where the vehicle is
+                                 for this job. Blank = customer's address. -->
+                            <div class="field-group">
+                                <label class="icon-field-label">
+                                    <i class="fas fa-map-marker-alt"></i>
+                                    Service Location
+                                </label>
+                                <input type="text"
+                                       name="service_address"
+                                       id="id_service_address"
+                                       value="{{ form.service_address.value|default:'' }}"
+                                       class="icon-field-input"
+                                       placeholder="Street address">
+                                <div class="grid grid-cols-3 gap-3 mt-3">
+                                    <input type="text"
+                                           name="service_city"
+                                           id="id_service_city"
+                                           value="{{ form.service_city.value|default:'' }}"
+                                           class="icon-field-input"
+                                           placeholder="City">
+                                    <input type="text"
+                                           name="service_state"
+                                           id="id_service_state"
+                                           value="{{ form.service_state.value|default:'' }}"
+                                           class="icon-field-input"
+                                           placeholder="State">
+                                    <input type="text"
+                                           name="service_zip"
+                                           id="id_service_zip"
+                                           value="{{ form.service_zip.value|default:'' }}"
+                                           class="icon-field-input"
+                                           placeholder="ZIP">
+                                </div>
+                                <p class="icon-field-helper">
+                                    <i class="fas fa-info-circle"></i>
+                                    Only when the vehicle is somewhere else — blank uses the customer's address
+                                </p>
+                            </div>
                         </div>
 
                         {% if pending_reward_redemptions %}

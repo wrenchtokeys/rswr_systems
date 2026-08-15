@@ -54,6 +54,7 @@ def _visible_jobs(model, tenant, technician, user_is_admin):
 # "please correct the errors" with every visible field looking fine.
 _ADVANCED_JOB_FIELDS = frozenset({
     'technician', 'vehicle_year', 'vehicle_make', 'vehicle_model',
+    'service_address', 'service_city', 'service_state', 'service_zip',
     'damage_photo_before', 'damage_photo_after', 'customer_notes', 'internal_notes',
     'windshield_temperature', 'resin_viscosity', 'drilled_before_repair',
     'requires_adas_calibration', 'adas_calibration_cost',
@@ -512,6 +513,12 @@ def job_create(request):
                 # Booking time — the form clears it for already-completed
                 # jobs, so a walk-in never lands in a schedule bucket.
                 scheduled_for=data.get('scheduled_for'),
+                # Service location — the form blanks an untouched prefill
+                # (== the customer's address), so only real overrides land.
+                service_address=data.get('service_address') or '',
+                service_city=data.get('service_city') or '',
+                service_state=data.get('service_state') or '',
+                service_zip=data.get('service_zip') or '',
             )
             if data['service_type'] == 'repair':
                 service = Repair(

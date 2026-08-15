@@ -1,5 +1,5 @@
 {% extends "saas/base_owner.html" %}
-{% load ui %}
+{% load static ui %}
 
 {% block title %}Replacement #{{ replacement.id }} | RS Systems{% endblock %}
 
@@ -107,6 +107,20 @@
                     {% if replacement.scheduled_for %}
                     <div><span class="text-gray-500">Scheduled for:</span> <span class="font-medium text-gray-900">{{ replacement.scheduled_for|date:"M d, Y h:i A" }}</span></div>
                     {% endif %}
+                    {% comment %}
+                    Field dispatch (S2): phone dials, address opens the maps
+                    app — hrefs built by static/js/field_dispatch.js so
+                    neither lands in a server-rendered URL. Rows are skipped
+                    entirely when the job knows neither.
+                    {% endcomment %}
+                    {% if replacement.customer.phone %}
+                    <div><span class="text-gray-500">Phone:</span> <a data-call-number="{{ replacement.customer.phone }}" class="tap-target inline-flex items-center gap-1.5 font-medium text-brand-600 hover:text-brand-800"><i class="fas fa-phone text-xs"></i>{{ replacement.customer.phone }}</a></div>
+                    {% endif %}
+                    {% with location=replacement.get_service_location %}
+                    {% if location %}
+                    <div class="col-span-2"><span class="text-gray-500">Location:</span> <a data-map-query="{{ location }}" class="tap-target inline-flex items-center gap-1.5 font-medium text-brand-600 hover:text-brand-800"><i class="fas fa-map-marker-alt text-xs"></i>{{ location }}</a></div>
+                    {% endif %}
+                    {% endwith %}
                 </div>
             </div>
 
@@ -245,6 +259,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/field_dispatch.js' %}" defer></script>
 {% if mygrant_enabled and replacement.nags_number %}
 <script>
 (function () {

@@ -386,6 +386,11 @@ specific copy. The `usage_service` messages are used, not duplicated.
 
 ### B1 · Field dispatch: get the tech to the vehicle
 
+> **DONE 2026-08-15** — executed as `FIELD_OPS_SESSIONS.md` §S2 (see its Notes for what
+> shipped and the decisions taken). Structured `service_address/_city/_state/_zip` on
+> `GlassService` with customer-address fallback; map/call on the dashboard job card and
+> both detail pages; links built client-side per the privacy note below.
+
 **Goal:** A technician can go from the job list to the customer's door without leaving the app.
 **Size:** M · **Depends on:** —
 

@@ -1,4 +1,5 @@
 {% extends "base_app.html" %}
+{% load static %}
 {% load billing_tags %}
 {% load ui %}
 
@@ -349,7 +350,17 @@
                         <div class="space-y-2 text-sm">
                             <div><span class="font-medium text-gray-500">Customer:</span> <span class="text-gray-900">{{ repair.customer.name }}</span></div>
                             {% if repair.customer.email %}<div><span class="font-medium text-gray-500">Contact:</span> <span class="text-gray-900">{{ repair.customer.email }}</span></div>{% endif %}
-                            {% if repair.customer.phone %}<div><span class="font-medium text-gray-500">Phone:</span> <span class="text-gray-900">{{ repair.customer.phone }}</span></div>{% endif %}
+                            {% comment %}
+                            Field dispatch (S2): phone dials, address opens the
+                            maps app. hrefs come from static/js/field_dispatch.js
+                            so neither lands in a server-rendered URL.
+                            {% endcomment %}
+                            {% if repair.customer.phone %}<div><span class="font-medium text-gray-500">Phone:</span> <a data-call-number="{{ repair.customer.phone }}" class="tap-target inline-flex items-center gap-1.5 font-medium text-brand-600 hover:text-brand-800"><i class="fas fa-phone text-xs"></i>{{ repair.customer.phone }}</a></div>{% endif %}
+                            {% with location=repair.get_service_location %}
+                            {% if location %}
+                            <div><span class="font-medium text-gray-500">Location:</span> <a data-map-query="{{ location }}" class="tap-target inline-flex items-center gap-1.5 font-medium text-brand-600 hover:text-brand-800"><i class="fas fa-map-marker-alt text-xs"></i>{{ location }}</a></div>
+                            {% endif %}
+                            {% endwith %}
                             <div><span class="font-medium text-gray-500">Unit Number:</span> <span class="text-gray-900">{{ repair.unit_number }}</span></div>
                         </div>
                     </div>
@@ -900,4 +911,8 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/field_dispatch.js' %}" defer></script>
 {% endblock %}

@@ -1,5 +1,5 @@
 {% extends "base_app.html" %}
-{% load ui %}
+{% load static ui %}
 
 {% block extra_css %}
 <style>
@@ -121,6 +121,32 @@
                                 <span class="text-xs text-gray-400">{{ job.service_date|date:"M d" }}</span>
                                 {% endif %}
                             </div>
+                            {% comment %}
+                            Field dispatch (S2): where to go and who to call,
+                            without leaving the app. hrefs are built by
+                            static/js/field_dispatch.js from the data attrs so
+                            the address stays out of server-rendered URLs.
+                            Whole row is skipped when the job knows neither —
+                            a walk-in with no address gets no empty shell.
+                            Call lives here on the left, deliberately far from
+                            the Continue/Start action on the right.
+                            {% endcomment %}
+                            {% with location=job.get_service_location %}
+                            {% if location or job.customer.phone %}
+                            <div class="flex items-center gap-4 mt-1 min-w-0">
+                                {% if location %}
+                                <a data-map-query="{{ location }}" class="tap-target inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-800 min-w-0">
+                                    <i class="fas fa-map-marker-alt flex-shrink-0"></i><span class="truncate">{{ location }}</span>
+                                </a>
+                                {% endif %}
+                                {% if job.customer.phone %}
+                                <a data-call-number="{{ job.customer.phone }}" class="tap-target inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-800 flex-shrink-0">
+                                    <i class="fas fa-phone"></i>Call
+                                </a>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            {% endwith %}
                         </div>
 
                         <!-- Action button -->
@@ -638,4 +664,8 @@
     </div>
 </div>
 {% include "includes/fab_quick_actions.html" with fab_role="tech" %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/field_dispatch.js' %}" defer></script>
 {% endblock %}

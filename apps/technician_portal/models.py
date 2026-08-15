@@ -355,7 +355,22 @@ class GlassService(models.Model):
         max_length=50, blank=True,
         help_text="Vehicle model (e.g., F-150, Camry, Silverado)"
     )
-    
+
+    # --- Service location (S2 field dispatch) ---
+    # Where the vehicle is for THIS job — frequently not the customer's
+    # billing address (a fleet yard, a job site, a driveway). All four blank
+    # means "at the customer's address": display goes through
+    # get_service_location(), which falls back to the customer record, so
+    # existing jobs gained map links without a backfill. Lengths mirror
+    # core.Customer's address fields so a prefill can never overflow.
+    service_address = models.TextField(
+        blank=True, default='',
+        help_text="Street address where the vehicle is. Blank = customer's address."
+    )
+    service_city = models.CharField(max_length=100, blank=True, default='')
+    service_state = models.CharField(max_length=100, blank=True, default='')
+    service_zip = models.CharField(max_length=100, blank=True, default='')
+
     service_date = models.DateTimeField(default=timezone.now)
     # Booking time — "when we said we'd come", distinct from service_date,
     # which records when the work happened (and keeps its now() default and
@@ -541,6 +556,38 @@ class GlassService(models.Model):
         if self.is_for_individual:
             return self.vehicle_description or unit
         return unit
+
+    # ---- Service location --------------------------------------------------
+    # The job's own service_* fields win when any is set; otherwise the
+    # customer's address answers "where do I go". '' when neither knows —
+    # callers drop the whole row rather than render an empty shell.
+
+    def get_service_location_parts(self):
+        """(address, city, state, zip) for this job, customer fallback."""
+        own = tuple((v or '').strip() for v in (
+            self.service_address, self.service_city,
+            self.service_state, self.service_zip,
+        ))
+        if any(own):
+            return own
+        if self.customer:
+            return tuple((v or '').strip() for v in (
+                self.customer.address, self.customer.city,
+                self.customer.state, self.customer.zip_code,
+            ))
+        return ('', '', '', '')
+
+    def get_service_location(self):
+        """One-line address for display and the maps link, or ''.
+
+        '123 Main St, Little Rock, AR 72201' — state and zip share a segment
+        so the comma rhythm matches how people write addresses.
+        """
+        address, city, state, zip_code = self.get_service_location_parts()
+        # A multi-line street address becomes one line for links/cards.
+        address = ' '.join(address.split())
+        region = ' '.join(p for p in (state, zip_code) if p)
+        return ', '.join(p for p in (address, city, region) if p)
 
     def get_vehicle_label(self):
         """Self-describing identifier for inline prose (invoice descriptions).

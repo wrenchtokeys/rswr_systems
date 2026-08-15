@@ -16,7 +16,7 @@ This file is the **work queue** for making field operations real: a technician f
 | N — The tech finds out | N3 · Notification coverage audit | S | TODO |
 | N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE (2026-08-12, PR pending) — v2 submission awaits deploy + Drake (see Notes) |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
-| S — Where and when | S2 · Field dispatch (executes B1) | M | TODO |
+| S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR pending) |
 | S — Where and when | S3 · Day / agenda view | M | TODO |
 | S — Where and when | S4 · Customer requests carry when + where | M | TODO |
 | S — Where and when | S5 · Dispatch board | L | TODO |
@@ -283,7 +283,7 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 - **Tests:** `tests/test_fieldops_s1.py` (16). Smoke + 190 adjacent green,
   incl. the CSS guards after `./scripts/build_css.sh`.
 
-## S2 · Field dispatch — executes B1 — TODO
+## S2 · Field dispatch — executes B1 — DONE
 
 | Field | Value |
 |---|---|
@@ -297,7 +297,51 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 | **Acceptance criteria** | B1's own acceptance criteria, plus: address prefills from customer on job create, appears on job card + detail with working map/call links, and both Repair and Replacement carry it. Update B1's status in IMPROVEMENT_SESSIONS.md to point here. |
 | **Out of scope** | B1's own exclusions stand: calendars, time slots, route optimization, ETA, live tracking. |
 
-**Notes**
+**Notes** *(session run 2026-08-15, branch `feat/fieldops-s2-field-dispatch`)*
+
+- **Shipped as designed: structured fields, customer fallback, no backfill.**
+  `service_address/_city/_state/_zip` on `GlassService` (migration
+  `technician_portal/0054` — additive, both tables). The display path is
+  `get_service_location()` (+ `get_service_location_parts()`), which uses the
+  job's own fields when ANY is set and otherwise **falls back to the
+  customer's address at render time** — so every existing job with an
+  addressed customer gained a working map link the moment this deployed,
+  with zero data migration. `service_address` is a TextField only so a copy
+  from `Customer.address` (also a TextField) can never overflow; the forms
+  all render it single-line.
+- **Only genuine overrides are persisted.** The quick-job picker JS prefills
+  the More-details location inputs from `data-address/...` attrs on the
+  customer options (`CustomerEmailSelect`), so the tech sees the default and
+  can edit it — but `QuickJobForm.clean()` blanks a submission that exactly
+  matches the picked customer's current address (whitespace/case-normalized).
+  Without that, every job would freeze a copy of the address as it stood on
+  creation day, and fixing a typo on the customer would fix nothing anywhere.
+  A partial override never splices: `get_service_location()` refuses to mix
+  the customer's city onto a job-site street.
+- **Links are composed client-side** (`static/js/field_dispatch.js`): the
+  templates emit `data-map-query` / `data-call-number` attributes and the JS
+  builds the Google Maps universal URL + `tel:` hrefs in the browser, per
+  B1's privacy note — the rendered page contains no maps URL (asserted by
+  test). Surfaces: dashboard job card (Call sits left with the job info,
+  deliberately far from the Continue/Start action on the right), repair
+  detail Customer panel, replacement detail Assignment card. All links are
+  `.tap-target`. A job with no address and no phone renders no row at all.
+- **Things future S-sessions should know:**
+  - S3's day view should render the same `data-map-query`/`data-call-number`
+    attrs and include `field_dispatch.js` — the card markup in
+    `dashboard.html` (grep "Field dispatch (S2)") is the copy source.
+  - The job-list mobile card is a whole-card `<a>` — nested links are
+    invalid HTML, so it deliberately got no inline actions; the dashboard
+    card and detail pages carry them. If S3/S5 want actions on a list row,
+    restructure the row first.
+  - Legacy per-type forms (RepairForm, saas ReplacementForm) carry the four
+    fields for editing; they show the stored override (blank = fallback),
+    not the effective address.
+  - The dashboard queue and detail views already `select_related('customer')`,
+    so the fallback adds no queries.
+- **Tests:** `tests/test_fieldops_s2.py` (20). Smoke + 205 adjacent green
+  (S1, touch targets, view transitions, individual-vs-fleet, job-form
+  parity/create/invoice/list), incl. CSS guards after `./scripts/build_css.sh`.
 
 ## S3 · Day / agenda view — TODO
 
