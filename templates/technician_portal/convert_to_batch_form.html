@@ -173,6 +173,7 @@
     </div>
 </div>
 
+<script src="{% static 'js/viscosity_suggestion.js' %}"></script>
 <script>
 // Per-break marker redraw callbacks, keyed by break index. Populated by
 // initDiagram() as cards are built; used to repaint markers after a draft restore.
@@ -255,6 +256,7 @@ document.getElementById('additional_breaks').addEventListener('change', function
                         </label>
                         <input
                             type="number"
+                            id="windshield_temperature_${i}"
                             name="windshield_temperature_${i}"
                             step="0.1"
                             class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -272,6 +274,12 @@ document.getElementById('additional_breaks').addEventListener('change', function
                             placeholder="Low(l), Medium(m), High(h)"
                         >
                     </div>
+                    <!-- Each break gets its own recommendation; the rows are built
+                         here at runtime, so ViscositySuggestion.attach() below wires
+                         one up as each card lands in the DOM. -->
+                    <div id="viscositySuggestion_${i}" class="hidden md:col-span-2"
+                         data-viscosity-input="windshield_temperature_${i}"
+                         data-viscosity-endpoint="{% url 'get_viscosity_suggestion' %}"></div>
                 </div>
 
                 <!-- Drilled Checkbox -->
@@ -363,6 +371,14 @@ document.getElementById('additional_breaks').addEventListener('change', function
 
         // Attach damage location diagram event listeners
         initDiagram(i);
+
+        // The card is in the DOM now, so its temperature box can be wired to
+        // the shop's resin rules the same way every other repair form is.
+        if (window.ViscositySuggestion) {
+            window.ViscositySuggestion.attach(
+                document.getElementById('viscositySuggestion_' + i)
+            );
+        }
     }
 
     // Show submit button

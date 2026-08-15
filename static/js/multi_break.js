@@ -4,75 +4,11 @@
  */
 
 // ================ IMAGE COMPRESSION UTILITY ================
-// Compresses images before upload to improve mobile performance
-// Settings optimized for AI training: 2048px max, 85% quality
-const ImageCompressor = {
-    MAX_DIMENSION: 2048,
-    QUALITY: 0.85,
+// Now static/js/image_compress.js, loaded before this file. It was copied into
+// this file and into repair_form.js, which is why the unified job form -- the
+// page every "New job" link points at -- ended up posting raw phone photos
+// straight into a 413.
 
-    compress: function(file) {
-        return new Promise((resolve, reject) => {
-            if (file.size < 500 * 1024) {
-                resolve(file);
-                return;
-            }
-            if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
-                resolve(file);
-                return;
-            }
-
-            const img = new Image();
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            img.onload = () => {
-                let { width, height } = img;
-                const maxDim = ImageCompressor.MAX_DIMENSION;
-
-                if (width > maxDim || height > maxDim) {
-                    if (width > height) {
-                        height = Math.round((height * maxDim) / width);
-                        width = maxDim;
-                    } else {
-                        width = Math.round((width * maxDim) / height);
-                        height = maxDim;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                ctx.drawImage(img, 0, 0, width, height);
-
-                canvas.toBlob(
-                    (blob) => {
-                        if (!blob) {
-                            resolve(file);
-                            return;
-                        }
-                        const compressedFile = new File(
-                            [blob],
-                            file.name.replace(/\.[^.]+$/, '.jpg'),
-                            { type: 'image/jpeg' }
-                        );
-                        console.log(`Compressed: ${(file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
-                        resolve(compressedFile);
-                    },
-                    'image/jpeg',
-                    ImageCompressor.QUALITY
-                );
-            };
-
-            img.onerror = () => resolve(file);
-            img.src = URL.createObjectURL(file);
-        });
-    },
-
-    replaceInputFile: function(input, compressedFile) {
-        const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(compressedFile);
-        input.files = dataTransfer.files;
-    }
-};
 
 // State management
 let breaks = [];
@@ -244,6 +180,10 @@ function clearModal() {
     document.getElementById('modal_drilled_before_repair').checked = false;
     document.getElementById('modal_windshield_temperature').value = '';
     document.getElementById('modal_resin_viscosity').value = '';
+    // The temperature box is now empty, so the recommendation beside it has to
+    // go too. Leaving it up meant "Add break" opened showing the resin for the
+    // break you just saved, next to a blank temperature.
+    syncModalViscositySuggestion();
     document.getElementById('modal_photo_before').value = '';
     document.getElementById('modal_photo_after').value = '';
     document.getElementById('modal_notes').value = '';
@@ -458,6 +398,9 @@ window.editBreak = function(index) {
     document.getElementById('modal_drilled_before_repair').checked = breakData.drilled_before_repair || false;
     document.getElementById('modal_windshield_temperature').value = breakData.windshield_temperature || '';
     document.getElementById('modal_resin_viscosity').value = breakData.resin_viscosity || '';
+    // Setting .value fires no input event, so ask for this break's own
+    // recommendation. Without it, reopening a saved break showed nothing.
+    syncModalViscositySuggestion();
     document.getElementById('modal_notes').value = breakData.notes;
 
     // Populate manager override fields if they exist
@@ -994,108 +937,15 @@ document.getElementById('createAnotherBatchBtn').addEventListener('click', funct
 });
 
 // ================ VISCOSITY SUGGESTION BASED ON TEMPERATURE ================
-
-const modalTemperatureInput = document.getElementById('modal_windshield_temperature');
-const modalViscositySuggestionContainer = document.getElementById('modalViscositySuggestion');
-let modalViscosityTimeout = null;
-
-/**
- * Fetch viscosity suggestion from API based on temperature (for modal)
- */
-function fetchModalViscositySuggestion(temperature) {
-    if (!temperature || temperature === '') {
-        // Hide suggestion if no temperature
-        if (modalViscositySuggestionContainer) {
-            modalViscositySuggestionContainer.classList.add('hidden');
-        }
-        return;
-    }
-
-    // Debounce the API call
-    clearTimeout(modalViscosityTimeout);
-    modalViscosityTimeout = setTimeout(() => {
-        const url = `/tech/api/viscosity-suggestion/?temperature=${temperature}`;
-
-        fetch(url)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.recommendation) {
-                    displayModalViscositySuggestion(data);
-                } else {
-                    // No recommendation available
-                    hideModalViscositySuggestion();
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching viscosity suggestion:', error);
-                hideModalViscositySuggestion();
-            });
-    }, 500); // Wait 500ms after user stops typing
-}
-
-/**
- * Display viscosity suggestion badge in modal
- */
-function displayModalViscositySuggestion(data) {
-    if (!modalViscositySuggestionContainer) return;
-
-    const badgeColor = data.badge_color || 'gray';
-    const icon = getIconForViscosity(data.recommendation);
-
-    // Use Tailwind classes for the badge styling (matching modal style)
-    let badgeColorClasses = 'bg-gray-100 text-gray-800';
-    if (badgeColor === 'blue') {
-        badgeColorClasses = 'bg-blue-100 text-blue-800';
-    } else if (badgeColor === 'green') {
-        badgeColorClasses = 'bg-green-100 text-green-800';
-    } else if (badgeColor === 'yellow') {
-        badgeColorClasses = 'bg-yellow-100 text-yellow-800';
-    } else if (badgeColor === 'red') {
-        badgeColorClasses = 'bg-red-100 text-red-800';
-    }
-
-    modalViscositySuggestionContainer.innerHTML = `
-        <div class="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${badgeColorClasses}">
-            <i class="${icon} mr-2"></i>
-            <span>${data.suggestion_text}</span>
-        </div>
-    `;
-
-    modalViscositySuggestionContainer.classList.remove('hidden');
-}
-
-/**
- * Hide viscosity suggestion in modal
- */
-function hideModalViscositySuggestion() {
-    if (modalViscositySuggestionContainer) {
-        modalViscositySuggestionContainer.classList.add('hidden');
-    }
-}
-
-/**
- * Get appropriate icon for viscosity level
- */
-function getIconForViscosity(viscosity) {
-    if (!viscosity) return 'fas fa-info-circle';
-
-    const viscosityLower = viscosity.toLowerCase();
-    if (viscosityLower.includes('low')) {
-        return 'fas fa-tint';
-    } else if (viscosityLower.includes('medium')) {
-        return 'fas fa-tint';
-    } else if (viscosityLower.includes('high')) {
-        return 'fas fa-tint';
-    }
-    return 'fas fa-lightbulb';
-}
-
-// Attach temperature change listener for modal
-if (modalTemperatureInput && modalViscositySuggestionContainer) {
-    // Listen for temperature changes in modal
-    modalTemperatureInput.addEventListener('input', function(e) {
-        fetchModalViscositySuggestion(e.target.value);
-    });
+// The fetch/render/debounce all live in static/js/viscosity_suggestion.js now
+// (loaded just before this file), which wires itself to #modalViscositySuggestion
+// from that element's data- attributes. This modal is the one caller that has to
+// drive it by hand: a single dialog is reused for every break, so moving another
+// break's temperature into the box has to move the recommendation with it.
+function syncModalViscositySuggestion() {
+    var handle = window.ViscositySuggestion &&
+                 window.ViscositySuggestion.get('modalViscositySuggestion');
+    if (handle) handle.refresh();
 }
 
 // ================ DAMAGE LOCATION DIAGRAM ================

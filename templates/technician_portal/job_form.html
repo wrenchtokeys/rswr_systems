@@ -137,6 +137,14 @@
                     <span class="text-gray-400 font-normal">(optional)</span>
                 </label>
                 {{ form.unit_number }}
+                {% comment %}
+                "You already have a job open on this one." The old repair form
+                asked check-existing-repair on every customer/unit change; the
+                job form never did, so a second tech logging the same windshield
+                got no hint until two jobs showed up on the invoice.
+                {% endcomment %}
+                <div id="duplicate-job-warning" class="hidden mt-2 rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-800"
+                     data-endpoint="{% url 'check_existing_repair' %}"></div>
             </div>
 
             <div>
@@ -260,13 +268,20 @@
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {% comment %}
+                        The _preview divs are filled by static/js/image_compress.js
+                        once it has resized the photo, so the tech sees the shot that
+                        is actually going to upload.
+                        {% endcomment %}
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Photo — before</label>
                             {{ form.damage_photo_before }}
+                            <div id="id_damage_photo_before_preview" class="hidden mt-2 flex items-center gap-3"></div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Photo — after</label>
                             {{ form.damage_photo_after }}
+                            <div id="id_damage_photo_after_preview" class="hidden mt-2 flex items-center gap-3"></div>
                         </div>
                     </div>
 
@@ -281,11 +296,13 @@
                             {{ form.resin_viscosity }}
                         </div>
                         {% comment %}
-                        Filled by the viscosity-suggestion script below from the shop's
-                        own rules (Settings → Repair Resin Rules). Stays empty — and
-                        hidden — for a shop that has never turned those rules on.
+                        Filled by static/js/viscosity_suggestion.js from the shop's own
+                        rules (Settings → Repair Resin Rules). Stays empty — and hidden
+                        — for a shop that has never turned those rules on.
                         {% endcomment %}
-                        <div id="viscositySuggestion" class="hidden sm:col-span-2"></div>
+                        <div id="viscositySuggestion" class="hidden sm:col-span-2"
+                             data-viscosity-input="id_windshield_temperature"
+                             data-viscosity-endpoint="{% url 'get_viscosity_suggestion' %}"></div>
                         <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer sm:col-span-2">
                             <input type="checkbox" name="drilled_before_repair" {% if form.drilled_before_repair.value %}checked{% endif %}
                                    class="w-4 h-4 text-brand-600 border-gray-300 rounded focus:ring-brand-500">
@@ -463,7 +480,7 @@ document.addEventListener('DOMContentLoaded', function() {
             searchWrap.classList.add('hidden');
             newBox.classList.add('hidden');
             clearNewInputs();
-            syncTaxExempt();
+            syncCustomerDependents();
         }
 
         function clearIndividual() {
@@ -473,7 +490,7 @@ document.addEventListener('DOMContentLoaded', function() {
             searchWrap.classList.remove('hidden');
             searchInput.value = '';
             resultsBox.classList.add('hidden');
-            syncTaxExempt();
+            syncCustomerDependents();
         }
 
         // Fleets have unit numbers; individuals have a vehicle. Same input,
@@ -481,6 +498,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // "Silver Camry" under a "unit" label and the invoice prints it as one.
         const unitInput = document.querySelector('[name="unit_number"]');
         const unitLabel = document.getElementById('unit-label-text');
+        let activeMode = 'fleet';
         function syncUnitWording(mode) {
             if (!unitInput) return;
             const individual = (mode === 'individual');
@@ -489,10 +507,74 @@ document.addEventListener('DOMContentLoaded', function() {
             if (unitInput.dataset[key]) unitInput.placeholder = unitInput.dataset[key];
         }
 
+        // Warn when this customer already has a job open on the same unit or
+        // vehicle. Only asks once BOTH a customer and a non-blank unit are
+        // known: an individual's unit box is legitimately empty, and a blank
+        // unit matches every other blank-unit job that customer has.
+        const dupBox = document.getElementById('duplicate-job-warning');
+        let dupTimer = null;
+        let dupLatest = 0;
+        function checkDuplicateJob() {
+            if (!dupBox || !unitInput) return;
+            const customerId = realSelect.value;
+            const unit = unitInput.value.trim();
+            clearTimeout(dupTimer);
+            if (!customerId || !unit) {
+                dupLatest++;
+                dupBox.classList.add('hidden');
+                dupBox.textContent = '';
+                return;
+            }
+            dupTimer = setTimeout(function () {
+                const token = ++dupLatest;
+                fetch(dupBox.dataset.endpoint +
+                      '?customer=' + encodeURIComponent(customerId) +
+                      '&unit_number=' + encodeURIComponent(unit))
+                    .then(r => r.json())
+                    .then(data => {
+                        if (token !== dupLatest) return;
+                        if (!data.existing_repair) {
+                            dupBox.classList.add('hidden');
+                            dupBox.textContent = '';
+                            return;
+                        }
+                        dupBox.textContent = '';
+                        // The server's copy says "this unit" — wrong noun for a
+                        // walk-in's car, so the wording is built here from the
+                        // mode the tech is actually in.
+                        const noun = activeMode === 'individual' ? 'this vehicle' : 'this unit';
+                        const msg = document.createElement('span');
+                        msg.textContent = 'There is already a ' + data.status +
+                                          ' repair on ' + noun + '. ';
+                        const link = document.createElement('a');
+                        link.href = '/tech/repairs/' + data.repair_id + '/';
+                        link.className = 'font-medium underline';
+                        link.textContent = 'View it';
+                        dupBox.appendChild(msg);
+                        dupBox.appendChild(link);
+                        dupBox.classList.remove('hidden');
+                    })
+                    .catch(() => {});
+            }, 350);
+        }
+        if (unitInput) {
+            unitInput.addEventListener('input', checkDuplicateJob);
+            unitInput.addEventListener('blur', checkDuplicateJob);
+        }
+
+        // Every path that changes the picked customer used to call
+        // syncTaxExempt() by hand. They all go through here now, so the
+        // duplicate check cannot be the one a new path forgets.
+        function syncCustomerDependents() {
+            syncTaxExempt();
+            checkDuplicateJob();
+        }
+
         function setMode(mode) {
             fleetBox.style.display = (mode === 'fleet') ? '' : 'none';
             indBox.style.display = (mode === 'individual') ? '' : 'none';
             btns.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+            activeMode = mode;
             syncUnitWording(mode);
             if (mode === 'fleet') {
                 // Leaving individual mode: clear its state
@@ -504,13 +586,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 fleetSelect.value = '';
                 if (pickedBox.classList.contains('hidden')) realSelect.value = '';
             }
-            syncTaxExempt();
+            syncCustomerDependents();
         }
         btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
 
         fleetSelect.addEventListener('change', () => {
             realSelect.value = fleetSelect.value;
-            syncTaxExempt();
+            syncCustomerDependents();
         });
 
         // Individual search (debounced)
@@ -550,7 +632,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('show-new-individual').addEventListener('click', () => {
             newBox.classList.remove('hidden');
             realSelect.value = '';
-            syncTaxExempt();
+            syncCustomerDependents();
             resultsBox.classList.add('hidden');
             const nameInput = newBox.querySelector('input[name="new_customer_name"]');
             if (nameInput && !nameInput.value) nameInput.value = searchInput.value.trim();
@@ -609,13 +691,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (opt) fleetSelect.value = opt.value;
                 realSelect.value = opt ? opt.value : '';
             }
-            syncTaxExempt();
+            syncCustomerDependents();
         }
 
         // Tax-exempt customers never get tax: uncheck + lock the "Charge
         // sales tax" box when the picked customer carries data-tax-exempt.
         // The picker sets realSelect.value programmatically (no change event),
-        // so every mutation path below calls syncTaxExempt() explicitly.
+        // so every mutation path calls syncCustomerDependents() explicitly.
         const chargeTax = document.getElementById('id_charge_tax');
         const exemptNote = document.getElementById('tax-exempt-note');
         let preExemptChecked = chargeTax ? chargeTax.checked : true;
@@ -710,87 +792,17 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 {% comment %}
-Temperature → resin viscosity suggestion. This lived only in the old
-repair_form.html, so it disappeared the day every "New job" link started
-pointing here; the API and the per-shop rules behind it were never touched.
-Tone classes are written out in full because Tailwind purges anything it
-can't read as a literal string.
+Temperature → resin viscosity suggestion, from static/js/viscosity_suggestion.js.
+It lived only in the old repair_form.html, so it disappeared the day every
+"New job" link started pointing here; the API and the per-shop rules behind it
+were never touched. The container above carries the input id and the endpoint.
 {% endcomment %}
-<script>
-(function() {
-    const tempInput = document.getElementById('id_windshield_temperature');
-    const box = document.getElementById('viscositySuggestion');
-    if (!tempInput || !box) return;
-
-    const TONES = {
-        blue:   'bg-blue-50 border-blue-200 text-blue-800',
-        green:  'bg-green-50 border-green-200 text-green-800',
-        yellow: 'bg-yellow-50 border-yellow-200 text-yellow-800',
-        orange: 'bg-orange-50 border-orange-200 text-orange-800',
-        red:    'bg-red-50 border-red-200 text-red-800',
-        purple: 'bg-purple-50 border-purple-200 text-purple-800',
-        gray:   'bg-gray-50 border-gray-200 text-gray-700',
-    };
-
-    let timer = null;
-    // Bumped per request so a slow reply for an old temperature can't land
-    // on top of a fresh one — easy to hit typing "105" digit by digit.
-    let latest = 0;
-
-    function hide() {
-        box.classList.add('hidden');
-        box.innerHTML = '';
-    }
-
-    function show(data) {
-        box.innerHTML = '';
-        const tone = TONES[data.badge_color] || TONES.gray;
-        box.className = 'sm:col-span-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ' + tone;
-
-        const icon = document.createElement('i');
-        icon.className = 'fas fa-tint mt-0.5 shrink-0';
-        const text = document.createElement('div');
-        const strong = document.createElement('strong');
-        strong.textContent = data.recommendation;
-        text.appendChild(strong);
-        if (data.suggestion_text) {
-            // textContent, not innerHTML — this string is shop-authored.
-            text.appendChild(document.createTextNode(' — ' + data.suggestion_text));
-        }
-        box.appendChild(icon);
-        box.appendChild(text);
-    }
-
-    function fetchSuggestion(temperature) {
-        if (temperature === '' || temperature === null) {
-            hide();
-            return;
-        }
-        clearTimeout(timer);
-        timer = setTimeout(function() {
-            const token = ++latest;
-            fetch('/tech/api/viscosity-suggestion/?temperature=' + encodeURIComponent(temperature))
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (token !== latest) return;
-                    if (data.success && data.recommendation) {
-                        show(data);
-                    } else {
-                        // No rule covers this temperature — say nothing rather
-                        // than nag. A shop with no rules at all lands here too.
-                        hide();
-                    }
-                })
-                .catch(function() { hide(); });
-        }, 400);
-    }
-
-    tempInput.addEventListener('input', function(e) { fetchSuggestion(e.target.value); });
-    // Autosaved drafts and validation re-renders come back with a value already in.
-    if (tempInput.value) fetchSuggestion(tempInput.value);
-})();
-</script>
+<script src="{% static 'js/viscosity_suggestion.js' %}"></script>
 {% endif %}
+
+<!-- Resize damage photos before posting them: two full-size phone photos in one
+     request blow through the 10MB cap and the tech loses the job to a 413. -->
+<script src="{% static 'js/image_compress.js' %}"></script>
 
 <!-- Draft autosave: a dropped connection or a backgrounded tab mid-job used to
      lose everything typed. Photos are excluded — file inputs can't be serialized. -->
