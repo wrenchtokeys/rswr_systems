@@ -4,102 +4,11 @@
  */
 
 // ================ IMAGE COMPRESSION UTILITY ================
-// Compresses images before upload to improve mobile performance
-// Settings optimized for AI training: 2048px max, 85% quality
-const ImageCompressor = {
-    MAX_DIMENSION: 2048,  // Max width or height in pixels
-    QUALITY: 0.85,        // JPEG quality (0-1)
+// Now static/js/image_compress.js, loaded before this file. It was copied into
+// this file and into repair_form.js, which is why the unified job form -- the
+// page every "New job" link points at -- ended up posting raw phone photos
+// straight into a 413.
 
-    /**
-     * Compress an image file
-     * @param {File} file - The original image file
-     * @returns {Promise<File>} - Compressed image file
-     */
-    compress: function(file) {
-        return new Promise((resolve, reject) => {
-            // Skip compression for small files (< 500KB)
-            if (file.size < 500 * 1024) {
-                console.log('Image already small, skipping compression:', file.size);
-                resolve(file);
-                return;
-            }
-
-            // Skip HEIC files - let server handle conversion
-            if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
-                console.log('HEIC file detected, server will handle conversion');
-                resolve(file);
-                return;
-            }
-
-            const img = new Image();
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            img.onload = () => {
-                // Calculate new dimensions
-                let { width, height } = img;
-                const maxDim = ImageCompressor.MAX_DIMENSION;
-
-                if (width > maxDim || height > maxDim) {
-                    if (width > height) {
-                        height = Math.round((height * maxDim) / width);
-                        width = maxDim;
-                    } else {
-                        width = Math.round((width * maxDim) / height);
-                        height = maxDim;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-
-                // Draw and compress
-                ctx.drawImage(img, 0, 0, width, height);
-
-                canvas.toBlob(
-                    (blob) => {
-                        if (!blob) {
-                            console.error('Compression failed, using original');
-                            resolve(file);
-                            return;
-                        }
-
-                        // Create new File object with same name
-                        const compressedFile = new File(
-                            [blob],
-                            file.name.replace(/\.[^.]+$/, '.jpg'),
-                            { type: 'image/jpeg' }
-                        );
-
-                        console.log(`Compressed: ${(file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
-                        resolve(compressedFile);
-                    },
-                    'image/jpeg',
-                    ImageCompressor.QUALITY
-                );
-            };
-
-            img.onerror = () => {
-                console.error('Failed to load image for compression');
-                resolve(file);  // Fall back to original
-            };
-
-            // Load the image
-            img.src = URL.createObjectURL(file);
-        });
-    },
-
-    /**
-     * Replace input file with compressed version
-     * @param {HTMLInputElement} input - The file input element
-     * @param {File} compressedFile - The compressed file
-     */
-    replaceInputFile: function(input, compressedFile) {
-        const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(compressedFile);
-        input.files = dataTransfer.files;
-    }
-};
 
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('repairForm');
@@ -474,103 +383,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ================ VISCOSITY SUGGESTION BASED ON TEMPERATURE ================
-
-    const temperatureInput = document.getElementById('id_windshield_temperature');
-    const viscositySuggestionContainer = document.getElementById('viscositySuggestion');
-    let viscosityTimeout = null;
-
-    /**
-     * Fetch viscosity suggestion from API based on temperature
-     */
-    function fetchViscositySuggestion(temperature) {
-        if (!temperature || temperature === '') {
-            // Hide suggestion if no temperature
-            if (viscositySuggestionContainer) {
-                viscositySuggestionContainer.classList.add('hidden');
-            }
-            return;
-        }
-
-        // Debounce the API call
-        clearTimeout(viscosityTimeout);
-        viscosityTimeout = setTimeout(() => {
-            const url = `/tech/api/viscosity-suggestion/?temperature=${temperature}`;
-
-            fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success && data.recommendation) {
-                        displayViscositySuggestion(data);
-                    } else {
-                        // No recommendation available
-                        hideViscositySuggestion();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching viscosity suggestion:', error);
-                    hideViscositySuggestion();
-                });
-        }, 500); // Wait 500ms after user stops typing
-    }
-
-    /**
-     * Display viscosity suggestion badge
-     */
-    function displayViscositySuggestion(data) {
-        if (!viscositySuggestionContainer) return;
-
-        const badgeColor = data.badge_color || 'gray';
-        const icon = getIconForViscosity(data.recommendation);
-
-        viscositySuggestionContainer.innerHTML = `
-            <div class="viscosity-suggestion-badge badge-${badgeColor}">
-                <i class="${icon}"></i>
-                <span>${data.suggestion_text}</span>
-            </div>
-        `;
-
-        viscositySuggestionContainer.classList.remove('hidden');
-    }
-
-    /**
-     * Hide viscosity suggestion
-     */
-    function hideViscositySuggestion() {
-        if (viscositySuggestionContainer) {
-            viscositySuggestionContainer.classList.add('hidden');
-        }
-    }
-
-    /**
-     * Get appropriate icon for viscosity level
-     */
-    function getIconForViscosity(viscosity) {
-        if (!viscosity) return 'fas fa-info-circle';
-
-        const viscosityLower = viscosity.toLowerCase();
-        if (viscosityLower.includes('low')) {
-            return 'fas fa-tint';
-        } else if (viscosityLower.includes('medium')) {
-            return 'fas fa-tint';
-        } else if (viscosityLower.includes('high')) {
-            return 'fas fa-tint';
-        }
-        return 'fas fa-lightbulb';
-    }
-
-    // Attach temperature change listener
-    if (temperatureInput && viscositySuggestionContainer) {
-        // Check on page load if there's already a value
-        const initialTemp = temperatureInput.value;
-        if (initialTemp) {
-            fetchViscositySuggestion(initialTemp);
-        }
-
-        // Listen for temperature changes
-        temperatureInput.addEventListener('input', function(e) {
-            fetchViscositySuggestion(e.target.value);
-        });
-    }
+    // Now static/js/viscosity_suggestion.js (loaded just before this file). It
+    // wires itself to #viscositySuggestion from that element's data- attributes,
+    // so this form, the job form and the multi-break modal cannot drift apart
+    // again -- which is exactly how the job form ended up with no suggestion at
+    // all and this one kept rendering the shop's text through innerHTML.
 
     // ================ CONSOLE INFO ================
     console.log('✅ Repair Form Enhanced:');
