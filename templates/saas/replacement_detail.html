@@ -148,8 +148,39 @@
                     <div class="border-t border-gray-200 pt-2 mt-2">
                         <div class="flex justify-between text-lg"><span class="font-semibold text-gray-900">Total</span><span class="font-bold text-gray-900">${{ replacement.total_with_tax|floatformat:2 }}</span></div>
                     </div>
+                    {% if job_margin is not None %}
+                    <div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between gap-3">
+                        <span class="text-amber-800 text-sm">
+                            <i class="fas fa-lock mr-1"></i>Profit on this job after ${{ replacement.parts_cost|floatformat:2 }} parts
+                            <span class="ml-1 text-xs text-amber-700">not visible to customer</span>
+                        </span>
+                        <span class="font-semibold text-amber-900">${{ job_margin|floatformat:2 }}</span>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
+
+            <!-- Mygrant live pricing (shop-only) -->
+            {% if mygrant_enabled and replacement.nags_number %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6" id="mygrant-quote-card">
+                <div class="flex items-center justify-between gap-3 flex-wrap mb-1">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        <i class="fas fa-truck mr-2 text-brand-500"></i>Glass Price &amp; Availability
+                        <span class="ml-2 text-xs font-normal text-amber-700"><i class="fas fa-lock mr-0.5"></i>not visible to customer</span>
+                    </h2>
+                    <button type="button" id="mygrant-quote-btn"
+                        data-quote-endpoint="{% url 'replacement_mygrant_quote' pk=replacement.pk %}"
+                        data-apply-endpoint="{% url 'replacement_mygrant_apply' pk=replacement.pk %}"
+                        class="btn-primary btn-sm">
+                        <i class="fas fa-search-dollar mr-1.5"></i>Get Mygrant Quote
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500">Live from your Mygrant account for NAGS # {{ replacement.nags_number }} — a search may incur a supplier charge, so it only runs when you tap the button.</p>
+                {% csrf_token %}
+                <p id="mygrant-quote-status" class="hidden mt-3 text-sm"></p>
+                <div id="mygrant-quote-results" class="hidden mt-4 overflow-x-auto"></div>
+            </div>
+            {% endif %}
 
             <!-- Insurance -->
             {% if replacement.insurance_claim %}
@@ -209,3 +240,130 @@
 {% include "includes/invoice_send_confirm_modal.html" %}
 {% endif %}
 {% endblock %}
+
+{% block extra_js %}
+{% if mygrant_enabled and replacement.nags_number %}
+<script>
+(function () {
+    const card = document.getElementById('mygrant-quote-card');
+    if (!card) return;
+    const btn = document.getElementById('mygrant-quote-btn');
+    const statusEl = document.getElementById('mygrant-quote-status');
+    const resultsEl = document.getElementById('mygrant-quote-results');
+    const csrf = card.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    function setStatus(text, cls) {
+        statusEl.textContent = text;
+        statusEl.className = 'mt-3 text-sm ' + cls;
+    }
+
+    function cell(text, cls) {
+        const td = document.createElement('td');
+        td.className = 'px-3 py-2 whitespace-nowrap ' + (cls || '');
+        td.textContent = text;
+        return td;
+    }
+
+    async function applySku(index, useBtn) {
+        useBtn.disabled = true;
+        const fd = new FormData();
+        fd.set('sku_index', index);
+        try {
+            const resp = await fetch(btn.dataset.applyEndpoint, {
+                method: 'POST', body: fd,
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrf },
+            });
+            const data = await resp.json();
+            if (data.success) {
+                setStatus(data.message + ' Refreshing…', 'text-green-700 font-medium');
+                setTimeout(() => window.location.reload(), 900);
+            } else {
+                setStatus(data.error || 'Could not apply that price.', 'text-red-600');
+                useBtn.disabled = false;
+            }
+        } catch (err) {
+            setStatus('Network error. Please try again.', 'text-red-600');
+            useBtn.disabled = false;
+        }
+    }
+
+    function render(skus) {
+        resultsEl.textContent = '';
+        if (!skus.length) {
+            setStatus('Mygrant found no parts for this NAGS number.', 'text-gray-600');
+            return;
+        }
+        const table = document.createElement('table');
+        table.className = 'min-w-full text-sm';
+        const thead = document.createElement('thead');
+        const headRow = document.createElement('tr');
+        headRow.className = 'text-left text-xs text-gray-500 border-b border-gray-200';
+        ['Part', 'Brand', 'Your price', 'List', 'In stock', 'From', 'Next run', ''].forEach(label => {
+            const th = document.createElement('th');
+            th.className = 'px-3 py-2 font-medium';
+            th.textContent = label;
+            headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        skus.forEach(sku => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-gray-100';
+            const partCell = cell(sku.part || sku.description, 'font-medium text-gray-900');
+            if (sku.description && sku.part) partCell.title = sku.description;
+            tr.appendChild(partCell);
+            tr.appendChild(cell(sku.brand, 'text-gray-600'));
+            tr.appendChild(cell(sku.customer_price ? '$' + sku.customer_price : '—', 'font-semibold text-gray-900'));
+            tr.appendChild(cell(sku.list_price ? '$' + sku.list_price : '—', 'text-gray-500'));
+            tr.appendChild(cell(sku.qty_available || '—', 'text-gray-600'));
+            tr.appendChild(cell(sku.branch, 'text-gray-600'));
+            tr.appendChild(cell(sku.truck_run || sku.next_departing, 'text-gray-600'));
+            const actionTd = document.createElement('td');
+            actionTd.className = 'px-3 py-2 whitespace-nowrap text-right';
+            if (sku.ok) {
+                const useBtn = document.createElement('button');
+                useBtn.type = 'button';
+                useBtn.className = 'btn-secondary btn-sm';
+                useBtn.textContent = 'Use as parts cost';
+                useBtn.addEventListener('click', () => applySku(sku.index, useBtn));
+                actionTd.appendChild(useBtn);
+            } else {
+                const note = document.createElement('span');
+                note.className = 'text-xs text-red-600';
+                note.textContent = sku.notes || 'Unavailable';
+                actionTd.appendChild(note);
+            }
+            tr.appendChild(actionTd);
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        resultsEl.appendChild(table);
+        resultsEl.classList.remove('hidden');
+    }
+
+    btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        resultsEl.classList.add('hidden');
+        setStatus('Asking Mygrant…', 'text-gray-500');
+        try {
+            const resp = await fetch(btn.dataset.quoteEndpoint, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrf },
+            });
+            const data = await resp.json();
+            if (data.success) {
+                setStatus('', 'hidden');
+                render(data.skus);
+            } else {
+                setStatus(data.error || 'Quote failed. Please try again.', 'text-red-600');
+            }
+        } catch (err) {
+            setStatus('Network error. Please try again.', 'text-red-600');
+        }
+        btn.disabled = false;
+    });
+})();
+</script>
+{% endif %}
+{% endblock extra_js %}
