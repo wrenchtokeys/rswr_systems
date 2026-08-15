@@ -54,6 +54,7 @@ urlpatterns = [
     # Owner settings & team
     path('owner/settings/', views.owner_settings_view, name='owner_settings'),
     path('owner/settings/invite/', views.invite_member, name='owner_invite_member'),
+    path('owner/settings/mygrant/test/', views.mygrant_test_connection, name='mygrant_test_connection'),
 
     # Team management (Phase 6)
     path('owner/team/add-self/', views.team_add_self, name='team_add_self'),

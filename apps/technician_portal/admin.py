@@ -28,6 +28,7 @@ from django.utils.html import format_html
 from django import forms
 from .models import Technician, Repair, Replacement, UnitRepairCount, Customer, ViscosityRecommendation, TechnicianNotification, WarrantyPolicy
 from .review_models import ReviewConfig, ReviewRequest
+from .parts_models import MygrantConfig
 from rs_systems.admin_mixins import TenantFilterMixin
 
 
@@ -1097,3 +1098,34 @@ class ReviewRequestAdmin(TenantFilterMixin, admin.ModelAdmin):
         )
     status_badge.short_description = 'Status'
     status_badge.admin_order_field = 'status'
+
+
+# =============================================================================
+# PARTS SOURCING (Mygrant)
+# =============================================================================
+
+@admin.register(MygrantConfig)
+class MygrantConfigAdmin(TenantFilterMixin, admin.ModelAdmin):
+    """
+    Admin for per-tenant Mygrant connections.
+
+    The password and API key are deliberately absent: they are encrypted at
+    rest and must never render (a ModelAdmin field would decrypt and display
+    them). Shops manage credentials in Owner Settings; admin is status-only.
+    """
+    list_display = ['tenant', 'customer_id', 'web_user_id', 'has_secrets', 'last_verified_at']
+    list_filter = ['tenant']
+    search_fields = ['tenant__name', 'customer_id']
+    list_select_related = ['tenant']
+    fields = ['tenant', 'customer_id', 'web_user_id', 'last_verified_at', 'last_verify_error']
+    readonly_fields = ['last_verified_at', 'last_verify_error']
+
+    def has_secrets(self, obj):
+        return bool(obj.password and obj.api_key)
+    has_secrets.boolean = True
+    has_secrets.short_description = 'Password + API key stored'
+
+    def has_delete_permission(self, request, obj=None):
+        # Singleton per tenant — deleting is how a shop disconnects, and that
+        # belongs in Owner Settings, not here.
+        return request.user.is_superuser

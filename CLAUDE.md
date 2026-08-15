@@ -410,6 +410,13 @@ PAST_DUE_GRACE_DAYS=14      # full-access days before a past_due shop goes read-
 TRIAL_GRACE_DAYS=14         # read-only days an expired trial gets
 PLATFORM_ALERT_EMAIL=...    # Stripe disputes + failed-webhook digest (platform, not tenant)
 
+# Credential encryption at rest (common/encryption.py — tenant supplier credentials,
+# e.g. Mygrant). Fernet key, deliberately separate from SECRET_KEY. REQUIRED in
+# production before any shop can save Mygrant credentials; dev/tests derive a key
+# from SECRET_KEY automatically. Generate:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+FIELD_ENCRYPTION_KEY=...
+
 # AWS S3 (photos, invoices)
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
