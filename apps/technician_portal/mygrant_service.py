@@ -17,6 +17,8 @@ This module is quote-plumbing only for now: build/send an Inquiry and parse
 the result. Orders come in a later P1 phase; Returns aren't in the API yet.
 """
 import logging
+import re
+from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape
 
@@ -183,3 +185,85 @@ def test_connection(config):
     # Unknown-but-answered: the account reached Mygrant, but the test part
     # lookup failed. Surface Mygrant's own words rather than guessing.
     raise MygrantError(f"Mygrant answered with: {text or code or 'an unknown status'}.")
+
+
+def parse_nags_number(raw):
+    """
+    Split the free-text `Replacement.nags_number` a tech typed into the
+    (prefix, number) pair the API wants: 2-letter position prefix + numeric
+    code. Accepts "DW01658", "dw 1658", "FW-2000", "DW01658 GBY" (trailing
+    color/hardware suffixes ignored). Returns (prefix, number) or raises
+    MygrantError with a message the tech can act on.
+    """
+    match = re.match(r'\s*([A-Za-z]{2})[\s-]*(\d{1,5})\b', raw or '')
+    if not match:
+        raise MygrantError(
+            "Couldn't read a NAGS number from what's on the job "
+            f"({raw!r} — expected something like DW01658). Fix the NAGS "
+            "number on the job, then quote again."
+        )
+    return match.group(1).upper(), match.group(2)
+
+
+def _decimal_or_none(text):
+    try:
+        return Decimal(text.strip())
+    except (InvalidOperation, AttributeError):
+        return None
+
+
+def _parse_sku(response_el):
+    """One <Response> element → a plain dict for the pick list."""
+    get = response_el.findtext
+    return {
+        'part': (get('ResponsePart') or '').strip(),
+        'description': (get('ResponsePartDesc') or '').strip(),
+        'product_id': (get('ResponseProductID') or '').strip(),
+        'brand': (get('ResponseBrand') or '').strip(),
+        'nags_color': (get('ResponseNAGSColor') or '').strip(),
+        'hardware': (get('ResponseNAGSHardwareIndicator') or '').strip(),
+        'qty_available': (get('QtyAvailable') or '').strip(),
+        'list_price': _decimal_or_none(get('ListUnitPrice')),
+        'customer_price': _decimal_or_none(get('CustomerUnitPrice')),
+        'branch': (get('ResponseShipFromBranchName') or '').strip(),
+        'truck_run': (get('TruckRun') or '').strip(),
+        'next_departing': (get('ResponseNextDepartingDate') or '').strip(),
+        'response_code': (get('ResponseCode') or '').strip(),
+        # Mygrant's own item-level status text ("Success", "NoStock", ...).
+        # Surfaced honestly per the spec's error table — never swallowed.
+        'notes': (get('ResponseNotes') or '').strip(),
+    }
+
+
+def quote_nags(config, raw_nags_number, environment='PROD'):
+    """
+    One NAGS Inquiry with the shop's own account. Costs may apply on the
+    shop's Mygrant account, so callers must only invoke this from a
+    deliberate user action — never on page load or refresh.
+
+    Returns a list of SKU dicts (see _parse_sku), possibly empty.
+    Raises MygrantError subclasses with owner-readable messages.
+    """
+    if not config.is_enabled():
+        raise MygrantError(
+            "Mygrant isn't connected for this shop. An owner can connect it "
+            "in Settings → Parts."
+        )
+    prefix, number = parse_nags_number(raw_nags_number)
+    url = STAGING_URL if environment == 'TEST' else PRODUCTION_URL
+    inner = _build_inquiry_document(config, prefix, number, environment=environment)
+    document = _post(config, inner, url)
+    code, text = _status(document)
+    if code == STATUS_NOT_AUTHENTICATED or text in ('NotAuthenticated', 'NotAuthorized'):
+        raise MygrantAuthError(
+            "Mygrant rejected this shop's login. An owner should re-check the "
+            "credentials in Settings → Parts."
+        )
+    if code not in (STATUS_SUCCESS, '1'):  # 1 = NoProductFound: empty, not an error
+        raise MygrantError(f"Mygrant answered with: {text or code or 'an unknown status'}.")
+    skus = [
+        _parse_sku(response_el)
+        for response_el in document.iter('Response')
+    ]
+    # Drop rows Mygrant itself marks invalid enough to have no part identity
+    return [s for s in skus if s['part'] or s['product_id']]

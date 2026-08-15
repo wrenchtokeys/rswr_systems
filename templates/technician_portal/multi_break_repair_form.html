@@ -380,8 +380,15 @@
                             placeholder="e.g., Low(l), Medium(m), High(h)"
                         >
                         <p class="mt-1 text-xs text-gray-500">Document resin viscosity</p>
-                        <!-- Viscosity Suggestion Container (populated by JavaScript) -->
-                        <div id="modalViscositySuggestion" class="hidden mt-2"></div>
+                        {% comment %}
+                        Filled by static/js/viscosity_suggestion.js. One dialog is
+                        reused for every break, so multi_break.js clears/refreshes
+                        this whenever it puts a different break's temperature in the
+                        box — otherwise break #2 opens showing break #1's resin.
+                        {% endcomment %}
+                        <div id="modalViscositySuggestion" class="hidden mt-2"
+                             data-viscosity-input="modal_windshield_temperature"
+                             data-viscosity-endpoint="{% url 'get_viscosity_suggestion' %}"></div>
                     </div>
                 </div>
             </div>
@@ -504,5 +511,7 @@
     </div>
 </div>
 
+<script src="{% static 'js/image_compress.js' %}"></script>
+<script src="{% static 'js/viscosity_suggestion.js' %}"></script>
 <script src="{% static 'js/multi_break.js' %}?v=20251118-final"></script>
 {% endblock %}

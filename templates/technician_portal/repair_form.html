@@ -426,8 +426,14 @@
                                     <i class="fas fa-info-circle"></i>
                                     Document resin viscosity for quality tracking
                                 </p>
-                                <!-- Viscosity Suggestion Container (populated by JavaScript) -->
-                                <div id="viscositySuggestion" class="hidden mt-2"></div>
+                                {% comment %}
+                                Filled by static/js/viscosity_suggestion.js — the same
+                                module the job form and the multi-break modal use, so
+                                editing a repair and logging one show the same rule.
+                                {% endcomment %}
+                                <div id="viscositySuggestion" class="hidden mt-2"
+                                     data-viscosity-input="id_windshield_temperature"
+                                     data-viscosity-endpoint="{% url 'get_viscosity_suggestion' %}"></div>
                                 {% if form.resin_viscosity.errors %}
                                     <div class="field-error">
                                         <i class="fas fa-exclamation-circle"></i>
@@ -852,6 +858,8 @@
 
 <!-- Scripts -->
 <script src="{% static 'js/form_autosave.js' %}"></script>
+<script src="{% static 'js/image_compress.js' %}"></script>
+<script src="{% static 'js/viscosity_suggestion.js' %}"></script>
 <script src="{% static 'js/repair_form.js' %}"></script>
 
 <!-- Customer type field toggle -->

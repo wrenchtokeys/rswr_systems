@@ -1012,13 +1012,18 @@ class QuickJobForm(forms.Form):
         required=False, max_length=50,
         widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'Camry'}),
     )
+    # data-compress: static/js/image_compress.js resizes the photo in the
+    # browser before it is posted. Both photos ride in one request against a
+    # 10MB nginx/Django cap, and a phone camera clears that on its own — the
+    # old repair form always compressed, this one used to post raw and lose
+    # the whole job to a 413.
     damage_photo_before = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/*', 'data-compress': '1'}),
     )
     damage_photo_after = forms.ImageField(
         required=False,
-        widget=forms.ClearableFileInput(attrs={'accept': 'image/*'}),
+        widget=forms.ClearableFileInput(attrs={'accept': 'image/*', 'data-compress': '1'}),
     )
     customer_notes = forms.CharField(
         required=False,
