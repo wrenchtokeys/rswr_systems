@@ -11,6 +11,9 @@ urlpatterns = [
 
     # Global search (navbar box on every portal page)
     path('search/', views.global_search, name='global_search'),
+
+    # Day / agenda view (S3)
+    path('schedule/', views.day_schedule, name='day_schedule'),
     
     # Unified jobs surface (repairs + replacements)
     path('jobs/', views.job_list, name='job_list'),

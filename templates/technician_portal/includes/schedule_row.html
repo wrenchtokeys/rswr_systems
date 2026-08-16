@@ -1,0 +1,82 @@
+{% load ui %}
+{% comment %}
+One schedule entry. Expects `job` with .service_type set ('repair' or
+'replacement'). Markup follows the dashboard's Today's Queue card (the S2
+copy source): status colour bar per core/templatetags/ui.py, map/call links
+composed client-side by static/js/field_dispatch.js from data attrs so
+addresses never enter a server-rendered URL. Completed rows stay on the
+sheet, dimmed — a run day should look run.
+{% endcomment %}
+<div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4{% if job.queue_status == 'COMPLETED' %} opacity-60{% endif %}">
+    <!-- Booked time: the organizing fact of this page, so it leads. -->
+    <div class="flex-shrink-0 w-16 sm:w-20 text-right">
+        <div class="text-sm font-semibold text-gray-900">{{ job.scheduled_for|date:"g:i" }}<span class="text-xs font-medium text-gray-500"> {{ job.scheduled_for|date:"A" }}</span></div>
+        {% if job.scheduled_window_end %}
+        <div class="text-xs text-gray-400">to {{ job.scheduled_window_end|date:"g:i A" }}</div>
+        {% endif %}
+    </div>
+
+    <div class="flex-shrink-0 w-1.5 h-12 rounded-full
+        {% if job.queue_status == 'COMPLETED' %}bg-green-500
+        {% elif job.queue_status == 'IN_PROGRESS' %}bg-blue-500
+        {% elif job.queue_status == 'APPROVED' %}bg-indigo-500
+        {% else %}bg-amber-400{% endif %}">
+    </div>
+
+    <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-semibold text-gray-900 text-sm">{{ job.customer.name|default:"Walk-in" }}</span>
+            {% if job.unit_number %}
+            <span class="text-xs text-gray-500">Unit {{ job.unit_number }}</span>
+            {% endif %}
+            {% if shop_service_mix == 'both' %}
+            {% service_type_chip job.service_type %}
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-2 mt-1">
+            {% if job.queue_status == 'APPROVED' %}
+            {% status_badge job.queue_status label="Ready" %}
+            {% else %}
+            {% status_badge job.queue_status %}
+            {% endif %}
+        </div>
+        {% with location=job.get_service_location %}
+        {% if location or job.customer.phone %}
+        <div class="flex items-center gap-4 mt-1 min-w-0">
+            {% if location %}
+            <a data-map-query="{{ location }}" class="tap-target inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-800 min-w-0">
+                <i class="fas fa-map-marker-alt flex-shrink-0"></i><span class="truncate">{{ location }}</span>
+            </a>
+            {% endif %}
+            {% if job.customer.phone %}
+            <a data-call-number="{{ job.customer.phone }}" class="tap-target inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:text-brand-800 flex-shrink-0">
+                <i class="fas fa-phone"></i>Call
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Action stays far from Call (left side), per the S2 touch rule. -->
+    <div class="flex-shrink-0">
+        {% if job.service_type == 'replacement' %}
+        {% url 'replacement_detail' job.id as job_url %}
+        {% else %}
+        {% url 'repair_detail' job.id as job_url %}
+        {% endif %}
+        {% if job.queue_status == 'IN_PROGRESS' %}
+        <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
+            Continue
+        </a>
+        {% elif job.queue_status == 'APPROVED' %}
+        <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors shadow-sm press">
+            Start
+        </a>
+        {% else %}
+        <a href="{{ job_url }}" class="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+            View
+        </a>
+        {% endif %}
+    </div>
+</div>

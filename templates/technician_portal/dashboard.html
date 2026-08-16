@@ -68,12 +68,22 @@
                     {% if queue_has_schedule %}
                     {% ifchanged job.schedule_bucket %}
                     <div class="px-4 sm:px-6 pt-3 pb-1">
+                        {% comment %}
+                        The Today header doubles as the door to the S3 day
+                        view — the schedule page shows this day in full,
+                        with every tech's jobs for managers.
+                        {% endcomment %}
+                        {% if job.schedule_bucket == 'today' %}
+                        <a href="{% url 'day_schedule' %}" class="text-xs font-semibold uppercase tracking-wide text-gray-400 hover:text-brand-600">
+                            Today <i class="fas fa-arrow-right text-[10px]"></i>
+                        </a>
+                        {% else %}
                         <span class="text-xs font-semibold uppercase tracking-wide {% if job.schedule_bucket == 'overdue' %}text-red-600{% else %}text-gray-400{% endif %}">
                             {% if job.schedule_bucket == 'overdue' %}Overdue
-                            {% elif job.schedule_bucket == 'today' %}Today
                             {% elif job.schedule_bucket == 'later' %}Later
                             {% else %}Unscheduled{% endif %}
                         </span>
+                        {% endif %}
                     </div>
                     {% endifchanged %}
                     {% endif %}

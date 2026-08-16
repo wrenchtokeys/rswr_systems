@@ -1,0 +1,175 @@
+{% extends "base_app.html" %}
+{% load static ui %}
+
+{% block title %}Schedule — {{ day|date:"D M j" }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Header + date navigator -->
+        <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">
+                    {% if is_today %}Today{% else %}{{ day|date:"l" }}{% endif %}
+                </h1>
+                <p class="text-gray-600 mt-1">
+                    {{ day|date:"F j, Y" }}
+                    {% if jobs %}
+                    · {{ jobs|length }} job{{ jobs|length|pluralize }}{% if done_count %}, {{ done_count }} done{% endif %}
+                    {% endif %}
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                {% comment %}
+                Prev / today / next are plain GET links; the date input jumps
+                anywhere. 44px targets — this gets used from a truck.
+                {% endcomment %}
+                <a href="{% url 'day_schedule' %}?date={{ prev_day|date:'Y-m-d' }}" aria-label="Previous day"
+                   class="inline-flex items-center justify-center w-11 h-11 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50">
+                    <i class="fas fa-chevron-left text-sm"></i>
+                </a>
+                {% if not is_today %}
+                <a href="{% url 'day_schedule' %}"
+                   class="inline-flex items-center min-h-11 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    Today
+                </a>
+                {% endif %}
+                <form method="get" action="{% url 'day_schedule' %}">
+                    <label for="schedule-date" class="sr-only">Jump to date</label>
+                    <input type="date" name="date" id="schedule-date" value="{{ day|date:'Y-m-d' }}"
+                           onchange="this.form.submit()"
+                           class="min-h-11 px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+                </form>
+                <a href="{% url 'day_schedule' %}?date={{ next_day|date:'Y-m-d' }}" aria-label="Next day"
+                   class="inline-flex items-center justify-center w-11 h-11 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50">
+                    <i class="fas fa-chevron-right text-sm"></i>
+                </a>
+            </div>
+        </div>
+
+        {% comment %}
+        Triage rail (managers only): work with no booked time — the pile the
+        day gets built from. REQUESTED jobs live here too, since they're not
+        a go yet. Seed of the S5 dispatch board.
+        {% endcomment %}
+        {% if sees_whole_shop and triage_jobs %}
+        <div class="bg-white rounded-lg shadow-sm border border-amber-200 mb-6">
+            <div class="px-6 py-4 border-b border-amber-100 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <h2 class="text-lg font-semibold text-gray-900">Needs scheduling</h2>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                        {{ unscheduled_count }}
+                    </span>
+                </div>
+                <a href="{% url 'job_list' %}" class="text-sm font-medium text-brand-600 hover:text-brand-800">All jobs</a>
+            </div>
+            <div class="divide-y divide-gray-100">
+                {% for job in triage_jobs %}
+                <div class="px-4 py-3 sm:px-6 hover:bg-gray-50 transition-colors flex items-center gap-4">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-semibold text-gray-900 text-sm">{{ job.customer.name|default:"Walk-in" }}</span>
+                            {% if job.unit_number %}
+                            <span class="text-xs text-gray-500">Unit {{ job.unit_number }}</span>
+                            {% endif %}
+                            {% if shop_service_mix == 'both' %}
+                            {% service_type_chip job.service_type %}
+                            {% endif %}
+                        </div>
+                        <div class="flex items-center gap-2 mt-1">
+                            {% status_badge job.queue_status %}
+                            <span class="text-xs text-gray-500">{{ job.technician.user.get_full_name|default:job.technician.user.username }}</span>
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                        {% if job.service_type == 'replacement' %}
+                        {% url 'replacement_detail' job.id as job_url %}
+                        {% else %}
+                        {% url 'repair_detail' job.id as job_url %}
+                        {% endif %}
+                        <a href="{{ job_url }}" class="inline-flex items-center min-h-11 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                            View
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% if triage_overflow %}
+            <div class="px-6 py-3 border-t border-gray-100">
+                <a href="{% url 'job_list' %}" class="text-sm font-medium text-brand-600 hover:text-brand-800">
+                    {{ triage_overflow }} more unscheduled job{{ triage_overflow|pluralize }} →
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if jobs %}
+
+        {% if sees_whole_shop %}
+        {% comment %}One card per technician — every active tech appears, so
+        a free tech is visible, not just absent.{% endcomment %}
+        {% for group in groups %}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <h2 class="text-lg font-semibold text-gray-900">{{ group.technician.user.get_full_name|default:group.technician.user.username }}</h2>
+                    {% if group.jobs %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
+                        {{ group.jobs|length }} job{{ group.jobs|length|pluralize }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if group.jobs %}
+            <div class="divide-y divide-gray-100">
+                {% for job in group.jobs %}
+                {% include "technician_portal/includes/schedule_row.html" %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="px-6 py-4">
+                <p class="text-sm text-gray-400">Nothing scheduled</p>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        {% else %}
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="divide-y divide-gray-100">
+                {% for job in jobs %}
+                {% include "technician_portal/includes/schedule_row.html" %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <!-- Honest empty state: say what IS waiting, not just what isn't. -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="px-6 py-12 text-center">
+                <div class="text-4xl mb-3">📅</div>
+                <p class="text-gray-500 font-medium">
+                    Nothing scheduled {% if is_today %}today{% else %}for {{ day|date:"D M j" }}{% endif %}
+                </p>
+                {% if unscheduled_count %}
+                <p class="text-sm text-gray-500 mt-1">
+                    {{ unscheduled_count }} unscheduled job{{ unscheduled_count|pluralize }} could use a time.
+                </p>
+                <a href="{% url 'job_list' %}" class="inline-flex items-center min-h-11 mt-4 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                    View unscheduled jobs
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/field_dispatch.js' %}" defer></script>
+{% endblock %}

@@ -73,6 +73,7 @@
                         {% endif %}
 
                         {% if user_can_repairs %}
+                        <a href="{% url 'day_schedule' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'day_schedule' %}text-brand-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Schedule</a>
                         <a href="{% url 'job_list' %}" class="text-sm font-medium whitespace-nowrap {% if request.resolver_match.url_name == 'job_list' or request.resolver_match.url_name == 'repair_list' or request.resolver_match.url_name == 'assigned_repairs' or request.resolver_match.url_name == 'repair_detail' or request.resolver_match.url_name == 'create_repair' or 'replacement' in request.resolver_match.url_name %}text-brand-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">Jobs</a>
                         {% endif %}
 
@@ -199,6 +200,7 @@
                 <a href="{% url 'technician_dashboard' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Dashboard</a>
                 {% endif %}
                 {% if user_can_repairs %}
+                <a href="{% url 'day_schedule' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Schedule</a>
                 <a href="{% url 'job_list' %}" class="flex items-center min-h-12 py-2 text-base font-medium text-gray-700 hover:text-brand-600 active:bg-gray-50 rounded-lg -mx-2 px-2">Jobs</a>
                 {% endif %}
                 {% if user_can_customers %}
