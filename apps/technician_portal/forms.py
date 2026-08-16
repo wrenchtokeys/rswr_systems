@@ -441,6 +441,7 @@ class RepairForm(forms.ModelForm):
         model = Repair
         fields = ['technician', 'customer', 'unit_number', 'vehicle_year', 'vehicle_make', 'vehicle_model',
                   'scheduled_for',
+                  'service_address', 'service_city', 'service_state', 'service_zip',
                   'queue_status', 'damage_type', 'damage_location_x', 'damage_location_y',
                   'drilled_before_repair', 'windshield_temperature', 'resin_viscosity', 'customer_submitted_photo',
                   'damage_photo_before', 'damage_photo_after', 'customer_notes', 'technician_notes',
@@ -455,6 +456,12 @@ class RepairForm(forms.ModelForm):
                 'class': 'w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500',
             }),
             'scheduled_for': CustomDateTimeInput(),
+            # Single-line inputs — the model field is a TextField only so a
+            # prefill from Customer.address (also a TextField) can't overflow.
+            'service_address': forms.TextInput(attrs={'placeholder': 'Street address'}),
+            'service_city': forms.TextInput(attrs={'placeholder': 'City'}),
+            'service_state': forms.TextInput(attrs={'placeholder': 'State'}),
+            'service_zip': forms.TextInput(attrs={'placeholder': 'ZIP'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -868,6 +875,17 @@ class CustomerEmailSelect(forms.Select):
             # sales tax" checkbox unchecks + locks itself off this attribute.
             if instance.tax_exempt:
                 option['attrs']['data-tax-exempt'] = '1'
+            # Service-location prefill (S2): picking a customer fills the
+            # More-details address inputs from these, so the tech sees where
+            # the job defaults to and can override it per job.
+            for attr, value in (
+                ('data-address', instance.address),
+                ('data-city', instance.city),
+                ('data-state', instance.state),
+                ('data-zip', instance.zip_code),
+            ):
+                if value:
+                    option['attrs'][attr] = value
         return option
 
 
@@ -1025,6 +1043,29 @@ class QuickJobForm(forms.Form):
         required=False,
         widget=forms.ClearableFileInput(attrs={'accept': 'image/*', 'data-compress': '1'}),
     )
+    # Service location (S2): where the vehicle is for this job. Prefilled by
+    # the template's picker JS from the chosen customer's address; clean()
+    # blanks an untouched prefill so only a real override is stored (display
+    # falls back to the customer's record, which stays current if it changes).
+    service_address = forms.CharField(
+        required=False, max_length=255,
+        widget=forms.TextInput(attrs={
+            'class': _INPUT, 'placeholder': 'Street address',
+            'autocomplete': 'off',
+        }),
+    )
+    service_city = forms.CharField(
+        required=False, max_length=100,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'City'}),
+    )
+    service_state = forms.CharField(
+        required=False, max_length=100,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'State'}),
+    )
+    service_zip = forms.CharField(
+        required=False, max_length=100,
+        widget=forms.TextInput(attrs={'class': _INPUT, 'placeholder': 'ZIP'}),
+    )
     customer_notes = forms.CharField(
         required=False,
         widget=forms.Textarea(attrs={
@@ -1125,4 +1166,25 @@ class QuickJobForm(forms.Form):
         # schedule value typed before the "already done" box was re-checked.
         if cleaned.get('already_completed'):
             cleaned['scheduled_for'] = None
+        # Service location: the picker JS prefills these from the customer, so
+        # an untouched submit posts a verbatim copy of the customer's address.
+        # Storing that copy would freeze it — a later fix to the customer
+        # record would never reach the job. Blank an exact match instead;
+        # get_service_location() falls back to the (current) customer address,
+        # so only a genuine per-job override is ever persisted.
+        if existing and self._location_matches_customer(cleaned, existing):
+            for field in ('service_address', 'service_city',
+                          'service_state', 'service_zip'):
+                cleaned[field] = ''
         return cleaned
+
+    @staticmethod
+    def _location_matches_customer(cleaned, customer):
+        def norm(value):
+            return ' '.join((value or '').split()).lower()
+        own = [norm(cleaned.get(f)) for f in (
+            'service_address', 'service_city', 'service_state', 'service_zip')]
+        if not any(own):
+            return False
+        return own == [norm(v) for v in (
+            customer.address, customer.city, customer.state, customer.zip_code)]
