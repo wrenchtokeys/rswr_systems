@@ -16,8 +16,8 @@ This file is the **work queue** for making field operations real: a technician f
 | N — The tech finds out | N3 · Notification coverage audit | S | TODO |
 | N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE (2026-08-12, PR pending) — v2 submission awaits deploy + Drake (see Notes) |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
-| S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR pending) |
-| S — Where and when | S3 · Day / agenda view | M | TODO |
+| S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
+| S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
 | S — Where and when | S4 · Customer requests carry when + where | M | TODO |
 | S — Where and when | S5 · Dispatch board | L | TODO |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
@@ -343,7 +343,7 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
   (S1, touch targets, view transitions, individual-vs-fleet, job-form
   parity/create/invoice/list), incl. CSS guards after `./scripts/build_css.sh`.
 
-## S3 · Day / agenda view — TODO
+## S3 · Day / agenda view — DONE (2026-08-16, PR #190)
 
 | Field | Value |
 |---|---|
@@ -357,7 +357,43 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 | **Acceptance criteria** | `/tech/schedule/` (or similar) shows the logged-in tech's day; managers/owners see all techs; entries link to job detail and carry S2's map/call actions; empty states are honest ("Nothing scheduled — X unscheduled jobs" linking to the list). |
 | **Out of scope** | Drag-and-drop, editing times from the view (S5), customer-facing schedule, iCal export. |
 
-**Notes**
+**Notes** *(session run 2026-08-16, branch `feat/fieldops-s3-day-view`, PR #190)*
+
+- **Shipped as designed, both recommended decisions taken:** day view only
+  (no week grid), and it lives at `/tech/schedule/` (`day_schedule`) behind a
+  "Schedule" nav link (desktop + mobile, `user_can_repairs`-gated); the
+  dashboard's *Today* bucket header now links there. View is
+  `apps/technician_portal/views/schedule.py`; the row markup is a shared
+  partial, `templates/technician_portal/includes/schedule_row.html` — **S5
+  should extend that partial, not fork the dashboard card again.** It renders
+  the S2 `data-map-query`/`data-call-number` attrs and the page loads
+  `field_dispatch.js`.
+- **Scope rules that weren't in the table:**
+  - REQUESTED jobs never appear on the day sheet even when a wished-for
+    `scheduled_for` is set (S4 will write those) — a request isn't a booked
+    visit. Managers see them in the "Needs scheduling" triage rail instead,
+    alongside unscheduled active work (rail capped at 8, with count +
+    overflow link to the job list).
+  - COMPLETED jobs stay on the sheet, dimmed — a run day should look run.
+  - Replacements are NOT gated on `tenant.offers_replacements` (unlike the
+    dashboard queues): a booked replacement is a promise, and flipping the
+    shop toggle must not vanish tomorrow's appointment.
+  - Manager grouping lists **every active tech** (free techs render
+    "Nothing scheduled" — that's the "who's free" answer), plus any
+    inactive tech still holding a job that day. Viewer's own group sorts
+    first.
+- **Day boundaries** are computed in the shop's local timezone
+  (`TIME_ZONE=America/Chicago` in prod) by combining midnight per-day —
+  same convention as S1's dashboard buckets; storage stays UTC.
+- `scheduled_window_end` is rendered ("to 11:00 AM") when present, though
+  nothing writes it yet — S4 remains its first writer.
+- **Tests:** `tests/test_fieldops_s3.py` (19). Smoke + S1/S2/touch/view-
+  transitions/step5-nav/individual-vs-fleet/job-form-parity/N1 green.
+  Pre-existing failure to know about: `test_unified_dashboard.…
+  test_replacement_only_shop_queue_has_no_repair_wording` fails identically
+  on origin/main (it's in the known ~90–105 baseline).
+- Verified live against a scratch DB (owner + plain-tech logins, tomorrow
+  navigation, walk-in row with no address/phone renders no dispatch links).
 
 ## S4 · Customer requests carry when + where — TODO
 
