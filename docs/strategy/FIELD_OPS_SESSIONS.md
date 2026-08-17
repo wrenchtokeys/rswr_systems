@@ -442,7 +442,7 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 
 ---
 
-## S7 · Drag to swap two appointments — TODO
+## S7 · Drag to swap two appointments — DONE (2026-08-17, PR #192)
 
 *(Added 2026-08-17 at Drake's request — the "move a spot in front of another and they trade times" gesture. Deliberately carved out of S5, which had parked drag-and-drop as board polish; this is a self-contained M that runs on the S3 day view alone.)*
 
