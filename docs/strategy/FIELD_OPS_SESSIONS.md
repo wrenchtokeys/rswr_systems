@@ -21,10 +21,11 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S4 · Customer requests carry when + where | M | TODO |
 | S — Where and when | S5 · Dispatch board | L | TODO |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
+| S — Where and when | S7 · Drag to swap two appointments | M | TODO |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
 | P — Parts | P2 · Vehicle→NAGS part lookup | — | BACKLOG (blocked on a NAGS licensing decision — Appendix B) |
 
-**Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
+**Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). **S7 slots in any time after S3** — it needs neither S4 nor S5, and S5 inherits its endpoint. P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
 
 Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
@@ -170,7 +171,7 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 | **Depends on** | N1. Better after S4 exists (schedule-changed events). |
 | **Why it matters** | Two notification systems drifted apart once already — that's how this whole bug happened. |
 | **Verified current state** | `TechnicianNotification` writes are scattered (assignment views, redemption flows, replacement request `_notify_shop_replacement_requested` at `apps/customer_portal/views.py:1804+`). No `replacement_*` lifecycle templates exist (per CLAUDE.md). Bell reads `core.Notification` only. |
-| **Considerations** | Inventory first: grep every `TechnicianNotification.objects.create` and decide each one — fold into `NotificationService`, keep as dashboard-only, or delete. Add the missing events found while writing this doc: customer-requested job auto-assigned (tech should hear), schedule confirmed/changed (after S4). Consider whether `TechnicianNotification` can become a thin projection of `core.Notification` instead of a second source of truth. |
+| **Considerations** | Inventory first: grep every `TechnicianNotification.objects.create` and decide each one — fold into `NotificationService`, keep as dashboard-only, or delete. Add the missing events found while writing this doc: customer-requested job auto-assigned (tech should hear), schedule confirmed/changed (after S4 — but note **S7 introduces the first schedule-change template**, so inventory it here rather than inventing a second one). Consider whether `TechnicianNotification` can become a thin projection of `core.Notification` instead of a second source of truth. |
 | **Decisions needed** | Whether to add `replacement_*` lifecycle templates now or keep replacements on the shop-email path (Drake previously deferred replacement lifecycle emails by choice — see `simplicity-first-product-direction`; don't expand customer-facing email without asking). |
 | **Acceptance criteria** | A written inventory table (in this doc's Notes) of every tech-facing event → recipient → channel; no event a tech must act on lands only in the dashboard list. |
 | **Out of scope** | Customer-facing notification redesign. |
@@ -269,7 +270,9 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
   looked unscheduled.
 - **Things future S-sessions should know:**
   - `scheduled_window_end` is schema-only — no UI writes it yet. S4's
-    customer time-window capture is its intended first writer.
+    customer time-window capture was its intended first writer; **S7 may get
+    there first** (see S7's duration rule). Whichever lands first fixes the
+    field's semantics for the other.
   - `ReplacementForm` lives in `apps/saas/forms.py` (not technician_portal),
     same as the replacement views — the S3 day view will need both apps.
   - Shop-created jobs passed `queue_status='PENDING'` get flipped to APPROVED
@@ -355,7 +358,7 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 | **Considerations** | Read-mostly first: a day list grouped by tech, ordered by `scheduled_for`, with the S2 address/call/map actions inline. Reuse existing job-card partials rather than inventing a new card. Tenant-scoped, obviously. A simple date navigator (prev/today/next + flatpickr jump) beats a month grid nobody asked for. Owner view = same query, grouped by technician, unassigned+unscheduled surfaced at top as a to-triage rail (seed of S5). |
 | **Decisions needed** | Week view now or later (recommend: day view only; add week when someone asks). Where it lives in nav (recommend: "Schedule" link in technician portal nav; dashboard "Today" bucket links to it). |
 | **Acceptance criteria** | `/tech/schedule/` (or similar) shows the logged-in tech's day; managers/owners see all techs; entries link to job detail and carry S2's map/call actions; empty states are honest ("Nothing scheduled — X unscheduled jobs" linking to the list). |
-| **Out of scope** | Drag-and-drop, editing times from the view (S5), customer-facing schedule, iCal export. |
+| **Out of scope** | Drag-and-drop (**now S7** — carved out of S5 on 2026-08-17), editing times from the view (S5), customer-facing schedule, iCal export. |
 
 **Notes**
 
@@ -384,7 +387,7 @@ RS Systems' toll-free number `+18663115189` is **PENDING**, and its registration
 | **Depends on** | S1–S4, N1. |
 | **Why it matters** | This is where "notification," "address," and "time" compound into an actual dispatch workflow — the shop runs its morning from one screen. |
 | **Verified current state** | Nothing exists. Assignment lives in per-job views (`assign_repair` etc.); triage is the REQUESTED queue; no combined surface. |
-| **Considerations** | Build on S3's owner view: add an unscheduled/unassigned rail and inline assign+schedule controls (POST to the N1 assignment helper — one code path for assignment, always). Conflict display is *informational* first (two jobs overlapping for one tech; job scheduled outside customer's preferred window) — no hard blocking. Drag-and-drop is a polish pass, not the MVP; plain controls first. Every assignment from the board fires the N1 notification automatically because it goes through the same helper. **Known gap — technician availability:** nothing in the arc models working hours or days off, so conflict detection here can only see job-vs-job overlap, not "Marcus doesn't work Tuesdays." Don't build an availability model preemptively — but when scoping this session, decide whether a minimal per-tech working-hours field (or even a free-text "usual schedule" note shown on the board) is worth including, and record the decision in Notes. Full availability/capacity modeling stays in S6's backlog. |
+| **Considerations** | Build on S3's owner view: add an unscheduled/unassigned rail and inline assign+schedule controls (POST to the N1 assignment helper — one code path for assignment, always). Conflict display is *informational* first (two jobs overlapping for one tech; job scheduled outside customer's preferred window) — no hard blocking. Drag-and-drop is a polish pass, not the MVP; plain controls first — and the gesture itself is **no longer S5's to design**: S7 owns drag-to-swap and ships the reorder endpoint, so this board reuses it rather than building a second one. Every assignment from the board fires the N1 notification automatically because it goes through the same helper. **Known gap — technician availability:** nothing in the arc models working hours or days off, so conflict detection here can only see job-vs-job overlap, not "Marcus doesn't work Tuesdays." Don't build an availability model preemptively — but when scoping this session, decide whether a minimal per-tech working-hours field (or even a free-text "usual schedule" note shown on the board) is worth including, and record the decision in Notes. Full availability/capacity modeling stays in S6's backlog. |
 | **Decisions needed** | Defer all — scope this session properly when S1–S4 are real. Written now only so the arc has a visible destination. |
 | **Acceptance criteria** | (Draft) A manager can take a REQUESTED/unassigned job from the rail, pick tech + time, and the tech is notified — without leaving the board. Double-booking is visibly flagged. |
 | **Out of scope** | Route optimization, capacity math, customer self-scheduling (S6/backlog). |
@@ -400,6 +403,112 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 3. **Route ordering** — order a tech's day geographically (the ROADMAP's "lot-walking scheduler"). Needs S2's structured addresses; probably needs geocoding. Do not start before a shop asks.
 4. **Technician availability / working hours** — per-tech schedules (days off, hours) so S5's conflict display can flag "scheduled outside Marcus's hours," and the eventual prerequisite for any customer-facing slot picking. S5 may ship a minimal version (see its Considerations); the real model lives here until demand is proven.
 5. **Self-service rescheduling** — customers changing a confirmed time from the portal (S4 deliberately excludes this). Needs a notify-shop + re-confirm loop so a reschedule can't silently invalidate a tech's day; pairs naturally with item 4 once slots are real.
+
+---
+
+## S7 · Drag to swap two appointments — TODO
+
+*(Added 2026-08-17 at Drake's request — the "move a spot in front of another and they trade times" gesture. Deliberately carved out of S5, which had parked drag-and-drop as board polish; this is a self-contained M that runs on the S3 day view alone.)*
+
+| Field | Value |
+|---|---|
+| **Goal** | On the day view, a manager drags one booked job onto another in the same technician's day and the two **trade time slots** — one gesture, no form, no double-booking arithmetic. |
+| **Size** | M |
+| **Depends on** | S1 (`scheduled_for`) and S3 (the day view, its row partial, its `_scoped()` helper). Independent of S4 and S5. |
+| **Why it matters** | The day changes by phone call, not by form. "Put Acme first" today means opening two job forms, editing two datetime fields, and checking by eye that you didn't collide — while every fact the decision needs is already rendered on one screen. |
+| **Verified current state** *(2026-08-17)* | `/tech/schedule/` renders rows from `templates/technician_portal/includes/schedule_row.html`, sorted `(scheduled_for, pk)`, grouped per tech for managers (`apps/technician_portal/views/schedule.py:79-118`; anchors land with PR #190). The module documents itself as read-only and **no reschedule endpoint exists anywhere**. Only three writers of `scheduled_for` exist — `RepairForm` (`forms.py:443`), `QuickJobForm` (`forms.py:975-980`, nulled at `:1168` when *already completed*), `ReplacementForm` (`apps/saas/forms.py:329`); `scheduled_window_end` has **zero writers and zero readers**. **No drag / sortable / Pointer-Events JS exists anywhere** — vendored JS is flatpickr + driver.js only, and policy forbids npm and CDNs; the one touch precedent is the tap-to-place damage diagram (`static/js/multi_break.js:1006`, `touchstart` with `{passive:false}`). `window.UI` (`static/js/ui.js`) already provides `csrfToken()`, `toast()`, `flash()`, `confirm()` and document-level delegation. Locking house rule is pessimistic `select_for_update()` inside `transaction.atomic()`; **no optimistic locking exists anywhere and nothing in the repo locks two rows at once**. |
+| **Considerations** | The engineering detail is long enough to be worth prose — see **"Design notes"** below the table. The four rules that shape everything else: **(1)** never call `save()` to move a time (it re-prices the job and rewrites live invoices — see the Traps list); **(2)** each job keeps its **own duration**, so swap the starts, not the window pair; **(3)** notifications fire on `transaction.on_commit()`, never inside the locked transaction; **(4)** the endpoint must answer JSON even when it refuses — two separate mechanisms redirect to HTML today. |
+| **Decisions needed** | **Taken 2026-08-17 (Drake):** pure swap (not insert-and-cascade); managers/owners only, technicians keep the page read-only; dropping an *unscheduled* job onto a time is out of scope; notify the assigned tech only, never for one's own drag, and no customer notice. **Still open, decide when scoping:** (a) **Undo toast vs. reload** — they conflict, see Design notes; (b) **multi-break batches** — refuse the drag, or move the whole batch together; (c) **audit trail** — whether a customer-facing promise may change with nothing anywhere recording that it did. |
+| **Acceptance criteria** | Manager drags A onto B in one tech's day → the two trade start times, each keeping its own window length; the list reorders and the change is stated in words, not just position. **The swap changes no price, no tax and no invoice line** — asserted by a test that puts both jobs on a live invoice and compares `cost`, `tax_amount` and invoice totals before and after. Cross-tech, cross-day, completed, unscheduled, soft-deleted, other-tenant and same-job-twice are all refused **as JSON** (including for an unauthorised caller and a read-only tenant). A stale swap returns 409 and writes nothing. The assigned tech gets exactly one notification; a manager swapping on their own day gets none; no customer is notified. Works with a finger (44px handle, page still scrolls) and with a mouse; a non-drag path exists; technicians see no handles at all. |
+| **Out of scope** | Dropping an unscheduled job from the triage rail onto a time (the obvious follow-on). Cross-technician moves — that is reassignment and belongs in N1's `assign_job()`. Insert-and-cascade reordering. Editing a time inline. Any customer-facing notice (S4). The S5 board, which inherits this endpoint rather than reimplementing it. |
+
+**Design notes** *(from a 2026-08-17 pressure-test of the design against the real code — these are the expensive findings; do not re-derive them)*
+
+- **Writing the swap.** Fold tenant, status and the expected current time into the
+  `.update()` `WHERE` clause and use the **returned row count as the optimistic
+  lock** — `count != 1` is the 409, which closes the read-then-check gap for free.
+  Lock with separate `.get()` calls issued in a deterministic `(table, pk)` order:
+  `filter(pk__in=[a, b])` locks in DB-scan order, not yours, and `pk` alone collides
+  because Repair 5 and Replacement 5 both exist — that ordering *is* the deadlock
+  guard when two managers swap the same pair in opposite directions. Don't chain the
+  lock and the update on one queryset, and don't `select_related` a nullable FK under
+  `FOR UPDATE` (Postgres refuses the nullable side of an outer join — `Repair.customer`
+  is nullable); re-fetch afterwards for the notification context. After `.update()`
+  the in-memory objects still hold the **old** times, so re-fetch before building any
+  message. Use `Repair.objects` (the soft-delete manager), never `all_objects`.
+- **`.update()` skips every model-layer check** — the status machine and the batch
+  integrity validation both live in `save()`. Whatever the endpoint does not validate
+  is unvalidated: same job twice, either time now null, a status that has left
+  `DAY_STATUSES` (a job can go DENIED between render and drop while the stale DOM
+  still offers it), an unknown `service_type`, a null tenant.
+- **Window end: keep each job's own duration.** `new_end = new_start + (old_end -
+  old_start)`, and NULL stays NULL. Swapping the pair wholesale would graft a
+  three-hour replacement window onto a thirty-minute repair. This is latent today
+  (nothing writes the field), which is exactly why it is cheap to get right now.
+- **Notifications fire after commit, never inside it.** `NotificationService` sends
+  email and SMS **synchronously** and re-raises on failure — inside the transaction
+  that means an SMTP round-trip while holding two row locks, and a mail hiccup rolls
+  back a swap the manager already watched happen. Use `transaction.on_commit()` plus
+  try/except, the way `services/assignments.py:141-146` already does. Write the
+  notifier as a sibling function in that module and reuse its flat JSON-serializable
+  context helpers, its "never notify the actor" comparison and its dual write
+  (`TechnicianNotification` for the dashboard + `NotificationService` for bell/email).
+  Two gotchas there: `TechnicianNotification` has only a `repair` FK, so a swapped
+  **replacement** gets a dashboard row with no link (its `action_url` still works);
+  and reuse `CATEGORY_ASSIGNMENT` — a new category needs a matching
+  `TechnicianNotificationPreference` field or techs cannot opt out. Priority MEDIUM:
+  HIGH excludes email (see Traps).
+- **The endpoint must answer JSON even when it refuses.** Two independent mechanisms
+  return 302-to-HTML today. `@manager_required` redirects *and* queues a
+  `messages.warning`, which then surfaces as a stray banner on the manager's next
+  page; gate in-body instead with the same tenant-scoped `sees_whole_shop` rule the
+  view uses (`manager_required` resolves `request.user.technician` globally first,
+  which the day view deliberately avoids per CODE-081). Separately,
+  `SubscriptionEnforcementMiddleware` blocks **every** POST for a read-only/grace
+  tenant and returns JSON only for paths under `/api/`, otherwise redirecting to the
+  referer — i.e. straight back to the schedule page. The JS must therefore check
+  `response.ok` **and** the content-type before parsing, or a trial-expired shop gets
+  an opaque parse error.
+- **The row partial has no identity today.** It emits only `data-map-query` /
+  `data-call-number`, and `id` alone is ambiguous — `service_type` is set
+  imperatively by the view, not a model field. Key every row `{service_type}-{id}`,
+  and emit the expected start as `date:"c"`, comparing **parsed datetimes**
+  server-side; string compare will not survive offset spelling or microseconds.
+- **Gesture mechanics.** Hand-rolled Pointer Events (one path for mouse and touch);
+  drag starts **only** from the handle, because the row already holds three
+  interactive children (an external `target="_blank"` map anchor, a `tel:` link and
+  the View/Start/Continue button). The handle is always visible — hover-reveal does
+  not exist on a tablet — so budget for the row re-layout it forces on a phone; it
+  carries `.tap-target` and `touch-action: none` on itself only, so the page still
+  scrolls everywhere else. COMPLETED rows are on the sheet and dimmed: give them no
+  handle *and* reject them as drop targets. Reject cross-group and triage-rail drops
+  **in the browser with a reason** — the rail sits directly above the tech cards and
+  is the most tempting wrong target on the page. Put drag state in semantic classes
+  in `input.css` toggled by name; Tailwind scans `static/js`, so a literal class
+  string survives but a composed one is purged.
+- **Undo vs. re-render — the one genuinely unresolved conflict.** Order is computed
+  server-side, so a successful swap changes both times *and* both positions. Either
+  swap the two DOM nodes **and** their time blocks (including the conditional
+  window-end line), or use the house pattern `UI.flash()` + reload. But reload kills
+  the Undo toast, and `UI.toast()` auto-dismisses in 4s with no API for buttons and an
+  `aria-live` region an interactive control has no business in — so "toast with Undo"
+  means changing shared `ui.js` and taking that blast radius across every page.
+  `UI.confirm()` is already a branded modal and is good backing for the non-drag path
+  ("Move to 11:00 AM — swap with the 11:00 job?").
+- **What cannot be verified locally.** Dev runs SQLite, where `select_for_update()`
+  is a silent no-op — every lock-ordering test passes green and proves nothing. Only
+  the 409 path is locally testable. Stand up Postgres, or say plainly in the PR that
+  the deadlock story is argued rather than tested.
+- **There is no audit trail at all.** `GlassService` has no `updated_at`, there is no
+  history model, and `.update()` fires no signal. This is the first UI that changes a
+  customer-facing promise, and afterwards nothing records that a time moved, who moved
+  it, or what it was — with Undo re-swapping on top. At minimum log it.
+- **Honest limit of pure swap.** Swapping is only the right primitive on a *full* day.
+  On a half-empty day the manager's intent is "drop it at 11:00" — which is the
+  out-of-scope rail drop — so on the easiest day to use it, the feature can read as
+  broken. Expect that in review; the answer is the follow-on session, not a cascade.
+
+**Notes**
 
 ---
 
@@ -455,6 +564,8 @@ Not a session yet — the blocker is a contract, not code. To show "2024 F-150 w
 - **Signals with `created`/`old_value` guards have null-holes.** `signals.py:142` skipped the unassigned→assigned transition for years. Prefer explicit service calls at the write path over signal archaeology.
 - **`technician` is NOT NULL — "unassigned" does not exist at the DB level.** *(N1, 2026-08-12)* Every Repair/Replacement always holds a tech; a "unassigned" job in the product sense is a REQUESTED job carrying a provisional fallback tech. S5's "unassigned rail" and any dashboard bucket must key off `queue_status='REQUESTED'` (or a future explicit flag), not `technician IS NULL`.
 - **Email templates must use the flat notification context and absolute links.** *(N1)* Notification contexts are persisted to a JSONField, so they can never contain model objects — a template referencing `{{ repair.* }}` renders empty and nothing errors. CTA links must be `{{ base_url }}{{ action_url }}`; a bare `{{ action_url }}` is a dead relative link in a mail client.
+- **A schedule-only `save()` re-prices the job and rewrites the customer's invoice.** *(S7 exploration, 2026-08-17)* `Repair.save()` (`apps/technician_portal/models.py:918-1120`) re-runs `calculate_repair_cost()` for any non-COMPLETED job (`:1047-1061`), re-runs `TaxService` whenever `cost > 0` (`:1065-1080`), and calls `sync_lines_for_service()` (`:1116-1120`) — which rewrites line items on every live invoice and recalculates totals, inside a bare `except: pass` that hides it. `Replacement.save()` recomputes cost from parts+labor on every save (`:1755-1770`) and syncs too (`:1816-1821`). **`save(update_fields=[…])` does not help — the whole `save()` body still runs.** Anything that only moves a time must use a queryset `.update()` (and then owns the validation `save()` would have done). Applies to S4 and S5 as much as S7.
+- **`select_for_update()` is a silent no-op in dev.** *(S7, 2026-08-17)* Dev runs SQLite, so lock-ordering and race tests pass green while proving nothing — even a missing `atomic()` won't raise. Any concurrency guard has to be exercised against Postgres or labelled as argued-not-tested.
 - **Full suite has ~90–105 pre-existing failures on main.** Compare against a fresh main baseline; never count absolute failures. Another session may share the working tree — print `git branch --show-current` with every run.
 
 ---
