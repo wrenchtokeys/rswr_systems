@@ -184,6 +184,94 @@ def notify_assignment_change(job, old_technician, new_technician, *,
             )
 
 
+def notify_schedule_swap(job_a, job_b, *, actor_user=None):
+    """Tell the assigned tech their two jobs traded times (fieldops S7).
+
+    Both jobs belong to the same technician — the swap endpoint refuses
+    cross-tech drops — so this is exactly one notification, and none at all
+    when the tech performed the swap themselves. No customer is notified;
+    telling a customer their time moved is S4's job, not a side effect of a
+    manager's drag.
+
+    Call this from ``transaction.on_commit`` only: NotificationService sends
+    email synchronously and re-raises, and the caller holds two row locks.
+    """
+    from apps.technician_portal.models import TechnicianNotification
+    from core.services.notification_service import NotificationService
+    from django.utils import timezone
+    from django.utils.dateformat import format as format_date
+
+    technician = job_a.technician
+    if technician is None:
+        return
+    actor_id = actor_user.id if actor_user is not None else None
+    if technician.user_id == actor_id:
+        return
+    if job_a.queue_status not in NOTIFIABLE_STATUSES:
+        return
+
+    def when(job):
+        return format_date(timezone.localtime(job.scheduled_for), 'g:i A')
+
+    def label(job):
+        name = job.customer.name if job.customer_id else 'Walk-in'
+        unit = job.unit_number or ''
+        return f"{name} (Unit {unit})" if unit else name
+
+    day = format_date(timezone.localtime(job_a.scheduled_for), 'D M j')
+    summary = (
+        f"{label(job_a)} is now at {when(job_a)} and "
+        f"{label(job_b)} at {when(job_b)}"
+    )
+
+    # TechnicianNotification carries only a `repair` FK, so a swap between two
+    # replacements gets a dashboard row with no link — its action_url still
+    # works, and the bell notification below is unaffected.
+    linked_repair = None
+    for job in (job_a, job_b):
+        if not _is_replacement(job):
+            linked_repair = job
+            break
+
+    TechnicianNotification.objects.create(
+        technician=technician,
+        message=f"Schedule change for {day}: {summary}",
+        read=False,
+        repair=linked_repair,
+    )
+
+    context = {
+        'day': day,
+        'summary': summary,
+        'technician_name': (
+            technician.user.get_full_name() or technician.user.username
+        ),
+        'first_job': label(job_a),
+        'first_time': when(job_a),
+        'second_job': label(job_b),
+        'second_time': when(job_b),
+        # Link to the day that changed, not to "today" — the tech may read
+        # this tomorrow morning about a job the day after.
+        'action_url': (
+            '/tech/schedule/?date='
+            + timezone.localtime(job_a.scheduled_for).date().isoformat()
+        ),
+    }
+    try:
+        NotificationService.create_notification(
+            recipient=technician,
+            template_name='job_rescheduled',
+            context=context,
+            repair=linked_repair,
+            action_url=context['action_url'],
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send schedule-swap notification to technician %s",
+            technician.pk,
+        )
+
+
 def notify_assignment_from_signal(job, old_technician, old_status, created,
                                   actor_user_id=None):
     """Signal-side decision: does this save amount to an assignment event?

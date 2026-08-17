@@ -21,7 +21,7 @@ This file is the **work queue** for making field operations real: a technician f
 | S — Where and when | S4 · Customer requests carry when + where | M | TODO |
 | S — Where and when | S5 · Dispatch board | L | TODO |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
-| S — Where and when | S7 · Drag to swap two appointments | M | TODO |
+| S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
 | P — Parts | P1 · Mygrant live quotes + ordering | M | IN PROGRESS (steps 3+4 MERGED+DEPLOYED 2026-08-15, PR #184; step 5 quote-only built 2026-08-15, **PR #186**; steps 1–2 wait on the Mygrant IT callback; step 6 ordering waits for quotes to prove out) |
 | P — Parts | P2 · Vehicle→NAGS part lookup | — | BACKLOG (blocked on a NAGS licensing decision — Appendix B) |
 
@@ -454,7 +454,7 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
 | **Why it matters** | The day changes by phone call, not by form. "Put Acme first" today means opening two job forms, editing two datetime fields, and checking by eye that you didn't collide — while every fact the decision needs is already rendered on one screen. |
 | **Verified current state** *(2026-08-17)* | `/tech/schedule/` renders rows from `templates/technician_portal/includes/schedule_row.html`, sorted `(scheduled_for, pk)`, grouped per tech for managers (`apps/technician_portal/views/schedule.py:79-118`; anchors land with PR #190). The module documents itself as read-only and **no reschedule endpoint exists anywhere**. Only three writers of `scheduled_for` exist — `RepairForm` (`forms.py:443`), `QuickJobForm` (`forms.py:975-980`, nulled at `:1168` when *already completed*), `ReplacementForm` (`apps/saas/forms.py:329`); `scheduled_window_end` has **zero writers and zero readers**. **No drag / sortable / Pointer-Events JS exists anywhere** — vendored JS is flatpickr + driver.js only, and policy forbids npm and CDNs; the one touch precedent is the tap-to-place damage diagram (`static/js/multi_break.js:1006`, `touchstart` with `{passive:false}`). `window.UI` (`static/js/ui.js`) already provides `csrfToken()`, `toast()`, `flash()`, `confirm()` and document-level delegation. Locking house rule is pessimistic `select_for_update()` inside `transaction.atomic()`; **no optimistic locking exists anywhere and nothing in the repo locks two rows at once**. |
 | **Considerations** | The engineering detail is long enough to be worth prose — see **"Design notes"** below the table. The four rules that shape everything else: **(1)** never call `save()` to move a time (it re-prices the job and rewrites live invoices — see the Traps list); **(2)** each job keeps its **own duration**, so swap the starts, not the window pair; **(3)** notifications fire on `transaction.on_commit()`, never inside the locked transaction; **(4)** the endpoint must answer JSON even when it refuses — two separate mechanisms redirect to HTML today. |
-| **Decisions needed** | **Taken 2026-08-17 (Drake):** pure swap (not insert-and-cascade); managers/owners only, technicians keep the page read-only; dropping an *unscheduled* job onto a time is out of scope; notify the assigned tech only, never for one's own drag, and no customer notice. **Still open, decide when scoping:** (a) **Undo toast vs. reload** — they conflict, see Design notes; (b) **multi-break batches** — refuse the drag, or move the whole batch together; (c) **audit trail** — whether a customer-facing promise may change with nothing anywhere recording that it did. |
+| **Decisions needed** | **Taken 2026-08-17 (Drake):** pure swap (not insert-and-cascade); managers/owners only, technicians keep the page read-only; dropping an *unscheduled* job onto a time is out of scope; notify the assigned tech only, never for one's own drag, and no customer notice. **All three resolved 2026-08-17 (Drake, during the build session):** (a) **reload, no Undo toast** — `UI.flash()` + reload, keeping shared `ui.js` untouched; (b) **multi-break batches refuse the drag**, with a reason; (c) **structured log line**, no history model. Rationale in Notes. |
 | **Acceptance criteria** | Manager drags A onto B in one tech's day → the two trade start times, each keeping its own window length; the list reorders and the change is stated in words, not just position. **The swap changes no price, no tax and no invoice line** — asserted by a test that puts both jobs on a live invoice and compares `cost`, `tax_amount` and invoice totals before and after. Cross-tech, cross-day, completed, unscheduled, soft-deleted, other-tenant and same-job-twice are all refused **as JSON** (including for an unauthorised caller and a read-only tenant). A stale swap returns 409 and writes nothing. The assigned tech gets exactly one notification; a manager swapping on their own day gets none; no customer is notified. Works with a finger (44px handle, page still scrolls) and with a mouse; a non-drag path exists; technicians see no handles at all. |
 | **Out of scope** | Dropping an unscheduled job from the triage rail onto a time (the obvious follow-on). Cross-technician moves — that is reassignment and belongs in N1's `assign_job()`. Insert-and-cascade reordering. Editing a time inline. Any customer-facing notice (S4). The S5 board, which inherits this endpoint rather than reimplementing it. |
 
@@ -544,7 +544,84 @@ Not a session yet — a parking spot so nobody re-litigates scope. PRODUCT_DIREC
   out-of-scope rail drop — so on the easiest day to use it, the feature can read as
   broken. Expect that in review; the answer is the follow-on session, not a cascade.
 
-**Notes**
+**Notes** *(session run 2026-08-17, branch `feat/fieldops-s7-swap-appointments`, PR #192)*
+
+- **Shipped as designed. The Design-notes pressure-test held up** — every trap
+  above was real and none of them cost time a second round of discovery would
+  have. The write path is `apps/technician_portal/services/schedule_swap.py`
+  (`swap_appointments`), the endpoint is `POST /tech/schedule/swap/`, and
+  **S5 should call the service, not the endpoint** — it already takes tenant +
+  two refs + the acting user and returns a human summary.
+- **The three open decisions, taken:** (a) `UI.flash()` + reload, so shared
+  `ui.js` is untouched and no interactive control lands in an `aria-live`
+  region — reverting is the same one gesture, dragged back; (b) a batched
+  repair gets **no handle and is refused as a drop target**, with a reason,
+  rather than moving the whole batch — moving one break silently splits one
+  physical visit, and N-vs-1 swap arithmetic was the first thing that would
+  have broken under review; (c) a **structured log line** (`fieldops S7
+  schedule swap: tenant=… actor=… technician=… repair#N old->new | …`) is the
+  entire audit trail. It is greppable on the instance and needs no schema.
+  **This is a known thin spot** — see the last bullet.
+- **Notifications required `captureOnCommitCallbacks` in tests.** The notice
+  fires from `transaction.on_commit()` (correctly — `NotificationService`
+  sends email synchronously and re-raises, and the caller holds two row
+  locks), and `TestCase` never commits. Without wrapping the POST, the entire
+  notification path silently does not run and the tests pass anyway. Any
+  future session touching this must wrap, or it is testing nothing.
+- **Live verification found one bug the tests could not.** The triage rail
+  renders its **own** markup, not the shared `schedule_row.html` partial, so a
+  drop there resolves to no `[data-job-key]` row at all — the refusal fell
+  through to a silent no-op instead of the reasoned rejection the design
+  called for. Fixed by falling back to the enclosing `[data-swap-group]`.
+  **The general lesson: `schedule_row.html` and the rail's inline rows are two
+  different renderers of the same idea.** S5 should collapse them into one
+  partial before adding rail interactions, or every rail feature will need
+  this same special case.
+- **New template `job_rescheduled`** (core migration `0029`, plus
+  `emails/notifications/job_rescheduled.html/.txt`). Category `assignment`
+  **on purpose**: it reuses the existing `TechnicianNotificationPreference`
+  opt-out, and a new category would need a matching preference field or techs
+  could not opt out at all. Priority MEDIUM, not HIGH — HIGH maps to
+  `['in_app','sms']` and would have reproduced N1's "email is structurally
+  impossible" bug on a brand-new template. **N3 should inventory this one**;
+  it is the schedule-change template N3's Considerations predicted.
+- **Things future S-sessions should know:**
+  - `scheduled_window_end` now has its **first writer**. The semantics chosen:
+    each job keeps its *own* duration across a move (`new_end = new_start +
+    (old_end - old_start)`, NULL stays NULL). S4's customer time-window
+    capture inherits this rather than redefining it.
+  - The row partial is now keyed `{service_type}-{id}` and carries its
+    expected start as `date:"c"`. Anything that re-renders a schedule row must
+    keep both, or drags silently 409 against a stale expectation.
+  - Authorization is **in-body**, not `@manager_required` — that decorator
+    redirects to HTML *and* queues a `messages.warning` that would surface as
+    a stray banner on the manager's next page. `_resolve_viewer()` in
+    `views/schedule.py` is now shared by the day view and the endpoint so the
+    two cannot disagree about who is a manager.
+  - The client checks **content-type before `response.ok`**, because a
+    read-only tenant's POST is stopped by `SubscriptionEnforcementMiddleware`,
+    which redirects (fetch follows it) and so delivers an HTML page as a 200.
+- **What is argued rather than tested.** Dev runs SQLite, where
+  `select_for_update()` is a silent no-op, so the deterministic `(model, pk)`
+  lock ordering is reasoned in the service docstring and **not** proven by any
+  test — a lock-ordering test here would pass green and mean nothing. The
+  optimistic-lock 409 (expected time folded into the `.update()` WHERE, row
+  count as the lock) *is* real on both backends and is tested.
+- **Still thin, deliberately:** the log line is the only record that a
+  customer-facing promise moved. If S5 puts more time-editing on the board —
+  and it will — the right moment to build a real `ScheduleChange` model
+  (actor, job, old/new time) is when the second writer appears, not the first.
+- **Tests:** `tests/test_fieldops_s7.py` (33). Includes the money guard —
+  both jobs on a live invoice, comparing `cost`, `tax_amount` and invoice
+  totals before and after — plus every refusal as JSON, the 409 staleness
+  paths, and the notification rules. Smoke set + 241 adjacent tests green
+  (S1/S2/S3/N1/N4, touch targets, view transitions, job-form parity,
+  individual-vs-fleet, invoice send polish), incl. the CSS guards after
+  `./scripts/build_css.sh`. One pre-existing failure on `main`,
+  **not caused here and not fixed here**:
+  `core.tests.test_models.TechnicianNotificationPreferenceTestCase.test_can_send_email_not_verified`
+  still asserts the pre-N1 behaviour (techs needing `email_verified`) that N1
+  deliberately removed. It belongs to N3's audit.
 
 ---
 

@@ -340,6 +340,28 @@ class Command(BaseCommand):
                 'action_url_template': '/tech/jobs/',
                 'required_context': ['job_count', 'job_summary', 'new_technician_name'],
             },
+
+            # 13. JOB RESCHEDULED (Technician) — fieldops S7 day-view swap.
+            # Category 'assignment' so it reuses the existing technician
+            # opt-out; MEDIUM so email is actually a channel (HIGH is
+            # in_app+sms only).
+            {
+                'name': 'job_rescheduled',
+                'description': 'Technician notice that two of their jobs traded times',
+                'category': Notification.CATEGORY_ASSIGNMENT,
+                'default_priority': Notification.PRIORITY_MEDIUM,
+                'title_template': 'Schedule change for {{ day }}',
+                'message_template': '{{ summary }}.',
+                'email_subject_template': 'Your schedule changed for {{ day }}',
+                'email_html_template': 'emails/notifications/job_rescheduled.html',
+                'email_text_template': 'emails/notifications/job_rescheduled.txt',
+                'sms_template': (
+                    'Schedule change {{ day }}: {{ first_job }} now '
+                    '{{ first_time }}, {{ second_job }} now {{ second_time }}.'
+                ),
+                'action_url_template': '/tech/schedule/',
+                'required_context': ['day', 'summary'],
+            },
         ]
 
         created_count = 0
