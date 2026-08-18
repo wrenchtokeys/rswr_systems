@@ -14,11 +14,11 @@ This file is the **work queue** for making field operations real: a technician f
 | N — The tech finds out | N1 · Assignment notifications that deliver | M | DONE (2026-08-12, PR #179) |
 | N — The tech finds out | N2 · Fix dead verification SMS + tech texts | S | TODO (prod effect blocked on N4 — Appendix A) |
 | N — The tech finds out | N3 · Notification coverage audit | S | TODO |
-| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE (2026-08-12, PR pending) — v2 submission awaits deploy + Drake (see Notes) |
+| N — The tech finds out | N4 · SMS opt-in compliance + registration v2 | S | CODE DONE + DEPLOYED (**PR #180**, merged 2026-08-13) — the deploy half is finished; v2 submission now waits on Drake alone (see Notes) |
 | S — Where and when | S1 · A real "booked time" | M | DONE (2026-08-15, **PR #188**) |
 | S — Where and when | S2 · Field dispatch (executes B1) | M | DONE (2026-08-15, PR #189) |
 | S — Where and when | S3 · Day / agenda view | M | DONE (2026-08-16, PR #190) |
-| S — Where and when | S4 · Customer requests carry when + where | M | DONE (2026-08-18) |
+| S — Where and when | S4 · Customer requests carry when + where | M | DONE (2026-08-18, **PR #195**, deployed same day) |
 | S — Where and when | S5 · Dispatch board | L | TODO — **next up** |
 | S — Where and when | S6 · Routing / ETA / lot-walking | — | BACKLOG (deliberately deferred) |
 | S — Where and when | S7 · Drag to swap two appointments | M | DONE (2026-08-17, **PR #192**) |
@@ -28,7 +28,7 @@ This file is the **work queue** for making field operations real: a technician f
 **Suggested sequence:** N1 → N4 (start the review clock early — it's days-to-weeks of waiting either way) → S1 → S2 → S3 → N2 (whenever the TFN approves) → S4 → N3 → S5 → (S6 stays backlog until S3/S5 prove demand). **S7 slots in any time after S3** — it needs neither S4 nor S5, and S5 inherits its endpoint. P1 is independent of both arcs and can slot anywhere once Mygrant API onboarding is done (like N4, start that clock early — it's a phone call to the rep).
 Rationale: N1 is the reported bug and pays off alone. S1 is the schema foundation every S-session builds on. S2 is IMPROVEMENT_SESSIONS' "biggest daily-felt gain per hour spent." S4 before S5 because the board is only as good as the data flowing into it.
 
-**Where we are (2026-08-18):** N1, N4, S1, S2, S3, S7 and S4 are done. **PRs #190/#191/#192/#193 and S4's PR all still need `eb deploy`** — five merged sessions are sitting undeployed, which is now the biggest single risk in this arc. N2 is parked until the toll-free number clears review (Appendix A), so **S5 (the dispatch board) is next**, and it inherits real data from S4: booking is a solved, tested write path (`services/schedule_booking.py`) and the triage rail is now a shared partial with a working inline control, so the board is assembly rather than invention. N3 is worth doing before or alongside S5 — S4 found a live notification bug (lowercase template priorities, see its Notes) that N3's inventory would have caught.
+**Where we are (2026-08-18):** N1, N4, S1, S2, S3, S7 and S4 are done, **and every one of them is now live in production** — the deploy backlog this line used to warn about is cleared. #190/#191/#192/#193 went out at 10:20 CDT (version `app-ab584-…`, commit `ab5849e2`) and S4/#195 at 10:32 CDT (`app-c407-…`, commit `c40701c9`), carrying four migrations: `technician_portal/0055` + `0056` (preferred date/window, exact times) and `core/0030` + `0031` (`job_rescheduled` generalized, request-template priorities uppercased). **Note what that last one switched on:** the customer "request received" email had never sent on any migration-seeded database, production included — as of this deploy it does, so the first shop-visible effect of S4 is customers getting an email that was silently discarded before. N2 is parked until the toll-free number clears review (Appendix A), so **S5 (the dispatch board) is next**, and it inherits real data from S4: booking is a solved, tested write path (`services/schedule_booking.py`) and the triage rail is now a shared partial with a working inline control, so the board is assembly rather than invention. N3 is worth doing before or alongside S5 — S4 found a live notification bug (lowercase template priorities, see its Notes) that N3's inventory would have caught.
 
 Sizes: **S** ≈ half a day · **M** ≈ 1–2 days · **L** ≈ 3–5 days.
 
