@@ -1748,9 +1748,25 @@ Thank you,
                         autocomplete="off"
                         class="w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm transition"
                         placeholder="{% if mygrant_config.api_key %}Saved — leave blank to keep{% else %}From MygrantGlass.com, once API access is enabled{% endif %}">
-                    <p class="text-xs text-gray-500 mt-1">Ask your Mygrant rep to enable API access, then generate a key at MygrantGlass.com &rarr; My Account &rarr; Edit User Settings.</p>
+                    <p class="text-xs text-gray-500 mt-1">You generate this at MygrantGlass.com once your rep has turned on API access &mdash; see below.</p>
                 </div>
             </div>
+
+            <details class="border border-gray-200 rounded-lg" {% if not mygrant_config.api_key %}open{% endif %}>
+                <summary class="px-4 py-3 text-sm font-medium text-gray-700 cursor-pointer select-none">
+                    Don't have an API key yet?
+                </summary>
+                <div class="px-4 pb-4 text-sm text-gray-600 space-y-3">
+                    <p>Mygrant switches API access on one account at a time, and only your rep can do it. It's one phone call:</p>
+                    <ol class="list-decimal pl-5 space-y-2">
+                        <li>Call your Mygrant sales rep or your local branch &mdash; or Mygrant at <a href="tel:+18009720964" class="text-brand-600 font-medium">(800) 972-0964</a>.</li>
+                        <li>Ask them to <strong>set up API access</strong> on your account{% if mygrant_config.customer_id %} ({{ mygrant_config.customer_id }}){% endif %}. They may call it the &ldquo;API Integration Set Up Form.&rdquo;</li>
+                        <li>Once it's on, sign in at MygrantGlass.com and open <strong>My Account &rarr; Edit User Settings</strong>. Click <strong>Generate Key</strong>, then paste the key above and save.</li>
+                    </ol>
+                    <p class="text-xs text-gray-500">No <strong>Generate Key</strong> button on that page? That means your rep hasn't finished the setup yet &mdash; it's the usual reason, and nothing is wrong on this end.</p>
+                    <p class="text-xs text-gray-500">Worth asking on the same call: whether price searches bill your account, and whether API lookups bill the same way.</p>
+                </div>
+            </details>
 
             <div class="p-3 bg-gray-50 border border-gray-200 rounded-lg">
                 <p class="text-xs text-gray-600">
