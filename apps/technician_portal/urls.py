@@ -14,9 +14,11 @@ urlpatterns = [
 
     # Day / agenda view (S3) + drag-to-swap two booked times (S7)
     # + book a customer's requested time onto a job (S4)
+    # + set who and when in one motion, the dispatch board's write (S5)
     path('schedule/', views.day_schedule, name='day_schedule'),
     path('schedule/swap/', views.swap_appointments, name='schedule_swap'),
     path('schedule/book/', views.book_appointment, name='schedule_book'),
+    path('schedule/dispatch/', views.dispatch_job, name='schedule_dispatch'),
     
     # Unified jobs surface (repairs + replacements)
     path('jobs/', views.job_list, name='job_list'),

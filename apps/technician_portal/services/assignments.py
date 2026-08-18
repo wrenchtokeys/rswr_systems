@@ -45,11 +45,33 @@ def _job_label(job):
     return 'Replacement' if _is_replacement(job) else 'Repair'
 
 
+def _booked_when(job):
+    """'Tue Aug 19, 8:00 AM – 12:00 PM' for a job that has a time, else ''.
+
+    Assignment emails carry the booked time whenever there is one (fieldops
+    S5): the dispatch board can set who and when in a single click, and
+    sending "you have a new job" followed by "your job has a time" is two
+    messages for one decision. An assignment with no time renders nothing —
+    the row is guarded in both templates.
+    """
+    from django.utils import timezone
+    from django.utils.dateformat import format as format_date
+
+    if not job.scheduled_for:
+        return ''
+    local_start = timezone.localtime(job.scheduled_for)
+    when = f"{format_date(local_start, 'D M j')}, {format_date(local_start, 'g:i A')}"
+    if job.scheduled_window_end:
+        when += f" – {format_date(timezone.localtime(job.scheduled_window_end), 'g:i A')}"
+    return when
+
+
 def _assignment_context(job):
     """Flat, JSON-serializable context for the assignment templates."""
     customer_name = job.customer.name if job.customer else 'Unknown'
     tech = job.technician
     return {
+        'scheduled_when': _booked_when(job),
         'repair_id': job.pk,
         'job_id': job.pk,
         'job_type': _job_label(job),

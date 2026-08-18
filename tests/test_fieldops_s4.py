@@ -403,7 +403,9 @@ class TriageRailTests(S4Base):
         self.login_shop()
         resp = self.client.get(reverse('day_schedule'))
         self.assertContains(resp, 'Asked for')
-        self.assertContains(resp, 'data-book-form')
+        # Renamed data-book-form -> data-dispatch-form in S5, when the same
+        # row form grew a technician picker beside the date and window.
+        self.assertContains(resp, 'data-dispatch-form')
         self.assertContains(resp, f'repair-{repair.pk}')
 
     def test_plain_technician_sees_no_book_control(self):
@@ -411,7 +413,7 @@ class TriageRailTests(S4Base):
         self.login_shop(self.tech_user)
         resp = self.client.get(reverse('day_schedule'))
         self.assertFalse(resp.context['can_book'])
-        self.assertNotContains(resp, 'data-book-form')
+        self.assertNotContains(resp, 'data-dispatch-form')
 
 
 # =============================================================================
@@ -805,7 +807,7 @@ class ExactWindowTests(S4Base):
 
         self.login_shop()
         resp = self.client.get(reverse('day_schedule'))
-        self.assertContains(resp, 'data-book-start')
+        self.assertContains(resp, 'data-dispatch-start')
         self.assertContains(resp, 'value="04:30"')
         self.assertContains(resp, 'value="05:45"')
         # And the wish itself is shown as a clock.

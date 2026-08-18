@@ -11,7 +11,9 @@ Unit {{ unit_number }}
 ================================================
 
 CUSTOMER:     {{ customer_name }}
-
+{% if scheduled_when %}
+SCHEDULED:    {{ scheduled_when }}
+{% endif %}
 STATUS:       {{ status }}
 {% if description %}
 DETAILS:      {{ description }}
